@@ -278,8 +278,14 @@ export interface PlayerCharacter {
   playbookId: string;
   stats: CharacterStats;
   /** Player's answer to the playbook's hook question (LLM-generated as part
-   *  of the character's voice). */
+   *  of the character's voice). Used in teacher context — describes the
+   *  character's arc, not their attitude. */
   arcAnswer: string;
+  /** Short MTG-style flavor quote rendered on the character card — 1-2
+   *  lines in the character's voice that capture their attitude in a
+   *  moment, not their backstory. Optional for characters created before
+   *  this field existed; the card falls back to arcAnswer when absent. */
+  flavorQuote?: string;
   /** A 2-3 sentence personality blurb that teachers see in their context
    *  when interacting with the player. */
   personality: string;
@@ -376,6 +382,24 @@ export interface ActiveRound {
   opinionResponses: OpinionResponse[];
   opinionGrades: OpinionGrade[];
   bestResponder: string | null;
+  /** Once-per-round advantage roll. The player taps "Roll for advantage" to
+   *  cross wrong choices off the board:
+   *    hit  (10+) → 2 wrong choices eliminated
+   *    mixed (7-9) → 1 wrong choice eliminated
+   *    miss (6-)   → nothing eliminated (no penalty)
+   *  The roll is consumed once per round regardless of outcome. Picks against
+   *  eliminated choices are rejected by submitAnswer. */
+  advantage?: AdvantageRoll | null;
+}
+
+export interface AdvantageRoll {
+  rolled: boolean;
+  stat: keyof CharacterStats;
+  dice: [number, number];
+  total: number;
+  outcome: RoundOutcome;
+  eliminated: Choice[];
+  rolledAt: number;
 }
 
 export const OPINION_ROUND_DURATION_MS = 120000; // 2 minutes — typing takes time
@@ -393,6 +417,34 @@ export function classifyTotal(total: number): RoundOutcome {
   if (total >= 10) return "hit";
   if (total >= 7) return "mixed";
   return "miss";
+}
+
+/** Pure helper: given the correct choice and a roll outcome, decide which
+ *  wrong choices are crossed off the board. The randomness is injected (`rng`
+ *  defaults to Math.random) so callers can stub it in tests.
+ *
+ *  - hit (10+) → 2 wrong choices eliminated (50/50 between correct and the
+ *    surviving wrong)
+ *  - mixed (7-9) → 1 wrong choice eliminated (1-in-3 odds for a guesser)
+ *  - miss (6-) → nothing eliminated (no penalty)
+ *
+ *  The correct choice is never eliminated. */
+export function pickEliminatedChoices(
+  correct: Choice,
+  outcome: RoundOutcome,
+  rng: () => number = Math.random,
+): Choice[] {
+  const wrongs = (CHOICES.filter((c) => c !== correct) as Choice[]).slice();
+  // Fisher-Yates shuffle so callers get a stable distribution.
+  for (let i = wrongs.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = wrongs[i]!;
+    wrongs[i] = wrongs[j]!;
+    wrongs[j] = tmp;
+  }
+  if (outcome === "hit") return wrongs.slice(0, 2);
+  if (outcome === "mixed") return wrongs.slice(0, 1);
+  return [];
 }
 
 /** For an opinion round, how soon does this NPC commit their written response?

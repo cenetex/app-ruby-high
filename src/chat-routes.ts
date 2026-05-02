@@ -325,6 +325,7 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   playbookId: string;
   stats: CharacterStats;
   arcAnswer: string;
+  flavorQuote: string;
   personality: string;
 }> {
   const playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
@@ -340,11 +341,12 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
     `Name vibe (HARD CONSTRAINT, this run): ${nameVibe}`,
     "",
     "Generate JSON exactly in this shape (no other text, no markdown, no code fences):",
-    `{"name":"...","arcAnswer":"...","personality":"..."}`,
+    `{"name":"...","arcAnswer":"...","flavorQuote":"...","personality":"..."}`,
     "",
     "Rules for each field:",
     "- name: a real plausible name following the name-vibe constraint above. Don't anglicize or simplify it. Use proper diacritics where they belong. The vibe is locked — do NOT swap it for a different cultural template. Avoid these overused names entirely: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
     "- arcAnswer: 1-2 sentences in the character's voice answering the hook question above. Specific, not abstract. First person.",
+    `- flavorQuote: ONE short line in the character's voice — Magic: the Gathering flavor text. 6-18 words, max two short sentences. Captures their attitude in a moment, not their backstory. NOT an answer to the hook question. NOT a thesis statement. Examples of the right shape (from other Ruby High characters, do NOT copy these):\n    Sally Science: "I'd rather you be wrong with reasons than right by accident."\n    Edward: "Every wrong answer has a half-truth folded inside it. We start there."\n    Lyra: "wait what — i KNEW it was c. ok im rewriting my notes."\n  Make this character's quote feel as specific to them as those feel to their speakers. No surrounding quote marks — the renderer adds them.`,
     "- personality: 2-3 sentences describing how this character SHOWS UP in class — quirks, what they care about, what they do when bored, who they sit with. Tie at least one trait back to a high stat (HEAD = sharp, HEART = warm, HUSTLE = quick, HONOR = principled) and at least one to a low stat (the same negative). Third person.",
   ].join("\n");
 
@@ -362,7 +364,7 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
         { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
         { role: "user", content: userPrompt },
       ],
-      max_tokens: 380,
+      max_tokens: 480,
       temperature: 1.1,
     }),
   });
@@ -371,7 +373,7 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();
   // Strip code fences if the model added any despite instructions.
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  let parsed: { name?: unknown; arcAnswer?: unknown; personality?: unknown };
+  let parsed: { name?: unknown; arcAnswer?: unknown; flavorQuote?: unknown; personality?: unknown };
   try {
     parsed = JSON.parse(cleaned);
   } catch (err) {
@@ -379,11 +381,13 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   }
   const name = String(parsed.name ?? "").trim();
   const arcAnswer = String(parsed.arcAnswer ?? "").trim();
+  // Trim wrapping curly/straight quotes if the model added them despite instructions.
+  const flavorQuote = String(parsed.flavorQuote ?? "").trim().replace(/^["“'\s]+|["”'\s]+$/g, "");
   const personality = String(parsed.personality ?? "").trim();
   if (!name || !arcAnswer || !personality) {
     throw new Error("Generated character missing required fields.");
   }
-  return { name, playbookId: playbook.id, stats, arcAnswer, personality };
+  return { name, playbookId: playbook.id, stats, arcAnswer, flavorQuote, personality };
 }
 
 async function generateStudentLine(args: {

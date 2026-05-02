@@ -16,10 +16,12 @@ import {
   pickNextRoomForStudent,
   roomForFaculty,
   classifyTotal,
+  pickEliminatedChoices,
   roll2d6,
   rollNpcAnswer,
   rollOpinionDelay,
   type ActiveRound,
+  type AdvantageRoll,
   type AnswerRecord,
   type CharacterStats,
   type Choice,
@@ -94,6 +96,49 @@ export class RubyHighService extends Service {
   /** Wait for any in-flight persistence writes to flush. Useful in tests. */
   flush(): Promise<void> {
     return this.persist();
+  }
+
+  /** Player taps "Roll for advantage" once per round. The roll is consumed
+   *  whether it lands hit / mixed / miss. Eliminated choices are recorded on
+   *  the active round so the UI can cross them out and submitAnswer can
+   *  reject picks against them.
+   *
+   *  Returns the updated state and the roll result. If the player already
+   *  rolled this round, the existing roll is returned unchanged (idempotent).
+   *  If there's no active MC round, returns a null result. */
+  rollAdvantage(sessionId: string): { state: QuizState; result: AdvantageRoll | null } {
+    const state = this.getOrCreate(sessionId);
+    const round = state.activeRound;
+    if (!round || round.resolved || round.type !== "multiple-choice") {
+      return { state, result: null };
+    }
+    if (round.advantage?.rolled) {
+      return { state, result: round.advantage };
+    }
+    if (round.player.answeredAt != null) {
+      // Already locked in their answer — too late to roll for advantage.
+      return { state, result: null };
+    }
+    const stat: keyof CharacterStats = "head";
+    const r = roll2d6();
+    const mod = state.character?.stats[stat] ?? 0;
+    const total = r.total + mod;
+    const outcome = classifyTotal(total);
+    const correct = (state.current?.correct ?? "A") as Choice;
+    const eliminated = pickEliminatedChoices(correct, outcome);
+    const advantage: AdvantageRoll = {
+      rolled: true,
+      stat,
+      dice: r.dice,
+      total,
+      outcome,
+      eliminated,
+      rolledAt: Date.now(),
+    };
+    round.advantage = advantage;
+    state.updatedAt = Date.now();
+    void this.persist();
+    return { state, result: advantage };
   }
 
   /** DM tool — teacher asks the player to roll a stat against a DC. Stored
@@ -666,6 +711,9 @@ export class RubyHighService extends Service {
       this.tickRound(state);
       return state;
     }
+    if (round.advantage?.eliminated.includes(picked)) {
+      throw new Error(`${picked} was crossed out by your advantage roll — pick a different choice.`);
+    }
     round.player.picked = picked;
     round.player.answeredAt = Date.now();
     // Tick first so any NPCs whose delay HAS already elapsed lock in honestly.
@@ -695,17 +743,19 @@ export class RubyHighService extends Service {
   /** Create the player's character sheet. Throws if one already exists. */
   createCharacter(
     sessionId: string,
-    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; personality: string; portraitDataUrl?: string },
+    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; flavorQuote?: string; personality: string; portraitDataUrl?: string },
   ): QuizState {
     const state = this.getOrCreate(sessionId);
     if (state.character) throw new Error("Character already exists for this session.");
     const name = input.name.trim();
     if (!name) throw new Error("Name is required.");
+    const flavorQuote = input.flavorQuote?.trim();
     state.character = {
       name,
       playbookId: input.playbookId,
       stats: { ...input.stats },
       arcAnswer: input.arcAnswer.trim(),
+      ...(flavorQuote ? { flavorQuote } : {}),
       personality: input.personality.trim(),
       portraitDataUrl: input.portraitDataUrl,
       xp: 0,
