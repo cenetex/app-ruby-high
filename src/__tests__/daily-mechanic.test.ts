@@ -37,13 +37,16 @@ async function makeServices() {
   return { ruby, faculty };
 }
 
-function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9") {
+function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9", xp = 999) {
   ruby.selectGrade(sid, grade);
   const state = ruby.getOrCreate(sid);
+  // Pre-populate XP high enough to clear the XP gate at any year (Senior
+  // threshold is 50). Tests that want to exercise the XP gate explicitly
+  // should set a lower value via the third arg.
   state.character = {
     name: "Pip", playbookId: "overachiever",
     stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
-    arcAnswer: "—", personality: "—", xp: 0, strings: {},
+    arcAnswer: "—", personality: "—", xp, strings: {},
     conditions: [], yearbook: [], createdAt: Date.now(),
   };
   return state;
@@ -158,6 +161,193 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
 });
 
 // ── streak mechanic ────────────────────────────────────────────────────────
+
+describe("NPC cohort — runs in parallel with the player", () => {
+  it("first Daily seeds the cohort with 6 NPCs at grade 9", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:cohort-init";
+    attachCharacter(ruby, sid);
+    ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
+    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    ruby.submitAnswer(sid, correct);
+    const cohort = ruby.getOrCreate(sid).npcCohort;
+    expect(cohort).toBeDefined();
+    expect(cohort).toHaveLength(6);
+    for (const npc of cohort!) {
+      expect(npc.grade).toBe("9");
+      expect(["lyra", "sami", "ravi", "indra", "mika", "noor"]).toContain(npc.id);
+    }
+  });
+
+  it("each NPC ticks independently — streaks diverge across the cohort", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:cohort-diverge";
+    attachCharacter(ruby, sid);
+    // Run a handful of Dailies. With NPC stats spread across HEAD -1..+2,
+    // their streaks WILL diverge — some will graduate Freshman in 1 try,
+    // some will reset multiple times.
+    const days = ["2026-05-04", "2026-05-05", "2026-05-06", "2026-05-07", "2026-05-08"];
+    for (const d of days) {
+      ruby.playDaily(sid, new Date(`${d}T18:00:00Z`));
+      const c = ruby.getOrCreate(sid).current!.correct! as Choice;
+      ruby.submitAnswer(sid, c);
+    }
+    const cohort = ruby.getOrCreate(sid).npcCohort!;
+    // After 5 Dailies, the cohort has diverged — some are still in 9, some
+    // have advanced to 10 or beyond. Just sanity-check the shape is valid;
+    // exact composition depends on dice.
+    for (const npc of cohort) {
+      expect(npc.streak.grade).toBe(npc.grade);
+      expect(npc.streak.count).toBeGreaterThanOrEqual(0);
+      expect(["9", "10", "11", "12"]).toContain(npc.grade);
+    }
+    // At least ONE NPC should have advanced past Freshman after 5 dailies
+    // (P(any of 6 advance) is overwhelmingly high).
+    const someoneMoved = cohort.some((n) => n.grade !== "9" || n.completedGrades.length > 0);
+    expect(someoneMoved).toBe(true);
+  });
+
+  it("graduated NPCs stop ticking on subsequent Dailies", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:cohort-grad";
+    attachCharacter(ruby, sid);
+    // Inject a graduated NPC into the cohort directly.
+    const state = ruby.getOrCreate(sid);
+    state.npcCohort = [{
+      id: "indra", grade: "12",
+      streak: { grade: "12", count: 4 },
+      completedGrades: ["9", "10", "11", "12"],
+      graduated: true,
+    }];
+    ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
+    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    ruby.submitAnswer(sid, correct);
+    const after = ruby.getOrCreate(sid).npcCohort!.find((n) => n.id === "indra")!;
+    // Graduated state preserved — no streak mutation.
+    expect(after.graduated).toBe(true);
+    expect(after.completedGrades).toEqual(["9", "10", "11", "12"]);
+    expect(after.lastDailyDate).toBeUndefined(); // not stamped because graduated
+  });
+});
+
+describe("Mentor mode — graduated character offers their playbook move", () => {
+  it("clearCharacter on a graduated character stashes a mentor offer", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:mentor-stash";
+    attachCharacter(ruby, sid, "12");
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.yearbook = [
+      { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },
+      { grade: "10", completedAt: 2, summary: { correct: 2, total: 2 } },
+      { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
+      { grade: "12", completedAt: 4, summary: { correct: 4, total: 4 } },
+    ];
+    ch.playbookId = "lifer"; // pick a playbook with a known move
+    ruby.clearCharacter(sid);
+    const offer = ruby.getOrCreate(sid).mentorOffer;
+    expect(offer).toBeTruthy();
+    expect(offer!.mentorName).toBe("Pip");
+    expect(offer!.playbookId).toBe("lifer");
+    expect(offer!.moveName).toBe("Old gossip");
+  });
+
+  it("clearCharacter on a non-graduated character does NOT set a mentor offer", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:mentor-skip";
+    attachCharacter(ruby, sid);
+    ruby.clearCharacter(sid);
+    expect(ruby.getOrCreate(sid).mentorOffer ?? null).toBeNull();
+  });
+
+  it("createCharacter with mentorAccepted=true stamps inheritedFrom + clears the offer", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:mentor-accept";
+    // Manually set a mentor offer on the state.
+    ruby.selectGrade(sid, "9");
+    const state = ruby.getOrCreate(sid);
+    state.mentorOffer = {
+      mentorName: "Old Pip",
+      playbookId: "overachiever",
+      moveName: "Margins are sacred",
+      moveDescription: "Once per year, retake one missed question.",
+    };
+    ruby.createCharacter(sid, {
+      name: "New Kid", playbookId: "slacker",
+      stats: { head: 0, heart: 1, hustle: 2, honor: -1 },
+      arcAnswer: "—", personality: "—",
+      mentorAccepted: true,
+    });
+    const after = ruby.getOrCreate(sid);
+    expect(after.character!.inheritedFrom).toEqual({
+      mentorName: "Old Pip", playbookId: "overachiever",
+      moveName: "Margins are sacred",
+      moveDescription: "Once per year, retake one missed question.",
+    });
+    expect(after.mentorOffer).toBeNull();
+  });
+
+  it("createCharacter with mentorAccepted=false does not stamp; offer cleared either way", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:mentor-decline";
+    ruby.selectGrade(sid, "9");
+    const state = ruby.getOrCreate(sid);
+    state.mentorOffer = {
+      mentorName: "Old Pip", playbookId: "overachiever",
+      moveName: "Margins are sacred", moveDescription: "—",
+    };
+    ruby.createCharacter(sid, {
+      name: "Fresh", playbookId: "slacker",
+      stats: { head: 0, heart: 1, hustle: 2, honor: -1 },
+      arcAnswer: "—", personality: "—",
+      // mentorAccepted not set → defaults to false
+    });
+    const after = ruby.getOrCreate(sid);
+    expect(after.character!.inheritedFrom).toBeUndefined();
+    expect(after.mentorOffer).toBeNull(); // cleared either way
+  });
+});
+
+describe("XP gate — streak alone is not enough", () => {
+  it("Freshman streak hit but XP < threshold → does NOT advance; advances when XP catches up", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:xp-gate";
+    // Start with 0 XP. Freshman threshold is 1 streak + 5 XP.
+    attachCharacter(ruby, sid, "9", 0);
+    let now = new Date("2026-05-04T18:00:00Z");
+    ruby.playDaily(sid, now);
+    let correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    ruby.submitAnswer(sid, correct);
+    let s = ruby.getOrCreate(sid);
+    // Streak is 1 (gate met), but XP is only 1-2 from the player roll
+    // (well under 5). So we should still be in Freshman.
+    expect(s.character!.streak?.count).toBeGreaterThanOrEqual(1);
+    expect(s.currentGrade).toBe("9");
+    expect(s.character!.xp).toBeLessThan(5);
+
+    // Bank XP up over the threshold without missing — keep playing dailies.
+    // The streak grows past the required 1; each correct answer adds 1-2 XP.
+    let day = 5;
+    while (s.character!.xp < 5) {
+      now = new Date(`2026-05-${String(day).padStart(2, "0")}T18:00:00Z`);
+      // Skip weekends.
+      if (now.getUTCDay() === 0 || now.getUTCDay() === 6) { day++; continue; }
+      try {
+        ruby.playDaily(sid, now);
+      } catch {
+        day++; continue;
+      }
+      correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+      ruby.submitAnswer(sid, correct);
+      s = ruby.getOrCreate(sid);
+      day++;
+      if (day > 20) break; // bail-out
+    }
+    // Once XP cleared the gate (streak was already past 1), advancement
+    // should have triggered on the latest pass.
+    expect(s.character!.xp).toBeGreaterThanOrEqual(5);
+    expect(s.currentGrade).toBe("10");
+  });
+});
 
 describe("Daily-pass streak + grade advancement", () => {
   it("Daily pass ticks the streak; miss resets to 0", async () => {

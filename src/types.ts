@@ -57,6 +57,22 @@ export function requiredStreakForGrade(grade: Grade): number {
   return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
 }
 
+/** Cumulative XP required to advance OUT of a year. Both gates (this AND
+ *  the streak) must be met. The curve is intentionally back-loaded:
+ *  Freshman is forgiving (you can pass one Daily and have 1-2 XP and
+ *  graduate first year), but Senior demands 50 XP — about 25-50 Dailies'
+ *  worth of accumulation, so the streak alone isn't enough.
+ *
+ *  Tunable. The numbers below are a starting curve for playtest. */
+export function xpForGrade(grade: Grade): number {
+  switch (grade) {
+    case "9":  return 5;
+    case "10": return 15;
+    case "11": return 30;
+    case "12": return 50;
+  }
+}
+
 /** Difficulty progression up the high school years. */
 export function difficultyForGrade(grade: Grade): Difficulty {
   if (grade === "9") return "easy";
@@ -214,6 +230,16 @@ export interface QuizState {
   /** Per-grade NPC student rosters. Keyed by grade so progress persists when
    *  the player switches grades and comes back. */
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
+  /** The cohort — each of the 6 NPCs running their own 4-year arc
+   *  alongside the player. Independent grades + streaks. Initialized at
+   *  grade 9 (everyone starts as Freshmen together). The Daily ticks
+   *  every NPC's streak via their HEAD stat + 2d6 roll. */
+  npcCohort?: NpcArcState[];
+  /** Mentor offer from a graduated previous character. Set by
+   *  clearCharacter() when the cleared character had completed Senior;
+   *  consumed by createCharacter() if mentorAccepted=true; cleared
+   *  either way once the next character is created. */
+  mentorOffer?: PlayerCharacter["inheritedFrom"] | null;
   /** The currently-running race to answer, if any. Cleared when the round
    *  resolves and lastReveal takes over. */
   activeRound: ActiveRound | null;
@@ -410,6 +436,18 @@ export interface PlayerCharacter {
   /** Generated diploma image (Senior graduation). Set by the /chat/diploma
    *  endpoint after the 4th yearbook entry lands. Base64 data URL. */
   diplomaImageDataUrl?: string;
+  /** Mentor inheritance from a previous character — present only when the
+   *  player accepted the mentor offer at this character's creation. The
+   *  fields snapshot the mentor's name + playbook + their playbook's
+   *  startingMove. Cosmetic + lore for now (the move text appears on
+   *  the character card); future PRs can wire the move into actual
+   *  gameplay rules. */
+  inheritedFrom?: {
+    mentorName: string;
+    playbookId: string;
+    moveName: string;
+    moveDescription: string;
+  };
   createdAt: number;
 }
 
@@ -499,6 +537,27 @@ export interface NpcStudentState {
   currentRoom: TeachingRoomId | null; // null when all subjects done for this grade
   stats: CharacterStats;
   subjects: Record<TeachingRoomId, { correct: number; completed: boolean }>;
+}
+
+/** Per-NPC arc state — tracks each classmate's independent progression
+ *  through the 4-year arc. Same shape as the player: a streak in their
+ *  current grade, a list of completed grades, a graduated flag. NPCs
+ *  ride along on the player's Daily completions — when the player plays
+ *  today's Daily, every still-in-school NPC also rolls their pass/fail
+ *  and ticks their own streak. They can outpace or fall behind. The
+ *  cohort is the rivalry layer: "Indra graduated last week" is real. */
+export interface NpcArcState {
+  id: string;
+  /** Current grade. Independent of `currentGrade` on QuizState. */
+  grade: Grade;
+  /** Per-grade Daily-pass streak, anchored to the current grade. */
+  streak: { grade: Grade; count: number };
+  completedGrades: Grade[];
+  /** True once Senior streak completes. Stops further ticking. */
+  graduated: boolean;
+  /** Day key (YYYY-MM-DD) of the last Daily this NPC participated in.
+   *  Prevents double-tick if the player retries on the same day. */
+  lastDailyDate?: string;
 }
 
 /** A live race to answer the active question. NPCs' picks + delays are
@@ -695,6 +754,24 @@ export function initialNpcRoster(grade: Grade): NpcStudentState[] {
 /** Roster of students currently in a given room (max 2). */
 export function npcsInRoom(roster: NpcStudentState[], room: TeachingRoomId): NpcStudentState[] {
   return roster.filter((n) => n.currentRoom === room);
+}
+
+/** Initial cohort — all 6 NPCs as Freshmen, fresh streaks. They'll diverge
+ *  from this baseline as the player plays Dailies and the dice roll for
+ *  each one independently. */
+export function initialNpcCohort(): NpcArcState[] {
+  return ALL_STUDENT_IDS.map((id) => ({
+    id,
+    grade: "9",
+    streak: { grade: "9", count: 0 },
+    completedGrades: [],
+    graduated: false,
+  }));
+}
+
+/** NPC stats keyed by id — for dice rolls during the Daily. */
+export function npcStatsFor(id: string): CharacterStats {
+  return { ...(NPC_STAT_DEFAULTS[id] ?? { head: 0, heart: 0, hustle: 0, honor: 0 }) };
 }
 
 /** When a student completes a subject, find their next room: an incomplete
