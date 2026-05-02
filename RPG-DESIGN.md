@@ -14,7 +14,7 @@ It draws on PbtA (Vincent Baker), Dungeon World (CC BY 4.0), and Monsterhearts 2
 
 | Room | Teacher | What happens |
 |---|---|---|
-| `# homeroom` | Ruby | Day starts here. General knowledge, ratimics lore, current events. |
+| `# homeroom` | Ruby | Day starts here. General knowledge, school lore, current events. |
 | `# science` | Sally Science | STEM questions. Lab tools as flavor. |
 | `# literature` | Professor Edward | Postwar lit, lit theory, mid-century. Tea served. |
 | `# lounge` | All 3 (no quizzes) | Eavesdrop on the faculty. Spend Strings here. |
