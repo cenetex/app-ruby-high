@@ -1851,6 +1851,14 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   let lastShownFaculty = null;
   let agentBusy = false;       // true while a teacher-driven SSE turn is running
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
+  // Reset the guards above whenever the player walks into a new context
+  // (faculty change, lounge entry, grade selection). Without this, the
+  // dedupe key from a prior visit silently blocks channel-enter on revisit:
+  // "I went back to Ruby's room and she didn't greet me."
+  function resetAgentGuards() {
+    lastAgentTrigger = null;
+    lastRevealId = null;
+  }
   let opinionSubmitted = false; // player's text has been recorded for current round
   let opinionGradeFired = false; // grading has been triggered for current round
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
@@ -1884,6 +1892,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
 
   // ── command helper ────────────────────────────────────────────────────────
   async function command(payload) {
+    const seq = ++commandSeq;
     try {
       const r = await fetch(commandUrl, {
         method: "POST",
@@ -1902,8 +1911,18 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     } catch (err) {
       appendSystem("submit failed · " + (err && err.message ? err.message : "error"));
       return null;
+    } finally {
+      // Mark this command's seq so any in-flight fetchSession() that was
+      // started before us discards its (now-stale) response on return.
+      lastSettledCommandSeq = seq;
     }
   }
+  // Monotonic counter bumped on every command(). Used by fetchSession() to
+  // detect "a command happened while my GET was in flight, my response may
+  // be stale, drop it." Prevents the poll from rendering a pre-mutation
+  // snapshot over a freshly-mutated state (the post-command flicker).
+  let commandSeq = 0;
+  let lastSettledCommandSeq = 0;
 
   // ── message factories ────────────────────────────────────────────────────
   function teacherStickerUrl(facultyId) {
@@ -2520,12 +2539,13 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       if (prevGrade !== g) {
         clearStream();
         resetBlackboard();
+        resetAgentGuards();
         appendSystem("— Welcome to Grade " + g + " —");
         const grade = data.session.telemetry.current_grade;
         const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === data.session.telemetry.faculty);
         if (authed) {
           loadHistory(data.session.telemetry.faculty);
-          runAgentTurn("channel-enter", { grade });
+          runAgentTurn("channel-enter", { grade }, { force: true });
         } else if (fac) {
           // Pre-auth: just narrate the channel entry. No auto-pick — the
           // player needs to sign in for any teacher-driven flow.
@@ -2550,11 +2570,12 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     if (data && data.session) {
       clearStream();
       resetBlackboard();
+      resetAgentGuards();
       const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === facultyId);
       const grade = data.session.telemetry.current_grade;
       if (authed) {
         loadHistory(facultyId);
-        runAgentTurn("channel-enter", { grade });
+        runAgentTurn("channel-enter", { grade }, { force: true });
       } else if (fac) {
         appendMsg({ kind: "teacher", name: fac.displayName, body: greetingFor(fac, grade), color: fac.accent, facultyId: fac.id });
       }
@@ -2568,9 +2589,10 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     if (data && data.session) {
       clearStream();
       resetBlackboard();
+      resetAgentGuards();
       appendSystem("— You walk into the teachers' lounge —");
       if (authed) {
-        runAgentTurn("lounge-enter", { });
+        runAgentTurn("lounge-enter", { }, { force: true });
       } else {
         appendSystem("Sign in to eavesdrop on the faculty.");
       }
@@ -3487,9 +3509,16 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   // Teacher-driven turn — fires when a state event happens (channel enter,
   // answer graded). The teacher decides what to say and whether to put a new
   // question on the board via tool calls.
-  async function runAgentTurn(trigger, context) {
+  // opts.force = true bypasses the agentBusy guard. Used for user-initiated
+  // transitions (room switch, lounge entry, grade selection) — blocking the
+  // user while the previous teacher is still streaming is the antipattern
+  // we're stepping away from. Eventually the busy concept moves chat-side
+  // (group-chat semantics — multiple speakers, no global lock); this flag
+  // is the transitional shape.
+  async function runAgentTurn(trigger, context, opts) {
     if (!authed) return;
-    if (agentBusy) return;
+    const force = !!(opts && opts.force);
+    if (!force && agentBusy) return;
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
     const triggerKey = trigger + "::" + targetFaculty + "::" + ((context && context.grade) || "?");
     // Channel-enter dedupes per (grade, faculty); answer-graded fires every time.
@@ -3512,10 +3541,16 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
 
   async function fetchSession() {
+    // Snapshot the command seq at request start. If a command lands while
+    // we're waiting on the network, our GET's response is from BEFORE the
+    // command's mutation — discard rather than overwrite the fresh state
+    // the command response already rendered.
+    const seqAtStart = commandSeq;
     try {
       const r = await fetch(sessionUrl, { credentials: "same-origin" });
       if (!r.ok) throw new Error("session " + r.status);
       const s = await r.json();
+      if (lastSettledCommandSeq > seqAtStart) return;
       render(s);
     } catch { /* ignore */ }
   }

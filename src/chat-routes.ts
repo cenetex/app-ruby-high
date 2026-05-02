@@ -738,6 +738,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
     try {
       send("speaker", { facultyId: faculty });
+      let toolsFired = 0;
       for await (const ev of chat.send({
         apiKey: record.apiKey,
         sessionToken: token,
@@ -745,7 +746,30 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         faculty,
         systemEventNote: directive,
       })) {
+        if (ev.type === "tool") toolsFired++;
         send(ev.type, ev);
+      }
+      // Defensive fallback: a channel-enter directive's whole point is to put
+      // a question on the board. If the model greeted but didn't fire any
+      // tool, the player would land on an empty chalkboard and the only
+      // recovery is the manual "Next question" button. Auto-pose so the
+      // room never sits silent on entry. No-op if pickAndPose throws (bank
+      // empty for filter, etc.) — better empty board with a recoverable
+      // error than crashing the SSE stream.
+      if (trigger === "channel-enter" && toolsFired === 0) {
+        try {
+          const sessionId = getSessionId(runtime, ctx.cookieHeader);
+          const state = ruby.pickAndPose(sessionId, { faculty });
+          send("tool", {
+            tool: "pick_from_bank",
+            args: { faculty },
+            result: { ok: true, message: "fallback: auto-posed first question (model greeted without tool)" },
+            state,
+          });
+        } catch (err) {
+          // Don't fail the whole turn — just log via SSE so the client knows.
+          send("error", { type: "error", message: `channel-enter fallback skipped: ${err instanceof Error ? err.message : String(err)}` });
+        }
       }
     } catch (err) {
       send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
