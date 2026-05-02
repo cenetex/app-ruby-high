@@ -52,7 +52,7 @@ Graduation (finishing all four years) closes the run and unlocks **mentor mode**
 - **Opinion mode** with full LLM-graded essays from the active teacher.
 - 5 correct = grade complete. 4 grades to graduate.
 - Persistent state, per-user via the `rh_session` cookie.
-- Production deploy: Dockerfile + fly.toml + mounted volume.
+- Production deploy: Dockerfile → ECR → AWS App Runner via the GHA workflow at `.github/workflows/deploy.yml`. Host-agnostic container; runs anywhere that speaks Docker + sets `PORT` + populates `x-forwarded-*`.
 
 ## What ships next (the four-week plan)
 
@@ -156,22 +156,31 @@ npm test
 
 13 tests covering the deterministic core: pack loading, filter cascade, exclusion, faculty switching, score arithmetic, persistence across restart, reset semantics. The chat layer and the dice layer are not yet covered — see the open issues.
 
-## Deploy (fly.io)
+## Deploy
 
-```bash
-fly launch --copy-config --no-deploy
-fly volumes create ruby_high_data --size 1
-fly deploy
-fly secrets set RUBY_HIGH_PUBLIC_BASE=https://YOUR-APP.fly.dev
-```
+The current production deploy is **AWS App Runner via ECR**, driven by
+[`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml). Push to
+`main` → GHA assumes an AWS role via OIDC → builds the Docker image → pushes
+to ECR → updates the App Runner service → waits for it to settle.
 
-OpenRouter requires HTTPS for OAuth callbacks. fly gives you that at `https://your-app.fly.dev/api/apps/ruby-high/auth/callback`. No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key.
+The container itself is host-agnostic. It needs:
+
+| Knob | Where | Notes |
+|---|---|---|
+| `PORT` | env (Dockerfile defaults to `8080`) | The HTTP port. |
+| `HOST` | env (Dockerfile defaults to `0.0.0.0`) | Bind address. |
+| `RUBY_HIGH_PUBLIC_BASE` | env | Public URL the app is reachable at. Used to build the OpenRouter PKCE callback. **Must be HTTPS** in production — OpenRouter rejects HTTP callbacks. |
+| `RUBY_HIGH_DATA_DIR` | env (optional) | Where `state.json` lives. Defaults to `~/.ruby-high/state.json` inside the container. |
+| `/health` | route | Returns 200 once the services have booted. Configure your platform's healthcheck against it. |
+| `x-forwarded-*` | request headers | The server trusts the first hop for proto + host + client-ip. App Runner / a typical reverse proxy / a load balancer all populate these correctly. |
+
+No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key via PKCE.
 
 ### Production caveats (alpha)
 
-- **State is one JSON file** at `/data/state.json` on a fly volume. Per-user via cookie key, but a single machine.
-- **API keys live in process memory.** A redeploy or VM restart wipes authenticated sessions; users sign in again.
-- **No rate limiting yet.** Don't post the public URL widely until that lands.
+- **State persistence is per-container-lifetime only.** App Runner is stateless: the `RUBY_HIGH_DATA_DIR` path lives only as long as the container instance. State survives a chat session but not a deploy or a scaling event. The single-file persistence design assumes a mounted volume that the current platform doesn't provide — moving to DynamoDB (or `@elizaos/plugin-sql` once it lands) is the next step before going wider.
+- **API keys live in process memory.** A redeploy or VM restart wipes authenticated sessions; users sign in again. Same root cause as the state issue above.
+- **Rate limiting is in place** for LLM-burning endpoints (60/min per `(ip, cookie)` for chat; 8 burst, 1 per 30s for portrait gen). Auth endpoints are unbounded by design — keep an eye on them.
 
 ## License
 

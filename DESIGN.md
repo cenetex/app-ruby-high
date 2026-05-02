@@ -119,7 +119,7 @@ The current stack is documented in detail in `README.md`. Summary of what's rele
 - **Two question modes**: multiple choice (dice-resolved) and opinion (LLM-graded).
 - **Six NPC classmates** with their own voices, seating chart per grade, and migration when they pass subjects.
 - **Single-file persistence**: `~/.ruby-high/state.json`, atomic writes. Phase N moves to a real DB.
-- **Standalone deploy**: Dockerfile + fly.toml + mounted volume + SSE-aware health checks.
+- **Standalone deploy**: Dockerfile → ECR → AWS App Runner (current target; container is host-agnostic). SSE-aware graceful shutdown so rolling deploys don't sever in-flight streams.
 
 Everything below is on top of that.
 
@@ -217,9 +217,11 @@ Opinion-mode prompts are easier to scale than MC: a single prompt can produce th
 **The current product is structurally a $0 / user / month cost to operate.** This is rare and quietly excellent.
 
 - LLM costs are paid by the user via their own OpenRouter key. The PKCE flow is the entire payment mechanism for inference.
-- State is one JSON file. No DB, no Redis, no queue.
-- Single fly.io machine, single mounted volume. Scales to ~hundreds of concurrent users before any rearchitecture.
-- The author of the app pays only for the host (~$5–15/mo on fly).
+- State is one JSON file (today). No DB, no Redis, no queue.
+- Single container, scales to ~hundreds of concurrent users before any rearchitecture.
+- The author pays only for the host — a small App Runner / equivalent container instance.
+
+The single-JSON-file persistence is the one piece of the economics that needs to evolve before going wider: the current deploy target (App Runner) is stateless, so state lives only for the container's lifetime. Moving to DynamoDB or `@elizaos/plugin-sql` once it lands is the next architectural step.
 
 This unlocks two product moves the design depends on:
 

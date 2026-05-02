@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Production entry point. Same wiring as scripts/dev-server.mjs but with
-// container-friendly defaults: binds 0.0.0.0, reads PORT from env,
-// adds /health for fly.io's basic_check, and writes session state to
-// /data when running on a fly volume.
+// container-friendly defaults: binds 0.0.0.0, reads PORT from env, exposes
+// /health for the platform's healthcheck, and writes session state to
+// `RUBY_HIGH_DATA_DIR` when set. The current deploy (App Runner) is
+// stateless — that path is ephemeral per-container — so state survives a
+// session but not a deploy. See README "Deploy" for the persistence note.
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
@@ -81,7 +83,8 @@ function readJsonBody(req) {
 
 function deriveBaseFromReq(req) {
   if (PUBLIC_BASE) return PUBLIC_BASE;
-  // fly's edge proxy sets x-forwarded-* headers.
+  // The platform's edge proxy (App Runner / any LB / a custom reverse
+  // proxy) sets x-forwarded-* headers; trust the first hop.
   const proto = (req.headers["x-forwarded-proto"] ?? "http").toString().split(",")[0].trim();
   const host = (req.headers["x-forwarded-host"] ?? req.headers.host ?? `${HOST}:${PORT}`).toString().split(",")[0].trim();
   return `${proto}://${host}`;
@@ -93,9 +96,9 @@ function isSecureReq(req) {
 }
 
 function deriveClientIp(req) {
-  // fly's edge proxy puts the original client IP first in x-forwarded-for.
-  // Fall back to the socket address if the header isn't set (e.g. a direct
-  // connection from another container in the same private network).
+  // The edge proxy (App Runner / LB / reverse proxy) puts the original
+  // client IP first in x-forwarded-for. Fall back to the socket address
+  // when the header is missing (direct connection on a private network).
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff === "string" && xff.length > 0) {
     return xff.split(",")[0].trim();
@@ -176,7 +179,7 @@ server.listen(PORT, HOST, () => {
   else console.log(`[ruby-high] state -> default (${"~/.ruby-high/state.json"}) — ephemeral on this container`);
 });
 
-// Graceful shutdown so fly's deploy doesn't sever in-flight SSE rudely.
+// Graceful shutdown so a rolling deploy doesn't sever in-flight SSE rudely.
 const shutdown = (sig) => {
   console.log(`[ruby-high] ${sig} received — closing`);
   server.close(() => process.exit(0));

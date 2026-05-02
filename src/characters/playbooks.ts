@@ -104,9 +104,14 @@ export const PLAYBOOKS: Playbook[] = [
     id: "lifer",
     name: "The Lifer",
     shortName: "Lifer",
-    blurb: "Knows everyone's history. Knows what this school actually is.",
+    blurb: "Knows everyone's history. Knows where the bodies are buried.",
     suggestedStats: { head: 1, heart: 1, hustle: 1, honor: -1 },
-    hookQuestion: "What does this school owe you?",
+    // "What does this school owe you?" was the prior hook — structurally a
+    // grievance prompt that pushed the LLM toward political/historical
+    // weight. The Lifer is supposed to be a gossip-trader who knows
+    // institutional weirdness, not a kid carrying a debt. New hook keeps
+    // the insider-knowing vibe but lands on small school-specific oddities.
+    hookQuestion: "What's the best gossip you've picked up about this place?",
     startingMove: {
       name: "Old gossip",
       description: "Start with 1 String on each faculty member.",

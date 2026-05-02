@@ -1647,7 +1647,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       </button>
       <div class="channel-name">
         <div class="top"><span class="hash">#</span><span id="channel-title">general</span></div>
-        <div class="sub" id="channel-sub">pick a grade to begin</div>
+        <div class="sub" id="channel-sub">loading…</div>
       </div>
       <div class="top-actions">
         <button class="grade-pill-btn" id="grade-pill-btn" type="button">Grade<span class="gpb-grade" id="gpb-grade">—</span></button>
@@ -1666,7 +1666,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
 
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
-        <div id="blackboard-empty-text">Pick a year and a question will appear on the board.</div>
+        <div id="blackboard-empty-text">The teacher will write a question on the board in a moment.</div>
         <button class="open-rails" id="blackboard-open-rails" type="button">Open menu</button>
         <button class="cta" id="blackboard-pick-now" type="button" hidden>Pick first question</button>
       </div>
@@ -2033,7 +2033,19 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.blackboardEmpty.hidden = true;
     els.blackboardMeta.hidden = false;
     els.boardFrameHost.hidden = false;
-    els.answersHost.hidden = !!isOpinion;
+    // After a wrong answer on the CURRENT question, hide the A/B/C/D grid
+    // so the teacher's reaction + explanation in the chat stream gets the
+    // mobile vertical space. The verdict line on the board itself still
+    // tells the player they were wrong; the colored outlines are just a
+    // celebration accent we can afford to drop on a miss. Re-shows
+    // automatically when the next question lands (lastReveal.questionId
+    // diverges from current.id).
+    const reveal = lastTelemetry?.lastReveal;
+    const wrongOnCurrent = !!(reveal
+      && !reveal.wasCorrect
+      && lastTelemetry?.current
+      && reveal.questionId === lastTelemetry.current.id);
+    els.answersHost.hidden = !!isOpinion || wrongOnCurrent;
     // Footer (Question N + difficulty filter + Next btn) only when signed
     // in. Pre-auth users can't act on it.
     els.blackboardFoot.hidden = !authed;
@@ -2250,6 +2262,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
       if (btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
     });
+    // The wrong-answer "hide A/B/C/D for chat space" rule lives in
+    // showBlackboardLoaded so it survives re-renders driven by the
+    // telemetry poll. Don't duplicate it here.
     els.boardReveal.hidden = false;
     els.boardReveal.classList.toggle("correct", !!reveal.wasCorrect);
     els.boardReveal.classList.toggle("wrong", !reveal.wasCorrect);
@@ -2690,8 +2705,8 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
     els.channelTitle.textContent = fac ? channelNameFor(fac) : "general";
     els.channelSub.textContent = fac
-      ? fac.displayName + " · " + (t.current_grade ? "Grade " + t.current_grade : "no grade")
-      : "pick a grade";
+      ? fac.displayName + " · " + (t.current_grade ? "Grade " + t.current_grade : "settling in")
+      : "loading…";
     els.gpbGrade.textContent = t.current_grade ? t.current_grade : "—";
     els.score.textContent = t.scoreCorrect ?? 0;
     els.scoreTotal.textContent = t.scoreTotal ?? 0;
@@ -2738,14 +2753,14 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       lastRevealId = null;
     }
 
-    // Empty-stream welcome (only if no chat yet).
+    // Empty-stream welcome (only if no chat yet). The grade is auto-set on
+    // first load (autoEnrollJunior); this branch only fires for a moment
+    // while that round-trip lands.
     if (els.stream.children.length === 0) {
       if (!t.current_grade) {
         appendEmptyState({
           title: "Welcome to Ruby High",
-          body: "Pick a grade from the menu to start class. Five correct answers earns a red ✓.",
-          ctaLabel: "Pick a grade",
-          ctaAction: openRails,
+          body: "Settling you in — your teacher will be with you in a moment.",
           facultyId: "ruby",
         });
       } else {
@@ -3590,7 +3605,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   els.difficultyFilter.addEventListener("click", (e) => e.stopPropagation());
   els.hamburger.addEventListener("click", toggleRails);
   els.scrim.addEventListener("click", closeRails);
-  els.gradePillBtn.addEventListener("click", openRails);
+  // The grade pill used to open the rails to surface a grade-picker UI;
+  // there isn't one anymore (autoEnrollJunior set it on first load), so
+  // this now opens the character sheet — that's where the grade actually
+  // lives alongside stats / playbook / XP.
+  els.gradePillBtn.addEventListener("click", openSheet);
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
     if (authed) logout();

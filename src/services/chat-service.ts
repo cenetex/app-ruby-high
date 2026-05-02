@@ -368,15 +368,17 @@ export class ChatService extends Service {
             difficulty: args.difficulty as Difficulty | undefined,
           });
           const q = state.current;
-          // Make it CRYSTAL clear to the model that this is a NEW question.
-          // The bank server-side guarantees no repeats; misreading this as a
-          // duplicate sends the model into a loop trying to "fix" nothing.
+          // The earlier defensive version of this message was full of "do
+          // NOT" / "never" patterns that paradoxically primed the model to
+          // think about looping (v0.3.5 bug context). Positive framing
+          // works better: tell it this is a fresh question and the work
+          // is done.
           return {
             args,
             payload: {
               ok: true,
               message: q
-                ? `NEW question now on the blackboard (the bank guarantees no repeats — never doubt this, do NOT call pick_from_bank again to "try for a fresh one"). id=${q.id}. Prompt: "${q.prompt}". The student has NOT seen this before. Continue your turn — react to the previous answer in 1 sentence, do NOT call any more tools.`
+                ? `Fresh question is on the blackboard. id=${q.id}. Prompt: "${q.prompt}". The bank already guaranteed this is one the student hasn't seen this session. Your turn now — react to the previous answer in 1 sentence and end.`
                 : "Bank is empty for that filter. Try a different subject.",
             },
             state,
@@ -470,7 +472,7 @@ async function callOpinionForNpc(args: {
     `Teacher's question: ${args.question}`,
     args.rubric ? `Rubric the teacher cares about: ${args.rubric}` : "",
     "",
-    "Write a 2-3 sentence response in your voice. Make it specific, have an opinion, engage the question. Reference a classmate or the teacher by name if it fits naturally. Don't write more than 60 words. No quotes around your answer.",
+    "Write 2-3 sentences in your voice (under 60 words). Specific, with an opinion, engaging the question. Reference a classmate or the teacher by name when it fits. The response is the answer itself — just the prose, nothing wrapping it.",
   ].filter(Boolean).join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
