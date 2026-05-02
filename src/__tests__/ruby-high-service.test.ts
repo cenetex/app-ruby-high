@@ -116,4 +116,42 @@ describe("RubyHighService Phase 1", () => {
     expect(fresh.askedQuestionIds).toEqual([]);
     expect(fresh.history).toEqual([]);
   });
+
+  it("normalizes legacy state files: missing pendingRoll loads as null, not undefined", async () => {
+    // Hand-write a state.json the way pre-v0.5.1 saves looked: no
+    // pendingRoll field at all. The migration in normalizeLoaded must coerce
+    // it to null so downstream `if (!state.pendingRoll)` checks behave
+    // consistently and the type contract holds.
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(storePath, JSON.stringify({
+      sessions: [{
+        sessionId: "legacy:1",
+        faculty: "ruby",
+        subject: null,
+        current: null,
+        history: [],
+        score: { correct: 0, total: 0 },
+        lastReveal: null,
+        status: "idle",
+        askedQuestionIds: [],
+        currentGrade: null,
+        completedGrades: [],
+        gradeProgress: {},
+        hasSeenIntro: false,
+        character: null,
+        npcRosters: {},
+        activeRound: null,
+        // pendingRoll intentionally omitted — this is the bug we fixed.
+        updatedAt: Date.now(),
+      }],
+    }));
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+    const loaded = ruby.getOrCreate("legacy:1");
+    expect(loaded.pendingRoll).toBeNull();
+    expect(loaded.pendingRoll).not.toBeUndefined();
+    activeRuby = ruby; // ensure flush in afterEach
+  });
 });

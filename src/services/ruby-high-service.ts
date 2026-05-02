@@ -874,6 +874,10 @@ function normalizeLoaded(s: QuizState): QuizState {
     hasSeenIntro: !!s.hasSeenIntro,
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,
+    // pendingRoll was added in v0.5.1; older state files don't have it, and
+    // the spread above leaves it `undefined` (type says `null`). Coerce so
+    // downstream `if (!state.pendingRoll)` checks behave consistently.
+    pendingRoll: s.pendingRoll ?? null,
     character: s.character ?? null,
   };
 }

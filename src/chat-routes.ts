@@ -10,6 +10,16 @@ import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
 
 const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
+
+/** Throw a debuggable error from an OpenRouter HTTP response. The default
+ *  `throw new Error("OpenRouter " + status)` pattern dropped the body, which
+ *  hid the real cause (auth issue, model not found, content filter, etc).
+ *  This helper preserves the body text up to a sane limit. */
+async function throwOpenRouterError(r: Response, label: string): Promise<never> {
+  const body = await r.text().catch(() => "");
+  const trimmed = body.length > 500 ? body.slice(0, 500) + "…" : body;
+  throw new Error(`${label}: OpenRouter ${r.status} ${r.statusText}${trimmed ? ` — ${trimmed}` : ""}`);
+}
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
@@ -120,7 +130,7 @@ async function generateOpinionResponse(args: {
       temperature: 0.9,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   return text.replace(/^["'\s]+|["'\s]+$/g, "");
@@ -173,7 +183,7 @@ async function gradeOpinionResponses(args: {
       temperature: 0.6,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   return parseTeacherGrades(text);
@@ -345,7 +355,7 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
       temperature: 1.1,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();
   // Strip code fences if the model added any despite instructions.
@@ -408,7 +418,7 @@ async function generateStudentLine(args: {
       temperature: 0.95,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content?.trim() ?? "";
   // Strip wrapping quotes if model added them.

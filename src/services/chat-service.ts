@@ -491,7 +491,11 @@ async function callOpinionForNpc(args: {
       temperature: 0.95,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    const trimmed = text.length > 500 ? text.slice(0, 500) + "…" : text;
+    throw new Error(`opinion-npc: OpenRouter ${r.status} ${r.statusText}${trimmed ? ` — ${trimmed}` : ""}`);
+  }
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   return ((body.choices?.[0]?.message?.content ?? "").trim()).replace(/^["'\s]+|["'\s]+$/g, "");
 }
