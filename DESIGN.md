@@ -118,7 +118,7 @@ The current stack is documented in detail in `README.md`. Summary of what's rele
 - **Four services**: `FacultyService` loads question packs, `RubyHighService` runs sessions and rounds, `ChatService` streams OpenRouter SSE per-teacher, `AuthService` handles PKCE.
 - **Two question modes**: multiple choice (dice-resolved) and opinion (LLM-graded).
 - **Six NPC classmates** with their own voices, seating chart per grade, and migration when they pass subjects.
-- **Single-file persistence**: `~/.ruby-high/state.json`, atomic writes. Phase N moves to a real DB.
+- **Pluggable persistence**: a JSON-file backend (default, atomic writes; fine for local dev) and a DynamoDB backend (one item per session, TTL'd, survives container restarts). `RUBY_HIGH_STORE_BACKEND=dynamodb` opts into the production path. See README "State storage" for the wiring.
 - **Standalone deploy**: Dockerfile → ECR → AWS App Runner (current target; container is host-agnostic). SSE-aware graceful shutdown so rolling deploys don't sever in-flight streams.
 
 Everything below is on top of that.
@@ -217,11 +217,11 @@ Opinion-mode prompts are easier to scale than MC: a single prompt can produce th
 **The current product is structurally a $0 / user / month cost to operate.** This is rare and quietly excellent.
 
 - LLM costs are paid by the user via their own OpenRouter key. The PKCE flow is the entire payment mechanism for inference.
-- State is one JSON file (today). No DB, no Redis, no queue.
+- State persistence has two backends: a JSON file (default, local-dev friendly) and DynamoDB (one item per session, on-demand pricing). Production uses DynamoDB. No long-running DB to admin, no Redis, no queue.
 - Single container, scales to ~hundreds of concurrent users before any rearchitecture.
-- The author pays only for the host — a small App Runner / equivalent container instance.
+- The author pays only for the host — a small App Runner / equivalent container instance — plus DynamoDB on-demand at ~fractions of a cent per session-mutation.
 
-The single-JSON-file persistence is the one piece of the economics that needs to evolve before going wider: the current deploy target (App Runner) is stateless, so state lives only for the container's lifetime. Moving to DynamoDB or `@elizaos/plugin-sql` once it lands is the next architectural step.
+This pluggable shape was the missing piece for going public: the JSON-file backend was the right call for the prototype, but App Runner is stateless, so production needed something durable. DynamoDB was the smallest possible step (no server to admin, IAM already wired, item-per-session matches the existing data shape almost exactly).
 
 This unlocks two product moves the design depends on:
 
