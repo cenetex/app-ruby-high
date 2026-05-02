@@ -57,19 +57,24 @@ describe("grade helpers", () => {
 });
 
 describe("RubyHighService phase machine", () => {
-  it("fresh session starts at phase=intro, phaseToken=0", async () => {
+  it("fresh session starts at phase=in-room, grade=9, phaseToken=0", async () => {
     const { ruby } = await makeServices();
     const state = ruby.getOrCreate("test:fresh");
-    expect(state.phase).toBe("intro");
+    // New sessions are born already enrolled at Freshman year — there's
+    // never an "intro / pick a grade" moment in the live UI. The "intro"
+    // phase is kept around only for the legacy-state migration path.
+    expect(state.phase).toBe("in-room");
+    expect(state.currentGrade).toBe("9");
     expect(state.phaseToken).toBe(0);
     expect(state.status).toBe("idle");
   });
 
-  it("selectGrade transitions intro → in-room and bumps the token", async () => {
+  it("selectGrade with a different grade still bumps the token", async () => {
     const { ruby } = await makeServices();
     const sid = "test:select-grade";
     const before = ruby.getOrCreate(sid);
     expect(before.phaseToken).toBe(0);
+    expect(before.currentGrade).toBe("9");
     const after = ruby.selectGrade(sid, "11");
     expect(after.phase).toBe("in-room");
     expect(after.phaseToken).toBe(1);

@@ -163,7 +163,7 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
 // ── streak mechanic ────────────────────────────────────────────────────────
 
 describe("NPC cohort — runs in parallel with the player", () => {
-  it("first Daily seeds the cohort with 6 NPCs at grade 9", async () => {
+  it("first Daily seeds the cohort with 6 NPCs at the bottom of the arc", async () => {
     const { ruby } = await makeServices();
     const sid = "test:cohort-init";
     attachCharacter(ruby, sid);
@@ -174,7 +174,10 @@ describe("NPC cohort — runs in parallel with the player", () => {
     expect(cohort).toBeDefined();
     expect(cohort).toHaveLength(6);
     for (const npc of cohort!) {
-      expect(npc.grade).toBe("9");
+      // requiredStreakForGrade("9") = 1, so a Freshman-NPC who happens to
+      // hit the dice on day 1 can already be a Sophomore. Seeded at "9";
+      // tick may have promoted some to "10". No further than that.
+      expect(["9", "10"]).toContain(npc.grade);
       expect(["lyra", "sami", "ravi", "indra", "mika", "noor"]).toContain(npc.id);
     }
   });

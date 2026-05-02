@@ -15,6 +15,13 @@ env:
   APPRUNNER_ARN: arn:aws:apprunner:us-east-1:022118847419:service/ruby-high/db79290276f34aa8b93b853f9ea4a9f9
   APPRUNNER_ACCESS_ROLE: arn:aws:iam::022118847419:role/AppRunnerECRAccessRole
 
+defaults:
+  # GHA's default `bash -e {0}` doesn't enable pipefail, so a failing left side
+  # of a `aws ... | jq ...` pipe was being swallowed by jq exiting 0 — a red
+  # AWS call tagged a green build. Override the shell to force pipefail too.
+  run:
+    shell: bash -euo pipefail {0}
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest

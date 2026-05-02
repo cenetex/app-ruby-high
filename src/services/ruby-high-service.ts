@@ -245,6 +245,11 @@ export class RubyHighService extends Service {
   getOrCreate(sessionId: string): QuizState {
     let state = this.sessions.get(sessionId);
     if (!state) {
+      // New sessions are born already enrolled at Freshman year. The "intro"
+      // phase + null grade combo is kept around only for derivePhaseForLegacy
+      // (loading older state files); fresh sessions skip straight to in-room
+      // so there's no grade-bootstrap round-trip and no stranded UI after
+      // reset.
       state = {
         sessionId,
         faculty: RUBY_FACULTY.id,
@@ -253,20 +258,21 @@ export class RubyHighService extends Service {
         history: [],
         score: { correct: 0, total: 0 },
         lastReveal: null,
-        status: "idle",
+        status: statusForPhase("in-room"),
         askedQuestionIds: [],
-        currentGrade: null,
+        currentGrade: DEFAULT_GRADE,
         completedGrades: [],
-        gradeProgress: {},
-        hasSeenIntro: false,
+        gradeProgress: { [DEFAULT_GRADE]: 0 },
+        hasSeenIntro: true,
         character: null,
         npcRosters: {},
         activeRound: null,
         pendingRoll: null,
-        phase: "intro",
+        phase: "in-room",
         phaseToken: 0,
         updatedAt: Date.now(),
       };
+      this.ensureRoster(state, DEFAULT_GRADE);
       this.sessions.set(sessionId, state);
     }
     // Tick any in-flight round so callers always see fresh elapsed state.

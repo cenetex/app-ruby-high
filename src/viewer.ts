@@ -433,38 +433,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .top-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-right: calc(var(--safe-right));
-  }
-  .grade-pill-btn {
-    appearance: none;
-    background: var(--bg-elev);
-    border: none;
-    color: var(--text-soft);
-    border-radius: 999px;
-    padding: 7px 12px;
-    font-size: 12px;
-    font-weight: 700;
-    height: 36px;
-  }
-  .grade-pill-btn .gpb-grade { color: var(--accent); margin-left: 4px; }
-  .score-chip {
-    background: var(--bg-elev);
-    color: var(--text);
-    border-radius: 999px;
-    padding: 7px 12px;
-    font-size: 12px;
-    font-weight: 700;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .score-chip .v { color: var(--accent); }
-
   /* ── blackboard panel (single, persistent, updates in place) ───────────── */
   .blackboard-panel {
     grid-row: 2;
@@ -490,29 +458,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     text-align: center;
     color: var(--text-soft);
     font-size: 14px;
-  }
-  .blackboard-empty .cta {
-    appearance: none;
-    border: none;
-    background: var(--accent);
-    color: #fff;
-    border-radius: 999px;
-    padding: 11px 22px;
-    font-weight: 800;
-    font-size: 14px;
-    margin-top: 12px;
-    box-shadow: var(--shadow);
-  }
-  .blackboard-empty .open-rails {
-    appearance: none;
-    border: 1px solid var(--line);
-    background: transparent;
-    color: var(--text);
-    border-radius: 999px;
-    padding: 11px 18px;
-    font-weight: 700;
-    font-size: 13px;
-    margin-top: 12px;
   }
   .board-frame-host {
     padding: 0 calc(var(--safe-right) + 10px) 0 calc(var(--safe-left) + 10px);
@@ -1649,10 +1594,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
         <div class="top"><span class="hash">#</span><span id="channel-title">general</span></div>
         <div class="sub" id="channel-sub">loading…</div>
       </div>
-      <div class="top-actions">
-        <button class="grade-pill-btn" id="grade-pill-btn" type="button">Grade<span class="gpb-grade" id="gpb-grade">—</span></button>
-        <span class="score-chip" id="score-chip"><span class="v" id="score-value">0</span>/<span id="score-total">0</span></span>
-      </div>
     </header>
 
     <section class="lounge-stage" id="lounge-stage">
@@ -1667,8 +1608,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
         <div id="blackboard-empty-text">The teacher will write a question on the board in a moment.</div>
-        <button class="open-rails" id="blackboard-open-rails" type="button">Open menu</button>
-        <button class="cta" id="blackboard-pick-now" type="button" hidden>Pick first question</button>
       </div>
 
       <div class="blackboard-meta" id="blackboard-meta" hidden></div>
@@ -1746,8 +1685,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   const role = "${role}";
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
-  const GRADES = ["9","10","11","12"];
-  const GRADE_SHORT = { "9": "FR", "10": "SO", "11": "JR", "12": "SR" };
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
   const LOUNGE_ID = "lounge";
   const COMPLETION_THRESHOLD = 5;
@@ -1796,19 +1733,12 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     hamburger: $("hamburger"),
     channelTitle: $("channel-title"),
     channelSub: $("channel-sub"),
-    gradePillBtn: $("grade-pill-btn"),
-    gpbGrade: $("gpb-grade"),
-    scoreChip: $("score-chip"),
-    score: $("score-value"),
-    scoreTotal: $("score-total"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
     teacherFigure: $("teacher-figure"),
     blackboardEmpty: $("blackboard-empty"),
     blackboardEmptyText: $("blackboard-empty-text"),
-    blackboardOpenRails: $("blackboard-open-rails"),
-    blackboardPickNow: $("blackboard-pick-now"),
     blackboardMeta: $("blackboard-meta"),
     boardFrameHost: $("board-frame-host"),
     boardPrompt: $("board-prompt"),
@@ -2034,10 +1964,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.boardFrameHost.hidden = true;
     els.answersHost.hidden = true;
     els.blackboardFoot.hidden = true;
-    // Pre-auth: don't dangle action buttons. The teacher can't fire without
-    // an OpenRouter key; we point the player at the chat sign-in instead.
-    if (els.blackboardOpenRails) els.blackboardOpenRails.hidden = true;
-    if (els.blackboardPickNow) els.blackboardPickNow.hidden = true;
     if (reset) {
       els.boardPrompt.textContent = "";
       els.boardReveal.hidden = true;
@@ -2539,30 +2465,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
 
   // ── primary actions ──────────────────────────────────────────────────────
-  async function selectGrade(g) {
-    const prevGrade = lastTelemetry && lastTelemetry.current_grade;
-    const data = await command({ type: "select-grade", grade: g });
-    if (data && data.session) {
-      if (prevGrade !== g) {
-        clearStream();
-        resetBlackboard();
-        resetAgentGuards();
-        appendSystem("— Welcome to Grade " + g + " —");
-        const grade = data.session.telemetry.current_grade;
-        const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === data.session.telemetry.faculty);
-        if (authed) {
-          loadHistory(data.session.telemetry.faculty);
-          runAgentTurn("channel-enter", { grade }, { force: true });
-        } else if (fac) {
-          // Pre-auth: just narrate the channel entry. No auto-pick — the
-          // player needs to sign in for any teacher-driven flow.
-          appendMsg({ kind: "teacher", name: fac.displayName, body: greetingFor(fac, grade), color: fac.accent, facultyId: fac.id });
-          appendSystem("Sign in with OpenRouter to start class.");
-        }
-      }
-    }
-    closeRails();
-  }
   function greetingFor(fac, grade) {
     const g = grade ? "Grade " + grade : "class";
     if (fac.id === "ruby") return "Welcome to " + g + ". Pick \\"Next question\\" whenever you're ready.";
@@ -2753,9 +2655,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.channelSub.textContent = fac
       ? fac.displayName + " · " + (t.current_grade ? "Grade " + t.current_grade : "settling in")
       : "loading…";
-    els.gpbGrade.textContent = t.current_grade ? t.current_grade : "—";
-    els.score.textContent = t.scoreCorrect ?? 0;
-    els.scoreTotal.textContent = t.scoreTotal ?? 0;
 
     // Render blackboard panel (single, in-place updates).
     renderBlackboard(t.current || null, fac || null, t.current_grade);
@@ -2799,9 +2698,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       lastRevealId = null;
     }
 
-    // Empty-stream welcome (only if no chat yet). The grade is auto-set on
-    // first load (autoEnroll); this branch only fires for a moment
-    // while that round-trip lands.
+    // Empty-stream welcome (only if no chat yet). New sessions are born
+    // with a grade set, so the !current_grade branch only fires for legacy
+    // state files mid-migration.
     if (els.stream.children.length === 0) {
       if (!t.current_grade) {
         appendEmptyState({
@@ -3692,16 +3591,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
   els.nextBtn.addEventListener("click", pickNext);
-  els.blackboardOpenRails.addEventListener("click", openRails);
-  els.blackboardPickNow.addEventListener("click", pickNext);
   els.difficultyFilter.addEventListener("click", (e) => e.stopPropagation());
   els.hamburger.addEventListener("click", toggleRails);
   els.scrim.addEventListener("click", closeRails);
-  // The grade pill used to open the rails to surface a grade-picker UI;
-  // there isn't one anymore (autoEnroll set it on first load), so
-  // this now opens the character sheet — that's where the grade actually
-  // lives alongside stats / playbook / XP.
-  els.gradePillBtn.addEventListener("click", openSheet);
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
     if (authed) logout();
@@ -3729,19 +3621,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
 
   applyAuthUI();
-  // First-load: if no grade is set, enroll the player at Freshman year.
-  // The player progresses Freshman → Sophomore → Junior → Senior →
-  // graduate as they pass per-grade Daily thresholds. The year picker
-  // is intentionally absent — the player walks in, gets started, and
-  // advances by playing.
-  async function autoEnroll() {
-    await fetchSession();
-    if (lastTelemetry && !lastTelemetry.current_grade) {
-      await command({ type: "select-grade", grade: "9" });
-    }
-  }
-
-  autoEnroll();
+  // The session is born already enrolled at Freshman year (server-side
+  // default). The player progresses Freshman → Sophomore → Junior → Senior
+  // → graduate as they pass per-grade Daily thresholds. There is no year
+  // picker — they walk in, get started, and advance by playing.
+  fetchSession();
   pollAuth();
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.
