@@ -200,7 +200,7 @@ async function renderCharacterPortrait(args: {
   personality: string;
 }): Promise<string> {
   const userPrompt = [
-    `JRPG dialog-portrait of ${args.name}, a junior at Ruby High.`,
+    `JRPG dialog-portrait of ${args.name}, a high schooler at Ruby High.`,
     `Personality: ${args.personality}`,
     "",
     "STYLE: JRPG-style FULL BODY standing portrait — 3/4 view, head to ankles. Tall portrait orientation. Anime-influenced. Bold black outline 5px. Vibrant flat colors, subtle cel shading. Dynamic relaxed pose, expressive face that fits the personality.",

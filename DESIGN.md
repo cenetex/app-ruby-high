@@ -29,27 +29,58 @@ That is the product.
 
 ## 2. The three pillars
 
-### Pillar 1 — The Daily
+### Pillar 1 — The Daily *is* the arc
 
-**Every weekday at the same hour, the school is in session.**
+**Every weekday, one teacher is on the floor. They post one question. That question is the day.**
 
-Each of the three teachers posts one question:
+The Daily is not a side mode that augments a separate progression. **The Daily is the entire arc.** A player starts as a Freshman; they progress year by year by passing Daily challenges; they graduate after Senior year. There is no "free play" track — the Daily is the only way through.
 
-| Day | Headline teacher | Format |
-|---|---|---|
-| Monday | Sally Science | one MC question + one short-answer "lab notebook" prompt |
-| Tuesday | Professor Edward | one MC question + one essay-of-the-day |
-| Wednesday | Ruby | one MC question + one school-lore opinion prompt |
-| Thursday | Sally Science | rotation continues |
-| Friday | Professor Edward | end-of-week graded essay |
+#### The week
 
-The user can answer all three teachers in any order. The whole day's quiz takes 5–10 minutes if you skip the chat, 30 if you stay and talk. Either is a good session.
+One teacher per day. The cast rotates, but the rotation is fixed enough that the player learns the rhythm. A starting cut:
 
-**Why daily and not on-demand:** scarcity makes the grade matter. If Edward will grade an essay any time you ask, his attention is cheap. If Edward grades one essay on Tuesday and never grades that prompt again, **your Tuesday essay is the Tuesday essay**. The cadence is the credibility.
+| Day | Teacher |
+|---|---|
+| Mon | Sally Science |
+| Tue | Professor Edward |
+| Wed | Ruby |
+| Thu | Sally Science |
+| Fri | Professor Edward |
 
-**Why three teachers and not one:** the catalog. A daily product needs enough variety that it doesn't burn out in two weeks. Three teachers × five weekdays × four years of difficulty = sixty distinct content slots before any repeat. With faculty expansion (see §6), this scales.
+Five weekday slots, three teachers — Sally and Edward each get two days; Ruby anchors the middle. Player learns "Tuesday is Edward's essay day" inside two weeks. The exact rotation is tunable; what matters is that the player knows who's teaching today before they open the app.
 
-**Streaks**: standard Wordle-style — N consecutive school days = a visible streak. Miss a day, lose it. This is the lowest-creativity element of The Daily and it works because every other piece around it is non-generic.
+#### The year — graduation gate
+
+Each year requires **two things** to advance:
+
+1. **A consecutive Daily-pass streak.** The required streak length scales with the year:
+
+   | Grade | Year | Streak to advance |
+   |---|---|---|
+   | 9 | Freshman | 1 in a row |
+   | 10 | Sophomore | 2 in a row |
+   | 11 | Junior | 3 in a row |
+   | 12 | Senior | 4 in a row → **graduate** |
+
+   Each year is meaningfully harder to clear than the last. Freshman is forgiving — pass one Daily and you advance. Senior demands four passes back-to-back; one miss resets the streak. Senior year *is* the climactic test of the run.
+
+2. **A cumulative XP threshold.** Earned via correct MC, opinion-mode scores ≥7, and stat-bonus rolls. XP is the soft progression — slow, generous, accumulating across whole runs. The threshold per year is tunable (~5 / 15 / 30 / 50 XP cumulative is a starting curve; tighten with playtest).
+
+Both gates must be met. The streak alone isn't enough — XP confirms the player has been engaging with the depth, not just guessing. The XP alone isn't enough — the streak confirms they can perform under pressure.
+
+#### Failure mode
+
+A streak resets to 0 on any Daily missed. Missing a day on the calendar (no attempt) and missing the question (wrong answer / failed essay) both count. The player can re-attempt the streak immediately the next day — there's no penalty beyond the reset.
+
+This means a player can "fail" Senior year repeatedly without losing their character. They keep grinding, the XP keeps banking, the streak resets each miss. Graduation comes when both gates fall on the same week.
+
+#### Why daily and not on-demand
+
+Scarcity makes the grade matter. If Edward will grade an essay any time you ask, his attention is cheap. If Edward grades one essay on Tuesday and never grades that prompt again, **your Tuesday essay is the Tuesday essay**. The cadence is the credibility.
+
+#### The catalog
+
+One teacher × five weekdays × four years × per-grade difficulty tier = a workable content surface for the alpha. With faculty expansion (see §6), this scales.
 
 ### Pillar 2 — Qualitative grading
 
@@ -268,7 +299,7 @@ This is straightforwardly a v2 product when daily retention is real. It does not
 
 ## Appendix B — Multiplayer co-op (deferred)
 
-A natural future shape: **same Daily, two students, side by side**. Two friends each answer the day's three teachers; the lounge becomes a live shared chat between them and the faculty. The yearbook gains a "classmates" column.
+A natural future shape: **same Daily, two students, side by side**. Two friends each answer the day's question — same teacher, same prompt, two responses. The lounge becomes a live shared chat between them and the faculty. The yearbook gains a "classmates" column.
 
 This is a real product and it is genuinely social. It is **not the first social move.** The yearbook share artifact is the first social move because it leaks into the user's existing networks without requiring a friend already on Ruby High. Co-op is Phase 9+.
 

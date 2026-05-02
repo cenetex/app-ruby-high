@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
-import type { Choice } from "../types.js";
+import { nextGradeAfter, requiredStreakForGrade, type Choice } from "../types.js";
 
 let tmpDir: string;
 let storePath: string;
@@ -40,6 +40,22 @@ async function makeServices() {
  * Invariant the suite enforces: every successful transition() bumps
  * phaseToken by exactly 1. No silent re-renders, no double bumps.
  */
+describe("grade helpers", () => {
+  it("nextGradeAfter walks 9 → 10 → 11 → 12 → null (graduate)", () => {
+    expect(nextGradeAfter("9")).toBe("10");
+    expect(nextGradeAfter("10")).toBe("11");
+    expect(nextGradeAfter("11")).toBe("12");
+    expect(nextGradeAfter("12")).toBeNull();
+  });
+
+  it("requiredStreakForGrade scales with year (1, 2, 3, 4)", () => {
+    expect(requiredStreakForGrade("9")).toBe(1);
+    expect(requiredStreakForGrade("10")).toBe(2);
+    expect(requiredStreakForGrade("11")).toBe(3);
+    expect(requiredStreakForGrade("12")).toBe(4);
+  });
+});
+
 describe("RubyHighService phase machine", () => {
   it("fresh session starts at phase=intro, phaseToken=0", async () => {
     const { ruby } = await makeServices();
@@ -238,6 +254,50 @@ describe("RubyHighService phase machine", () => {
     ruby.setFacultyService(faculty);
     expect(ruby.getOrCreate("legacy:idle").phase).toBe("in-room");
     activeRuby = ruby;
+  });
+
+  it("auto-advances grade on completion + writes yearbook on grade 12", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:advance";
+    // Start fresh, attach a character (needed for yearbook writes), enroll
+    // at Freshman (DEFAULT_GRADE → 9).
+    ruby.selectGrade(sid, "9");
+    let state = ruby.getOrCreate(sid);
+    state.character = {
+      name: "Pip", playbookId: "overachiever",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      arcAnswer: "—", personality: "—", xp: 0, strings: {},
+      conditions: [], yearbook: [], createdAt: Date.now(),
+    };
+
+    // Walk through all four years. Each grade rotates a different faculty
+    // pack so a single bank doesn't exhaust (each pack is 15; we need 5
+    // draws per grade × 4 grades = 20 total, spread across 3 faculties).
+    const expectedTrail: Array<{ before: string; after: string | null; faculty: string }> = [
+      { before: "9",  after: "10", faculty: "ruby" },
+      { before: "10", after: "11", faculty: "sally-science" },
+      { before: "11", after: "12", faculty: "professor-edward" },
+      { before: "12", after: "12", faculty: "ruby" }, // Senior: yearbook writes, currentGrade stays
+    ];
+    for (const step of expectedTrail) {
+      expect(ruby.getOrCreate(sid).currentGrade).toBe(step.before);
+      for (let i = 0; i < 5; i++) {
+        ruby.pickAndPose(sid, { faculty: step.faculty });
+        const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+        ruby.submitAnswer(sid, correct);
+      }
+      const after = ruby.getOrCreate(sid).currentGrade;
+      if (step.after !== null) expect(after).toBe(step.after);
+    }
+    // After Senior completion the yearbook has 4 entries — one per grade.
+    state = ruby.getOrCreate(sid);
+    expect(state.character!.yearbook).toHaveLength(4);
+    expect(state.character!.yearbook.map((y) => y.grade)).toEqual(["9", "10", "11", "12"]);
+    for (const entry of state.character!.yearbook) {
+      expect(typeof entry.completedAt).toBe("number");
+      expect(entry.summary.correct).toBeGreaterThan(0);
+    }
+    expect(state.completedGrades).toEqual(["9", "10", "11", "12"]);
   });
 
   it("derives phase=intro for legacy state with no grade selected", async () => {

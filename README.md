@@ -1,6 +1,6 @@
 # Ruby High
 
-> Every weekday, three teachers post one new question. One of them is an essay, graded by a character with taste. Your grade is yours to keep.
+> Every weekday, one teacher is on the floor and posts one question. Pass enough Dailies in a row to advance years; graduate after Senior. Each grade is graded in the teacher's voice — your transcript is yours to keep.
 
 Ruby High is an elizaOS app and standalone Node service. **Ruby is the host of a small school.** Specialist faculty (Sally Science, Professor Edward) teach their domains. Six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, and answer questions across four years until you graduate.
 
