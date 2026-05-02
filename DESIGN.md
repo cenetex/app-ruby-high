@@ -185,7 +185,7 @@ The emotional second-session hook.
 
 Content scaling.
 
-- A `propose-faculty` flow: a Markdown spec + 50-question pack defines a new teacher (history, logic, music theory, ratimics-lore, art history, geopolitics).
+- A `propose-faculty` flow: a Markdown spec + 50-question pack defines a new teacher (history, logic, music theory, philosophy, art history, geopolitics).
 - Faculty are vetted by the team via PR review. First three additions are owned in-house to set the bar.
 - Each new faculty gets a Daily slot once they have ≥150 questions and ≥3 themed essay prompts.
 
@@ -193,7 +193,7 @@ Content scaling.
 
 ### Phase 7+ — Future expansions
 
-See Appendix A (tournament economy), Appendix B (multiplayer co-op), Appendix C ($RATI economy hooks). These are real. They are not first.
+See Appendix A (weekly tournament), Appendix B (multiplayer co-op). These are real future products. They are not first.
 
 ---
 
@@ -224,7 +224,7 @@ Opinion-mode prompts are easier to scale than MC: a single prompt can produce th
 This unlocks two product moves the design depends on:
 
 1. **No paywall.** The product can be free without losing money.
-2. **Future revenue is upside, not survival.** Optional layers (a premium tournament, a $RATI integration, a yearbook print store, a "claim your character as an NFT" — see Appendix A) become real products rather than rent-extraction on a captive audience.
+2. **Future revenue is upside, not survival.** Optional layers — a premium tournament tier, a yearbook print store, guest-faculty character packs — become real products rather than rent-extraction on a captive audience.
 
 Anything that breaks the user-paid-inference model needs an extremely good reason.
 
@@ -243,23 +243,24 @@ These are real, unresolved, and listed here so they don't pretend to be solved.
 
 ---
 
-## Appendix A — The tournament expansion (deferred)
+## Appendix A — The weekly tournament (deferred)
 
-The original `DESIGN.md` framed Ruby High as a **multi-agent trivia tournament**: 12 contestants, single-elim brackets, ELO across weeks, $RATI prize pools, "Class Valedictorian" badges. That product is real, and the substrate (elizaOS hooks, aws-swarm avatar farm, Solana wallets, the credit system, the agent-orchestrator) genuinely supports it.
+A natural future expansion: a weekly **invitational essay tournament** ("Faculty Cup") where the top-N essayists per teacher from the past week's Daily compete in a graded bracket — judged by all three faculty in the lounge.
 
 It is **not Phase 1**. Reasons:
 
 - The tournament's audience is *spectators*, not students. A spectator product needs a contestant pool, and the contestant pool needs a single-player onboarding loop that produces credible solo competence first.
 - A weekly tournament cadence is a smaller hook than a daily one. The Daily must precede the Weekly.
-- The qualitative-grading pillar — the actual moat — is solo-friendly. Tournaments are inherently MC. We should secure the moat first.
+- The qualitative-grading pillar — the actual moat — is solo-friendly. Tournaments are inherently MC-heavy. We should secure the moat first.
 
 Once The Daily is shipped and retaining users:
 
-- A weekly **invitational essay tournament** ("Faculty Cup") where the top-N essayists per teacher across the week compete in a graded bracket — judged by all three faculty in the lounge — is a natural Phase 7+ product.
-- Agent contestants from aws-swarm fold in via the contestant API spec the original `DESIGN.md` lays out.
-- $RATI integration for entry fees and prize pools follows from there.
+- A bracket data model on top of `RubyHighService`: tournaments, rounds, matches, entries.
+- An ELO-style leaderboard per teacher, computed from essay grades plus head-to-head bracket results.
+- A spectator viewer at `/api/apps/ruby-high/viewer?role=spectator` that shows the bracket, the current match, and the lounge commentary stream.
+- A "Class Valedictorian" badge on the winning user's report card each week.
 
-The full original tournament spec is preserved in [git history](https://github.com/cenetex/app-ruby-high/blob/main/DESIGN.md) at the v0.5.0 tag for reference. The thesis there is sound; only the sequencing was wrong.
+This is straightforwardly a v2 product when daily retention is real. It does not need any new substrate beyond what's already in the codebase.
 
 ---
 
@@ -267,19 +268,7 @@ The full original tournament spec is preserved in [git history](https://github.c
 
 A natural future shape: **same Daily, two students, side by side**. Two friends each answer the day's three teachers; the lounge becomes a live shared chat between them and the faculty. The yearbook gains a "classmates" column.
 
-This is a real product and it is genuinely social. It is **not the first social move.** The yearbook share artifact is the first social move because it leaks into the user's existing networks (X, Discord, Telegram) without requiring a friend already on Ruby High. Co-op is Phase 9+.
-
----
-
-## Appendix C — $RATI economy hooks (deferred)
-
-The RATiMICS stack provides credit ledgers, energy budgets, NFT-gated access, and a path to $RATI integration. The original tournament thesis used all of it. The Daily's economic surface is much smaller:
-
-- **Optional**: a yearbook NFT mint at graduation.
-- **Optional**: a "guest faculty" character pack purchasable in $RATI.
-- **Optional**: an opt-in premium tier with a higher question cap, exclusive faculty, or longer essay prompts.
-
-None of these are required for the product to work. None should ship before The Daily has retention numbers worth discussing.
+This is a real product and it is genuinely social. It is **not the first social move.** The yearbook share artifact is the first social move because it leaks into the user's existing networks without requiring a friend already on Ruby High. Co-op is Phase 9+.
 
 ---
 

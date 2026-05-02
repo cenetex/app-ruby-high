@@ -95,14 +95,15 @@ export interface QuizState {
     wasCorrect: boolean;
     explanation: string | null;
     encouragement: string | null;
-    /** Player's 2d6 + stat roll for this question. Drives XP + conditions. */
+    /** Player's 2d6 + stat roll for this question. Bonus-only — a good roll
+     *  awards XP, a poor roll never penalizes. NPC rolls (in
+     *  ActiveRound.npcs) are where the actual race stakes live. */
     playerRoll?: {
       stat: keyof CharacterStats;
       dice: [number, number];
       total: number;
       outcome: RoundOutcome;       // hit | mixed | miss
       xpAwarded: number;
-      conditionTaken?: string;     // e.g. "anxious"
     } | null;
     /** NPCs in the active room also answered — for UI animation. */
     npcEvents?: Array<{

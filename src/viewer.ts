@@ -876,6 +876,16 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
   .board .reveal.correct { color: #b6f5b9; border-left-color: #4cb555; }
   .board .reveal.wrong { color: #ffb1b1; border-left-color: #d22a2a; }
+  .board .reveal .reveal-verdict { font-weight: 700; }
+  .board .reveal .reveal-explanation {
+    margin-top: 6px;
+    font-size: 14px;
+    color: var(--ink-soft);
+    opacity: 0.85;
+  }
+  /* The roll chip already has 6px left margin; inside .reveal it inherits
+     the hit/mixed/miss color so the dice land beside the verdict legibly. */
+  .board .reveal .roll-chip { vertical-align: middle; }
   .answers {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -2191,9 +2201,35 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.boardReveal.hidden = false;
     els.boardReveal.classList.toggle("correct", !!reveal.wasCorrect);
     els.boardReveal.classList.toggle("wrong", !reveal.wasCorrect);
-    const verdict = reveal.wasCorrect ? "✓ Correct (" + reveal.picked + ")"
+    // Build the reveal block by parts so the dice render alongside the verdict.
+    els.boardReveal.replaceChildren();
+    const verdict = document.createElement("span");
+    verdict.className = "reveal-verdict";
+    verdict.textContent = reveal.wasCorrect
+      ? "✓ Correct (" + reveal.picked + ")"
       : "✗ You picked " + reveal.picked + " — answer was " + reveal.correct;
-    els.boardReveal.textContent = verdict + (reveal.explanation ? " — " + reveal.explanation : "");
+    els.boardReveal.appendChild(verdict);
+    if (reveal.playerRoll) {
+      const r = reveal.playerRoll;
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      const mod = r.total - (r.dice[0] + r.dice[1]);
+      const chip = document.createElement("span");
+      chip.className = "roll-chip " + r.outcome;
+      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + r.stat.toUpperCase() + " = " + r.total;
+      els.boardReveal.appendChild(chip);
+      if (r.xpAwarded > 0) {
+        const xp = document.createElement("span");
+        xp.className = "roll-chip hit";
+        xp.textContent = "+" + r.xpAwarded + " XP";
+        els.boardReveal.appendChild(xp);
+      }
+    }
+    if (reveal.explanation) {
+      const expl = document.createElement("div");
+      expl.className = "reveal-explanation";
+      expl.textContent = reveal.explanation;
+      els.boardReveal.appendChild(expl);
+    }
     els.nextBtn.style.display = "";
     els.nextBtn.focus();
   }
@@ -2222,12 +2258,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
         xp.className = "roll-chip hit";
         xp.textContent = "+" + r.xpAwarded + " XP";
         body.appendChild(xp);
-      }
-      if (r.conditionTaken) {
-        const cond = document.createElement("span");
-        cond.className = "roll-chip miss";
-        cond.textContent = "took " + r.conditionTaken;
-        body.appendChild(cond);
       }
     }
     wrap.appendChild(body);
