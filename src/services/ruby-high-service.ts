@@ -16,6 +16,7 @@ import {
   pickNextRoomForStudent,
   roomForFaculty,
   classifyTotal,
+  nextGradeAfter,
   pickEliminatedChoices,
   roll2d6,
   rollNpcAnswer,
@@ -402,15 +403,8 @@ export class RubyHighService extends Service {
       playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
 
-    // Player subject progress.
-    if (state.currentGrade && wasCorrect) {
-      const key = state.currentGrade;
-      const next = (state.gradeProgress[key] ?? 0) + 1;
-      state.gradeProgress[key] = next;
-      if (next >= GRADE_COMPLETION_THRESHOLD && !state.completedGrades.includes(key)) {
-        state.completedGrades.push(key);
-      }
-    }
+    // Player grade progress + auto-advance + graduation.
+    if (wasCorrect) this.applyPlayerGradeProgress(state);
 
     // NPC subject progress + redistribution (deterministic from the round).
     const npcEvents = this.applyRoundToNpcs(state, round);
@@ -431,6 +425,50 @@ export class RubyHighService extends Service {
     // resolveRound is a private helper that operates on `state` directly;
     // there's no sessionId param, so pull it off the state.
     void this.persistSession(state.sessionId);
+  }
+
+  /** Tick the player's progress in their current grade. Auto-advances to
+   *  the next year on threshold completion. On Senior completion, writes
+   *  the yearbook entry that closes the run.
+   *
+   *  Spec ref: DESIGN.md commits to "the Daily IS the arc — pass enough
+   *  Dailies in your year to advance to the next; Senior completion =
+   *  graduation." Today this fires per correct answer (the playtest
+   *  product is still free-play, not the Daily). When The Daily lands
+   *  this same hook is what each Daily completion calls. */
+  private applyPlayerGradeProgress(state: QuizState): void {
+    const key = state.currentGrade;
+    if (!key) return;
+    const next = (state.gradeProgress[key] ?? 0) + 1;
+    state.gradeProgress[key] = next;
+    if (next < GRADE_COMPLETION_THRESHOLD || state.completedGrades.includes(key)) return;
+    // Threshold hit — record the milestone, write the yearbook entry,
+    // and advance / graduate.
+    state.completedGrades.push(key);
+    if (state.character) {
+      state.character.yearbook = state.character.yearbook ?? [];
+      state.character.yearbook.push({
+        grade: key,
+        completedAt: Date.now(),
+        // No per-grade total tracking yet — a future PR can add a counter.
+        // For now: correct == threshold, total == threshold (the player
+        // demonstrably hit the bar; the run-wide score lives on state.score).
+        summary: { correct: next, total: next },
+      });
+    }
+    const advance = nextGradeAfter(key);
+    if (advance) {
+      // Move into the next year. Seed the gradeProgress + NPC roster so
+      // the new grade is ready to accept progress without a special case.
+      state.currentGrade = advance;
+      if (state.gradeProgress[advance] === undefined) state.gradeProgress[advance] = 0;
+      this.ensureRoster(state, advance);
+    } else {
+      // Senior complete = graduation. We mark the year done and write the
+      // yearbook entry above; explicit "graduated" UX comes in the
+      // graduation-flow PR. The session continues at grade 12 — the player
+      // stays in the building for now, but no further yearbook entries.
+    }
   }
 
   private applyRoundToNpcs(state: QuizState, round: ActiveRound): Array<{
@@ -666,15 +704,8 @@ export class RubyHighService extends Service {
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
-      // Player grade-progress (5/5 milestone), same shape as MC.
-      if (state.currentGrade && passed) {
-        const key = state.currentGrade;
-        const next = (state.gradeProgress[key] ?? 0) + 1;
-        state.gradeProgress[key] = next;
-        if (next >= GRADE_COMPLETION_THRESHOLD && !state.completedGrades.includes(key)) {
-          state.completedGrades.push(key);
-        }
-      }
+      // Player grade progress + auto-advance + graduation. Same shape as MC.
+      if (passed) this.applyPlayerGradeProgress(state);
       // NPC progress: each NPC scoring ≥7 advances their subject. Same
       // redistribution rules as the MC path.
       const npcEvents: Array<{ studentId: string; gotIt: boolean; completed?: TeachingRoomId; movedTo?: TeachingRoomId | null }> = [];

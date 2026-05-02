@@ -2776,7 +2776,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     }
 
     // Empty-stream welcome (only if no chat yet). The grade is auto-set on
-    // first load (autoEnrollJunior); this branch only fires for a moment
+    // first load (autoEnroll); this branch only fires for a moment
     // while that round-trip lands.
     if (els.stream.children.length === 0) {
       if (!t.current_grade) {
@@ -2985,7 +2985,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     appendCard({
       role: "student",
       name: s.name,
-      subtitle: "Junior · " + (npc.currentRoom ? "currently in #" + npc.currentRoom : "graduated this year"),
+      subtitle: (GRADE_LABELS[npc.grade] || npc.grade) + " · " + (npc.currentRoom ? "currently in #" + npc.currentRoom : "graduated this year"),
       portraitUrl: apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-full.png",
       accent: s.color,
       stats: npc.stats,
@@ -3030,7 +3030,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
   function renderSheetReadonly(c, playbooks) {
     const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
-    const grade = lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Junior";
+    const grade = lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Freshman";
     appendCard({
       role: "player",
       name: c.name,
@@ -3119,7 +3119,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     const rollBtn = document.createElement("button");
     rollBtn.textContent = "Roll a character";
     const acceptBtn = document.createElement("button");
-    acceptBtn.textContent = "Enter junior year";
+    acceptBtn.textContent = "Start the school year";
     acceptBtn.style.display = "none";
     actions.appendChild(rollBtn);
     actions.appendChild(acceptBtn);
@@ -3641,7 +3641,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   els.hamburger.addEventListener("click", toggleRails);
   els.scrim.addEventListener("click", closeRails);
   // The grade pill used to open the rails to surface a grade-picker UI;
-  // there isn't one anymore (autoEnrollJunior set it on first load), so
+  // there isn't one anymore (autoEnroll set it on first load), so
   // this now opens the character sheet — that's where the grade actually
   // lives alongside stats / playbook / XP.
   els.gradePillBtn.addEventListener("click", openSheet);
@@ -3672,16 +3672,19 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
 
   applyAuthUI();
-  // First-load: if no grade is set, auto-enroll the player as a Junior.
-  // (We dropped the year picker UI per the simplified Discord-shape.)
-  async function autoEnrollJunior() {
+  // First-load: if no grade is set, enroll the player at Freshman year.
+  // The player progresses Freshman → Sophomore → Junior → Senior →
+  // graduate as they pass per-grade Daily thresholds. The year picker
+  // is intentionally absent — the player walks in, gets started, and
+  // advances by playing.
+  async function autoEnroll() {
     await fetchSession();
     if (lastTelemetry && !lastTelemetry.current_grade) {
-      await command({ type: "select-grade", grade: "11" });
+      await command({ type: "select-grade", grade: "9" });
     }
   }
 
-  autoEnrollJunior();
+  autoEnroll();
   pollAuth();
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.

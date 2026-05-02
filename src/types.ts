@@ -7,7 +7,9 @@ export type Difficulty = "easy" | "medium" | "hard";
 export const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 
 /** Ruby HIGH School — only grades 9-12 (Freshman, Sophomore, Junior, Senior).
- *  Players default into Junior year. */
+ *  Players start at Freshman and progress year by year. Each year completes
+ *  when the player passes the per-grade Daily threshold. After Senior,
+ *  graduation closes the run. */
 export type Grade = "9" | "10" | "11" | "12";
 
 export const GRADES: Grade[] = ["9", "10", "11", "12"];
@@ -27,16 +29,48 @@ export const GRADE_SHORT_LABELS: Record<Grade, string> = {
   "12": "SR",
 };
 
-export const DEFAULT_GRADE: Grade = "11";
+/** Players start at Freshman year. Per the spec commit (DESIGN.md): the
+ *  Daily IS the arc — pass enough Dailies in your year to advance to
+ *  the next. Senior completion = graduation (yearbook write, run ends). */
+export const DEFAULT_GRADE: Grade = "9";
 
-/** Number of correct answers required to mark a grade complete. */
+/** Legacy single-threshold gate. Used by the playtest mode where a fixed
+ *  N correct answers in a year completes it. The Daily-as-arc spec
+ *  (DESIGN.md Pillar 1) replaces this with a per-year streak length —
+ *  see requiredStreakForGrade(). The constant stays for now until the
+ *  Daily mechanic itself lands; once it does, this constant goes. */
 export const GRADE_COMPLETION_THRESHOLD = 5;
+
+/** Per the Daily-as-arc spec: the required consecutive-Daily-pass streak
+ *  for advancing out of `grade`.
+ *
+ *    Freshman → 1 (pass one Daily)
+ *    Sophomore → 2
+ *    Junior → 3
+ *    Senior → 4 (graduates)
+ *
+ *  The streak resets on a miss. Combined with a cumulative XP threshold,
+ *  these are the two gates a player must clear to advance years. */
+export function requiredStreakForGrade(grade: Grade): number {
+  const idx = GRADES.indexOf(grade);
+  if (idx === -1) return 1;
+  return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
+}
 
 /** Difficulty progression up the high school years. */
 export function difficultyForGrade(grade: Grade): Difficulty {
   if (grade === "9") return "easy";
   if (grade === "10" || grade === "11") return "medium";
   return "hard";
+}
+
+/** The grade the player advances to after completing `grade`. Returns null
+ *  when there's no next year — i.e. Senior year, which means the run is
+ *  graduating rather than advancing. */
+export function nextGradeAfter(grade: Grade): Grade | null {
+  const idx = GRADES.indexOf(grade);
+  if (idx === -1 || idx === GRADES.length - 1) return null;
+  return GRADES[idx + 1] ?? null;
 }
 
 export type QuestionType = "multiple-choice" | "opinion";
