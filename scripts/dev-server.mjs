@@ -8,7 +8,7 @@ import {
   ChatService,
   FacultyService,
   RubyHighService,
-  StateStore,
+  createStateStore,
   handleAppRoutes,
 } from "../dist/index.js";
 
@@ -18,6 +18,9 @@ const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "localhost";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
 const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? `http://${HOST}:${PORT}`;
+
+const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
+console.log(`[ruby-high] state store: ${stateStore.describe()}`);
 
 const facultySvc = await FacultyService.start({});
 const authSvc = await AuthService.start({});
@@ -37,7 +40,7 @@ const fakeRuntime = {
 };
 
 const rubySvc = await (async () => {
-  const svc = new RubyHighService(fakeRuntime, STATE_PATH ? new StateStore(STATE_PATH) : undefined);
+  const svc = new RubyHighService(fakeRuntime, stateStore);
   await svc["hydrate"]();
   svc.setFacultyService(facultySvc);
   return svc;

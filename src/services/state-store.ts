@@ -4,14 +4,46 @@ import { homedir } from "node:os";
 import type { QuizState } from "../types.js";
 
 /**
- * Phase-1 persistence: a single JSON file under ~/.ruby-high/state.json.
- * Atomic-ish writes via tmp-file + rename. This is intentionally tiny —
- * Phase 3+ tournaments will move to @elizaos/plugin-sql for multi-process
- * concurrency and richer queries.
+ * Common shape every state-store backend implements. RubyHighService talks
+ * to this abstraction; the JSON-file backend (this file) and the DynamoDB
+ * backend (dynamo-state-store.ts) both fit the same surface, so the rest
+ * of the app doesn't care which is mounted.
+ *
+ * Two save paths:
+ *   - saveSession(state)   — persist one session. Preferred — DynamoDB only
+ *                             writes one item, JSON file rewrites the full
+ *                             snapshot (it has no other choice).
+ *   - save(states)         — persist all sessions at once. Used for full
+ *                             snapshots and tests; the DynamoDB backend
+ *                             chunks via BatchWrite.
  */
-export class StateStore {
+export interface StateStoreLike {
+  load(): Promise<Map<string, QuizState>>;
+  saveSession(state: QuizState): Promise<void>;
+  save(states: Iterable<QuizState>): Promise<void>;
+  describe(): string;
+}
+
+/**
+ * JSON-file persistence: a single ~/.ruby-high/state.json snapshot, written
+ * atomically via tmp-file + rename. Default backend for local dev. Behind
+ * the same StateStoreLike interface as DynamoStateStore so RubyHighService
+ * doesn't need to know which it's talking to.
+ *
+ * Limitations:
+ *  - Single-process. Concurrent processes would race on the file.
+ *  - Single-machine. The container's filesystem is the storage.
+ *  - saveSession() rewrites the whole file — fine for small session counts,
+ *    but DynamoStateStore is the right choice once state matters across
+ *    deploys or instances.
+ */
+export class StateStore implements StateStoreLike {
   private readonly path: string;
   private writeChain: Promise<void> = Promise.resolve();
+  /** Newest snapshot we know about, kept in memory so saveSession() can
+   *  rewrite the full file without forcing the caller to pass everything.
+   *  Updated on load() and on every save()/saveSession(). */
+  private snapshot = new Map<string, QuizState>();
 
   constructor(path?: string) {
     this.path =
@@ -28,6 +60,7 @@ export class StateStore {
       for (const s of parsed.sessions ?? []) {
         if (s && typeof s.sessionId === "string") map.set(s.sessionId, s);
       }
+      this.snapshot = new Map(map);
       return map;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return new Map();
@@ -48,6 +81,9 @@ export class StateStore {
    */
   save(states: Iterable<QuizState>): Promise<void> {
     const snapshot = Array.from(states);
+    // Update our in-memory snapshot before scheduling the write so
+    // saveSession() that lands later sees the right baseline.
+    this.snapshot = new Map(snapshot.map((s) => [s.sessionId, s]));
     const next = this.writeChain.catch(() => {}).then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
       const tmp = `${this.path}.tmp`;
@@ -62,6 +98,15 @@ export class StateStore {
       console.error(`[ruby-high] state-store save failed (${this.path}):`, err);
     });
     return next;
+  }
+
+  /** JSON-file mode: rewriting one session means rewriting the whole file
+   *  (it's a single document). We use the in-memory snapshot updated by
+   *  prior load()/save() calls, replace the one entry, and write the lot.
+   *  For DynamoDB this same method writes only one item. */
+  saveSession(state: QuizState): Promise<void> {
+    this.snapshot.set(state.sessionId, state);
+    return this.save(this.snapshot.values());
   }
 
   describe(): string {

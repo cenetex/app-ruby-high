@@ -170,16 +170,49 @@ The container itself is host-agnostic. It needs:
 | `PORT` | env (Dockerfile defaults to `8080`) | The HTTP port. |
 | `HOST` | env (Dockerfile defaults to `0.0.0.0`) | Bind address. |
 | `RUBY_HIGH_PUBLIC_BASE` | env | Public URL the app is reachable at. Used to build the OpenRouter PKCE callback. **Must be HTTPS** in production — OpenRouter rejects HTTP callbacks. |
-| `RUBY_HIGH_DATA_DIR` | env (optional) | Where `state.json` lives. Defaults to `~/.ruby-high/state.json` inside the container. |
+| `RUBY_HIGH_DATA_DIR` | env (optional, JSON backend only) | Where `state.json` lives. Defaults to `~/.ruby-high/state.json` inside the container. |
 | `/health` | route | Returns 200 once the services have booted. Configure your platform's healthcheck against it. |
 | `x-forwarded-*` | request headers | The server trusts the first hop for proto + host + client-ip. App Runner / a typical reverse proxy / a load balancer all populate these correctly. |
+
+### State storage
+
+Two backends, picked at boot via `RUBY_HIGH_STORE_BACKEND`:
+
+| Backend | When | Env vars |
+|---|---|---|
+| `json` *(default)* | Local dev. Single JSON file at `~/.ruby-high/state.json` (or `RUBY_HIGH_STATE_PATH`). Ephemeral on App Runner — wiped on every deploy / instance recycle. | `RUBY_HIGH_STATE_PATH` (optional) |
+| `dynamodb` | Production. One DynamoDB item per session, keyed by sessionId. Survives container restarts; auto-expires idle sessions via TTL. | `RUBY_HIGH_DYNAMO_TABLE` (required), `AWS_REGION`, `RUBY_HIGH_STATE_TTL_SECONDS` (optional, default 90 days) |
+
+To run with DynamoDB:
+
+```bash
+RUBY_HIGH_STORE_BACKEND=dynamodb \
+RUBY_HIGH_DYNAMO_TABLE=ruby-high-state \
+AWS_REGION=us-east-1 \
+node scripts/server.mjs
+```
+
+Required IAM permissions for the App Runner instance role on the table:
+
+```
+dynamodb:Scan
+dynamodb:GetItem
+dynamodb:PutItem
+dynamodb:BatchWriteItem
+```
+
+Table provisioning (once, not done by code):
+
+- Primary key: `pk` (string)
+- TTL attribute: `expiresAt` (the store writes seconds-since-epoch here)
+- On-demand billing recommended; the app's traffic is bursty and item sizes are small (~5-20 KB).
 
 No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key via PKCE.
 
 ### Production caveats (alpha)
 
-- **State persistence is per-container-lifetime only.** App Runner is stateless: the `RUBY_HIGH_DATA_DIR` path lives only as long as the container instance. State survives a chat session but not a deploy or a scaling event. The single-file persistence design assumes a mounted volume that the current platform doesn't provide — moving to DynamoDB (or `@elizaos/plugin-sql` once it lands) is the next step before going wider.
-- **API keys live in process memory.** A redeploy or VM restart wipes authenticated sessions; users sign in again. Same root cause as the state issue above.
+- **JSON backend is per-container-lifetime only.** Use the DynamoDB backend in production. The default JSON-file path is fine for local dev.
+- **API keys still live in process memory.** A redeploy or VM restart wipes authenticated sessions; users sign in again. Migrating these to DynamoDB is a separate, smaller PR.
 - **Rate limiting is in place** for LLM-burning endpoints (60/min per `(ip, cookie)` for chat; 8 burst, 1 per 30s for portrait gen). Auth endpoints are unbounded by design — keep an eye on them.
 
 ## License

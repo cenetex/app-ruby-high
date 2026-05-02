@@ -39,7 +39,7 @@ import {
   type TeachingRoomId,
 } from "../types.js";
 import { FacultyService, type PickFilter } from "./faculty-service.js";
-import { StateStore } from "./state-store.js";
+import { StateStore, type StateStoreLike } from "./state-store.js";
 
 export interface PoseInput {
   prompt: string;
@@ -73,11 +73,11 @@ export class RubyHighService extends Service {
     "Ruby High classroom state: tracks the active question, the student's answer, score, and which faculty member is on the floor.";
 
   private readonly sessions = new Map<string, QuizState>();
-  private readonly store: StateStore;
+  private readonly store: StateStoreLike;
   private faculty: FacultyService | null = null;
   private loaded = false;
 
-  constructor(runtime?: IAgentRuntime, store?: StateStore) {
+  constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
     this.store = store ?? new StateStore();
   }
@@ -89,13 +89,13 @@ export class RubyHighService extends Service {
   }
 
   async stop(): Promise<void> {
-    await this.persist();
+    await this.persistAll();
     this.sessions.clear();
   }
 
   /** Wait for any in-flight persistence writes to flush. Useful in tests. */
   flush(): Promise<void> {
-    return this.persist();
+    return this.persistAll();
   }
 
   /** Player taps "Roll for advantage" once per round. The roll is consumed
@@ -137,7 +137,7 @@ export class RubyHighService extends Service {
     };
     round.advantage = advantage;
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return { state, result: advantage };
   }
 
@@ -153,7 +153,7 @@ export class RubyHighService extends Service {
       requestedAt: Date.now(),
     };
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -171,7 +171,7 @@ export class RubyHighService extends Service {
     state.character.xp = (state.character.xp ?? 0) + xpAwarded;
     state.pendingRoll = null;
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return {
       state,
       result: { stat: pr.stat, dice: r.dice, total, outcome, xpAwarded, reason: pr.reason },
@@ -185,7 +185,7 @@ export class RubyHighService extends Service {
     const a = Math.max(0, Math.min(10, Math.floor(amount)));
     state.character.xp = (state.character.xp ?? 0) + a;
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -209,7 +209,20 @@ export class RubyHighService extends Service {
     this.loaded = true;
   }
 
-  private persist(): Promise<void> {
+  /** Persist exactly one session — the preferred mutation path. With the
+   *  DynamoDB backend this is a single PutItem; with the JSON-file backend
+   *  it falls back to rewriting the full snapshot (the file has no other
+   *  representation). Either way, only one session's worth of work is in
+   *  the caller's mental model. */
+  private persistSession(sessionId: string): Promise<void> {
+    const state = this.sessions.get(sessionId);
+    if (!state) return Promise.resolve();
+    return this.store.saveSession(state);
+  }
+
+  /** Persist all sessions at once. Used by stop() and flush() for safety;
+   *  individual mutations should use persistSession(). */
+  private persistAll(): Promise<void> {
     return this.store.save(this.sessions.values());
   }
 
@@ -372,7 +385,9 @@ export class RubyHighService extends Service {
     state.status = "revealed";
     round.resolved = true;
     round.resolvedAt = Date.now();
-    void this.persist();
+    // resolveRound is a private helper that operates on `state` directly;
+    // there's no sessionId param, so pull it off the state.
+    void this.persistSession(state.sessionId);
   }
 
   private applyRoundToNpcs(state: QuizState, round: ActiveRound): Array<{
@@ -465,7 +480,7 @@ export class RubyHighService extends Service {
     // their HEAD/HUSTLE stats, so they can't cheat by reading the answer.
     state.activeRound = this.openRound(state, question);
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -545,7 +560,7 @@ export class RubyHighService extends Service {
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
     state.activeRound = this.openRound(state, question);
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -574,7 +589,7 @@ export class RubyHighService extends Service {
       if (npc) npc.answeredAt = now;
     }
     state.updatedAt = now;
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -664,7 +679,7 @@ export class RubyHighService extends Service {
     round.resolved = true;
     round.resolvedAt = Date.now();
     state.updatedAt = round.resolvedAt;
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -734,7 +749,7 @@ export class RubyHighService extends Service {
     // planned commit time (startedAt + delayMs), preserving the honest race.
     if (!round.resolved) this.resolveRound(state, false);
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -744,7 +759,7 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     if (state.activeRound && !state.activeRound.resolved) {
       this.resolveRound(state, state.activeRound.player.answeredAt == null);
-      void this.persist();
+      void this.persistSession(sessionId);
     }
     return state;
   }
@@ -774,7 +789,7 @@ export class RubyHighService extends Service {
       createdAt: Date.now(),
     };
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -785,7 +800,7 @@ export class RubyHighService extends Service {
     if (!state.character) throw new Error("No character to attach portrait to.");
     state.character.portraitDataUrl = portraitDataUrl;
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -796,7 +811,7 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     state.character = null;
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -809,7 +824,7 @@ export class RubyHighService extends Service {
     // Seed the NPC roster for this grade if it doesn't exist yet.
     this.ensureRoster(state, grade);
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -817,7 +832,7 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     state.hasSeenIntro = true;
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
@@ -827,13 +842,13 @@ export class RubyHighService extends Service {
     state.lastReveal = null;
     state.status = "idle";
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 
   resetSession(sessionId: string): QuizState {
     this.sessions.delete(sessionId);
-    void this.persist();
+    void this.persistSession(sessionId);
     return this.getOrCreate(sessionId);
   }
 
@@ -856,7 +871,7 @@ export class RubyHighService extends Service {
       state.status = "idle";
     }
     state.updatedAt = Date.now();
-    void this.persist();
+    void this.persistSession(sessionId);
     return state;
   }
 }

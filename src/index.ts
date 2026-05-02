@@ -84,7 +84,9 @@ export default rubyHighPlugin;
 
 export { RubyHighService } from "./services/ruby-high-service.js";
 export { FacultyService } from "./services/faculty-service.js";
-export { StateStore } from "./services/state-store.js";
+export { StateStore, type StateStoreLike } from "./services/state-store.js";
+export { DynamoStateStore, type DynamoStateStoreOptions } from "./services/dynamo-state-store.js";
+export { createStateStore, type CreateStateStoreOptions } from "./services/state-store-factory.js";
 export { AuthService } from "./services/auth-service.js";
 export { ChatService } from "./services/chat-service.js";
 export { TEACHERS, teacherById, listTeachers } from "./characters/teachers.js";

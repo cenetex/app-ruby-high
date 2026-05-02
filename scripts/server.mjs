@@ -13,7 +13,7 @@ import {
   ChatService,
   FacultyService,
   RubyHighService,
-  StateStore,
+  createStateStore,
   handleAppRoutes,
 } from "../dist/index.js";
 
@@ -23,6 +23,12 @@ const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH
   ?? (process.env.RUBY_HIGH_DATA_DIR ? `${process.env.RUBY_HIGH_DATA_DIR}/state.json` : null);
 const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? null;
 const ROOT_REDIRECT = process.env.RUBY_HIGH_ROOT_REDIRECT ?? "/api/apps/ruby-high/viewer";
+
+// State backend: defaults to a JSON file (ephemeral on App Runner). Set
+// RUBY_HIGH_STORE_BACKEND=dynamodb + RUBY_HIGH_DYNAMO_TABLE to persist
+// across container restarts.
+const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
+console.log(`[ruby-high] state store: ${stateStore.describe()}`);
 
 const facultySvc = await FacultyService.start({});
 const authSvc = await AuthService.start({});
@@ -42,7 +48,7 @@ const fakeRuntime = {
 };
 
 const rubySvc = await (async () => {
-  const svc = new RubyHighService(fakeRuntime, STATE_PATH ? new StateStore(STATE_PATH) : undefined);
+  const svc = new RubyHighService(fakeRuntime, stateStore);
   await svc["hydrate"]();
   svc.setFacultyService(facultySvc);
   return svc;
