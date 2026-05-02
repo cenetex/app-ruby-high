@@ -194,8 +194,11 @@ node scripts/server.mjs
 
 #### Production bootstrap (one-time)
 
-The deploy workflow (`.github/workflows/deploy.yml`) creates the table on
-every run, idempotently. To turn DynamoDB on in App Runner, do this once:
+The deploy workflow (`.github/workflows/deploy.yml`) skips all DynamoDB
+work by default — it only provisions the table and configures App Runner
+to use it when the `RUBY_HIGH_STORE_BACKEND` repo Variable is set to
+`dynamodb`. To turn DynamoDB on, do this once **in this order** (steps 1-3
+must precede step 4, otherwise the deploy fails on the first IAM check):
 
 **1. Grant the GHA OIDC role permission to manage the table.**
 Add to the policy attached to `github-actions-ruby-high`:
@@ -213,12 +216,9 @@ Add to the policy attached to `github-actions-ruby-high`:
 }
 ```
 
-**2. Run the deploy workflow once** — it'll create the table with the right
-schema (PK `pk`, TTL attribute `expiresAt`, on-demand billing).
-
-**3. Grant the App Runner instance role permission to use the table.**
-The instance role is the one App Runner runs the container as (separate from
-the ECR access role). Add to its policy:
+**2. Grant the App Runner instance role permission to use the table.**
+The instance role is the one App Runner runs the container as (separate
+from the ECR access role). Add to its policy:
 
 ```json
 {
@@ -233,7 +233,8 @@ the ECR access role). Add to its policy:
 }
 ```
 
-**4. Flip the workflow to use it.** In the repo settings → Variables, add:
+**3. Flip the workflow to use it.** In the repo Settings → Secrets and
+variables → Actions → Variables tab, add:
 
 | Variable | Value |
 |---|---|
@@ -241,14 +242,16 @@ the ECR access role). Add to its policy:
 | `RUBY_HIGH_DYNAMO_TABLE` | `ruby-high-state` (or whatever you named it) |
 | `RUBY_HIGH_PUBLIC_BASE` | `https://your-app-runner-url` (used for OpenRouter PKCE callback) |
 
-The next deploy passes those as runtime env vars to App Runner, and the
-service starts using DynamoDB. Until you set the variable, the workflow
-stays on the JSON-file backend regardless of whether the table exists.
+**4. Run the deploy.** On the first run with the variable set, the workflow
+creates the table (using the IAM grant from step 1), then updates App
+Runner with the DynamoDB env vars (which the instance role from step 2
+authorizes at runtime). Subsequent deploys are no-ops on the table side
+(idempotent DescribeTable check).
 
-Why opt-in: setting the env var on App Runner before the instance role has
-DynamoDB permissions would make the running service crash on the first
-state read. Keeping it gated on a repo variable lets you sequence the
-three steps above safely.
+Why this ordering: the table-create step and the App Runner env-var step
+are both gated on the same repo Variable, so they happen together. If you
+flip the variable before the IAM grants are in place, the deploy fails
+loudly at the first AWS API call rather than silently misconfiguring.
 
 #### Schema (managed by the workflow)
 

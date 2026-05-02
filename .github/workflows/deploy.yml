@@ -32,9 +32,15 @@ jobs:
       # since-epoch attribute the DynamoStateStore writes). Tags label the
       # resource for cost-attribution and to mark it as workflow-managed.
       #
-      # Required GHA-role IAM (one-time manual add to github-actions-ruby-high):
+      # Gated on the same RUBY_HIGH_STORE_BACKEND repo Variable that controls
+      # whether App Runner is told to use DynamoDB. When the variable is unset
+      # (the default), this step is skipped entirely — the deploy doesn't need
+      # the GHA role to have any DynamoDB IAM. Flip the variable to "dynamodb"
+      # only after granting the role:
       #   dynamodb:DescribeTable, CreateTable, UpdateTimeToLive, TagResource
+      # on arn:aws:dynamodb:<region>:*:table/<table-name>.
       - name: Ensure DynamoDB state table exists
+        if: vars.RUBY_HIGH_STORE_BACKEND == 'dynamodb'
         env:
           TABLE: ${{ vars.RUBY_HIGH_DYNAMO_TABLE || 'ruby-high-state' }}
         run: |
