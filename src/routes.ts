@@ -99,6 +99,11 @@ interface SessionTelemetry extends Record<string, unknown> {
   scoreCorrect: number;
   scoreTotal: number;
   status: QuizState["status"];
+  /** Authoritative session phase. The single dedupe primitive for client
+   *  effects (greetings, answer reactions). Bumps `phaseToken` on every
+   *  transition. The legacy `status` field is derived from this. */
+  phase: QuizState["phase"];
+  phaseToken: number;
   current: {
     id: string;
     prompt: string;
@@ -300,6 +305,8 @@ function buildSessionState(args: {
     scoreCorrect: state.score.correct,
     scoreTotal: state.score.total,
     status: state.status,
+    phase: state.phase,
+    phaseToken: state.phaseToken,
     current: state.current
       ? {
           id: state.current.id,

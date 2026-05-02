@@ -41,6 +41,43 @@ export function difficultyForGrade(grade: Grade): Difficulty {
 
 export type QuestionType = "multiple-choice" | "opinion";
 
+/**
+ * Authoritative session phase. The single source of truth that replaces
+ * the prior distributed coordination (state.status + activeRound.resolved
+ * + viewer-side dedupe flags). Five phases:
+ *
+ *   intro      — pre-grade-select; only on first launch.
+ *   in-room    — standing in a teaching classroom, no question on the board.
+ *   asking     — question posted (MC or opinion), awaiting the player's pick
+ *                or essay. activeRound is non-null.
+ *   revealed   — the round resolved; lastReveal is set, board still shows
+ *                the resolved question for context.
+ *   lounge     — in the teachers' lounge. No questions; eavesdrop only.
+ *
+ * Every transition runs through RubyHighService.transition(), which
+ * centralizes the reset rules (e.g. "entering in-room from any phase
+ * clears state.current / state.lastReveal / state.activeRound").
+ */
+export type Phase =
+  | "intro"
+  | "in-room"
+  | "asking"
+  | "revealed"
+  | "lounge";
+
+export const PHASES: readonly Phase[] = [
+  "intro", "in-room", "asking", "revealed", "lounge",
+] as const;
+
+/** Backwards-compat shim: the old 3-value `status` field is derived from
+ *  the new 5-value phase. Keeps existing viewer + routes consumers working
+ *  while phase 2 of the refactor migrates them. */
+export function statusForPhase(phase: Phase): "idle" | "awaiting-answer" | "revealed" {
+  if (phase === "asking") return "awaiting-answer";
+  if (phase === "revealed") return "revealed";
+  return "idle";
+}
+
 export interface Question {
   id: string;
   prompt: string;
@@ -113,7 +150,21 @@ export interface QuizState {
       movedTo?: string | null;
     }>;
   } | null;
+  /** Legacy 3-value status. Derived from `phase` for backwards compatibility
+   *  with viewer + routes consumers that haven't migrated. New code should
+   *  read `phase` instead — it has 5 values and covers the cases this one
+   *  doesn't (lounge, intro). */
   status: "idle" | "awaiting-answer" | "revealed";
+  /** Authoritative session phase. The single source of truth for "what
+   *  state is this session in." Every mutator goes through transition()
+   *  which sets this + bumps phaseToken atomically. See RubyHighService. */
+  phase: Phase;
+  /** Monotonically incremented every time `phase` changes. The viewer (and
+   *  any future client) can dedupe one-shot effects (channel-enter greeting,
+   *  answer-graded reaction, etc.) by comparing this against the last value
+   *  they fired on. Race-free across poll vs. command vs. SSE — server is
+   *  the only thing that bumps it. */
+  phaseToken: number;
   askedQuestionIds: string[];
   /** Currently selected grade. null until the student picks one. */
   currentGrade: Grade | null;

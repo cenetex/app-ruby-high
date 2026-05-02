@@ -18,6 +18,8 @@ function blankState(sessionId: string): QuizState {
     score: { correct: 0, total: 0 },
     lastReveal: null,
     status: "idle",
+    phase: "intro",
+    phaseToken: 0,
     askedQuestionIds: [],
     currentGrade: null,
     completedGrades: [],
