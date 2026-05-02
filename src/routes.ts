@@ -170,6 +170,20 @@ interface SessionTelemetry extends Record<string, unknown> {
   character: PlayerCharacter | null;
   /** Playbook catalog for the character creation UI. */
   playbooks: typeof PLAYBOOKS;
+  /** Cohort of 6 NPCs running their own arcs. Each has independent
+   *  grade + streak. The viewer renders them as a leaderboard / "who's
+   *  ahead of you" surface. */
+  npc_cohort: Array<{
+    id: string;
+    grade: Grade;
+    streak: { grade: Grade; count: number };
+    completedGrades: Grade[];
+    graduated: boolean;
+  }>;
+  /** Mentor offer from a previous graduated character. Null when none
+   *  available. The viewer's character-creation flow checks this and
+   *  shows an "inherit / fresh" choice. */
+  mentor_offer: PlayerCharacter["inheritedFrom"] | null;
   /** "Today's Daily" status — drives the empty-state copy and the
    *  play-daily CTA visibility. */
   daily: {
@@ -365,6 +379,8 @@ function buildSessionState(args: {
     character: state.character,
     playbooks: PLAYBOOKS,
     daily: deriveDailyStatus(state),
+    npc_cohort: state.npcCohort ?? [],
+    mentor_offer: state.mentorOffer ?? null,
   };
 
   const summary = state.current
@@ -709,7 +725,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       }
 
       if (type === "create-character") {
-        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string; flavorQuote?: string; personality?: string; portraitDataUrl?: string };
+        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string; flavorQuote?: string; personality?: string; portraitDataUrl?: string; mentorAccepted?: boolean };
         if (!cb.name || !cb.playbookId || !cb.stats) {
           throw new Error("Missing name, playbookId, or stats.");
         }
@@ -727,6 +743,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           flavorQuote: cb.flavorQuote,
           personality: cb.personality ?? "",
           portraitDataUrl: cb.portraitDataUrl,
+          mentorAccepted: !!cb.mentorAccepted,
         });
         ctx.json(ctx.res, {
           success: true,

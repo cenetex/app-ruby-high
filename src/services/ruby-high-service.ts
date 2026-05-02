@@ -19,13 +19,16 @@ import {
   dailyIndex,
   dailyKey,
   facultyForDay,
+  initialNpcCohort,
   nextGradeAfter,
+  npcStatsFor,
   pickEliminatedChoices,
   requiredStreakForGrade,
   roll2d6,
   rollNpcAnswer,
   rollOpinionDelay,
   statusForPhase,
+  xpForGrade,
   type ActiveRound,
   type AdvantageRoll,
   type AnswerRecord,
@@ -35,6 +38,7 @@ import {
   type FacultyMember,
   type Grade,
   type NpcRoundEntry,
+  type NpcArcState,
   type NpcStudentState,
   type OpinionGrade,
   type OpinionResponse,
@@ -47,6 +51,7 @@ import {
 } from "../types.js";
 import { FacultyService, type PickFilter } from "./faculty-service.js";
 import { StateStore, type StateStoreLike } from "./state-store.js";
+import { PLAYBOOKS } from "../characters/playbooks.js";
 
 export interface PoseInput {
   prompt: string;
@@ -408,9 +413,13 @@ export class RubyHighService extends Service {
     }
 
     // Player progression — Daily ticks the streak (the arc gate); free-play
-    // ticks the legacy count-based gradeProgress.
+    // ticks the legacy count-based gradeProgress. The cohort rolls alongside
+    // the player on every Daily — their streaks are independent of pass/fail.
     if (round.isDaily) {
       this.applyPlayerStreak(state, wasCorrect, state.faculty);
+      const correctAns = (q.correct ?? "A") as Choice;
+      const dailyKeyForRound = round.dailyKey ?? dailyKey(new Date());
+      this.applyCohortDaily(state, correctAns, dailyKeyForRound);
     } else if (wasCorrect) {
       this.applyPlayerGradeProgress(state);
     }
@@ -473,9 +482,16 @@ export class RubyHighService extends Service {
     const next = prev + 1;
     ch.streak = { grade, count: next };
 
-    // Threshold hit?
+    // Both gates must hold to advance (DESIGN.md Pillar 1):
+    //   - streak >= requiredStreakForGrade(grade)
+    //   - xp >= xpForGrade(grade)  (cumulative)
+    // If only one holds, the player keeps playing — streak grows past the
+    // required minimum until XP catches up; or XP keeps banking until
+    // streak reforms. Both falling on the same Daily = advancement.
     const required = requiredStreakForGrade(grade);
+    const xpRequired = xpForGrade(grade);
     if (next < required) return;
+    if ((ch.xp ?? 0) < xpRequired) return;
 
     // Year complete — write yearbook, advance (or graduate).
     if (!state.completedGrades.includes(grade)) {
@@ -496,6 +512,50 @@ export class RubyHighService extends Service {
     } else {
       // Senior complete = graduation. Streak stays at Senior; the diploma
       // flow keys on yearbook.length === 4 + the absence of a "next year."
+    }
+  }
+
+  /** Cohort tick — every NPC who's still in school rolls against today's
+   *  Daily and ticks their own streak. Independent of the player's pass:
+   *  Indra might pass while you miss, or vice versa. Streak resets on
+   *  miss; advances on threshold; graduates after Senior streak.
+   *
+   *  NPCs gate on streak alone — no XP gate. They feel hungrier than the
+   *  player, which makes the rivalry tense ("Indra graduated last week").
+   *
+   *  The day-key dedupe prevents double-tick if the player retries on
+   *  the same day (which the dailyStatus gate prevents anyway, but
+   *  defense in depth). */
+  private applyCohortDaily(state: QuizState, correctAnswer: Choice, key: string): void {
+    if (!state.npcCohort) state.npcCohort = initialNpcCohort();
+    const cohort = state.npcCohort;
+    if (!state.current) return;
+    for (const npc of cohort) {
+      if (npc.graduated) continue;
+      if (npc.lastDailyDate === key) continue; // already ticked today
+      const stats = npcStatsFor(npc.id);
+      const r = rollNpcAnswer(stats, correctAnswer);
+      const passed = r.pick === correctAnswer;
+      npc.lastDailyDate = key;
+      if (!passed) {
+        npc.streak = { grade: npc.grade, count: 0 };
+        continue;
+      }
+      const prev = npc.streak.grade === npc.grade ? npc.streak.count : 0;
+      const next = prev + 1;
+      npc.streak = { grade: npc.grade, count: next };
+      const required = requiredStreakForGrade(npc.grade);
+      if (next < required) continue;
+      if (!npc.completedGrades.includes(npc.grade)) {
+        npc.completedGrades.push(npc.grade);
+      }
+      const advance = nextGradeAfter(npc.grade);
+      if (advance) {
+        npc.grade = advance;
+        npc.streak = { grade: advance, count: 0 };
+      } else {
+        npc.graduated = true;
+      }
     }
   }
 
@@ -762,6 +822,14 @@ export class RubyHighService extends Service {
       // Daily streak tick / free-play count, same routing as MC path.
       if (round.isDaily) {
         this.applyPlayerStreak(state, passed, state.faculty);
+        // Opinion mode has no "correct letter" — NPCs already submitted essays
+        // and got graded above. Use a neutral "A" so the cohort dice still
+        // roll without leaking the rubric. Opinion-mode pass for an NPC is
+        // their dice roll matching that neutral letter; functionally a coin
+        // flip per-NPC tied to HEAD. (Future: tie cohort opinion ticks to
+        // their grading score directly.)
+        const dailyKeyForRound = round.dailyKey ?? dailyKey(new Date());
+        this.applyCohortDaily(state, "A", dailyKeyForRound);
       } else if (passed) {
         this.applyPlayerGradeProgress(state);
       }
@@ -965,13 +1033,18 @@ export class RubyHighService extends Service {
   /** Create the player's character sheet. Throws if one already exists. */
   createCharacter(
     sessionId: string,
-    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; flavorQuote?: string; personality: string; portraitDataUrl?: string },
+    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; flavorQuote?: string; personality: string; portraitDataUrl?: string; mentorAccepted?: boolean },
   ): QuizState {
     const state = this.getOrCreate(sessionId);
     if (state.character) throw new Error("Character already exists for this session.");
     const name = input.name.trim();
     if (!name) throw new Error("Name is required.");
     const flavorQuote = input.flavorQuote?.trim();
+    // If the player accepted the mentor offer from a graduated previous
+    // character, snapshot the mentor info onto the new character. Either
+    // way, clear the offer — it's a one-time consume.
+    const inheritedFrom = (input.mentorAccepted && state.mentorOffer) ? { ...state.mentorOffer } : undefined;
+    state.mentorOffer = null;
     state.character = {
       name,
       playbookId: input.playbookId,
@@ -984,6 +1057,7 @@ export class RubyHighService extends Service {
       strings: {},
       conditions: [],
       yearbook: [],
+      ...(inheritedFrom ? { inheritedFrom } : {}),
       createdAt: Date.now(),
     };
     state.updatedAt = Date.now();
@@ -1007,6 +1081,22 @@ export class RubyHighService extends Service {
    *  flow will lock this later.) */
   clearCharacter(sessionId: string): QuizState {
     const state = this.getOrCreate(sessionId);
+    // If the previous character graduated (yearbook full at 4), stash a
+    // mentor offer so the next character can optionally inherit their
+    // playbook's startingMove. Cleared by createCharacter regardless of
+    // whether the offer was accepted.
+    const prev = state.character;
+    if (prev && (prev.yearbook ?? []).length >= 4) {
+      const playbook = PLAYBOOKS.find((p) => p.id === prev.playbookId);
+      if (playbook) {
+        state.mentorOffer = {
+          mentorName: prev.name,
+          playbookId: prev.playbookId,
+          moveName: playbook.startingMove.name,
+          moveDescription: playbook.startingMove.description,
+        };
+      }
+    }
     state.character = null;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
