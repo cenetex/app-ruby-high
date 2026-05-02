@@ -16,8 +16,12 @@ import {
   pickNextRoomForStudent,
   roomForFaculty,
   classifyTotal,
+  dailyIndex,
+  dailyKey,
+  facultyForDay,
   nextGradeAfter,
   pickEliminatedChoices,
+  requiredStreakForGrade,
   roll2d6,
   rollNpcAnswer,
   rollOpinionDelay,
@@ -403,8 +407,13 @@ export class RubyHighService extends Service {
       playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
 
-    // Player grade progress + auto-advance + graduation.
-    if (wasCorrect) this.applyPlayerGradeProgress(state);
+    // Player progression — Daily ticks the streak (the arc gate); free-play
+    // ticks the legacy count-based gradeProgress.
+    if (round.isDaily) {
+      this.applyPlayerStreak(state, wasCorrect, state.faculty);
+    } else if (wasCorrect) {
+      this.applyPlayerGradeProgress(state);
+    }
 
     // NPC subject progress + redistribution (deterministic from the round).
     const npcEvents = this.applyRoundToNpcs(state, round);
@@ -427,47 +436,93 @@ export class RubyHighService extends Service {
     void this.persistSession(state.sessionId);
   }
 
-  /** Tick the player's progress in their current grade. Auto-advances to
-   *  the next year on threshold completion. On Senior completion, writes
-   *  the yearbook entry that closes the run.
+  /** Tick the player's Daily-pass streak after a question resolves. Per
+   *  DESIGN.md Pillar 1:
+   *    - On a pass: streak.count += 1; if it hits requiredStreakForGrade
+   *      for the current year, the player advances (and on Senior, the
+   *      yearbook entry writes and the run effectively graduates).
+   *    - On a miss: streak.count resets to 0. The grade does NOT change.
    *
-   *  Spec ref: DESIGN.md commits to "the Daily IS the arc — pass enough
-   *  Dailies in your year to advance to the next; Senior completion =
-   *  graduation." Today this fires per correct answer (the playtest
-   *  product is still free-play, not the Daily). When The Daily lands
-   *  this same hook is what each Daily completion calls. */
+   *  This is called from resolveRound + recordGrades only when the resolved
+   *  question was today's Daily (state.current.id matched the Daily that
+   *  was posed). Free-play questions don't tick the streak. */
+  private applyPlayerStreak(state: QuizState, passed: boolean, faculty: string): void {
+    const ch = state.character;
+    if (!ch || !state.currentGrade) return;
+    const grade = state.currentGrade;
+
+    // Subject-score tracking — used for the diploma image's subject-themed
+    // accessory at graduation. Tick whether or not the answer passed.
+    ch.subjectScores = ch.subjectScores ?? {};
+    const subj = ch.subjectScores[faculty] ?? { correct: 0, total: 0 };
+    subj.total += 1;
+    if (passed) subj.correct += 1;
+    ch.subjectScores[faculty] = subj;
+
+    // Mark today's Daily as completed so the player can't replay it.
+    ch.lastDailyDate = dailyKey(new Date());
+
+    if (!passed) {
+      // Streak resets but stays anchored to the current grade.
+      ch.streak = { grade, count: 0 };
+      return;
+    }
+
+    // Pass — increment, anchored to the current grade.
+    const prev = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
+    const next = prev + 1;
+    ch.streak = { grade, count: next };
+
+    // Threshold hit?
+    const required = requiredStreakForGrade(grade);
+    if (next < required) return;
+
+    // Year complete — write yearbook, advance (or graduate).
+    if (!state.completedGrades.includes(grade)) {
+      state.completedGrades.push(grade);
+    }
+    ch.yearbook = ch.yearbook ?? [];
+    ch.yearbook.push({
+      grade,
+      completedAt: Date.now(),
+      summary: { correct: next, total: next },
+    });
+    const advance = nextGradeAfter(grade);
+    if (advance) {
+      state.currentGrade = advance;
+      if (state.gradeProgress[advance] === undefined) state.gradeProgress[advance] = 0;
+      this.ensureRoster(state, advance);
+      ch.streak = { grade: advance, count: 0 };
+    } else {
+      // Senior complete = graduation. Streak stays at Senior; the diploma
+      // flow keys on yearbook.length === 4 + the absence of a "next year."
+    }
+  }
+
+  /** LEGACY shim: the older free-play loop ticks gradeProgress on correct
+   *  answers (count not streak). Kept for free-play playtest mode; the
+   *  Daily mechanic uses applyPlayerStreak() and is the authoritative arc
+   *  gate. Once free-play is removed this goes too. */
   private applyPlayerGradeProgress(state: QuizState): void {
     const key = state.currentGrade;
     if (!key) return;
     const next = (state.gradeProgress[key] ?? 0) + 1;
     state.gradeProgress[key] = next;
     if (next < GRADE_COMPLETION_THRESHOLD || state.completedGrades.includes(key)) return;
-    // Threshold hit — record the milestone, write the yearbook entry,
-    // and advance / graduate.
     state.completedGrades.push(key);
     if (state.character) {
       state.character.yearbook = state.character.yearbook ?? [];
       state.character.yearbook.push({
         grade: key,
         completedAt: Date.now(),
-        // No per-grade total tracking yet — a future PR can add a counter.
-        // For now: correct == threshold, total == threshold (the player
-        // demonstrably hit the bar; the run-wide score lives on state.score).
         summary: { correct: next, total: next },
       });
     }
     const advance = nextGradeAfter(key);
     if (advance) {
-      // Move into the next year. Seed the gradeProgress + NPC roster so
-      // the new grade is ready to accept progress without a special case.
       state.currentGrade = advance;
       if (state.gradeProgress[advance] === undefined) state.gradeProgress[advance] = 0;
       this.ensureRoster(state, advance);
-    } else {
-      // Senior complete = graduation. We mark the year done and write the
-      // yearbook entry above; explicit "graduated" UX comes in the
-      // graduation-flow PR. The session continues at grade 12 — the player
-      // stays in the building for now, but no further yearbook entries.
     }
   }
 
@@ -704,8 +759,12 @@ export class RubyHighService extends Service {
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
-      // Player grade progress + auto-advance + graduation. Same shape as MC.
-      if (passed) this.applyPlayerGradeProgress(state);
+      // Daily streak tick / free-play count, same routing as MC path.
+      if (round.isDaily) {
+        this.applyPlayerStreak(state, passed, state.faculty);
+      } else if (passed) {
+        this.applyPlayerGradeProgress(state);
+      }
       // NPC progress: each NPC scoring ≥7 advances their subject. Same
       // redistribution rules as the MC path.
       const npcEvents: Array<{ studentId: string; gotIt: boolean; completed?: TeachingRoomId; movedTo?: TeachingRoomId | null }> = [];
@@ -787,6 +846,73 @@ export class RubyHighService extends Service {
       faculty: q.faculty,
       questionId: q.id,
     });
+  }
+
+  /** "Today's Daily" status — what the viewer needs to render the empty
+   *  state. The Daily is school-day only (Mon-Fri); weekends return
+   *  available=false with reason="weekend." After completion for the day,
+   *  available=false with reason="completed." */
+  dailyStatus(sessionId: string, now: Date = new Date()): {
+    available: boolean;
+    reason?: "weekend" | "completed" | "no-grade" | "no-character";
+    facultyId: string | null;
+    dailyKey: string;
+  } {
+    const state = this.getOrCreate(sessionId);
+    const key = dailyKey(now);
+    const fac = facultyForDay(key);
+    if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
+    if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
+    if (!fac) return { available: false, reason: "weekend", facultyId: null, dailyKey: key };
+    if (state.character.lastDailyDate === key) {
+      return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
+    }
+    return { available: true, facultyId: fac, dailyKey: key };
+  }
+
+  /** Pose today's Daily — the deterministic-by-date question, gated to
+   *  one play per UTC school-day. Throws if not available (call
+   *  dailyStatus() first to render the right empty state). */
+  playDaily(sessionId: string, now: Date = new Date()): QuizState {
+    if (!this.faculty) {
+      throw new Error("FacultyService is not bound. Call setFacultyService() first.");
+    }
+    const state = this.getOrCreate(sessionId);
+    const status = this.dailyStatus(sessionId, now);
+    if (!status.available) {
+      throw new Error(`Daily not available: ${status.reason ?? "unknown"}`);
+    }
+    const facultyId = status.facultyId!;
+    // Set the room to today's faculty before posing — this also clears
+    // any stale board state (the transition reset rules handle it).
+    if (state.faculty !== facultyId) {
+      this.setFaculty(sessionId, facultyId);
+    }
+    const q = this.faculty.pickDaily({
+      facultyId,
+      dailyIndex: dailyIndex(status.dailyKey),
+      difficulty: state.currentGrade ? undefined : undefined, // honor grade later
+      exclude: state.askedQuestionIds,
+    });
+    if (!q) {
+      throw new Error(`Bank for ${facultyId} is exhausted; cannot pose today's Daily.`);
+    }
+    const next = this.pose(sessionId, {
+      prompt: q.prompt,
+      options: q.options as Record<Choice, string>,
+      correct: q.correct as Choice,
+      explanation: q.explanation,
+      subject: q.subject,
+      difficulty: q.difficulty,
+      faculty: q.faculty,
+      questionId: q.id,
+    });
+    // Mark the round as the Daily so resolveRound ticks the streak.
+    if (next.activeRound) {
+      next.activeRound.isDaily = true;
+      next.activeRound.dailyKey = status.dailyKey;
+    }
+    return next;
   }
 
   submitAnswer(sessionId: string, picked: Choice): QuizState {

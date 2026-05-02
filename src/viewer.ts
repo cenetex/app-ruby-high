@@ -2206,12 +2206,19 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     if (!question) {
       showBlackboardEmpty(true);
       activeQuestionId = null;
+      const daily = lastTelemetry && lastTelemetry.daily;
       if (!authed) {
         els.blackboardEmptyText.textContent = "Sign in below to start class.";
       } else if (!lastTelemetry?.character) {
         els.blackboardEmptyText.textContent = "Roll a character — your name will appear in the seating chart.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
+      } else if (daily && daily.reason === "completed") {
+        els.blackboardEmptyText.textContent = "School's out for today. The next bell rings at 17:00 UTC tomorrow — your streak holds until then.";
+      } else if (daily && daily.reason === "weekend") {
+        els.blackboardEmptyText.textContent = "School's closed for the weekend. Class is back Monday at 17:00 UTC. Streak holds across the break.";
+      } else if (daily && daily.available) {
+        els.blackboardEmptyText.textContent = "Today's Daily is ready. Tap Next question to start.";
       } else {
         els.blackboardEmptyText.textContent = "The teacher will write a question on the board in a moment.";
       }
@@ -2602,10 +2609,19 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   async function pickNext() {
     els.nextBtn.disabled = true;
     try {
-      await command({
-        type: "pick",
-        difficulty: els.difficultyFilter.value || undefined,
-      });
+      // Prefer today's Daily — that's the arc. Falls through to free-play
+      // ("pick") only when the Daily isn't available (weekend, already done,
+      // or no character). Free-play doesn't tick the streak; it's playtest
+      // sandbox.
+      const daily = lastTelemetry && lastTelemetry.daily;
+      if (daily && daily.available) {
+        await command({ type: "play-daily" });
+      } else {
+        await command({
+          type: "pick",
+          difficulty: els.difficultyFilter.value || undefined,
+        });
+      }
       lockedFor = null;
     } finally {
       els.nextBtn.disabled = false;
@@ -2722,6 +2738,14 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     setAccent(t.facultyAccent);
     rebuildServersRail();
     rebuildChannelsRail();
+
+    // If the character just graduated and has no diploma image yet, kick off
+    // generation. This is fire-and-forget — the server stamps the URL onto
+    // the character; the next telemetry tick brings it back and the sheet
+    // renders the cap-and-gown image instead of the standing portrait.
+    if (t.character && graduatedFor(t.character) && !t.character.diplomaImageDataUrl) {
+      void maybeFireDiplomaGen(t.character);
+    }
 
     // Header
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
@@ -3028,14 +3052,47 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       renderSheetCreation(playbooks);
     }
   }
+  // Has the character finished their 4-year arc? Yearbook holds one entry
+  // per completed grade; 4 means Senior is done.
+  function graduatedFor(c) {
+    return !!(c && Array.isArray(c.yearbook) && c.yearbook.length >= 4);
+  }
+
+  // Diploma generation is fire-and-forget — we trigger it once on graduation
+  // detection. The server stamps character.diplomaImageDataUrl when done;
+  // the next render picks it up. The flag here is just a per-tab dedupe
+  // so we don't fire it twice while the first call is still in flight.
+  let diplomaInFlight = false;
+  async function maybeFireDiplomaGen(c) {
+    if (!c || !graduatedFor(c) || c.diplomaImageDataUrl || diplomaInFlight) return;
+    diplomaInFlight = true;
+    try {
+      const r = await fetch("/api/apps/ruby-high/chat/character/diploma", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (!r.ok) return;
+      // Server stamps the data URL onto the character; next session
+      // refresh picks it up. No need to render here.
+      await fetchSession();
+    } catch { /* ignore */ } finally {
+      diplomaInFlight = false;
+    }
+  }
+
   function renderSheetReadonly(c, playbooks) {
     const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
     const grade = lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Freshman";
     appendCard({
       role: "player",
       name: c.name,
-      subtitle: pb.name + " · " + grade + " · " + (c.xp ?? 0) + " XP",
-      portraitUrl: c.portraitDataUrl || (apiBase + "/assets/teachers/ruby-full.png"),
+      subtitle: graduatedFor(c) ? "Graduated · " + (c.xp ?? 0) + " XP" : pb.name + " · " + grade + " · " + (c.xp ?? 0) + " XP",
+      // Graduated character: show the diploma image (cap+gown) instead of
+      // the standing portrait. Falls back to the standing portrait while
+      // diploma image gen is still in flight.
+      portraitUrl: (graduatedFor(c) && c.diplomaImageDataUrl) || c.portraitDataUrl || (apiBase + "/assets/teachers/ruby-full.png"),
       accent: pb.accent,
       stats: c.stats,
       // Card quote prefers the MTG-style flavor line; legacy characters

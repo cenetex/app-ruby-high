@@ -17,6 +17,8 @@ import {
   ROOMS,
   RUBY_FACULTY,
   TEACHING_ROOMS,
+  dailyKey,
+  facultyForDay,
   type CharacterStats,
   type Choice,
   type Difficulty,
@@ -168,6 +170,14 @@ interface SessionTelemetry extends Record<string, unknown> {
   character: PlayerCharacter | null;
   /** Playbook catalog for the character creation UI. */
   playbooks: typeof PLAYBOOKS;
+  /** "Today's Daily" status — drives the empty-state copy and the
+   *  play-daily CTA visibility. */
+  daily: {
+    available: boolean;
+    reason?: "weekend" | "completed" | "no-grade" | "no-character";
+    facultyId: string | null;
+    dailyKey: string;
+  };
 }
 
 function getRuntime(value: unknown): IAgentRuntime | null {
@@ -267,6 +277,27 @@ function deriveActiveRound(state: QuizState) {
   };
 }
 
+/** Derives "today's Daily" status for the viewer. Mirrors
+ *  RubyHighService.dailyStatus() — kept inline here so buildSessionState
+ *  doesn't need a service handle. Both implementations use the same
+ *  dailyKey / facultyForDay helpers, so they stay in lockstep. */
+function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
+  available: boolean;
+  reason?: "weekend" | "completed" | "no-grade" | "no-character";
+  facultyId: string | null;
+  dailyKey: string;
+} {
+  const key = dailyKey(now);
+  const fac = facultyForDay(key);
+  if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
+  if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
+  if (!fac) return { available: false, reason: "weekend", facultyId: null, dailyKey: key };
+  if (state.character.lastDailyDate === key) {
+    return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
+  }
+  return { available: true, facultyId: fac, dailyKey: key };
+}
+
 function deriveRoomCohort(roster: NpcStudentState[]): Record<string, string[]> {
   const out: Record<string, string[]> = { homeroom: [], science: [], literature: [] };
   for (const npc of roster) {
@@ -333,6 +364,7 @@ function buildSessionState(args: {
     is_opinion: state.current?.type === "opinion",
     character: state.character,
     playbooks: PLAYBOOKS,
+    daily: deriveDailyStatus(state),
   };
 
   const summary = state.current
@@ -603,6 +635,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Picked",
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
+        });
+        return true;
+      }
+
+      if (type === "play-daily") {
+        const state = ruby.playDaily(stateKey);
+        ctx.json(ctx.res, {
+          success: true,
+          message: "Today's Daily is on the board.",
           session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;

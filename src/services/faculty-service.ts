@@ -136,6 +136,52 @@ export class FacultyService extends Service {
     }
     return null;
   }
+
+  /**
+   * Deterministic pick for "today's Daily" — every player on a given (date,
+   * faculty) sees the same question. Uses dailyIndex(key) modulo the bank
+   * size as the ratchet; difficulty filter optional. The exclude set
+   * skips questions the player has already seen this run, falling back
+   * to "any unanswered" if the modulo'd slot is taken.
+   *
+   * Returns null only when the entire faculty bank has been exhausted —
+   * effectively impossible at the current bank sizes (15 each, 20-pass
+   * Senior streak max).
+   */
+  pickDaily(opts: {
+    facultyId: string;
+    dailyIndex: number;
+    difficulty?: Difficulty;
+    exclude?: Iterable<string>;
+  }): BankedQuestion | null {
+    const bank = this.banks.get(opts.facultyId);
+    if (!bank || bank.questions.length === 0) return null;
+    const exclude = new Set(opts.exclude ?? []);
+
+    // Deterministic candidate order: rotate the bank by dailyIndex so day N
+    // starts at slot N, day N+1 at slot N+1, etc. Layer the difficulty
+    // filter on first; fall back to any-difficulty if the slot is taken.
+    const rotated: BankedQuestion[] = [];
+    const len = bank.questions.length;
+    for (let i = 0; i < len; i++) {
+      const q = bank.questions[(opts.dailyIndex + i) % len];
+      if (q) rotated.push(q);
+    }
+
+    const matchDifficulty = (q: BankedQuestion) =>
+      !opts.difficulty || q.difficulty === opts.difficulty;
+    const notExcluded = (q: BankedQuestion) => !exclude.has(q.id);
+
+    // Two-tier fallback. Difficulty preferred; any-difficulty acceptable.
+    for (const passDifficulty of [true, false]) {
+      for (const q of rotated) {
+        if (!notExcluded(q)) continue;
+        if (passDifficulty && !matchDifficulty(q)) continue;
+        return q;
+      }
+    }
+    return null;
+  }
 }
 
 function validateBank(value: unknown): QuestionBank {
