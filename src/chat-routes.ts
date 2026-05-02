@@ -74,7 +74,7 @@ function buildOpinionContext(args: {
     `Question: ${args.question}`,
     args.rubric ? `Rubric: ${args.rubric}` : "",
     "",
-    "Write a 2-3 sentence response in YOUR voice. Make it specific. Have an opinion. Reference a classmate or the teacher by name if it's natural. Lowercase, casual where it fits, but don't perform — actually engage with the question.",
+    "Write 2-3 sentences in your voice. Make it specific, have an opinion, engage the question. Reference a classmate or the teacher by name when it fits. Lowercase and casual where it lands.",
   ].filter(Boolean).join("\n");
 }
 
@@ -154,7 +154,7 @@ async function gradeOpinionResponses(args: {
     `You posed: "${args.question}"`,
     args.rubric ? `Rubric: ${args.rubric}` : "",
     "",
-    "Below are the student responses (the player + your AI students). Grade each one 0-10. The score should reflect: thoughtfulness, specificity, engagement with the question, and originality. NOT politeness or grammar.",
+    "Below are the student responses (the player + your AI students). Grade each one 0-10 based on how much they actually thought about the question and showed it in the writing — depth, specificity, engagement, originality.",
     "",
     responseList,
     "",
@@ -162,7 +162,7 @@ async function gradeOpinionResponses(args: {
     "GRADE responder=<id> score=<0-10> comment=<one short sentence in your voice>",
     "BEST: <responder id>",
     "",
-    "After the grade lines, write 2-3 short sentences in your voice as the teacher delivering the verdict to the class. Reference at least one student by name. Don't be saccharine.",
+    "After the grade lines, write 2-3 short sentences in your voice as the teacher delivering the verdict to the class. Reference at least one student by name. Plain and direct, in your voice.",
   ].filter(Boolean).join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
@@ -275,7 +275,7 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   const stats = randomStatDistribution();
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
   const userPrompt = [
-    "Roll a random AI student attending Ruby High (a high school RPG). The player will INHABIT this character — they're playing them, not designing them. Make them feel like a real high schooler with small specific quirks, not big themes.",
+    "Roll a random AI student attending Ruby High (a high school RPG). The player inhabits this character. Aim for a real teenager with small specific concerns — the register of group-chat texts, lunch-line gossip, a half-finished homework excuse.",
     "",
     `Playbook (locked): ${playbook.name} — ${playbook.blurb}`,
     `Hook question (locked): "${playbook.hookQuestion}"`,
@@ -284,18 +284,24 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
     "Generate JSON exactly in this shape (no other text, no markdown, no code fences):",
     `{"name":"...","arcAnswer":"...","flavorQuote":"...","personality":"..."}`,
     "",
-    "Field rules:",
-    "- name: ONE first name only — no surname, no last name, no middle name. Anything goes: common, uncommon, a chosen name, a nickname, a strange spelling, a one-syllable thing. Don't culture-shop or attach an ethnic descriptor — just pick a name that fits a teenager. Avoid the AI-default common picks: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
-    "- arcAnswer: 1-2 sentences in the character's voice answering the hook question. Sound like a normal teenager — deflective, dorky, casually weird, vaguely embarrassed, slightly overshare-y, mock-philosophical. First person.",
-    `- flavorQuote: ONE short line in the character's voice — like Magic: the Gathering flavor text. 6-18 words. Captures their attitude in a moment, not their backstory. Examples of the right shape (do NOT copy):\n    Sally Science: "I'd rather you be wrong with reasons than right by accident."\n    Lyra: "wait what — i KNEW it was c. ok im rewriting my notes."\n  Make this feel as specific to your character as those feel to theirs. No surrounding quote marks — the renderer adds them.`,
-    "- personality: 2-3 sentences describing how this character SHOWS UP in class — small specific quirks, fixations, what they say when bored, what they doodle. Tie at least one trait to a high stat (HEAD = sharp, HEART = warm, HUSTLE = quick, HONOR = principled) and one to the low stat. Third person.",
-    "",
-    "Tone guardrails — these apply to ALL fields:",
-    "- Just a kid in school. NOT an op-ed. NOT an edgelord.",
-    "- No politics, no social-issue framing, no history-of-erasure or systemic-harm angles, no family trauma. Smaller and stranger is better than bigger and weightier.",
-    "- No profanity for shock value. No 'I don't give a fuck' nihilism. No 'fuck this place' grievance.",
-    "- No manifestos, no thesis statements, no big speeches about meaning. They're 16. They're worried about a quiz.",
-    "- The character can be funny, sincere, anxious, sarcastic, dorky, prickly — just keep it grounded in normal high-school stakes.",
+    "Field guidance:",
+    "- name: ONE first name. Anything goes — common, uncommon, a chosen name, a nickname, a strange spelling. The kind of name a teenager actually has. Examples of the spread: Kit, Theo, Saoirse, Mei, Pip, Yusuf, Birta, Lior, Niamh, Tomás, Arlo, Vic, Ren, Esi, Soren. Skip the AI-default picks: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
+    "- arcAnswer: 1-2 sentences answering the hook in voice. Specific, dorky, small. Examples of the register:",
+    `    Overachiever / "Why is Cs not enough?": "honestly if i get an A- i replay it for like a week. last quiz i missed one and didn't sleep. my mom thinks im fine."`,
+    `    Slacker / "Who do you not want to disappoint?": "my older brother. he was good at this stuff. its embarrassing how much i think about it."`,
+    `    Class Clown / "What can't you say without a joke?": "anytime someone cries i panic and do a bit. did one at my uncle's funeral. my mom is still annoyed."`,
+    `    Lifer / "What's the best gossip you've picked up?": "the science wing has a closet with 40 trophies from 1987 and nobody knows why. also Mr. Kelner is on his third divorce."`,
+    `    Pull from the same register as the playbook above.`,
+    `- flavorQuote: ONE short line, 6-18 words. Magic: the Gathering flavor text — captures attitude in a moment, not backstory. Examples of the right shape:`,
+    `    "I'd rather you be wrong with reasons than right by accident." (Sally Science)`,
+    `    "wait what — i KNEW it was c. ok im rewriting my notes." (Lyra)`,
+    `    "i'm just here to drink chocolate milk and lose, and im out of chocolate milk."`,
+    `    "if mr. patek calls on me one more time im transferring to the moon."`,
+    `  No surrounding quote marks — the renderer adds them.`,
+    "- personality: 2-3 sentences. How they SHOW UP in class — fixations, doodles, what they whisper, who they sit by, their thing. Tie one trait to a high stat (HEAD=sharp / HEART=warm / HUSTLE=quick / HONOR=principled) and one to the low stat. Examples of the register:",
+    `    "Always has gum, never offers it. Sits by the broken radiator on purpose because the noise helps her think. Doodles snakes through every verbal lesson and forgets her name is being called."`,
+    `    "Knows the lyrics to one (1) song and references it constantly. Visibly stressed when the teacher reorders the day. Will eat anyone's leftover fries without asking."`,
+    `    Third person. Same scale as those — kid stuff, not life themes.`,
   ].join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
@@ -353,11 +359,7 @@ async function generateStudentLine(args: {
     `Situation: ${args.situation}.`,
     facultyContext,
     noteContext,
-    "Format:",
-    "- One short sentence, 12 words max. Nothing else.",
-    "- Lowercase texting style fits — no quotes, no hashtags, no preamble.",
-    "- React to what just happened. Don't ask clarifying questions, don't restate the situation.",
-    "- If you genuinely don't have a reaction, 'lol' or 'idk' or 'fr' is fine.",
+    "React in one short line — like a text in a group chat. Lowercase, 12 words max. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
   ].filter(Boolean).join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
@@ -683,7 +685,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         ? TEACHERS
         : [pickNextLoungeSpeaker(chat, token)];
       const loungeSystem =
-        "LOUNGE CONTEXT: You're hanging out in the Ruby High teachers' lounge with the OTHER faculty (Ruby, Sally Science, Professor Edward). This is downtime, not class. There is no blackboard and no tools. Just chat in 1-2 short sentences in your voice — riff on a student you saw, ask a colleague's opinion, share a small observation. Don't lecture. Be human. Address the colleagues by name when natural. The student is lurking and may chime in.";
+        "LOUNGE CONTEXT: You're hanging out in the Ruby High teachers' lounge with the other faculty (Ruby, Sally Science, Professor Edward). This is downtime — just conversation, no blackboard, no tools. Chat in 1-2 short sentences in your voice — riff on a student you saw, ask a colleague's opinion, share a small observation. Address colleagues by name when natural. The student is lurking and may chime in.";
 
       // For lounge-enter, append a "kickoff" system note so Ruby starts the convo.
       if (trigger === "lounge-enter") {
@@ -721,7 +723,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // ── Classroom: a single teacher takes a turn. ───────────────────────────
     let directive = "";
     if (trigger === "channel-enter") {
-      directive = `EVENT: The student just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}. Greet them in ONE short sentence, then call pick_from_bank to put the first question on the board. Don't ask them what topic — just pick something fitting their year.`;
+      directive = `EVENT: The student just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}. Greet them in ONE short sentence, then call pick_from_bank to put the first question on the board. Pick something fitting their year directly — your call, not theirs.`;
     } else if (trigger === "answer-graded") {
       const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
       if (c?.picked && c?.correct) {
