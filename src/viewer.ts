@@ -2033,7 +2033,19 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.blackboardEmpty.hidden = true;
     els.blackboardMeta.hidden = false;
     els.boardFrameHost.hidden = false;
-    els.answersHost.hidden = !!isOpinion;
+    // After a wrong answer on the CURRENT question, hide the A/B/C/D grid
+    // so the teacher's reaction + explanation in the chat stream gets the
+    // mobile vertical space. The verdict line on the board itself still
+    // tells the player they were wrong; the colored outlines are just a
+    // celebration accent we can afford to drop on a miss. Re-shows
+    // automatically when the next question lands (lastReveal.questionId
+    // diverges from current.id).
+    const reveal = lastTelemetry?.lastReveal;
+    const wrongOnCurrent = !!(reveal
+      && !reveal.wasCorrect
+      && lastTelemetry?.current
+      && reveal.questionId === lastTelemetry.current.id);
+    els.answersHost.hidden = !!isOpinion || wrongOnCurrent;
     // Footer (Question N + difficulty filter + Next btn) only when signed
     // in. Pre-auth users can't act on it.
     els.blackboardFoot.hidden = !authed;
@@ -2250,6 +2262,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
       if (btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
     });
+    // The wrong-answer "hide A/B/C/D for chat space" rule lives in
+    // showBlackboardLoaded so it survives re-renders driven by the
+    // telemetry poll. Don't duplicate it here.
     els.boardReveal.hidden = false;
     els.boardReveal.classList.toggle("correct", !!reveal.wasCorrect);
     els.boardReveal.classList.toggle("wrong", !reveal.wasCorrect);
