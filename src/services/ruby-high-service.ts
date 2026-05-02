@@ -112,30 +112,24 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  /** Resolve the player's pending DM-roll. Returns the rolled outcome and
-   *  awards XP / accrues conditions per outcome. */
-  resolvePendingRoll(sessionId: string): { state: QuizState; result: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome; xpAwarded: number; conditionTaken?: string; reason: string } | null } {
+  /** Resolve the player's pending DM-roll. Bonus-only: a hit/mixed awards
+   *  XP, a miss is a no-op (no Condition, no XP loss). The roll exists to
+   *  reward, not to punish. */
+  resolvePendingRoll(sessionId: string): { state: QuizState; result: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome; xpAwarded: number; reason: string } | null } {
     const state = this.getOrCreate(sessionId);
     const pr = state.pendingRoll;
     if (!pr || !state.character) return { state, result: null };
     const r = roll2d6();
     const total = r.total + state.character.stats[pr.stat];
     const outcome: RoundOutcome = total >= pr.dc + 3 ? "hit" : total >= pr.dc ? "mixed" : "miss";
-    let xpAwarded = outcome === "hit" ? 2 : outcome === "mixed" ? 1 : 0;
-    let conditionTaken: string | undefined;
-    if (outcome === "miss") {
-      conditionTaken = pr.stat === "head" ? "anxious" : pr.stat === "heart" ? "lonely" : pr.stat === "hustle" ? "tired" : "hurt";
-      if (!state.character.conditions.includes(conditionTaken)) {
-        state.character.conditions.push(conditionTaken);
-      }
-    }
+    const xpAwarded = outcome === "hit" ? 2 : outcome === "mixed" ? 1 : 0;
     state.character.xp = (state.character.xp ?? 0) + xpAwarded;
     state.pendingRoll = null;
     state.updatedAt = Date.now();
     void this.persist();
     return {
       state,
-      result: { stat: pr.stat, dice: r.dice, total, outcome, xpAwarded, conditionTaken, reason: pr.reason },
+      result: { stat: pr.stat, dice: r.dice, total, outcome, xpAwarded, reason: pr.reason },
     };
   }
 
@@ -289,31 +283,22 @@ export class RubyHighService extends Service {
     state.score.total += 1;
     if (wasCorrect) state.score.correct += 1;
 
-    // 2d6 + HEAD roll for the player. The roll narrates the outcome on top
-    // of their literal pick: a 10+ "clean" hit awards full XP, a 7-9 "mixed"
-    // half, a 6- "miss" can saddle the player with a Condition. NPCs roll
-    // separately at pose-time; this is just the player's pass.
+    // 2d6 + HEAD roll for the player — bonus layer on top of their literal
+    // pick. A correct answer earns XP scaled by the roll (10+ = +2, 7-9 = +1,
+    // 6- = +1). A wrong answer earns 0 XP and never imposes a Condition: the
+    // dice can only ever upgrade the outcome, never punish it. NPC rolls (in
+    // activeRound.npcs) carry the actual race stakes.
     let playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null = null;
     if (state.character && picked != null) {
       const stat: keyof CharacterStats = "head";
       const r = roll2d6();
       const total = r.total + state.character.stats[stat];
       const outcome = classifyTotal(total);
-      let xpAwarded = 0;
-      let conditionTaken: string | undefined;
-      if (wasCorrect) {
-        xpAwarded = outcome === "hit" ? 2 : outcome === "mixed" ? 1 : 1;
-      } else {
-        xpAwarded = 0;
-      }
-      if (!wasCorrect && outcome === "miss") {
-        conditionTaken = "anxious";
-        if (!state.character.conditions.includes(conditionTaken)) {
-          state.character.conditions.push(conditionTaken);
-        }
-      }
+      const xpAwarded = wasCorrect
+        ? (outcome === "hit" ? 2 : 1)
+        : 0;
       state.character.xp = (state.character.xp ?? 0) + xpAwarded;
-      playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded, conditionTaken };
+      playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
 
     // Player subject progress.
