@@ -461,9 +461,16 @@ function getRuntime(value: unknown): IAgentRuntime | null {
   return candidate as unknown as IAgentRuntime;
 }
 
-function getSessionId(runtime: IAgentRuntime | null): string {
-  const agentId = (runtime as { agentId?: string } | null)?.agentId;
-  return agentId ? `ruby-high:${agentId}` : "ruby-high:anonymous";
+/** See routes.ts for the multi-tenant explanation. Per-user session keys come
+ *  from the rh_session cookie. */
+function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | null): string {
+  if (!cookieHeader) return "rh:anonymous";
+  for (const part of cookieHeader.split(/;\s*/)) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    if (part.slice(0, i) === "rh_session") return "rh:user:" + decodeURIComponent(part.slice(i + 1));
+  }
+  return "rh:anonymous";
 }
 
 function getService<T>(runtime: IAgentRuntime | null, type: string): T | null {
@@ -589,7 +596,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { faculty?: string; message?: string; model?: string }
       | null;
-    const faculty = body?.faculty ?? ruby.getOrCreate(getSessionId(runtime)).faculty;
+    const faculty = body?.faculty ?? ruby.getOrCreate(getSessionId(runtime, ctx.cookieHeader)).faculty;
     const message = (body?.message ?? "").trim();
     if (!message) {
       ctx.error(ctx.res, "Missing 'message'.", 400);
@@ -619,7 +626,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       for await (const ev of chat.send({
         apiKey: record.apiKey,
         sessionToken: token,
-        agentSessionId: getSessionId(runtime),
+        agentSessionId: getSessionId(runtime, ctx.cookieHeader),
         faculty,
         userMessage: message,
         model: body?.model,
@@ -649,7 +656,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { faculty?: string; trigger?: string; context?: { grade?: string } }
       | null;
-    const faculty = body?.faculty ?? ruby.getOrCreate(getSessionId(runtime)).faculty;
+    const faculty = body?.faculty ?? ruby.getOrCreate(getSessionId(runtime, ctx.cookieHeader)).faculty;
     const trigger = String(body?.trigger ?? "manual");
     const grade = body?.context?.grade;
 
@@ -693,7 +700,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           for await (const ev of chat.send({
             apiKey: record.apiKey,
             sessionToken: token,
-            agentSessionId: getSessionId(runtime),
+            agentSessionId: getSessionId(runtime, ctx.cookieHeader),
             faculty: "lounge",
             speakerFacultyId: speaker,
             bucketKey: "lounge",
@@ -734,7 +741,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       for await (const ev of chat.send({
         apiKey: record.apiKey,
         sessionToken: token,
-        agentSessionId: getSessionId(runtime),
+        agentSessionId: getSessionId(runtime, ctx.cookieHeader),
         faculty,
         systemEventNote: directive,
       })) {
@@ -800,7 +807,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { text?: string; force?: boolean } | null;
     const text = (body?.text ?? "").trim();
     const force = !!body?.force;
-    const sessionId = getSessionId(runtime);
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
     if (text) {
       ruby.recordOpinion(sessionId, "player", text);
     }

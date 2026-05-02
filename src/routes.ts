@@ -172,9 +172,24 @@ function getCharacterName(runtime: IAgentRuntime | null): string {
   return character?.name ?? "Ruby";
 }
 
-function getSessionId(runtime: IAgentRuntime | null): string {
-  const agentId = (runtime as { agentId?: string } | null)?.agentId;
-  return agentId ? `ruby-high:${agentId}` : "ruby-high:anonymous";
+/** Derive a per-user session key from the rh_session cookie. Pre-auth users
+ *  share an "anonymous" bucket — fine for the browse-while-signed-out preview.
+ *  Each signed-in OpenRouter user gets their own bucket so state, character,
+ *  NPC roster, etc. are isolated per user. THIS IS THE MULTI-TENANCY FIX. */
+function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | null): string {
+  const token = parseRhSessionCookie(cookieHeader);
+  if (token) return `rh:user:${token}`;
+  return "rh:anonymous";
+}
+
+function parseRhSessionCookie(cookieHeader: string | null | undefined): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(/;\s*/)) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    if (part.slice(0, i) === "rh_session") return decodeURIComponent(part.slice(i + 1));
+  }
+  return null;
 }
 
 function facultyById(id: string): FacultyMember {
@@ -246,9 +261,10 @@ function buildSessionState(args: {
   runtime: IAgentRuntime | null;
   state: QuizState;
   faculty: FacultyService | null;
+  cookieHeader?: string | null;
 }): PluginAppSessionState {
   const { runtime, state, faculty } = args;
-  const sessionId = getSessionId(runtime);
+  const sessionId = getSessionId(runtime, args.cookieHeader);
   const fac = facultyById(state.faculty);
 
   const telemetry: SessionTelemetry = {
@@ -398,6 +414,10 @@ export async function resolveLaunchSession(
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
   if (!ruby) return null;
   const faculty = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
+  // Launch context (from the eliza app-bridge) doesn't carry an HTTP cookie,
+  // so launch-time state lands in the anonymous bucket. The interactive HTTP
+  // routes pick up the per-user state once the browser sends rh_session.
+  // Launch context has no HTTP cookie — anonymous bucket is the right default.
   const state = ruby.getOrCreate(getSessionId(runtime));
   return buildSessionState({ runtime, state, faculty });
 }
@@ -462,7 +482,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       ctx.res,
       renderViewerHtml({
         agentName: getCharacterName(runtime),
-        sessionId: getSessionId(runtime),
+        sessionId: getSessionId(runtime, ctx.cookieHeader),
         apiBase: APP_ROUTE_PREFIX,
         role,
       }),
@@ -488,11 +508,11 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return true;
   }
   const faculty = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
-  const stateKey = getSessionId(runtime);
+  const stateKey = getSessionId(runtime, ctx.cookieHeader);
 
   if (ctx.method === "GET" && !subroute) {
     const state = ruby.getOrCreate(stateKey);
-    ctx.json(ctx.res, buildSessionState({ runtime, state, faculty }));
+    ctx.json(ctx.res, buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }));
     return true;
   }
 
@@ -537,7 +557,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: state.lastReveal?.wasCorrect ? "Correct" : "Marked",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -551,7 +571,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Picked",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -562,7 +582,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: `Now teaching: ${state.faculty}`,
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -572,7 +592,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Cleared",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -582,7 +602,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Session reset",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -592,7 +612,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Round resolved",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -619,7 +639,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Character created",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -629,7 +649,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Character cleared",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -641,7 +661,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Portrait updated",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -653,7 +673,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: `Grade set to ${grade}`,
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -663,7 +683,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Intro acknowledged",
-          session: buildSessionState({ runtime, state, faculty }),
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
       }
@@ -672,7 +692,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       ctx.json(ctx.res, {
         success: true,
         message: `Suggestion noted: ${body?.prompt ?? body?.type ?? "unknown"}`,
-        session: buildSessionState({ runtime, state, faculty }),
+        session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
       });
       return true;
     } catch (err) {
