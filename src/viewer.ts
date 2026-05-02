@@ -923,6 +923,177 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; }
   .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.85; }
 
+  /* ── unified CCG-style character card ─────────────────────────────────── */
+  .ccg-card {
+    width: 100%;
+    max-width: 360px;
+    background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 100%);
+    border: 3px solid var(--accent);
+    border-radius: 22px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08) inset,
+      0 24px 60px rgba(0,0,0,0.55),
+      0 0 30px rgba(210,42,42,0.15);
+    overflow: hidden;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .ccg-role {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    z-index: 2;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  }
+  .ccg-role.student { background: #3aa3e0; }
+  .ccg-role.teacher { background: #5865f2; }
+  .ccg-role.player  { background: var(--accent); }
+  .ccg-art {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    background: var(--bg-elev-2);
+    overflow: hidden;
+    position: relative;
+  }
+  .ccg-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+  }
+  .ccg-art::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 50px;
+    background: linear-gradient(180deg, transparent, var(--bg-elev) 90%);
+    pointer-events: none;
+  }
+  .ccg-body {
+    padding: 14px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ccg-name {
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--text);
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .ccg-subtitle {
+    font-size: 12px;
+    color: var(--text-mute);
+    letter-spacing: 0.04em;
+    margin-top: -4px;
+  }
+  .ccg-stats {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.18);
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 12px;
+    color: var(--text-soft);
+  }
+  .ccg-stats .stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .ccg-stats .stat .k {
+    color: var(--text-mute);
+    letter-spacing: 0.1em;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .ccg-stats .stat .v {
+    color: var(--text);
+    font-weight: 800;
+    font-size: 13px;
+  }
+  .ccg-stats .stat .v.pos { color: #b6f5b9; }
+  .ccg-stats .stat .v.neg { color: #ffb1b1; }
+  .ccg-rule {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--line), transparent);
+    margin: 2px 0;
+  }
+  .ccg-body-text {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--text);
+  }
+  .ccg-quote {
+    border-left: 3px solid var(--accent);
+    padding: 6px 12px;
+    margin: 0;
+    color: var(--text-soft);
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.5;
+    background: rgba(0,0,0,0.18);
+    border-radius: 0 8px 8px 0;
+  }
+  .ccg-footer {
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.22);
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 18px 18px;
+    margin: 12px -16px -16px;
+    font-size: 12px;
+    color: var(--text-soft);
+    line-height: 1.45;
+  }
+  .ccg-footer strong {
+    color: var(--text);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .ccg-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .ccg-actions button {
+    appearance: none;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    border-radius: 999px;
+    padding: 9px 16px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .ccg-actions button.secondary {
+    background: var(--bg-elev);
+    color: var(--text-soft);
+  }
+  .ccg-actions button:disabled { opacity: 0.5; }
+
   /* ── character sheet overlay ──────────────────────────────────────────── */
   .sheet-overlay {
     position: fixed;
@@ -2052,6 +2223,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       if (fac) {
         const thumb = document.createElement("span");
         thumb.className = "teacher-thumb";
+        thumb.title = "Open " + fac.displayName + "'s card";
+        thumb.style.cursor = "pointer";
+        thumb.addEventListener("click", (e) => { e.stopPropagation(); openTeacherProfile(fac.id); });
         const img = document.createElement("img");
         img.src = apiBase + "/assets/teachers/" + encodeURIComponent(fac.id) + "-face.png";
         img.alt = "";
@@ -2383,66 +2557,156 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     } catch { /* ignore — sheet close was instant; this is a soft enhancement */ }
   }
 
+  // ── unified CCG-style character card ────────────────────────────────────
+  // One renderer for player, student, AND teacher cards. Big art on top,
+  // name banner, stats line, body text, optional quote, optional footer.
+  function buildCharacterCard(spec) {
+    // spec: { role, name, subtitle, portraitUrl, accent, stats?, bodyText, quote?, footer?, actions? }
+    const card = document.createElement("div");
+    card.className = "ccg-card";
+    if (spec.accent) card.style.borderColor = spec.accent;
+    const role = document.createElement("span");
+    role.className = "ccg-role " + spec.role;
+    if (spec.accent) role.style.background = spec.accent;
+    role.textContent = spec.role;
+    card.appendChild(role);
+    const art = document.createElement("div");
+    art.className = "ccg-art";
+    if (spec.portraitUrl) {
+      const img = document.createElement("img");
+      img.src = spec.portraitUrl;
+      img.alt = "";
+      img.onerror = () => { art.innerHTML = ""; art.style.display = "grid"; art.style.placeItems = "center"; art.textContent = (spec.name || "?").slice(0, 1).toUpperCase(); };
+      art.appendChild(img);
+    } else {
+      art.style.display = "grid";
+      art.style.placeItems = "center";
+      art.style.fontSize = "72px";
+      art.style.color = "var(--text-mute)";
+      art.textContent = (spec.name || "?").slice(0, 1).toUpperCase();
+    }
+    card.appendChild(art);
+    const body = document.createElement("div");
+    body.className = "ccg-body";
+    const nameEl = document.createElement("div");
+    nameEl.className = "ccg-name";
+    nameEl.textContent = spec.name || "—";
+    body.appendChild(nameEl);
+    if (spec.subtitle) {
+      const sub = document.createElement("div");
+      sub.className = "ccg-subtitle";
+      sub.textContent = spec.subtitle;
+      body.appendChild(sub);
+    }
+    if (spec.stats) {
+      const stats = document.createElement("div");
+      stats.className = "ccg-stats";
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      ["head", "heart", "hustle", "honor"].forEach((k) => {
+        const wrap = document.createElement("span");
+        wrap.className = "stat";
+        const ke = document.createElement("span"); ke.className = "k"; ke.textContent = k;
+        const ve = document.createElement("span");
+        const v = spec.stats[k];
+        ve.className = "v" + (v > 0 ? " pos" : v < 0 ? " neg" : "");
+        ve.textContent = fmt(v);
+        wrap.appendChild(ke); wrap.appendChild(ve);
+        stats.appendChild(wrap);
+      });
+      body.appendChild(stats);
+    }
+    if (spec.bodyText) {
+      const rule = document.createElement("div"); rule.className = "ccg-rule";
+      body.appendChild(rule);
+      const txt = document.createElement("div");
+      txt.className = "ccg-body-text";
+      txt.textContent = spec.bodyText;
+      body.appendChild(txt);
+    }
+    if (spec.quote) {
+      const q = document.createElement("blockquote");
+      q.className = "ccg-quote";
+      q.textContent = "“" + spec.quote + "”";
+      body.appendChild(q);
+    }
+    if (spec.footer) {
+      const ft = document.createElement("div");
+      ft.className = "ccg-footer";
+      const title = document.createElement("strong");
+      title.textContent = spec.footer.title;
+      ft.appendChild(title);
+      ft.appendChild(document.createTextNode(spec.footer.content));
+      body.appendChild(ft);
+    }
+    card.appendChild(body);
+    if (spec.actions && spec.actions.length) {
+      const actionsRow = document.createElement("div");
+      actionsRow.className = "sheet-actions";
+      for (const a of spec.actions) {
+        const btn = document.createElement("button");
+        if (a.secondary) btn.className = "secondary";
+        btn.textContent = a.label;
+        btn.addEventListener("click", a.onClick);
+        actionsRow.appendChild(btn);
+      }
+      // The actions row sits OUTSIDE the card, in the sheet card container,
+      // so the card itself stays self-contained art.
+      sheetCard.appendChild(card);
+      sheetCard.appendChild(actionsRow);
+      return null; // already appended
+    }
+    return card;
+  }
+  function appendCard(spec) {
+    sheetCard.innerHTML = "";
+    const card = buildCharacterCard(spec);
+    if (card) sheetCard.appendChild(card);
+  }
+
+  // ── teacher profile (click teacher thumb in channel rail to open) ───────
+  function openTeacherProfile(facultyId) {
+    const t = lastTelemetry;
+    const fac = (t && t.faculty_roster || []).find((f) => f.id === facultyId);
+    if (!fac) return;
+    sheetOverlayOpen = true;
+    sheetEl.classList.add("is-open");
+    const subjectMap = { ruby: "Homeroom · ratimics lore + general", "sally-science": "Science Lab · physics, chem, bio, earth-sci", "professor-edward": "Library · postwar literature & literary theory" };
+    const signatureMap = {
+      ruby: "Host of the school. Picks the right teacher for the topic. Calls handoffs cleanly.",
+      "sally-science": "STEM specialist. Won't fake expertise outside her range.",
+      "professor-edward": "Mid-century literature. Reads everything as a conversation between books.",
+    };
+    appendCard({
+      role: "teacher",
+      name: fac.displayName,
+      subtitle: subjectMap[fac.id] || fac.bio,
+      portraitUrl: apiBase + "/assets/teachers/" + encodeURIComponent(fac.id) + "-full.png",
+      accent: fac.accent,
+      bodyText: fac.bio,
+      footer: { title: "Signature", content: signatureMap[fac.id] || "" },
+      actions: [{ label: "Close", secondary: true, onClick: closeSheet }],
+    });
+  }
+
   // ── student profile card ─────────────────────────────────────────────────
-  // Opens the same overlay used by the player sheet but renders an NPC's
-  // info instead. Read-only.
   function openStudentProfile(npc, s) {
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
-    sheetCard.innerHTML = "";
-    const head = document.createElement("div");
-    head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:10px;";
-    const portrait = document.createElement("img");
-    portrait.src = apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-face.png";
-    portrait.alt = "";
-    portrait.style.cssText = "width:56px;height:56px;border-radius:999px;object-fit:cover;background:" + s.color + ";border:2px solid var(--accent);";
-    head.appendChild(portrait);
-    const headText = document.createElement("div");
-    const h = document.createElement("h2");
-    h.style.cssText = "margin:0;font-size:20px;color:var(--accent);";
-    h.textContent = s.name;
-    headText.appendChild(h);
-    const sub = document.createElement("div");
-    sub.className = "sub";
-    sub.style.cssText = "margin:2px 0 0;color:var(--text-mute);font-size:12px;";
-    sub.textContent = "Junior · " + (npc.currentRoom ? "currently in #" + npc.currentRoom : "graduated this year");
-    headText.appendChild(sub);
-    head.appendChild(headText);
-    sheetCard.appendChild(head);
-    const ro = document.createElement("div");
-    ro.className = "sheet-readonly";
-    const fmt = (n) => (n >= 0 ? "+" : "") + n;
-    [
-      ["Stats", "HEAD " + fmt(npc.stats.head) + " · HEART " + fmt(npc.stats.heart) + " · HUSTLE " + fmt(npc.stats.hustle) + " · HONOR " + fmt(npc.stats.honor)],
-      ["Vibe", studentVibe(npc.id)],
-    ].forEach(([k, v]) => {
-      const row = document.createElement("div"); row.className = "row";
-      const ke = document.createElement("span"); ke.className = "k"; ke.textContent = k;
-      const ve = document.createElement("span"); ve.className = "v"; ve.textContent = v;
-      row.appendChild(ke); row.appendChild(ve);
-      ro.appendChild(row);
+    const subjectChips = ["homeroom", "science", "literature"].map((r) => {
+      const subj = npc.subjects[r];
+      return r + (subj.completed ? " ✓" : " " + subj.correct + "/" + COMPLETION_THRESHOLD);
+    }).join(" · ");
+    appendCard({
+      role: "student",
+      name: s.name,
+      subtitle: "Junior · " + (npc.currentRoom ? "currently in #" + npc.currentRoom : "graduated this year"),
+      portraitUrl: apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-full.png",
+      accent: s.color,
+      stats: npc.stats,
+      bodyText: studentVibe(npc.id),
+      footer: { title: "Subjects", content: subjectChips },
+      actions: [{ label: "Close", secondary: true, onClick: closeSheet }],
     });
-    // Per-subject progress, but compact — just the completed ones with a check.
-    const subjects = ["homeroom", "science", "literature"];
-    const chips = document.createElement("div");
-    chips.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;";
-    subjects.forEach((roomId) => {
-      const subj = npc.subjects[roomId];
-      const chip = document.createElement("span");
-      const done = subj.completed;
-      chip.textContent = roomId + (done ? " ✓" : " " + subj.correct + "/" + COMPLETION_THRESHOLD);
-      chip.style.cssText = "padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;background:" + (done ? "rgba(255,77,77,0.2)" : "var(--bg-elev)") + ";color:" + (done ? "#ff8c8c" : "var(--text-soft)") + ";";
-      chips.appendChild(chip);
-    });
-    ro.appendChild(chips);
-    sheetCard.appendChild(ro);
-    const actions = document.createElement("div");
-    actions.className = "sheet-actions";
-    const close = document.createElement("button");
-    close.textContent = "Close";
-    close.addEventListener("click", closeSheet);
-    actions.appendChild(close);
-    sheetCard.appendChild(actions);
   }
   function studentVibe(id) {
     return ({
@@ -2477,62 +2741,33 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     }
   }
   function renderSheetReadonly(c, playbooks) {
-    const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, blurb: "" };
-    sheetCard.innerHTML = "";
-    const h = document.createElement("h2");
-    h.textContent = c.name;
-    sheetCard.appendChild(h);
-    const sub = document.createElement("p");
-    sub.className = "sub";
-    sub.textContent = pb.name + " · " + (lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Junior") + " · " + (c.xp ?? 0) + " XP";
-    sheetCard.appendChild(sub);
-    const ro = document.createElement("div");
-    ro.className = "sheet-readonly";
-    [
-      ["Stats", "HEAD " + fmtStat(c.stats.head) + " · HEART " + fmtStat(c.stats.heart) + " · HUSTLE " + fmtStat(c.stats.hustle) + " · HONOR " + fmtStat(c.stats.honor)],
-      ["Starting move", pb.startingMove ? pb.startingMove.name + " — " + pb.startingMove.description : "—"],
-      ["Conditions", (c.conditions || []).join(", ") || "(none)"],
-      ["Strings", Object.keys(c.strings || {}).length ? Object.entries(c.strings).map(([k, v]) => k + ":" + v).join(" · ") : "(none yet)"],
-    ].forEach(([k, v]) => {
-      const row = document.createElement("div");
-      row.className = "row";
-      const ke = document.createElement("span"); ke.className = "k"; ke.textContent = k;
-      const ve = document.createElement("span"); ve.className = "v"; ve.textContent = v;
-      row.appendChild(ke); row.appendChild(ve);
-      ro.appendChild(row);
+    const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
+    const grade = lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Junior";
+    appendCard({
+      role: "player",
+      name: c.name,
+      subtitle: pb.name + " · " + grade + " · " + (c.xp ?? 0) + " XP",
+      portraitUrl: c.portraitDataUrl || (apiBase + "/assets/teachers/ruby-full.png"),
+      accent: pb.accent,
+      stats: c.stats,
+      bodyText: c.personality,
+      quote: c.arcAnswer,
+      footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
+      actions: [
+        {
+          label: "Reroll character",
+          secondary: true,
+          onClick: async () => {
+            if (!confirm("Throw away " + c.name + " and roll a new student? Your XP and class progress will be reset too.")) return;
+            await command({ type: "clear-character" });
+            await command({ type: "reset" });
+            sheetAutoShown = false;
+            renderSheet();
+          },
+        },
+        { label: "Close", onClick: closeSheet },
+      ],
     });
-    if (c.arcAnswer) {
-      const arc = document.createElement("div");
-      arc.className = "arc";
-      arc.textContent = "“" + c.arcAnswer + "”";
-      ro.appendChild(arc);
-    }
-    if (c.personality) {
-      const p = document.createElement("div");
-      p.style.cssText = "color:var(--text);font-size:14px;line-height:1.5;background:var(--bg-elev);border-radius:10px;padding:10px 12px;";
-      p.textContent = c.personality;
-      ro.appendChild(p);
-    }
-    sheetCard.appendChild(ro);
-    const actions = document.createElement("div");
-    actions.className = "sheet-actions";
-    const reroll = document.createElement("button");
-    reroll.className = "secondary";
-    reroll.textContent = "Reroll character";
-    reroll.addEventListener("click", async () => {
-      if (!confirm("Throw away " + c.name + " and roll a new student? Your XP and class progress will be reset too.")) return;
-      reroll.disabled = true;
-      await command({ type: "clear-character" });
-      await command({ type: "reset" });
-      sheetAutoShown = false;
-      renderSheet();
-    });
-    const close = document.createElement("button");
-    close.textContent = "Close";
-    close.addEventListener("click", closeSheet);
-    actions.appendChild(reroll);
-    actions.appendChild(close);
-    sheetCard.appendChild(actions);
   }
   function fmtStat(n) { return (n >= 0 ? "+" : "") + n; }
   // Random-roll character creation. The player INHABITS an AI student rather
