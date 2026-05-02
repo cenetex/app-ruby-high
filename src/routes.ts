@@ -79,6 +79,10 @@ export interface RouteContext {
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS (controls Secure cookie flag). */
   isSecure?: boolean;
+  /** Best-known client IP (x-forwarded-for or socket.remoteAddress). Used for
+   *  rate limiting in the chat layer. Optional — when absent, rate limiting
+   *  falls back to per-cookie keys only. */
+  clientIp?: string | null;
 }
 
 interface FacultyTelemetry extends FacultyMember {
@@ -141,6 +145,16 @@ interface SessionTelemetry extends Record<string, unknown> {
     opinionResponses: Array<{ responder: string; text: string; submittedAt: number }>;
     opinionGrades: Array<{ responder: string; score: number; comment: string }>;
     bestResponder: string | null;
+    /** Advantage roll status — null until the player taps "Roll for advantage."
+     *  Once set, eliminated choices are crossed out in the viewer. */
+    advantage: {
+      rolled: boolean;
+      stat: string;
+      dice: [number, number];
+      total: number;
+      outcome: "hit" | "mixed" | "miss";
+      eliminated: string[];
+    } | null;
   } | null;
   /** True when the active question expects a written response, surfaced for
    *  the viewer to swap A/B/C/D for a textarea. */
@@ -235,6 +249,16 @@ function deriveActiveRound(state: QuizState) {
     opinionResponses: round.opinionResponses,
     opinionGrades: round.opinionGrades,
     bestResponder: round.bestResponder,
+    advantage: round.advantage
+      ? {
+          rolled: round.advantage.rolled,
+          stat: round.advantage.stat,
+          dice: round.advantage.dice,
+          total: round.advantage.total,
+          outcome: round.advantage.outcome,
+          eliminated: round.advantage.eliminated,
+        }
+      : null,
   };
 }
 
@@ -470,6 +494,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       cookieHeader: ctx.cookieHeader,
       callbackUrlBuilder: ctx.callbackUrlBuilder,
       isSecure: ctx.isSecure,
+      clientIp: ctx.clientIp,
       error: ctx.error,
       json: ctx.json,
       readJsonBody: ctx.readJsonBody,
@@ -617,8 +642,25 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         return true;
       }
 
+      if (type === "roll-advantage") {
+        const { state, result } = ruby.rollAdvantage(stateKey);
+        const message = result == null
+          ? "No active question to roll on."
+          : result.outcome === "hit"
+            ? `Hit (${result.total}) — eliminated ${result.eliminated.join(" & ")}.`
+            : result.outcome === "mixed"
+              ? `Mixed (${result.total}) — eliminated ${result.eliminated.join(" & ")}.`
+              : `Miss (${result.total}) — nothing's crossed out, but you're no worse off.`;
+        ctx.json(ctx.res, {
+          success: true,
+          message,
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
+        });
+        return true;
+      }
+
       if (type === "create-character") {
-        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string; personality?: string; portraitDataUrl?: string };
+        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string; flavorQuote?: string; personality?: string; portraitDataUrl?: string };
         if (!cb.name || !cb.playbookId || !cb.stats) {
           throw new Error("Missing name, playbookId, or stats.");
         }
@@ -633,6 +675,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           playbookId: cb.playbookId,
           stats: cb.stats,
           arcAnswer: cb.arcAnswer ?? "",
+          flavorQuote: cb.flavorQuote,
           personality: cb.personality ?? "",
           portraitDataUrl: cb.portraitDataUrl,
         });

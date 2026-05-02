@@ -44,18 +44,48 @@ const rubySvc = await (async () => {
 })();
 chatSvc.setRubyHighService(rubySvc);
 
+// 1 MB is generous for any legitimate request in this app — opinion text is
+// 2-3 sentences, character JSON is well under 4 KB, even portrait gen sends
+// a few hundred chars. A bigger body is either a malformed request or an
+// attempt to OOM the host.
+const MAX_BODY_BYTES = 1024 * 1024;
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (c) => chunks.push(c));
+    let bytes = 0;
+    let rejected = false;
+    req.on("data", (c) => {
+      if (rejected) return;
+      bytes += c.length;
+      if (bytes > MAX_BODY_BYTES) {
+        rejected = true;
+        const err = new Error("Request body too large");
+        err.statusCode = 413;
+        req.destroy();
+        reject(err);
+        return;
+      }
+      chunks.push(c);
+    });
     req.on("end", () => {
+      if (rejected) return;
       try {
         const buf = Buffer.concat(chunks).toString("utf8");
         resolve(buf ? JSON.parse(buf) : {});
       } catch (err) { reject(err); }
     });
-    req.on("error", reject);
+    req.on("error", (err) => { if (!rejected) reject(err); });
   });
+}
+
+function deriveClientIp(req) {
+  // Local dev usually surfaces socket.remoteAddress; if you're behind a proxy
+  // for testing, x-forwarded-for wins.
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length > 0) {
+    return xff.split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress ?? null;
 }
 
 function makeRouteContext(req, res, url) {
@@ -68,6 +98,7 @@ function makeRouteContext(req, res, url) {
     res,
     cookieHeader,
     isSecure: false,
+    clientIp: deriveClientIp(req),
     callbackUrlBuilder: (path) => {
       const base = new URL(PUBLIC_BASE);
       return base.origin + path;

@@ -38,16 +38,30 @@ export class StateStore {
   /**
    * Serializes writes through a single promise chain so concurrent saves
    * don't tear the file. Each save replaces the file atomically.
+   *
+   * The `.catch` before `.then` is load-bearing: without it, a single failed
+   * write would poison `writeChain` forever (every subsequent `.then(...)`
+   * inherits the rejection), and since callers `void` the returned promise
+   * the failure becomes an unhandled rejection rather than a logged error.
+   * The catch lets the chain recover so the next save tries again, and we
+   * surface the error to stderr so operators have something to find.
    */
   save(states: Iterable<QuizState>): Promise<void> {
     const snapshot = Array.from(states);
-    this.writeChain = this.writeChain.then(async () => {
+    const next = this.writeChain.catch(() => {}).then(async () => {
       await mkdir(dirname(this.path), { recursive: true });
       const tmp = `${this.path}.tmp`;
       await writeFile(tmp, JSON.stringify({ sessions: snapshot }, null, 2), "utf8");
       await rename(tmp, this.path);
     });
-    return this.writeChain;
+    // Log + swallow on the chain so a fire-and-forget caller can't silently
+    // accumulate unhandled rejections; return a fresh handle to the same
+    // work so explicit awaiters (tests, stop()) still see the failure.
+    this.writeChain = next.catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[ruby-high] state-store save failed (${this.path}):`, err);
+    });
+    return next;
   }
 
   describe(): string {

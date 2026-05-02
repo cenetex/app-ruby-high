@@ -40,14 +40,52 @@ export class AuthService extends Service {
 
   private readonly sessions = new Map<string, AuthRecord>();
   private readonly pending = new Map<string, PendingPkce>();
+  private gcTimer: ReturnType<typeof setInterval> | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<AuthService> {
-    return new AuthService(runtime);
+    const svc = new AuthService(runtime);
+    // Sweep expired sessions hourly. Read-side TTL checks only catch sessions
+    // that get touched again — without this, a user who never returns leaves
+    // an entry in the map until process restart.
+    svc.gcTimer = setInterval(() => svc.gcSessions(), 60 * 60 * 1000);
+    // Don't keep the event loop alive just for this timer.
+    if (svc.gcTimer && typeof (svc.gcTimer as { unref?: () => void }).unref === "function") {
+      (svc.gcTimer as { unref: () => void }).unref();
+    }
+    return svc;
   }
 
   async stop(): Promise<void> {
+    if (this.gcTimer) {
+      clearInterval(this.gcTimer);
+      this.gcTimer = null;
+    }
     this.sessions.clear();
     this.pending.clear();
+  }
+
+  /** Drop sessions past their TTL. Called periodically by the timer above and
+   *  exposed publicly so tests can drive it deterministically. */
+  gcSessions(now: number = Date.now()): { dropped: number; remaining: number } {
+    let dropped = 0;
+    for (const [k, v] of this.sessions) {
+      if (now - v.createdAt > SESSION_TTL_MS) {
+        this.sessions.delete(k);
+        dropped++;
+      }
+    }
+    return { dropped, remaining: this.sessions.size };
+  }
+
+  /** Test hook: how many sessions are currently tracked. */
+  sessionCount(): number {
+    return this.sessions.size;
+  }
+
+  /** Test hook: inject a session record so tests don't have to mock the full
+   *  PKCE flow. Production code should use completePkce. */
+  injectSessionForTest(token: string, record: AuthRecord): void {
+    this.sessions.set(token, record);
   }
 
   startPkce(callbackUrl: string): { state: string; redirectUrl: string } {

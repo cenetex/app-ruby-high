@@ -932,6 +932,51 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   .answer.D .badge { color: #1a2238; }
   .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; }
   .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.85; }
+  /* Advantage roll crossed this choice off the board. */
+  .answer.is-eliminated {
+    opacity: 0.35;
+    cursor: not-allowed;
+    text-decoration: line-through;
+    text-decoration-thickness: 3px;
+    text-decoration-color: rgba(0,0,0,0.55);
+    filter: grayscale(0.7);
+  }
+  .advantage-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px dashed rgba(255,255,255,0.15);
+    border-radius: 10px;
+  }
+  .advantage-btn {
+    appearance: none;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.25);
+  }
+  .advantage-btn:hover { filter: brightness(1.1); }
+  .advantage-btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+  .advantage-result {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: "SF Mono", "Menlo", monospace;
+    color: var(--text-soft);
+  }
+  .advantage-result.hit   { color: #b6f5b9; }
+  .advantage-result.mixed { color: #f5c98a; }
+  .advantage-result.miss  { color: #ffb1b1; }
 
   /* ── XP burst toast (lands on a successful roll, animated) ────────────── */
   .xp-burst {
@@ -1643,6 +1688,10 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
           <button class="answer C" data-pick="C" disabled><span class="badge">C</span><span class="label">—</span></button>
           <button class="answer D" data-pick="D" disabled><span class="badge">D</span><span class="label">—</span></button>
         </div>
+        <div class="advantage-bar" id="advantage-bar" hidden>
+          <button class="advantage-btn" id="advantage-btn" type="button">🎲 Roll for advantage</button>
+          <span class="advantage-result" id="advantage-result" hidden></span>
+        </div>
       </div>
       <div class="race-strip" id="race-strip" hidden>
         <span class="timer-pill" id="timer-pill"><span class="ring"></span><span id="timer-label">25s</span></span>
@@ -1766,6 +1815,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     boardReveal: $("board-reveal"),
     answersHost: $("answers-host"),
     answers: Array.from(document.querySelectorAll(".answer")),
+    advantageBar: $("advantage-bar"),
+    advantageBtn: $("advantage-btn"),
+    advantageResult: $("advantage-result"),
     blackboardFoot: $("blackboard-foot"),
     qnum: $("qnum"),
     nextBtn: $("next-btn"),
@@ -2533,6 +2585,62 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     // round may stay open for a few seconds while NPCs commit their picks.
   }
 
+  // ── advantage roll ──────────────────────────────────────────────────────
+  let rollingAdvantage = false;
+  function renderAdvantageBar(t) {
+    const round = t && t.active_round;
+    const isMcLive = !!(authed && t && t.current && round && !round.resolved
+      && round.type === "multiple-choice" && !t.is_opinion && t.character);
+    if (!isMcLive) {
+      els.advantageBar.hidden = true;
+      els.advantageResult.hidden = true;
+      // Make sure no stale eliminated styling lingers from the previous round.
+      els.answers.forEach((btn) => btn.classList.remove("is-eliminated"));
+      return;
+    }
+    els.advantageBar.hidden = false;
+    const adv = round.advantage;
+    const playerLocked = round.player.isLocked;
+    if (adv && adv.rolled) {
+      els.advantageBtn.disabled = true;
+      els.advantageBtn.textContent = "🎲 Rolled";
+      els.advantageResult.hidden = false;
+      els.advantageResult.className = "advantage-result " + adv.outcome;
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      const mod = adv.total - (adv.dice[0] + adv.dice[1]);
+      const tail = adv.outcome === "miss"
+        ? "no penalty"
+        : adv.outcome === "mixed"
+          ? "crossed out " + (adv.eliminated[0] || "—")
+          : "crossed out " + adv.eliminated.join(" & ");
+      els.advantageResult.textContent =
+        adv.dice[0] + "+" + adv.dice[1] + fmt(mod) + " " + adv.stat.toUpperCase()
+        + " = " + adv.total + " · " + adv.outcome + " · " + tail;
+      // Cross out the eliminated answer buttons.
+      els.answers.forEach((btn) => {
+        const elim = (adv.eliminated || []).includes(btn.dataset.pick);
+        btn.classList.toggle("is-eliminated", elim);
+        if (elim) btn.disabled = true;
+      });
+    } else {
+      els.advantageBtn.disabled = playerLocked || rollingAdvantage;
+      els.advantageBtn.textContent = "🎲 Roll for advantage";
+      els.advantageResult.hidden = true;
+      els.answers.forEach((btn) => btn.classList.remove("is-eliminated"));
+    }
+  }
+  async function rollAdvantage() {
+    if (rollingAdvantage) return;
+    rollingAdvantage = true;
+    els.advantageBtn.disabled = true;
+    try {
+      await command({ type: "roll-advantage" });
+    } finally {
+      rollingAdvantage = false;
+    }
+  }
+  els.advantageBtn.addEventListener("click", rollAdvantage);
+
   // ── render (the master apply-telemetry-to-DOM function) ──────────────────
   function setAccent(color) {
     document.documentElement.style.setProperty("--accent", color || "#d22a2a");
@@ -2591,6 +2699,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     // Render blackboard panel (single, in-place updates).
     renderBlackboard(t.current || null, fac || null, t.current_grade);
     renderRaceStrip(t);
+    renderAdvantageBar(t);
     if (t.is_opinion && t.active_round) {
       renderOpinionsIntoChat(t.active_round);
       maybeAutoTriggerGrading(t);
@@ -2809,11 +2918,12 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     if (!fac) return;
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
-    const subjectMap = { ruby: "Homeroom · ratimics lore + general", "sally-science": "Science Lab · physics, chem, bio, earth-sci", "professor-edward": "Library · postwar literature & literary theory" };
+    const subjectMap = { ruby: "Homeroom · school lore + general", "sally-science": "Science Lab · physics, chem, bio, earth-sci", "professor-edward": "Library · postwar literature & literary theory" };
+    // Short, in-voice quotes — MTG flavor text. One-liner each, character speaking.
     const signatureMap = {
-      ruby: "Host of the school. Picks the right teacher for the topic. Calls handoffs cleanly.",
-      "sally-science": "STEM specialist. Won't fake expertise outside her range.",
-      "professor-edward": "Mid-century literature. Reads everything as a conversation between books.",
+      ruby: "My job's the door. The teaching happens in the rooms.",
+      "sally-science": "I'd rather you be wrong with reasons than right by accident.",
+      "professor-edward": "Every wrong answer has a half-truth folded inside it. We start there.",
     };
     appendCard({
       role: "teacher",
@@ -2848,13 +2958,15 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     });
   }
   function studentVibe(id) {
+    // In-voice one-liners — what each student would actually say. MTG-style
+    // flavor text where the line itself characterizes the speaker.
     return ({
-      lyra: "Anxious overachiever. Sweats every wrong answer.",
-      sami: "Dry sarcastic chill. Pretends not to care, secretly knows.",
-      ravi: "Loud, drops obscure facts, wants the front row.",
-      indra: "Quiet observer. Drops one perfect line a day.",
-      mika: "Bright supportive jock energy. Will hype you mid-question.",
-      noor: "Deadpan one-liner master. Roasts the question, not you.",
+      lyra: "wait what — i KNEW it was c. ok im rewriting my notes.",
+      sami: "respectfully, ouch. couldve been you.",
+      ravi: "OK so technically — wait, sorry, am i shouting again",
+      indra: "the answer was always c.",
+      mika: "you cooked. for real.",
+      noor: "the test designer is in this room and is laughing.",
     })[id] || "—";
   }
 
@@ -2889,7 +3001,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       portraitUrl: c.portraitDataUrl || (apiBase + "/assets/teachers/ruby-full.png"),
       accent: pb.accent,
       stats: c.stats,
-      quote: c.arcAnswer,
+      // Card quote prefers the MTG-style flavor line; legacy characters
+      // created before that field existed fall back to the arc answer.
+      quote: c.flavorQuote || c.arcAnswer,
       footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
       actions: [
         {
@@ -3006,7 +3120,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
 
       const arc = document.createElement("div");
       arc.style.cssText = "border-left:3px solid var(--accent);padding:6px 10px;color:var(--text-soft);font-style:italic;font-size:13px;line-height:1.5;background:var(--bg-elev);border-radius:0 8px 8px 0;";
-      arc.textContent = "“" + c.arcAnswer + "”";
+      // Show the flavor quote on the preview when present; legacy rolls
+      // (no flavorQuote yet) fall back to the arc answer.
+      arc.textContent = "“" + (c.flavorQuote || c.arcAnswer) + "”";
       preview.appendChild(arc);
 
       const move = document.createElement("div");

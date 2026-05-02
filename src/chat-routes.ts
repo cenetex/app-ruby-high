@@ -2,12 +2,24 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { AuthService } from "./services/auth-service.js";
 import { ChatService } from "./services/chat-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
+import { TokenBucket } from "./services/rate-limit.js";
+import { parseTeacherGrades } from "./grading.js";
 import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
 
 const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
+
+/** Throw a debuggable error from an OpenRouter HTTP response. The default
+ *  `throw new Error("OpenRouter " + status)` pattern dropped the body, which
+ *  hid the real cause (auth issue, model not found, content filter, etc).
+ *  This helper preserves the body text up to a sane limit. */
+async function throwOpenRouterError(r: Response, label: string): Promise<never> {
+  const body = await r.text().catch(() => "");
+  const trimmed = body.length > 500 ? body.slice(0, 500) + "…" : body;
+  throw new Error(`${label}: OpenRouter ${r.status} ${r.statusText}${trimmed ? ` — ${trimmed}` : ""}`);
+}
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
@@ -118,7 +130,7 @@ async function generateOpinionResponse(args: {
       temperature: 0.9,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   return text.replace(/^["'\s]+|["'\s]+$/g, "");
@@ -133,11 +145,7 @@ async function gradeOpinionResponses(args: {
   rubric?: string;
   responses: Array<{ responder: string; displayName: string; text: string }>;
   playerName: string;
-}): Promise<{
-  grades: Array<{ responder: string; score: number; comment: string }>;
-  bestResponder: string | null;
-  narrativeText: string;
-}> {
+}): Promise<import("./grading.js").ParsedTeacherGrades> {
   const teacher = teacherById(args.facultyId);
   const responseList = args.responses.map((r, i) =>
     `[${i + 1}] ${r.displayName} (responder=${r.responder}):\n${r.text}\n`
@@ -175,31 +183,10 @@ async function gradeOpinionResponses(args: {
       temperature: 0.6,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
-  const grades: Array<{ responder: string; score: number; comment: string }> = [];
-  let bestResponder: string | null = null;
-  const lines = text.split(/\r?\n/);
-  const narrativeLines: string[] = [];
-  for (const line of lines) {
-    const gm = line.match(/^GRADE\s+responder=([\w-]+)\s+score=(\d+(?:\.\d+)?)\s+comment=(.+)$/i);
-    if (gm) {
-      grades.push({
-        responder: gm[1] ?? "",
-        score: Math.max(0, Math.min(10, parseFloat(gm[2] ?? "0"))),
-        comment: (gm[3] ?? "").trim(),
-      });
-      continue;
-    }
-    const bm = line.match(/^BEST:\s*([\w-]+)/i);
-    if (bm) {
-      bestResponder = bm[1] ?? null;
-      continue;
-    }
-    narrativeLines.push(line);
-  }
-  return { grades, bestResponder, narrativeText: narrativeLines.join("\n").trim() };
+  return parseTeacherGrades(text);
 }
 
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
@@ -325,6 +312,7 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   playbookId: string;
   stats: CharacterStats;
   arcAnswer: string;
+  flavorQuote: string;
   personality: string;
 }> {
   const playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
@@ -340,11 +328,12 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
     `Name vibe (HARD CONSTRAINT, this run): ${nameVibe}`,
     "",
     "Generate JSON exactly in this shape (no other text, no markdown, no code fences):",
-    `{"name":"...","arcAnswer":"...","personality":"..."}`,
+    `{"name":"...","arcAnswer":"...","flavorQuote":"...","personality":"..."}`,
     "",
     "Rules for each field:",
     "- name: a real plausible name following the name-vibe constraint above. Don't anglicize or simplify it. Use proper diacritics where they belong. The vibe is locked — do NOT swap it for a different cultural template. Avoid these overused names entirely: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
     "- arcAnswer: 1-2 sentences in the character's voice answering the hook question above. Specific, not abstract. First person.",
+    `- flavorQuote: ONE short line in the character's voice — Magic: the Gathering flavor text. 6-18 words, max two short sentences. Captures their attitude in a moment, not their backstory. NOT an answer to the hook question. NOT a thesis statement. Examples of the right shape (from other Ruby High characters, do NOT copy these):\n    Sally Science: "I'd rather you be wrong with reasons than right by accident."\n    Edward: "Every wrong answer has a half-truth folded inside it. We start there."\n    Lyra: "wait what — i KNEW it was c. ok im rewriting my notes."\n  Make this character's quote feel as specific to them as those feel to their speakers. No surrounding quote marks — the renderer adds them.`,
     "- personality: 2-3 sentences describing how this character SHOWS UP in class — quirks, what they care about, what they do when bored, who they sit with. Tie at least one trait back to a high stat (HEAD = sharp, HEART = warm, HUSTLE = quick, HONOR = principled) and at least one to a low stat (the same negative). Third person.",
   ].join("\n");
 
@@ -362,16 +351,16 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
         { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
         { role: "user", content: userPrompt },
       ],
-      max_tokens: 380,
+      max_tokens: 480,
       temperature: 1.1,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();
   // Strip code fences if the model added any despite instructions.
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  let parsed: { name?: unknown; arcAnswer?: unknown; personality?: unknown };
+  let parsed: { name?: unknown; arcAnswer?: unknown; flavorQuote?: unknown; personality?: unknown };
   try {
     parsed = JSON.parse(cleaned);
   } catch (err) {
@@ -379,11 +368,13 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   }
   const name = String(parsed.name ?? "").trim();
   const arcAnswer = String(parsed.arcAnswer ?? "").trim();
+  // Trim wrapping curly/straight quotes if the model added them despite instructions.
+  const flavorQuote = String(parsed.flavorQuote ?? "").trim().replace(/^["“'\s]+|["”'\s]+$/g, "");
   const personality = String(parsed.personality ?? "").trim();
   if (!name || !arcAnswer || !personality) {
     throw new Error("Generated character missing required fields.");
   }
-  return { name, playbookId: playbook.id, stats, arcAnswer, personality };
+  return { name, playbookId: playbook.id, stats, arcAnswer, flavorQuote, personality };
 }
 
 async function generateStudentLine(args: {
@@ -427,7 +418,7 @@ async function generateStudentLine(args: {
       temperature: 0.95,
     }),
   });
-  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  if (!r.ok) await throwOpenRouterError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content?.trim() ?? "";
   // Strip wrapping quotes if model added them.
@@ -446,9 +437,46 @@ export interface ChatRouteContext {
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS. Controls `Secure` cookie attribute. */
   isSecure?: boolean;
+  /** Best-known client IP, derived by the host (x-forwarded-for or socket.remoteAddress).
+   *  Optional — when absent, rate limiting falls back to a per-cookie key only. */
+  clientIp?: string | null;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
+}
+
+/** Module-scope rate limiter for LLM-backed chat endpoints. 60 requests in a
+ *  burst, refilling at 1/sec — a comfortable budget for an actively-playing
+ *  user, tight enough to stop a runaway script from melting OpenRouter spend.
+ *
+ *  Keyed by `${clientIp}:${sessionToken|"anon"}` so a signed-in user on a
+ *  shared NAT and a script-from-the-same-IP get separate buckets. */
+const CHAT_LIMITER = new TokenBucket(60, 1);
+const PORTRAIT_LIMITER = new TokenBucket(8, 1 / 30); // image gen: 8 burst, ~1 every 30s
+
+/** Drop idle keys hourly so the maps don't grow unbounded for one-off IPs. */
+const limiterGcTimer = setInterval(() => {
+  const now = Date.now();
+  CHAT_LIMITER.gc(now);
+  PORTRAIT_LIMITER.gc(now);
+}, 60 * 60 * 1000);
+if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGcTimer) {
+  (limiterGcTimer as { unref: () => void }).unref();
+}
+
+function rateLimitKey(ctx: ChatRouteContext, sessionToken: string | null): string {
+  const ip = ctx.clientIp || "no-ip";
+  return `${ip}:${sessionToken ?? "anon"}`;
+}
+
+/** 429 helper. Sets Retry-After before delegating to ctx.error so the host's
+ *  error renderer doesn't have to know about rate-limit semantics. */
+function reject429(ctx: ChatRouteContext, retryAfterSeconds: number): void {
+  const r = ctx.res as { setHeader?: (n: string, v: string) => void };
+  if (typeof r.setHeader === "function") {
+    r.setHeader("Retry-After", String(Math.max(1, retryAfterSeconds)));
+  }
+  ctx.error(ctx.res, "Too many requests — slow down a moment.", 429);
 }
 
 const CHAT_PREFIX = "/api/apps/ruby-high/chat";
@@ -592,6 +620,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated. Sign in with OpenRouter first.", 401);
       return true;
     }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { faculty?: string; message?: string; model?: string }
@@ -651,6 +684,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const record = auth.resolve(token);
     if (!record || !token) {
       ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
@@ -766,6 +804,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { studentId?: string; situation?: string; note?: string; faculty?: string }
       | null;
@@ -802,6 +845,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const record = auth.resolve(token);
     if (!record || !token) {
       ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { text?: string; force?: boolean } | null;
@@ -919,6 +967,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
       return true;
     }
+    // Image generation is the most expensive call we make — keep its bucket
+    // separate and tighter than the chat one.
+    const rlKey = rateLimitKey(ctx, token);
+    if (!PORTRAIT_LIMITER.take(rlKey)) {
+      reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { name?: string; playbookId?: string; personality?: string; stats?: { head?: number; heart?: number; hustle?: number; honor?: number } }
       | null;
@@ -946,6 +1001,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const record = auth.resolve(token);
     if (!record || !token) {
       ctx.error(ctx.res, "Sign in with OpenRouter first to roll a character.", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
     try {
