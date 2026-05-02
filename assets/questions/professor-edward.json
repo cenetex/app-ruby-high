@@ -1,0 +1,142 @@
+{
+  "faculty": "professor-edward",
+  "displayName": "Professor Edward",
+  "description": "Edward's domain: mid-century literary theory, the novel, the postwar canon. Reads everything as a conversation between books.",
+  "questions": [
+    {
+      "id": "edward-001",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "Who wrote *Beloved*?",
+      "options": { "A": "Toni Morrison", "B": "James Baldwin", "C": "Zadie Smith", "D": "Alice Walker" },
+      "correct": "A",
+      "explanation": "Beloved (1987) — Pulitzer 1988. Morrison won the Nobel in 1993."
+    },
+    {
+      "id": "edward-002",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "Which novel opens with 'Call me Ishmael.'?",
+      "options": { "A": "*The Old Man and the Sea*", "B": "*Moby-Dick*", "C": "*Heart of Darkness*", "D": "*Lord Jim*" },
+      "correct": "B",
+      "explanation": "Melville, 1851. One of the most famous opening lines in English fiction."
+    },
+    {
+      "id": "edward-003",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "*Invisible Man* (1952) was written by…",
+      "options": { "A": "Richard Wright", "B": "James Baldwin", "C": "Ralph Ellison", "D": "Langston Hughes" },
+      "correct": "C",
+      "explanation": "Ellison's only novel published in his lifetime. Won the National Book Award 1953."
+    },
+    {
+      "id": "edward-004",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "Which critic is most associated with the 'death of the author' essay (1967)?",
+      "options": { "A": "Jacques Derrida", "B": "Roland Barthes", "C": "Michel Foucault", "D": "Northrop Frye" },
+      "correct": "B",
+      "explanation": "Barthes argued that a text's unity lies in its destination — the reader — not its origin."
+    },
+    {
+      "id": "edward-005",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "*Catch-22* satirizes which institution most directly?",
+      "options": { "A": "Catholic Church", "B": "U.S. military bureaucracy", "C": "British monarchy", "D": "Wall Street" },
+      "correct": "B",
+      "explanation": "Heller, 1961. Set in WWII, but the bureaucratic absurdism is the target."
+    },
+    {
+      "id": "edward-006",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "The term 'New Criticism' is most associated with which decade?",
+      "options": { "A": "1900s", "B": "1930s-1940s", "C": "1960s", "D": "1980s" },
+      "correct": "B",
+      "explanation": "Brooks, Warren, Wimsatt — close reading of the text as autonomous object. Later eclipsed by post-structuralism."
+    },
+    {
+      "id": "edward-007",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "Which 1955 novel by Vladimir Nabokov was first published in Paris because U.S. publishers refused?",
+      "options": { "A": "*Pale Fire*", "B": "*Lolita*", "C": "*Pnin*", "D": "*Ada*" },
+      "correct": "B",
+      "explanation": "Olympia Press, 1955. U.S. publication followed in 1958 once the obscenity questions were tested."
+    },
+    {
+      "id": "edward-008",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "Which writer coined the term 'iceberg theory' for prose?",
+      "options": { "A": "F. Scott Fitzgerald", "B": "Ernest Hemingway", "C": "John Steinbeck", "D": "William Faulkner" },
+      "correct": "B",
+      "explanation": "Hemingway: most of the meaning sits below the waterline — implication over statement."
+    },
+    {
+      "id": "edward-009",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "Mikhail Bakhtin's central concept describing the multiplicity of voices within a novel is…",
+      "options": { "A": "Heteroglossia", "B": "Catachresis", "C": "Synecdoche", "D": "Anagnorisis" },
+      "correct": "A",
+      "explanation": "Heteroglossia — many social voices coexisting in one work, especially the novel as a polyphonic form."
+    },
+    {
+      "id": "edward-010",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "Which post-war movement is *Howl* (1956) most often associated with?",
+      "options": { "A": "Beat Generation", "B": "Black Mountain School", "C": "New York School", "D": "Confessional poets" },
+      "correct": "A",
+      "explanation": "Ginsberg's *Howl* is the defining Beat work; the obscenity trial in 1957 was a free-speech landmark."
+    },
+    {
+      "id": "edward-011",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "In Pynchon's *Gravity's Rainbow*, what's the V-2 rocket primarily a metaphor for?",
+      "options": { "A": "Romantic love", "B": "Cause and effect collapsing into prediction", "C": "Bureaucratic friction", "D": "The unconscious" },
+      "correct": "B",
+      "explanation": "Edward would push back here, but the dominant reading: the rocket arrives before its sound — effect before cause."
+    },
+    {
+      "id": "edward-012",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "Harold Bloom's 'anxiety of influence' (1973) describes…",
+      "options": { "A": "Writers misreading their precursors to make space for themselves", "B": "Critics inventing new terms to escape their advisors", "C": "Readers projecting biography onto text", "D": "Editors over-revising poems" },
+      "correct": "A",
+      "explanation": "Bloom's idea: strong poets willfully misread their fathers — the canon advances by creative misprision."
+    },
+    {
+      "id": "edward-013",
+      "subject": "mid-century",
+      "difficulty": "easy",
+      "prompt": "Who wrote *On the Road* (1957)?",
+      "options": { "A": "William S. Burroughs", "B": "Jack Kerouac", "C": "Allen Ginsberg", "D": "Ken Kesey" },
+      "correct": "B",
+      "explanation": "Kerouac. Famously typed on a 120-foot scroll across three weeks in 1951."
+    },
+    {
+      "id": "edward-014",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "Which novel ends with 'So we beat on, boats against the current, borne back ceaselessly into the past.'?",
+      "options": { "A": "*Tender Is the Night*", "B": "*The Great Gatsby*", "C": "*This Side of Paradise*", "D": "*The Beautiful and Damned*" },
+      "correct": "B",
+      "explanation": "Fitzgerald, 1925. One of the most-quoted closing lines in American literature."
+    },
+    {
+      "id": "edward-015",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "Edward Said's *Orientalism* (1978) is foundational to which critical school?",
+      "options": { "A": "Reader-response", "B": "Postcolonial criticism", "C": "Russian formalism", "D": "Eco-criticism" },
+      "correct": "B",
+      "explanation": "Said showed how European scholarship constructed 'the Orient' as a discursive object that justified imperial power."
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+{
+  "faculty": "ruby",
+  "displayName": "Ruby",
+  "description": "Ruby's classroom: ecosystem lore, agent culture, on-chain history, general knowledge.",
+  "questions": [
+    {
+      "id": "ruby-001",
+      "subject": "general-knowledge",
+      "difficulty": "easy",
+      "prompt": "What does HTTP stand for?",
+      "options": { "A": "HyperText Transfer Protocol", "B": "High-Test Token Passing", "C": "Home Type Text Process", "D": "Hypothetical Transfer Tape" },
+      "correct": "A",
+      "explanation": "Tim Berners-Lee, 1989. The 'S' came later."
+    },
+    {
+      "id": "ruby-002",
+      "subject": "ratimics-lore",
+      "difficulty": "easy",
+      "prompt": "Which RATiMICS avatar is described as 'a catboy who lives on the internet'?",
+      "options": { "A": "Ruby", "B": "Kyro", "C": "Sally", "D": "Edward" },
+      "correct": "B",
+      "explanation": "Kyro is the primary deployed AI persona on aws-swarm."
+    },
+    {
+      "id": "ruby-003",
+      "subject": "general-knowledge",
+      "difficulty": "easy",
+      "prompt": "What year did Bitcoin's whitepaper appear?",
+      "options": { "A": "2006", "B": "2008", "C": "2010", "D": "2013" },
+      "correct": "B",
+      "explanation": "October 31, 2008. Satoshi posted to the cypherpunks list."
+    },
+    {
+      "id": "ruby-004",
+      "subject": "agent-culture",
+      "difficulty": "medium",
+      "prompt": "In ElizaOS, which primitive groups multiple agents into a shared 'space'?",
+      "options": { "A": "Memory", "B": "World", "C": "Hook", "D": "Action" },
+      "correct": "B",
+      "explanation": "World is the top-level container; Rooms live inside it; Entities (agents/users) join Rooms."
+    },
+    {
+      "id": "ruby-005",
+      "subject": "general-knowledge",
+      "difficulty": "medium",
+      "prompt": "Which Solana program type holds executable code?",
+      "options": { "A": "Account", "B": "Program", "C": "Sysvar", "D": "Mint" },
+      "correct": "B",
+      "explanation": "Programs are read-only Account-resident binaries; user state lives in separate Accounts."
+    },
+    {
+      "id": "ruby-006",
+      "subject": "ratimics-lore",
+      "difficulty": "medium",
+      "prompt": "What's the name of the agent-to-agent bridge meant to connect every RATiMICS project?",
+      "options": { "A": "Hyperscape", "B": "Raticross", "C": "Cosyworld", "D": "Solana Swarm" },
+      "correct": "B",
+      "explanation": "Raticross is the protocol + adapters for cross-app agent communication."
+    },
+    {
+      "id": "ruby-007",
+      "subject": "general-knowledge",
+      "difficulty": "medium",
+      "prompt": "In a B-tree of order m, what's the maximum number of children per node?",
+      "options": { "A": "m - 1", "B": "m", "C": "m + 1", "D": "2m" },
+      "correct": "B",
+      "explanation": "Order m means up to m children, m-1 keys per non-leaf node."
+    },
+    {
+      "id": "ruby-008",
+      "subject": "agent-culture",
+      "difficulty": "hard",
+      "prompt": "In the eliza memory model, which scope is per-conversation but visible to every entity in the room?",
+      "options": { "A": "private", "B": "shared", "C": "room", "D": "ephemeral" },
+      "correct": "C",
+      "explanation": "scope='room' is the per-channel context; private is per-entity, shared is global."
+    },
+    {
+      "id": "ruby-009",
+      "subject": "general-knowledge",
+      "difficulty": "hard",
+      "prompt": "Which sorting algorithm has a worst-case O(n log n) AND is in-place?",
+      "options": { "A": "Quicksort", "B": "Mergesort", "C": "Heapsort", "D": "Bubblesort" },
+      "correct": "C",
+      "explanation": "Heapsort is in-place with O(n log n) worst case. Quicksort is O(n²) worst, mergesort needs O(n) extra space."
+    },
+    {
+      "id": "ruby-010",
+      "subject": "ratimics-lore",
+      "difficulty": "hard",
+      "prompt": "What event marks the end of a tournament round in the Ruby High design?",
+      "options": { "A": "ROOM_LEFT", "B": "RUN_ENDED", "C": "ENTITY_KILLED", "D": "MATCH_OVER" },
+      "correct": "B",
+      "explanation": "RUN_ENDED is the eliza event hooked for round finalization in the Ruby High design doc."
+    },
+    {
+      "id": "ruby-011",
+      "subject": "general-knowledge",
+      "difficulty": "easy",
+      "prompt": "Which protocol does HTTPS layer over TCP?",
+      "options": { "A": "TLS", "B": "SSH", "C": "DNSSEC", "D": "GPG" },
+      "correct": "A",
+      "explanation": "Transport Layer Security; SSL was its predecessor."
+    },
+    {
+      "id": "ruby-012",
+      "subject": "general-knowledge",
+      "difficulty": "easy",
+      "prompt": "What does 'API' stand for?",
+      "options": { "A": "Applied Programming Index", "B": "Application Programming Interface", "C": "Agent Pipeline Invocation", "D": "Async Process Identifier" },
+      "correct": "B",
+      "explanation": "Application Programming Interface. Coined in the 1960s for subroutine-call contracts."
+    },
+    {
+      "id": "ruby-013",
+      "subject": "agent-culture",
+      "difficulty": "medium",
+      "prompt": "In MCP (Model Context Protocol), what does a 'tool' return to the model?",
+      "options": { "A": "A new system prompt", "B": "Structured content blocks", "C": "Raw memory bytes", "D": "Another tool's name" },
+      "correct": "B",
+      "explanation": "MCP tools return content blocks — text, images, resources — that the model includes in context."
+    },
+    {
+      "id": "ruby-014",
+      "subject": "general-knowledge",
+      "difficulty": "medium",
+      "prompt": "What's the time complexity of a hash table lookup in the average case?",
+      "options": { "A": "O(1)", "B": "O(log n)", "C": "O(n)", "D": "O(n log n)" },
+      "correct": "A",
+      "explanation": "Constant on average; O(n) worst case with adversarial collisions."
+    },
+    {
+      "id": "ruby-015",
+      "subject": "ratimics-lore",
+      "difficulty": "hard",
+      "prompt": "Which $RATI value-prop is the WHITEPAPER built around?",
+      "options": { "A": "Meme coin governance", "B": "NFT minting fees", "C": "Unit of account for agent labor", "D": "DEX liquidity rebates" },
+      "correct": "C",
+      "explanation": "$RATI is positioned as the future unit of account for autonomous agent labor markets."
+    }
+  ]
+}

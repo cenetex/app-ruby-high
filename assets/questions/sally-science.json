@@ -1,0 +1,142 @@
+{
+  "faculty": "sally-science",
+  "displayName": "Sally Science",
+  "description": "Sally's domain: physics, chemistry, biology, earth science. Loves a clean experiment and a clean explanation.",
+  "questions": [
+    {
+      "id": "sally-001",
+      "subject": "physics",
+      "difficulty": "easy",
+      "prompt": "Speed of light in vacuum is approximately…",
+      "options": { "A": "3 × 10^6 m/s", "B": "3 × 10^8 m/s", "C": "3 × 10^10 m/s", "D": "3 × 10^4 m/s" },
+      "correct": "B",
+      "explanation": "299,792,458 m/s exactly — the universal speed limit, c."
+    },
+    {
+      "id": "sally-002",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "prompt": "What's the chemical symbol for gold?",
+      "options": { "A": "Go", "B": "Ag", "C": "Au", "D": "Gd" },
+      "correct": "C",
+      "explanation": "Au, from Latin 'aurum'. Ag is silver, Gd is gadolinium."
+    },
+    {
+      "id": "sally-003",
+      "subject": "biology",
+      "difficulty": "easy",
+      "prompt": "Which organelle is known as the powerhouse of the cell?",
+      "options": { "A": "Nucleus", "B": "Mitochondrion", "C": "Ribosome", "D": "Lysosome" },
+      "correct": "B",
+      "explanation": "Mitochondria run oxidative phosphorylation to make ATP — energy currency of the cell."
+    },
+    {
+      "id": "sally-004",
+      "subject": "earth-science",
+      "difficulty": "easy",
+      "prompt": "Which layer of the Earth is liquid?",
+      "options": { "A": "Crust", "B": "Mantle", "C": "Outer core", "D": "Inner core" },
+      "correct": "C",
+      "explanation": "The outer core is liquid iron-nickel; the inner core is solid despite being hotter, because of pressure."
+    },
+    {
+      "id": "sally-005",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "What's Planck's constant in J·s, to two significant figures?",
+      "options": { "A": "6.6 × 10^-34", "B": "1.6 × 10^-19", "C": "9.1 × 10^-31", "D": "8.3 × 10^-23" },
+      "correct": "A",
+      "explanation": "h ≈ 6.626 × 10^-34 J·s. (B is the elementary charge, C is the electron mass.)"
+    },
+    {
+      "id": "sally-006",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "prompt": "What's the pH of pure water at 25°C?",
+      "options": { "A": "0", "B": "5.6", "C": "7", "D": "14" },
+      "correct": "C",
+      "explanation": "Neutral by definition. Acid rain is ~5.6 because dissolved CO₂ acidifies water."
+    },
+    {
+      "id": "sally-007",
+      "subject": "biology",
+      "difficulty": "medium",
+      "prompt": "Which DNA base does NOT pair with thymine in normal DNA?",
+      "options": { "A": "Adenine", "B": "Guanine", "C": "Cytosine", "D": "Uracil" },
+      "correct": "B",
+      "explanation": "Thymine pairs with adenine. (Uracil substitutes for thymine in RNA, where it pairs with adenine too.)"
+    },
+    {
+      "id": "sally-008",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "Which of these is NOT a fundamental force of nature?",
+      "options": { "A": "Gravity", "B": "Electromagnetism", "C": "Strong nuclear", "D": "Centrifugal" },
+      "correct": "D",
+      "explanation": "Centrifugal is a pseudo-force in rotating frames. The four fundamental forces are gravity, EM, strong, and weak."
+    },
+    {
+      "id": "sally-009",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "How many d electrons does neutral chromium (Z=24) have in its ground state?",
+      "options": { "A": "4", "B": "5", "C": "6", "D": "9" },
+      "correct": "B",
+      "explanation": "Cr is [Ar] 3d⁵ 4s¹ — half-filled d shell stabilizes the configuration over the expected 3d⁴ 4s²."
+    },
+    {
+      "id": "sally-010",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "Which enzyme unwinds the DNA double helix during replication?",
+      "options": { "A": "Polymerase", "B": "Ligase", "C": "Helicase", "D": "Topoisomerase" },
+      "correct": "C",
+      "explanation": "Helicase breaks H-bonds between complementary bases; topoisomerase relieves the torsional strain ahead of it."
+    },
+    {
+      "id": "sally-011",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "In special relativity, what's the Lorentz factor γ for v = 0.6c?",
+      "options": { "A": "1.00", "B": "1.25", "C": "1.67", "D": "2.00" },
+      "correct": "B",
+      "explanation": "γ = 1/√(1 - v²/c²) = 1/√(1 - 0.36) = 1/√0.64 = 1/0.8 = 1.25."
+    },
+    {
+      "id": "sally-012",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "Which gas makes up the largest share of Earth's atmosphere?",
+      "options": { "A": "Oxygen", "B": "Nitrogen", "C": "Carbon dioxide", "D": "Argon" },
+      "correct": "B",
+      "explanation": "N₂ ≈ 78%, O₂ ≈ 21%, Ar ≈ 0.9%, CO₂ ≈ 0.04%."
+    },
+    {
+      "id": "sally-013",
+      "subject": "physics",
+      "difficulty": "easy",
+      "prompt": "What's the SI unit of electrical resistance?",
+      "options": { "A": "Volt", "B": "Ohm", "C": "Watt", "D": "Farad" },
+      "correct": "B",
+      "explanation": "Ohm (Ω). Volt is potential, watt is power, farad is capacitance."
+    },
+    {
+      "id": "sally-014",
+      "subject": "biology",
+      "difficulty": "easy",
+      "prompt": "How many chambers does a typical mammalian heart have?",
+      "options": { "A": "2", "B": "3", "C": "4", "D": "5" },
+      "correct": "C",
+      "explanation": "Two atria + two ventricles. Fish have 2; amphibians have 3."
+    },
+    {
+      "id": "sally-015",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "prompt": "Avogadro's number is approximately…",
+      "options": { "A": "6.02 × 10^21", "B": "6.02 × 10^23", "C": "6.02 × 10^25", "D": "9.11 × 10^23" },
+      "correct": "B",
+      "explanation": "6.022 × 10²³ — particles in one mole of substance."
+    }
+  ]
+}

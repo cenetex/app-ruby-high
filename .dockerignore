@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.gitignore
+.DS_Store
+*.log
+coverage
+.turbo
+.vscode
+.idea
+test-outputs
+.ruby-high

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+coverage/
+.turbo/
+.vscode/
+.idea/
+test-outputs/
+.ruby-high/
+*.tsbuildinfo
+
+# Local-only: keep your OpenRouter key out of the repo.
+.env
+.env.local
