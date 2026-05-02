@@ -235,6 +235,83 @@ async function renderCharacterPortrait(args: {
   return url;
 }
 
+/** Diploma image — generated at Senior graduation. Same image model as
+ *  portrait gen ("nano banana 2" / google/gemini-3.1-flash-image-preview),
+ *  different prompt: cap-and-gown JRPG sticker featuring a subject-themed
+ *  accessory derived from the player's highest-scoring faculty.
+ *
+ *  Subject accessory map:
+ *    sally-science    → microscope or beaker
+ *    professor-edward → book or quill
+ *    ruby             → diploma scroll (homeroom default)
+ */
+async function renderDiplomaImage(args: {
+  apiKey: string;
+  name: string;
+  personality: string;
+  bestSubjectFacultyId: string;
+}): Promise<string> {
+  const accessory = (() => {
+    switch (args.bestSubjectFacultyId) {
+      case "sally-science": return "holding a beaker that glows faintly green";
+      case "professor-edward": return "holding a thick hardcover book against their chest";
+      case "ruby":
+      default: return "holding a rolled diploma scroll tied with a red ribbon";
+    }
+  })();
+  const userPrompt = [
+    `JRPG dialog-portrait of ${args.name} at their Ruby High graduation.`,
+    `Personality: ${args.personality}`,
+    "",
+    `STYLE: JRPG-style FULL BODY standing portrait — 3/4 view, head to ankles. Tall portrait orientation. Anime-influenced. Bold black outline 5px. Vibrant flat colors, subtle cel shading. The character is wearing a high-school graduation cap and gown over their normal clothes — gown is a warm crimson red, cap is matching with a yellow tassel. They are smiling, proud but a little nervous. ${accessory}.`,
+    "",
+    "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale gold background (#f5e8c2). The background fills the entire frame as one perfectly even color — no gradient, no texture, no pattern, no scenery, no objects, no border, no transparency. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
+    "No text, no logo, no signature, no caption.",
+  ].join("\n");
+  const r = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.apiKey}`,
+      "HTTP-Referer": REFERER,
+      "X-Title": TITLE,
+    },
+    body: JSON.stringify({
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: userPrompt }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    }),
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`OpenRouter ${r.status}: ${text || r.statusText}`);
+  }
+  const body = await r.json() as {
+    choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
+  };
+  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!url) throw new Error("No image returned");
+  return url;
+}
+
+/** Determine the player's highest-scoring faculty for the diploma image's
+ *  subject accessory. Ties broken by total volume (more answered → wins).
+ *  Defaults to "ruby" if no scores yet (shouldn't happen at graduation
+ *  since you can't graduate without answering questions, but guarded). */
+function highestScoringFaculty(scores: Record<string, { correct: number; total: number }> | undefined): string {
+  if (!scores) return "ruby";
+  let best: { id: string; ratio: number; total: number } | null = null;
+  for (const [id, s] of Object.entries(scores)) {
+    if (s.total === 0) continue;
+    const ratio = s.correct / s.total;
+    if (!best || ratio > best.ratio || (ratio === best.ratio && s.total > best.total)) {
+      best = { id, ratio, total: s.total };
+    }
+  }
+  return best ? best.id : "ruby";
+}
+
 /** Generate a random valid stat distribution: one each of +2, +1, 0, -1
  *  shuffled across the four stat keys. */
 function randomStatDistribution(): CharacterStats {
@@ -976,6 +1053,56 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         personality,
       });
       ctx.json(ctx.res, { ok: true, portraitDataUrl: dataUrl });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+    }
+    return true;
+  }
+
+  // Diploma image — fired by the viewer when graduation lands. Reads the
+  // character's subjectScores server-side to pick the subject-themed
+  // accessory. Same rate-limiter as portrait gen (8 burst, 1/30s).
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/diploma`) {
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    if (!record || !token) {
+      ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!PORTRAIT_LIMITER.take(rlKey)) {
+      reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
+    const ruby = getService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!ruby) {
+      ctx.error(ctx.res, "RubyHighService unavailable.", 503);
+      return true;
+    }
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const state = ruby.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) {
+      ctx.error(ctx.res, "No character on this session.", 400);
+      return true;
+    }
+    if ((ch.yearbook ?? []).length < 4) {
+      ctx.error(ctx.res, "Diploma is only available after Senior graduation.", 400);
+      return true;
+    }
+    try {
+      const dataUrl = await renderDiplomaImage({
+        apiKey: record.apiKey,
+        name: ch.name,
+        personality: ch.personality,
+        bestSubjectFacultyId: highestScoringFaculty(ch.subjectScores),
+      });
+      ch.diplomaImageDataUrl = dataUrl;
+      ctx.json(ctx.res, {
+        ok: true,
+        diplomaImageDataUrl: dataUrl,
+        bestSubject: highestScoringFaculty(ch.subjectScores),
+      });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
     }

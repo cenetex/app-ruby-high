@@ -383,13 +383,99 @@ export interface PlayerCharacter {
   strings: Record<string, number>;
   /** Active conditions (debuffs). */
   conditions: string[];
-  /** Past-year archive — populated at graduation. */
+  /** Past-year archive — populated at grade completion. One entry per
+   *  graduated year (Senior completion writes the 4th). */
   yearbook: Array<{
     grade: Grade;
     completedAt: number;
     summary: { correct: number; total: number };
   }>;
+  /** Current Daily-pass streak in the active grade. The arc gate per
+   *  DESIGN.md Pillar 1: a streak of `requiredStreakForGrade(currentGrade)`
+   *  consecutive Daily passes advances to the next year. Reset to 0 on
+   *  any Daily miss (wrong MC pick or essay grade < 7). The grade field
+   *  is the streak's anchor — when the player advances, streak resets
+   *  to { grade: newGrade, count: 0 }. */
+  streak?: { grade: Grade; count: number };
+  /** Per-faculty score record — {correct, total} keyed by faculty id.
+   *  Drives "highest-scoring subject" at graduation (used for the
+   *  diploma image's subject-themed accessory). Optional for legacy
+   *  characters; defaulted to {} on hydrate. */
+  subjectScores?: Record<string, { correct: number; total: number }>;
+  /** UTC date (YYYY-MM-DD with the 17:00 UTC school-bell cutoff applied)
+   *  of the last Daily completion. Used to gate "is today's Daily
+   *  available." When `dailyKey(now) > lastDailyDate`, today's Daily
+   *  is fresh. */
+  lastDailyDate?: string;
+  /** Generated diploma image (Senior graduation). Set by the /chat/diploma
+   *  endpoint after the 4th yearbook entry lands. Base64 data URL. */
+  diplomaImageDataUrl?: string;
   createdAt: number;
+}
+
+// ── Daily mechanic ─────────────────────────────────────────────────────────
+//
+// "The Daily IS the arc" (DESIGN.md Pillar 1). One teacher per weekday,
+// one question per day, deterministic by date so every player on a given
+// day sees the same Tuesday. The school bell rings at 17:00 UTC — anything
+// before that counts as the previous day. Weekends have no Daily; streaks
+// hold across them ("question reset only" semantics).
+
+/** The school-bell cutoff: 17:00 UTC. Before that, "today" is yesterday's
+ *  date for Daily purposes. After, "today" advances. */
+export const DAILY_BELL_HOUR_UTC = 17;
+
+/** YYYY-MM-DD key for the Daily on a given moment. Anchors all streak +
+ *  rotation arithmetic. The same date string everywhere — no timezone
+ *  drift between server and client. */
+export function dailyKey(now: Date = new Date()): string {
+  const adjusted = new Date(now.getTime());
+  if (adjusted.getUTCHours() < DAILY_BELL_HOUR_UTC) {
+    // Before 17:00 UTC — the bell hasn't rung yet, so we're still on
+    // yesterday's Daily.
+    adjusted.setUTCDate(adjusted.getUTCDate() - 1);
+  }
+  const y = adjusted.getUTCFullYear();
+  const m = String(adjusted.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(adjusted.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Days-since-epoch for the given key, used as a deterministic seed for
+ *  question rotation. Epoch is 2026-01-01 (project genesis). */
+const DAILY_EPOCH = Date.UTC(2026, 0, 1);
+export function dailyIndex(key: string): number {
+  const [yStr, mStr, dStr] = key.split("-");
+  const y = Number(yStr), m = Number(mStr), d = Number(dStr);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return 0;
+  const ms = Date.UTC(y, m - 1, d);
+  return Math.max(0, Math.floor((ms - DAILY_EPOCH) / (24 * 60 * 60 * 1000)));
+}
+
+/** Day-of-week (0=Sun..6=Sat) for a Daily key. Drives faculty rotation. */
+export function dayOfWeekForKey(key: string): number {
+  const [yStr, mStr, dStr] = key.split("-");
+  const y = Number(yStr), m = Number(mStr), d = Number(dStr);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return 0;
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Faculty rotation per DESIGN.md Pillar 1:
+ *    Mon → Sally Science    Thu → Sally Science
+ *    Tue → Professor Edward Fri → Professor Edward
+ *    Wed → Ruby
+ *    Sat / Sun → null (school closed; streak holds, no Daily available)
+ */
+export function facultyForDay(key: string): string | null {
+  const dow = dayOfWeekForKey(key);
+  switch (dow) {
+    case 1: return "sally-science"; // Monday
+    case 2: return "professor-edward"; // Tuesday
+    case 3: return "ruby"; // Wednesday
+    case 4: return "sally-science"; // Thursday
+    case 5: return "professor-edward"; // Friday
+    default: return null; // Saturday + Sunday → school closed
+  }
 }
 
 /** Personality-tied stat distributions for the six AI students. Each sums
@@ -475,6 +561,14 @@ export interface ActiveRound {
    *  The roll is consumed once per round regardless of outcome. Picks against
    *  eliminated choices are rejected by submitAnswer. */
   advantage?: AdvantageRoll | null;
+  /** True when this round was opened by playDaily — i.e. it represents
+   *  today's Daily, the only thing that ticks the streak / arc.
+   *  Free-play rounds (legacy pickAndPose) leave this false/undefined
+   *  and tick the legacy gradeProgress counter instead. */
+  isDaily?: boolean;
+  /** Daily key (YYYY-MM-DD with school-bell cutoff) the round was opened
+   *  on. Set together with isDaily; informational. */
+  dailyKey?: string;
 }
 
 export interface AdvantageRoll {
