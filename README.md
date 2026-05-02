@@ -183,7 +183,7 @@ Two backends, picked at boot via `RUBY_HIGH_STORE_BACKEND`:
 | `json` *(default)* | Local dev. Single JSON file at `~/.ruby-high/state.json` (or `RUBY_HIGH_STATE_PATH`). Ephemeral on App Runner — wiped on every deploy / instance recycle. | `RUBY_HIGH_STATE_PATH` (optional) |
 | `dynamodb` | Production. One DynamoDB item per session, keyed by sessionId. Survives container restarts; auto-expires idle sessions via TTL. | `RUBY_HIGH_DYNAMO_TABLE` (required), `AWS_REGION`, `RUBY_HIGH_STATE_TTL_SECONDS` (optional, default 90 days) |
 
-To run with DynamoDB:
+To run with DynamoDB locally:
 
 ```bash
 RUBY_HIGH_STORE_BACKEND=dynamodb \
@@ -192,20 +192,69 @@ AWS_REGION=us-east-1 \
 node scripts/server.mjs
 ```
 
-Required IAM permissions for the App Runner instance role on the table:
+#### Production bootstrap (one-time)
 
+The deploy workflow (`.github/workflows/deploy.yml`) creates the table on
+every run, idempotently. To turn DynamoDB on in App Runner, do this once:
+
+**1. Grant the GHA OIDC role permission to manage the table.**
+Add to the policy attached to `github-actions-ruby-high`:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "dynamodb:DescribeTable",
+    "dynamodb:CreateTable",
+    "dynamodb:UpdateTimeToLive",
+    "dynamodb:TagResource"
+  ],
+  "Resource": "arn:aws:dynamodb:us-east-1:*:table/ruby-high-state"
+}
 ```
-dynamodb:Scan
-dynamodb:GetItem
-dynamodb:PutItem
-dynamodb:BatchWriteItem
+
+**2. Run the deploy workflow once** — it'll create the table with the right
+schema (PK `pk`, TTL attribute `expiresAt`, on-demand billing).
+
+**3. Grant the App Runner instance role permission to use the table.**
+The instance role is the one App Runner runs the container as (separate from
+the ECR access role). Add to its policy:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "dynamodb:Scan",
+    "dynamodb:GetItem",
+    "dynamodb:PutItem",
+    "dynamodb:BatchWriteItem"
+  ],
+  "Resource": "arn:aws:dynamodb:us-east-1:*:table/ruby-high-state"
+}
 ```
 
-Table provisioning (once, not done by code):
+**4. Flip the workflow to use it.** In the repo settings → Variables, add:
 
-- Primary key: `pk` (string)
-- TTL attribute: `expiresAt` (the store writes seconds-since-epoch here)
-- On-demand billing recommended; the app's traffic is bursty and item sizes are small (~5-20 KB).
+| Variable | Value |
+|---|---|
+| `RUBY_HIGH_STORE_BACKEND` | `dynamodb` |
+| `RUBY_HIGH_DYNAMO_TABLE` | `ruby-high-state` (or whatever you named it) |
+| `RUBY_HIGH_PUBLIC_BASE` | `https://your-app-runner-url` (used for OpenRouter PKCE callback) |
+
+The next deploy passes those as runtime env vars to App Runner, and the
+service starts using DynamoDB. Until you set the variable, the workflow
+stays on the JSON-file backend regardless of whether the table exists.
+
+Why opt-in: setting the env var on App Runner before the instance role has
+DynamoDB permissions would make the running service crash on the first
+state read. Keeping it gated on a repo variable lets you sequence the
+three steps above safely.
+
+#### Schema (managed by the workflow)
+
+- Primary key: `pk` (string) — the session id (`rh:user:<token>` or `rh:anonymous`)
+- TTL attribute: `expiresAt` (seconds-since-epoch; the store writes this)
+- Billing: on-demand (the app's traffic is bursty, items are 5-20 KB)
 
 No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key via PKCE.
 
