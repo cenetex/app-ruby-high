@@ -1,47 +1,109 @@
 # Ruby High
 
-ElizaOS app. **Ruby is the host of a small school.** She greets students and runs the quiz floor. Specialist faculty teach their domains. v0.2 ships **Ruby + Sally Science (STEM) + Professor Edward (mid-century literary theory)** as question authors, persistent quiz state, and a viewer with faculty switching, subject filters, and difficulty pills.
+> Every weekday, three teachers post one new question. One of them is an essay, graded by a character with taste. Your grade is yours to keep.
 
-This is part of the Ruby High Tournament arc — see `DESIGN.md` for the full multi-agent tournament design (Milady hosts, elizaOS provides the primitives, aws-swarm provides contestants, $RATI provides the stakes).
+Ruby High is an elizaOS app and standalone Node service. **Ruby is the host of a small school.** Specialist faculty (Sally Science, Professor Edward) teach their domains. Six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, and answer questions across four years until you graduate.
 
-## Why a swarm and not one big agent
+The product is built around one bet: **the second session is the product.** Most AI demos are one-shot. Ruby High is structured to be returned to — every weekday, on schedule, for the same kind of small graded moment that Wordle made habitual, but with a character on the other side of the grade.
 
-A specialist who only does Renaissance history can have actual opinions about Renaissance history. A generalist gets generic fast. Ruby High commits to that constraint: every subject is its own character with its own range, audience, and small launch moment. Ruby stays the front door; the cast expands behind her.
+See [`DESIGN.md`](./DESIGN.md) for the strategic thesis, [`RPG-DESIGN.md`](./RPG-DESIGN.md) for the mechanics layer.
+
+## Why this is different
+
+| Product class | Voice | Judgment that matters | Daily cadence | A grade you can keep |
+|---|:---:|:---:|:---:|:---:|
+| Tutoring chatbots (ChatGPT, Khan-style) | weak | yes | no | no |
+| AI roleplay (AI Dungeon, c.ai) | strong | no | no | no |
+| Daily quizzes (Wordle, NYT) | none | yes | yes | streak only |
+| **Ruby High** | **strong** | **yes** | **yes** | **yes** |
+
+The combination is the product. Each ingredient on its own is commodity.
+
+## The three pillars
+
+### 1. The Daily
+
+Every weekday at the same hour, the school is in session. Each teacher posts **one** question — Sally a STEM problem, Edward a passage to discuss, Ruby a piece of school lore. One of them is the **Essay of the Day**: an opinion-mode prompt, no A/B/C/D, just a 2–3 sentence written response.
+
+You can answer all three in any order. Skip a day, your streak breaks. Hit five days in a row of essays, the teacher who graded you the most starts addressing you by name in the lounge.
+
+### 2. Qualitative grading
+
+Multiple choice is the on-ramp. The headline is **opinion mode**: you write a few sentences, your AI classmates write theirs, and the teacher grades all four responses in their own voice with a score (0–10), a comment, and one named "best response."
+
+> *"Honor — measured, even where the second sentence wobbles. The point about Bishop's stillness against Lowell's noise is exactly right. Score: 8."*
+> — Professor Edward
+
+This is the artifact other AI products do not produce. ChatGPT will give you feedback; it will not give you **Edward's** feedback. The taste is the moat.
+
+### 3. The Yearbook
+
+Every grade you complete produces a **yearbook page**: your character, the teachers you studied under, your highest-graded essay, the classmate who graded best beside you, the day you finished. It is a real persistent artifact written into the schema (`PlayerCharacter.yearbook`) and intended to be sharable.
+
+Graduation (finishing all four years) closes the run and unlocks **mentor mode** — a future character of yours can quote your old answer.
+
+## What ships today (v0.5.0)
+
+- OpenRouter PKCE login. Each user pays for their own LLM tokens; no key ever touches the browser.
+- Character creation: 6 PbtA-style playbooks, randomized name + personality + sticker portrait, 4 stats (HEAD / HEART / HUSTLE / HONOR).
+- Four rooms: homeroom, science, library, Teachers' Lounge.
+- Three teachers (Ruby, Sally Science, Professor Edward) and six classmates (Lyra, Sami, Ravi, Indra, Mika, Noor), each with a distinct voice.
+- **Multiple choice** with dice-resolved scoring (`2d6 + HEAD`). The student-LLM never sees the answer key — cheating is structurally impossible.
+- **Opinion mode** with full LLM-graded essays from the active teacher.
+- 5 correct = grade complete. 4 grades to graduate.
+- Persistent state, per-user via the `rh_session` cookie.
+- Production deploy: Dockerfile + fly.toml + mounted volume.
+
+## What ships next (the four-week plan)
+
+| Sprint | Ship |
+|---|---|
+| **W1** | Event log (sign-in, question, answer, grade, session). Basic per-IP rate limiting. |
+| **W2** | The Daily v0: cron-driven daily question drop. Streak counter on the character card. |
+| **W3** | Yearbook v0: graduation screen + persistent yearbook page + share card. |
+| **W4** | Qualitative grade history: every essay grade you've received, archived per teacher, viewable on the report card. |
+
+After that: classmates progressing on a wall clock while you're away (so coming back means catching up to your friends), then the tournament expansion described in `DESIGN.md`.
 
 ## Architecture
 
 | Piece | Where | What it does |
 |---|---|---|
-| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session quiz state. Score, asked-question history, current question, last reveal. Persists to `~/.ruby-high/state.json`. |
-| `FacultyService` | `src/services/faculty-service.ts` | Loads faculty question packs from `assets/questions/*.json` at boot. `pick({ faculty, subject, difficulty, exclude })` with cascading fallbacks. |
-| `StateStore` | `src/services/state-store.ts` | Atomic JSON file persistence (write-tmp + rename). Phase 3+ moves to `@elizaos/plugin-sql`. |
-| Question packs | `assets/questions/{ruby,sally-science,professor-edward}.json` | 15 questions each, tagged by subject + difficulty (easy / medium / hard). |
-| Actions | `src/actions/` | `POSE_QUESTION`, **`PICK_QUESTION`** *(new)*, `GRADE_ANSWER`, `CLEAR_BOARD`, `HANDOFF_FACULTY`. |
-| Viewer | `src/viewer.ts` | Sky background, host portrait, chalkboard, A/B/C/D buttons, faculty bar with chips, subject + difficulty filters, "Pick next" button, accent color follows the active faculty. |
-| Routes | `src/routes.ts` | App-bridge launch/refresh, viewer HTML, `/session/:id` GET, `/session/:id/command` POST (`answer` / `pick` / `set-faculty` / `clear` / `reset`), `/assets/:name`. |
+| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session state. Score, history, current question, last reveal, NPC roster, active round. |
+| `FacultyService` | `src/services/faculty-service.ts` | Loads question packs from `assets/questions/*.json` at boot. `pick({ faculty, subject, difficulty, exclude })`. |
+| `ChatService` | `src/services/chat-service.ts` | Streams OpenRouter SSE per-teacher. Owns chat history, tool dispatch, NPC opinion generation. |
+| `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth → opaque cookie sessions. Keys live in process memory only. |
+| `StateStore` | `src/services/state-store.ts` | Atomic JSON file persistence (write-tmp + rename). Phase N: `@elizaos/plugin-sql`. |
+| Question packs | `assets/questions/{ruby,sally-science,professor-edward}.json` | 15 questions each, tagged by subject + difficulty. |
+| Actions | `src/actions/` | `POSE_QUESTION`, `PICK_QUESTION`, `GRADE_ANSWER`, `CLEAR_BOARD`, `HANDOFF_FACULTY`. |
+| Viewer | `src/viewer.ts` | Single-file SPA. Sky background, room rail, chalkboard, A/B/C/D, opinion textarea, lounge. |
+| Routes | `src/routes.ts`, `src/chat-routes.ts` | App-bridge, `/session/:id`, command dispatch, auth callback, chat SSE. |
 
-### Action shapes
+### The dice mechanic
 
-- **`PICK_QUESTION`** — `{ faculty?, subject?, difficulty? }` — draw next question from the active (or specified) faculty pack, never repeat in a session.
-- **`POSE_QUESTION`** — `{ prompt, options: { A, B, C, D }, correct, explanation?, subject?, faculty?, difficulty? }` — manual question authoring.
-- **`GRADE_ANSWER`** — `{ picked: "A" | "B" | "C" | "D" }`.
-- **`CLEAR_BOARD`** — `{}`.
-- **`HANDOFF_FACULTY`** — `{ faculty: "ruby" | "sally-science" | "professor-edward" }`.
+When you pick an answer, the server rolls `2d6 + your HEAD stat`:
+
+| Total | Outcome | Effect |
+|---|---|---|
+| 10+ | hit | clean correct = +2 XP |
+| 7–9 | mixed | correct = +1 XP, wrong = no penalty |
+| 6– | miss | wrong = take an `anxious` Condition |
+
+The student-LLM never sees the question's correct answer. NPC accuracy is the same dice + their stat block — they roll before the question is shown to them, so cheating-by-prompt-injection is mathematically impossible.
 
 ### Persistence
 
-Quiz state writes to `~/.ruby-high/state.json` on every mutation (atomic tmp + rename). Override the path with `RUBY_HIGH_STATE_PATH=/some/file.json`. Survives dev-server restarts; pick up exactly where you left off.
+Quiz state writes to `~/.ruby-high/state.json` on every mutation (atomic tmp + rename). Override the path with `RUBY_HIGH_STATE_PATH=/some/file.json`. Survives dev-server restarts. Per-user keying derives from the `rh_session` cookie (`rh:user:<token>` for signed-in, `rh:anonymous` otherwise).
 
 ## Local development
 
 ```bash
 npm install
 npm run build
-npm run dev:server     # rebuilds first, or use this skipping a fresh build:
-node scripts/dev-server.mjs
+npm run dev:server
 ```
 
-Then open http://127.0.0.1:4711/api/apps/ruby-high/viewer
+Then open http://127.0.0.1:3000/api/apps/ruby-high/viewer
 
 ### Dev endpoints (no eliza runtime needed)
 
@@ -59,36 +121,14 @@ import rubyHighPlugin from "@cenetex/app-ruby-high";
 export const character = {
   name: "Ruby",
   plugins: [rubyHighPlugin /* , ...others */],
-  // ...
 };
 ```
 
-The plugin registers two services (`FacultyService` and `RubyHighService`); the runtime instantiates both, then `BoundRubyHighService.start()` defers a microtask to bind the FacultyService into the RubyHighService once both are up. PICK_QUESTION works from the first call.
+The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`); the runtime instantiates them and the bound subclasses defer microtasks to wire cross-references.
 
-## Tests
+## OpenRouter login + per-teacher chat
 
-```bash
-npm test
-```
-
-13 tests covering: pack loading, filter cascade, exclusion, faculty switching, score arithmetic, persistence across a "restart," reset semantics.
-
-## Visual assets
-
-`assets/ruby-high-logo.png` and `assets/ruby-classroom.png` — sourced from Jon's mockups, served at `/api/apps/ruby-high/assets/{logo,ruby}.png`.
-
-## OpenRouter login + per-teacher chat (v0.3, 2026-05-01)
-
-Each teacher is also a chatbot. The viewer has a chat panel on the right; the user signs in with their OpenRouter account (PKCE), and the active faculty becomes a chatbot with their own voice and system prompt. The teacher can drive the chalkboard via tool calls — `pick_from_bank`, `pose_question`, `clear_board`, `handoff_faculty`. When the user picks an answer in the viewer, the teacher gets notified and can react in character.
-
-### Auth flow
-
-1. User clicks **Sign in with OpenRouter** → server mints a PKCE verifier/challenge pair and redirects to `https://openrouter.ai/auth?...`.
-2. OpenRouter redirects back to `/api/apps/ruby-high/auth/callback?code=...&state=...`.
-3. Server exchanges `code` + `code_verifier` at `https://openrouter.ai/api/v1/auth/keys`, gets an API key, stores it server-side keyed by an httpOnly `rh_session` cookie. Key never touches the browser.
-4. `/api/apps/ruby-high/chat` (POST, SSE) proxies chat through OpenRouter using the cookie's API key; tool calls dispatch into `RubyHighService`.
-
-### Endpoints
+Each teacher is also a chatbot. The user signs in with their own OpenRouter account (PKCE), and the active faculty becomes a chatbot with their own voice and system prompt. The teacher drives the chalkboard via tool calls — `pick_from_bank`, `pose_question`, `pose_opinion`, `clear_board`, `handoff_faculty`. When the user picks an answer in the viewer, the teacher gets notified and reacts in character.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -96,69 +136,43 @@ Each teacher is also a chatbot. The viewer has a chat panel on the right; the us
 | GET | `/api/apps/ruby-high/auth/callback` | OpenRouter redirects here |
 | GET | `/api/apps/ruby-high/auth/me` | Auth status |
 | POST | `/api/apps/ruby-high/auth/logout` | Drop session |
-| POST | `/api/apps/ruby-high/chat` | Send a chat message; returns SSE stream of `delta` / `tool` / `error` / `done` events |
+| POST | `/api/apps/ruby-high/chat` | Send a chat message; SSE stream |
+| POST | `/api/apps/ruby-high/chat/event` | Teacher-driven turn (channel-enter, answer-graded, lounge-enter) |
+| POST | `/api/apps/ruby-high/chat/opinion-submit` | Submit an essay; triggers grading once everyone's in |
 | GET | `/api/apps/ruby-high/chat/history?faculty=...` | Per-(session, faculty) history |
 | POST | `/api/apps/ruby-high/chat/reset` | Clear history for one teacher |
 
 ### Configuration
 
-- `RUBY_HIGH_PUBLIC_BASE` — public URL the dev server is reachable at (used to build the OpenRouter callback). Defaults to `http://127.0.0.1:4711`.
+- `RUBY_HIGH_PUBLIC_BASE` — public URL the dev server is reachable at (used to build the OpenRouter callback). Defaults to `http://localhost:3000`.
 - `RUBY_HIGH_OPENROUTER_REFERER` / `RUBY_HIGH_OPENROUTER_TITLE` — sent in OpenRouter request headers; defaults are fine for local dev.
+- `RUBY_HIGH_STUDENT_MODEL` — model for NPC chimes + opinion responses. Default `anthropic/claude-haiku-4.5`.
 
-### Teacher characters
+## Tests
 
-Defined in `src/characters/teachers.ts`:
-- **Ruby** — host, generalist, hands off to specialists.
-- **Sally Science** — STEM enthusiast, sharp grad-TA energy.
-- **Professor Edward** — dry mid-century lit professor.
+```bash
+npm test
+```
 
-Default model: `anthropic/claude-haiku-4.5` (overridable per-call).
+13 tests covering the deterministic core: pack loading, filter cascade, exclusion, faculty switching, score arithmetic, persistence across restart, reset semantics. The chat layer and the dice layer are not yet covered — see the open issues.
 
 ## Deploy (fly.io)
 
-The repo ships with a production entry point at `scripts/server.mjs`, a
-multi-stage `Dockerfile`, and a `fly.toml` ready to launch.
-
 ```bash
-# 1. Install flyctl
-brew install flyctl
-
-# 2. Sign in
-fly auth login
-
-# 3. From the repo root, copy the bundled config and create the app
 fly launch --copy-config --no-deploy
-# Follow the prompts. Pick the region you want; the bundled config defaults to sea.
-
-# 4. Create a volume for the JSON state store (alpha only — see "what's next")
 fly volumes create ruby_high_data --size 1
-
-# 5. Deploy
 fly deploy
-
-# 6. Once you have the public URL, set it so OAuth callbacks land cleanly
 fly secrets set RUBY_HIGH_PUBLIC_BASE=https://YOUR-APP.fly.dev
 ```
 
-OpenRouter requires the OAuth callback URL to be HTTPS — fly gives you that
-out of the box at `https://your-app.fly.dev/api/apps/ruby-high/auth/callback`.
-No `OPENROUTER_API_KEY` is needed on the server: each user authenticates with
-their own OpenRouter account via PKCE, and the server stores their key
-in-process keyed by an httpOnly cookie.
+OpenRouter requires HTTPS for OAuth callbacks. fly gives you that at `https://your-app.fly.dev/api/apps/ruby-high/auth/callback`. No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key.
 
-### Production caveats (alpha v0.1)
+### Production caveats (alpha)
 
-- **State is a single JSON file** at `/data/state.json` on a fly volume — single
-  player at a time. The "per-user state migration" PR replaces this with a
-  proper DB before this is multi-tenant safe.
-- **API keys live in process memory.** A redeploy or VM restart wipes
-  authenticated sessions; users have to sign in again.
+- **State is one JSON file** at `/data/state.json` on a fly volume. Per-user via cookie key, but a single machine.
+- **API keys live in process memory.** A redeploy or VM restart wipes authenticated sessions; users sign in again.
 - **No rate limiting yet.** Don't post the public URL widely until that lands.
 
-## What's next (Phase 2 — see DESIGN.md)
+## License
 
-1. `TournamentService` with the bracket data model.
-2. Heartbeat-driven scheduling via `@elizaos/plugin-agent-orchestrator`.
-3. Single-elim bracket, humans-only first run.
-4. Spectator viewer with bracket rendering + ELO leaderboard.
-5. Eventually: agent contestants via aws-swarm endpoint, then prize pools, then $RATI.
+MIT for the code. The Ruby High RPG mechanics layer (`RPG-DESIGN.md`) is **CC BY 4.0** and inspired by the Apocalypse World / Dungeon World lineage.
