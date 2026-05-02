@@ -249,64 +249,20 @@ function randomStatDistribution(): CharacterStats {
   return { head: values[0]!, heart: values[1]!, hustle: values[2]!, honor: values[3]! };
 }
 
-/** Pool of name "vibes" — randomly seeded into the prompt so the LLM
- *  doesn't keep landing on its training-bias defaults (Marcus Kim, Emma
- *  Patel, etc.). Each vibe describes a NAMING style, not a specific name —
- *  the LLM still picks the actual letters. */
-const NAME_VIBES = [
-  "a contemporary Filipino name, common spelling",
-  "a Nigerian Igbo or Yoruba name, traditional",
-  "a hyphenated double last name reflecting biracial heritage",
-  "a chosen mononym this teen uses instead of their legal name",
-  "a regional Tamil or Telugu name, written naturally not romanized",
-  "an old-fashioned name like a 1940s newspaper byline",
-  "a hyphenated Quebecois or Acadian name",
-  "a Vietnamese name with a middle character that has a meaning",
-  "a Brazilian Portuguese name with three or four parts",
-  "a Polish or Czech surname that's hard to pronounce in English",
-  "a Lebanese or Syrian-American name that mixes Arabic and English",
-  "an Inuit or First Nations name with a chosen English first name",
-  "a Sami or other indigenous European name",
-  "a Kazakh or Uzbek name, with the patronymic optional",
-  "a Welsh name with an unusual spelling",
-  "a Yiddish/Ashkenazi name, family carried it from before WWII",
-  "an Ethiopian or Eritrean name in two parts",
-  "a Hawaiian or Samoan name with multiple vowels",
-  "a Quechua or Aymara name",
-  "a southern Black American name from the 70s-80s naming wave",
-  "a Greek-American kid's family name, full version not the shortened one",
-  "a Burmese, Thai, or Lao name",
-  "a Croatian or Bosnian name with a -ić ending",
-  "a single-syllable surname-first name common in Cantonese-speaking families",
-  "a quirky punk/skater nickname the kid demands everyone use",
-  "a name from an obscure indie film the parents loved",
-  "a name explicitly chosen by the teen themselves — trans or genderqueer",
-  "an Irish Gaelic name with a fada that nobody pronounces correctly",
-  "a Persian/Farsi name with a poetic meaning",
-  "a Romani name, surname uncommon in English-speaking school records",
-  "a Mongolian name, herder ancestry, family-given-name order",
-  "a Korean name where the family insists on keeping syllable order",
-  "a name from Trinidad and Tobago, calypso-era flavor",
-  "an Albanian or Kosovar name, post-90s diaspora",
-  "a Maori name from Aotearoa with hyphenation",
-  "a Khmer name, two short parts",
-  "a Caribbean-Hispanic name like a Puerto Rican or Dominican kid",
-  "an Ashkenazi Argentine kid's name, mix of Yiddish and Spanish",
-  "a Boer-Afrikaner name, no anglicization",
-  "a Tibetan or Himalayan name with religious significance",
-];
-
+/** Default-name nudge: the LLM converges on a small pool of training-bias
+ *  picks unless told otherwise. We give it a no-go list rather than steering
+ *  toward any particular tradition — the previous "vibe rotation" produced
+ *  cultural-tourism mashups (e.g. "Derek Igloolik"). First names only. */
 const FORBIDDEN_NAMES_HINT = [
   "Marcus", "Maya", "Mariana", "Emma", "Sarah", "James", "Alex", "Sam", "Jordan", "Liam",
-  "Olivia", "Noah", "Ava", "Mia", "Ethan", "Aiden", "Lucas", "Harper", "Sophia", "Cortés",
-  "Patel", "Kim", "Chen", "Rodriguez", "Garcia", "Smith", "Johnson", "Williams", "Anderson",
-  "Brown", "Lopez", "Gonzalez", "Martinez", "Wilson", "Davis", "Taylor", "Thomas",
+  "Olivia", "Noah", "Ava", "Mia", "Ethan", "Aiden", "Lucas", "Harper", "Sophia",
 ];
 
-/** Roll a random character: random playbook + random stat distribution +
- *  random name vibe seed, then LLM-generated name/arc/personality grounded
- *  in those choices. The vibe seed is what keeps names from converging on
- *  AI-default common picks. */
+/** Roll a random character: random playbook + random stat distribution, then
+ *  LLM-generated name + arc + flavor + personality grounded in those choices.
+ *  The prompt deliberately avoids steering toward any cultural template or
+ *  thematic register — we want a kid in school, not a manifesto or an
+ *  edgelord. Anti-pattern guards live at the bottom of the prompt. */
 async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   name: string;
   playbookId: string;
@@ -317,24 +273,29 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
 }> {
   const playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
   const stats = randomStatDistribution();
-  const nameVibe = NAME_VIBES[Math.floor(Math.random() * NAME_VIBES.length)]!;
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
   const userPrompt = [
-    "Roll a random AI student attending Ruby High (a high school RPG). The player will INHABIT this character — they're playing them, not designing them. Make them specific and a little weird, not generic.",
+    "Roll a random AI student attending Ruby High (a high school RPG). The player will INHABIT this character — they're playing them, not designing them. Make them feel like a real high schooler with small specific quirks, not big themes.",
     "",
     `Playbook (locked): ${playbook.name} — ${playbook.blurb}`,
     `Hook question (locked): "${playbook.hookQuestion}"`,
     `Stats (locked): HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}`,
-    `Name vibe (HARD CONSTRAINT, this run): ${nameVibe}`,
     "",
     "Generate JSON exactly in this shape (no other text, no markdown, no code fences):",
     `{"name":"...","arcAnswer":"...","flavorQuote":"...","personality":"..."}`,
     "",
-    "Rules for each field:",
-    "- name: a real plausible name following the name-vibe constraint above. Don't anglicize or simplify it. Use proper diacritics where they belong. The vibe is locked — do NOT swap it for a different cultural template. Avoid these overused names entirely: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
-    "- arcAnswer: 1-2 sentences in the character's voice answering the hook question above. Specific, not abstract. First person.",
-    `- flavorQuote: ONE short line in the character's voice — Magic: the Gathering flavor text. 6-18 words, max two short sentences. Captures their attitude in a moment, not their backstory. NOT an answer to the hook question. NOT a thesis statement. Examples of the right shape (from other Ruby High characters, do NOT copy these):\n    Sally Science: "I'd rather you be wrong with reasons than right by accident."\n    Edward: "Every wrong answer has a half-truth folded inside it. We start there."\n    Lyra: "wait what — i KNEW it was c. ok im rewriting my notes."\n  Make this character's quote feel as specific to them as those feel to their speakers. No surrounding quote marks — the renderer adds them.`,
-    "- personality: 2-3 sentences describing how this character SHOWS UP in class — quirks, what they care about, what they do when bored, who they sit with. Tie at least one trait back to a high stat (HEAD = sharp, HEART = warm, HUSTLE = quick, HONOR = principled) and at least one to a low stat (the same negative). Third person.",
+    "Field rules:",
+    "- name: ONE first name only — no surname, no last name, no middle name. Anything goes: common, uncommon, a chosen name, a nickname, a strange spelling, a one-syllable thing. Don't culture-shop or attach an ethnic descriptor — just pick a name that fits a teenager. Avoid the AI-default common picks: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
+    "- arcAnswer: 1-2 sentences in the character's voice answering the hook question. Sound like a normal teenager — deflective, dorky, casually weird, vaguely embarrassed, slightly overshare-y, mock-philosophical. First person.",
+    `- flavorQuote: ONE short line in the character's voice — like Magic: the Gathering flavor text. 6-18 words. Captures their attitude in a moment, not their backstory. Examples of the right shape (do NOT copy):\n    Sally Science: "I'd rather you be wrong with reasons than right by accident."\n    Lyra: "wait what — i KNEW it was c. ok im rewriting my notes."\n  Make this feel as specific to your character as those feel to theirs. No surrounding quote marks — the renderer adds them.`,
+    "- personality: 2-3 sentences describing how this character SHOWS UP in class — small specific quirks, fixations, what they say when bored, what they doodle. Tie at least one trait to a high stat (HEAD = sharp, HEART = warm, HUSTLE = quick, HONOR = principled) and one to the low stat. Third person.",
+    "",
+    "Tone guardrails — these apply to ALL fields:",
+    "- Just a kid in school. NOT an op-ed. NOT an edgelord.",
+    "- No politics, no social-issue framing, no history-of-erasure or systemic-harm angles, no family trauma. Smaller and stranger is better than bigger and weightier.",
+    "- No profanity for shock value. No 'I don't give a fuck' nihilism. No 'fuck this place' grievance.",
+    "- No manifestos, no thesis statements, no big speeches about meaning. They're 16. They're worried about a quiz.",
+    "- The character can be funny, sincere, anxious, sarcastic, dorky, prickly — just keep it grounded in normal high-school stakes.",
   ].join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
@@ -392,12 +353,11 @@ async function generateStudentLine(args: {
     `Situation: ${args.situation}.`,
     facultyContext,
     noteContext,
-    "RULES — NO EXCEPTIONS:",
-    "- Output ONLY one short sentence (max 12 words). Nothing else.",
-    "- Do NOT ask for context. Do NOT ask clarifying questions.",
-    "- Do NOT explain what you're doing. Just say the line.",
-    "- Lowercase mostly. Casual texting style. No quotes, no hashtags, no preamble.",
-    "- If you genuinely don't have a reaction, say 'lol' or 'idk' or 'fr'. Never refuse.",
+    "Format:",
+    "- One short sentence, 12 words max. Nothing else.",
+    "- Lowercase texting style fits — no quotes, no hashtags, no preamble.",
+    "- React to what just happened. Don't ask clarifying questions, don't restate the situation.",
+    "- If you genuinely don't have a reaction, 'lol' or 'idk' or 'fr' is fine.",
   ].filter(Boolean).join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
