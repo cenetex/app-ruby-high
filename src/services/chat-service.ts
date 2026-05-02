@@ -143,7 +143,10 @@ export class ChatService extends Service {
     }
 
     const tools = opts.disableTools ? [] : buildToolDefs();
-    let safety = opts.disableTools ? 1 : 4; // single round if no tools
+    // 2 rounds is enough for the standard "speak + pose question" flow.
+    // More than that has only ever produced loops where the model tries to
+    // "fix" a non-problem (e.g., re-picking what it thinks is a duplicate).
+    let safety = opts.disableTools ? 1 : 2;
 
     while (safety-- > 0) {
       const messages = this.composeForOpenRouter({
@@ -364,9 +367,18 @@ export class ChatService extends Service {
             subject: args.subject ? String(args.subject) : undefined,
             difficulty: args.difficulty as Difficulty | undefined,
           });
+          const q = state.current;
+          // Make it CRYSTAL clear to the model that this is a NEW question.
+          // The bank server-side guarantees no repeats; misreading this as a
+          // duplicate sends the model into a loop trying to "fix" nothing.
           return {
             args,
-            payload: { ok: true, message: `Drew: ${state.current?.prompt ?? ""}` },
+            payload: {
+              ok: true,
+              message: q
+                ? `NEW question now on the blackboard (the bank guarantees no repeats — never doubt this, do NOT call pick_from_bank again to "try for a fresh one"). id=${q.id}. Prompt: "${q.prompt}". The student has NOT seen this before. Continue your turn — react to the previous answer in 1 sentence, do NOT call any more tools.`
+                : "Bank is empty for that filter. Try a different subject.",
+            },
             state,
           };
         }
@@ -512,19 +524,22 @@ function describeBoardForModel(state: QuizState): string {
     ].filter(Boolean).join("\n");
   }
   const opts = q.options ?? { A: "", B: "", C: "", D: "" };
+  // Don't include lastReveal here — by the time we re-derive board context,
+  // a new question may already be on the board (after a tool call). Surfacing
+  // the old reveal alongside the new question confused the model into thinking
+  // questions were repeating. Pacing notes belong in event-trigger system
+  // messages, not in the perpetual board snapshot.
   return [
     `Active faculty: ${state.faculty}.`,
     `Score this session: ${state.score.correct}/${state.score.total}.`,
-    `Current question (${q.difficulty ?? "?"} · ${q.subject ?? "?"}):`,
+    `Current question on the blackboard (${q.difficulty ?? "?"} · ${q.subject ?? "?"}):`,
     `  ${q.prompt}`,
     `  A) ${opts.A}`,
     `  B) ${opts.B}`,
     `  C) ${opts.C}`,
     `  D) ${opts.D}`,
     `Correct answer: ${q.correct ?? "?"}.`,
-    state.lastReveal
-      ? `Last reveal: student picked ${state.lastReveal.picked}, ${state.lastReveal.wasCorrect ? "correct" : "wrong"}.`
-      : "Awaiting student answer.",
+    "(The student is now picking. Wait for the answer-graded event before calling another tool.)",
   ].join("\n");
 }
 
