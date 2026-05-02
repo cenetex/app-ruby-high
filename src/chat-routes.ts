@@ -805,9 +805,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
       if (c?.picked && c?.correct) {
         const verdict = c.wasCorrect ? "GOT IT RIGHT" : "MISSED IT";
-        directive = `EVENT: The student picked ${c.picked}. The correct answer was ${c.correct}. They ${verdict}. React in ONE short sentence (celebrate or console in your voice), then call pick_from_bank to put the next question on the board. If five correct have been earned for the year, congratulate them on the ✓ instead.`;
+        directive = `EVENT: You're mid-class — DO NOT greet the student again, you've already started. They picked ${c.picked}; correct answer was ${c.correct}; they ${verdict}. React to THIS answer in ONE short sentence (celebrate or console, in your voice — never another hello), then call pick_from_bank to put the next question on the board.`;
       } else {
-        directive = "EVENT: The student just answered the previous question. React in ONE short sentence, then call pick_from_bank for the next question.";
+        directive = "EVENT: You're mid-class — DO NOT greet the student again. They just answered the previous question. React in ONE short sentence, then call pick_from_bank for the next question.";
       }
     } else if (trigger === "manual") {
       directive = "EVENT: The student is asking you to take a turn. Either follow up on the last exchange or call pick_from_bank to put a fresh question on the board.";
