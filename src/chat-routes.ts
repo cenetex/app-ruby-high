@@ -2,9 +2,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { AuthService } from "./services/auth-service.js";
 import { ChatService } from "./services/chat-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
-import { GRADE_LABELS, type Grade } from "./types.js";
+import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
+import { PLAYBOOKS } from "./characters/playbooks.js";
 
 const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -201,6 +202,132 @@ async function gradeOpinionResponses(args: {
   return { grades, bestResponder, narrativeText: narrativeLines.join("\n").trim() };
 }
 
+const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
+const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
+
+/** One-shot portrait gen using the same sticker style as the teachers/students.
+ *  Returns a base64 data URL. */
+async function renderCharacterPortrait(args: {
+  apiKey: string;
+  name: string;
+  personality: string;
+}): Promise<string> {
+  const userPrompt = [
+    `JRPG dialog-portrait of ${args.name}, a junior at Ruby High.`,
+    `Personality: ${args.personality}`,
+    "",
+    "STYLE: JRPG-style FULL BODY standing portrait — 3/4 view, head to ankles. Tall portrait orientation. Anime-influenced. Bold black outline 5px. Vibrant flat colors, subtle cel shading. Dynamic relaxed pose, expressive face that fits the personality.",
+    "",
+    "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale lavender background (#ece6f5). The background fills the entire frame as one perfectly even color — no gradient, no texture, no pattern, no scenery, no objects, no border, no transparency. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
+    "No text, no logo, no signature, no caption.",
+  ].join("\n");
+  const r = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.apiKey}`,
+      "HTTP-Referer": REFERER,
+      "X-Title": TITLE,
+    },
+    body: JSON.stringify({
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: userPrompt }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    }),
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`OpenRouter ${r.status}: ${text || r.statusText}`);
+  }
+  const body = await r.json() as {
+    choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
+  };
+  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!url) throw new Error("No image returned");
+  return url;
+}
+
+/** Generate a random valid stat distribution: one each of +2, +1, 0, -1
+ *  shuffled across the four stat keys. */
+function randomStatDistribution(): CharacterStats {
+  const values = [2, 1, 0, -1];
+  // Fisher-Yates shuffle in place.
+  for (let i = values.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = values[i]!;
+    values[i] = values[j]!;
+    values[j] = tmp;
+  }
+  return { head: values[0]!, heart: values[1]!, hustle: values[2]!, honor: values[3]! };
+}
+
+/** Roll a random character: random playbook + random stat distribution, then
+ *  LLM-generated name + arc answer + personality grounded in those choices. */
+async function rollRandomCharacter(args: { apiKey: string }): Promise<{
+  name: string;
+  playbookId: string;
+  stats: CharacterStats;
+  arcAnswer: string;
+  personality: string;
+}> {
+  const playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
+  const stats = randomStatDistribution();
+  const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
+  const userPrompt = [
+    "Roll a random AI student attending Ruby High (a high school RPG). The player will INHABIT this character — they're playing them, not designing them. Make them specific and a little weird, not generic.",
+    "",
+    `Playbook (locked): ${playbook.name} — ${playbook.blurb}`,
+    `Hook question (locked): "${playbook.hookQuestion}"`,
+    `Stats (locked): HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}`,
+    "",
+    "Generate JSON exactly in this shape (no other text, no markdown, no code fences):",
+    `{"name":"...","arcAnswer":"...","personality":"..."}`,
+    "",
+    "Rules for each field:",
+    "- name: a believable teen first + last name. Diverse, not bland. Avoid celebrity names. 2-4 words.",
+    "- arcAnswer: 1-2 sentences in the character's voice answering the hook question above. Specific, not abstract. First person.",
+    "- personality: 2-3 sentences describing how this character SHOWS UP in class — quirks, what they care about, what they do when bored, who they sit with. Tie at least one trait back to a high stat (HEAD = sharp, HEART = warm, HUSTLE = quick, HONOR = principled) and at least one to a low stat (the same negative). Third person.",
+  ].join("\n");
+
+  const r = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.apiKey}`,
+      "HTTP-Referer": REFERER,
+      "X-Title": TITLE,
+    },
+    body: JSON.stringify({
+      model: STUDENT_MODEL,
+      messages: [
+        { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 320,
+      temperature: 1.0,
+    }),
+  });
+  if (!r.ok) throw new Error("OpenRouter " + r.status);
+  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const raw = (body.choices?.[0]?.message?.content ?? "").trim();
+  // Strip code fences if the model added any despite instructions.
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  let parsed: { name?: unknown; arcAnswer?: unknown; personality?: unknown };
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(`Could not parse character JSON: ${(err as Error).message} — body: ${cleaned.slice(0, 200)}`);
+  }
+  const name = String(parsed.name ?? "").trim();
+  const arcAnswer = String(parsed.arcAnswer ?? "").trim();
+  const personality = String(parsed.personality ?? "").trim();
+  if (!name || !arcAnswer || !personality) {
+    throw new Error("Generated character missing required fields.");
+  }
+  return { name, playbookId: playbook.id, stats, arcAnswer, personality };
+}
+
 async function generateStudentLine(args: {
   apiKey: string;
   student: StudentCharacter;
@@ -216,7 +343,12 @@ async function generateStudentLine(args: {
     `Situation: ${args.situation}.`,
     facultyContext,
     noteContext,
-    "Reply in ONE short sentence (max 12 words). Lowercase, casual texting style. No quotes, no hashtags.",
+    "RULES — NO EXCEPTIONS:",
+    "- Output ONLY one short sentence (max 12 words). Nothing else.",
+    "- Do NOT ask for context. Do NOT ask clarifying questions.",
+    "- Do NOT explain what you're doing. Just say the line.",
+    "- Lowercase mostly. Casual texting style. No quotes, no hashtags, no preamble.",
+    "- If you genuinely don't have a reaction, say 'lol' or 'idk' or 'fr'. Never refuse.",
   ].filter(Boolean).join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
@@ -707,6 +839,55 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     } finally {
       res.write("event: end\ndata: {}\n\n");
       res.end();
+    }
+    return true;
+  }
+
+  // Roll a random character preview. Returns JSON; the client either accepts
+  // (calls the regular /command create-character) or rerolls.
+  // Generate a sticker portrait of the player's character. Returns a base64
+  // data URL that the client persists onto the character via set-portrait.
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/portrait`) {
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    if (!record || !token) {
+      ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as
+      | { name?: string; playbookId?: string; personality?: string; stats?: { head?: number; heart?: number; hustle?: number; honor?: number } }
+      | null;
+    const name = String(body?.name ?? "").trim();
+    const personality = String(body?.personality ?? "").trim();
+    if (!name || !personality) {
+      ctx.error(ctx.res, "Missing name or personality.", 400);
+      return true;
+    }
+    try {
+      const dataUrl = await renderCharacterPortrait({
+        apiKey: record.apiKey,
+        name,
+        personality,
+      });
+      ctx.json(ctx.res, { ok: true, portraitDataUrl: dataUrl });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/generate`) {
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    if (!record || !token) {
+      ctx.error(ctx.res, "Sign in with OpenRouter first to roll a character.", 401);
+      return true;
+    }
+    try {
+      const c = await rollRandomCharacter({ apiKey: record.apiKey });
+      ctx.json(ctx.res, { ok: true, character: c });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
     }
     return true;
   }

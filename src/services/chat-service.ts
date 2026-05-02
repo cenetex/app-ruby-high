@@ -200,6 +200,7 @@ export class ChatService extends Service {
         return;
       }
 
+      let handoffFired = false;
       for (const call of assistantToolCalls) {
         const result = await this.dispatchTool(opts.agentSessionId, call);
         history.push({
@@ -217,11 +218,19 @@ export class ChatService extends Service {
           result: { ok: result.payload.ok, message: result.payload.message, error: result.payload.error },
           state: result.state ?? undefined,
         };
-        // After pose_opinion lands, kick off the parallel NPC opinion-writing
-        // calls in the background. They'll record into the round as they finish.
         if (call.function.name === "pose_opinion" && result.payload.ok && result.state) {
           void this.kickoffNpcOpinions(opts.apiKey, opts.agentSessionId);
         }
+        if (call.function.name === "handoff_faculty" && result.payload.ok) {
+          handoffFired = true;
+        }
+      }
+      // After handoff_faculty, stop the agent loop. The current speaker is no
+      // longer the active faculty; further turns belong to the new teacher
+      // and should be triggered by the next channel-enter event.
+      if (handoffFired) {
+        yield { type: "done", finishReason: "handoff" };
+        return;
       }
     }
 
@@ -237,8 +246,24 @@ export class ChatService extends Service {
   }): unknown[] {
     const { teacher, history, agentSessionId, extraSystemContext, disableTools } = args;
     const messages: unknown[] = [{ role: "system", content: teacher.systemPrompt }];
+    const state = this.ruby!.getOrCreate(agentSessionId);
+    // Always include who the student is — teachers should know the player's
+    // generated character so they can address them as a real student.
+    if (state.character) {
+      const c = state.character;
+      const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
+      messages.push({
+        role: "system",
+        content: [
+          `You are talking to your student ${c.name}.`,
+          `Personality: ${c.personality}`,
+          `Stats: HEAD ${fmt(c.stats.head)}, HEART ${fmt(c.stats.heart)}, HUSTLE ${fmt(c.stats.hustle)}, HONOR ${fmt(c.stats.honor)}.`,
+          c.arcAnswer ? `Their ongoing personal arc — they answered "${c.arcAnswer}" to your hook question.` : "",
+          `Address them as ${c.name.split(" ")[0] ?? c.name} when natural. They're a real student, not a faceless user.`,
+        ].filter(Boolean).join("\n"),
+      });
+    }
     if (!disableTools) {
-      const state = this.ruby!.getOrCreate(agentSessionId);
       const ctx = describeBoardForModel(state);
       messages.push({ role: "system", content: `Active board context for this turn:\n${ctx}` });
     }

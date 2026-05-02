@@ -50,6 +50,18 @@ const ASSET_FILES: Record<string, { file: string; mime: string }> = {
   "teachers/sally-science-full.png": { file: "teachers/sally-science-full.png", mime: "image/png" },
   "teachers/professor-edward-face.png": { file: "teachers/professor-edward-face.png", mime: "image/png" },
   "teachers/professor-edward-full.png": { file: "teachers/professor-edward-full.png", mime: "image/png" },
+  "students/lyra-face.png":  { file: "students/lyra-face.png",  mime: "image/png" },
+  "students/lyra-full.png":  { file: "students/lyra-full.png",  mime: "image/png" },
+  "students/sami-face.png":  { file: "students/sami-face.png",  mime: "image/png" },
+  "students/sami-full.png":  { file: "students/sami-full.png",  mime: "image/png" },
+  "students/ravi-face.png":  { file: "students/ravi-face.png",  mime: "image/png" },
+  "students/ravi-full.png":  { file: "students/ravi-full.png",  mime: "image/png" },
+  "students/indra-face.png": { file: "students/indra-face.png", mime: "image/png" },
+  "students/indra-full.png": { file: "students/indra-full.png", mime: "image/png" },
+  "students/mika-face.png":  { file: "students/mika-face.png",  mime: "image/png" },
+  "students/mika-full.png":  { file: "students/mika-full.png",  mime: "image/png" },
+  "students/noor-face.png":  { file: "students/noor-face.png",  mime: "image/png" },
+  "students/noor-full.png":  { file: "students/noor-full.png",  mime: "image/png" },
 };
 
 export interface RouteContext {
@@ -586,7 +598,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       }
 
       if (type === "create-character") {
-        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string };
+        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string; personality?: string; portraitDataUrl?: string };
         if (!cb.name || !cb.playbookId || !cb.stats) {
           throw new Error("Missing name, playbookId, or stats.");
         }
@@ -601,10 +613,34 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           playbookId: cb.playbookId,
           stats: cb.stats,
           arcAnswer: cb.arcAnswer ?? "",
+          personality: cb.personality ?? "",
+          portraitDataUrl: cb.portraitDataUrl,
         });
         ctx.json(ctx.res, {
           success: true,
           message: "Character created",
+          session: buildSessionState({ runtime, state, faculty }),
+        });
+        return true;
+      }
+
+      if (type === "clear-character") {
+        const state = ruby.clearCharacter(stateKey);
+        ctx.json(ctx.res, {
+          success: true,
+          message: "Character cleared",
+          session: buildSessionState({ runtime, state, faculty }),
+        });
+        return true;
+      }
+
+      if (type === "set-portrait") {
+        const url = String((body as { portraitDataUrl?: string }).portraitDataUrl ?? "");
+        if (!url.startsWith("data:image/")) throw new Error("portraitDataUrl must be a data URL");
+        const state = ruby.setPortrait(stateKey, url);
+        ctx.json(ctx.res, {
+          success: true,
+          message: "Portrait updated",
           session: buildSessionState({ runtime, state, faculty }),
         });
         return true;

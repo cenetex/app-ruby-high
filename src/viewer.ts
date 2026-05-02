@@ -520,14 +520,20 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
   .teacher-figure {
     position: absolute;
-    right: calc(var(--safe-right) + 4px);
-    bottom: -10px;
-    width: 88px;
+    right: calc(var(--safe-right) + 6px);
+    bottom: -8px;
+    width: 130px;
     height: auto;
     pointer-events: none;
     z-index: 2;
-    filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+    border: 2px solid rgba(255,255,255,0.16);
     animation: figure-in 0.32s ease-out;
+  }
+  @media (min-width: 720px) {
+    .teacher-figure { width: 170px; bottom: -10px; }
   }
   @keyframes figure-in {
     from { opacity: 0; transform: translateY(8px) scale(0.95); }
@@ -1618,18 +1624,25 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     if (!facultyId) return null;
     return apiBase + "/assets/teachers/" + encodeURIComponent(facultyId) + ".png";
   }
-  function appendMsg({ kind, name, body, color, facultyId }) {
+  function studentStickerUrl(studentId) {
+    if (!studentId) return null;
+    return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
+  }
+  function appendMsg({ kind, name, body, color, facultyId, studentId }) {
     const wrap = document.createElement("div");
     wrap.className = "msg " + (kind || "bot");
     const avatar = document.createElement("div");
     avatar.className = "avatar" + (kind === "teacher" ? " is-teacher" : "");
-    if (kind === "teacher" && facultyId) {
+    let avatarImgSrc = null;
+    if (kind === "teacher" && facultyId) avatarImgSrc = teacherStickerUrl(facultyId);
+    else if (kind === "student" && studentId) avatarImgSrc = studentStickerUrl(studentId);
+    else if (kind === "you" && lastTelemetry?.character?.portraitDataUrl) avatarImgSrc = lastTelemetry.character.portraitDataUrl;
+    if (avatarImgSrc) {
       avatar.style.background = "#fff";
       const img = document.createElement("img");
-      img.src = teacherStickerUrl(facultyId);
+      img.src = avatarImgSrc;
       img.alt = name || "";
       img.onerror = () => {
-        // Fall back to letter if the sticker is missing.
         avatar.removeChild(img);
         avatar.style.background = color || "var(--bg-elev)";
         avatar.textContent = name ? name.slice(0, 1).toUpperCase() : "?";
@@ -1716,6 +1729,10 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.boardFrameHost.hidden = true;
     els.answersHost.hidden = true;
     els.blackboardFoot.hidden = true;
+    // Pre-auth: don't dangle action buttons. The teacher can't fire without
+    // an OpenRouter key; we point the player at the chat sign-in instead.
+    if (els.blackboardOpenRails) els.blackboardOpenRails.hidden = true;
+    if (els.blackboardPickNow) els.blackboardPickNow.hidden = true;
     if (reset) {
       els.boardPrompt.textContent = "";
       els.boardReveal.hidden = true;
@@ -1856,15 +1873,12 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     if (!question) {
       showBlackboardEmpty(true);
       activeQuestionId = null;
-      // Show "Pick first question" CTA only when grade is selected.
-      if (currentGrade) {
-        els.blackboardEmptyText.textContent = "Ready when you are. Tap below to draw the first question for grade " + currentGrade + ".";
-        els.blackboardOpenRails.hidden = true;
-        els.blackboardPickNow.hidden = false;
+      if (!authed) {
+        els.blackboardEmptyText.textContent = "Sign in with OpenRouter (chat panel) to start class.";
+      } else if (faculty && faculty.id === LOUNGE_ID) {
+        els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
       } else {
-        els.blackboardEmptyText.textContent = "Pick a grade and a question will appear on the board.";
-        els.blackboardOpenRails.hidden = false;
-        els.blackboardPickNow.hidden = true;
+        els.blackboardEmptyText.textContent = "The teacher will write a question on the board in a moment.";
       }
       return;
     }
@@ -1907,10 +1921,14 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       btn.disabled = role === "agent";
     });
 
-    // Footer
+    // Footer — Question N label always visible; difficulty filter + Next
+    // button only when the player is signed in (otherwise nothing they can
+    // press should be visible).
     els.qnum.textContent = "Question " + questionCounter;
     els.nextBtn.disabled = false;
     els.nextBtn.style.display = "none"; // hidden until reveal
+    if (els.difficultyFilter) els.difficultyFilter.hidden = !authed;
+    els.blackboardFoot.hidden = !authed;
 
     // Opinion-mode bookkeeping resets on new question.
     if (isNewQuestion && isOpinion) {
@@ -2073,37 +2091,38 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       els.channelsList.appendChild(row);
     }
 
-    // Year-wide leaderboard: every student's subject progress.
+    // Class roster — show every student in the year as "online" with a small
+    // face thumb. Click any of them to open their profile card.
     const studentsTitle = document.createElement("div");
     studentsTitle.className = "channel-section-title";
-    studentsTitle.textContent = "Your year — leaderboard";
+    studentsTitle.textContent = "Class — online";
     els.channelsList.appendChild(studentsTitle);
     const npcRoster = t.npc_roster || [];
     npcRoster.forEach((npc) => {
       const s = STUDENTS.find((x) => x.id === npc.id);
       if (!s) return;
-      const row = document.createElement("div");
-      row.className = "student-row";
-      row.style.flexWrap = "wrap";
-      const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = s.color; row.appendChild(dot);
-      const span = document.createElement("span"); span.style.flex = "1 1 auto"; span.textContent = s.name; row.appendChild(span);
-      const status = document.createElement("span");
-      status.style.cssText = "font-size:11px;color:var(--text-mute);";
-      status.textContent = npc.currentRoom ? "#" + npc.currentRoom : "graduated";
-      row.appendChild(status);
-      // Subject progress chips — three small dots filled by completion.
-      const chips = document.createElement("span");
-      chips.style.cssText = "display:inline-flex;gap:3px;width:100%;font-size:10px;color:var(--text-mute);margin-top:3px;letter-spacing:0.04em;";
-      ["homeroom", "science", "literature"].forEach((roomId) => {
-        const subj = npc.subjects[roomId];
-        const chip = document.createElement("span");
-        const done = subj.completed;
-        const correct = subj.correct;
-        chip.textContent = roomId.charAt(0).toUpperCase() + ":" + correct + (done ? "✓" : "/" + COMPLETION_THRESHOLD);
-        chip.style.cssText = "padding:1px 6px;border-radius:999px;background:" + (done ? "rgba(255,77,77,0.18)" : "var(--bg-elev)") + ";color:" + (done ? "#ff8c8c" : "var(--text-mute)") + ";";
-        chips.appendChild(chip);
-      });
-      row.appendChild(chips);
+      const row = document.createElement("button");
+      row.className = "channel-row";
+      row.type = "button";
+      row.style.cssText = "background:transparent;font-weight:600;font-size:14px;";
+      const thumb = document.createElement("span");
+      thumb.className = "teacher-thumb";
+      thumb.style.background = "#222";
+      const img = document.createElement("img");
+      img.src = apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-face.png";
+      img.alt = "";
+      img.onerror = () => { thumb.style.background = s.color; thumb.removeChild(img); };
+      thumb.appendChild(img);
+      row.appendChild(thumb);
+      const name = document.createElement("span");
+      name.style.flex = "1 1 auto";
+      name.textContent = s.name;
+      row.appendChild(name);
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.cssText = "width:8px;height:8px;border-radius:999px;background:#4cb555;";
+      row.appendChild(dot);
+      row.addEventListener("click", () => openStudentProfile(npc, s));
       els.channelsList.appendChild(row);
     });
   }
@@ -2130,20 +2149,14 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
         appendSystem("— Welcome to Grade " + g + " —");
         const grade = data.session.telemetry.current_grade;
         const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === data.session.telemetry.faculty);
-        if (Math.random() < 0.55) {
-          setTimeout(() => {
-            const who = pickRandom(studentsForGrade(grade));
-            appendMsg({ kind: "student", name: who.name, body: pickRandom(STUDENT_LINES_GREET), color: who.color });
-          }, 800);
-        }
         if (authed) {
           loadHistory(data.session.telemetry.faculty);
-          // Hand the floor to the teacher — they greet AND queue the question.
           runAgentTurn("channel-enter", { grade });
-        } else {
-          // Fallback: scripted greeting + manual Pick first question.
-          if (fac) appendMsg({ kind: "teacher", name: fac.displayName, body: greetingFor(fac, grade), color: fac.accent, facultyId: fac.id });
-          setTimeout(pickNext, 400);
+        } else if (fac) {
+          // Pre-auth: just narrate the channel entry. No auto-pick — the
+          // player needs to sign in for any teacher-driven flow.
+          appendMsg({ kind: "teacher", name: fac.displayName, body: greetingFor(fac, grade), color: fac.accent, facultyId: fac.id });
+          appendSystem("Sign in with OpenRouter to start class.");
         }
       }
     }
@@ -2290,8 +2303,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       }
     }
 
-    // First-launch character creation: open sheet overlay automatically.
-    if (!t.character && !sheetAutoShown && !sheetOverlayOpen) {
+    // First-launch character creation: open sheet overlay automatically — but
+    // only once the player is signed in to OpenRouter. Otherwise the chat
+    // panel's sign-in CTA is the priority; we don't want to dangle a Roll
+    // button at someone who can't actually use it.
+    if (authed === true && !t.character && !sheetAutoShown && !sheetOverlayOpen) {
       sheetAutoShown = true;
       openSheet();
     }
@@ -2299,11 +2315,123 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       const youName = els.youName;
       if (youName && youName.textContent !== t.character.name) youName.textContent = t.character.name;
       const youAvatar = els.youAvatar;
-      if (youAvatar) youAvatar.textContent = (t.character.name || "U").slice(0, 1).toUpperCase();
+      if (youAvatar) {
+        if (t.character.portraitDataUrl) {
+          // Replace letter with portrait img.
+          if (!youAvatar.querySelector("img")) {
+            youAvatar.innerHTML = "";
+            const img = document.createElement("img");
+            img.src = t.character.portraitDataUrl;
+            img.alt = "";
+            img.style.cssText = "width:100%;height:100%;object-fit:cover;object-position:center top;";
+            youAvatar.appendChild(img);
+          } else {
+            const img = youAvatar.querySelector("img");
+            if (img.src !== t.character.portraitDataUrl) img.src = t.character.portraitDataUrl;
+          }
+        } else {
+          if (youAvatar.querySelector("img")) {
+            youAvatar.innerHTML = "";
+          }
+          if (youAvatar.textContent !== (t.character.name || "U").slice(0, 1).toUpperCase()) {
+            youAvatar.textContent = (t.character.name || "U").slice(0, 1).toUpperCase();
+          }
+        }
+      }
     }
 
     lastShownGrade = t.current_grade;
     lastShownFaculty = t.faculty;
+  }
+
+  // ── portrait generation (fire-and-forget after character accept) ────────
+  async function generateAndAttachPortrait(c) {
+    if (!authed) return;
+    try {
+      const r = await fetch("/api/apps/ruby-high/chat/character/portrait", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: c.name, playbookId: c.playbookId, personality: c.personality, stats: c.stats }),
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data && data.portraitDataUrl) {
+        await command({ type: "set-portrait", portraitDataUrl: data.portraitDataUrl });
+      }
+    } catch { /* ignore — sheet close was instant; this is a soft enhancement */ }
+  }
+
+  // ── student profile card ─────────────────────────────────────────────────
+  // Opens the same overlay used by the player sheet but renders an NPC's
+  // info instead. Read-only.
+  function openStudentProfile(npc, s) {
+    sheetOverlayOpen = true;
+    sheetEl.classList.add("is-open");
+    sheetCard.innerHTML = "";
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:10px;";
+    const portrait = document.createElement("img");
+    portrait.src = apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-face.png";
+    portrait.alt = "";
+    portrait.style.cssText = "width:56px;height:56px;border-radius:999px;object-fit:cover;background:" + s.color + ";border:2px solid var(--accent);";
+    head.appendChild(portrait);
+    const headText = document.createElement("div");
+    const h = document.createElement("h2");
+    h.style.cssText = "margin:0;font-size:20px;color:var(--accent);";
+    h.textContent = s.name;
+    headText.appendChild(h);
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.style.cssText = "margin:2px 0 0;color:var(--text-mute);font-size:12px;";
+    sub.textContent = "Junior · " + (npc.currentRoom ? "currently in #" + npc.currentRoom : "graduated this year");
+    headText.appendChild(sub);
+    head.appendChild(headText);
+    sheetCard.appendChild(head);
+    const ro = document.createElement("div");
+    ro.className = "sheet-readonly";
+    const fmt = (n) => (n >= 0 ? "+" : "") + n;
+    [
+      ["Stats", "HEAD " + fmt(npc.stats.head) + " · HEART " + fmt(npc.stats.heart) + " · HUSTLE " + fmt(npc.stats.hustle) + " · HONOR " + fmt(npc.stats.honor)],
+      ["Vibe", studentVibe(npc.id)],
+    ].forEach(([k, v]) => {
+      const row = document.createElement("div"); row.className = "row";
+      const ke = document.createElement("span"); ke.className = "k"; ke.textContent = k;
+      const ve = document.createElement("span"); ve.className = "v"; ve.textContent = v;
+      row.appendChild(ke); row.appendChild(ve);
+      ro.appendChild(row);
+    });
+    // Per-subject progress, but compact — just the completed ones with a check.
+    const subjects = ["homeroom", "science", "literature"];
+    const chips = document.createElement("div");
+    chips.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;";
+    subjects.forEach((roomId) => {
+      const subj = npc.subjects[roomId];
+      const chip = document.createElement("span");
+      const done = subj.completed;
+      chip.textContent = roomId + (done ? " ✓" : " " + subj.correct + "/" + COMPLETION_THRESHOLD);
+      chip.style.cssText = "padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;background:" + (done ? "rgba(255,77,77,0.2)" : "var(--bg-elev)") + ";color:" + (done ? "#ff8c8c" : "var(--text-soft)") + ";";
+      chips.appendChild(chip);
+    });
+    ro.appendChild(chips);
+    sheetCard.appendChild(ro);
+    const actions = document.createElement("div");
+    actions.className = "sheet-actions";
+    const close = document.createElement("button");
+    close.textContent = "Close";
+    close.addEventListener("click", closeSheet);
+    actions.appendChild(close);
+    sheetCard.appendChild(actions);
+  }
+  function studentVibe(id) {
+    return ({
+      lyra: "Anxious overachiever. Sweats every wrong answer.",
+      sami: "Dry sarcastic chill. Pretends not to care, secretly knows.",
+      ravi: "Loud, drops obscure facts, wants the front row.",
+      indra: "Quiet observer. Drops one perfect line a day.",
+      mika: "Bright supportive jock energy. Will hype you mid-question.",
+      noor: "Deadpan one-liner master. Roasts the question, not you.",
+    })[id] || "—";
   }
 
   // ── character sheet UI ──────────────────────────────────────────────────
@@ -2358,124 +2486,202 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       arc.textContent = "“" + c.arcAnswer + "”";
       ro.appendChild(arc);
     }
+    if (c.personality) {
+      const p = document.createElement("div");
+      p.style.cssText = "color:var(--text);font-size:14px;line-height:1.5;background:var(--bg-elev);border-radius:10px;padding:10px 12px;";
+      p.textContent = c.personality;
+      ro.appendChild(p);
+    }
     sheetCard.appendChild(ro);
     const actions = document.createElement("div");
     actions.className = "sheet-actions";
+    const reroll = document.createElement("button");
+    reroll.className = "secondary";
+    reroll.textContent = "Reroll character";
+    reroll.addEventListener("click", async () => {
+      if (!confirm("Throw away " + c.name + " and roll a new student? Your XP and class progress will be reset too.")) return;
+      reroll.disabled = true;
+      await command({ type: "clear-character" });
+      await command({ type: "reset" });
+      sheetAutoShown = false;
+      renderSheet();
+    });
     const close = document.createElement("button");
-    close.className = "secondary";
     close.textContent = "Close";
     close.addEventListener("click", closeSheet);
+    actions.appendChild(reroll);
     actions.appendChild(close);
     sheetCard.appendChild(actions);
   }
   function fmtStat(n) { return (n >= 0 ? "+" : "") + n; }
+  // Random-roll character creation. The player INHABITS an AI student rather
+  // than building one. Server picks playbook + stats; LLM fills in the
+  // name/hook/personality. Single "Roll" or "Reroll" button.
+  //
+  // Auth gate: if the player isn't signed in to OpenRouter, render the
+  // sign-in CTA instead — they need the LLM to roll a character.
   function renderSheetCreation(playbooks) {
     sheetCard.innerHTML = "";
+    if (!authed) {
+      const h = document.createElement("h2");
+      h.textContent = "Welcome to Ruby High";
+      sheetCard.appendChild(h);
+      const sub = document.createElement("p");
+      sub.className = "sub";
+      sub.textContent = "Sign in with your OpenRouter account first — your character is rolled by an LLM and the chat with the teachers runs on your account.";
+      sheetCard.appendChild(sub);
+      const actions = document.createElement("div");
+      actions.className = "sheet-actions";
+      const signin = document.createElement("a");
+      signin.href = "/api/apps/ruby-high/auth/start";
+      signin.target = "_blank";
+      signin.rel = "noopener";
+      signin.textContent = "Sign in with OpenRouter";
+      signin.style.cssText = "display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;font-weight:800;font-size:14px;";
+      const close = document.createElement("button");
+      close.className = "secondary";
+      close.textContent = "Close";
+      close.addEventListener("click", closeSheet);
+      actions.appendChild(close);
+      actions.appendChild(signin);
+      sheetCard.appendChild(actions);
+      return;
+    }
+
     const h = document.createElement("h2");
     h.textContent = "Welcome to Ruby High";
     sheetCard.appendChild(h);
     const sub = document.createElement("p");
     sub.className = "sub";
-    sub.textContent = "Roll up a character. Pick a playbook, name yourself, distribute four stats (one each of +2, +1, 0, -1), and answer the question your playbook asks.";
+    sub.textContent = "You're inhabiting an AI student. Hit roll to draw a character — name, vibe, stats, the lot. Reroll until one feels right.";
     sheetCard.appendChild(sub);
 
-    // Name
-    const nameField = document.createElement("div"); nameField.className = "field";
-    const nameLabel = document.createElement("label"); nameLabel.textContent = "Name"; nameField.appendChild(nameLabel);
-    const nameInput = document.createElement("input"); nameInput.type = "text"; nameInput.placeholder = "What does the roll call read?"; nameInput.maxLength = 40; nameField.appendChild(nameInput);
-    sheetCard.appendChild(nameField);
+    // Preview area (filled after first roll).
+    const preview = document.createElement("div");
+    preview.id = "char-preview";
+    preview.style.cssText = "display:none;flex-direction:column;gap:10px;margin-top:8px;";
+    sheetCard.appendChild(preview);
 
-    // Playbook
-    const pbField = document.createElement("div"); pbField.className = "field";
-    const pbLabel = document.createElement("label"); pbLabel.textContent = "Playbook"; pbField.appendChild(pbLabel);
-    const pbGrid = document.createElement("div"); pbGrid.className = "playbook-grid"; pbField.appendChild(pbGrid);
-    sheetCard.appendChild(pbField);
-
-    // Hook (re-rendered when playbook changes)
-    const hookField = document.createElement("div"); hookField.className = "field";
-    const hookLabel = document.createElement("label"); hookLabel.textContent = "Hook"; hookField.appendChild(hookLabel);
-    const hookInput = document.createElement("textarea"); hookInput.rows = 2; hookInput.placeholder = "Pick a playbook to see your hook question."; hookInput.disabled = true; hookField.appendChild(hookInput);
-    sheetCard.appendChild(hookField);
-
-    // Stats
-    const statField = document.createElement("div"); statField.className = "field";
-    const statLabel = document.createElement("label"); statLabel.textContent = "Stats — one each of +2, +1, 0, -1"; statField.appendChild(statLabel);
-    const statGrid = document.createElement("div"); statGrid.className = "stat-grid";
-    const STAT_KEYS = ["head", "heart", "hustle", "honor"];
-    let stats = { head: 0, heart: 0, hustle: 0, honor: 0 };
-    const cells = {};
-    STAT_KEYS.forEach((key) => {
-      const cell = document.createElement("div"); cell.className = "stat-cell";
-      const lbl = document.createElement("div"); lbl.className = "stat-label"; lbl.textContent = key.toUpperCase(); cell.appendChild(lbl);
-      const val = document.createElement("div"); val.className = "stat-value"; val.textContent = "0"; cell.appendChild(val);
-      const ctrls = document.createElement("div"); ctrls.className = "stat-controls";
-      const dec = document.createElement("button"); dec.textContent = "−";
-      const inc = document.createElement("button"); inc.textContent = "+";
-      dec.addEventListener("click", () => { stats[key] = Math.max(-1, stats[key] - 1); refreshStats(); });
-      inc.addEventListener("click", () => { stats[key] = Math.min(2, stats[key] + 1); refreshStats(); });
-      ctrls.appendChild(dec); ctrls.appendChild(inc);
-      cell.appendChild(ctrls);
-      cells[key] = { val, dec, inc };
-      statGrid.appendChild(cell);
-    });
-    statField.appendChild(statGrid);
-    const budget = document.createElement("div"); budget.className = "stat-budget"; statField.appendChild(budget);
-    sheetCard.appendChild(statField);
-
-    function refreshStats() {
-      STAT_KEYS.forEach((k) => { cells[k].val.textContent = (stats[k] >= 0 ? "+" : "") + stats[k]; });
-      // Validate: must be a multiset {+2, +1, 0, -1}.
-      const sorted = STAT_KEYS.map((k) => stats[k]).sort((a, b) => b - a);
-      const valid = sorted[0] === 2 && sorted[1] === 1 && sorted[2] === 0 && sorted[3] === -1;
-      budget.textContent = valid ? "Distribution: ✓" : "Distribution: pick one each of +2, +1, 0, -1";
-      budget.classList.toggle("is-invalid", !valid);
-      submitBtn.disabled = !valid || !nameInput.value.trim() || !selectedPlaybookId;
-    }
-
-    let selectedPlaybookId = null;
-    playbooks.forEach((pb) => {
-      const card = document.createElement("button");
-      card.className = "playbook-card";
-      card.type = "button";
-      const n = document.createElement("div"); n.className = "name"; n.textContent = pb.name; card.appendChild(n);
-      const b = document.createElement("div"); b.className = "blurb"; b.textContent = pb.blurb; card.appendChild(b);
-      card.addEventListener("click", () => {
-        selectedPlaybookId = pb.id;
-        Array.from(pbGrid.children).forEach((c) => c.classList.remove("is-selected"));
-        card.classList.add("is-selected");
-        // Apply suggested stats so the player can tweak rather than start from 0.
-        stats = { ...pb.suggestedStats };
-        refreshStats();
-        hookInput.disabled = false;
-        hookInput.placeholder = pb.hookQuestion;
-        hookInput.value = "";
-      });
-      pbGrid.appendChild(card);
-    });
+    // Status line for in-flight rolls / errors.
+    const status = document.createElement("div");
+    status.className = "stat-budget";
+    status.textContent = "";
+    sheetCard.appendChild(status);
 
     // Actions
-    const actions = document.createElement("div"); actions.className = "sheet-actions";
-    const submitBtn = document.createElement("button"); submitBtn.textContent = "Start Junior year"; submitBtn.disabled = true;
-    submitBtn.addEventListener("click", async () => {
-      submitBtn.disabled = true;
-      const data = await command({
-        type: "create-character",
-        name: nameInput.value.trim(),
-        playbookId: selectedPlaybookId,
-        stats,
-        arcAnswer: hookInput.value.trim(),
-      });
-      if (data && data.session) {
-        closeSheet();
-      } else {
-        submitBtn.disabled = false;
-      }
-    });
-    nameInput.addEventListener("input", refreshStats);
-    actions.appendChild(submitBtn);
+    const actions = document.createElement("div");
+    actions.className = "sheet-actions";
+    const rollBtn = document.createElement("button");
+    rollBtn.textContent = "Roll a character";
+    const acceptBtn = document.createElement("button");
+    acceptBtn.textContent = "Enter junior year";
+    acceptBtn.style.display = "none";
+    actions.appendChild(rollBtn);
+    actions.appendChild(acceptBtn);
     sheetCard.appendChild(actions);
 
-    refreshStats();
+    let rolled = null;
+    let rolling = false;
+
+    function renderPreview(c) {
+      preview.innerHTML = "";
+      preview.style.display = "flex";
+      const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, startingMove: { name: "—", description: "" } };
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;";
+      const name = document.createElement("div");
+      name.style.cssText = "font-size:20px;font-weight:800;color:var(--text);";
+      name.textContent = c.name;
+      head.appendChild(name);
+      const tag = document.createElement("span");
+      tag.style.cssText = "font-size:11px;background:var(--accent);color:#fff;padding:2px 8px;border-radius:999px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;";
+      tag.textContent = pb.name;
+      head.appendChild(tag);
+      preview.appendChild(head);
+
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      const statLine = document.createElement("div");
+      statLine.style.cssText = "font-size:12px;color:var(--text-mute);letter-spacing:0.06em;";
+      statLine.textContent = "HEAD " + fmt(c.stats.head) + " · HEART " + fmt(c.stats.heart) + " · HUSTLE " + fmt(c.stats.hustle) + " · HONOR " + fmt(c.stats.honor);
+      preview.appendChild(statLine);
+
+      const body = document.createElement("div");
+      body.style.cssText = "color:var(--text);font-size:14px;line-height:1.5;background:var(--bg-elev);border-radius:10px;padding:10px 12px;";
+      body.textContent = c.personality;
+      preview.appendChild(body);
+
+      const arc = document.createElement("div");
+      arc.style.cssText = "border-left:3px solid var(--accent);padding:6px 10px;color:var(--text-soft);font-style:italic;font-size:13px;line-height:1.5;background:var(--bg-elev);border-radius:0 8px 8px 0;";
+      arc.textContent = "“" + c.arcAnswer + "”";
+      preview.appendChild(arc);
+
+      const move = document.createElement("div");
+      move.style.cssText = "font-size:11px;color:var(--text-mute);";
+      const moveName = document.createElement("strong");
+      moveName.style.color = "var(--text)";
+      moveName.textContent = pb.startingMove.name;
+      move.appendChild(moveName);
+      move.appendChild(document.createTextNode(" — " + pb.startingMove.description));
+      preview.appendChild(move);
+    }
+
+    async function roll() {
+      if (rolling) return;
+      rolling = true;
+      rollBtn.disabled = true;
+      acceptBtn.disabled = true;
+      acceptBtn.style.display = rolled ? "" : "none";
+      status.textContent = "Rolling…";
+      status.classList.remove("is-invalid");
+      try {
+        const r = await fetch("/api/apps/ruby-high/chat/character/generate", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ error: r.status }));
+          throw new Error(err.error || "request " + r.status);
+        }
+        const data = await r.json();
+        rolled = data.character;
+        rollBtn.textContent = "Reroll";
+        acceptBtn.style.display = "";
+        renderPreview(rolled);
+        status.textContent = "";
+      } catch (err) {
+        status.textContent = "Couldn't roll · " + (err && err.message ? err.message : "error");
+        status.classList.add("is-invalid");
+      } finally {
+        rolling = false;
+        rollBtn.disabled = false;
+        acceptBtn.disabled = !rolled;
+      }
+    }
+
+    rollBtn.addEventListener("click", roll);
+    acceptBtn.addEventListener("click", async () => {
+      if (!rolled) return;
+      acceptBtn.disabled = true;
+      rollBtn.disabled = true;
+      status.textContent = "Saving character…";
+      const saved = rolled;
+      const data = await command({ type: "create-character", ...rolled });
+      if (data && data.session) {
+        // Close immediately; portrait gen runs in background and lands on
+        // the character via /chat/character/portrait → /command set-portrait.
+        closeSheet();
+        void generateAndAttachPortrait(saved);
+      } else {
+        acceptBtn.disabled = false;
+        rollBtn.disabled = false;
+      }
+    });
+
+    // Auto-roll on first open. By the time we get here authed is guaranteed
+    // true (the unauth branch returned above).
+    roll();
   }
   sheetEl.addEventListener("click", (e) => { if (e.target === sheetEl) closeSheet(); });
 
@@ -2499,7 +2705,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
         : situation === "answer-wrong"
           ? pickRandom(STUDENT_LINES_WRONG)
           : pickRandom(STUDENT_LINES_GREET);
-      setTimeout(() => appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color }), delayMs ?? 700);
+      setTimeout(() => appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id }), delayMs ?? 700);
       return;
     }
     const wait = delayMs ?? (700 + Math.random() * 800);
@@ -2514,11 +2720,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
         if (!r.ok) throw new Error("student " + r.status);
         const data = await r.json();
         const line = (data && data.line) || pickRandom(STUDENT_LINES_GREET);
-        appendMsg({ kind: "student", name: who.name, body: line, color: who.color });
+        appendMsg({ kind: "student", name: who.name, body: line, color: who.color, studentId: who.id });
       } catch (err) {
         // Fallback to canned line if the API call fails.
         const fallback = situation === "answer-correct" ? pickRandom(STUDENT_LINES_RIGHT) : pickRandom(STUDENT_LINES_WRONG);
-        appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color });
+        appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
       }
     }, wait);
   }
@@ -2553,10 +2759,19 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       const data = await r.json();
       const next = !!data.authed;
       if (next !== lastAuthState) {
+        const wasSignedIn = lastAuthState === true;
         lastAuthState = next;
         authed = next;
         applyAuthUI();
         if (authed && lastTelemetry) loadHistory(lastTelemetry.faculty);
+        // If the sheet overlay is open while auth state changes, re-render it
+        // so the unauth CTA flips to the Roll UI (or vice versa).
+        if (sheetOverlayOpen) renderSheet();
+        // Just signed in + no character yet → open the sheet automatically.
+        if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
+          sheetAutoShown = true;
+          openSheet();
+        }
       }
     } catch {
       if (authed === true) { authed = false; lastAuthState = false; applyAuthUI(); }
@@ -2792,7 +3007,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       renderedOpinionIds.add(r.responder);
       const s = STUDENTS.find((x) => x.id === r.responder);
       if (!s) continue;
-      appendMsg({ kind: "student", name: s.name, body: r.text, color: s.color });
+      appendMsg({ kind: "student", name: s.name, body: r.text, color: s.color, studentId: s.id });
     }
     // Stamp grade tags onto the matching past chat messages once grades land.
     for (const g of (round.opinionGrades || [])) {

@@ -250,13 +250,21 @@ export interface CharacterStats {
   honor: number;    // discipline / integrity
 }
 
-/** The player's character sheet. Picked once at character creation. */
+/** The player's character sheet. Generated once at character creation. The
+ *  player inhabits this AI-rolled student — they don't manually build it. */
 export interface PlayerCharacter {
   name: string;
   playbookId: string;
   stats: CharacterStats;
-  /** Player's answer to the playbook's hook question. */
+  /** Player's answer to the playbook's hook question (LLM-generated as part
+   *  of the character's voice). */
   arcAnswer: string;
+  /** A 2-3 sentence personality blurb that teachers see in their context
+   *  when interacting with the player. */
+  personality: string;
+  /** Generated sticker portrait as a base64 data URL. Optional — set by the
+   *  /chat/character/portrait endpoint after creation. */
+  portraitDataUrl?: string;
   /** XP accumulated across all years. */
   xp: number;
   /** Strings the player holds on each NPC / faculty member. */

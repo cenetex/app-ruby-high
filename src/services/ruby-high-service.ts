@@ -614,7 +614,7 @@ export class RubyHighService extends Service {
   /** Create the player's character sheet. Throws if one already exists. */
   createCharacter(
     sessionId: string,
-    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string },
+    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; personality: string; portraitDataUrl?: string },
   ): QuizState {
     const state = this.getOrCreate(sessionId);
     if (state.character) throw new Error("Character already exists for this session.");
@@ -625,12 +625,36 @@ export class RubyHighService extends Service {
       playbookId: input.playbookId,
       stats: { ...input.stats },
       arcAnswer: input.arcAnswer.trim(),
+      personality: input.personality.trim(),
+      portraitDataUrl: input.portraitDataUrl,
       xp: 0,
       strings: {},
       conditions: [],
       yearbook: [],
       createdAt: Date.now(),
     };
+    state.updatedAt = Date.now();
+    void this.persist();
+    return state;
+  }
+
+  /** Update only the portrait on the existing character. Used when portrait
+   *  generation completes after createCharacter (which is fire-and-go). */
+  setPortrait(sessionId: string, portraitDataUrl: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (!state.character) throw new Error("No character to attach portrait to.");
+    state.character.portraitDataUrl = portraitDataUrl;
+    state.updatedAt = Date.now();
+    void this.persist();
+    return state;
+  }
+
+  /** Reset only the character, keeping grade/score state. Used when the
+   *  player rerolls after creation. (Allowed during alpha — graduation
+   *  flow will lock this later.) */
+  clearCharacter(sessionId: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    state.character = null;
     state.updatedAt = Date.now();
     void this.persist();
     return state;
