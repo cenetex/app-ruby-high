@@ -557,7 +557,16 @@ export class RubyHighService extends Service {
     if (!round || round.type !== "opinion" || round.resolved) return state;
     if (round.opinionResponses.find((r) => r.responder === responder)) return state;
     const now = Date.now();
-    round.opinionResponses.push({ responder, text: text.trim(), submittedAt: now });
+    // Defensive cap: an opinion response is meant to be 2-3 sentences. The
+    // HTTP layer caps the body at 1 MB, but we trim further here so the
+    // grading prompt and the persisted state don't bloat. 4 KB ≈ 750 words
+    // — far more than any legitimate response.
+    const RESPONSE_MAX = 4096;
+    const trimmed = text.trim();
+    const bounded = trimmed.length > RESPONSE_MAX
+      ? trimmed.slice(0, RESPONSE_MAX) + "…"
+      : trimmed;
+    round.opinionResponses.push({ responder, text: bounded, submittedAt: now });
     if (responder === "player") {
       round.player.answeredAt = now;
     } else {

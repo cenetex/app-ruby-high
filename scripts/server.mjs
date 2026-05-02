@@ -47,17 +47,35 @@ const rubySvc = await (async () => {
 })();
 chatSvc.setRubyHighService(rubySvc);
 
+// 1 MB cap keeps the host from OOM'ing on malformed or hostile requests.
+// Legitimate Ruby High traffic is well under 4 KB per request.
+const MAX_BODY_BYTES = 1024 * 1024;
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (c) => chunks.push(c));
+    let bytes = 0;
+    let rejected = false;
+    req.on("data", (c) => {
+      if (rejected) return;
+      bytes += c.length;
+      if (bytes > MAX_BODY_BYTES) {
+        rejected = true;
+        const err = new Error("Request body too large");
+        err.statusCode = 413;
+        req.destroy();
+        reject(err);
+        return;
+      }
+      chunks.push(c);
+    });
     req.on("end", () => {
+      if (rejected) return;
       try {
         const buf = Buffer.concat(chunks).toString("utf8");
         resolve(buf ? JSON.parse(buf) : {});
       } catch (err) { reject(err); }
     });
-    req.on("error", reject);
+    req.on("error", (err) => { if (!rejected) reject(err); });
   });
 }
 
