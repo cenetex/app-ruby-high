@@ -28,7 +28,6 @@ const ROOT_REDIRECT = process.env.RUBY_HIGH_ROOT_REDIRECT ?? "/api/apps/ruby-hig
 // RUBY_HIGH_STORE_BACKEND=dynamodb + RUBY_HIGH_DYNAMO_TABLE to persist
 // across container restarts.
 const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
-console.log(`[ruby-high] state store: ${stateStore.describe()}`);
 
 const facultySvc = await FacultyService.start({});
 const authSvc = await AuthService.start({});
@@ -140,13 +139,24 @@ function makeRouteContext(req, res, url) {
   };
 }
 
+// /health diagnostic payload, computed once at boot so the route stays cheap.
+// `build` is the short commit SHA the workflow injects (RUBY_HIGH_BUILD); when
+// running locally it falls back to "dev". `state` is the StateStore backend's
+// own description ("/path/to/state.json" or "dynamodb://region/table").
+const HEALTH_PAYLOAD = {
+  ok: true,
+  app: "ruby-high",
+  build: process.env.RUBY_HIGH_BUILD ?? "dev",
+  state: stateStore.describe(),
+};
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${HOST}:${PORT}`}`);
 
   if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: true, app: "ruby-high", t: Date.now() }));
+    res.end(JSON.stringify({ ...HEALTH_PAYLOAD, t: Date.now() }));
     return;
   }
 
@@ -180,9 +190,9 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[ruby-high] listening on http://${HOST}:${PORT}`);
+  console.log(`[ruby-high] build: ${HEALTH_PAYLOAD.build}`);
   if (PUBLIC_BASE) console.log(`[ruby-high] public base: ${PUBLIC_BASE}`);
-  if (STATE_PATH) console.log(`[ruby-high] state -> ${STATE_PATH}`);
-  else console.log(`[ruby-high] state -> default (${"~/.ruby-high/state.json"}) — ephemeral on this container`);
+  console.log(`[ruby-high] state: ${HEALTH_PAYLOAD.state}`);
 });
 
 // Graceful shutdown so a rolling deploy doesn't sever in-flight SSE rudely.

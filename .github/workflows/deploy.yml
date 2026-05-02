@@ -111,6 +111,7 @@ jobs:
               --arg backend "$STORE_BACKEND" \
               --arg table "$DYNAMO_TABLE" \
               --arg publicBase "$PUBLIC_BASE" \
+              --arg build "${{ steps.tags.outputs.sha }}" \
               '{
                 ImageRepository: {
                   ImageIdentifier: $image,
@@ -118,7 +119,7 @@ jobs:
                   ImageConfiguration: {
                     Port: "8080",
                     RuntimeEnvironmentVariables: (
-                      { NODE_ENV: "production", AWS_REGION: $region }
+                      { NODE_ENV: "production", AWS_REGION: $region, RUBY_HIGH_BUILD: $build }
                       + (if $backend == "" then {} else { RUBY_HIGH_STORE_BACKEND: $backend, RUBY_HIGH_DYNAMO_TABLE: $table } end)
                       + (if $publicBase == "" then {} else { RUBY_HIGH_PUBLIC_BASE: $publicBase } end)
                     )
