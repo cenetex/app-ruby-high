@@ -3,6 +3,7 @@ import { AuthService } from "./services/auth-service.js";
 import { ChatService } from "./services/chat-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
+import { parseTeacherGrades } from "./grading.js";
 import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
@@ -134,11 +135,7 @@ async function gradeOpinionResponses(args: {
   rubric?: string;
   responses: Array<{ responder: string; displayName: string; text: string }>;
   playerName: string;
-}): Promise<{
-  grades: Array<{ responder: string; score: number; comment: string }>;
-  bestResponder: string | null;
-  narrativeText: string;
-}> {
+}): Promise<import("./grading.js").ParsedTeacherGrades> {
   const teacher = teacherById(args.facultyId);
   const responseList = args.responses.map((r, i) =>
     `[${i + 1}] ${r.displayName} (responder=${r.responder}):\n${r.text}\n`
@@ -179,28 +176,7 @@ async function gradeOpinionResponses(args: {
   if (!r.ok) throw new Error("OpenRouter " + r.status);
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
-  const grades: Array<{ responder: string; score: number; comment: string }> = [];
-  let bestResponder: string | null = null;
-  const lines = text.split(/\r?\n/);
-  const narrativeLines: string[] = [];
-  for (const line of lines) {
-    const gm = line.match(/^GRADE\s+responder=([\w-]+)\s+score=(\d+(?:\.\d+)?)\s+comment=(.+)$/i);
-    if (gm) {
-      grades.push({
-        responder: gm[1] ?? "",
-        score: Math.max(0, Math.min(10, parseFloat(gm[2] ?? "0"))),
-        comment: (gm[3] ?? "").trim(),
-      });
-      continue;
-    }
-    const bm = line.match(/^BEST:\s*([\w-]+)/i);
-    if (bm) {
-      bestResponder = bm[1] ?? null;
-      continue;
-    }
-    narrativeLines.push(line);
-  }
-  return { grades, bestResponder, narrativeText: narrativeLines.join("\n").trim() };
+  return parseTeacherGrades(text);
 }
 
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
