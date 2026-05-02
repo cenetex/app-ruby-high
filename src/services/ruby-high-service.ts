@@ -863,12 +863,17 @@ export class RubyHighService extends Service {
         `${faculty.displayName} hasn't started teaching at Ruby High yet — only available faculty are: ${[...ALL_FACULTY, LOUNGE_FACULTY].filter((f) => f.available).map((f) => f.id).join(", ")}.`,
       );
     }
+    const previousFacultyId = state.faculty;
     state.faculty = faculty.id;
-    // Wipe the board when entering the lounge — no questions there.
-    if (faculty.id === LOUNGE_FACULTY.id) {
+    // Walking into a different classroom (or the lounge) leaves the previous
+    // room's chalkboard behind. Wipe the active question, last reveal, and
+    // any in-flight round so the new teacher starts on a clean board. A
+    // re-select of the same faculty is a no-op.
+    if (previousFacultyId !== faculty.id) {
       state.current = null;
       state.lastReveal = null;
       state.status = "idle";
+      state.activeRound = null;
     }
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);

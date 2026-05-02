@@ -117,6 +117,48 @@ describe("RubyHighService Phase 1", () => {
     expect(fresh.history).toEqual([]);
   });
 
+  it("setFaculty clears the board when switching to a different teaching room", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:swap-room";
+    // Start in Sally's room, draw a question.
+    ruby.setFaculty(sid, "sally-science");
+    ruby.pickAndPose(sid, { faculty: "sally-science" });
+    let state = ruby.getOrCreate(sid);
+    expect(state.current).not.toBeNull();
+    expect(state.activeRound).not.toBeNull();
+    // Walk into Edward's room — Sally's question must not follow.
+    state = ruby.setFaculty(sid, "professor-edward");
+    expect(state.faculty).toBe("professor-edward");
+    expect(state.current).toBeNull();
+    expect(state.lastReveal).toBeNull();
+    expect(state.activeRound).toBeNull();
+    expect(state.status).toBe("idle");
+  });
+
+  it("setFaculty preserves the board when re-selecting the same faculty (no-op)", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:reselect";
+    ruby.pickAndPose(sid, { faculty: "ruby" });
+    const before = ruby.getOrCreate(sid).current?.id;
+    expect(before).toBeDefined();
+    const state = ruby.setFaculty(sid, "ruby");
+    expect(state.current?.id).toBe(before);
+    expect(state.activeRound).not.toBeNull();
+  });
+
+  it("setFaculty also clears the board when entering the lounge", async () => {
+    // Pre-existing behavior; locked in as a regression check now that the
+    // wipe path is shared with the cross-classroom case.
+    const { ruby } = await makeServices();
+    const sid = "test:to-lounge";
+    ruby.pickAndPose(sid, { faculty: "sally-science" });
+    expect(ruby.getOrCreate(sid).current).not.toBeNull();
+    const state = ruby.setFaculty(sid, "lounge");
+    expect(state.faculty).toBe("lounge");
+    expect(state.current).toBeNull();
+    expect(state.activeRound).toBeNull();
+  });
+
   it("normalizes legacy state files: missing pendingRoll loads as null, not undefined", async () => {
     // Hand-write a state.json the way pre-v0.5.1 saves looked: no
     // pendingRoll field at all. The migration in normalizeLoaded must coerce
