@@ -1,8 +1,12 @@
-# Ruby High — School RPG Design
+# Ruby High — RPG Mechanics Layer
 
-> A light *Powered by the Apocalypse*-derived narrative RPG layered on top of the existing trivia engine. Each teacher and student is a character. Each player has a character sheet. Players graduate.
+> A light *Powered by the Apocalypse*-derived narrative RPG layered under the daily quiz. Each teacher and student is a character. Each player has a character sheet. Players graduate.
 
-This document is the design contract for the Ruby High RPG layer. It draws on PbtA (Vincent Baker), Dungeon World (CC BY 4.0), and Monsterhearts 2 (cited as inspiration, not forked — CC BY-NC-SA). The Ruby High system itself will be released **CC BY 4.0** so anyone can build on it.
+This document is the **mechanics** doc. For the strategic thesis (The Daily, qualitative grading, the Yearbook) see [`DESIGN.md`](./DESIGN.md). For the public pitch and architecture overview see [`README.md`](./README.md).
+
+The RPG layer's job is **to make a daily session feel like progression**. Without dice, stats, conditions, strings, and graduations, every Daily would feel like an isolated quiz. With them, Tuesday's essay raises Lyra's String count, breaks your `anxious` Condition, and pushes you closer to closing out Junior year. The mechanics are not the product — they are the connective tissue that makes the product feel like a game instead of a worksheet.
+
+It draws on PbtA (Vincent Baker), Dungeon World (CC BY 4.0), and Monsterhearts 2 (cited as inspiration, not forked — CC BY-NC-SA). The Ruby High system itself is released **CC BY 4.0** so anyone can build on it.
 
 ## 1. The school
 
@@ -185,28 +189,42 @@ Conditions stack — multiple instances of the same stack and apply cumulatively
 - Their character is archived to the **yearbook** (a persistent JSON of past CharacterSheets).
 - They can start a new playthrough with a **mentor bonus**: pick any past graduate of the same playbook and inherit their `arcAnswer` as a quote on the new character's sheet, plus +1 String on every NPC you interact with this run.
 
-## 9. Phasing
+## 9. How the mechanics serve The Daily
 
-| Phase | Scope | Lift |
-|---|---|---|
-| **0** ✅ | Stickers, lounge multi-teacher, LLM students, in-place blackboard. | Done. |
-| **1** | Restructure to fixed 4 rooms, deterministic 2 students per (grade, room), rename channels. *No mechanics yet.* | Small (this turn). |
-| **2** | CharacterSheet schema + creation flow. Player picks playbook + stat distribution + arcAnswer on first launch. Sheet visible in profile pane. | Medium. |
-| **3** | 2d6+stat rolling on every answer. Outcomes (10+/7-9/6-) modify what the user sees + scoring. Conditions on 6-. | Medium. |
-| **4** | Strings ledger. Earning + spending UI (chip on each NPC's avatar showing String count). | Medium. |
-| **5** | Graduation flow + yearbook persistence. Mentor bonus on new playthroughs. | Small. |
-| **6** | Move unlocks (each playbook gets 1 new move per year cleared). | Small. |
-| **7** | Question authoring upgrades — tag questions with `category: head | heart | hustle | honor` so rolls feel meaningful. | Medium. |
+The mechanics in this doc exist to give The Daily (see `DESIGN.md`) **stakes, memory, and continuity** between sessions. Without them, every Daily is a one-shot quiz. With them:
 
-## 10. Open questions to settle
+- **Stakes**: a missed roll on Tuesday gives you `anxious`, which costs you on Wednesday's HEAD roll, which you'll want to clear before Friday's essay. Each session is haunted by the last.
+- **Memory**: Strings track who you've talked to, who you've consoled, who's consoled you. The lounge becomes a place where conversations from earlier this week pay off.
+- **Continuity**: grade progress accumulates across days. Five correct in Sally's room over a month closes Sophomore science. Closing all three rooms graduates the year. The yearbook page is the artifact.
+
+A purely mechanical Daily (just MC + score) would have a flat retention curve: novelty for two weeks, then attrition. Mechanics with carry-over (Strings, Conditions, grade progress, the yearbook) compound — the longer you play, the more your character is *yours*.
+
+## 10. Phasing
+
+| Phase | Scope | Lift | Status |
+|---|---|---|---|
+| **0** | Stickers, lounge multi-teacher, LLM students, in-place blackboard. | Done. | ✅ |
+| **1** | Restructure to fixed 4 rooms, deterministic 2 students per (grade, room). | Done. | ✅ |
+| **2** | CharacterSheet schema + creation flow. Player picks playbook + stat distribution + arcAnswer on first launch. | Done. | ✅ |
+| **3** | 2d6+stat rolling on every answer. Outcomes (10+/7-9/6-) modify scoring. Conditions on 6−. | Done (v0.5). | ✅ |
+| **4** | Yearbook persistence on grade completion. Diploma screen on graduation. Mentor bonus on new playthroughs. | Small. Highest priority — gates the share artifact. | ⏭ next |
+| **5** | Per-essay grade history persisted as a "Report Card" tab. Filter by teacher, see your average. | Medium. | |
+| **6** | Strings ledger. Earning + spending UI (chip on each NPC's avatar). | Medium. Real-time relational currency. | |
+| **7** | Move unlocks (each playbook gets 1 new move per year cleared). | Small. | |
+| **8** | Question authoring upgrades — tag questions with `category: head \| heart \| hustle \| honor` so rolls feel meaningful. | Medium. | |
+| **9** | Conditions clearable through specific Daily acts (the `anxious` clear flow from §7 wired into actual NPC chat triggers). | Small. | |
+
+## 11. Open questions to settle
 
 1. **Stat invocation by Conditions** — does the player choose to invoke, or is it auto-applied? (Lean: player chooses, narrative justification required in chat.)
-2. **Multiplayer** — is each session a single-player run or do multiple students share a "class period"? (Lean: solo for now, multiplayer = future tournament play from the original DESIGN.md.)
-3. **Save format** — keep CharacterSheet in `~/.ruby-high/state.json` or split into a separate `character.json`? (Lean: same file, new top-level key.)
-4. **GM logic** — is the LLM the GM, or is the server the GM and the LLM just narrates? (Lean: server is GM (deterministic rules), LLM narrates outcomes.)
-5. **String inflation** — at what point do players have too many Strings? Cap at 3 per NPC.
+2. **Multiplayer** — is each session a single-player run or do multiple students share a "class period"? (Lean: solo for now. Co-op is `DESIGN.md` Appendix B.)
+3. **Save format** — keep CharacterSheet in `~/.ruby-high/state.json` or split into a separate `character.json`? (Lean: same file, new top-level key. Yearbook entries live on the character.)
+4. **GM logic** — is the LLM the GM, or is the server the GM and the LLM just narrates? (Settled: server is GM (deterministic rules); LLM narrates outcomes. This is what makes scores cheat-proof.)
+5. **String inflation** — at what point do players have too many Strings? (Cap at 3 per NPC.)
+6. **Conditions in Opinion mode** — does a 6− on an essay's HEAD roll give `anxious`, or are essays graded differently? (Lean: essay scores feed XP only, no Conditions; the qualitative grade is the consequence.)
+7. **Mentor mode at graduation** — is the mentor bonus narrative-only (a quote on the new sheet) or mechanical (+1 String per NPC)? (Lean: both, exactly as specified in §8.)
 
-## 11. License
+## 12. License
 
 This design and the resulting code are released **CC BY 4.0**.
 
