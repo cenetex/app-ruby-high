@@ -1,0 +1,94 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: 022118847419.dkr.ecr.us-east-1.amazonaws.com/ruby-high
+  APPRUNNER_ARN: arn:aws:apprunner:us-east-1:022118847419:service/ruby-high/db79290276f34aa8b93b853f9ea4a9f9
+  APPRUNNER_ACCESS_ROLE: arn:aws:iam::022118847419:role/AppRunnerECRAccessRole
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::022118847419:role/github-actions-ruby-high
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          SHA="${GITHUB_SHA::12}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "image_sha=$ECR_REPO:sha-$SHA" >> "$GITHUB_OUTPUT"
+          echo "image_latest=$ECR_REPO:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.tags.outputs.image_sha }}
+            ${{ steps.tags.outputs.image_latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update App Runner service to new image
+        run: |
+          aws apprunner update-service \
+            --service-arn "$APPRUNNER_ARN" \
+            --source-configuration "$(jq -nc \
+              --arg image "${{ steps.tags.outputs.image_sha }}" \
+              --arg role "$APPRUNNER_ACCESS_ROLE" \
+              '{
+                ImageRepository: {
+                  ImageIdentifier: $image,
+                  ImageRepositoryType: "ECR",
+                  ImageConfiguration: {
+                    Port: "8080",
+                    RuntimeEnvironmentVariables: { NODE_ENV: "production" }
+                  }
+                },
+                AutoDeploymentsEnabled: false,
+                AuthenticationConfiguration: { AccessRoleArn: $role }
+              }')" \
+            --region "$AWS_REGION" \
+            --output json | jq -r '"Status: " + .Service.Status + "  URL: " + .Service.ServiceUrl'
+
+      - name: Wait for App Runner deployment to settle
+        run: |
+          for i in $(seq 1 60); do
+            status=$(aws apprunner describe-service \
+              --service-arn "$APPRUNNER_ARN" \
+              --region "$AWS_REGION" \
+              --query 'Service.Status' --output text)
+            echo "[$i/60] status=$status"
+            case "$status" in
+              RUNNING) echo "Deploy succeeded."; exit 0 ;;
+              CREATE_FAILED|DELETE_FAILED) echo "Deploy failed: $status"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "Timed out waiting for App Runner."
+          exit 1

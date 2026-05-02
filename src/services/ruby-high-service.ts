@@ -33,6 +33,7 @@ import {
   type Question,
   type QuestionType,
   type QuizState,
+  type RoundOutcome,
   type TeachingRoomId,
 } from "../types.js";
 import { FacultyService, type PickFilter } from "./faculty-service.js";
@@ -95,6 +96,60 @@ export class RubyHighService extends Service {
     return this.persist();
   }
 
+  /** DM tool — teacher asks the player to roll a stat against a DC. Stored
+   *  on state until the player resolves it via /command resolve-roll. */
+  requestRoll(sessionId: string, input: { stat: keyof CharacterStats; dc?: number; reason?: string; faculty?: string }): QuizState {
+    const state = this.getOrCreate(sessionId);
+    state.pendingRoll = {
+      stat: input.stat,
+      dc: typeof input.dc === "number" ? input.dc : 7,
+      reason: (input.reason ?? "").trim(),
+      requestedBy: input.faculty ?? state.faculty,
+      requestedAt: Date.now(),
+    };
+    state.updatedAt = Date.now();
+    void this.persist();
+    return state;
+  }
+
+  /** Resolve the player's pending DM-roll. Returns the rolled outcome and
+   *  awards XP / accrues conditions per outcome. */
+  resolvePendingRoll(sessionId: string): { state: QuizState; result: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome; xpAwarded: number; conditionTaken?: string; reason: string } | null } {
+    const state = this.getOrCreate(sessionId);
+    const pr = state.pendingRoll;
+    if (!pr || !state.character) return { state, result: null };
+    const r = roll2d6();
+    const total = r.total + state.character.stats[pr.stat];
+    const outcome: RoundOutcome = total >= pr.dc + 3 ? "hit" : total >= pr.dc ? "mixed" : "miss";
+    let xpAwarded = outcome === "hit" ? 2 : outcome === "mixed" ? 1 : 0;
+    let conditionTaken: string | undefined;
+    if (outcome === "miss") {
+      conditionTaken = pr.stat === "head" ? "anxious" : pr.stat === "heart" ? "lonely" : pr.stat === "hustle" ? "tired" : "hurt";
+      if (!state.character.conditions.includes(conditionTaken)) {
+        state.character.conditions.push(conditionTaken);
+      }
+    }
+    state.character.xp = (state.character.xp ?? 0) + xpAwarded;
+    state.pendingRoll = null;
+    state.updatedAt = Date.now();
+    void this.persist();
+    return {
+      state,
+      result: { stat: pr.stat, dice: r.dice, total, outcome, xpAwarded, conditionTaken, reason: pr.reason },
+    };
+  }
+
+  /** DM tool — teacher hands out XP directly. */
+  awardXp(sessionId: string, amount: number, _reason: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (!state.character) return state;
+    const a = Math.max(0, Math.min(10, Math.floor(amount)));
+    state.character.xp = (state.character.xp ?? 0) + a;
+    state.updatedAt = Date.now();
+    void this.persist();
+    return state;
+  }
+
   /**
    * Bind the FacultyService once both services are registered. Called by the
    * plugin index after both `Service.start()` calls return. Lets RubyHighService
@@ -143,6 +198,7 @@ export class RubyHighService extends Service {
         character: null,
         npcRosters: {},
         activeRound: null,
+        pendingRoll: null,
         updatedAt: Date.now(),
       };
       this.sessions.set(sessionId, state);
@@ -194,9 +250,13 @@ export class RubyHighService extends Service {
       round.resolvedAt = Date.now();
       return;
     }
-    // Force-pin any unanswered NPCs to the timer expiry.
+    // Force-pin any unanswered NPCs to their planned commit time. This keeps
+    // the race honest when the player commits early — an NPC whose delay
+    // would have fired at T=7s is recorded as T=7s, not at the timer expiry.
     for (const entry of round.npcs) {
-      if (entry.answeredAt == null) entry.answeredAt = round.expiresAt;
+      if (entry.answeredAt == null) {
+        entry.answeredAt = Math.min(round.startedAt + entry.delayMs, round.expiresAt);
+      }
     }
 
     // Determine first-correct across the whole field.
@@ -623,8 +683,14 @@ export class RubyHighService extends Service {
     }
     round.player.picked = picked;
     round.player.answeredAt = Date.now();
-    // Tick may immediately resolve (if all NPCs are already in) or wait.
+    // Tick first so any NPCs whose delay HAS already elapsed lock in honestly.
     this.tickRound(state);
+    // Once the player has committed, the race is decided — any NPC still
+    // pending committed AFTER the player by definition. Resolve immediately
+    // so the teacher reacts in real time instead of stalling for up to 22s
+    // waiting on slow NPC delays. resolveRound pins unanswered NPCs to their
+    // planned commit time (startedAt + delayMs), preserving the honest race.
+    if (!round.resolved) this.resolveRound(state, false);
     state.updatedAt = Date.now();
     void this.persist();
     return state;

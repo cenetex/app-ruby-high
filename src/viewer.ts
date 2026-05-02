@@ -2507,10 +2507,42 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   function setAccent(color) {
     document.documentElement.style.setProperty("--accent", color || "#d22a2a");
   }
+  // ── view-mode state machine ─────────────────────────────────────────────
+  // Single source of truth for "what should be visible right now". Every
+  // visibility flag in the UI is derived from the mode + telemetry, so the
+  // states can't drift out of sync (the bug from the obsolete-UI screenshot).
+  function deriveViewMode(t) {
+    if (authed === null) return "checking-auth";
+    if (!authed) return "needs-auth";
+    if (!t || !t.character) return "needs-character";
+    if (t.faculty === LOUNGE_ID) return "in-lounge";
+    if (t.active_round && !t.active_round.resolved && t.current) return "round-live";
+    if (t.current) return "round-revealed";
+    return "between-rounds";
+  }
+  function applyViewMode(mode) {
+    // Composer: only enabled when the player is in a state that can chat.
+    const canChat = authed && (mode === "between-rounds" || mode === "round-live" || mode === "round-revealed" || mode === "in-lounge");
+    els.signinCta.hidden = mode !== "needs-auth";
+    els.chatForm.hidden = !canChat;
+    if (canChat) { els.chatInput.disabled = false; els.chatSend.disabled = false; }
+    // Race strip: only during a live round.
+    if (mode !== "round-live") {
+      els.raceStrip.hidden = true;
+      if (els.raceRow) els.raceRow.innerHTML = "";
+    }
+    // Blackboard footer (Question N + difficulty filter + Next): only when
+    // the player can actually act on it.
+    const showBoardFoot = mode === "round-live" || mode === "round-revealed";
+    if (els.blackboardFoot) els.blackboardFoot.hidden = !showBoardFoot;
+    if (els.difficultyFilter) els.difficultyFilter.hidden = !authed;
+  }
+
   function render(s) {
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
     lastTelemetry = t;
+    applyViewMode(deriveViewMode(t));
 
     setAccent(t.facultyAccent);
     rebuildServersRail();

@@ -131,7 +131,18 @@ export interface QuizState {
   /** The currently-running race to answer, if any. Cleared when the round
    *  resolves and lastReveal takes over. */
   activeRound: ActiveRound | null;
+  /** Open DM call-for-roll. Teacher asks the player to roll a stat against a
+   *  DC; player taps a button to resolve. Cleared on resolution. */
+  pendingRoll: PendingRoll | null;
   updatedAt: number;
+}
+
+export interface PendingRoll {
+  stat: keyof CharacterStats;
+  dc: number;
+  reason: string;
+  requestedBy: string;     // teacher/faculty id
+  requestedAt: number;
 }
 
 export interface FacultyMember {
