@@ -15,6 +15,8 @@ import {
   npcsInRoom,
   pickNextRoomForStudent,
   roomForFaculty,
+  classifyTotal,
+  roll2d6,
   rollNpcAnswer,
   rollOpinionDelay,
   type ActiveRound,
@@ -227,6 +229,33 @@ export class RubyHighService extends Service {
     state.score.total += 1;
     if (wasCorrect) state.score.correct += 1;
 
+    // 2d6 + HEAD roll for the player. The roll narrates the outcome on top
+    // of their literal pick: a 10+ "clean" hit awards full XP, a 7-9 "mixed"
+    // half, a 6- "miss" can saddle the player with a Condition. NPCs roll
+    // separately at pose-time; this is just the player's pass.
+    let playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null = null;
+    if (state.character && picked != null) {
+      const stat: keyof CharacterStats = "head";
+      const r = roll2d6();
+      const total = r.total + state.character.stats[stat];
+      const outcome = classifyTotal(total);
+      let xpAwarded = 0;
+      let conditionTaken: string | undefined;
+      if (wasCorrect) {
+        xpAwarded = outcome === "hit" ? 2 : outcome === "mixed" ? 1 : 1;
+      } else {
+        xpAwarded = 0;
+      }
+      if (!wasCorrect && outcome === "miss") {
+        conditionTaken = "anxious";
+        if (!state.character.conditions.includes(conditionTaken)) {
+          state.character.conditions.push(conditionTaken);
+        }
+      }
+      state.character.xp = (state.character.xp ?? 0) + xpAwarded;
+      playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded, conditionTaken };
+    }
+
     // Player subject progress.
     if (state.currentGrade && wasCorrect) {
       const key = state.currentGrade;
@@ -247,6 +276,7 @@ export class RubyHighService extends Service {
       wasCorrect,
       explanation: q.explanation ?? null,
       encouragement: forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
+      playerRoll,
       ...(npcEvents.length ? { npcEvents } : {}),
     };
     state.status = "revealed";

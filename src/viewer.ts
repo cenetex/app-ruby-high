@@ -923,6 +923,48 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; }
   .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.85; }
 
+  /* ── XP burst toast (lands on a successful roll, animated) ────────────── */
+  .xp-burst {
+    position: fixed;
+    left: 50%;
+    top: calc(var(--safe-top) + 130px);
+    transform: translate(-50%, -10px) scale(0.9);
+    background: linear-gradient(180deg, #f0d24a, #c8941f);
+    color: #1a1108;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-weight: 900;
+    font-size: 12px;
+    box-shadow: 0 8px 22px rgba(240, 210, 74, 0.45);
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    border: 2px solid rgba(255,255,255,0.4);
+  }
+  .xp-burst.is-visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
+
+  /* Roll badge in the chat result chip */
+  .roll-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    background: var(--bg-elev-2);
+    color: var(--text-soft);
+    font-family: "SF Mono", "Menlo", monospace;
+  }
+  .roll-chip.hit   { background: rgba(76,181,85,0.22);  color: #b6f5b9; }
+  .roll-chip.mixed { background: rgba(240,146,42,0.22); color: #f5c98a; }
+  .roll-chip.miss  { background: rgba(210,42,42,0.22);  color: #ffb1b1; }
+
   /* ── unified CCG-style character card ─────────────────────────────────── */
   .ccg-card {
     width: 100%;
@@ -1631,6 +1673,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
 </div>
 
 <div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
+<div class="xp-burst" id="xp-burst" aria-live="polite"></div>
 
 <!-- Character sheet overlay (creation + profile view) -->
 <div class="sheet-overlay" id="sheet-overlay">
@@ -1729,6 +1772,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     checking: $("checking"),
     scrim: $("scrim"),
     congrats: $("congrats-toast"),
+    xpBurst: $("xp-burst"),
   };
 
   // ── view state ────────────────────────────────────────────────────────────
@@ -2164,10 +2208,42 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     badge.textContent = reveal.wasCorrect ? "✓ " + reveal.picked : "✗ " + reveal.picked + " · " + reveal.correct;
     body.appendChild(badge);
     body.appendChild(document.createTextNode("Q" + questionCounter + " — " + (reveal.wasCorrect ? "correct" : "missed")));
+    if (reveal.playerRoll) {
+      const r = reveal.playerRoll;
+      const chip = document.createElement("span");
+      chip.className = "roll-chip " + r.outcome;
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      // Recover the stat modifier from total - dice sum so we don't carry it.
+      const mod = r.total - (r.dice[0] + r.dice[1]);
+      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + r.stat.toUpperCase() + " = " + r.total;
+      body.appendChild(chip);
+      if (r.xpAwarded > 0) {
+        const xp = document.createElement("span");
+        xp.className = "roll-chip hit";
+        xp.textContent = "+" + r.xpAwarded + " XP";
+        body.appendChild(xp);
+      }
+      if (r.conditionTaken) {
+        const cond = document.createElement("span");
+        cond.className = "roll-chip miss";
+        cond.textContent = "took " + r.conditionTaken;
+        body.appendChild(cond);
+      }
+    }
     wrap.appendChild(body);
     els.stream.appendChild(wrap);
     scrollIfPinned();
   }
+  function showXpBurst(amount) {
+    if (!amount || amount <= 0) return;
+    els.xpBurst.textContent = "+" + amount + " XP";
+    els.xpBurst.classList.remove("is-visible");
+    void els.xpBurst.offsetWidth;
+    els.xpBurst.classList.add("is-visible");
+    clearTimeout(xpBurstTimer);
+    xpBurstTimer = setTimeout(() => els.xpBurst.classList.remove("is-visible"), 1800);
+  }
+  let xpBurstTimer = null;
 
   // ── server rail (just the brand button now — no grade picker) ───────────
   function rebuildServersRail() {
@@ -2470,6 +2546,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
           appendResultChip(t.lastReveal);
         }
         showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
+        if (t.lastReveal.playerRoll && t.lastReveal.playerRoll.xpAwarded > 0) {
+          showXpBurst(t.lastReveal.playerRoll.xpAwarded);
+        }
         scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade);
         // Teacher reacts + queues next question. Small delay so the
         // congrats toast lands first and the chat doesn't feel stacked.

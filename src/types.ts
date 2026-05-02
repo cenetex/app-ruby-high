@@ -95,6 +95,15 @@ export interface QuizState {
     wasCorrect: boolean;
     explanation: string | null;
     encouragement: string | null;
+    /** Player's 2d6 + stat roll for this question. Drives XP + conditions. */
+    playerRoll?: {
+      stat: keyof CharacterStats;
+      dice: [number, number];
+      total: number;
+      outcome: RoundOutcome;       // hit | mixed | miss
+      xpAwarded: number;
+      conditionTaken?: string;     // e.g. "anxious"
+    } | null;
     /** NPCs in the active room also answered — for UI animation. */
     npcEvents?: Array<{
       studentId: string;
