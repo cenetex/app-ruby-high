@@ -908,6 +908,206 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; }
   .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.85; }
 
+  /* ── character sheet overlay ──────────────────────────────────────────── */
+  .sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    z-index: 60;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .sheet-overlay.is-open { display: flex; }
+  .sheet-card {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 20px;
+    max-width: 560px;
+    width: 100%;
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .sheet-card h2 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    color: var(--accent);
+  }
+  .sheet-card .sub {
+    margin: 0 0 14px;
+    color: var(--text-mute);
+    font-size: 13px;
+  }
+  .sheet-card .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .sheet-card .field label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--text-mute);
+  }
+  .sheet-card input[type="text"],
+  .sheet-card textarea {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 16px;
+  }
+  .sheet-card textarea {
+    resize: vertical;
+    min-height: 56px;
+  }
+  .playbook-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  @media (min-width: 640px) {
+    .playbook-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .playbook-card {
+    appearance: none;
+    background: var(--bg-elev);
+    border: 1.5px solid var(--line);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 10px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.12s ease, transform 0.06s ease;
+  }
+  .playbook-card:hover { border-color: var(--text-mute); }
+  .playbook-card.is-selected {
+    border-color: var(--accent);
+    background: rgba(210, 42, 42, 0.06);
+  }
+  .playbook-card .name {
+    font-weight: 800;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+  .playbook-card .blurb {
+    color: var(--text-mute);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .stat-cell {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px;
+    text-align: center;
+  }
+  .stat-cell .stat-label {
+    font-size: 10px;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .stat-cell .stat-value {
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--text);
+    margin: 4px 0;
+  }
+  .stat-cell .stat-controls {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+  }
+  .stat-cell button {
+    appearance: none;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 800;
+  }
+  .stat-cell button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .stat-budget {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-mute);
+    margin-top: 6px;
+  }
+  .stat-budget.is-invalid { color: #ff8c8c; }
+  .sheet-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .sheet-actions button {
+    appearance: none;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    border-radius: 999px;
+    padding: 10px 18px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .sheet-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .sheet-actions button.secondary {
+    background: var(--bg-elev);
+    color: var(--text-soft);
+  }
+  .sheet-readonly { display: flex; flex-direction: column; gap: 12px; }
+  .sheet-readonly .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--line);
+    padding: 6px 0;
+    align-items: baseline;
+  }
+  .sheet-readonly .row .k {
+    color: var(--text-mute);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .sheet-readonly .row .v {
+    color: var(--text);
+    font-weight: 700;
+    text-align: right;
+    flex: 1 1 auto;
+  }
+  .sheet-readonly .arc {
+    background: var(--bg-elev);
+    border-left: 3px solid var(--accent);
+    padding: 8px 10px;
+    color: var(--text-soft);
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.5;
+    border-radius: 0 8px 8px 0;
+  }
+
+  /* tiny "open profile" button living in the channels footer */
+  .you-meta { cursor: pointer; }
+
   /* ── opinion mode: a small grade-pill that lands on the student's
    *  earlier chat message after the teacher grades. */
   .grade-tag {
@@ -1246,6 +1446,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
 
 <div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
 
+<!-- Character sheet overlay (creation + profile view) -->
+<div class="sheet-overlay" id="sheet-overlay">
+  <div class="sheet-card" id="sheet-card"></div>
+</div>
+
 <script>
 (() => {
   const apiBase = decodeURIComponent("${safeApiBase}");
@@ -1358,6 +1563,8 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   let opinionGradeFired = false; // grading has been triggered for current round
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
+  let sheetOverlayOpen = false;
+  let sheetAutoShown = false;
 
   // Track scroll-to-bottom intent: only auto-scroll if user is near bottom.
   function isNearBottom() {
@@ -2083,9 +2290,194 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       }
     }
 
+    // First-launch character creation: open sheet overlay automatically.
+    if (!t.character && !sheetAutoShown && !sheetOverlayOpen) {
+      sheetAutoShown = true;
+      openSheet();
+    }
+    if (t.character) {
+      const youName = els.youName;
+      if (youName && youName.textContent !== t.character.name) youName.textContent = t.character.name;
+      const youAvatar = els.youAvatar;
+      if (youAvatar) youAvatar.textContent = (t.character.name || "U").slice(0, 1).toUpperCase();
+    }
+
     lastShownGrade = t.current_grade;
     lastShownFaculty = t.faculty;
   }
+
+  // ── character sheet UI ──────────────────────────────────────────────────
+  const sheetEl = $("sheet-overlay");
+  const sheetCard = $("sheet-card");
+  function openSheet() {
+    sheetOverlayOpen = true;
+    sheetEl.classList.add("is-open");
+    renderSheet();
+  }
+  function closeSheet() {
+    sheetOverlayOpen = false;
+    sheetEl.classList.remove("is-open");
+  }
+  function renderSheet() {
+    const t = lastTelemetry || {};
+    const playbooks = t.playbooks || [];
+    if (t.character) {
+      renderSheetReadonly(t.character, playbooks);
+    } else {
+      renderSheetCreation(playbooks);
+    }
+  }
+  function renderSheetReadonly(c, playbooks) {
+    const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, blurb: "" };
+    sheetCard.innerHTML = "";
+    const h = document.createElement("h2");
+    h.textContent = c.name;
+    sheetCard.appendChild(h);
+    const sub = document.createElement("p");
+    sub.className = "sub";
+    sub.textContent = pb.name + " · " + (lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Junior") + " · " + (c.xp ?? 0) + " XP";
+    sheetCard.appendChild(sub);
+    const ro = document.createElement("div");
+    ro.className = "sheet-readonly";
+    [
+      ["Stats", "HEAD " + fmtStat(c.stats.head) + " · HEART " + fmtStat(c.stats.heart) + " · HUSTLE " + fmtStat(c.stats.hustle) + " · HONOR " + fmtStat(c.stats.honor)],
+      ["Starting move", pb.startingMove ? pb.startingMove.name + " — " + pb.startingMove.description : "—"],
+      ["Conditions", (c.conditions || []).join(", ") || "(none)"],
+      ["Strings", Object.keys(c.strings || {}).length ? Object.entries(c.strings).map(([k, v]) => k + ":" + v).join(" · ") : "(none yet)"],
+    ].forEach(([k, v]) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const ke = document.createElement("span"); ke.className = "k"; ke.textContent = k;
+      const ve = document.createElement("span"); ve.className = "v"; ve.textContent = v;
+      row.appendChild(ke); row.appendChild(ve);
+      ro.appendChild(row);
+    });
+    if (c.arcAnswer) {
+      const arc = document.createElement("div");
+      arc.className = "arc";
+      arc.textContent = "“" + c.arcAnswer + "”";
+      ro.appendChild(arc);
+    }
+    sheetCard.appendChild(ro);
+    const actions = document.createElement("div");
+    actions.className = "sheet-actions";
+    const close = document.createElement("button");
+    close.className = "secondary";
+    close.textContent = "Close";
+    close.addEventListener("click", closeSheet);
+    actions.appendChild(close);
+    sheetCard.appendChild(actions);
+  }
+  function fmtStat(n) { return (n >= 0 ? "+" : "") + n; }
+  function renderSheetCreation(playbooks) {
+    sheetCard.innerHTML = "";
+    const h = document.createElement("h2");
+    h.textContent = "Welcome to Ruby High";
+    sheetCard.appendChild(h);
+    const sub = document.createElement("p");
+    sub.className = "sub";
+    sub.textContent = "Roll up a character. Pick a playbook, name yourself, distribute four stats (one each of +2, +1, 0, -1), and answer the question your playbook asks.";
+    sheetCard.appendChild(sub);
+
+    // Name
+    const nameField = document.createElement("div"); nameField.className = "field";
+    const nameLabel = document.createElement("label"); nameLabel.textContent = "Name"; nameField.appendChild(nameLabel);
+    const nameInput = document.createElement("input"); nameInput.type = "text"; nameInput.placeholder = "What does the roll call read?"; nameInput.maxLength = 40; nameField.appendChild(nameInput);
+    sheetCard.appendChild(nameField);
+
+    // Playbook
+    const pbField = document.createElement("div"); pbField.className = "field";
+    const pbLabel = document.createElement("label"); pbLabel.textContent = "Playbook"; pbField.appendChild(pbLabel);
+    const pbGrid = document.createElement("div"); pbGrid.className = "playbook-grid"; pbField.appendChild(pbGrid);
+    sheetCard.appendChild(pbField);
+
+    // Hook (re-rendered when playbook changes)
+    const hookField = document.createElement("div"); hookField.className = "field";
+    const hookLabel = document.createElement("label"); hookLabel.textContent = "Hook"; hookField.appendChild(hookLabel);
+    const hookInput = document.createElement("textarea"); hookInput.rows = 2; hookInput.placeholder = "Pick a playbook to see your hook question."; hookInput.disabled = true; hookField.appendChild(hookInput);
+    sheetCard.appendChild(hookField);
+
+    // Stats
+    const statField = document.createElement("div"); statField.className = "field";
+    const statLabel = document.createElement("label"); statLabel.textContent = "Stats — one each of +2, +1, 0, -1"; statField.appendChild(statLabel);
+    const statGrid = document.createElement("div"); statGrid.className = "stat-grid";
+    const STAT_KEYS = ["head", "heart", "hustle", "honor"];
+    let stats = { head: 0, heart: 0, hustle: 0, honor: 0 };
+    const cells = {};
+    STAT_KEYS.forEach((key) => {
+      const cell = document.createElement("div"); cell.className = "stat-cell";
+      const lbl = document.createElement("div"); lbl.className = "stat-label"; lbl.textContent = key.toUpperCase(); cell.appendChild(lbl);
+      const val = document.createElement("div"); val.className = "stat-value"; val.textContent = "0"; cell.appendChild(val);
+      const ctrls = document.createElement("div"); ctrls.className = "stat-controls";
+      const dec = document.createElement("button"); dec.textContent = "−";
+      const inc = document.createElement("button"); inc.textContent = "+";
+      dec.addEventListener("click", () => { stats[key] = Math.max(-1, stats[key] - 1); refreshStats(); });
+      inc.addEventListener("click", () => { stats[key] = Math.min(2, stats[key] + 1); refreshStats(); });
+      ctrls.appendChild(dec); ctrls.appendChild(inc);
+      cell.appendChild(ctrls);
+      cells[key] = { val, dec, inc };
+      statGrid.appendChild(cell);
+    });
+    statField.appendChild(statGrid);
+    const budget = document.createElement("div"); budget.className = "stat-budget"; statField.appendChild(budget);
+    sheetCard.appendChild(statField);
+
+    function refreshStats() {
+      STAT_KEYS.forEach((k) => { cells[k].val.textContent = (stats[k] >= 0 ? "+" : "") + stats[k]; });
+      // Validate: must be a multiset {+2, +1, 0, -1}.
+      const sorted = STAT_KEYS.map((k) => stats[k]).sort((a, b) => b - a);
+      const valid = sorted[0] === 2 && sorted[1] === 1 && sorted[2] === 0 && sorted[3] === -1;
+      budget.textContent = valid ? "Distribution: ✓" : "Distribution: pick one each of +2, +1, 0, -1";
+      budget.classList.toggle("is-invalid", !valid);
+      submitBtn.disabled = !valid || !nameInput.value.trim() || !selectedPlaybookId;
+    }
+
+    let selectedPlaybookId = null;
+    playbooks.forEach((pb) => {
+      const card = document.createElement("button");
+      card.className = "playbook-card";
+      card.type = "button";
+      const n = document.createElement("div"); n.className = "name"; n.textContent = pb.name; card.appendChild(n);
+      const b = document.createElement("div"); b.className = "blurb"; b.textContent = pb.blurb; card.appendChild(b);
+      card.addEventListener("click", () => {
+        selectedPlaybookId = pb.id;
+        Array.from(pbGrid.children).forEach((c) => c.classList.remove("is-selected"));
+        card.classList.add("is-selected");
+        // Apply suggested stats so the player can tweak rather than start from 0.
+        stats = { ...pb.suggestedStats };
+        refreshStats();
+        hookInput.disabled = false;
+        hookInput.placeholder = pb.hookQuestion;
+        hookInput.value = "";
+      });
+      pbGrid.appendChild(card);
+    });
+
+    // Actions
+    const actions = document.createElement("div"); actions.className = "sheet-actions";
+    const submitBtn = document.createElement("button"); submitBtn.textContent = "Start Junior year"; submitBtn.disabled = true;
+    submitBtn.addEventListener("click", async () => {
+      submitBtn.disabled = true;
+      const data = await command({
+        type: "create-character",
+        name: nameInput.value.trim(),
+        playbookId: selectedPlaybookId,
+        stats,
+        arcAnswer: hookInput.value.trim(),
+      });
+      if (data && data.session) {
+        closeSheet();
+      } else {
+        submitBtn.disabled = false;
+      }
+    });
+    nameInput.addEventListener("input", refreshStats);
+    actions.appendChild(submitBtn);
+    sheetCard.appendChild(actions);
+
+    refreshStats();
+  }
+  sheetEl.addEventListener("click", (e) => { if (e.target === sheetEl) closeSheet(); });
 
   // ── student chime ─────────────────────────────────────────────────────────
   // When authed, fire the LLM-backed /chat/student-chime endpoint so the AI
@@ -2472,6 +2864,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     if (authed) logout();
     else window.open("/api/apps/ruby-high/auth/start", "_blank", "noopener");
   });
+  // Click your name/avatar to open the character sheet.
+  const youCardBlock = document.querySelector(".channels-footer .you-meta");
+  if (youCardBlock) youCardBlock.addEventListener("click", openSheet);
+  const youAvatarEl = document.querySelector(".channels-footer .you-avatar");
+  if (youAvatarEl) youAvatarEl.addEventListener("click", openSheet);
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
   els.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }

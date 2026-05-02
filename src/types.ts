@@ -113,6 +113,9 @@ export interface QuizState {
   gradeProgress: Record<string, number>;
   /** Whether the student has finished the splash/intro and is into the app. */
   hasSeenIntro: boolean;
+  /** The player's character sheet. Created once (on first run) and
+   *  immutable thereafter (graduation flow archives it to a yearbook). */
+  character: PlayerCharacter | null;
   /** Per-grade NPC student rosters. Keyed by grade so progress persists when
    *  the player switches grades and comes back. */
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
@@ -245,6 +248,28 @@ export interface CharacterStats {
   heart: number;    // empathy / social
   hustle: number;   // speed / improvisation
   honor: number;    // discipline / integrity
+}
+
+/** The player's character sheet. Picked once at character creation. */
+export interface PlayerCharacter {
+  name: string;
+  playbookId: string;
+  stats: CharacterStats;
+  /** Player's answer to the playbook's hook question. */
+  arcAnswer: string;
+  /** XP accumulated across all years. */
+  xp: number;
+  /** Strings the player holds on each NPC / faculty member. */
+  strings: Record<string, number>;
+  /** Active conditions (debuffs). */
+  conditions: string[];
+  /** Past-year archive — populated at graduation. */
+  yearbook: Array<{
+    grade: Grade;
+    completedAt: number;
+    summary: { correct: number; total: number };
+  }>;
+  createdAt: number;
 }
 
 /** Personality-tied stat distributions for the six AI students. Each sums

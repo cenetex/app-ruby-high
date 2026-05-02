@@ -19,6 +19,7 @@ import {
   rollOpinionDelay,
   type ActiveRound,
   type AnswerRecord,
+  type CharacterStats,
   type Choice,
   type Difficulty,
   type FacultyMember,
@@ -137,6 +138,7 @@ export class RubyHighService extends Service {
         completedGrades: [],
         gradeProgress: {},
         hasSeenIntro: false,
+        character: null,
         npcRosters: {},
         activeRound: null,
         updatedAt: Date.now(),
@@ -609,6 +611,31 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  /** Create the player's character sheet. Throws if one already exists. */
+  createCharacter(
+    sessionId: string,
+    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string },
+  ): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (state.character) throw new Error("Character already exists for this session.");
+    const name = input.name.trim();
+    if (!name) throw new Error("Name is required.");
+    state.character = {
+      name,
+      playbookId: input.playbookId,
+      stats: { ...input.stats },
+      arcAnswer: input.arcAnswer.trim(),
+      xp: 0,
+      strings: {},
+      conditions: [],
+      yearbook: [],
+      createdAt: Date.now(),
+    };
+    state.updatedAt = Date.now();
+    void this.persist();
+    return state;
+  }
+
   selectGrade(sessionId: string, grade: Grade): QuizState {
     const state = this.getOrCreate(sessionId);
     if (!GRADES.includes(grade)) throw new Error(`Unknown grade: ${grade}`);
@@ -692,6 +719,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     hasSeenIntro: !!s.hasSeenIntro,
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,
+    character: s.character ?? null,
   };
 }
 

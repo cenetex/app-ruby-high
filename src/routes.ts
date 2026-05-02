@@ -17,15 +17,18 @@ import {
   ROOMS,
   RUBY_FACULTY,
   TEACHING_ROOMS,
+  type CharacterStats,
   type Choice,
   type Difficulty,
   type FacultyMember,
   type Grade,
   type NpcStudentState,
+  type PlayerCharacter,
   type QuizState,
   type Room,
   type TeachingRoomId,
 } from "./types.js";
+import { PLAYBOOKS, isValidStatDistribution } from "./characters/playbooks.js";
 import { renderViewerHtml, VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "./viewer.js";
 import { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
 
@@ -130,6 +133,10 @@ interface SessionTelemetry extends Record<string, unknown> {
   /** True when the active question expects a written response, surfaced for
    *  the viewer to swap A/B/C/D for a textarea. */
   is_opinion: boolean;
+  /** The player's character sheet (null until they create one). */
+  character: PlayerCharacter | null;
+  /** Playbook catalog for the character creation UI. */
+  playbooks: typeof PLAYBOOKS;
 }
 
 function getRuntime(value: unknown): IAgentRuntime | null {
@@ -265,6 +272,8 @@ function buildSessionState(args: {
       : {},
     active_round: deriveActiveRound(state),
     is_opinion: state.current?.type === "opinion",
+    character: state.character,
+    playbooks: PLAYBOOKS,
   };
 
   const summary = state.current
@@ -571,6 +580,31 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message: "Round resolved",
+          session: buildSessionState({ runtime, state, faculty }),
+        });
+        return true;
+      }
+
+      if (type === "create-character") {
+        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string };
+        if (!cb.name || !cb.playbookId || !cb.stats) {
+          throw new Error("Missing name, playbookId, or stats.");
+        }
+        if (!PLAYBOOKS.some((p) => p.id === cb.playbookId)) {
+          throw new Error(`Unknown playbookId: ${cb.playbookId}`);
+        }
+        if (!isValidStatDistribution(cb.stats)) {
+          throw new Error("Invalid stat distribution — must be one each of +2, +1, 0, -1.");
+        }
+        const state = ruby.createCharacter(stateKey, {
+          name: cb.name,
+          playbookId: cb.playbookId,
+          stats: cb.stats,
+          arcAnswer: cb.arcAnswer ?? "",
+        });
+        ctx.json(ctx.res, {
+          success: true,
+          message: "Character created",
           session: buildSessionState({ runtime, state, faculty }),
         });
         return true;
