@@ -58,6 +58,16 @@ function readJsonBody(req) {
   });
 }
 
+function deriveClientIp(req) {
+  // Local dev usually surfaces socket.remoteAddress; if you're behind a proxy
+  // for testing, x-forwarded-for wins.
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length > 0) {
+    return xff.split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress ?? null;
+}
+
 function makeRouteContext(req, res, url) {
   const cookieHeader = req.headers.cookie ?? null;
   return {
@@ -68,6 +78,7 @@ function makeRouteContext(req, res, url) {
     res,
     cookieHeader,
     isSecure: false,
+    clientIp: deriveClientIp(req),
     callbackUrlBuilder: (path) => {
       const base = new URL(PUBLIC_BASE);
       return base.origin + path;

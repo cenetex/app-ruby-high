@@ -79,6 +79,10 @@ export interface RouteContext {
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS (controls Secure cookie flag). */
   isSecure?: boolean;
+  /** Best-known client IP (x-forwarded-for or socket.remoteAddress). Used for
+   *  rate limiting in the chat layer. Optional — when absent, rate limiting
+   *  falls back to per-cookie keys only. */
+  clientIp?: string | null;
 }
 
 interface FacultyTelemetry extends FacultyMember {
@@ -490,6 +494,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       cookieHeader: ctx.cookieHeader,
       callbackUrlBuilder: ctx.callbackUrlBuilder,
       isSecure: ctx.isSecure,
+      clientIp: ctx.clientIp,
       error: ctx.error,
       json: ctx.json,
       readJsonBody: ctx.readJsonBody,

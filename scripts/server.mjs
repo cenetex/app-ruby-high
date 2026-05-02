@@ -74,6 +74,17 @@ function isSecureReq(req) {
   return proto === "https";
 }
 
+function deriveClientIp(req) {
+  // fly's edge proxy puts the original client IP first in x-forwarded-for.
+  // Fall back to the socket address if the header isn't set (e.g. a direct
+  // connection from another container in the same private network).
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length > 0) {
+    return xff.split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress ?? null;
+}
+
 function makeRouteContext(req, res, url) {
   const base = deriveBaseFromReq(req);
   return {
@@ -84,6 +95,7 @@ function makeRouteContext(req, res, url) {
     res,
     cookieHeader: req.headers.cookie ?? null,
     isSecure: isSecureReq(req),
+    clientIp: deriveClientIp(req),
     callbackUrlBuilder: (path) => new URL(base).origin + path,
     error(_r, message, status = 500) {
       if (res.headersSent) return;

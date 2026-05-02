@@ -2,6 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { AuthService } from "./services/auth-service.js";
 import { ChatService } from "./services/chat-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
+import { TokenBucket } from "./services/rate-limit.js";
 import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
@@ -450,9 +451,46 @@ export interface ChatRouteContext {
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS. Controls `Secure` cookie attribute. */
   isSecure?: boolean;
+  /** Best-known client IP, derived by the host (x-forwarded-for or socket.remoteAddress).
+   *  Optional — when absent, rate limiting falls back to a per-cookie key only. */
+  clientIp?: string | null;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
+}
+
+/** Module-scope rate limiter for LLM-backed chat endpoints. 60 requests in a
+ *  burst, refilling at 1/sec — a comfortable budget for an actively-playing
+ *  user, tight enough to stop a runaway script from melting OpenRouter spend.
+ *
+ *  Keyed by `${clientIp}:${sessionToken|"anon"}` so a signed-in user on a
+ *  shared NAT and a script-from-the-same-IP get separate buckets. */
+const CHAT_LIMITER = new TokenBucket(60, 1);
+const PORTRAIT_LIMITER = new TokenBucket(8, 1 / 30); // image gen: 8 burst, ~1 every 30s
+
+/** Drop idle keys hourly so the maps don't grow unbounded for one-off IPs. */
+const limiterGcTimer = setInterval(() => {
+  const now = Date.now();
+  CHAT_LIMITER.gc(now);
+  PORTRAIT_LIMITER.gc(now);
+}, 60 * 60 * 1000);
+if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGcTimer) {
+  (limiterGcTimer as { unref: () => void }).unref();
+}
+
+function rateLimitKey(ctx: ChatRouteContext, sessionToken: string | null): string {
+  const ip = ctx.clientIp || "no-ip";
+  return `${ip}:${sessionToken ?? "anon"}`;
+}
+
+/** 429 helper. Sets Retry-After before delegating to ctx.error so the host's
+ *  error renderer doesn't have to know about rate-limit semantics. */
+function reject429(ctx: ChatRouteContext, retryAfterSeconds: number): void {
+  const r = ctx.res as { setHeader?: (n: string, v: string) => void };
+  if (typeof r.setHeader === "function") {
+    r.setHeader("Retry-After", String(Math.max(1, retryAfterSeconds)));
+  }
+  ctx.error(ctx.res, "Too many requests — slow down a moment.", 429);
 }
 
 const CHAT_PREFIX = "/api/apps/ruby-high/chat";
@@ -596,6 +634,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated. Sign in with OpenRouter first.", 401);
       return true;
     }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { faculty?: string; message?: string; model?: string }
@@ -655,6 +698,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const record = auth.resolve(token);
     if (!record || !token) {
       ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
@@ -770,6 +818,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { studentId?: string; situation?: string; note?: string; faculty?: string }
       | null;
@@ -806,6 +859,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const record = auth.resolve(token);
     if (!record || !token) {
       ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { text?: string; force?: boolean } | null;
@@ -923,6 +981,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
       return true;
     }
+    // Image generation is the most expensive call we make — keep its bucket
+    // separate and tighter than the chat one.
+    const rlKey = rateLimitKey(ctx, token);
+    if (!PORTRAIT_LIMITER.take(rlKey)) {
+      reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { name?: string; playbookId?: string; personality?: string; stats?: { head?: number; heart?: number; hustle?: number; honor?: number } }
       | null;
@@ -950,6 +1015,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const record = auth.resolve(token);
     if (!record || !token) {
       ctx.error(ctx.res, "Sign in with OpenRouter first to roll a character.", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
     try {
