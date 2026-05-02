@@ -519,21 +519,30 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     position: relative;
   }
   .teacher-figure {
+    /* Round head-shoulders portrait pinned to the top-right corner of the
+     * chalkboard, like a JRPG "currently speaking" badge. Uses the -face
+     * crop so it fits cleanly without overflowing the panel. */
     position: absolute;
-    right: calc(var(--safe-right) + 6px);
-    bottom: -8px;
-    width: 130px;
-    height: auto;
+    right: 8px;
+    top: 8px;
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    object-position: center top;
+    border-radius: 999px;
+    border: 3px solid var(--accent);
+    background: var(--bg-elev);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.4);
     pointer-events: none;
-    z-index: 2;
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: 0 10px 24px rgba(0,0,0,0.4);
-    border: 2px solid rgba(255,255,255,0.16);
+    z-index: 3;
     animation: figure-in 0.32s ease-out;
+    transition: border-color 0.2s ease;
   }
   @media (min-width: 720px) {
-    .teacher-figure { width: 170px; bottom: -10px; }
+    .teacher-figure { width: 92px; height: 92px; right: 12px; top: 12px; }
+  }
+  @media (min-width: 1100px) {
+    .teacher-figure { width: 110px; height: 110px; right: 16px; top: 16px; }
   }
   @keyframes figure-in {
     from { opacity: 0; transform: translateY(8px) scale(0.95); }
@@ -1848,12 +1857,24 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   }
   function renderTeacherFigure(faculty) {
     if (!faculty || faculty.id === LOUNGE_ID) {
+      // Hide AND clear src so we never carry a stale image into the next room.
       els.teacherFigure.hidden = true;
       els.teacherFigure.removeAttribute("src");
+      els.teacherFigure.dataset.facultyId = "";
       return;
     }
-    const url = apiBase + "/assets/teachers/" + encodeURIComponent(faculty.id) + "-full.png";
-    if (els.teacherFigure.getAttribute("src") !== url) els.teacherFigure.setAttribute("src", url);
+    // Use the -face crop for the corner badge — cleaner head/shoulders fit.
+    const url = apiBase + "/assets/teachers/" + encodeURIComponent(faculty.id) + "-face.png";
+    if (els.teacherFigure.dataset.facultyId !== faculty.id) {
+      // Clear first so the browser repaints even if the URL is cached, and
+      // restart the entry animation so the speaker change reads visually.
+      els.teacherFigure.dataset.facultyId = faculty.id;
+      els.teacherFigure.style.borderColor = faculty.accent || "var(--accent)";
+      els.teacherFigure.removeAttribute("src");
+      // Force reflow so the animation actually re-runs.
+      void els.teacherFigure.offsetWidth;
+      els.teacherFigure.setAttribute("src", url);
+    }
     els.teacherFigure.hidden = false;
   }
   function setLoungeMode(on) {

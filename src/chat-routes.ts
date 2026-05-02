@@ -262,8 +262,64 @@ function randomStatDistribution(): CharacterStats {
   return { head: values[0]!, heart: values[1]!, hustle: values[2]!, honor: values[3]! };
 }
 
-/** Roll a random character: random playbook + random stat distribution, then
- *  LLM-generated name + arc answer + personality grounded in those choices. */
+/** Pool of name "vibes" — randomly seeded into the prompt so the LLM
+ *  doesn't keep landing on its training-bias defaults (Marcus Kim, Emma
+ *  Patel, etc.). Each vibe describes a NAMING style, not a specific name —
+ *  the LLM still picks the actual letters. */
+const NAME_VIBES = [
+  "a contemporary Filipino name, common spelling",
+  "a Nigerian Igbo or Yoruba name, traditional",
+  "a hyphenated double last name reflecting biracial heritage",
+  "a chosen mononym this teen uses instead of their legal name",
+  "a regional Tamil or Telugu name, written naturally not romanized",
+  "an old-fashioned name like a 1940s newspaper byline",
+  "a hyphenated Quebecois or Acadian name",
+  "a Vietnamese name with a middle character that has a meaning",
+  "a Brazilian Portuguese name with three or four parts",
+  "a Polish or Czech surname that's hard to pronounce in English",
+  "a Lebanese or Syrian-American name that mixes Arabic and English",
+  "an Inuit or First Nations name with a chosen English first name",
+  "a Sami or other indigenous European name",
+  "a Kazakh or Uzbek name, with the patronymic optional",
+  "a Welsh name with an unusual spelling",
+  "a Yiddish/Ashkenazi name, family carried it from before WWII",
+  "an Ethiopian or Eritrean name in two parts",
+  "a Hawaiian or Samoan name with multiple vowels",
+  "a Quechua or Aymara name",
+  "a southern Black American name from the 70s-80s naming wave",
+  "a Greek-American kid's family name, full version not the shortened one",
+  "a Burmese, Thai, or Lao name",
+  "a Croatian or Bosnian name with a -ić ending",
+  "a single-syllable surname-first name common in Cantonese-speaking families",
+  "a quirky punk/skater nickname the kid demands everyone use",
+  "a name from an obscure indie film the parents loved",
+  "a name explicitly chosen by the teen themselves — trans or genderqueer",
+  "an Irish Gaelic name with a fada that nobody pronounces correctly",
+  "a Persian/Farsi name with a poetic meaning",
+  "a Romani name, surname uncommon in English-speaking school records",
+  "a Mongolian name, herder ancestry, family-given-name order",
+  "a Korean name where the family insists on keeping syllable order",
+  "a name from Trinidad and Tobago, calypso-era flavor",
+  "an Albanian or Kosovar name, post-90s diaspora",
+  "a Maori name from Aotearoa with hyphenation",
+  "a Khmer name, two short parts",
+  "a Caribbean-Hispanic name like a Puerto Rican or Dominican kid",
+  "an Ashkenazi Argentine kid's name, mix of Yiddish and Spanish",
+  "a Boer-Afrikaner name, no anglicization",
+  "a Tibetan or Himalayan name with religious significance",
+];
+
+const FORBIDDEN_NAMES_HINT = [
+  "Marcus", "Maya", "Mariana", "Emma", "Sarah", "James", "Alex", "Sam", "Jordan", "Liam",
+  "Olivia", "Noah", "Ava", "Mia", "Ethan", "Aiden", "Lucas", "Harper", "Sophia", "Cortés",
+  "Patel", "Kim", "Chen", "Rodriguez", "Garcia", "Smith", "Johnson", "Williams", "Anderson",
+  "Brown", "Lopez", "Gonzalez", "Martinez", "Wilson", "Davis", "Taylor", "Thomas",
+];
+
+/** Roll a random character: random playbook + random stat distribution +
+ *  random name vibe seed, then LLM-generated name/arc/personality grounded
+ *  in those choices. The vibe seed is what keeps names from converging on
+ *  AI-default common picks. */
 async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   name: string;
   playbookId: string;
@@ -273,6 +329,7 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
 }> {
   const playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
   const stats = randomStatDistribution();
+  const nameVibe = NAME_VIBES[Math.floor(Math.random() * NAME_VIBES.length)]!;
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
   const userPrompt = [
     "Roll a random AI student attending Ruby High (a high school RPG). The player will INHABIT this character — they're playing them, not designing them. Make them specific and a little weird, not generic.",
@@ -280,12 +337,13 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
     `Playbook (locked): ${playbook.name} — ${playbook.blurb}`,
     `Hook question (locked): "${playbook.hookQuestion}"`,
     `Stats (locked): HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}`,
+    `Name vibe (HARD CONSTRAINT, this run): ${nameVibe}`,
     "",
     "Generate JSON exactly in this shape (no other text, no markdown, no code fences):",
     `{"name":"...","arcAnswer":"...","personality":"..."}`,
     "",
     "Rules for each field:",
-    "- name: a believable teen first + last name. Diverse, not bland. Avoid celebrity names. 2-4 words.",
+    "- name: a real plausible name following the name-vibe constraint above. Don't anglicize or simplify it. Use proper diacritics where they belong. The vibe is locked — do NOT swap it for a different cultural template. Avoid these overused names entirely: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
     "- arcAnswer: 1-2 sentences in the character's voice answering the hook question above. Specific, not abstract. First person.",
     "- personality: 2-3 sentences describing how this character SHOWS UP in class — quirks, what they care about, what they do when bored, who they sit with. Tie at least one trait back to a high stat (HEAD = sharp, HEART = warm, HUSTLE = quick, HONOR = principled) and at least one to a low stat (the same negative). Third person.",
   ].join("\n");
@@ -304,8 +362,8 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
         { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
         { role: "user", content: userPrompt },
       ],
-      max_tokens: 320,
-      temperature: 1.0,
+      max_tokens: 380,
+      temperature: 1.1,
     }),
   });
   if (!r.ok) throw new Error("OpenRouter " + r.status);
