@@ -926,14 +926,14 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   /* ── unified CCG-style character card ─────────────────────────────────── */
   .ccg-card {
     width: 100%;
-    max-width: 360px;
+    max-width: 300px;
     background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 100%);
     border: 3px solid var(--accent);
-    border-radius: 22px;
+    border-radius: 18px;
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.08) inset,
-      0 24px 60px rgba(0,0,0,0.55),
-      0 0 30px rgba(210,42,42,0.15);
+      0 18px 40px rgba(0,0,0,0.55),
+      0 0 24px rgba(210,42,42,0.15);
     overflow: hidden;
     color: var(--text);
     display: flex;
@@ -959,7 +959,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   .ccg-role.teacher { background: #5865f2; }
   .ccg-role.player  { background: var(--accent); }
   .ccg-art {
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 5 / 4;
     width: 100%;
     background: var(--bg-elev-2);
     overflow: hidden;
@@ -983,23 +983,23 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     pointer-events: none;
   }
   .ccg-body {
-    padding: 14px 16px 16px;
+    padding: 10px 12px 12px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   .ccg-name {
-    font-size: 22px;
+    font-size: 18px;
     font-weight: 900;
     color: var(--text);
     letter-spacing: -0.01em;
     line-height: 1.1;
   }
   .ccg-subtitle {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-mute);
     letter-spacing: 0.04em;
-    margin-top: -4px;
+    margin-top: -2px;
   }
   .ccg-stats {
     display: flex;
@@ -1053,14 +1053,14 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     border-radius: 0 8px 8px 0;
   }
   .ccg-footer {
-    padding: 10px 12px;
+    padding: 8px 10px;
     background: rgba(0,0,0,0.22);
     border-top: 1px solid var(--line);
-    border-radius: 0 0 18px 18px;
-    margin: 12px -16px -16px;
-    font-size: 12px;
+    border-radius: 0 0 14px 14px;
+    margin: 8px -12px -12px;
+    font-size: 11px;
     color: var(--text-soft);
-    line-height: 1.45;
+    line-height: 1.4;
   }
   .ccg-footer strong {
     color: var(--text);
@@ -1883,8 +1883,8 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     const wrap = document.createElement("div");
     wrap.className = "empty-state";
     const heroSrc = facultyId
-      ? apiBase + "/assets/teachers/" + encodeURIComponent(facultyId) + ".png"
-      : apiBase + "/assets/teachers/ruby.png";
+      ? apiBase + "/assets/teachers/" + encodeURIComponent(facultyId) + "-full.png"
+      : apiBase + "/assets/teachers/ruby-full.png";
     wrap.innerHTML =
       '<img class="logo" src="' + heroSrc + '" alt=""/>' +
       '<h2>' + escape(title) + '</h2>' +
@@ -1928,13 +1928,17 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.blackboardMeta.hidden = false;
     els.boardFrameHost.hidden = false;
     els.answersHost.hidden = !!isOpinion;
-    els.blackboardFoot.hidden = false;
+    // Footer (Question N + difficulty filter + Next btn) only when signed
+    // in. Pre-auth users can't act on it.
+    els.blackboardFoot.hidden = !authed;
   }
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
   function renderRaceStrip(t) {
     const round = t.active_round;
-    if (!round || !t.current) {
+    // Hard gate: race strip ONLY when authed + active round + question on the
+    // board. Pre-auth or empty-blackboard should never see it.
+    if (!authed || !round || !t.current || round.resolved) {
       els.raceStrip.hidden = true;
       els.raceRow.innerHTML = "";
       return;
@@ -2066,7 +2070,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       showBlackboardEmpty(true);
       activeQuestionId = null;
       if (!authed) {
-        els.blackboardEmptyText.textContent = "Sign in with OpenRouter (chat panel) to start class.";
+        els.blackboardEmptyText.textContent = "Sign in below to start class.";
+      } else if (!lastTelemetry?.character) {
+        els.blackboardEmptyText.textContent = "Roll a character — your name will appear in the seating chart.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
       } else {
@@ -2615,14 +2621,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       });
       body.appendChild(stats);
     }
-    if (spec.bodyText) {
-      const rule = document.createElement("div"); rule.className = "ccg-rule";
-      body.appendChild(rule);
-      const txt = document.createElement("div");
-      txt.className = "ccg-body-text";
-      txt.textContent = spec.bodyText;
-      body.appendChild(txt);
-    }
     if (spec.quote) {
       const q = document.createElement("blockquote");
       q.className = "ccg-quote";
@@ -2682,8 +2680,8 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       subtitle: subjectMap[fac.id] || fac.bio,
       portraitUrl: apiBase + "/assets/teachers/" + encodeURIComponent(fac.id) + "-full.png",
       accent: fac.accent,
-      bodyText: fac.bio,
-      footer: { title: "Signature", content: signatureMap[fac.id] || "" },
+      quote: signatureMap[fac.id] || fac.bio,
+      footer: { title: "Teaches", content: subjectMap[fac.id] || fac.bio },
       actions: [{ label: "Close", secondary: true, onClick: closeSheet }],
     });
   }
@@ -2703,7 +2701,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       portraitUrl: apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-full.png",
       accent: s.color,
       stats: npc.stats,
-      bodyText: studentVibe(npc.id),
+      quote: studentVibe(npc.id),
       footer: { title: "Subjects", content: subjectChips },
       actions: [{ label: "Close", secondary: true, onClick: closeSheet }],
     });
@@ -2750,7 +2748,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       portraitUrl: c.portraitDataUrl || (apiBase + "/assets/teachers/ruby-full.png"),
       accent: pb.accent,
       stats: c.stats,
-      bodyText: c.personality,
       quote: c.arcAnswer,
       footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
       actions: [
@@ -3055,9 +3052,16 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
       els.youState.textContent = "signed out";
       els.footerAction.textContent = "Sign in";
       els.signinCta.hidden = false;
+      // Hide the textarea + send entirely until auth — no half-disabled state.
       els.chatForm.hidden = true;
       els.chatInput.disabled = true;
       els.chatSend.disabled = true;
+    }
+    // Re-render the blackboard so its visibility flips with auth state.
+    if (lastTelemetry) {
+      const fac = (lastTelemetry.faculty_roster || []).find((f) => f.id === lastTelemetry.faculty);
+      renderBlackboard(lastTelemetry.current || null, fac || null, lastTelemetry.current_grade);
+      renderRaceStrip(lastTelemetry);
     }
   }
   async function logout() {
