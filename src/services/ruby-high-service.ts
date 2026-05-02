@@ -20,6 +20,7 @@ import {
   roll2d6,
   rollNpcAnswer,
   rollOpinionDelay,
+  statusForPhase,
   type ActiveRound,
   type AdvantageRoll,
   type AnswerRecord,
@@ -32,6 +33,7 @@ import {
   type NpcStudentState,
   type OpinionGrade,
   type OpinionResponse,
+  type Phase,
   type Question,
   type QuestionType,
   type QuizState,
@@ -251,6 +253,8 @@ export class RubyHighService extends Service {
         npcRosters: {},
         activeRound: null,
         pendingRoll: null,
+        phase: "intro",
+        phaseToken: 0,
         updatedAt: Date.now(),
       };
       this.sessions.set(sessionId, state);
@@ -258,6 +262,45 @@ export class RubyHighService extends Service {
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
     return state;
+  }
+
+  // ── phase transitions ────────────────────────────────────────────────────
+  //
+  // The state machine. Every mutator calls transition() at the end of its
+  // work — no mutator sets state.phase or state.status directly. This is
+  // the single home for:
+  //   1. Phase preconditions (who can move where)
+  //   2. Reset rules (which fields the destination phase requires nulled)
+  //   3. The phaseToken bump (the dedupe primitive for downstream consumers)
+  //
+  // `state.status` is kept in sync as a derived field — exists only for
+  // back-compat with consumers that haven't migrated to `phase` yet
+  // (viewer + telemetry shape). Internal code reads phase, not status.
+  private transition(state: QuizState, action: TransitionAction): void {
+    const next: Phase = nextPhaseFor(action);
+    // Reset rules. The "destination phase requires these fields to look
+    // a certain way." Mutators may have already pre-populated; this just
+    // enforces invariants regardless.
+    if (next === "in-room" || next === "lounge") {
+      // Walking into a room (or the lounge) wipes any previous question.
+      // The board is the room's, not yours.
+      state.current = null;
+      state.lastReveal = null;
+      state.activeRound = null;
+    } else if (next === "asking") {
+      // A new question replaces any prior reveal. The caller is expected
+      // to have set state.current + state.activeRound already.
+      state.lastReveal = null;
+    }
+    // "revealed" leaves all fields as the resolveRound caller arranged them.
+    // "intro" is only entered fresh in getOrCreate; resetSession handles full wipe.
+    state.phase = next;
+    state.status = statusForPhase(next);
+    // Bump on every call. Two transitions to the same phase are still two
+    // distinct moments in the session timeline (e.g. Sally → Edward → Sally
+    // is three transitions, three tokens, three "channel-enter" events the
+    // viewer should fire on).
+    state.phaseToken = (state.phaseToken ?? 0) + 1;
   }
 
   /** Advance the active round based on wall-clock time:
@@ -382,9 +425,9 @@ export class RubyHighService extends Service {
       playerRoll,
       ...(npcEvents.length ? { npcEvents } : {}),
     };
-    state.status = "revealed";
     round.resolved = true;
     round.resolvedAt = Date.now();
+    this.transition(state, { kind: "resolve-round" });
     // resolveRound is a private helper that operates on `state` directly;
     // there's no sessionId param, so pull it off the state.
     void this.persistSession(state.sessionId);
@@ -471,14 +514,13 @@ export class RubyHighService extends Service {
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
-    state.lastReveal = null;
-    state.status = "awaiting-answer";
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
 
     // Open a new round and pre-roll the NPCs in the active classroom. The
     // student-side LLM never touches the question — picks come from dice +
     // their HEAD/HUSTLE stats, so they can't cheat by reading the answer.
     state.activeRound = this.openRound(state, question);
+    this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -555,10 +597,9 @@ export class RubyHighService extends Service {
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
-    state.lastReveal = null;
-    state.status = "awaiting-answer";
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
     state.activeRound = this.openRound(state, question);
+    this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -675,9 +716,9 @@ export class RubyHighService extends Service {
         ...(npcEvents.length ? { npcEvents } : {}),
       };
     }
-    state.status = "revealed";
     round.resolved = true;
     round.resolvedAt = Date.now();
+    this.transition(state, { kind: "resolve-round" });
     state.updatedAt = round.resolvedAt;
     void this.persistSession(sessionId);
     return state;
@@ -823,6 +864,12 @@ export class RubyHighService extends Service {
     state.hasSeenIntro = true;
     // Seed the NPC roster for this grade if it doesn't exist yet.
     this.ensureRoster(state, grade);
+    // Selecting a grade for the first time leaves the player in their
+    // teaching room (whatever faculty was last set, defaulting to Ruby).
+    // Subsequent re-selections of the same grade are still transitions —
+    // any active question on the board belongs to the previous grade and
+    // gets cleared.
+    this.transition(state, { kind: "select-grade" });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -838,9 +885,7 @@ export class RubyHighService extends Service {
 
   clearBoard(sessionId: string): QuizState {
     const state = this.getOrCreate(sessionId);
-    state.current = null;
-    state.lastReveal = null;
-    state.status = "idle";
+    this.transition(state, { kind: "clear-board" });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -866,19 +911,56 @@ export class RubyHighService extends Service {
     const previousFacultyId = state.faculty;
     state.faculty = faculty.id;
     // Walking into a different classroom (or the lounge) leaves the previous
-    // room's chalkboard behind. Wipe the active question, last reveal, and
-    // any in-flight round so the new teacher starts on a clean board. A
-    // re-select of the same faculty is a no-op.
+    // room's chalkboard behind. The transition() reset rules wipe current /
+    // lastReveal / activeRound. Re-select of the same faculty is a no-op.
     if (previousFacultyId !== faculty.id) {
-      state.current = null;
-      state.lastReveal = null;
-      state.status = "idle";
-      state.activeRound = null;
+      this.transition(state, {
+        kind: faculty.id === LOUNGE_FACULTY.id ? "enter-lounge" : "enter-room",
+      });
     }
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
   }
+}
+
+// ── transition action space ─────────────────────────────────────────────────
+// The state machine is action-driven, not phase-driven. Mutators name what
+// the player just did ("clear the board", "pose a question") rather than
+// which phase to land in — the phase mapping is internal. Adding new
+// product features (The Daily, Yearbook) means adding actions here, not
+// fiddling with module flags scattered across viewer + server.
+type TransitionAction =
+  | { kind: "select-grade" }
+  | { kind: "enter-room" }
+  | { kind: "enter-lounge" }
+  | { kind: "pose-question" }
+  | { kind: "resolve-round" }
+  | { kind: "clear-board" }
+  | { kind: "reset" };
+
+function nextPhaseFor(action: TransitionAction): Phase {
+  switch (action.kind) {
+    case "select-grade": return "in-room";
+    case "enter-room":   return "in-room";
+    case "enter-lounge": return "lounge";
+    case "pose-question": return "asking";
+    case "resolve-round": return "revealed";
+    case "clear-board":  return "in-room";
+    case "reset":        return "intro";
+  }
+}
+
+/** Derive a phase for legacy state files that predate the field. The
+ *  mapping mirrors what each scenario would have transitioned to today.
+ *  Conservative — when in doubt, lands on "intro" so getOrCreate's first
+ *  read can transition forward correctly. */
+function derivePhaseForLegacy(s: QuizState): Phase {
+  if (s.faculty === LOUNGE_FACULTY.id) return "lounge";
+  if (s.activeRound && !s.activeRound.resolved) return "asking";
+  if (s.lastReveal) return "revealed";
+  if (s.currentGrade) return "in-room";
+  return "intro";
 }
 
 function normalizeLoaded(s: QuizState): QuizState {
@@ -890,12 +972,15 @@ function normalizeLoaded(s: QuizState): QuizState {
   const migratedCompleted = Array.isArray(s.completedGrades)
     ? (s.completedGrades.map(validGrade).filter((g): g is Grade => !!g))
     : [];
+  const phase: Phase = (s.phase as Phase | undefined) ?? derivePhaseForLegacy(s);
   return {
     ...s,
     askedQuestionIds: Array.isArray(s.askedQuestionIds) ? s.askedQuestionIds : [],
     history: Array.isArray(s.history) ? s.history : [],
     score: s.score ?? { correct: 0, total: 0 },
-    status: s.status ?? "idle",
+    status: statusForPhase(phase),
+    phase,
+    phaseToken: typeof s.phaseToken === "number" && s.phaseToken >= 0 ? s.phaseToken : 0,
     lastReveal: s.lastReveal ?? null,
     currentGrade: migratedGrade,
     completedGrades: migratedCompleted,
