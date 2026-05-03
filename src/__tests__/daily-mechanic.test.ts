@@ -132,35 +132,37 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     expect(status.dailyKey).toBe("2026-05-04");
   });
 
-  it("dailyStatus reports completed once the player has played today", async () => {
+  it("dailyStatus reports completed once the bonus has been used today", async () => {
     const { ruby } = await makeServices();
     const sid = "test:completed";
     const state = attachCharacter(ruby, sid);
-    state.character!.lastDailyDate = "2026-05-04";
+    state.character!.lastBonusDate = "2026-05-04";
     const monday = new Date("2026-05-04T18:00:00Z");
     const status = ruby.dailyStatus(sid, monday);
     expect(status.available).toBe(false);
     expect(status.reason).toBe("completed");
   });
 
-  it("playDaily poses the deterministic daily question, marks the round as Daily", async () => {
+  it("playBonus poses a forced-Legendary draw, marks the round as bonus", async () => {
     const { ruby } = await makeServices();
     const sid = "test:play";
     attachCharacter(ruby, sid);
-    const after = ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
+    const after = ruby.playBonus(sid, new Date("2026-05-04T18:00:00Z"));
     expect(after.current).not.toBeNull();
-    expect(after.activeRound?.isDaily).toBe(true);
-    expect(after.activeRound?.dailyKey).toBe("2026-05-04");
+    expect(after.current?.rarity).toBe("legendary");
+    expect(after.activeRound?.isBonus).toBe(true);
+    expect(after.activeRound?.rarity).toBe("legendary");
     expect(after.faculty).toBe("sally-science"); // Mon → sally
   });
 
-  it("playDaily runs on a Saturday (no weekend gating)", async () => {
+  it("playBonus runs on a Saturday (no weekend gating)", async () => {
     const { ruby } = await makeServices();
     const sid = "test:weekend-allowed";
     attachCharacter(ruby, sid);
-    const after = ruby.playDaily(sid, new Date("2026-05-09T18:00:00Z"));
+    const after = ruby.playBonus(sid, new Date("2026-05-09T18:00:00Z"));
     expect(after.current).not.toBeNull();
-    expect(after.activeRound?.isDaily).toBe(true);
+    expect(after.activeRound?.isBonus).toBe(true);
+    expect(after.activeRound?.rarity).toBe("legendary");
     expect(after.faculty).toBe("ruby"); // Sat → Ruby in the rotation
   });
 });
@@ -316,79 +318,80 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
 });
 
 describe("Per-class XP gate — streak alone is not enough", () => {
-  it("Freshman streak hit but per-class XP < min in any room → does NOT advance; advances when all three classes catch up", async () => {
+  it("Freshman: a single Legendary correct in a single room hits the streak but not the per-class gate; per-class XP must reach 2 in every room before advancement triggers", async () => {
     const { ruby } = await makeServices();
     const sid = "test:per-class-gate";
-    // Start with 0 per-class XP. Freshman per-class minimum is 2 in EACH room.
     attachCharacter(ruby, sid, "9", 0);
     const ch0 = ruby.getOrCreate(sid).character!;
-    ch0.subjectXp = {}; // explicit empty — exercise the per-class gate
+    ch0.subjectXp = {};
 
-    // Walk a week of Dailies. The streak builds, but per-class XP only
-    // accumulates against today's faculty. Until each of homeroom /
-    // science / lit has ≥ 2 XP, advancement is blocked.
-    const days: Array<[string, string]> = [
-      ["2026-05-04T18:00:00Z", "sally-science"], // Mon
-      ["2026-05-05T18:00:00Z", "professor-edward"], // Tue
-      ["2026-05-06T18:00:00Z", "ruby"], // Wed
-      ["2026-05-07T18:00:00Z", "sally-science"], // Thu
-      ["2026-05-08T18:00:00Z", "professor-edward"], // Fri
-      ["2026-05-09T18:00:00Z", "ruby"], // Sat
-    ];
-    for (const [iso] of days) {
-      ruby.playDaily(sid, new Date(iso));
-      const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
-      ruby.submitAnswer(sid, correct);
+    // Mock Date.now so the streak-tick math (which reads `new Date()`
+    // internally for the daily-key) sees the test's time-travel.
+    const realNow = Date.now;
+    try {
+      const stepThroughDay = (iso: string, expectGrade: string) => {
+        const t = new Date(iso).getTime();
+        Date.now = () => t;
+        ruby.playBonus(sid, new Date(iso));
+        const cur = ruby.getOrCreate(sid).current!;
+        ruby.submitAnswer(sid, cur.correct as Choice);
+        expect(ruby.getOrCreate(sid).currentGrade).toBe(expectGrade);
+      };
+      stepThroughDay("2026-05-04T18:00:00Z", "9"); // Mon, sally → +2 sally only
+      stepThroughDay("2026-05-05T18:00:00Z", "9"); // Tue, edward → +2 edward
+      // Day 3: Ruby bonus. Now every teaching room is at 2, streak is at 3
+      // (≥ FR's required 1) → advancement triggers on this Legendary.
+      const t3 = new Date("2026-05-06T18:00:00Z").getTime();
+      Date.now = () => t3;
+      ruby.playBonus(sid, new Date("2026-05-06T18:00:00Z"));
+      ruby.submitAnswer(sid, ruby.getOrCreate(sid).current!.correct as Choice);
+    } finally {
+      Date.now = realNow;
     }
-    const s = ruby.getOrCreate(sid);
-    const subj = s.character!.subjectXp || {};
-    // Each class has ≥ 2 by Saturday: sally Mon+Thu, edward Tue+Fri, ruby Wed+Sat.
-    expect(subj["sally-science"] ?? 0).toBeGreaterThanOrEqual(2);
-    expect(subj["professor-edward"] ?? 0).toBeGreaterThanOrEqual(2);
-    expect(subj["ruby"] ?? 0).toBeGreaterThanOrEqual(2);
-    // … and advancement triggered the moment the last class hit 2.
-    expect(s.currentGrade).toBe("10");
+    const final = ruby.getOrCreate(sid);
+    expect(final.character!.subjectXp?.["sally-science"] ?? 0).toBeGreaterThanOrEqual(2);
+    expect(final.character!.subjectXp?.["professor-edward"] ?? 0).toBeGreaterThanOrEqual(2);
+    expect(final.character!.subjectXp?.["ruby"] ?? 0).toBeGreaterThanOrEqual(2);
+    expect(final.currentGrade).toBe("10");
   });
 });
 
-describe("Daily-pass streak + grade advancement", () => {
-  it("Daily pass ticks the streak; miss resets to 0", async () => {
+describe("Streak + grade advancement (rarity-driven)", () => {
+  it("Legendary correctness on a fresh day ticks the streak; skipping a day resets it", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-tick";
-    // attachCharacter pre-populates subjectXp high enough to clear all
-    // per-class gates; this test exercises ONLY the streak/miss arithmetic.
     attachCharacter(ruby, sid, "9");
-    // Day 1: pass.
-    let now = new Date("2026-05-04T18:00:00Z");
-    ruby.playDaily(sid, now);
-    let correct = ruby.getOrCreate(sid).current!.correct! as Choice;
-    ruby.submitAnswer(sid, correct);
-    let ch = ruby.getOrCreate(sid).character!;
-    // Freshman threshold is 1 streak, all per-class gates already cleared.
-    // → that single pass advanced us to grade 10.
-    expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
-    expect(ch.streak).toEqual({ grade: "10", count: 0 });
-    expect(ch.yearbook).toHaveLength(1);
-    expect(ch.yearbook[0]?.grade).toBe("9");
+    const realNow = Date.now;
+    try {
+      const advance = (iso: string) => {
+        const t = new Date(iso).getTime();
+        Date.now = () => t;
+        ruby.playBonus(sid, new Date(iso));
+        const cur = ruby.getOrCreate(sid).current!;
+        ruby.submitAnswer(sid, cur.correct as Choice);
+      };
+      // Day 1: Freshman target = 1 / day, streak required = 1 → one
+      // bonus pass advances to Sophomore.
+      advance("2026-05-04T18:00:00Z");
+      let ch = ruby.getOrCreate(sid).character!;
+      expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
+      expect(ch.streak).toEqual({ grade: "10", count: 0 });
+      expect(ch.yearbook).toHaveLength(1);
+      expect(ch.yearbook[0]?.grade).toBe("9");
 
-    // Now in Sophomore (needs streak of 2). Day 2 pass.
-    now = new Date("2026-05-05T18:00:00Z");
-    ruby.playDaily(sid, now);
-    correct = ruby.getOrCreate(sid).current!.correct! as Choice;
-    ruby.submitAnswer(sid, correct);
-    ch = ruby.getOrCreate(sid).character!;
-    expect(ch.streak).toEqual({ grade: "10", count: 1 });
-    expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
+      // Day 2 (Sophomore): streak ticks to 1.
+      advance("2026-05-05T18:00:00Z");
+      ch = ruby.getOrCreate(sid).character!;
+      expect(ch.streak?.grade).toBe("10");
+      expect(ch.streak?.count).toBe(1);
 
-    // Day 3: miss the question.
-    now = new Date("2026-05-06T18:00:00Z");
-    ruby.playDaily(sid, now);
-    const correctAns = ruby.getOrCreate(sid).current!.correct! as Choice;
-    const wrongAns: Choice = (correctAns === "A" ? "B" : "A");
-    ruby.submitAnswer(sid, wrongAns);
-    ch = ruby.getOrCreate(sid).character!;
-    expect(ch.streak).toEqual({ grade: "10", count: 0 }); // streak reset
-    expect(ruby.getOrCreate(sid).currentGrade).toBe("10"); // still Sophomore
+      // Skip May 6. Day 4: streak should reset to 1 (gap > 1 day).
+      advance("2026-05-07T18:00:00Z");
+      ch = ruby.getOrCreate(sid).character!;
+      expect(ch.streak?.count).toBe(1);
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   it("subjectScores tracks per-faculty correctness across the run", async () => {
@@ -420,17 +423,35 @@ describe("Daily-pass streak + grade advancement", () => {
       { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
     ];
 
-    // Walk 4 daily passes Mon-Thu (no weekend break needed for 4).
+    // Senior target is 3 legendaries / day, streak required is 4. We
+    // need 4 day-completes; each day-complete = 3 forced-Legendary
+    // correct answers. playBonus is once-per-day-gated, so pose
+    // directly with rarity: "legendary" injected.
     const days = [
       "2026-05-04T18:00:00Z", // Mon
       "2026-05-05T18:00:00Z", // Tue
       "2026-05-06T18:00:00Z", // Wed
       "2026-05-07T18:00:00Z", // Thu
     ];
-    for (const iso of days) {
-      ruby.playDaily(sid, new Date(iso));
-      const c = ruby.getOrCreate(sid).current!.correct! as Choice;
-      ruby.submitAnswer(sid, c);
+    let qIdx = 0;
+    const realNow = Date.now;
+    try {
+      for (const iso of days) {
+        Date.now = () => new Date(iso).getTime();
+        for (let i = 0; i < 3; i++) {
+          ruby.pose(sid, {
+            prompt: "Test " + (qIdx++),
+            options: { A: "a", B: "b", C: "c", D: "d" },
+            correct: "A",
+            faculty: "ruby",
+            rarity: "legendary",
+            questionId: "qtest_" + qIdx,
+          });
+          ruby.submitAnswer(sid, "A");
+        }
+      }
+    } finally {
+      Date.now = realNow;
     }
     const finalCh = ruby.getOrCreate(sid).character!;
     expect(finalCh.yearbook).toHaveLength(4);

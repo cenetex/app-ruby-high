@@ -1778,16 +1778,25 @@ export const VIEWER_CSS = `
     border-color: gold;
   }
 
-  /* ── DAILY / PRACTICE pill ───────────────────────────────────────────── */
-  /* Surfaces which kind of round the player is in. DAILY uses the accent
-     color (this is the gate); PRACTICE is muted (warm-up only). */
-  .pill.daily {
-    background: var(--accent);
+  /* ── rarity pill (replaces DAILY/PRACTICE) ──────────────────────────── */
+  /* Every question rolls a rarity at pose time:
+       Common (60%) — 0 XP, free reps
+       Rare   (30%) — +1 XP, +1 toward per-class minimum
+       Legendary (10%) — +2 XP, +2 toward per-class minimum, AND counts
+                         toward the per-day target that ticks the streak.
+     Color escalates with stakes. */
+  .pill.rarity.common    { background: rgba(255,255,255,0.06); color: var(--text-mute); }
+  .pill.rarity.rare      { background: #3aa3e0; color: #fff; }
+  .pill.rarity.legendary {
+    background: linear-gradient(135deg, #ffb05a 0%, #f0922a 60%, #d22a2a 100%);
     color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.45);
   }
-  .pill.practice {
-    background: rgba(255,255,255,0.06);
-    color: var(--text-mute);
+  /* Bonus badge — once-per-day forced-Legendary draw. */
+  .pill.bonus {
+    background: gold;
+    color: #1a2238;
+    font-weight: 900;
   }
   .sheet-readonly { display: flex; flex-direction: column; gap: 12px; }
   .sheet-readonly .row {

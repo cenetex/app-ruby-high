@@ -34,16 +34,73 @@ export const GRADE_SHORT_LABELS: Record<Grade, string> = {
  *  the next. Senior completion = graduation (yearbook write, run ends). */
 export const DEFAULT_GRADE: Grade = "9";
 
-/** Per the Daily-as-arc spec: the required consecutive-Daily-pass streak
- *  for advancing out of `grade`.
+/** Question rarity. Rolled at pose time. Drives both the XP a correct
+ *  answer awards and the player's per-day "Legendaries cleared" count
+ *  that anchors the streak.
  *
- *    Freshman → 1 (pass one Daily)
- *    Sophomore → 2
- *    Junior → 3
- *    Senior → 4 (graduates)
+ *  Replaces the prior Daily-as-arc model where ONE deterministic
+ *  question per UTC day was the gate. The player now plays as much
+ *  as they want; rarity creates the same scarcity effect via the
+ *  pull-of-randomness instead of a 24-hour cooldown. */
+export type Rarity = "common" | "rare" | "legendary";
+
+export const RARITIES: Rarity[] = ["common", "rare", "legendary"];
+
+/** Per-question rarity weights. Sum to 1.0; rolled by `rollRarity()`. */
+export const RARITY_WEIGHTS: Record<Rarity, number> = {
+  common: 0.6,
+  rare: 0.3,
+  legendary: 0.1,
+};
+
+/** XP awarded for a correct answer at each rarity. Drives both the
+ *  per-class subjectXp pool and the player's lifetime XP. */
+export const XP_FOR_RARITY: Record<Rarity, number> = {
+  common: 0,
+  rare: 1,
+  legendary: 2,
+};
+
+export function xpForRarity(r: Rarity | undefined): number {
+  return r ? XP_FOR_RARITY[r] : 0;
+}
+
+/** Random rarity roll. Caller may inject an RNG for tests; defaults to
+ *  Math.random. Single sample, weighted by RARITY_WEIGHTS — same
+ *  distribution every roll, no per-grade scaling. (The progression
+ *  ramp lives in LEGENDARIES_PER_DAY_FOR_GRADE.) */
+export function rollRarity(rng: () => number = Math.random): Rarity {
+  const r = rng();
+  let acc = 0;
+  for (const k of RARITIES) {
+    acc += RARITY_WEIGHTS[k];
+    if (r < acc) return k;
+  }
+  return "common";
+}
+
+/** Per-grade Legendary count required to score a "day complete" — the
+ *  unit the streak is now counted in. A day completes the first time
+ *  the player has answered this many Legendary questions correctly
+ *  on that UTC date.
  *
- *  The streak resets on a miss. Combined with a cumulative XP threshold,
- *  these are the two gates a player must clear to advance years. */
+ *    Freshman:  1
+ *    Sophomore: 1
+ *    Junior:    2
+ *    Senior:    3
+ *
+ *  Pairs with the 60/30/10 rarity distribution: ~10 questions to draw
+ *  one Legendary on average, so a Freshman day finishes in ~10
+ *  questions and a Senior day in ~30. */
+export function legendariesPerDayFor(grade: Grade): number {
+  switch (grade) {
+    case "9":  return 1;
+    case "10": return 1;
+    case "11": return 2;
+    case "12": return 3;
+  }
+}
+
 /** Per-grade cap on "Roll for advantage" usage. The player gets this many
  *  rolls in EACH grade (Freshman, Sophomore, Junior, Senior). Once spent
  *  for a grade, the advantage button is disabled until they advance. The
@@ -53,6 +110,18 @@ export const DEFAULT_GRADE: Grade = "9";
  *  hard-walling the player out of help on their first few questions. */
 export const ADVANTAGE_ROLLS_PER_GRADE = 3;
 
+/** Per-grade streak length: how many consecutive UTC days the player
+ *  must hit the Legendary target on to advance OUT of `grade`.
+ *
+ *    Freshman → 1 day
+ *    Sophomore → 2 days
+ *    Junior → 3 days
+ *    Senior → 4 days
+ *
+ *  Same numbers as the prior Daily-pass streak — the metric changed
+ *  from "consecutive Daily passes" to "consecutive days the Legendary
+ *  target was hit." Combined with the per-class XP gate (below),
+ *  these are the two gates a player must clear to advance years. */
 export function requiredStreakForGrade(grade: Grade): number {
   const idx = GRADES.indexOf(grade);
   if (idx === -1) return 1;
@@ -157,6 +226,10 @@ export interface Question {
   subject?: string;
   difficulty?: Difficulty;
   faculty?: string;
+  /** Stamped by `pose()` if the caller didn't pre-roll one. Drives the
+   *  XP awarded on a correct answer (0 / 1 / 2 for common / rare /
+   *  legendary) and the per-day Legendary count toward the streak. */
+  rarity?: Rarity;
 }
 
 export interface BankedQuestion extends Question {
@@ -434,13 +507,29 @@ export interface PlayerCharacter {
     completedAt: number;
     summary: { correct: number; total: number };
   }>;
-  /** Current Daily-pass streak in the active grade. The arc gate per
-   *  DESIGN.md Pillar 1: a streak of `requiredStreakForGrade(currentGrade)`
-   *  consecutive Daily passes advances to the next year. Reset to 0 on
-   *  any Daily miss (wrong MC pick or essay grade < 7). The grade field
-   *  is the streak's anchor — when the player advances, streak resets
-   *  to { grade: newGrade, count: 0 }. */
-  streak?: { grade: Grade; count: number };
+  /** Daily-target streak in the active grade. A "day complete" is the
+   *  first time on a given UTC date that the player has answered
+   *  `legendariesPerDayFor(grade)` Legendary questions correctly.
+   *  Each completion increments `count` (capped to once per UTC date,
+   *  recorded in `lastDate`). Skipping a day (today is more than 1
+   *  day past `lastDate`) resets the streak. Switching grade resets
+   *  to `{ grade: newGrade, count: 0 }`.
+   *
+   *  Pre-rarity-refactor characters had streak counted as Daily passes;
+   *  the count carries forward but anchors to the new metric (no
+   *  in-place migration needed — the field shape is the same). */
+  streak?: { grade: Grade; count: number; lastDate?: string };
+  /** How many Legendary questions the player has answered correctly
+   *  on the current UTC date. Resets implicitly when `date` ages out
+   *  (any update on a new date overwrites the count). */
+  legendariesToday?: { date: string; count: number };
+  /** UTC date of the last Daily-bonus question played. The bonus
+   *  question is a forced-Legendary, available once per UTC day —
+   *  the cheap retention hook that survived the rarity refactor.
+   *  Replaces the old `lastDailyDate` (same shape, different
+   *  semantics — the old one gated the entire arc; this one only
+   *  gates the bonus). */
+  lastBonusDate?: string;
   /** Per-faculty score record — {correct, total} keyed by faculty id.
    *  Tracks attempts AND passes so we can compute a CORRECTNESS RATIO
    *  per teacher, used at graduation to pick the diploma image's
@@ -460,10 +549,10 @@ export interface PlayerCharacter {
    *  faculty's pool — the rule that gives the rooms mechanical weight.
    *  Optional for legacy characters; defaulted to {} on hydrate. */
   subjectXp?: Record<string, number>;
-  /** UTC date (YYYY-MM-DD with the 17:00 UTC school-bell cutoff applied)
-   *  of the last Daily completion. Used to gate "is today's Daily
-   *  available." When `dailyKey(now) > lastDailyDate`, today's Daily
-   *  is fresh. */
+  /** Legacy field from the Daily-as-arc model. Pre-rarity-refactor this
+   *  gated "today's Daily" availability. Kept on the type for backward
+   *  compatibility with persisted records (we never migrate state
+   *  in-place); read by no live code path. */
   lastDailyDate?: string;
   /** Generated diploma image (Senior graduation). Set by the /chat/diploma
    *  endpoint after the 4th yearbook entry lands. Base64 data URL. */
@@ -497,8 +586,13 @@ export const DAILY_BELL_HOUR_UTC = 17;
 
 /** YYYY-MM-DD key for the Daily on a given moment. Anchors all streak +
  *  rotation arithmetic. The same date string everywhere — no timezone
- *  drift between server and client. */
-export function dailyKey(now: Date = new Date()): string {
+ *  drift between server and client.
+ *
+ *  Default arg goes through `new Date(Date.now())` rather than
+ *  `new Date()` so test mocks of `Date.now` flow through. (Bare
+ *  `new Date()` invokes the system clock directly and ignores the
+ *  Date.now stub.) */
+export function dailyKey(now: Date = new Date(Date.now())): string {
   const adjusted = new Date(now.getTime());
   if (adjusted.getUTCHours() < DAILY_BELL_HOUR_UTC) {
     // Before 17:00 UTC — the bell hasn't rung yet, so we're still on
@@ -509,6 +603,19 @@ export function dailyKey(now: Date = new Date()): string {
   const m = String(adjusted.getUTCMonth() + 1).padStart(2, "0");
   const d = String(adjusted.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+/** Days between two dailyKey strings. Both must be YYYY-MM-DD as
+ *  produced by `dailyKey()`. Returns a non-negative integer when
+ *  `b` >= `a`, or a negative number otherwise. Used by the rarity
+ *  refactor's streak math to detect "consecutive day" vs "fresh
+ *  start." */
+export function daysBetween(a: string, b: string): number {
+  const pa = a.split("-").map(Number);
+  const pb = b.split("-").map(Number);
+  const ta = Date.UTC(pa[0]!, (pa[1]! - 1), pa[2]!);
+  const tb = Date.UTC(pb[0]!, (pb[1]! - 1), pb[2]!);
+  return Math.round((tb - ta) / 86400000);
 }
 
 /** Days-since-epoch for the given key, used as a deterministic seed for
@@ -655,13 +762,21 @@ export interface ActiveRound {
    *  The roll is consumed once per round regardless of outcome. Picks against
    *  eliminated choices are rejected by submitAnswer. */
   advantage?: AdvantageRoll | null;
-  /** True when this round was opened by playDaily — i.e. it represents
-   *  today's Daily, the only thing that ticks the streak / arc gate.
-   *  Free-play rounds (pickAndPose) leave this false/undefined and don't
-   *  tick anything player-side. */
+  /** True when this round is the once-per-day bonus question — a
+   *  forced-Legendary draw served by `playBonus`. The bonus's only
+   *  privilege is the guaranteed Legendary roll; XP + streak still
+   *  flow through the same rarity-driven path as any other round. */
+  isBonus?: boolean;
+  /** Rarity stamped on the question this round is built around. Mirrors
+   *  `state.current.rarity` so the SSE telemetry doesn't have to
+   *  re-derive it. Drives the COMMON / RARE / LEGENDARY pill in the
+   *  viewer chalkboard meta. */
+  rarity?: Rarity;
+  /** Legacy: pre-rarity refactor used "isDaily" to mean "this round
+   *  ticks the arc." Kept on the type for back-compat with any
+   *  persisted activeRound; new code uses `isBonus` + `rarity`. */
   isDaily?: boolean;
-  /** Daily key (YYYY-MM-DD with school-bell cutoff) the round was opened
-   *  on. Set together with isDaily; informational. */
+  /** Legacy: paired with the old isDaily. Unused now. */
   dailyKey?: string;
 }
 
