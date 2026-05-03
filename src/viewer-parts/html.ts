@@ -40,7 +40,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="you-name" id="you-name">${safeAgent}</span>
         <span class="you-state" id="you-state">checking…</span>
       </div>
-      <button class="footer-action" id="footer-action" type="button">Sign in</button>
+      <!-- Footer button is sign-out only. Hidden until applyAuthUI() decides
+           the user is signed in. Pre-script "Sign in" text would flash for
+           a frame on boot, then get superseded by the mandatory sign-in
+           overlay anyway — so just start hidden. -->
+      <button class="footer-action" id="footer-action" type="button" hidden></button>
     </div>
     <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Open an issue on GitHub.">Report a bug</button>
   </aside>
@@ -150,6 +154,20 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
 <div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
 <div class="xp-burst" id="xp-burst" aria-live="polite"></div>
+
+<!-- Sign-in gate. Mandatory while unauthed: covers the app, no dismiss.
+     Detangled from the character sheet so the sign-in surface is a single
+     dedicated thing instead of the auth state being one of several render
+     branches inside the creation modal. -->
+<div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
+  <div class="sheet-card signin-card">
+    <h2>Welcome to Ruby High</h2>
+    <p class="sub">Your character is rolled by an LLM and your chat with the teachers runs on your account. Sign in with OpenRouter to begin — it's free, and your inference key never leaves your browser.</p>
+    <div class="sheet-actions" style="justify-content: center;">
+      <a id="signin-cta" class="primary-link" href="/api/apps/ruby-high/auth/start">Sign in with OpenRouter</a>
+    </div>
+  </div>
+</div>
 
 <!-- Character sheet overlay (creation + profile view) -->
 <div class="sheet-overlay" id="sheet-overlay">
