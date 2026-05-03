@@ -51,6 +51,7 @@ import {
 } from "../types.js";
 import { FacultyService, type PickFilter } from "./faculty-service.js";
 import { StateStore, type StateStoreLike } from "./state-store.js";
+import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 
 export interface PoseInput {
@@ -515,9 +516,15 @@ export class RubyHighService extends Service {
       if (state.gradeProgress[advance] === undefined) state.gradeProgress[advance] = 0;
       this.ensureRoster(state, advance);
       ch.streak = { grade: advance, count: 0 };
+      log.event("player.grade-advanced", {
+        sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, xp: ch.xp,
+      });
     } else {
       // Senior complete = graduation. Streak stays at Senior; the diploma
       // flow keys on yearbook.length === 4 + the absence of a "next year."
+      log.event("player.graduated", {
+        sessionId: state.sessionId, character: ch.name, xp: ch.xp,
+      });
     }
   }
 
@@ -986,6 +993,9 @@ export class RubyHighService extends Service {
       next.activeRound.isDaily = true;
       next.activeRound.dailyKey = status.dailyKey;
     }
+    log.event("daily.posed", {
+      sessionId, faculty: facultyId, dailyKey: status.dailyKey, questionId: q.id,
+    });
     return next;
   }
 
@@ -1068,6 +1078,9 @@ export class RubyHighService extends Service {
     };
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
+    log.event("character.created", {
+      sessionId, name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
+    });
     return state;
   }
 
