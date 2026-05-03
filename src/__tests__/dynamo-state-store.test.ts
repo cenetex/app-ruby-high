@@ -200,8 +200,6 @@ describe("DynamoStateStore", () => {
       flavorQuote: "honestly the syllabus is bullying me",
       personality: "—",
       xp: 4,
-      strings: { sally: 1 },
-      conditions: [],
       yearbook: [],
       createdAt: 555,
     };
@@ -212,6 +210,6 @@ describe("DynamoStateStore", () => {
     expect(back!.score).toEqual({ correct: 7, total: 12 });
     expect(back!.askedQuestionIds).toEqual(["q1", "q2", "q3"]);
     expect(back!.character?.flavorQuote).toBe("honestly the syllabus is bullying me");
-    expect(back!.character?.strings.sally).toBe(1);
+    expect(back!.character?.xp).toBe(4);
   });
 });

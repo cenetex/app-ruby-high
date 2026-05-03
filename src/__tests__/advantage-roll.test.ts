@@ -203,40 +203,38 @@ describe("RubyHighService.rollAdvantage", () => {
     const state = ruby.getOrCreate(sid);
     state.character = {
       name: "Test", playbookId: "overachiever", stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
-      arcAnswer: "—", personality: "—", xp: 0, strings: {}, conditions: [], yearbook: [],
+      arcAnswer: "—", personality: "—", xp: 0, yearbook: [],
       createdAt: Date.now(),
     };
-    const before = { xp: state.character.xp, conditions: state.character.conditions.length };
+    const beforeXp = state.character.xp;
     ruby.rollAdvantage(sid);
-    const after = { xp: state.character!.xp, conditions: state.character!.conditions.length };
-    expect(after.xp).toBe(before.xp);
-    expect(after.conditions).toBe(before.conditions);
+    expect(state.character!.xp).toBe(beforeXp);
   });
 });
 
 // ── player roll: bonus-only (regression check on the v0.5.x fix) ────────────
 
 describe("Player roll on round resolve — bonus-only", () => {
-  it("never adds a Condition on a wrong answer, regardless of the dice", async () => {
+  it("never decreases XP on a wrong answer, regardless of the dice", async () => {
     const { ruby } = await makeServices();
     // Run many rounds — across a wide range of dice outcomes, a wrong answer
-    // should never push a condition onto the character.
+    // should never punish the character. XP is monotonically non-decreasing.
     for (let i = 0; i < 50; i++) {
-      const sid = `test:no-cond:${i}`;
+      const sid = `test:no-penalty:${i}`;
       ruby.pickAndPose(sid, { faculty: "ruby" });
       const state = ruby.getOrCreate(sid);
       // Attach a fresh character with HEAD -1 so misses are likelier (worst-case
       // input for the old penalty path that the v0.5.x fix removed).
       state.character = {
         name: "Test", playbookId: "overachiever", stats: { head: -1, heart: 0, hustle: 0, honor: 1 },
-        arcAnswer: "—", personality: "—", xp: 0, strings: {}, conditions: [], yearbook: [],
+        arcAnswer: "—", personality: "—", xp: 0, yearbook: [],
         createdAt: Date.now(),
       };
       const correct = state.current!.correct! as Choice;
       const wrong: Choice = (CHOICES.find((c) => c !== correct) as Choice)!;
       ruby.submitAnswer(sid, wrong);
       const after = ruby.getOrCreate(sid);
-      expect(after.character!.conditions).toEqual([]);
+      expect(after.character!.xp).toBe(0);
     }
   });
 
@@ -258,7 +256,7 @@ describe("Player roll on round resolve — bonus-only", () => {
       const state = ruby.getOrCreate(sid);
       state.character = {
         name: "Test", playbookId: "overachiever", stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
-        arcAnswer: "—", personality: "—", xp: 0, strings: {}, conditions: [], yearbook: [],
+        arcAnswer: "—", personality: "—", xp: 0, yearbook: [],
         createdAt: Date.now(),
       };
       const correct = state.current!.correct! as Choice;

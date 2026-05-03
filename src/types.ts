@@ -496,16 +496,27 @@ export interface PlayerCharacter {
   portraitDataUrl?: string;
   /** XP accumulated across all years. */
   xp: number;
-  /** Strings the player holds on each NPC / faculty member. */
-  strings: Record<string, number>;
-  /** Active conditions (debuffs). */
-  conditions: string[];
-  /** Past-year archive — populated at grade completion. One entry per
-   *  graduated year (Senior completion writes the 4th). */
+  /** Past-year archive — populated at grade completion. Each entry is a
+   *  **Paper Card**: a frozen snapshot of identity at the moment the year
+   *  closed. Paper cards never change after they're written; the live
+   *  character is the **Stat Card**. The split is the user-facing model:
+   *  one paper card per grade earned, plus a stat card on top.
+   *
+   *  Snapshot fields are optional only for legacy entries written before
+   *  the snapshot existed — the service backfills them from the live
+   *  character on hydrate (best-effort: a player who renamed mid-arc will
+   *  see their current name on old cards, which is the intended fallback). */
   yearbook: Array<{
     grade: Grade;
     completedAt: number;
     summary: { correct: number; total: number };
+    name?: string;
+    playbookId?: string;
+    stats?: CharacterStats;
+    portraitDataUrl?: string;
+    flavorQuote?: string;
+    arcAnswer?: string;
+    subjectScores?: Record<string, { correct: number; total: number }>;
   }>;
   /** Daily-target streak in the active grade. A "day complete" is the
    *  first time on a given UTC date that the player has answered
@@ -549,11 +560,6 @@ export interface PlayerCharacter {
    *  faculty's pool — the rule that gives the rooms mechanical weight.
    *  Optional for legacy characters; defaulted to {} on hydrate. */
   subjectXp?: Record<string, number>;
-  /** Legacy field from the Daily-as-arc model. Pre-rarity-refactor this
-   *  gated "today's Daily" availability. Kept on the type for backward
-   *  compatibility with persisted records (we never migrate state
-   *  in-place); read by no live code path. */
-  lastDailyDate?: string;
   /** Generated diploma image (Senior graduation). Set by the /chat/diploma
    *  endpoint after the 4th yearbook entry lands. Base64 data URL. */
   diplomaImageDataUrl?: string;

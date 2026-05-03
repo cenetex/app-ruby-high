@@ -70,7 +70,7 @@ export const PLAYBOOKS: Playbook[] = [
     hookQuestion: "Whose orbit are you stuck in?",
     startingMove: {
       name: "Pep talk",
-      description: "Spend 1 String on an AI student to give them advantage on their next answer (you both gain XP if they hit).",
+      description: "When a classmate misses, you can write them a one-liner — they remember it.",
     },
     accent: "#52c673",
   },
@@ -114,7 +114,7 @@ export const PLAYBOOKS: Playbook[] = [
     hookQuestion: "What's the best gossip you've picked up about this place?",
     startingMove: {
       name: "Old gossip",
-      description: "Start with 1 String on each faculty member.",
+      description: "You know which teacher is in a mood today. The rest find out.",
     },
     accent: "#ec4f9e",
   },

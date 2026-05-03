@@ -47,8 +47,8 @@ function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9",
   state.character = {
     name: "Pip", playbookId: "overachiever",
     stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
-    arcAnswer: "—", personality: "—", xp, strings: {},
-    conditions: [], yearbook: [], createdAt: Date.now(),
+    arcAnswer: "—", personality: "—", xp,
+    yearbook: [], createdAt: Date.now(),
     subjectXp: { ruby: 999, "sally-science": 999, "professor-edward": 999 },
   };
   return state;
@@ -458,5 +458,56 @@ describe("Streak + grade advancement (rarity-driven)", () => {
     expect(finalCh.yearbook[3]?.grade).toBe("12");
     expect(ruby.getOrCreate(sid).currentGrade).toBe("12"); // doesn't advance past Senior
     expect(ruby.getOrCreate(sid).completedGrades).toContain("12");
+  });
+
+  it("Paper Card: yearbook entry written at advancement freezes identity (later edits to live character don't bleed back)", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:paper-card-snapshot";
+    attachCharacter(ruby, sid, "9");
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.name = "Pip-at-Freshman";
+    ch.flavorQuote = "honestly the syllabus is bullying me";
+    ch.stats = { head: 2, heart: 0, hustle: -1, honor: 1 };
+
+    // Force a single Freshman day-complete so the yearbook entry gets written.
+    // Freshman streak target is 1, per-class XP target is 2. Pose 2 legendary
+    // questions in each of the three teaching rooms so the per-class gate clears.
+    const realNow = Date.now;
+    Date.now = () => new Date("2026-05-04T18:00:00Z").getTime();
+    try {
+      let q = 0;
+      for (const fac of ["ruby", "sally-science", "professor-edward"] as const) {
+        for (let i = 0; i < 2; i++) {
+          ruby.pose(sid, {
+            prompt: "Q " + (q++),
+            options: { A: "a", B: "b", C: "c", D: "d" },
+            correct: "A",
+            faculty: fac,
+            rarity: "legendary",
+            questionId: "qsnap_" + fac + "_" + i,
+          });
+          ruby.submitAnswer(sid, "A");
+        }
+      }
+    } finally {
+      Date.now = realNow;
+    }
+
+    const written = ruby.getOrCreate(sid).character!.yearbook[0]!;
+    expect(written.grade).toBe("9");
+    expect(written.name).toBe("Pip-at-Freshman");
+    expect(written.flavorQuote).toBe("honestly the syllabus is bullying me");
+    expect(written.stats).toEqual({ head: 2, heart: 0, hustle: -1, honor: 1 });
+
+    // Now mutate the live character. The Paper Card must not move.
+    const live = ruby.getOrCreate(sid).character!;
+    live.name = "Pip-at-Sophomore";
+    live.flavorQuote = "actually i love it now";
+    live.stats = { head: 0, heart: 2, hustle: 1, honor: -1 };
+
+    const stillFrozen = ruby.getOrCreate(sid).character!.yearbook[0]!;
+    expect(stillFrozen.name).toBe("Pip-at-Freshman");
+    expect(stillFrozen.flavorQuote).toBe("honestly the syllabus is bullying me");
+    expect(stillFrozen.stats).toEqual({ head: 2, heart: 0, hustle: -1, honor: 1 });
   });
 });
