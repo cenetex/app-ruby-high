@@ -433,6 +433,35 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* Arc indicator — the player's live progress through the 4-year arc.
+   * Replaces the old session-score chip; this is the only thing that should
+   * be in the top-right. Hidden until a character exists. */
+  .arc-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    margin-right: calc(var(--safe-right));
+    background: var(--bg-elev);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .arc-indicator .arc-year { color: var(--accent); }
+  .arc-indicator .arc-sep { color: var(--text-mute); font-weight: 400; }
+  .arc-indicator .arc-streak.is-met { color: var(--accent); }
+  .arc-indicator .arc-xp.is-met { color: var(--accent); }
+  .arc-indicator.is-graduated .arc-year { color: #f0b441; }
+  /* Mobile: hide the streak/XP detail, keep just the year tag. The full
+   * progress is one tap away on the character sheet. */
+  @media (max-width: 540px) {
+    .arc-indicator .arc-sep,
+    .arc-indicator .arc-streak,
+    .arc-indicator .arc-xp { display: none; }
+  }
   /* ── blackboard panel (single, persistent, updates in place) ───────────── */
   .blackboard-panel {
     grid-row: 2;
@@ -1594,6 +1623,13 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
         <div class="top"><span class="hash">#</span><span id="channel-title">general</span></div>
         <div class="sub" id="channel-sub">loading…</div>
       </div>
+      <div class="arc-indicator" id="arc-indicator" hidden>
+        <span class="arc-year" id="arc-year">—</span>
+        <span class="arc-sep">·</span>
+        <span class="arc-streak" id="arc-streak" title="Daily streak this year">streak —</span>
+        <span class="arc-sep">·</span>
+        <span class="arc-xp" id="arc-xp" title="Cumulative XP">— XP</span>
+      </div>
     </header>
 
     <section class="lounge-stage" id="lounge-stage">
@@ -1686,6 +1722,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
+  // Mirrored from types.ts: gates the player must clear to advance OUT of
+  // each year (BOTH must hold). Kept inline so the top-bar chip can render
+  // without an extra telemetry round-trip.
+  const STREAK_REQUIRED = { "9": 1, "10": 2, "11": 3, "12": 4 };
+  const XP_REQUIRED     = { "9": 5, "10": 15, "11": 30, "12": 50 };
   const LOUNGE_ID = "lounge";
   const COMPLETION_THRESHOLD = 5;
 
@@ -1733,6 +1774,10 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     hamburger: $("hamburger"),
     channelTitle: $("channel-title"),
     channelSub: $("channel-sub"),
+    arcIndicator: $("arc-indicator"),
+    arcYear: $("arc-year"),
+    arcStreak: $("arc-streak"),
+    arcXp: $("arc-xp"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -1994,6 +2039,41 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     // Footer (Question N + difficulty filter + Next btn) only when signed
     // in. Pre-auth users can't act on it.
     els.blackboardFoot.hidden = !authed;
+  }
+
+  // ── top-bar arc indicator (live progress through the 4-year arc) ────────
+  // Shape: "Junior · streak 2/3 · 28/50 XP". Hidden until a character
+  // exists. Streak/XP turn accent-colored once the gate is met (player's
+  // sitting on the threshold, waiting for the other gate to land). After
+  // graduation the year flips to "Graduated" and the gate hints drop.
+  function renderArcIndicator(t) {
+    const ch = t.character;
+    const grade = t.current_grade;
+    if (!ch || !grade) {
+      els.arcIndicator.hidden = true;
+      return;
+    }
+    els.arcIndicator.hidden = false;
+    const graduated = Array.isArray(ch.yearbook) && ch.yearbook.length >= 4;
+    els.arcIndicator.classList.toggle("is-graduated", graduated);
+    if (graduated) {
+      els.arcYear.textContent = "Graduated";
+      els.arcStreak.textContent = "diploma earned";
+      els.arcStreak.classList.remove("is-met");
+      els.arcXp.textContent = (ch.xp ?? 0) + " XP";
+      els.arcXp.classList.remove("is-met");
+      return;
+    }
+    const yearLabel = GRADE_LABELS[grade] || ("Grade " + grade);
+    els.arcYear.textContent = yearLabel;
+    const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
+    const streakReq   = STREAK_REQUIRED[grade] || 1;
+    const xp          = ch.xp ?? 0;
+    const xpReq       = XP_REQUIRED[grade] || 5;
+    els.arcStreak.textContent = "streak " + streakCount + "/" + streakReq;
+    els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
+    els.arcXp.textContent = xp + "/" + xpReq + " XP";
+    els.arcXp.classList.toggle("is-met", xp >= xpReq);
   }
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
@@ -2663,6 +2743,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     els.channelSub.textContent = fac
       ? fac.displayName + " · " + (t.current_grade ? "Grade " + t.current_grade : "settling in")
       : "loading…";
+    renderArcIndicator(t);
 
     // Render blackboard panel (single, in-place updates).
     renderBlackboard(t.current || null, fac || null, t.current_grade);
