@@ -22,8 +22,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // each year (BOTH must hold). Kept inline so the top-bar chip can render
   // without an extra telemetry round-trip.
   const STREAK_REQUIRED       = { "9": 1, "10": 2, "11": 3, "12": 4 };
-  const XP_REQUIRED           = { "9": 5, "10": 15, "11": 30, "12": 50 }; // legacy total-XP gate (display only — see SUBJECT_XP_REQUIRED)
-  const SUBJECT_XP_REQUIRED   = { "9": 2, "10": 5, "11": 10, "12": 16 };  // per-class minimum (the real gate)
+  const SUBJECT_XP_REQUIRED   = { "9": 2, "10": 5, "11": 10, "12": 16 };
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
   const LOUNGE_ID = "lounge";
 
@@ -125,6 +124,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     teacherFigure: $("teacher-figure"),
     blackboardEmpty: $("blackboard-empty"),
     blackboardEmptyText: $("blackboard-empty-text"),
+    dailyBanner: $("daily-banner"),
+    dailyBannerSub: $("daily-banner-sub"),
     dailyCtaBtn: $("daily-cta-btn"),
     blackboardMeta: $("blackboard-meta"),
     boardFrameHost: $("board-frame-host"),
@@ -406,12 +407,19 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.arcYear.textContent = yearLabel;
     const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
     const streakReq   = STREAK_REQUIRED[grade] || 1;
-    const xp          = ch.xp ?? 0;
-    const xpReq       = XP_REQUIRED[grade] || 5;
     els.arcStreak.textContent = "streak " + streakCount + "/" + streakReq;
     els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
-    els.arcXp.textContent = xp + "/" + xpReq + " XP";
-    els.arcXp.classList.toggle("is-met", xp >= xpReq);
+    // Per-class minimum on the second pill — N classes met / 3.
+    // Detailed per-class chips live on the character sheet's
+    // "How to graduate" rung; the top bar gets an at-a-glance summary.
+    const subjectReq = SUBJECT_XP_REQUIRED[grade] || 2;
+    const subj = ch.subjectXp || {};
+    let classesMet = 0;
+    for (const fid of TEACHING_FACULTY_IDS) {
+      if ((subj[fid] || 0) >= subjectReq) classesMet++;
+    }
+    els.arcXp.textContent = classesMet + "/3 classes";
+    els.arcXp.classList.toggle("is-met", classesMet >= 3);
   }
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
@@ -568,6 +576,27 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     div.textContent = (faculty.shortName || faculty.displayName || faculty.id || "?").charAt(0).toUpperCase();
     return div;
   }
+  // Today's-challenge banner. Lives above the chalkboard so the CTA
+  // doesn't fight the green texture for legibility, and is visible
+  // regardless of which room the player is currently standing in.
+  // Hidden in three cases: not signed in, no character, daily already
+  // done, lounge mode, or no daily faculty for the day.
+  function updateDailyBanner(t) {
+    const daily = t && t.daily;
+    if (!daily || !daily.available || !authed || !t.character || t.faculty === LOUNGE_ID) {
+      els.dailyBanner.hidden = true;
+      return;
+    }
+    const dailyFaculty = (t.faculty_roster || []).find((f) => f.id === daily.facultyId) || null;
+    const profName = dailyFaculty?.displayName || "today's teacher";
+    const inRoom = t.faculty === daily.facultyId;
+    els.dailyBannerSub.textContent = inRoom
+      ? "You're in " + profName + "'s room — tap Begin to take it."
+      : "Ask " + profName + " — they're on the floor today.";
+    els.dailyCtaBtn.textContent = inRoom ? "Begin" : "Go to " + profName;
+    els.dailyBanner.hidden = false;
+  }
+
   function renderBlackboard(question, faculty, currentGrade) {
     if (faculty && faculty.id === LOUNGE_ID) {
       // Lounge mode: hide blackboard, show lounge stage with all three figures.
@@ -581,30 +610,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!question) {
       showBlackboardEmpty(true);
       activeQuestionId = null;
-      const daily = lastTelemetry && lastTelemetry.daily;
-      const dailyFacultyId = daily && daily.facultyId;
-      const dailyFaculty = dailyFacultyId
-        ? ((lastTelemetry?.faculty_roster || []).find((f) => f.id === dailyFacultyId) || null)
-        : null;
-      // Default: hide the daily CTA. Each branch below decides whether
-      // to show it and what to label it with.
-      els.dailyCtaBtn.hidden = true;
-      els.dailyCtaBtn.disabled = false;
+      // The empty-board message is just text — the daily-challenge CTA
+      // lives in its own banner above the chalkboard (see updateDailyBanner).
       if (!authed) {
         els.blackboardEmptyText.textContent = "Sign in with OpenRouter to start class.";
       } else if (!lastTelemetry?.character) {
         els.blackboardEmptyText.textContent = "Roll a character — your name will appear in the seating chart.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
-      } else if (daily && daily.reason === "completed") {
-        els.blackboardEmptyText.textContent = "School's out for today. The next bell rings at 17:00 UTC tomorrow — your streak holds until then.";
-      } else if (daily && daily.available) {
-        // Today's Daily is ready. Surface a primary CTA labelled with
-        // the day's faculty so the player knows whose challenge it is.
-        const profName = dailyFaculty?.displayName || "the teacher";
-        els.blackboardEmptyText.textContent = "Today's challenge is ready.";
-        els.dailyCtaBtn.textContent = "Ask " + profName + " about today's challenge";
-        els.dailyCtaBtn.hidden = false;
       } else {
         els.blackboardEmptyText.textContent = "The teacher will write a question on the board in a moment.";
       }
@@ -1107,6 +1120,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     renderBlackboard(t.current || null, fac || null, t.current_grade);
     renderRaceStrip(t);
     renderAdvantageBar(t);
+    updateDailyBanner(t);
     if (t.is_opinion && t.active_round) {
       renderOpinionsIntoChat(t.active_round);
       maybeAutoTriggerGrading(t);
@@ -1207,21 +1221,56 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     lastShownFaculty = t.faculty;
   }
 
-  // ── portrait generation (fire-and-forget after character accept) ────────
-  async function generateAndAttachPortrait(c) {
-    if (!authed) return;
-    try {
-      const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: c.name, playbookId: c.playbookId, personality: c.personality, stats: c.stats }),
-      });
-      if (!r.ok) return;
-      const data = await r.json();
-      if (data && data.portraitDataUrl) {
-        await command({ type: "set-portrait", portraitDataUrl: data.portraitDataUrl });
+  // ── portrait generation ────────────────────────────────────────────────
+  // Image-gen is the flakiest call we make: model overload, content-filter
+  // empty responses, occasional timeouts. The server retries once
+  // internally; the client retries once more on top of that, so a single
+  // user-facing portrait gen actually attempts up to 4 times (server: 2,
+  // client: 2 wrappers) before giving up. After that the regenerate-avatar
+  // button on the character sheet is the manual recovery path.
+  let portraitInFlight = false;
+  async function generateAndAttachPortrait(c, opts) {
+    if (!authed) return false;
+    if (portraitInFlight) return false;
+    portraitInFlight = true;
+    const showStatus = !!(opts && opts.showStatus);
+    if (showStatus) showCongrats("Regenerating avatar…", true);
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: c.name, playbookId: c.playbookId, personality: c.personality, stats: c.stats }),
+        });
+        if (!r.ok) {
+          const errBody = await r.json().catch(() => ({}));
+          lastErr = errBody.error || ("HTTP " + r.status);
+          if (r.status === 429) break; // rate-limited; second swing won't help
+          continue;
+        }
+        const data = await r.json();
+        if (data && data.portraitDataUrl) {
+          await command({ type: "set-portrait", portraitDataUrl: data.portraitDataUrl });
+          portraitInFlight = false;
+          if (showStatus) showCongrats("Avatar updated.", true);
+          if (sheetOverlayOpen) renderSheet();
+          return true;
+        }
+        lastErr = "no image in response";
+      } catch (err) {
+        lastErr = err && err.message ? err.message : "network error";
       }
-    } catch { /* ignore — sheet close was instant; this is a soft enhancement */ }
+      // Brief backoff between client-side attempts so we're not hammering
+      // the same overloaded model.
+      await new Promise((res) => setTimeout(res, 1500));
+    }
+    portraitInFlight = false;
+    if (showStatus) showCongrats("Couldn't generate avatar — try again later.", false);
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("[ruby-high] portrait gen failed after retries:", lastErr);
+    }
+    return false;
   }
 
   // ── unified CCG-style character card ────────────────────────────────────
@@ -1492,19 +1541,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const completed = new Set((Array.isArray(c.yearbook) ? c.yearbook : []).map((y) => y.grade));
     const currentGrade = String(lastTelemetry?.current_grade ?? "9");
     const streakHere = c.streak && c.streak.grade === currentGrade ? c.streak.count : 0;
-    const xp = c.xp ?? 0;
     const subjectXp = c.subjectXp || {};
     const rungs = ["9", "10", "11", "12"].map((g) => {
       const streakReq = STREAK_REQUIRED[g] || 1;
-      const xpReq     = XP_REQUIRED[g] || 5;
       const subjectReq = SUBJECT_XP_REQUIRED[g] || 2;
-      let state, streakProgress, xpProgress, classProgress;
+      let state, streakProgress, classProgress;
       if (completed.has(g)) {
         state = "completed";
       } else if (g === currentGrade && !graduatedFor(c)) {
         state = "current";
         streakProgress = { have: streakHere, need: streakReq };
-        xpProgress = { have: xp, need: xpReq };
         // Per-class XP towards the year's minimum. Three rows, one per
         // teaching room — this is what gives the rooms mechanical weight.
         classProgress = TEACHING_FACULTY_IDS.map((fid) => ({
@@ -1515,7 +1561,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       } else {
         state = "future";
       }
-      return { grade: g, label: GRADE_LABELS[g], streakReq, xpReq, subjectReq, state, streakProgress, xpProgress, classProgress };
+      return { grade: g, label: GRADE_LABELS[g], streakReq, subjectReq, state, streakProgress, classProgress };
     });
     return { rungs, graduated: graduatedFor(c) };
   }
@@ -1539,6 +1585,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       progression: buildProgressionForCharacter(c),
       footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
       actions: [
+        {
+          label: c.portraitDataUrl ? "Regenerate avatar" : "Try avatar again",
+          secondary: true,
+          onClick: async () => {
+            // Re-fire the portrait pipeline from the existing character.
+            // The portrait field is the only thing that changes; everything
+            // else on the sheet stays put.
+            await generateAndAttachPortrait(c, { showStatus: true });
+          },
+        },
         {
           label: "Reroll character",
           secondary: true,

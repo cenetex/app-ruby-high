@@ -756,6 +756,41 @@ export const VIEWER_CSS = `
     margin-left: auto;
   }
   .blackboard-foot .next-btn:disabled { opacity: 0.5; }
+  /* Today's-challenge banner — sits above the chalkboard so it is not
+     fighting the green texture for legibility. */
+  .daily-banner {
+    margin: 8px calc(var(--safe-right) + 12px) 0 calc(var(--safe-left) + 12px);
+    background: linear-gradient(135deg, rgba(210, 42, 42, 0.18), rgba(210, 42, 42, 0.05));
+    border: 1px solid rgba(210, 42, 42, 0.35);
+    border-radius: 14px;
+    padding: 10px 14px;
+    box-shadow: var(--shadow);
+  }
+  .daily-banner-inner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .daily-banner-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .daily-banner-title {
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 800;
+  }
+  .daily-banner-sub {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .daily-cta-btn {
     appearance: none;
     background: var(--accent);
@@ -763,12 +798,11 @@ export const VIEWER_CSS = `
     color: #fff;
     font-weight: 800;
     border-radius: 999px;
-    padding: 13px 22px;
-    font-size: 15px;
+    padding: 10px 18px;
+    font-size: 14px;
     box-shadow: var(--shadow);
-    margin-top: 14px;
-    max-width: 360px;
     cursor: pointer;
+    flex: 0 0 auto;
     transition: transform 0.08s ease, opacity 0.12s ease;
   }
   .daily-cta-btn:active { transform: scale(0.97); }
