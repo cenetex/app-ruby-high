@@ -650,6 +650,14 @@ export const VIEWER_CSS = `
   }
   .answers-host {
     padding: 10px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
+    /* The blackboard-panel clips overflow, so very long answers used to
+       extend off-screen with no way to scroll to them. Make the host
+       itself the scroll surface and cap its height so the prompt stays
+       above the fold. */
+    overflow-y: auto;
+    max-height: 55vh;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
   }
   .race-strip {
     display: flex;
@@ -998,6 +1006,15 @@ export const VIEWER_CSS = `
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+  }
+  /* Long-answer mode: when any choice exceeds ~50 chars, the script
+     toggles .is-long on the grid. On narrow viewports we drop to a
+     single column so each answer gets full width and stays readable
+     instead of wrapping into a tall, half-width brick that's hard
+     to scan. The scrollable answers-host keeps the whole stack
+     reachable even when several answers are long. */
+  @media (max-width: 600px) {
+    .answers.is-long { grid-template-columns: 1fr; }
   }
   .answer {
     --bg: #f0922a;

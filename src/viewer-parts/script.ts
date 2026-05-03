@@ -652,16 +652,24 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
 
     // Answer buttons
+    let maxLen = 0;
     els.answers.forEach((btn) => {
       const pick = btn.dataset.pick;
       const label = btn.querySelector(".label");
       const text = (question.options && question.options[pick]) || "—";
       label.textContent = text;
+      if (text.length > maxLen) maxLen = text.length;
       if (isNewQuestion) {
         btn.classList.remove("is-correct", "is-wrong");
       }
       btn.disabled = role === "agent";
     });
+    // Long-answer mode flips the grid to single-column on narrow
+    // viewports (handled in CSS). Threshold tuned so a 4-line
+    // explanation-style answer triggers it but a regular MC option
+    // ("the mitochondria is the powerhouse of the cell") doesn't.
+    const answersGrid = document.getElementById("answers");
+    if (answersGrid) answersGrid.classList.toggle("is-long", maxLen > 50);
 
     // Footer — Next button shown only when the player is signed in and only
     // after a reveal (revealRound clears the inline display:none).
