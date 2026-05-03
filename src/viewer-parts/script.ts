@@ -1865,11 +1865,18 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     sub.textContent = "You're inhabiting an AI student. Lock in the parts that fit; reroll the rest.";
     sheetCard.appendChild(sub);
 
+    // Two-column wrap: portrait on the left, rerollable fields on the
+    // right. Stacks on mobile (CSS handles the breakpoint). Each side
+    // builds independently below.
+    const card = document.createElement("div");
+    card.className = "creation-card";
+    sheetCard.appendChild(card);
+
     // Portrait section — default-pack PNG by playbook, plus an opt-in
     // "✨ Generate AI portrait" button that swaps in a custom image.
     const portraitWrap = document.createElement("div");
     portraitWrap.className = "creation-portrait";
-    sheetCard.appendChild(portraitWrap);
+    card.appendChild(portraitWrap);
     const portraitImg = document.createElement("img");
     portraitImg.alt = "";
     portraitWrap.appendChild(portraitImg);
@@ -1886,7 +1893,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // re-fires /chat/character/generate with regen=[<field>], keep=<rest>.
     const fields = document.createElement("div");
     fields.className = "creation-fields";
-    sheetCard.appendChild(fields);
+    card.appendChild(fields);
 
     function makeRow(label, key) {
       const row = document.createElement("div");

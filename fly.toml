@@ -32,6 +32,13 @@ primary_region = "iad"
   NODE_ENV = "production"
   RUBY_HIGH_STORE_BACKEND = "dynamodb"
   AWS_REGION = "us-east-1"
+  # AI portraits + diplomas are stored in S3 — the bytes are too big to
+  # live inline in the DynamoDB character record. Set
+  # RUBY_HIGH_PORTRAITS_BUCKET (and optionally _REGION / _PUBLIC_BASE)
+  # to enable. When unset, the server falls back to inline data URLs
+  # and the size cap in createCharacter rejects oversized portraits.
+  RUBY_HIGH_PORTRAITS_BUCKET = "ruby-high-portraits"
+  RUBY_HIGH_PORTRAITS_REGION = "us-east-1"
 
 [http_service]
   internal_port = 8080
