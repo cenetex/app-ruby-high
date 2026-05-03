@@ -93,6 +93,8 @@ function deriveClientIp(req) {
 
 function makeRouteContext(req, res, url) {
   const cookieHeader = req.headers.cookie ?? null;
+  const apiKeyRaw = req.headers["x-openrouter-key"];
+  const apiKeyHeader = Array.isArray(apiKeyRaw) ? (apiKeyRaw[0] ?? null) : (apiKeyRaw ?? null);
   return {
     method: req.method ?? "GET",
     pathname: url.pathname,
@@ -100,6 +102,7 @@ function makeRouteContext(req, res, url) {
     runtime: fakeRuntime,
     res,
     cookieHeader,
+    apiKeyHeader,
     isSecure: false,
     clientIp: deriveClientIp(req),
     callbackUrlBuilder: (path) => {

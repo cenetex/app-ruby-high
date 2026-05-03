@@ -497,6 +497,10 @@ export interface ChatRouteContext {
   res: unknown;
   /** Raw incoming Cookie header. Optional — if the host doesn't expose it, auth degrades to "logged out". */
   cookieHeader?: string | null;
+  /** Raw value of the `X-Openrouter-Key` header. Clients store the key in
+   *  localStorage and attach it on every LLM-touching request; the server
+   *  reads it here without persisting. Empty / missing → 401 at LLM endpoints. */
+  apiKeyHeader?: string | null;
   /** Caller-provided callback URL builder. Lets the dev server use http://localhost while the eliza host uses https://app.example.com . */
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS. Controls `Secure` cookie attribute. */
@@ -565,6 +569,30 @@ function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | nul
   return "rh:anonymous";
 }
 
+/** Trim + sanity-check the OpenRouter key the client sent in
+ *  X-Openrouter-Key. Returns null if the header is absent or obviously
+ *  malformed; the caller should respond with 401 in that case. We don't
+ *  validate the key format beyond non-empty — OpenRouter is the authority. */
+function readApiKey(ctx: ChatRouteContext): string | null {
+  const raw = ctx.apiKeyHeader;
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Pull the session cookie + API key for an LLM endpoint. The cookie
+ *  identifies the QuizState bucket; the header carries the credential.
+ *  Returns null on either missing piece — callers respond with 401. */
+function requireAuth(
+  ctx: ChatRouteContext,
+  auth: AuthService,
+): { token: string; apiKey: string } | null {
+  const token = auth.parseSessionToken(ctx.cookieHeader);
+  const apiKey = readApiKey(ctx);
+  if (!token || !apiKey) return null;
+  return { token, apiKey };
+}
+
 function getService<T>(runtime: IAgentRuntime | null, type: string): T | null {
   if (!runtime) return null;
   try {
@@ -587,6 +615,71 @@ function redirect(res: unknown, location: string): void {
   r.statusCode = 302;
   r.setHeader("Location", location);
   r.end();
+}
+
+/** Render the OAuth-callback HTML shim that lands the API key in the
+ *  browser's localStorage and gets the OAuth tab out of the way. The key
+ *  is the only piece that actually has to travel back to the client; we
+ *  embed it as JSON inside an inline script. localStorage is per-origin
+ *  shared, so the original SPA tab notices via the `storage` event and
+ *  can flip to authed without polling. */
+function writeAuthCallbackHtml(
+  res: unknown,
+  args: { apiKey: string; label: string | null; redirectTo: string },
+): void {
+  const payload = JSON.stringify({ apiKey: args.apiKey, label: args.label });
+  // The </script> escape is paranoia: if the OpenRouter response ever
+  // included that exact substring inside a key it would otherwise terminate
+  // our inline script early. The unicode escape keeps JSON.parse happy.
+  const safePayload = payload.replace(/<\/script>/gi, "<\\/script>");
+  const safeRedirect = JSON.stringify(args.redirectTo);
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Signed in to Ruby High</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #0d1018; color: #f1f1f1; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+  main { text-align: center; padding: 24px; max-width: 420px; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  p { font-size: 14px; color: #b8b8c8; margin: 4px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>You're signed in.</h1>
+  <p>You can close this tab — your other Ruby High tab just woke up.</p>
+</main>
+<script>
+(function () {
+  try {
+    var data = JSON.parse(${JSON.stringify(safePayload)});
+    if (data && data.apiKey) {
+      try { localStorage.setItem("rh_openrouter_key", data.apiKey); } catch (e) {}
+      try { if (data.label) localStorage.setItem("rh_openrouter_label", data.label); } catch (e) {}
+      try { localStorage.setItem("rh_openrouter_at", String(Date.now())); } catch (e) {}
+    }
+  } catch (e) {}
+  // If we were opened from another tab, that tab already noticed the
+  // storage write — close so the player isn't stuck on this stub.
+  // Otherwise (top-level redirect, or popup blocker stripped opener),
+  // navigate to the viewer ourselves.
+  setTimeout(function () {
+    try {
+      if (window.opener && !window.opener.closed) { window.close(); return; }
+    } catch (e) {}
+    try { window.location.replace(${safeRedirect}); } catch (e) {}
+  }, 200);
+})();
+</script>
+</body>
+</html>`;
+  const r = res as { setHeader: (n: string, v: string) => void; statusCode: number; end: (b?: string) => void };
+  r.statusCode = 200;
+  r.setHeader("Content-Type", "text/html; charset=utf-8");
+  r.setHeader("Cache-Control", "no-store");
+  r.end(html);
 }
 
 function defaultCallbackBuilder(ctx: ChatRouteContext): (path: string) => string {
@@ -632,10 +725,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     try {
-      const { token } = await auth.completePkce(state, code);
+      const { token, apiKey, record } = await auth.completePkce(state, code);
       setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
       const back = ctx.url?.searchParams.get("redirect") ?? "/api/apps/ruby-high/viewer";
-      redirect(ctx.res, back);
+      // Hand the API key back to the browser via a tiny HTML shim. We write
+      // it to localStorage (not a cookie, not a URL fragment) so it never
+      // leaves the client and survives reloads. localStorage events fan out
+      // across same-origin tabs, so the original SPA tab notices and flips
+      // to authed without a poll. If we have an opener we close ourselves;
+      // otherwise we redirect to the viewer.
+      writeAuthCallbackHtml(ctx.res, { apiKey, label: record.label ?? null, redirectTo: back });
     } catch (err) {
       ctx.error(ctx.res, `Auth failed: ${err instanceof Error ? err.message : String(err)}`, 400);
     }
@@ -643,12 +742,14 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "GET" && ctx.pathname === `${AUTH_PREFIX}/me`) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
+    // Server-side auth state is now just "did the client send a key on this
+    // request." The cookie still exists for QuizState routing but no longer
+    // proves credentialed; clients are authoritative via localStorage.
+    const apiKey = readApiKey(ctx);
     ctx.json(ctx.res, {
-      authed: !!record,
-      since: record?.createdAt ?? null,
-      label: record?.label ?? null,
+      authed: !!apiKey,
+      since: null,
+      label: null,
     });
     return true;
   }
@@ -670,20 +771,24 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const messages = chat.history({ sessionToken: token, faculty });
+    // History is bucketed by the cookie; the X-Openrouter-Key header decides
+    // whether the client is "authed" for chat actions. Both can be present
+    // independently — a fresh tab might have a cookie from a prior session
+    // and want history but not have a key yet (or vice versa).
     ctx.json(ctx.res, {
-      authed: !!auth.resolve(token),
+      authed: !!readApiKey(ctx),
       history: messages.map((m) => ({ role: m.role, content: m.content, faculty: m.faculty, at: m.at })),
     });
     return true;
   }
 
   if (ctx.method === "POST" && ctx.pathname === CHAT_PREFIX) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
-    if (!record || !token) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
       ctx.error(ctx.res, "Not authenticated. Sign in with OpenRouter first.", 401);
       return true;
     }
+    const { token, apiKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -721,7 +826,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
     try {
       for await (const ev of chat.send({
-        apiKey: record.apiKey,
+        apiKey,
         sessionToken: token,
         agentSessionId: getSessionId(runtime, ctx.cookieHeader),
         faculty,
@@ -744,12 +849,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // etc. The server constructs the appropriate system directive and runs the
   // model, streaming the response back.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/event`) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
-    if (!record || !token) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
+    const { token, apiKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -800,7 +905,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         for (const speaker of order) {
           send("speaker", { facultyId: speaker });
           for await (const ev of chat.send({
-            apiKey: record.apiKey,
+            apiKey,
             sessionToken: token,
             agentSessionId: getSessionId(runtime, ctx.cookieHeader),
             faculty: "lounge",
@@ -862,7 +967,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       send("speaker", { facultyId: faculty });
       let toolsFired = 0;
       for await (const ev of chat.send({
-        apiKey: record.apiKey,
+        apiKey,
         sessionToken: token,
         agentSessionId: getSessionId(runtime, ctx.cookieHeader),
         faculty,
@@ -908,12 +1013,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // short line (no streaming, no history). Client fires this on triggers like
   // an answer reveal or a teacher message landing.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/student-chime`) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
-    if (!record || !token) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
+    const { token, apiKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -961,7 +1066,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     try {
       const line = await generateStudentLine({
-        apiKey: record.apiKey,
+        apiKey,
         student,
         situation,
         note: body?.note,
@@ -985,12 +1090,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // responses are in (player + both NPCs), this also runs the grading turn
   // and streams the teacher's verdict as SSE.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/opinion-submit`) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
-    if (!record || !token) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
+    const { token, apiKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -1063,7 +1168,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const facultyId = state.faculty;
       send("speaker", { facultyId });
       const { grades, bestResponder, narrativeText } = await gradeOpinionResponses({
-        apiKey: record.apiKey,
+        apiKey,
         facultyId,
         question: state.current.prompt,
         rubric: state.current.rubric,
@@ -1105,12 +1210,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // Generate a sticker portrait of the player's character. Returns a base64
   // data URL that the client persists onto the character via set-portrait.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/portrait`) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
-    if (!record || !token) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
       ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
       return true;
     }
+    const { token, apiKey } = cred;
     // Image generation is the most expensive call we make — keep its bucket
     // separate and tighter than the chat one.
     const rlKey = rateLimitKey(ctx, token);
@@ -1129,7 +1234,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     try {
       const dataUrl = await renderCharacterPortrait({
-        apiKey: record.apiKey,
+        apiKey,
         name,
         personality,
       });
@@ -1144,12 +1249,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // character's subjectScores server-side to pick the subject-themed
   // accessory. Same rate-limiter as portrait gen (8 burst, 1/30s).
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/diploma`) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
-    if (!record || !token) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
       ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
       return true;
     }
+    const { token, apiKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!PORTRAIT_LIMITER.take(rlKey)) {
       reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
@@ -1173,7 +1278,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     try {
       const dataUrl = await renderDiplomaImage({
-        apiKey: record.apiKey,
+        apiKey,
         name: ch.name,
         personality: ch.personality,
         bestSubjectFacultyId: highestScoringFaculty(ch.subjectScores),
@@ -1191,19 +1296,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/generate`) {
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
-    if (!record || !token) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
       ctx.error(ctx.res, "Sign in with OpenRouter first to roll a character.", 401);
       return true;
     }
+    const { token, apiKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
     try {
-      const c = await rollRandomCharacter({ apiKey: record.apiKey });
+      const c = await rollRandomCharacter({ apiKey });
       ctx.json(ctx.res, { ok: true, character: c });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);

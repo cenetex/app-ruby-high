@@ -25,6 +25,38 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const XP_REQUIRED     = { "9": 5, "10": 15, "11": 30, "12": 50 };
   const LOUNGE_ID = "lounge";
 
+  // ── auth credential (client-owned) ───────────────────────────────────────
+  // The OpenRouter API key lives ONLY in localStorage. The OAuth callback
+  // tab writes it; same-origin storage events fan it out to other tabs;
+  // every API call attaches it via the X-Openrouter-Key header. The server
+  // never persists it, so there's nothing to lose on a server restart.
+  const AUTH_KEY = "rh_openrouter_key";
+  const AUTH_LABEL = "rh_openrouter_label";
+  function getStoredApiKey() {
+    try { return localStorage.getItem(AUTH_KEY) || null; } catch (e) { return null; }
+  }
+  function getStoredAuthLabel() {
+    try { return localStorage.getItem(AUTH_LABEL) || null; } catch (e) { return null; }
+  }
+  function clearStoredAuth() {
+    try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
+    try { localStorage.removeItem(AUTH_LABEL); } catch (e) {}
+    try { localStorage.removeItem("rh_openrouter_at"); } catch (e) {}
+  }
+  // Wrapper around fetch that attaches the OpenRouter key header when one
+  // is present in localStorage. Use this for every same-origin API call —
+  // it's a no-op when there's no key (server returns 401 then, which the
+  // caller handles).
+  function apiFetch(url, init) {
+    const opts = init ? Object.assign({}, init) : {};
+    const headers = new Headers(opts.headers || {});
+    const key = getStoredApiKey();
+    if (key) headers.set("X-Openrouter-Key", key);
+    opts.headers = headers;
+    if (!opts.credentials) opts.credentials = "same-origin";
+    return fetch(url, opts);
+  }
+
   // ── AI students ──────────────────────────────────────────────────────────
   const STUDENTS = [
     { id: "lyra",  name: "Lyra",   color: "#ff6f91" },
@@ -1111,9 +1143,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   async function generateAndAttachPortrait(c) {
     if (!authed) return;
     try {
-      const r = await fetch("/api/apps/ruby-high/chat/character/portrait", {
+      const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: c.name, playbookId: c.playbookId, personality: c.personality, stats: c.stats }),
       });
@@ -1324,9 +1355,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!c || !graduatedFor(c) || c.diplomaImageDataUrl || diplomaInFlight) return;
     diplomaInFlight = true;
     try {
-      const r = await fetch("/api/apps/ruby-high/chat/character/diploma", {
+      const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
@@ -1495,9 +1525,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       status.textContent = "Rolling…";
       status.classList.remove("is-invalid");
       try {
-        const r = await fetch("/api/apps/ruby-high/chat/character/generate", {
+        const r = await apiFetch("/api/apps/ruby-high/chat/character/generate", {
           method: "POST",
-          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: "{}",
         });
@@ -1572,9 +1601,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const wait = delayMs ?? (700 + Math.random() * 800);
     setTimeout(async () => {
       try {
-        const r = await fetch("/api/apps/ruby-high/chat/student-chime", {
+        const r = await apiFetch("/api/apps/ruby-high/chat/student-chime", {
           method: "POST",
-          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ studentId: who.id, situation, note, faculty }),
         });
@@ -1614,28 +1642,23 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 
   // ── auth ─────────────────────────────────────────────────────────────────
   let lastAuthState = null;
-  async function pollAuth() {
-    try {
-      const r = await fetch("/api/apps/ruby-high/auth/me", { credentials: "same-origin" });
-      const data = await r.json();
-      const next = !!data.authed;
-      if (next !== lastAuthState) {
-        const wasSignedIn = lastAuthState === true;
-        lastAuthState = next;
-        authed = next;
-        applyAuthUI();
-        if (authed && lastTelemetry) loadHistory(lastTelemetry.faculty);
-        // If the sheet overlay is open while auth state changes, re-render it
-        // so the unauth CTA flips to the Roll UI (or vice versa).
-        if (sheetOverlayOpen) renderSheet();
-        // Just signed in + no character yet → open the sheet automatically.
-        if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
-          sheetAutoShown = true;
-          openSheet();
-        }
-      }
-    } catch {
-      if (authed === true) { authed = false; lastAuthState = false; applyAuthUI(); }
+  // Auth is now derived from localStorage, not a server poll. We re-derive
+  // on boot, on storage events (cross-tab notification from the OAuth tab),
+  // and on focus (covers the "I closed the OAuth tab without it firing
+  // storage" edge). No periodic polling — there's nothing on the wire to
+  // poll for since the server doesn't hold the credential.
+  function deriveAuth() {
+    const next = !!getStoredApiKey();
+    if (next === lastAuthState) return;
+    const wasSignedIn = lastAuthState === true;
+    lastAuthState = next;
+    authed = next;
+    applyAuthUI();
+    if (authed && lastTelemetry) loadHistory(lastTelemetry.faculty);
+    if (sheetOverlayOpen) renderSheet();
+    if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
+      sheetAutoShown = true;
+      openSheet();
     }
   }
   function applyAuthUI() {
@@ -1673,7 +1696,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
   }
   async function logout() {
-    await fetch("/api/apps/ruby-high/auth/logout", { method: "POST", credentials: "same-origin" });
+    // Clear the credential first so any in-flight refresh sees us as
+    // signed out, then ask the server to drop the cookie that bucketed
+    // our state.
+    clearStoredAuth();
+    try {
+      await fetch("/api/apps/ruby-high/auth/logout", { method: "POST", credentials: "same-origin" });
+    } catch (e) { /* network failure is fine — local state is what matters */ }
     authed = false;
     lastAuthState = false;
     applyAuthUI();
@@ -1682,7 +1711,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   async function loadHistory(facultyId) {
     if (!authed || !facultyId) return;
     try {
-      const r = await fetch("/api/apps/ruby-high/chat/history?faculty=" + encodeURIComponent(facultyId), { credentials: "same-origin" });
+      const r = await apiFetch("/api/apps/ruby-high/chat/history?faculty=" + encodeURIComponent(facultyId));
       const data = await r.json();
       authed = !!data.authed;
       const msgs = data.history || [];
@@ -1795,16 +1824,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       let r;
       if (inOpinion) {
         opinionSubmitted = true;
-        r = await fetch("/api/apps/ruby-high/chat/opinion-submit", {
+        r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
           method: "POST",
-          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text }),
         });
       } else {
-        r = await fetch("/api/apps/ruby-high/chat", {
+        r = await apiFetch("/api/apps/ruby-high/chat", {
           method: "POST",
-          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ faculty: targetFaculty, message: text }),
         });
@@ -1849,9 +1876,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     lastAgentTrigger = triggerKey;
     agentBusy = true;
     try {
-      const r = await fetch("/api/apps/ruby-high/chat/event", {
+      const r = await apiFetch("/api/apps/ruby-high/chat/event", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ faculty: targetFaculty, trigger, context: context || {} }),
       });
@@ -1941,9 +1967,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!allIn && !expired) return;
     opinionGradeFired = true;
     try {
-      const r = await fetch("/api/apps/ruby-high/chat/opinion-submit", {
+      const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ force: true }),
       });
@@ -1992,7 +2017,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // → graduate as they pass per-grade Daily thresholds. There is no year
   // picker — they walk in, get started, and advance by playing.
   fetchSession();
-  pollAuth();
+  // Auth is local — derive once on boot and again whenever the OAuth tab
+  // writes the key (storage event fires in every other tab) or the user
+  // returns to this tab from elsewhere (focus). No periodic polling: the
+  // server has no auth state to ask about.
+  deriveAuth();
+  window.addEventListener("storage", (e) => {
+    if (e.key === AUTH_KEY || e.key === null) deriveAuth();
+  });
+  window.addEventListener("focus", deriveAuth);
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.
   let sessionPollHandle = null;
@@ -2006,7 +2039,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }, fast ? 750 : 4000);
   }
   adaptiveSchedule();
-  setInterval(pollAuth, 3000);
 })();
 `;
 }

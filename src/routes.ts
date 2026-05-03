@@ -76,6 +76,10 @@ export interface RouteContext {
   readJsonBody: () => Promise<unknown>;
   /** Raw incoming Cookie header. If absent, auth + chat features are unavailable but the rest of the app keeps working. */
   cookieHeader?: string | null;
+  /** Raw value of the `X-Openrouter-Key` header, if the client sent one.
+   *  This is the OpenRouter API key — clients keep it in localStorage and
+   *  attach it to every LLM-touching request. The server never persists it. */
+  apiKeyHeader?: string | null;
   /** Builds an absolute callback URL for OAuth redirects. */
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS (controls Secure cookie flag). */
@@ -569,6 +573,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       runtime: ctx.runtime,
       res: ctx.res,
       cookieHeader: ctx.cookieHeader,
+      apiKeyHeader: ctx.apiKeyHeader,
       callbackUrlBuilder: ctx.callbackUrlBuilder,
       isSecure: ctx.isSecure,
       clientIp: ctx.clientIp,

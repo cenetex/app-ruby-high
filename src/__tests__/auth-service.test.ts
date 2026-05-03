@@ -15,16 +15,16 @@ describe("AuthService.gcSessions", () => {
     // session in fake-time would still be ancient in real-time and resolve
     // would TTL-reject it.
     const now = Date.now();
-    auth.injectSessionForTest("expired-1", { apiKey: "k1", createdAt: now - SESSION_TTL_MS - 1000 });
-    auth.injectSessionForTest("expired-2", { apiKey: "k2", createdAt: now - SESSION_TTL_MS - 999_999 });
-    auth.injectSessionForTest("fresh", { apiKey: "k3", createdAt: now - 1000 });
+    auth.injectSessionForTest("expired-1", { createdAt: now - SESSION_TTL_MS - 1000 });
+    auth.injectSessionForTest("expired-2", { createdAt: now - SESSION_TTL_MS - 999_999 });
+    auth.injectSessionForTest("fresh", { createdAt: now - 1000 });
     expect(auth.sessionCount()).toBe(3);
     const result = auth.gcSessions(now);
     expect(result.dropped).toBe(2);
     expect(result.remaining).toBe(1);
     expect(auth.sessionCount()).toBe(1);
     // Fresh session still resolvable.
-    expect(auth.resolve("fresh")?.apiKey).toBe("k3");
+    expect(auth.resolve("fresh")).not.toBeNull();
     // Expired ones are gone.
     expect(auth.resolve("expired-1")).toBeNull();
     await auth.stop();
@@ -33,8 +33,8 @@ describe("AuthService.gcSessions", () => {
   it("is a no-op when nothing is expired", async () => {
     const auth = await freshAuth();
     const now = 2_000_000_000_000;
-    auth.injectSessionForTest("a", { apiKey: "ka", createdAt: now });
-    auth.injectSessionForTest("b", { apiKey: "kb", createdAt: now - 1000 });
+    auth.injectSessionForTest("a", { createdAt: now });
+    auth.injectSessionForTest("b", { createdAt: now - 1000 });
     const result = auth.gcSessions(now);
     expect(result.dropped).toBe(0);
     expect(result.remaining).toBe(2);
@@ -48,8 +48,8 @@ describe("AuthService.gcSessions", () => {
     // record. Test the count via gcSessions only — resolve() uses Date.now()
     // separately and would walk past the boundary by the time we called it.
     const now = 5_000_000_000_000;
-    auth.injectSessionForTest("at-boundary", { apiKey: "k1", createdAt: now - SESSION_TTL_MS });
-    auth.injectSessionForTest("just-past", { apiKey: "k2", createdAt: now - SESSION_TTL_MS - 1 });
+    auth.injectSessionForTest("at-boundary", { createdAt: now - SESSION_TTL_MS });
+    auth.injectSessionForTest("just-past", { createdAt: now - SESSION_TTL_MS - 1 });
     const result = auth.gcSessions(now);
     expect(result.dropped).toBe(1);
     expect(auth.sessionCount()).toBe(1);
@@ -58,7 +58,7 @@ describe("AuthService.gcSessions", () => {
 
   it("stop() clears the gc timer (no leaked handles)", async () => {
     const auth = await freshAuth();
-    auth.injectSessionForTest("a", { apiKey: "ka", createdAt: Date.now() });
+    auth.injectSessionForTest("a", { createdAt: Date.now() });
     await auth.stop();
     expect(auth.sessionCount()).toBe(0);
     // Calling stop() again is a no-op — must not throw.
@@ -70,7 +70,7 @@ describe("AuthService.gcSessions", () => {
     // GC sweeps periodically, but a session can age past TTL between sweeps.
     // resolve() must still reject it independently — proven by injecting a
     // record dated past TTL relative to real time and never calling gcSessions.
-    auth.injectSessionForTest("aging", { apiKey: "ka", createdAt: Date.now() - SESSION_TTL_MS - 1000 });
+    auth.injectSessionForTest("aging", { createdAt: Date.now() - SESSION_TTL_MS - 1000 });
     expect(auth.resolve("aging")).toBeNull();
     await auth.stop();
   });
