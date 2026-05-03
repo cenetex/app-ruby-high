@@ -262,7 +262,15 @@ export class RubyHighService extends Service {
   private persistSession(sessionId: string): Promise<void> {
     const state = this.sessions.get(sessionId);
     if (!state) return Promise.resolve();
-    return this.store.saveSession(state);
+    // Swallow + log persistence errors. Callers fire-and-forget with
+    // `void this.persistSession(id)` so any throw becomes an unhandled
+    // promise rejection — which Node 22 treats as fatal and crashes the
+    // server. The classic offender is DynamoDB's 400KB per-item cap,
+    // which a single AI-generated portrait dataURL can blow on its own.
+    // The state is still good in memory; the next mutation will retry.
+    return this.store.saveSession(state).catch((err) => {
+      log.error("ruby-high.persist-failed", err, { sessionId });
+    });
   }
 
   /** Persist all sessions at once. Used by stop() and flush() for safety;
@@ -998,6 +1006,14 @@ export class RubyHighService extends Service {
     if (state.character) throw new Error("Character already exists for this session.");
     const name = input.name.trim();
     if (!name) throw new Error("Name is required.");
+    // Portrait size guard. DynamoDB items are capped at 400KB and the
+    // character record carries a chunk of other state — keep the
+    // portrait alone under ~280KB so the rest of the record always
+    // fits. The client downscales AI portraits before sending; this
+    // is the server-side safety net for callers that don't.
+    if (input.portraitDataUrl && input.portraitDataUrl.length > 280_000) {
+      throw new Error(`portraitDataUrl too large (${input.portraitDataUrl.length} bytes; cap is 280000). Downscale before submitting.`);
+    }
     const flavorQuote = input.flavorQuote?.trim();
     // If the player accepted the mentor offer from a graduated previous
     // character, snapshot the mentor info onto the new character. Either

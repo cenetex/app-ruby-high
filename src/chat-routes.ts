@@ -10,6 +10,8 @@ import { roomForFacultyForSession } from "./content/registry.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { createHash } from "node:crypto";
 
 const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
 
@@ -242,6 +244,81 @@ async function fetchPortraitOnce(args: {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Upload a base64 image dataUrl to S3 and return the public URL.
+ *
+ *  Why S3: AI-generated portraits are routinely 200KB–1MB as inline
+ *  base64. Storing them in the character record blew DynamoDB's 400KB
+ *  per-item cap and crashed the persist path (which then crashed the
+ *  process — caught and patched in ruby-high-service.persistSession).
+ *  Storing the bytes in S3 and the URL in the character record keeps
+ *  the record tiny.
+ *
+ *  Configuration via env:
+ *    RUBY_HIGH_PORTRAITS_BUCKET   — bucket name (required to enable)
+ *    RUBY_HIGH_PORTRAITS_REGION   — bucket region (default us-east-1)
+ *    RUBY_HIGH_PORTRAITS_PUBLIC_BASE — optional CDN/custom-domain prefix
+ *      (default: https://<bucket>.s3.<region>.amazonaws.com)
+ *
+ *  When the bucket isn't configured, returns the input unchanged so
+ *  callers degrade gracefully — the server-side size cap in
+ *  createCharacter will still reject inline data > 280KB. Default-pack
+ *  portraits are simple URL strings, so they always pass.
+ */
+let portraitS3Client: S3Client | null = null;
+function getPortraitS3Client(): S3Client | null {
+  const bucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
+  if (!bucket) return null;
+  if (portraitS3Client) return portraitS3Client;
+  portraitS3Client = new S3Client({
+    region: process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1",
+  });
+  return portraitS3Client;
+}
+
+async function maybeUploadPortrait(dataUrl: string, kind: "portrait" | "diploma"): Promise<string> {
+  const bucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
+  const client = getPortraitS3Client();
+  if (!bucket || !client) {
+    // S3 disabled — return the dataUrl unchanged. The downstream size
+    // cap in createCharacter will reject if it's too big, surfacing a
+    // clear error to the user instead of a silent corruption.
+    return dataUrl;
+  }
+  // Parse the dataUrl into mime + bytes. The OpenRouter image endpoint
+  // returns image/png most of the time but we read the actual mime
+  // rather than assume.
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  if (!match) {
+    // Not a dataUrl — could be already a URL (legacy path). Return
+    // unchanged.
+    return dataUrl;
+  }
+  const mime = match[1] ?? "image/png";
+  const bytes = Buffer.from(match[2] ?? "", "base64");
+  // Content-addressed key so identical bytes dedupe and we don't have
+  // to track per-character object ownership for cleanup.
+  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 32);
+  const ext = mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png";
+  const key = `${kind}/${hash}.${ext}`;
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: bytes,
+      ContentType: mime,
+      CacheControl: "public, max-age=31536000, immutable",
+    }));
+  } catch (err) {
+    log.error("portrait.s3-upload-failed", err, { kind, bucket, key, bytes: bytes.length });
+    // Surface to caller — the route will translate to 502 and the
+    // client falls back to the default portrait.
+    throw new Error("portrait upload failed: " + (err instanceof Error ? err.message : String(err)));
+  }
+  const base = process.env.RUBY_HIGH_PORTRAITS_PUBLIC_BASE
+    ?? `https://${bucket}.s3.${process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1"}.amazonaws.com`;
+  return base.replace(/\/+$/, "") + "/" + key;
 }
 
 async function renderCharacterPortrait(args: {
@@ -1413,7 +1490,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         name,
         personality,
       });
-      ctx.json(ctx.res, { ok: true, portraitDataUrl: dataUrl });
+      // S3 upload returns the public URL; falls through to the dataUrl
+      // when RUBY_HIGH_PORTRAITS_BUCKET isn't set (the createCharacter
+      // size cap will then reject on save and the user sees a clear
+      // error). The field name stays portraitDataUrl for callsite
+      // backward compat — value is now usually an https:// URL.
+      const url = await maybeUploadPortrait(dataUrl, "portrait");
+      ctx.json(ctx.res, { ok: true, portraitDataUrl: url });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
     }
@@ -1458,10 +1541,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         personality: ch.personality,
         bestSubjectFacultyId: highestScoringFaculty(ch.subjectScores),
       });
-      ch.diplomaImageDataUrl = dataUrl;
+      const url = await maybeUploadPortrait(dataUrl, "diploma");
+      ch.diplomaImageDataUrl = url;
       ctx.json(ctx.res, {
         ok: true,
-        diplomaImageDataUrl: dataUrl,
+        diplomaImageDataUrl: url,
         bestSubject: highestScoringFaculty(ch.subjectScores),
       });
     } catch (err) {

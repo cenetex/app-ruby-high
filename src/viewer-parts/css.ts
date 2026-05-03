@@ -1590,21 +1590,44 @@ export const VIEWER_CSS = `
   }
 
   /* ── creation card surfaces ──────────────────────────────────────────── */
+  /* The creation card is a two-column layout on wide viewports — portrait
+     on the left, fields on the right — so the portrait can be tall
+     without the form stretching. On mobile (<= 600px) it stacks; the
+     portrait goes full-width and noticeably bigger since the user is
+     scrolling anyway. */
+  .creation-card {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 16px;
+    align-items: start;
+    margin: 8px 0 12px;
+  }
+  @media (max-width: 600px) {
+    .creation-card { grid-template-columns: 1fr; }
+  }
   .creation-portrait {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    margin: 8px 0 12px;
   }
   .creation-portrait img {
-    width: 160px;
-    height: 200px;
+    width: 200px;
+    height: 260px;
     object-fit: cover;
     object-position: center top;
     border-radius: 12px;
     border: 2px solid var(--accent);
     background: var(--bg-elev-2);
+  }
+  @media (max-width: 600px) {
+    /* Mobile gets a generously larger portrait — the user is scrolling
+       to see the rerolls below it anyway, so we may as well let the
+       art breathe. */
+    .creation-portrait img {
+      width: min(280px, 80vw);
+      height: min(360px, 105vw);
+    }
   }
   .creation-ai-portrait {
     appearance: none;
