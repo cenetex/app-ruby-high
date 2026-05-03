@@ -32,7 +32,44 @@ export interface ChatHistoryKey {
   faculty: string;
 }
 
+/**
+ * A room-event is the architectural counterpart to a ChatMessage.
+ *
+ *  - ChatMessage = persistent dialogue (user / assistant / tool). Goes into
+ *    `histories`. Round-trips to OpenRouter as role-shaped messages.
+ *
+ *  - RoomEvent = volatile awareness (who chimed in, what answer just
+ *    resolved, who entered the room). Goes into `events`. Surfaces to
+ *    the model only as a fresh per-turn "RECENT EVENTS" synopsis block,
+ *    *never* as a system message inside history.
+ *
+ * Why split them: prior to this split, "directive" + "chime" + "answer
+ * note" all got pushed into history as `system` messages. They then
+ * accumulated turn-over-turn and the model started reading old
+ * directives + tool results as a few-shot of "what to do," which
+ * produced a string of awareness regressions (re-pick loops,
+ * narrate-without-acting, "who is Sami?"). With Tier A/B separated,
+ * volatile state is rebuilt from authoritative sources every turn and
+ * cannot drift.
+ */
+export type RoomEventKind =
+  | "chime"
+  | "answer-resolved"
+  | "channel-enter"
+  | "lounge-enter"
+  | "opinion-graded"
+  | "answer-noted"
+  | "note";
+
+export interface RoomEvent {
+  kind: RoomEventKind;
+  /** Pre-formatted line for the model's RECENT EVENTS synopsis. Keep tight. */
+  text: string;
+  at: number;
+}
+
 const HISTORY_LIMIT = 30;
+const EVENT_LOG_LIMIT = 60;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER_HEADER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE_HEADER = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
@@ -83,6 +120,13 @@ export class ChatService extends Service {
     "Routes chat between students and Ruby High teachers via OpenRouter, with tools that drive the chalkboard.";
 
   private readonly histories = new Map<string, ChatMessage[]>();
+  /**
+   * Tier B store: per-bucket append-only ring of room events. Compose
+   * filters by `at > lastSpeakerAssistantAt(...)` so each turn's
+   * synopsis covers exactly "what's happened in the room since I last
+   * spoke." Keyed identically to histories so isolation matches.
+   */
+  private readonly events = new Map<string, RoomEvent[]>();
   private ruby: RubyHighService | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<ChatService> {
@@ -91,6 +135,7 @@ export class ChatService extends Service {
 
   async stop(): Promise<void> {
     this.histories.clear();
+    this.events.clear();
   }
 
   setRubyHighService(ruby: RubyHighService): void {
@@ -103,22 +148,39 @@ export class ChatService extends Service {
 
   resetHistory(key: ChatHistoryKey): void {
     this.histories.delete(this.keyOf(key));
+    this.events.delete(this.keyOf(key));
   }
 
-  /** Append a system note to a thread (e.g. "user picked B — wrong, answer was A"). */
-  noteAnswer(
-    key: ChatHistoryKey,
-    note: string,
-  ): void {
-    this.appendSystemNote(key, note);
+  /** Append a structured room event. Synopsised into the model's per-turn
+   *  briefing — never persisted into the role-shaped chat history. */
+  appendEvent(key: ChatHistoryKey, event: { kind: RoomEventKind; text: string; at?: number }): void {
+    if (!event.text) return;
+    const k = this.keyOf(key);
+    let list = this.events.get(k);
+    if (!list) {
+      list = [];
+      this.events.set(k, list);
+    }
+    list.push({ kind: event.kind, text: event.text, at: event.at ?? Date.now() });
+    if (list.length > EVENT_LOG_LIMIT) {
+      list.splice(0, list.length - EVENT_LOG_LIMIT);
+    }
   }
 
-  /** Generic: append any system note (visible to model only) to a thread. */
+  /** Convenience for the answer-noted event ("student picked X — correct"). */
+  noteAnswer(key: ChatHistoryKey, note: string): void {
+    this.appendEvent(key, { kind: "answer-noted", text: note });
+  }
+
+  /** Legacy convenience kept for the few callers that still hand-roll a
+   *  generic system note. New code should prefer `appendEvent` with a
+   *  typed kind so the synopsis can group/format intelligently. */
   appendSystemNote(key: ChatHistoryKey, note: string): void {
-    if (!note) return;
-    const list = this.ensure(key);
-    list.push({ role: "system", content: note, faculty: key.faculty, at: Date.now() });
-    this.trim(key);
+    this.appendEvent(key, { kind: "note", text: note });
+  }
+
+  events_for_test(key: ChatHistoryKey): RoomEvent[] {
+    return this.events.get(this.keyOf(key)) ?? [];
   }
 
   async *send(opts: SendOpts): AsyncGenerator<ChatStreamEvent> {
@@ -129,16 +191,23 @@ export class ChatService extends Service {
     const key: ChatHistoryKey = { sessionToken: opts.sessionToken, faculty: bucketFaculty };
     const history = this.ensure(key);
 
-    if (opts.systemEventNote && opts.systemEventNote.trim().length > 0) {
-      history.push({ role: "system", content: opts.systemEventNote, faculty: bucketFaculty, at: Date.now() });
-      this.trim(key);
-    }
+    // systemEventNote is the per-turn directive. It does NOT enter
+    // `history` — it is threaded as the last system block before the
+    // history when composing. This is the central change of the
+    // Tier-A/B refactor: directives are turn-scoped, not persistent.
+    // They evaporate after this send() returns.
+    const turnDirective =
+      opts.systemEventNote && opts.systemEventNote.trim().length > 0
+        ? opts.systemEventNote.trim()
+        : undefined;
     if (opts.userMessage && opts.userMessage.trim().length > 0) {
       history.push({ role: "user", content: opts.userMessage, faculty: bucketFaculty, at: Date.now() });
       this.trim(key);
     }
-    if (history.length === 0) {
-      // Nothing to say + nothing to react to — bail.
+    if (history.length === 0 && !turnDirective) {
+      // Nothing to say + nothing to react to + no directive — bail.
+      // (Pre-refactor this could not happen because the directive was
+      // pushed into history; now the check has to consider both.)
       yield { type: "done", finishReason: "no-input" };
       return;
     }
@@ -163,6 +232,9 @@ export class ChatService extends Service {
         teacher,
         history,
         agentSessionId: opts.agentSessionId,
+        bucketKey: key,
+        speakerId,
+        turnDirective,
         extraSystemContext: opts.extraSystemContext,
         disableTools: !!opts.disableTools,
       });
@@ -255,31 +327,74 @@ export class ChatService extends Service {
     yield { type: "error", message: "Tool-call loop exceeded safety bound — stopping." };
   }
 
+  /**
+   * Compose the OpenRouter message stack. The block ordering encodes the
+   * Tier-A/B separation:
+   *
+   *   1. WHO YOU ARE        — teacher.systemPrompt (static character card)
+   *   2. WHO'S IN THE ROOM  — describeRoomForTeacher(state)  [recomputed]
+   *   3. WHAT'S ON THE BOARD— describeBoardForModel(state)   [recomputed]
+   *   4. RECENT EVENTS      — synopsis of room events since this speaker
+   *                           last spoke. Replaces the ad-hoc system-notes
+   *                           that used to litter history.
+   *   5. THIS TURN          — the per-turn directive. Last thing the model
+   *                           reads before its conversational context.
+   *   6. ...history         — user / assistant / tool ONLY. System messages
+   *                           are filtered out: under the new architecture
+   *                           they should never have been there, but legacy
+   *                           in-memory state from before the switchover
+   *                           might still carry some.
+   */
   private composeForOpenRouter(args: {
     teacher: TeacherCharacter;
     history: ChatMessage[];
     agentSessionId: string;
+    bucketKey: ChatHistoryKey;
+    speakerId: string;
+    turnDirective?: string;
     extraSystemContext?: string;
     disableTools?: boolean;
   }): unknown[] {
-    const { teacher, history, agentSessionId, extraSystemContext, disableTools } = args;
+    const { teacher, history, agentSessionId, bucketKey, speakerId, turnDirective, extraSystemContext, disableTools } = args;
     const messages: unknown[] = [{ role: "system", content: teacher.systemPrompt }];
     const state = this.ruby!.getOrCreate(agentSessionId);
-    // Group-chat framing: teachers run a class, not a 1:1 tutor session.
-    // Tell them who's in the room — the player + the seated NPCs — so they
-    // can address whoever just acted by name without inventing students.
+    // 2. Room.
     const groupBlock = describeRoomForTeacher(state);
     if (groupBlock) {
       messages.push({ role: "system", content: groupBlock });
     }
+    // 3. Board.
     if (!disableTools) {
       const ctx = describeBoardForModel(state);
       messages.push({ role: "system", content: `Active board context for this turn:\n${ctx}` });
     }
+    // 4. RECENT EVENTS synopsis — events newer than this speaker's last
+    //    assistant turn. Floor at 0 so the very first turn includes the
+    //    full event log.
+    const since = lastAssistantAtForSpeaker(history, speakerId);
+    const eventLog = this.events.get(this.keyOf(bucketKey)) ?? [];
+    const recent = eventLog.filter((e) => e.at > since);
+    if (recent.length > 0) {
+      const synopsis = ["RECENT EVENTS in the room since your last turn:", ...recent.map((e) => `  - ${e.text}`)].join("\n");
+      messages.push({ role: "system", content: synopsis });
+    }
+    // 5. extraSystemContext — caller-supplied one-shot. Sits between the
+    //    synopsis and the directive on purpose: it's contextual framing,
+    //    not an action instruction.
     if (extraSystemContext) {
       messages.push({ role: "system", content: extraSystemContext });
     }
-    for (const m of history) messages.push(toOpenRouterMessage(m));
+    // 6. THIS TURN directive — the action ask, last thing the model sees
+    //    before history. Phrased as a fresh imperative every turn so the
+    //    model can't read a stale one out of past history.
+    if (turnDirective) {
+      messages.push({ role: "system", content: `THIS TURN — ${turnDirective}` });
+    }
+    // 7. Conversational history, dialogue-only.
+    for (const m of history) {
+      if (m.role === "system") continue;
+      messages.push(toOpenRouterMessage(m));
+    }
     return messages;
   }
 
@@ -374,22 +489,16 @@ export class ChatService extends Service {
             difficulty: args.difficulty as Difficulty | undefined,
           });
           const q = state.current;
-          // Keep this message minimal. Earlier versions echoed the new
-          // question's id + prompt back to the model — and because the
-          // very next iteration's system block already contains the
-          // freshly-placed question, the model would read its own tool
-          // result alongside that block and conclude "two messages show
-          // the same question, the bank must have repeated, let me re-pick."
-          // The structural fix (no tools on iteration 2) closes that
-          // entirely; the prompt-side fix is to stop handing the model
-          // ammunition to misread.
+          // Minimal payload. The "no tools on iteration 2" guard makes
+          // it impossible for the model to re-pick from this position,
+          // so the only remaining job of this message is to confirm
+          // success. The fresh BOARD block on the next iteration carries
+          // the new question content; we don't need to echo it here.
           return {
             args,
             payload: {
               ok: true,
-              message: q
-                ? `Done — fresh question is on the board. Now react to the previous outcome in 1 short sentence and stop. Do not call another tool, do not narrate the act of drawing, do not mention the bank or "duplicate" questions.`
-                : "Bank is empty for that filter. Try a different subject.",
+              message: q ? "Done." : "Bank is empty for that filter. Try a different subject.",
             },
             state,
           };
@@ -567,6 +676,26 @@ function npcRoomDescriptor(npc: NpcStudentState): string {
   const name = s?.name ?? npc.id;
   const vibe = STUDENT_VIBES[npc.id];
   return vibe ? `${name} (${vibe})` : name;
+}
+
+/** Find the timestamp of the most recent assistant message belonging to
+ *  this speaker. Used to scope the RECENT EVENTS synopsis to "what's
+ *  happened since I last spoke." Returns 0 if the speaker has not yet
+ *  spoken in this bucket — the synopsis then includes the full event
+ *  log, which is the desired behavior for a first-turn briefing.
+ *
+ *  Why per-speaker rather than per-bucket: the lounge bucket is shared
+ *  across three teachers, each speaking in turn. From Sally's POV, the
+ *  events "since I last spoke" should include things Edward said after
+ *  her — not just things since the last lounge utterance regardless of
+ *  speaker. Scoping by speaker preserves that invariant in classroom
+ *  buckets too (only one speaker, so per-speaker = per-bucket). */
+function lastAssistantAtForSpeaker(history: ChatMessage[], speakerId: string): number {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]!;
+    if (m.role === "assistant" && m.faculty === speakerId) return m.at;
+  }
+  return 0;
 }
 
 /** Group-chat framing for the teacher: who's in the room. The player and

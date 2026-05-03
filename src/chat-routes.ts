@@ -908,16 +908,28 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const loungeSystem =
         "LOUNGE CONTEXT: You're hanging out in the Ruby High teachers' lounge with the other faculty (Ruby, Sally Science, Professor Edward). This is downtime — just conversation, no blackboard, no tools. Chat in 1-2 short sentences in your voice — riff on a student you saw, ask a colleague's opinion, share a small observation. Address colleagues by name when natural. The student is lurking and may chime in.";
 
-      // For lounge-enter, append a "kickoff" system note so Ruby starts the convo.
+      // For lounge-enter, log the event so each speaker's first-turn
+      // synopsis includes "the student just walked in."
       if (trigger === "lounge-enter") {
-        chat.appendSystemNote(
+        chat.appendEvent(
           { sessionToken: token, faculty: "lounge" },
-          "EVENT: The student just walked into the teachers' lounge to lurk. Ruby, you go first — open a quick chat thread with Sally and Edward. They'll each chime in after.",
+          {
+            kind: "lounge-enter",
+            text: "The student just walked into the teachers' lounge to lurk.",
+          },
         );
       }
       try {
         for (const speaker of order) {
           send("speaker", { facultyId: speaker });
+          // The "Ruby goes first" kickoff is a per-turn directive for
+          // Ruby only, on a lounge-enter trigger. Sally + Edward pick
+          // up the room state from RECENT EVENTS + the prior speakers'
+          // utterances in history.
+          const turnDirective =
+            trigger === "lounge-enter" && speaker === "ruby"
+              ? "The student just walked in. You go first — open a quick chat thread with Sally and Edward. They'll each chime in after."
+              : undefined;
           for await (const ev of chat.send({
             apiKey,
             sessionToken: token,
@@ -927,6 +939,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             bucketKey: "lounge",
             disableTools: true,
             extraSystemContext: loungeSystem,
+            systemEventNote: turnDirective,
             maxTokens: 220,
           })) {
             send(ev.type, ev);
@@ -942,39 +955,55 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
 
     // ── Classroom: a single teacher takes a turn. ───────────────────────────
+    //
+    // Trigger ⇒ (event log entry, thin directive). We split the round-state
+    // describing event ("Vee picked B; Sami picked C; correct was C") from
+    // the action ask ("react in one sentence and pose the next question")
+    // because the event lives in the room's awareness layer (synopsised
+    // into RECENT EVENTS each turn) and the directive is per-turn-only.
+    // Pre-refactor these were fused into one bloated system note that got
+    // appended to history and then re-read every subsequent turn as if it
+    // were a fresh instruction.
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
     let directive = "";
     if (trigger === "channel-enter") {
-      directive = `EVENT: The student just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}. Greet them in ONE short sentence, then call pick_from_bank to put the first question on the board. Pick something fitting their year directly — your call, not theirs.`;
+      const state = ruby.getOrCreate(sessionId);
+      const playerName = state.character?.name ?? "the player";
+      chat.appendEvent(
+        { sessionToken: token, faculty },
+        {
+          kind: "channel-enter",
+          text: `${playerName} just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}.`,
+        },
+      );
+      directive = `Greet ${playerName} in ONE short sentence, then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.`;
     } else if (trigger === "answer-graded") {
       const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
-      // Pull the just-resolved round so we can name WHO got what — the
-      // teacher is in a group chat, not 1:1, and should react to whoever
-      // did something noteworthy. Without this the model defaults to
-      // talking about "the student" as if there's one.
-      const sessionId = getSessionId(runtime, ctx.cookieHeader);
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
       const round = state.activeRound;
       const correctAns = c?.correct ?? state.current?.correct ?? "?";
-      const lines: string[] = [];
-      lines.push(`EVENT: A round just resolved. You're mid-class — NEVER greet again, NEVER quote or describe this system note in your reply.`);
-      lines.push(`Correct answer: ${correctAns}.`);
+      // Build the round summary as a structured event line. Synopsised
+      // exactly once into the model's RECENT EVENTS block — never
+      // re-quoted in subsequent directives.
+      const parts: string[] = [`Round resolved (correct: ${correctAns}).`];
       if (c?.picked) {
-        const verdict = c.wasCorrect ? "GOT IT RIGHT" : "MISSED IT";
-        lines.push(`${playerName} (the player) picked ${c.picked} — ${verdict}.`);
+        parts.push(`${playerName} picked ${c.picked} — ${c.wasCorrect ? "right" : "wrong"}.`);
       }
       if (round && Array.isArray(round.npcs)) {
         for (const n of round.npcs) {
           const nm = STUDENTS[n.studentId]?.name ?? n.studentId;
           const pick = n.plannedPick ?? "?";
-          const ok = pick === correctAns ? "right" : "wrong";
-          lines.push(`${nm} picked ${pick} — ${ok}.`);
+          parts.push(`${nm} picked ${pick} — ${pick === correctAns ? "right" : "wrong"}.`);
         }
       }
-      lines.push(`React in ONE short sentence — name whoever did something interesting (a hit, a miss, a fast lock). Speak to the room, not to "the student." Then call pick_from_bank to put the next question on the board.`);
-      directive = lines.join("\n");
+      chat.appendEvent(
+        { sessionToken: token, faculty },
+        { kind: "answer-resolved", text: parts.join(" ") },
+      );
+      directive = `A round just resolved (see RECENT EVENTS). React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." Then call pick_from_bank to put the next question on the board.`;
     } else if (trigger === "manual") {
-      directive = "EVENT: The student is asking you to take a turn. Either follow up on the last exchange or call pick_from_bank to put a fresh question on the board.";
+      directive = "The student is asking you to take a turn. Either follow up on the last exchange or call pick_from_bank to put a fresh question on the board.";
     }
 
     try {
@@ -1092,20 +1121,21 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         classmateNames,
         teacherSaid,
       });
-      // Stamp the chime into the active teacher's history so the next
-      // teacher turn knows what was said in the room. Without this, an
-      // NPC can speak ON SCREEN ("ok ok vee, didn't know you had it
-      // like that"), the player can reply ("Thanks Sami!"), and the
-      // teacher — whose history only contains her own messages plus
-      // the player's — has no record of Sami at all and asks "who is
-      // Sami?" That breaks the group-chat illusion the rest of the
-      // app maintains. Appending as a system note (not as an
-      // assistant/user message) keeps the speaker attribution visible
-      // in the prompt without polluting role-shaped history.
+      // Stamp the chime into the active teacher's room awareness so the
+      // next teacher turn's RECENT EVENTS synopsis includes it. Without
+      // this, an NPC speaks on screen, the player replies "Thanks Sami!"
+      // and the teacher — whose dialogue history only carries her own
+      // messages plus the player's — has no record of Sami at all and
+      // denies knowing him. Routed through the structured event log so
+      // it shows up in synopsis order, never as a stale system note in
+      // the dialogue stream.
       if (line && body?.faculty) {
-        chat.appendSystemNote(
+        chat.appendEvent(
           { sessionToken: token, faculty: body.faculty },
-          `[${student.name} (classmate) chimed in: "${line}"]`,
+          {
+            kind: "chime",
+            text: `${student.name} (classmate) chimed in: "${line}"`,
+          },
         );
       }
       ctx.json(ctx.res, {
@@ -1223,11 +1253,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         responses,
       });
       send("done", { finishReason: "stop" });
-      // Append a synthesized assistant message into the teacher's chat
-      // history so the grading is visible if the user reloads.
-      chat.appendSystemNote(
+      // Log the grading event for the next teacher turn's synopsis. The
+      // narrativeText itself is yielded as deltas above (visible in
+      // chat); this entry exists so a follow-up teacher turn knows the
+      // grading has already happened and doesn't re-grade.
+      chat.appendEvent(
         { sessionToken: token, faculty: facultyId },
-        "GRADING DELIVERED: " + narrativeText,
+        { kind: "opinion-graded", text: `Opinion grading delivered: ${narrativeText}` },
       );
     } catch (err) {
       send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
