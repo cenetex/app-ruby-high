@@ -1,10 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Service, type IAgentRuntime } from "@elizaos/core";
 
+/** What we keep server-side per session. The OpenRouter API key is NOT
+ *  stored here — it's handed back to the browser at PKCE completion and
+ *  lives only in client-side localStorage. The session record exists so we
+ *  can still issue a stable cookie identity for QuizState routing without
+ *  putting a credential in server memory. */
 export interface AuthRecord {
-  apiKey: string;
   createdAt: number;
-  /** OpenRouter username if returned. */
+  /** OpenRouter username if returned by the token exchange. Cosmetic. */
   label?: string;
 }
 
@@ -28,10 +32,15 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
  *  3. Server POSTs to https://openrouter.ai/api/v1/auth/keys with the code +
  *     code_verifier, gets an API key, mints a session cookie, drops the pending
  *     cookie, redirects back to the viewer.
- *  4. /chat reads the session cookie, looks up the API key, proxies to OpenRouter.
+ *  4. The callback handler returns a small HTML page that writes the API
+ *     key into the browser's localStorage and (where possible) closes the
+ *     OAuth tab. The original SPA picks up the key from localStorage and
+ *     attaches it to every LLM request as an `X-Openrouter-Key` header.
  *
- * Keys live in memory only — restart wipes them. Phase 2 can promote to a real
- * encrypted store if needed.
+ * The server never persists the API key — the only thing it remembers per
+ * session is the cookie identity (so QuizState can be routed back to the
+ * same player). Restarts wipe session metadata but the player keeps their
+ * key in their browser; they re-resolve a session on the next request.
  */
 export class AuthService extends Service {
   static override readonly serviceType = "ruby-high-auth";
@@ -103,7 +112,11 @@ export class AuthService extends Service {
     return { state, redirectUrl: u.toString() };
   }
 
-  async completePkce(state: string, code: string): Promise<{ token: string; record: AuthRecord }> {
+  /** Complete the PKCE handshake. Returns the fresh API key (to hand back
+   *  to the browser) along with a session token (for the cookie). The key
+   *  is NOT retained server-side — once this method returns, AuthService
+   *  has forgotten it. */
+  async completePkce(state: string, code: string): Promise<{ token: string; record: AuthRecord; apiKey: string }> {
     const pending = this.pending.get(state);
     if (!pending) throw new Error("Unknown or expired auth state");
     this.pending.delete(state);
@@ -112,9 +125,9 @@ export class AuthService extends Service {
     }
     const apiKey = await exchangeCodeForKey(code, pending.verifier);
     const token = base64url(randomBytes(24));
-    const record: AuthRecord = { apiKey, createdAt: Date.now() };
+    const record: AuthRecord = { createdAt: Date.now() };
     this.sessions.set(token, record);
-    return { token, record };
+    return { token, record, apiKey };
   }
 
   /** Read cookie value from a raw Cookie header. */
