@@ -437,6 +437,57 @@ export const VIEWER_CSS = `
     background: var(--bg-deep);
     border-bottom-color: transparent;
   }
+  /* ── mode-driven visibility (single source of truth) ────────────────────
+   * applyViewMode() in script.ts sets data-mode on the panel; the rules
+   * below decide which sub-elements are visible per mode. Sub-renderers
+   * (renderRaceStrip, renderAdvantageBar, etc.) only paint contents —
+   * they never compete with these rules over visibility.
+   *
+   *   round-live      — question on the board, timer counting, A/B/C/D + advantage live
+   *   round-revealed  — answer revealed, the round is over: hide answers / advantage / timer
+   *                     so the explanation + teacher reaction get the screen
+   *   between-rounds  — no question on the board: hide everything except the empty placeholder
+   *   in-lounge       — lounge mode swaps in the lounge stage; hide quiz chrome
+   *   needs-auth / needs-character / checking-auth — pre-game; hide quiz chrome
+   */
+  .blackboard-panel[data-mode="round-revealed"] .answers-host,
+  .blackboard-panel[data-mode="round-revealed"] .advantage-bar,
+  .blackboard-panel[data-mode="round-revealed"] .race-strip,
+  .blackboard-panel[data-mode="round-revealed"] .filter-mini {
+    display: none !important;
+  }
+  .blackboard-panel[data-mode="between-rounds"] .answers-host,
+  .blackboard-panel[data-mode="between-rounds"] .advantage-bar,
+  .blackboard-panel[data-mode="between-rounds"] .race-strip,
+  .blackboard-panel[data-mode="between-rounds"] .blackboard-foot {
+    display: none !important;
+  }
+  .blackboard-panel[data-mode="in-lounge"] .answers-host,
+  .blackboard-panel[data-mode="in-lounge"] .advantage-bar,
+  .blackboard-panel[data-mode="in-lounge"] .race-strip,
+  .blackboard-panel[data-mode="in-lounge"] .blackboard-foot,
+  .blackboard-panel[data-mode="in-lounge"] .blackboard-meta,
+  .blackboard-panel[data-mode="in-lounge"] .board-frame-host {
+    display: none !important;
+  }
+  .blackboard-panel[data-mode="needs-auth"] .answers-host,
+  .blackboard-panel[data-mode="needs-auth"] .advantage-bar,
+  .blackboard-panel[data-mode="needs-auth"] .race-strip,
+  .blackboard-panel[data-mode="needs-auth"] .blackboard-foot,
+  .blackboard-panel[data-mode="needs-character"] .answers-host,
+  .blackboard-panel[data-mode="needs-character"] .advantage-bar,
+  .blackboard-panel[data-mode="needs-character"] .race-strip,
+  .blackboard-panel[data-mode="needs-character"] .blackboard-foot,
+  .blackboard-panel[data-mode="checking-auth"] .answers-host,
+  .blackboard-panel[data-mode="checking-auth"] .advantage-bar,
+  .blackboard-panel[data-mode="checking-auth"] .race-strip,
+  .blackboard-panel[data-mode="checking-auth"] .blackboard-foot {
+    display: none !important;
+  }
+  /* Opinion rounds: hide the A/B/C/D grid (player + NPCs answer in chat). */
+  .blackboard-panel[data-opinion="true"] .answers-host {
+    display: none !important;
+  }
   .blackboard-meta {
     display: flex;
     gap: 6px;
