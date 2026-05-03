@@ -113,6 +113,15 @@ function deriveClientIp(req) {
 
 function makeRouteContext(req, res, url) {
   const base = deriveBaseFromReq(req);
+  // Pull the OpenRouter API key out of the X-Openrouter-Key header. Clients
+  // store the key in localStorage (since v0.6 / PR #30) and attach it on
+  // every authed request; the server reads it here without persisting.
+  // Missing this on the production entry was a silent regression — local
+  // dev worked because dev-server.mjs already had the equivalent line, but
+  // the production server returned 401 on every signed-in request because
+  // ctx.apiKeyHeader was always undefined.
+  const apiKeyRaw = req.headers["x-openrouter-key"];
+  const apiKeyHeader = Array.isArray(apiKeyRaw) ? (apiKeyRaw[0] ?? null) : (apiKeyRaw ?? null);
   return {
     method: req.method ?? "GET",
     pathname: url.pathname,
@@ -120,6 +129,7 @@ function makeRouteContext(req, res, url) {
     runtime: fakeRuntime,
     res,
     cookieHeader: req.headers.cookie ?? null,
+    apiKeyHeader,
     isSecure: isSecureReq(req),
     clientIp: deriveClientIp(req),
     callbackUrlBuilder: (path) => new URL(base).origin + path,
