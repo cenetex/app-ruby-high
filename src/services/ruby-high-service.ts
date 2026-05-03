@@ -46,6 +46,7 @@ import {
   type OpinionGrade,
   type OpinionResponse,
   type Phase,
+  type PlayerCharacter,
   type Question,
   type QuestionType,
   type QuizState,
@@ -580,10 +581,20 @@ export class RubyHighService extends Service {
       state.completedGrades.push(grade);
     }
     ch.yearbook = ch.yearbook ?? [];
+    // Paper Card snapshot: freeze the identity at the moment the year
+    // closes. The live character keeps mutating (Stat Card); this entry
+    // is the sealed page of the yearbook.
     ch.yearbook.push({
       grade,
       completedAt: Date.now(),
       summary: { correct: nextCount, total: nextCount },
+      name: ch.name,
+      playbookId: ch.playbookId,
+      stats: { ...ch.stats },
+      ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
+      ...(ch.flavorQuote ? { flavorQuote: ch.flavorQuote } : {}),
+      arcAnswer: ch.arcAnswer,
+      ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
     });
     const advance = nextGradeAfter(grade);
     if (advance) {
@@ -1064,8 +1075,6 @@ export class RubyHighService extends Service {
       personality: input.personality.trim(),
       portraitDataUrl: input.portraitDataUrl,
       xp: 0,
-      strings: {},
-      conditions: [],
       yearbook: [],
       ...(inheritedFrom ? { inheritedFrom } : {}),
       createdAt: Date.now(),
@@ -1289,8 +1298,31 @@ function normalizeLoaded(s: QuizState): QuizState {
     // the spread above leaves it `undefined` (type says `null`). Coerce so
     // downstream `if (!state.pendingRoll)` checks behave consistently.
     pendingRoll: s.pendingRoll ?? null,
-    character: s.character ?? null,
+    character: backfillCharacter(s.character ?? null),
   };
+}
+
+/** Backfill Paper Card snapshot on legacy yearbook entries written before
+ *  the snapshot fields existed. Best-effort: if a player renamed mid-arc,
+ *  old cards adopt the current name — that's the intended fallback, not
+ *  a migration. New entries always carry their own snapshot. */
+function backfillCharacter(c: PlayerCharacter | null): PlayerCharacter | null {
+  if (!c) return null;
+  if (!Array.isArray(c.yearbook) || c.yearbook.length === 0) return c;
+  const yearbook = c.yearbook.map((entry) => ({
+    ...entry,
+    name: entry.name ?? c.name,
+    playbookId: entry.playbookId ?? c.playbookId,
+    stats: entry.stats ?? c.stats,
+    ...(entry.portraitDataUrl ?? c.portraitDataUrl
+      ? { portraitDataUrl: entry.portraitDataUrl ?? c.portraitDataUrl }
+      : {}),
+    ...(entry.flavorQuote ?? c.flavorQuote
+      ? { flavorQuote: entry.flavorQuote ?? c.flavorQuote }
+      : {}),
+    arcAnswer: entry.arcAnswer ?? c.arcAnswer,
+  }));
+  return { ...c, yearbook };
 }
 
 const ENCOURAGEMENTS_RIGHT = [

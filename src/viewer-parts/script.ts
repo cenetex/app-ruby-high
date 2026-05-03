@@ -1693,129 +1693,209 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   function renderSheetReadonly(c, playbooks) {
-    // Yearbook-stack layout: one card per grade, current year on TOP,
-    // completed years below. The pack grows as the player advances:
-    //   Year 1 (Freshman, in progress)        — 1 card
-    //   Year 2 (Sophomore in progress + FR ✓) — 2 cards, Sophomore on top
-    //   …
-    //   Senior graduated                       — 4 cards, Senior on top
-    // Each completed-year card carries that year's summary
-    // (correct/total). The top card carries live progression + the
-    // "what you need" hint.
+    // Two-card model:
+    //   STAT CARD — the live, current grade's card. Counters tick (XP,
+    //     streak, per-class chips), the progression rungs render, the
+    //     starting move shows. Exactly one of these. After graduation
+    //     it's the diploma card (still "live" until cleared).
+    //   PAPER CARDS — frozen snapshots of past years. Each one was
+    //     written into yearbook[] at the moment that year closed. They
+    //     don't change. Identity is read from the snapshot, not the
+    //     live character — a player who renames mid-arc keeps their
+    //     old name on the old paper card.
+    //
+    // Layout: a single horizontal carousel. Stat Card sits at the front
+    // (index 0). Paper cards trail in chronological order (Freshman →
+    // Sophomore → Junior). For a graduated character, the Senior card
+    // becomes the front-of-deck Stat Card (the diploma) and the three
+    // earlier paper cards trail.
     const pb = playbooks.find((p) => p.id === c.playbookId)
       || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
     const portraitFallback = defaultPortraitFor(c.playbookId);
     const liveGrade = String(lastTelemetry?.current_grade ?? "9");
     const yearbook = Array.isArray(c.yearbook) ? c.yearbook : [];
-    const completedSet = new Set(yearbook.map((y) => y.grade));
     const grad = graduatedFor(c);
 
-    // Top-most grade is the current grade for an in-progress player,
-    // OR the senior cap for a graduate. Below cards are previous
-    // years in REVERSE order so the most recent completion sits
-    // closest to the top.
-    const stackOrder = [];
-    if (!grad) {
-      stackOrder.push({ grade: liveGrade, kind: "current" });
-    } else {
-      stackOrder.push({ grade: "12", kind: "graduated" });
-    }
-    const completedDesc = yearbook
-      .slice()
-      .sort((a, b) => Number(b.grade) - Number(a.grade));
-    for (const y of completedDesc) {
-      // Skip the senior entry on graduated characters — already top.
+    // Build the deck. Stat Card first, then Paper Cards in grade order.
+    const deck = [];
+    deck.push(grad
+      ? { kind: "stat", grade: "12", graduated: true }
+      : { kind: "stat", grade: liveGrade, graduated: false });
+    // Paper cards: every yearbook entry EXCEPT the one represented by
+    // the Stat Card (Senior on a graduated character).
+    const papers = yearbook.slice().sort((a, b) => Number(a.grade) - Number(b.grade));
+    for (const y of papers) {
       if (grad && y.grade === "12") continue;
-      // Skip a current-grade dup (shouldn't happen but defensive).
       if (!grad && y.grade === liveGrade) continue;
-      stackOrder.push({ grade: y.grade, kind: "completed", summary: y.summary });
+      deck.push({ kind: "paper", entry: y });
     }
 
     sheetCard.innerHTML = "";
-    const stack = document.createElement("div");
-    stack.className = "yearbook-stack";
-    sheetCard.appendChild(stack);
+    const wrap = document.createElement("div");
+    wrap.className = "card-deck";
+    sheetCard.appendChild(wrap);
 
-    for (const entry of stackOrder) {
-      const isTop = entry === stackOrder[0];
-      const gradeLabel = (typeof GRADE_LABELS !== "undefined" && GRADE_LABELS[entry.grade]) || ("Grade " + entry.grade);
-      let subtitle;
-      let portraitUrl;
-      let progression;
-      let nextStepHint;
-      if (entry.kind === "graduated") {
-        subtitle = "Graduated · " + gradeLabel + " · " + (c.xp ?? 0) + " XP";
-        portraitUrl = c.diplomaImageDataUrl || c.portraitDataUrl || portraitFallback;
-        progression = buildProgressionForCharacter(c); // graduated rendering shows yearbook-style
-        nextStepHint = buildNextStepHint(c);
-      } else if (entry.kind === "current") {
-        subtitle = pb.name + " · " + gradeLabel + " · " + (c.xp ?? 0) + " XP";
-        portraitUrl = c.portraitDataUrl || portraitFallback;
-        progression = buildProgressionForCharacter(c);
-        nextStepHint = buildNextStepHint(c);
-      } else {
-        // completed (non-senior) prior year: a "yearbook page" card.
-        const s = entry.summary || { correct: 0, total: 0 };
-        subtitle = "✓ " + gradeLabel + " · " + s.correct + "/" + s.total + " correct";
-        portraitUrl = c.portraitDataUrl || portraitFallback;
-        // No live progression on completed-year cards — they're
-        // historical snapshots, not in-progress dashboards. Listing
-        // the gates again would just clutter the stack.
-        progression = null;
-        nextStepHint = undefined;
-      }
+    const track = document.createElement("div");
+    track.className = "card-deck-track";
+    wrap.appendChild(track);
 
-      // Graduation is the ONE post-creation place where the player can
-      // ask the AI to redo the portrait — specifically the diploma
-      // (cap-and-gown) image. Hits /chat/character/diploma which already
-      // has its own retry. No global flag — disable the button on click,
-      // re-render the sheet when the new image lands.
-      const cardActions = [];
-      if (entry.kind === "graduated") {
-        cardActions.push({
-          label: "✨ Try a different look",
-          secondary: true,
-          onClick: async (e) => {
-            const btn = e && e.currentTarget;
-            if (btn) { btn.disabled = true; btn.textContent = "✨ Generating…"; }
-            try {
-              const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: "{}",
-              });
-              if (!r.ok) throw new Error("diploma " + r.status);
-              await fetchSession();
-              if (sheetOverlayOpen) renderSheet();
-            } catch {
-              if (btn) { btn.disabled = false; btn.textContent = "✨ Try a different look"; }
-            }
-          },
-        });
-      }
-      const card = buildCharacterCard({
-        role: "player",
-        name: c.name,
-        subtitle,
-        portraitUrl,
-        accent: pb.accent,
-        // Stats only on the top card — they don't change year-to-year
-        // and a stack of identical stat blocks is just visual noise.
-        stats: isTop ? c.stats : undefined,
-        // Quote only on the top card for the same reason.
-        quote: isTop ? (c.flavorQuote || c.arcAnswer) : undefined,
-        nextStepHint,
-        progression,
-        footer: isTop && pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
-        actions: cardActions.length > 0 ? cardActions : undefined,
-      });
-      // The completed cards carry a small badge in the corner so the
-      // stack reads as "year n cleared" at a glance. Done via a wrapper
-      // class on the card.
-      if (entry.kind === "completed") card.classList.add("yearbook-completed");
-      if (entry.kind === "graduated") card.classList.add("yearbook-graduated");
-      stack.appendChild(card);
+    for (const item of deck) {
+      track.appendChild(item.kind === "stat"
+        ? buildStatCard(c, pb, portraitFallback, item.graduated)
+        : buildPaperCard(item.entry, c, pb, playbooks));
     }
+
+    // Carousel controls only render when there's more than one card.
+    if (deck.length > 1) {
+      const dots = document.createElement("div");
+      dots.className = "card-deck-dots";
+      const cards = Array.from(track.children);
+      cards.forEach((_, i) => {
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.className = "card-deck-dot" + (i === 0 ? " is-active" : "");
+        dot.setAttribute("aria-label", "Show card " + (i + 1));
+        dot.addEventListener("click", () => scrollToCard(i));
+        dots.appendChild(dot);
+      });
+      wrap.appendChild(dots);
+
+      const prev = document.createElement("button");
+      prev.type = "button";
+      prev.className = "card-deck-nav prev";
+      prev.setAttribute("aria-label", "Previous card");
+      prev.textContent = "‹";
+      const next = document.createElement("button");
+      next.type = "button";
+      next.className = "card-deck-nav next";
+      next.setAttribute("aria-label", "Next card");
+      next.textContent = "›";
+      wrap.appendChild(prev);
+      wrap.appendChild(next);
+
+      const scrollToCard = (i) => {
+        const target = cards[Math.max(0, Math.min(cards.length - 1, i))];
+        if (target && target.scrollIntoView) {
+          target.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+        }
+      };
+      const activeIndex = () => {
+        let best = 0;
+        let bestDist = Infinity;
+        const wrapMid = track.scrollLeft + track.clientWidth / 2;
+        cards.forEach((el, i) => {
+          const mid = el.offsetLeft + el.offsetWidth / 2;
+          const d = Math.abs(mid - wrapMid);
+          if (d < bestDist) { bestDist = d; best = i; }
+        });
+        return best;
+      };
+      const refreshDots = () => {
+        const i = activeIndex();
+        Array.from(dots.children).forEach((d, idx) => {
+          d.classList.toggle("is-active", idx === i);
+        });
+      };
+      track.addEventListener("scroll", refreshDots, { passive: true });
+      prev.addEventListener("click", () => scrollToCard(activeIndex() - 1));
+      next.addEventListener("click", () => scrollToCard(activeIndex() + 1));
+    }
+  }
+
+  // ── Stat Card builder ───────────────────────────────────────────────────
+  // The live card. Every counter on this card moves during play.
+  function buildStatCard(c, pb, portraitFallback, graduated) {
+    const grade = graduated ? "12" : String(lastTelemetry?.current_grade ?? "9");
+    const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
+    const portraitUrl = (graduated && c.diplomaImageDataUrl) || c.portraitDataUrl || portraitFallback;
+    const subtitle = graduated
+      ? "Graduated · " + gradeLabel + " · " + (c.xp ?? 0) + " XP"
+      : pb.name + " · " + gradeLabel + " · " + (c.xp ?? 0) + " XP";
+
+    const actions = [];
+    if (graduated) {
+      actions.push({
+        label: "✨ Try a different look",
+        secondary: true,
+        onClick: async (e) => {
+          const btn = e && e.currentTarget;
+          if (btn) { btn.disabled = true; btn.textContent = "✨ Generating…"; }
+          try {
+            const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            if (!r.ok) throw new Error("diploma " + r.status);
+            await fetchSession();
+            if (sheetOverlayOpen) renderSheet();
+          } catch {
+            if (btn) { btn.disabled = false; btn.textContent = "✨ Try a different look"; }
+          }
+        },
+      });
+    }
+
+    const card = buildCharacterCard({
+      role: "player",
+      name: c.name,
+      subtitle,
+      portraitUrl,
+      accent: pb.accent,
+      stats: c.stats,
+      quote: c.flavorQuote || c.arcAnswer,
+      nextStepHint: buildNextStepHint(c),
+      progression: buildProgressionForCharacter(c),
+      footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
+      actions: actions.length > 0 ? actions : undefined,
+    });
+    card.classList.add("is-stat-card");
+    if (graduated) card.classList.add("is-graduated");
+    return card;
+  }
+
+  // ── Paper Card builder ──────────────────────────────────────────────────
+  // Frozen at the moment the year closed. Identity comes from the snapshot
+  // on the yearbook entry — never from the live character. The backfill
+  // path in normalizeLoaded() guarantees these fields exist even on
+  // pre-snapshot saves.
+  function buildPaperCard(entry, liveChar, livePb, playbooks) {
+    const gradeLabel = GRADE_LABELS[entry.grade] || ("Grade " + entry.grade);
+    const playbookId = entry.playbookId || liveChar.playbookId;
+    const pb = (Array.isArray(playbooks) && playbooks.find((p) => p.id === playbookId)) || livePb;
+    const name = entry.name || liveChar.name;
+    const stats = entry.stats || liveChar.stats;
+    const portraitUrl = entry.portraitDataUrl
+      || liveChar.portraitDataUrl
+      || defaultPortraitFor(playbookId);
+    const quote = entry.flavorQuote || entry.arcAnswer || "";
+    const summary = entry.summary || { correct: 0, total: 0 };
+    const sealedSubtitle = "✓ " + gradeLabel + " · sealed " + formatSealedDate(entry.completedAt)
+      + " · " + summary.correct + "/" + summary.total + " correct";
+
+    const card = buildCharacterCard({
+      role: "player",
+      name,
+      subtitle: sealedSubtitle,
+      portraitUrl,
+      accent: pb.accent,
+      stats,
+      quote,
+      // No progression, no next-step hint, no move footer. A paper card
+      // is a record, not a dashboard.
+    });
+    card.classList.add("is-paper-card");
+    // Sealed badge in the corner (CSS-driven via pseudo-element on the class).
+    return card;
+  }
+
+  function formatSealedDate(ts) {
+    if (!ts) return "—";
+    try {
+      const d = new Date(ts);
+      const m = d.toLocaleDateString(undefined, { month: "short" });
+      return m + " " + d.getFullYear();
+    } catch { return "—"; }
   }
   function fmtStat(n) { return (n >= 0 ? "+" : "") + n; }
 

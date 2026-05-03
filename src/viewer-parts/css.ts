@@ -1717,50 +1717,153 @@ export const VIEWER_CSS = `
     margin-top: 4px;
   }
 
-  /* ── yearbook stack ──────────────────────────────────────────────────── */
-  /* Read-only character sheet renders one card per grade, current year
-     on TOP. The pack grows as the player advances. Cards overlap
-     slightly so the stack reads as a deck, not a list — the player
-     "collects" a card when they pass each year. The top card is full
-     fidelity (stats, quote, progression, hint, move); below cards
-     compress to a portrait + summary line. */
-  .yearbook-stack {
+  /* ── card deck (Stat Card + Paper Cards) ────────────────────────────── */
+  /* Two card types live in the read-only sheet:
+       Stat Card  — live, current year, counters tick. Exactly one of these.
+                    Glows accent-coloured to read as "active."
+       Paper Card — frozen snapshot of a closed year. Sealed paper-stock
+                    look, slight desaturation, "✓ sealed Mon YYYY"
+                    subtitle. One per grade earned (excluding the year
+                    represented by the Stat Card).
+     The deck is a horizontal scroll-snap carousel — Stat Card at the
+     front, Paper Cards trailing in chronological order. Mobile-first;
+     swipe to flip, dot-row + chevrons for desktop. */
+  .card-deck {
+    position: relative;
+    width: 100%;
+    padding: 8px 0 4px;
+  }
+  .card-deck-track {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    padding-top: 12px;
+    gap: 18px;
+    overflow-x: auto;
+    overflow-y: visible;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    padding: 24px 14% 28px;
+    margin: 0 -14%;
+    scrollbar-width: none;
   }
-  .yearbook-stack .ccg-card {
-    /* Negative top-margin makes each card peek behind the one above it,
-       creating the stacked-deck visual. The first card sits at 0. */
-    margin-top: -28px;
-    transform: rotate(0deg);
-    transition: transform 0.18s ease, margin 0.18s ease;
+  .card-deck-track::-webkit-scrollbar { display: none; }
+  .card-deck-track > .ccg-card {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 300px;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
   }
-  .yearbook-stack .ccg-card:first-child {
-    margin-top: 0;
+  .card-deck-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding-top: 8px;
   }
-  /* Slight alternating tilt on completed cards so the stack feels
-     hand-arranged instead of mechanically aligned. */
-  .yearbook-stack .yearbook-completed:nth-child(even) { transform: rotate(-1.2deg); }
-  .yearbook-stack .yearbook-completed:nth-child(odd)  { transform: rotate(1.4deg); }
-  .yearbook-stack .yearbook-completed:hover,
-  .yearbook-stack .yearbook-graduated:hover {
-    transform: rotate(0deg) translateY(-4px);
+  .card-deck-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.18);
+    cursor: pointer;
+    transition: background 0.16s ease, transform 0.16s ease;
   }
-  /* Completed-year cards are dimmed + scaled down a touch — they're
-     archive, not the active surface. */
-  .yearbook-stack .yearbook-completed {
-    opacity: 0.78;
-    filter: saturate(0.9);
+  .card-deck-dot:hover { background: rgba(255,255,255,0.32); }
+  .card-deck-dot.is-active {
+    background: var(--accent);
+    transform: scale(1.25);
   }
-  .yearbook-stack .yearbook-completed .ccg-art {
-    aspect-ratio: 5/2; /* shorter art on completed cards */
+  .card-deck-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(0,0,0,0.55);
+    color: var(--text);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    backdrop-filter: blur(6px);
+    transition: background 0.16s ease, border-color 0.16s ease;
+    z-index: 3;
   }
-  .yearbook-stack .yearbook-graduated {
-    /* Senior-graduated cap card sits on top with its diploma image. */
+  .card-deck-nav:hover { border-color: var(--accent); background: rgba(0,0,0,0.75); }
+  .card-deck-nav.prev { left: 4px; }
+  .card-deck-nav.next { right: 4px; }
+  /* Hide nav buttons when there's only one card in the deck.
+     buildCharacterCard owns the single-card case — controls
+     are added only when deck.length > 1, so no rule needed. */
+
+  /* Stat Card — the live one. Accent border glow + a subtle pulse on the
+     role badge to read "this is now." */
+  .card-deck-track > .ccg-card.is-stat-card {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08) inset,
+      0 18px 40px rgba(0,0,0,0.55),
+      0 0 28px rgba(210,42,42,0.32);
+  }
+  .card-deck-track > .ccg-card.is-stat-card.is-graduated {
     border-color: gold;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.10) inset,
+      0 18px 40px rgba(0,0,0,0.55),
+      0 0 32px rgba(255,215,0,0.28);
+  }
+
+  /* Paper Card — frozen, sealed. Paper-stock cream tint, faint grid
+     overlay, slight desaturation. The subtitle ("✓ sealed Mon YYYY")
+     does the heavy lifting; CSS just signals "this is archive, not
+     dashboard." */
+  .card-deck-track > .ccg-card.is-paper-card {
+    border-color: rgba(255,255,255,0.22);
+    background:
+      linear-gradient(180deg, rgba(245,235,210,0.04) 0%, rgba(245,235,210,0.02) 100%),
+      linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 100%);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05) inset,
+      0 12px 24px rgba(0,0,0,0.45);
+    filter: saturate(0.88);
+  }
+  .card-deck-track > .ccg-card.is-paper-card .ccg-art {
+    /* Subtle paper-grain overlay on the portrait so the card reads as
+       printed-and-stored rather than freshly rendered. Pseudo-element
+       on .ccg-art already has a bottom fade — stack over it. */
+    position: relative;
+  }
+  .card-deck-track > .ccg-card.is-paper-card .ccg-art::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(
+        45deg,
+        rgba(255,255,255,0.015) 0 2px,
+        rgba(0,0,0,0.02) 2px 4px
+      );
+    pointer-events: none;
+    z-index: 1;
+  }
+  .card-deck-track > .ccg-card.is-paper-card .ccg-role {
+    /* Replace the role badge with a "SEALED" wax-stamp feel. */
+    background: rgba(40,30,20,0.65);
+    color: rgba(255,235,200,0.92);
+    letter-spacing: 0.22em;
+  }
+  .card-deck-track > .ccg-card.is-paper-card .ccg-role::after {
+    content: " · sealed";
+    opacity: 0.7;
+  }
+  .card-deck-track > .ccg-card.is-paper-card .ccg-name {
+    /* Slight serif feel via letter-spacing — yearbook page typography. */
+    letter-spacing: 0.005em;
+  }
+  .card-deck-track > .ccg-card.is-paper-card .ccg-subtitle {
+    color: rgba(255,235,200,0.62);
   }
 
   /* ── rarity pill (replaces DAILY/PRACTICE) ──────────────────────────── */
