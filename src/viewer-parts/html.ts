@@ -72,10 +72,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
     <section class="lounge-stage" id="lounge-stage">
       <div class="lounge-title">Teachers' Lounge — listening in</div>
-      <div class="lounge-figures">
-        <img src="${escapeHtml(opts.apiBase)}/assets/teachers/ruby-full.png" alt="Ruby"/>
-        <img src="${escapeHtml(opts.apiBase)}/assets/teachers/sally-science-full.png" alt="Sally Science"/>
-        <img src="${escapeHtml(opts.apiBase)}/assets/teachers/professor-edward-full.png" alt="Professor Edward"/>
+      <div class="lounge-figures" id="lounge-figures">
+        <!-- Populated by renderLounge() from the active pack's faculty.
+             A dummy spot here keeps the layout from collapsing pre-init. -->
       </div>
     </section>
 

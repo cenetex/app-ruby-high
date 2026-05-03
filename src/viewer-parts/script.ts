@@ -75,6 +75,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
+    loungeFigures: $("lounge-figures"),
     teacherFigure: $("teacher-figure"),
     blackboardEmpty: $("blackboard-empty"),
     blackboardEmptyText: $("blackboard-empty-text"),
@@ -478,6 +479,39 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function setLoungeMode(on) {
     els.loungeStage.classList.toggle("is-open", !!on);
     els.blackboardPanel.style.display = on ? "none" : "";
+    if (on) renderLoungeFigures();
+  }
+  // Lounge figures come from the ACTIVE PACK's faculty roster — for the
+  // original pack that's Ruby/Sally/Edward, but for an Anki-imported pack
+  // it's the deck-derived teacher (one figure). Without this the lounge
+  // would always show the original-pack portraits regardless of which
+  // pack the player is on.
+  let lastLoungeSig = "";
+  function renderLoungeFigures() {
+    const t = lastTelemetry || {};
+    const roster = t.faculty_roster || [];
+    const sig = roster.map((f) => f.id).join("|");
+    if (sig === lastLoungeSig && els.loungeFigures.children.length) return;
+    lastLoungeSig = sig;
+    els.loungeFigures.innerHTML = "";
+    for (const f of roster) {
+      const img = document.createElement("img");
+      img.src = apiBase + "/assets/teachers/" + encodeURIComponent(f.id) + "-full.png";
+      img.alt = f.displayName || f.id;
+      // Anki packs have no portrait asset; on 404 swap in a deterministic
+      // accent-tinted placeholder so the lounge doesn't break.
+      img.addEventListener("error", () => {
+        img.replaceWith(loungePlaceholder(f));
+      }, { once: true });
+      els.loungeFigures.appendChild(img);
+    }
+  }
+  function loungePlaceholder(faculty) {
+    const div = document.createElement("div");
+    div.className = "lounge-placeholder";
+    div.style.cssText = "width: 90px; height: 90px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 28px; color: #fff; background: " + (faculty.accent || "#3aa3e0") + ";";
+    div.textContent = (faculty.shortName || faculty.displayName || faculty.id || "?").charAt(0).toUpperCase();
+    return div;
   }
   function renderBlackboard(question, faculty, currentGrade) {
     if (faculty && faculty.id === LOUNGE_ID) {

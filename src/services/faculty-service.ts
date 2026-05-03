@@ -5,7 +5,8 @@ import {
   type FacultyMember,
   type QuestionBank,
 } from "../types.js";
-import { getActivePack } from "../content/registry.js";
+import { getActivePack, getLoadedPack } from "../content/registry.js";
+import type { ContentPack } from "../content/types.js";
 
 export interface PickFilter {
   faculty?: string;
@@ -20,8 +21,6 @@ export class FacultyService extends Service {
   override readonly capabilityDescription =
     "Loads faculty question packs from disk and picks questions by faculty, subject, and difficulty.";
 
-  private readonly banks = new Map<string, QuestionBank>();
-  private facultyList: FacultyMember[] = [];
   private loaded = false;
 
   static async start(runtime: IAgentRuntime): Promise<FacultyService> {
@@ -31,35 +30,16 @@ export class FacultyService extends Service {
   }
 
   async stop(): Promise<void> {
-    this.banks.clear();
-    this.facultyList = [];
     this.loaded = false;
   }
 
-  /** Load faculty + question banks from the active content pack. Replaces
-   *  the previous fs-based pack-file loader; the active pack is now the
-   *  single source of truth (see src/content/registry.ts). Tests/future
-   *  pack-switching logic call setActivePack() then re-call this. */
+  /** Awaits the global active pack so callers know it's ready to read.
+   *  No internal cache anymore — every method either takes a pack arg or
+   *  reads getLoadedPack() at call time. The cache used to assume one
+   *  active pack process-wide; per-session pack switching breaks that
+   *  assumption. */
   async loadFromActivePack(): Promise<void> {
-    const pack = await getActivePack();
-    this.banks.clear();
-    this.facultyList = pack.faculty.map((f) => ({
-      id: f.id,
-      displayName: f.displayName,
-      shortName: f.shortName,
-      subjects: f.subjects,
-      bio: f.bio,
-      available: true,
-      accent: f.accent,
-    }));
-    for (const f of pack.faculty) {
-      this.banks.set(f.id, {
-        faculty: f.id,
-        displayName: f.displayName,
-        description: f.bio,
-        questions: f.questions,
-      });
-    }
+    await getActivePack();
     this.loaded = true;
   }
 
@@ -67,20 +47,33 @@ export class FacultyService extends Service {
     return this.loaded;
   }
 
-  faculty(): FacultyMember[] {
-    return this.facultyList;
+  /** Faculty roster of the given pack (or the global active pack if
+   *  omitted). Always returns the {available: true} adapter shape that
+   *  the legacy FacultyMember consumers expect. */
+  faculty(pack?: ContentPack): FacultyMember[] {
+    return (pack ?? getLoadedPack()).faculty.map(toFacultyMember);
   }
 
-  facultyById(id: string): FacultyMember | null {
-    return this.facultyList.find((f) => f.id === id) ?? null;
+  facultyById(id: string, pack?: ContentPack): FacultyMember | null {
+    const p = pack ?? getLoadedPack();
+    const f = p.faculty.find((x) => x.id === id);
+    return f ? toFacultyMember(f) : null;
   }
 
-  bank(facultyId: string): QuestionBank | null {
-    return this.banks.get(facultyId) ?? null;
+  bank(facultyId: string, pack?: ContentPack): QuestionBank | null {
+    const p = pack ?? getLoadedPack();
+    const f = p.faculty.find((x) => x.id === facultyId);
+    if (!f) return null;
+    return {
+      faculty: f.id,
+      displayName: f.displayName,
+      description: f.bio,
+      questions: f.questions,
+    };
   }
 
-  subjects(facultyId: string): string[] {
-    const bank = this.banks.get(facultyId);
+  subjects(facultyId: string, pack?: ContentPack): string[] {
+    const bank = this.bank(facultyId, pack);
     if (!bank) return [];
     return Array.from(new Set(bank.questions.map((q) => q.subject))).sort();
   }
@@ -90,10 +83,14 @@ export class FacultyService extends Service {
    * session never sees the same question twice. Falls back across the filter
    * (subject → difficulty → any) so the caller always gets *something* if the
    * faculty has any unasked question left.
+   *
+   * Pack-aware: pass the per-session pack so the player only ever sees
+   * questions from the curriculum they activated.
    */
-  pick(filter: PickFilter = {}): BankedQuestion | null {
+  pick(filter: PickFilter = {}, pack?: ContentPack): BankedQuestion | null {
+    const p = pack ?? getLoadedPack();
     const exclude = new Set(filter.exclude ?? []);
-    const facultyIds = filter.faculty ? [filter.faculty] : [...this.banks.keys()];
+    const facultyIds = filter.faculty ? [filter.faculty] : p.faculty.map((f) => f.id);
 
     const matchSubject = (q: BankedQuestion) => !filter.subject || q.subject === filter.subject;
     const matchDifficulty = (q: BankedQuestion) => !filter.difficulty || q.difficulty === filter.difficulty;
@@ -109,9 +106,9 @@ export class FacultyService extends Service {
     for (const tier of tiers) {
       const pool: BankedQuestion[] = [];
       for (const fid of facultyIds) {
-        const bank = this.banks.get(fid);
-        if (!bank) continue;
-        for (const q of bank.questions) {
+        const f = p.faculty.find((x) => x.id === fid);
+        if (!f) continue;
+        for (const q of f.questions) {
           if (tier(q)) pool.push(q);
         }
       }
@@ -124,22 +121,19 @@ export class FacultyService extends Service {
 
   /**
    * Deterministic pick for "today's Daily" — every player on a given (date,
-   * faculty) sees the same question. Uses dailyIndex(key) modulo the bank
-   * size as the ratchet; difficulty filter optional. The exclude set
-   * skips questions the player has already seen this run, falling back
-   * to "any unanswered" if the modulo'd slot is taken.
-   *
-   * Returns null only when the entire faculty bank has been exhausted —
-   * effectively impossible at the current bank sizes (15 each, 20-pass
-   * Senior streak max).
+   * faculty, pack) sees the same question. Uses dailyIndex(key) modulo the
+   * bank size as the ratchet; difficulty filter optional.
    */
-  pickDaily(opts: {
-    facultyId: string;
-    dailyIndex: number;
-    difficulty?: Difficulty;
-    exclude?: Iterable<string>;
-  }): BankedQuestion | null {
-    const bank = this.banks.get(opts.facultyId);
+  pickDaily(
+    opts: {
+      facultyId: string;
+      dailyIndex: number;
+      difficulty?: Difficulty;
+      exclude?: Iterable<string>;
+    },
+    pack?: ContentPack,
+  ): BankedQuestion | null {
+    const bank = this.bank(opts.facultyId, pack);
     if (!bank || bank.questions.length === 0) return null;
     const exclude = new Set(opts.exclude ?? []);
 
@@ -167,4 +161,16 @@ export class FacultyService extends Service {
     }
     return null;
   }
+}
+
+function toFacultyMember(f: { id: string; displayName: string; shortName: string; subjects: string[]; bio: string; accent: string }): FacultyMember {
+  return {
+    id: f.id,
+    displayName: f.displayName,
+    shortName: f.shortName,
+    subjects: f.subjects,
+    bio: f.bio,
+    available: true,
+    accent: f.accent,
+  };
 }

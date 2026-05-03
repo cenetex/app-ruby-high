@@ -94,10 +94,46 @@ export function resetActivePack(): void {
   packs.clear();
 }
 
-// ── sync accessors over the loaded pack ─────────────────────────────────
-// These are the API callers reach for instead of touching ALL_FACULTY /
-// ROOMS / RUBY_FACULTY constants directly. They go through getLoadedPack
-// so a future pack swap is observed everywhere consistently.
+// ── per-session pack lookup ─────────────────────────────────────────────
+// Per-session active pack: each QuizState carries an activePackId. These
+// helpers resolve "which pack does THIS session see?" — the global active
+// pack is used only as a fallback when the session is null or its
+// activePackId points at an unregistered (e.g. evicted) pack.
+
+interface PackSession { activePackId?: string | null }
+
+export function packForSession(session: PackSession | null): ContentPack {
+  if (session?.activePackId) {
+    const p = packs.get(session.activePackId);
+    if (p) return p;
+  }
+  return getLoadedPack();
+}
+
+export function facultyForSession(session: PackSession | null): PackFaculty[] {
+  return packForSession(session).faculty;
+}
+
+export function facultyByIdForSession(session: PackSession | null, id: string): PackFaculty | null {
+  return packForSession(session).faculty.find((f) => f.id === id) ?? null;
+}
+
+export function roomsForSession(session: PackSession | null): PackRoom[] {
+  return packForSession(session).rooms;
+}
+
+export function roomForFacultyForSession(session: PackSession | null, facultyId: string): PackRoom | null {
+  return packForSession(session).rooms.find((r) => r.teacherId === facultyId) ?? null;
+}
+
+export function roomsWithLoungeForSession(session: PackSession | null): PackRoom[] {
+  return [...packForSession(session).rooms, LOUNGE_ROOM];
+}
+
+// ── back-compat: global accessors ───────────────────────────────────────
+// These look up the GLOBAL active pack (no session). Used by code paths
+// that don't have a session in scope (boot, listFaculty diagnostics).
+// Per-session callers should use the *ForSession variants above.
 
 export function activeFaculty(): PackFaculty[] {
   return getLoadedPack().faculty;
@@ -111,10 +147,8 @@ export function activeRooms(): PackRoom[] {
   return getLoadedPack().rooms;
 }
 
-/** The teaching room that this faculty teaches in, per the active pack.
- *  Pack-aware replacement for the static `roomForFaculty` in types.ts;
- *  callers should prefer this. Returns null for the lounge or any
- *  faculty without a teaching room. */
+/** The teaching room that this faculty teaches in, per the GLOBAL active
+ *  pack. Per-session callers should prefer roomForFacultyForSession. */
 export function activeRoomForFaculty(facultyId: string): PackRoom | null {
   return getLoadedPack().rooms.find((r) => r.teacherId === facultyId) ?? null;
 }

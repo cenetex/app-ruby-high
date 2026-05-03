@@ -18,6 +18,7 @@
  */
 
 import { AuthService } from "./services/auth-service.js";
+import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseApkg } from "./content/anki/parse.js";
@@ -25,9 +26,8 @@ import { buildAnkiPack } from "./content/anki/pack.js";
 import {
   availablePacks,
   getPackById,
+  packForSession,
   registerPack,
-  setActivePackById,
-  getLoadedPack,
 } from "./content/registry.js";
 import type { ContentPack } from "./content/types.js";
 
@@ -44,6 +44,11 @@ export interface PackRouteContext {
 
 const PACK_PREFIX = "/api/apps/ruby-high/packs";
 const IMPORT_LIMITER = new TokenBucket(8, 1 / 30); // 8 burst, ~1 every 30s
+/** Hard cap on the JSON body size for /packs/import-anki. An Anki .apkg
+ *  base64-inflates by ~33%, so this gives us headroom for ~12 MB on-disk
+ *  decks — comfortably bigger than any sensible single-deck import. The
+ *  point isn't to size for typical use but to prevent a 1 GB JSON DoS. */
+const MAX_IMPORT_BODY_BYTES = 16 * 1024 * 1024;
 
 function rateLimitKey(ctx: PackRouteContext, token: string | null): string {
   return `${ctx.clientIp ?? "unknown"}:${token ?? "anon"}`;
@@ -68,14 +73,18 @@ function packSummary(pack: ContentPack) {
   };
 }
 
-/** Reload-on-pack-swap callback. The faculty service caches the active
- *  pack's banks at start; when the active pack changes the service has
- *  to re-load. Routes pass in this callback so we don't import the
- *  service directly (decouples this module). */
+/** Pack switching is per-session — each player's QuizState carries
+ *  activePackId. We need RubyHighService to read + mutate that state.
+ *  AuthService is required because all pack mutations need a signed-in
+ *  user (avoids unauthed griefing of the global pack registry, and the
+ *  Anki import needs the user's OpenRouter key). */
 export interface PackRouteDeps {
   auth: AuthService;
-  /** Called after a pack switch so dependent services rebuild caches. */
-  onPackSwapped?: () => Promise<void> | void;
+  ruby: RubyHighService;
+  /** Resolves the per-cookie session id the same way the rest of the
+   *  app does, so pack-routes lands on the same QuizState the player
+   *  is using. */
+  sessionIdFor: (cookieHeader?: string | null) => string;
 }
 
 export async function handlePackRoutes(
@@ -85,9 +94,11 @@ export async function handlePackRoutes(
   if (!ctx.pathname.startsWith(PACK_PREFIX)) return false;
   const sub = ctx.pathname.slice(PACK_PREFIX.length) || "/";
 
-  // GET /packs — list registered packs + active id.
+  // GET /packs — list registered packs + this session's active id.
   if (ctx.method === "GET" && sub === "/") {
-    const active = getLoadedPack();
+    const sessionId = deps.sessionIdFor(ctx.cookieHeader);
+    const state = deps.ruby.getOrCreate(sessionId);
+    const active = packForSession(state);
     ctx.json(ctx.res, {
       active_pack_id: active.id,
       packs: availablePacks().map(packSummary),
@@ -95,8 +106,16 @@ export async function handlePackRoutes(
     return true;
   }
 
-  // POST /packs/active — switch active pack.
+  // POST /packs/active — switch THIS session's active pack. Auth required:
+  // packs are user-owned territory and we don't want any unauth caller
+  // mutating session state.
   if (ctx.method === "POST" && sub === "/active") {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!record || !token) {
+      ctx.error(ctx.res, "Sign in to switch the active content pack.", 401);
+      return true;
+    }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { packId?: unknown } | null;
     const id = typeof body?.packId === "string" ? body.packId : "";
     if (!id) {
@@ -109,10 +128,10 @@ export async function handlePackRoutes(
       return true;
     }
     try {
-      const pack = setActivePackById(id);
-      if (deps.onPackSwapped) await deps.onPackSwapped();
-      log.event("pack.activated", { packId: pack.id, name: pack.name });
-      ctx.json(ctx.res, { ok: true, pack: packSummary(pack) });
+      const sessionId = deps.sessionIdFor(ctx.cookieHeader);
+      deps.ruby.setActivePackForSession(sessionId, id);
+      log.event("pack.activated", { packId: id, name: target.name, sessionId });
+      ctx.json(ctx.res, { ok: true, pack: packSummary(target) });
     } catch (err) {
       log.error("pack.activate-failed", err, { packId: id });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
@@ -120,7 +139,8 @@ export async function handlePackRoutes(
     return true;
   }
 
-  // POST /packs/import-anki — base64 .apkg → distractors → register + activate.
+  // POST /packs/import-anki — base64 .apkg → distractors → register +
+  // set as THIS session's active pack.
   if (ctx.method === "POST" && sub === "/import-anki") {
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);
     const record = deps.auth.resolve(token);
@@ -146,14 +166,25 @@ export async function handlePackRoutes(
       ctx.error(ctx.res, "data (base64-encoded .apkg) required", 400);
       return true;
     }
+    // Fast-path body cap: reject before allocating the Buffer if the
+    // string is already over budget (cheap length check vs. expensive
+    // base64 decode of a 1 GB blob).
+    if (dataB64.length > MAX_IMPORT_BODY_BYTES) {
+      ctx.error(ctx.res, `Deck too large — base64 payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
+      return true;
+    }
     const maxCards = typeof body?.maxCards === "number" ? body.maxCards : 50;
     const packName = typeof body?.packName === "string" ? body.packName : undefined;
 
     let bytes: Uint8Array;
     try {
       bytes = base64ToBytes(dataB64);
-    } catch (err) {
+    } catch {
       ctx.error(ctx.res, "data must be valid base64", 400);
+      return true;
+    }
+    if (bytes.length > MAX_IMPORT_BODY_BYTES) {
+      ctx.error(ctx.res, `Deck too large — decoded payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
       return true;
     }
 
@@ -174,10 +205,10 @@ export async function handlePackRoutes(
         return true;
       }
       registerPack(pack);
-      setActivePackById(pack.id);
-      if (deps.onPackSwapped) await deps.onPackSwapped();
+      const sessionId = deps.sessionIdFor(ctx.cookieHeader);
+      deps.ruby.setActivePackForSession(sessionId, pack.id);
       log.event("pack.import-anki.done", {
-        packId: pack.id, deckName: deck.name, cardsImported: pack.faculty[0]!.questions.length, skipped,
+        packId: pack.id, deckName: deck.name, cardsImported: pack.faculty[0]!.questions.length, skipped, sessionId,
       });
       ctx.json(ctx.res, {
         ok: true,

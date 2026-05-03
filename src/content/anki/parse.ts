@@ -42,24 +42,27 @@ let sqlJsCache: Promise<unknown> | null = null;
 async function loadSqlJs() {
   if (!sqlJsCache) {
     const here = dirname(fileURLToPath(import.meta.url));
-    // sql.js needs the wasm binary; resolve from node_modules. Works in
-    // both source-tree and dist-tree runs (same multi-candidate trick as
-    // the question bank loader).
+    // sql.js needs the wasm binary; resolve from node_modules. Try a few
+    // candidate parent layouts (source tree vs tsup dist) and pick the
+    // first one whose wasm exists. Falls back to letting sql.js look in
+    // its own bundled location if no candidate matches.
     const candidates = [
+      resolve(here, "..", "..", "..", "..", "node_modules", "sql.js", "dist"),
       resolve(here, "..", "..", "..", "node_modules", "sql.js", "dist"),
       resolve(here, "..", "..", "node_modules", "sql.js", "dist"),
       resolve(here, "..", "node_modules", "sql.js", "dist"),
     ];
+    const { stat } = await import("node:fs/promises");
+    let dir: string | null = null;
+    for (const c of candidates) {
+      try {
+        await stat(resolve(c, "sql-wasm.wasm"));
+        dir = c;
+        break;
+      } catch { /* not here, keep looking */ }
+    }
     sqlJsCache = (initSqlJs as unknown as (opts: unknown) => Promise<unknown>)({
-      locateFile: (file: string) => {
-        for (const dir of candidates) {
-          const path = resolve(dir, file);
-          // We can't fs.existsSync here cheaply; sql.js uses this only when
-          // it can't bundle the wasm. We'll catch failures via the read below.
-          return path;
-        }
-        return file;
-      },
+      locateFile: (file: string) => (dir ? resolve(dir, file) : file),
     });
   }
   return sqlJsCache;

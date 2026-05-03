@@ -26,6 +26,10 @@ export interface BuildAnkiPackOpts {
   concurrency?: number;
   /** Forwarded — fires once per card so the import UI can show progress. */
   onProgress?: (done: number, total: number) => void;
+  /** Suffix appended to the auto-derived pack id to disambiguate
+   *  re-imports of the same deck name. Tests pass a fixed value;
+   *  production passes a short timestamp+random tail. */
+  idSuffix?: string;
 }
 
 export interface BuildAnkiPackResult {
@@ -41,8 +45,17 @@ export async function buildAnkiPack(
 ): Promise<BuildAnkiPackResult> {
   const cap = Math.max(1, Math.min(500, opts.maxCards ?? 100));
   const cards = deck.cards.slice(0, cap);
-  const facultyId = slug(opts.packId ?? deck.name);
+  // Disambiguate re-imports of the same deck name by appending a short
+  // suffix (timestamp tail by default; tests pass a fixed string). The
+  // FACULTY id keeps the suffix too — pack switching reads state.faculty
+  // against this faculty id, so they have to match.
+  const suffix = opts.idSuffix ?? defaultIdSuffix();
+  const baseSlug = slug(opts.packId ?? deck.name);
+  const facultyId = `${baseSlug}-${suffix}`;
   const subject = slug(deck.name) || "anki";
+  // Hash the deck name into a stable hue so two different Anki packs in
+  // the channels rail don't all read as "the same Sally-Science blue."
+  const accent = opts.accent ?? hashedAccent(deck.name);
   const distractorOpts: DistractorOpts = {
     apiKey: opts.apiKey,
     facultyId,
@@ -59,7 +72,7 @@ export async function buildAnkiPack(
     shortName: shortenName(opts.facultyName ?? deck.name),
     subjects: [subject],
     bio: `Anki-imported deck: ${deck.name}.`,
-    accent: opts.accent ?? "#3aa3e0",
+    accent,
     systemPrompt: anchoredTeacherPrompt(deck.name),
     defaultModel: "anthropic/claude-haiku-4.5",
     questions,
@@ -67,7 +80,7 @@ export async function buildAnkiPack(
   const room: PackRoom = {
     id: `${facultyId}-room`,
     name: faculty.displayName,
-    channelName: facultyId,
+    channelName: baseSlug,
     teacherId: facultyId,
     description: `Anki: ${deck.name}.`,
     teaches: true,
@@ -81,6 +94,41 @@ export async function buildAnkiPack(
     rooms: [room],
   };
   return { pack, skipped };
+}
+
+function defaultIdSuffix(): string {
+  // 6-char base36 timestamp tail — collision-resistant within a session
+  // without dragging in a UUID dep. Padded so two imports in the same
+  // millisecond still differ via Math.random.
+  const t = Date.now().toString(36).slice(-4);
+  const r = Math.floor(Math.random() * 36 * 36).toString(36).padStart(2, "0");
+  return `${t}${r}`;
+}
+
+function hashedAccent(s: string): string {
+  // Deterministic-but-distinct color from the deck name. Goes through
+  // a simple hash → hue, fixed saturation/lightness so colors land in
+  // the same visual register as the original-pack accents.
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return hslToHex(hue, 60, 52);
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const sN = s / 100, lN = l / 100;
+  const c = (1 - Math.abs(2 * lN - 1)) * sN;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = lN - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60)        { r = c; g = x; }
+  else if (h < 120)  { r = x; g = c; }
+  else if (h < 180)  { g = c; b = x; }
+  else if (h < 240)  { g = x; b = c; }
+  else if (h < 300)  { r = x; b = c; }
+  else               { r = c; b = x; }
+  const to = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
 }
 
 function slug(s: string): string {

@@ -47,8 +47,18 @@ export interface DistractorResult {
   skipped: number;
 }
 
+/** Marker thrown by the distractor call when OpenRouter returns 401/403,
+ *  meaning every subsequent call will fail the same way (bad/expired key,
+ *  rate limit on the account). The worker pool catches this once and
+ *  trips a fail-fast flag so we don't burn through all 50 calls. */
+class FatalAuthError extends Error {
+  constructor(message: string) { super(message); this.name = "FatalAuthError"; }
+}
+
 /** Generate MC questions for every card in the deck, in parallel under
- *  the concurrency cap. Returns whatever succeeded. */
+ *  the concurrency cap. Returns whatever succeeded. Bails the whole job
+ *  on the first auth-class failure (no point burning 50 calls if the key
+ *  is bad). */
 export async function generateBankFromCards(
   cards: AnkiCard[],
   opts: DistractorOpts,
@@ -58,16 +68,22 @@ export async function generateBankFromCards(
   let skipped = 0;
   let done = 0;
   const queue = [...cards];
+  let fatal: FatalAuthError | null = null;
 
   async function worker(): Promise<void> {
     while (queue.length > 0) {
+      if (fatal) return; // another worker tripped the kill switch
       const card = queue.shift();
       if (!card) return;
       try {
         const q = await cardToMcQuestion(card, opts);
         if (q) out.push(q);
         else skipped += 1;
-      } catch {
+      } catch (err) {
+        if (err instanceof FatalAuthError) {
+          fatal = err;
+          return;
+        }
         // Hard failure on a single card shouldn't kill the import.
         skipped += 1;
       } finally {
@@ -78,6 +94,9 @@ export async function generateBankFromCards(
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  if (fatal) throw fatal;
+  // Cards still in the queue when we bailed count as skipped.
+  skipped += queue.length;
   return { questions: out, skipped };
 }
 
@@ -113,8 +132,10 @@ async function cardToMcQuestion(
         difficulty: opts.difficulty ?? "medium",
         faculty: opts.facultyId,
       };
-    } catch {
-      // Retry — typically a transient rate-limit or parse glitch.
+    } catch (err) {
+      // FatalAuth errors aren't retryable AND aren't card-local — propagate
+      // so the worker pool bails the whole import.
+      if (err instanceof FatalAuthError) throw err;
       if (attempt === max) return null;
     }
   }
@@ -157,6 +178,12 @@ async function callOpenRouterForDistractors(
   });
   if (!r.ok) {
     const detail = await r.text().catch(() => "");
+    // 401/403 = bad/expired key or account-wide block. Every subsequent
+    // card will fail the same way; throw the marker so the worker pool
+    // can bail the whole import instead of grinding through all N calls.
+    if (r.status === 401 || r.status === 403) {
+      throw new FatalAuthError(`OpenRouter ${r.status}: ${detail || r.statusText}`);
+    }
     throw new Error(`OpenRouter ${r.status}: ${detail || r.statusText}`);
   }
   const body = (await r.json()) as { choices?: Array<{ message?: { content?: string } }> };

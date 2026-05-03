@@ -1,13 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FacultyService } from "../services/faculty-service.js";
+import { RubyHighService } from "../services/ruby-high-service.js";
+import { StateStore } from "../services/state-store.js";
 import {
   activeFaculty,
   activeFacultyById,
   activeRoomForFaculty,
   activeRooms,
   activeRoomsWithLounge,
+  facultyByIdForSession,
+  facultyForSession,
   getActivePack,
+  packForSession,
+  registerPack,
   resetActivePack,
+  roomForFacultyForSession,
+  roomsWithLoungeForSession,
   setActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
@@ -164,5 +175,121 @@ describe("registry sync accessors — pack-swap propagates everywhere", () => {
     const withLounge = activeRoomsWithLounge();
     expect(withLounge.map((r) => r.id)).toEqual(["math-lab", "lounge"]);
     expect(withLounge[withLounge.length - 1]?.teaches).toBe(false);
+  });
+});
+
+describe("per-session active pack", () => {
+  function fakePack(id: string, facultyId: string): ContentPack {
+    return {
+      id, name: id, description: "—", version: "0.0.1",
+      faculty: [{
+        id: facultyId, displayName: facultyId, shortName: facultyId,
+        subjects: ["x"], bio: "—", accent: "#000",
+        systemPrompt: "—", defaultModel: "anthropic/claude-haiku-4.5",
+        questions: [{
+          id: `${facultyId}-1`, prompt: "?", options: { A: "1", B: "2", C: "3", D: "4" },
+          correct: "A", subject: "x", difficulty: "easy", faculty: facultyId,
+        }],
+      }],
+      rooms: [{
+        id: `${facultyId}-room`, name: facultyId, channelName: facultyId,
+        teacherId: facultyId, description: "—", teaches: true,
+      }],
+    };
+  }
+
+  let tmpDir: string;
+  let storePath: string;
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-persession-"));
+    storePath = join(tmpDir, "state.json");
+  });
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("packForSession resolves per-session, falling back to the global active pack", async () => {
+    await getActivePack(); // load original
+    const packA = fakePack("test:pack-A", "teacher-a");
+    const packB = fakePack("test:pack-B", "teacher-b");
+    registerPack(packA);
+    registerPack(packB);
+    expect(packForSession({ activePackId: null }).id).toBe("ruby-high-original");
+    expect(packForSession({ activePackId: "test:pack-A" }).id).toBe("test:pack-A");
+    expect(packForSession({ activePackId: "test:pack-B" }).id).toBe("test:pack-B");
+    // Unknown id falls back to global, never throws — keeps a stale
+    // session usable after the user evicts a pack.
+    expect(packForSession({ activePackId: "test:gone" }).id).toBe("ruby-high-original");
+  });
+
+  it("two sessions with different activePackId see different faculty + rooms", async () => {
+    await getActivePack();
+    registerPack(fakePack("test:pack-A", "teacher-a"));
+    registerPack(fakePack("test:pack-B", "teacher-b"));
+    const sessionA = { activePackId: "test:pack-A" };
+    const sessionB = { activePackId: "test:pack-B" };
+    expect(facultyForSession(sessionA).map((f) => f.id)).toEqual(["teacher-a"]);
+    expect(facultyForSession(sessionB).map((f) => f.id)).toEqual(["teacher-b"]);
+    expect(facultyByIdForSession(sessionA, "teacher-a")?.id).toBe("teacher-a");
+    expect(facultyByIdForSession(sessionA, "teacher-b")).toBeNull();
+    expect(roomForFacultyForSession(sessionA, "teacher-a")?.id).toBe("teacher-a-room");
+    expect(roomForFacultyForSession(sessionA, "teacher-b")).toBeNull();
+    expect(roomsWithLoungeForSession(sessionA).map((r) => r.id)).toEqual(["teacher-a-room", "lounge"]);
+  });
+
+  it("setActivePackForSession isolates two sessions on the same RubyHighService", async () => {
+    await getActivePack();
+    registerPack(fakePack("test:pack-A", "teacher-a"));
+    registerPack(fakePack("test:pack-B", "teacher-b"));
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    // Session A switches to pack A; session B switches to pack B.
+    const stA = ruby.setActivePackForSession("session:a", "test:pack-A");
+    const stB = ruby.setActivePackForSession("session:b", "test:pack-B");
+    expect(stA.activePackId).toBe("test:pack-A");
+    expect(stB.activePackId).toBe("test:pack-B");
+    // The faculty is reset to the new pack's first faculty.
+    expect(stA.faculty).toBe("teacher-a");
+    expect(stB.faculty).toBe("teacher-b");
+    // No leakage: A is unaffected when B switched, and vice versa.
+    expect(ruby.getOrCreate("session:a").activePackId).toBe("test:pack-A");
+    expect(ruby.getOrCreate("session:b").activePackId).toBe("test:pack-B");
+    await ruby.flush();
+  });
+
+  it("setActivePackForSession wipes board state from the previous pack", async () => {
+    await getActivePack();
+    registerPack(fakePack("test:pack-A", "teacher-a"));
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    const sid = "session:wipe";
+    // Manufacture a stale board state — simulating mid-question. Use
+    // a far-future expiresAt so tickRound (run on every getOrCreate)
+    // doesn't auto-resolve the round before our setActivePackForSession
+    // call lands.
+    const before = ruby.getOrCreate(sid);
+    before.current = { id: "stale-q", prompt: "?", type: "multiple-choice",
+      options: { A: "1", B: "2", C: "3", D: "4" }, correct: "A" } as any;
+    before.activeRound = {
+      questionId: "stale-q",
+      type: "multiple-choice",
+      startedAt: Date.now(),
+      durationMs: 60000,
+      expiresAt: Date.now() + 60000,
+      npcs: [],
+      player: { picked: null, answeredAt: null },
+      resolved: false,
+      resolvedAt: null,
+      firstCorrect: null,
+      opinionResponses: [],
+      opinionGrades: [],
+      bestResponder: null,
+    } as any;
+    before.lastReveal = { questionId: "stale-q" } as any;
+    const after = ruby.setActivePackForSession(sid, "test:pack-A");
+    expect(after.current).toBeNull();
+    expect(after.activeRound).toBeNull();
+    expect(after.lastReveal).toBeNull();
+    await ruby.flush();
   });
 });

@@ -8,6 +8,7 @@ import {
   OPINION_ROUND_DURATION_MS,
   RUBY_FACULTY,
   ROOMS,
+  dayOfWeekForKey,
   difficultyForGrade,
   initialNpcRoster,
   npcsInRoom,
@@ -49,7 +50,14 @@ import { FacultyService, type PickFilter } from "./faculty-service.js";
 import { StateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
-import { activeFaculty, activeFacultyById, activeRoomForFaculty, isPackLoaded } from "../content/registry.js";
+import {
+  activeFaculty,
+  facultyByIdForSession,
+  facultyForSession,
+  isPackLoaded,
+  packForSession,
+  roomForFacultyForSession,
+} from "../content/registry.js";
 
 export interface PoseInput {
   prompt: string;
@@ -275,6 +283,9 @@ export class RubyHighService extends Service {
         currentGrade: DEFAULT_GRADE,
         completedGrades: [],
         hasSeenIntro: true,
+        // Default = use the global active pack (currently the original).
+        // Per-session pack switching writes a real id here.
+        activePackId: null,
         character: null,
         npcRosters: {},
         activeRound: null,
@@ -630,7 +641,7 @@ export class RubyHighService extends Service {
     const startedAt = Date.now();
     const isOpinion = question.type === "opinion";
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
-    const room = activeRoomForFaculty(state.faculty);
+    const room = roomForFacultyForSession(state, state.faculty);
     let entries: NpcRoundEntry[] = [];
     if (room && room.teaches && state.currentGrade) {
       const teachingRoom = room.id as TeachingRoomId;
@@ -813,7 +824,7 @@ export class RubyHighService extends Service {
       difficulty,
       exclude: state.askedQuestionIds,
     };
-    const q = this.faculty.pick(pickFilter);
+    const q = this.faculty.pick(pickFilter, packForSession(state));
     if (!q) {
       throw new Error(
         `No questions left matching {faculty=${pickFilter.faculty ?? "any"}, subject=${pickFilter.subject ?? "any"}, difficulty=${pickFilter.difficulty ?? "any"}}.`,
@@ -843,7 +854,7 @@ export class RubyHighService extends Service {
   } {
     const state = this.getOrCreate(sessionId);
     const key = dailyKey(now);
-    const fac = facultyForDay(key);
+    const fac = facultyForDayInPack(key, state);
     if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
     if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
     if (!fac) return { available: false, reason: "weekend", facultyId: null, dailyKey: key };
@@ -876,7 +887,7 @@ export class RubyHighService extends Service {
       dailyIndex: dailyIndex(status.dailyKey),
       difficulty: state.currentGrade ? undefined : undefined, // honor grade later
       exclude: state.askedQuestionIds,
-    });
+    }, packForSession(state));
     if (!q) {
       throw new Error(`Bank for ${facultyId} is exhausted; cannot pose today's Daily.`);
     }
@@ -1024,6 +1035,36 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  /** Switch the active content pack for THIS session. Per-session so
+   *  multiple users (or multiple browser tabs of one user) can play
+   *  different packs on the same server without clobbering each other.
+   *  Caller is expected to have already registered the pack in the
+   *  global registry (registerPack); this method just records the id +
+   *  resets transient state that the previous pack's faculty/rooms
+   *  pinned. */
+  setActivePackForSession(sessionId: string, packId: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    state.activePackId = packId;
+    // The previous pack's faculty likely doesn't exist in the new pack;
+    // reset to the new pack's first teaching faculty so the next channel
+    // entry doesn't try setFaculty("ruby") against a pack that has none.
+    const newPack = packForSession(state);
+    const firstFaculty = newPack.faculty[0]?.id ?? RUBY_FACULTY.id;
+    if (state.faculty !== firstFaculty && state.faculty !== LOUNGE_FACULTY.id) {
+      state.faculty = firstFaculty;
+    }
+    // Wipe board state — current question + activeRound reference question
+    // ids from the previous pack's bank that won't exist in the new one.
+    state.current = null;
+    state.activeRound = null;
+    state.lastReveal = null;
+    this.transition(state, { kind: "clear-board" });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("pack.session-switched", { sessionId, packId, faculty: state.faculty });
+    return state;
+  }
+
   selectGrade(sessionId: string, grade: Grade): QuizState {
     const state = this.getOrCreate(sessionId);
     if (!GRADES.includes(grade)) throw new Error(`Unknown grade: ${grade}`);
@@ -1070,15 +1111,15 @@ export class RubyHighService extends Service {
     if (facultyId === LOUNGE_FACULTY.id) {
       faculty = LOUNGE_FACULTY;
     } else {
-      const f = activeFacultyById(facultyId);
+      const f = facultyByIdForSession(state, facultyId);
       faculty = f ? {
         id: f.id, displayName: f.displayName, shortName: f.shortName,
         subjects: f.subjects, bio: f.bio, available: true, accent: f.accent,
       } : null;
     }
     if (!faculty) {
-      const available = [...activeFaculty().map((f) => f.id), LOUNGE_FACULTY.id].join(", ");
-      throw new Error(`Unknown faculty: ${facultyId}. Active pack faculty: ${available}.`);
+      const available = [...facultyForSession(state).map((f) => f.id), LOUNGE_FACULTY.id].join(", ");
+      throw new Error(`Unknown faculty: ${facultyId}. Faculty in your active pack: ${available}.`);
     }
     const previousFacultyId = state.faculty;
     state.faculty = faculty.id;
@@ -1110,6 +1151,26 @@ type TransitionAction =
   | { kind: "resolve-round" }
   | { kind: "clear-board" }
   | { kind: "reset" };
+
+/** Pack-aware Daily-faculty rotation. The DESIGN.md schedule (Mon Sally,
+ *  Tue Edward, Wed Ruby, Thu Sally, Fri Edward, weekend off) is the
+ *  default for the original 3-faculty pack. For an Anki pack with a
+ *  different (possibly single) faculty roster, we rotate weekday →
+ *  pack.faculty[i mod n] so the Daily mechanic still works. Weekend
+ *  always returns null. */
+function facultyForDayInPack(key: string, session: { activePackId?: string | null }): string | null {
+  const dow = dayOfWeekForKey(key);
+  if (dow === 0 || dow === 6) return null; // weekend
+  const pack = packForSession(session);
+  // Original 3-faculty pack keeps the hand-tuned schedule from DESIGN.md.
+  if (pack.id === "ruby-high-original") {
+    return facultyForDay(key);
+  }
+  const ids = pack.faculty.map((f) => f.id);
+  if (ids.length === 0) return null;
+  // Map weekday index 1..5 → 0..4; modulo into pack.faculty.
+  return ids[(dow - 1) % ids.length] ?? null;
+}
 
 function nextPhaseFor(action: TransitionAction): Phase {
   switch (action.kind) {
@@ -1157,6 +1218,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     currentGrade: migratedGrade,
     completedGrades: migratedCompleted,
     hasSeenIntro: !!s.hasSeenIntro,
+    activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,
     // pendingRoll was added in v0.5.1; older state files don't have it, and
