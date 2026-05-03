@@ -990,27 +990,30 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         if (ev.type === "tool") toolsFired++;
         send(ev.type, ev);
       }
-      // Defensive fallback: a channel-enter directive's whole point is to put
-      // a question on the board. If the model greeted but didn't fire any
-      // tool, the player would land on an empty chalkboard and the only
+      // Defensive fallback: channel-enter and answer-graded both REQUIRE
+      // a fresh question on the board afterward (their directives say so
+      // explicitly). If the model narrates without firing pick_from_bank,
+      // the board sits stale and the player thinks the teacher posted
+      // but they didn't — they wait, the teacher seems silent, the only
       // recovery is the manual "Next question" button. Auto-pose so the
-      // room never sits silent on entry. No-op if pickAndPose throws (bank
-      // empty for filter, etc.) — better empty board with a recoverable
-      // error than crashing the SSE stream.
-      if (trigger === "channel-enter" && toolsFired === 0) {
+      // board state matches the model's narration. No-op if pickAndPose
+      // throws (bank empty for filter, etc.) — better empty board with
+      // a recoverable error than crashing the SSE stream.
+      const needsFreshQuestion = trigger === "channel-enter" || trigger === "answer-graded";
+      if (needsFreshQuestion && toolsFired === 0) {
         try {
           const sessionId = getSessionId(runtime, ctx.cookieHeader);
           const state = ruby.pickAndPose(sessionId, { faculty });
           send("tool", {
             tool: "pick_from_bank",
             args: { faculty },
-            result: { ok: true, message: "fallback: auto-posed first question (model greeted without tool)" },
+            result: { ok: true, message: `fallback: auto-posed next question (model narrated ${trigger} without tool)` },
             state,
           });
         } catch (err) {
           // Don't fail the whole turn — just log via SSE so the client knows.
-          log.error("chat.channel-enter-fallback", err, { faculty });
-          send("error", { type: "error", message: `channel-enter fallback skipped: ${err instanceof Error ? err.message : String(err)}` });
+          log.error("chat.tool-fallback", err, { faculty, trigger });
+          send("error", { type: "error", message: `${trigger} fallback skipped: ${err instanceof Error ? err.message : String(err)}` });
         }
       }
     } catch (err) {
