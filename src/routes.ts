@@ -21,6 +21,7 @@ import {
   type Difficulty,
   type FacultyMember,
   type Grade,
+  type NpcArcState,
   type NpcStudentState,
   type PlayerCharacter,
   type QuizState,
@@ -195,6 +196,31 @@ interface SessionTelemetry extends Record<string, unknown> {
     facultyId: string;
     dailyKey: string;
   };
+  /** Opaque-to-the-client snapshot of the durable QuizState bits — the
+   *  parts that survive a reload (character, grade, streak, asked-question
+   *  ledger, NPC rosters / cohort). The viewer persists this verbatim to
+   *  localStorage and POSTs it back to /session/<id>/hydrate when the
+   *  server has no character on boot (after a restart, or in a fresh
+   *  cookie). Transient round state (current question, activeRound,
+   *  lastReveal, score) is intentionally OUT — those are session-local. */
+  snapshot: ClientStateSnapshot;
+}
+
+/** Versioned to make schema evolution survivable: when we change shapes,
+ *  bump `v` and migrate or drop on hydrate. */
+export interface ClientStateSnapshot {
+  v: 1;
+  savedAt: number;
+  faculty: string;
+  subject: string | null;
+  hasSeenIntro: boolean;
+  currentGrade: Grade | null;
+  completedGrades: Grade[];
+  askedQuestionIds: string[];
+  character: PlayerCharacter | null;
+  npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
+  npcCohort: NpcArcState[];
+  mentorOffer: PlayerCharacter["inheritedFrom"] | null;
 }
 
 function getRuntime(value: unknown): IAgentRuntime | null {
@@ -311,6 +337,26 @@ function deriveActiveRound(state: QuizState) {
  *  RubyHighService.dailyStatus() — kept inline here so buildSessionState
  *  doesn't need a service handle. Both implementations use the same
  *  dailyKey / facultyForDay helpers, so they stay in lockstep. */
+/** Carve out the durable parts of the QuizState for the client to persist
+ *  in localStorage. Excludes round-local state (current question,
+ *  activeRound, lastReveal, score) — those reset on every reload. */
+function buildClientStateSnapshot(state: QuizState): ClientStateSnapshot {
+  return {
+    v: 1,
+    savedAt: Date.now(),
+    faculty: state.faculty,
+    subject: state.subject,
+    hasSeenIntro: state.hasSeenIntro,
+    currentGrade: state.currentGrade,
+    completedGrades: state.completedGrades,
+    askedQuestionIds: state.askedQuestionIds,
+    character: state.character,
+    npcRosters: state.npcRosters,
+    npcCohort: state.npcCohort ?? [],
+    mentorOffer: state.mentorOffer ?? null,
+  };
+}
+
 function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
   available: boolean;
   reason?: "completed" | "no-grade" | "no-character";
@@ -407,6 +453,7 @@ function buildSessionState(args: {
     daily: deriveDailyStatus(state),
     npc_cohort: state.npcCohort ?? [],
     mentor_offer: state.mentorOffer ?? null,
+    snapshot: buildClientStateSnapshot(state),
   };
 
   const summary = state.current
@@ -506,9 +553,10 @@ function parseSessionId(pathname: string): string | null {
   return m?.[1] ? decodeURIComponent(m[1]) : null;
 }
 
-function parseSessionSubroute(pathname: string): "command" | "control" | null {
+function parseSessionSubroute(pathname: string): "command" | "control" | "hydrate" | null {
   if (pathname.endsWith("/command")) return "command";
   if (pathname.endsWith("/control")) return "control";
+  if (pathname.endsWith("/hydrate")) return "hydrate";
   return null;
 }
 
@@ -628,6 +676,31 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       success: true,
       message: "Ruby High has no global pause/resume; the classroom keeps its state until cleared.",
       session: null,
+    });
+    return true;
+  }
+
+  // Hydrate a fresh server-side bucket from a client-provided snapshot.
+  // The client owns the persistence story (localStorage); the server just
+  // accepts what's pushed back to it after a restart or new cookie. We
+  // refuse to overwrite a bucket that already has a character — that
+  // protects in-progress play from being clobbered by a stale tab in
+  // another window. Returns the rebuilt session state so the client can
+  // skip the follow-up GET.
+  if (ctx.method === "POST" && subroute === "hydrate") {
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as
+      | { snapshot?: ClientStateSnapshot }
+      | null;
+    const snapshot = body?.snapshot;
+    if (!snapshot || snapshot.v !== 1) {
+      ctx.error(ctx.res, "Missing or unsupported snapshot.", 400);
+      return true;
+    }
+    const result = ruby.hydrateFromSnapshot(stateKey, snapshot);
+    ctx.json(ctx.res, {
+      ok: result.applied,
+      reason: result.applied ? null : result.reason,
+      session: buildSessionState({ runtime, state: result.state, faculty, cookieHeader: ctx.cookieHeader }),
     });
     return true;
   }

@@ -57,6 +57,34 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     return fetch(url, opts);
   }
 
+  // ── durable QuizState snapshot (client-owned) ────────────────────────────
+  // Server returns telemetry.snapshot — the slimmed durable bits of the
+  // session (character, grade, streak, completedGrades, askedQuestionIds,
+  // NPC rosters / cohort). We persist that opaque blob to localStorage on
+  // every successful response and POST it back to /session/<id>/hydrate
+  // when the server's bucket is empty (after restart, fresh cookie, etc.).
+  // Round-local state (current question, activeRound, lastReveal, score)
+  // intentionally is NOT persisted; the player picks back up "between
+  // rounds" rather than mid-question.
+  const STATE_KEY = "rh_quiz_state_v1";
+  function saveStateSnapshot(t) {
+    if (!t || !t.snapshot) return;
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(t.snapshot)); } catch (e) {}
+  }
+  function loadStateSnapshot() {
+    try {
+      const raw = localStorage.getItem(STATE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // Only honor snapshots we know how to deserialize.
+      if (!parsed || parsed.v !== 1 || !parsed.character) return null;
+      return parsed;
+    } catch (e) { return null; }
+  }
+  function clearStateSnapshot() {
+    try { localStorage.removeItem(STATE_KEY); } catch (e) {}
+  }
+
   // ── AI students ──────────────────────────────────────────────────────────
   const STUDENTS = [
     { id: "lyra",  name: "Lyra",   color: "#ff6f91" },
@@ -1013,6 +1041,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
     lastTelemetry = t;
+    // Persist the durable bits of state to localStorage on every successful
+    // render. Cheap (a single JSON write keyed by the same blob the server
+    // would build on the next GET) and means a server restart can be
+    // recovered from on the next page load via /session/<id>/hydrate.
+    saveStateSnapshot(t);
     applyViewMode(deriveViewMode(t));
 
     setAccent(t.facultyAccent);
@@ -1392,6 +1425,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           secondary: true,
           onClick: async () => {
             if (!confirm("Throw away " + c.name + " and roll a new student? Your XP and class progress will be reset too.")) return;
+            // Drop the local snapshot first — otherwise a hydrate could
+            // race the reset and bring the rolled character back from the
+            // dead.
+            clearStateSnapshot();
             await command({ type: "clear-character" });
             await command({ type: "reset" });
             sheetAutoShown = false;
@@ -1696,10 +1733,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
   }
   async function logout() {
-    // Clear the credential first so any in-flight refresh sees us as
-    // signed out, then ask the server to drop the cookie that bucketed
-    // our state.
+    // Clear the credential AND the cached character snapshot first so any
+    // in-flight refresh sees us as signed out and the next sign-in starts
+    // clean (no stranger's character bleeding through). Then ask the
+    // server to drop the cookie that bucketed our state.
     clearStoredAuth();
+    clearStateSnapshot();
     try {
       await fetch("/api/apps/ruby-high/auth/logout", { method: "POST", credentials: "same-origin" });
     } catch (e) { /* network failure is fine — local state is what matters */ }
@@ -1904,6 +1943,31 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     } catch { /* ignore */ }
   }
 
+  // Boot path: fetch the session, then if the server has no character but
+  // we have a snapshot in localStorage, ship the snapshot to /hydrate to
+  // rebuild the bucket and re-render. Covers server restart, fresh
+  // cookie, dev-server reset — anything that drops the in-memory bucket
+  // server-side without touching the player's browser.
+  async function bootSession() {
+    await fetchSession();
+    const t = lastTelemetry;
+    const serverHasCharacter = !!(t && t.character);
+    if (serverHasCharacter) return;
+    const snap = loadStateSnapshot();
+    if (!snap) return;
+    try {
+      const r = await fetch(sessionUrl + "/hydrate", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshot: snap }),
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data && data.session) render(data.session);
+    } catch { /* ignore — next command response will surface the issue */ }
+  }
+
   // ── rails toggling ────────────────────────────────────────────────────────
   function openRails() { els.shell.classList.add("is-rails-open"); }
   function closeRails() { els.shell.classList.remove("is-rails-open"); }
@@ -2016,7 +2080,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // default). The player progresses Freshman → Sophomore → Junior → Senior
   // → graduate as they pass per-grade Daily thresholds. There is no year
   // picker — they walk in, get started, and advance by playing.
-  fetchSession();
+  bootSession();
   // Auth is local — derive once on boot and again whenever the OAuth tab
   // writes the key (storage event fires in every other tab) or the user
   // returns to this tab from elsewhere (focus). No periodic polling: the
@@ -2024,6 +2088,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   deriveAuth();
   window.addEventListener("storage", (e) => {
     if (e.key === AUTH_KEY || e.key === null) deriveAuth();
+    if (e.key === STATE_KEY || e.key === null) {
+      // Cross-tab snapshot writes don't need rehydration here — the next
+      // command's response will be the freshest version regardless.
+    }
   });
   window.addEventListener("focus", deriveAuth);
   // Adaptive poll: tick every second during an active race so NPC picks

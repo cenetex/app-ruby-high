@@ -39,6 +39,7 @@ import {
   type OpinionGrade,
   type OpinionResponse,
   type Phase,
+  type PlayerCharacter,
   type Question,
   type QuestionType,
   type QuizState,
@@ -289,6 +290,67 @@ export class RubyHighService extends Service {
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
     return state;
+  }
+
+  /** Replace the durable parts of a session bucket from a client-supplied
+   *  snapshot. Refuses if the bucket already has a character (avoids
+   *  clobbering active play from a stale tab). Round-local state — current
+   *  question, activeRound, lastReveal, score — is intentionally NOT
+   *  hydrated; the player picks back up from "between rounds." */
+  hydrateFromSnapshot(
+    sessionId: string,
+    snapshot: {
+      faculty: string;
+      subject: string | null;
+      hasSeenIntro: boolean;
+      currentGrade: Grade | null;
+      completedGrades: Grade[];
+      askedQuestionIds: string[];
+      character: PlayerCharacter | null;
+      npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
+      npcCohort: NpcArcState[];
+      mentorOffer: PlayerCharacter["inheritedFrom"] | null;
+    },
+  ): { applied: boolean; reason: string | null; state: QuizState } {
+    const existing = this.sessions.get(sessionId);
+    if (existing && existing.character) {
+      // Don't blow away in-progress play. The client should only hydrate
+      // when its own check (no character on first GET) said the bucket
+      // was empty; this is the server-side guard.
+      this.tickRound(existing);
+      return { applied: false, reason: "bucket-already-populated", state: existing };
+    }
+    const bootFaculty = isPackLoaded() ? (activeFaculty()[0]?.id ?? RUBY_FACULTY.id) : RUBY_FACULTY.id;
+    const fresh: QuizState = {
+      sessionId,
+      faculty: snapshot.faculty || bootFaculty,
+      subject: snapshot.subject ?? null,
+      current: null,
+      history: [],
+      score: { correct: 0, total: 0 },
+      lastReveal: null,
+      status: statusForPhase("in-room"),
+      askedQuestionIds: Array.isArray(snapshot.askedQuestionIds) ? [...snapshot.askedQuestionIds] : [],
+      currentGrade: snapshot.currentGrade ?? DEFAULT_GRADE,
+      completedGrades: Array.isArray(snapshot.completedGrades) ? [...snapshot.completedGrades] : [],
+      hasSeenIntro: snapshot.hasSeenIntro !== false,
+      character: snapshot.character ?? null,
+      npcRosters: snapshot.npcRosters && typeof snapshot.npcRosters === "object" ? { ...snapshot.npcRosters } : {},
+      npcCohort: Array.isArray(snapshot.npcCohort) ? [...snapshot.npcCohort] : undefined,
+      mentorOffer: snapshot.mentorOffer ?? null,
+      activeRound: null,
+      pendingRoll: null,
+      phase: "in-room",
+      phaseToken: 0,
+      updatedAt: Date.now(),
+    };
+    // Make sure the rebuilt session has the roster scaffolding for its
+    // current grade — protects against an older snapshot that predates
+    // the npcRosters field.
+    this.ensureRoster(fresh, fresh.currentGrade ?? DEFAULT_GRADE);
+    this.sessions.set(sessionId, fresh);
+    void this.persistSession(sessionId);
+    return { applied: true, reason: null, state: fresh };
   }
 
   // ── phase transitions ────────────────────────────────────────────────────
