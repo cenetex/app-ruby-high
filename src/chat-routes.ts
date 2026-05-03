@@ -5,7 +5,7 @@ import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseTeacherGrades } from "./grading.js";
-import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
+import { GRADE_LABELS, ROOMS, type CharacterStats, type Grade } from "./types.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
@@ -428,16 +428,31 @@ async function generateStudentLine(args: {
   situation: string;
   note?: string;
   faculty?: string;
+  /** Player display name. Lets the NPC address them by name when natural
+   *  ("nice one Rayan") instead of saying "the player." */
+  playerName?: string;
+  /** Other AI students in the room. Used so each NPC chime knows who else
+   *  is in the group chat — avoids "wait who's everyone else" hallucinations
+   *  and lets NPCs riff on each other by name. */
+  classmateNames?: string[];
 }): Promise<string> {
   const facultyContext = args.faculty
     ? `The current class is taught by ${args.faculty.replace("-", " ")}.`
+    : "";
+  const playerContext = args.playerName
+    ? `The player in the room with you is ${args.playerName}.`
+    : "";
+  const classmatesContext = args.classmateNames && args.classmateNames.length
+    ? `Other classmates also here: ${args.classmateNames.join(", ")}.`
     : "";
   const noteContext = args.note ? `Context: ${args.note}` : "";
   const userPrompt = [
     `Situation: ${args.situation}.`,
     facultyContext,
+    playerContext,
+    classmatesContext,
     noteContext,
-    "React in one short line — like a text in a group chat. Lowercase, 12 words max. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
+    "React in one short line — like a text in a group chat. Lowercase, 12 words max. Address whoever just acted by name when natural. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
   ].filter(Boolean).join("\n");
 
   const r = await fetch(OPENROUTER_URL, {
@@ -804,12 +819,32 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       directive = `EVENT: The student just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}. Greet them in ONE short sentence, then call pick_from_bank to put the first question on the board. Pick something fitting their year directly — your call, not theirs.`;
     } else if (trigger === "answer-graded") {
       const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
-      if (c?.picked && c?.correct) {
+      // Pull the just-resolved round so we can name WHO got what — the
+      // teacher is in a group chat, not 1:1, and should react to whoever
+      // did something noteworthy. Without this the model defaults to
+      // talking about "the student" as if there's one.
+      const sessionId = getSessionId(runtime, ctx.cookieHeader);
+      const state = ruby.getOrCreate(sessionId);
+      const playerName = state.character?.name ?? "the player";
+      const round = state.activeRound;
+      const correctAns = c?.correct ?? state.current?.correct ?? "?";
+      const lines: string[] = [];
+      lines.push(`EVENT: A round just resolved. You're mid-class — NEVER greet again, NEVER quote or describe this system note in your reply.`);
+      lines.push(`Correct answer: ${correctAns}.`);
+      if (c?.picked) {
         const verdict = c.wasCorrect ? "GOT IT RIGHT" : "MISSED IT";
-        directive = `EVENT: You're mid-class — DO NOT greet the student again, you've already started. They picked ${c.picked}; correct answer was ${c.correct}; they ${verdict}. React to THIS answer in ONE short sentence (celebrate or console, in your voice — never another hello), then call pick_from_bank to put the next question on the board.`;
-      } else {
-        directive = "EVENT: You're mid-class — DO NOT greet the student again. They just answered the previous question. React in ONE short sentence, then call pick_from_bank for the next question.";
+        lines.push(`${playerName} (the player) picked ${c.picked} — ${verdict}.`);
       }
+      if (round && Array.isArray(round.npcs)) {
+        for (const n of round.npcs) {
+          const nm = STUDENTS[n.studentId]?.name ?? n.studentId;
+          const pick = n.plannedPick ?? "?";
+          const ok = pick === correctAns ? "right" : "wrong";
+          lines.push(`${nm} picked ${pick} — ${ok}.`);
+        }
+      }
+      lines.push(`React in ONE short sentence — name whoever did something interesting (a hit, a miss, a fast lock). Speak to the room, not to "the student." Then call pick_from_bank to put the next question on the board.`);
+      directive = lines.join("\n");
     } else if (trigger === "manual") {
       directive = "EVENT: The student is asking you to take a turn. Either follow up on the last exchange or call pick_from_bank to put a fresh question on the board.";
     }
@@ -884,6 +919,22 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const situation = String(body?.situation ?? "ambient classroom moment");
+    // Plumb group-chat context into the chime: who the player is, who else
+    // is seated nearby. Keeps NPCs grounded in the room instead of riffing
+    // on a faceless "user" — and lets them address each other by name.
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const state = ruby.getOrCreate(sessionId);
+    const playerName = state.character?.name;
+    let classmateNames: string[] = [];
+    if (state.currentGrade && state.faculty) {
+      const r = state.npcRosters[state.currentGrade] ?? [];
+      const room = ROOMS.find((x) => x.teacherId === state.faculty);
+      if (room && room.teaches) {
+        classmateNames = r
+          .filter((n) => n.currentRoom === room.id && n.id !== student.id)
+          .map((n) => STUDENTS[n.id]?.name ?? n.id);
+      }
+    }
     try {
       const line = await generateStudentLine({
         apiKey: record.apiKey,
@@ -891,6 +942,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         situation,
         note: body?.note,
         faculty: body?.faculty,
+        playerName,
+        classmateNames,
       });
       ctx.json(ctx.res, {
         ok: true,

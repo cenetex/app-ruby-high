@@ -2,7 +2,7 @@ import { Service, type IAgentRuntime } from "@elizaos/core";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { STUDENTS, type StudentCharacter } from "../characters/students.js";
 import type { Choice, Difficulty, NpcStudentState, QuizState } from "../types.js";
-import { GRADE_LABELS } from "../types.js";
+import { GRADE_LABELS, npcsInRoom, roomForFaculty, type TeachingRoomId } from "../types.js";
 import { RubyHighService } from "./ruby-high-service.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
@@ -250,21 +250,12 @@ export class ChatService extends Service {
     const { teacher, history, agentSessionId, extraSystemContext, disableTools } = args;
     const messages: unknown[] = [{ role: "system", content: teacher.systemPrompt }];
     const state = this.ruby!.getOrCreate(agentSessionId);
-    // Always include who the student is — teachers should know the player's
-    // generated character so they can address them as a real student.
-    if (state.character) {
-      const c = state.character;
-      const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
-      messages.push({
-        role: "system",
-        content: [
-          `You are talking to your student ${c.name}.`,
-          `Personality: ${c.personality}`,
-          `Stats: HEAD ${fmt(c.stats.head)}, HEART ${fmt(c.stats.heart)}, HUSTLE ${fmt(c.stats.hustle)}, HONOR ${fmt(c.stats.honor)}.`,
-          c.arcAnswer ? `Their ongoing personal arc — they answered "${c.arcAnswer}" to your hook question.` : "",
-          `Address them as ${c.name.split(" ")[0] ?? c.name} when natural. They're a real student, not a faceless user.`,
-        ].filter(Boolean).join("\n"),
-      });
+    // Group-chat framing: teachers run a class, not a 1:1 tutor session.
+    // Tell them who's in the room — the player + the seated NPCs — so they
+    // can address whoever just acted by name without inventing students.
+    const groupBlock = describeRoomForTeacher(state);
+    if (groupBlock) {
+      messages.push({ role: "system", content: groupBlock });
     }
     if (!disableTools) {
       const ctx = describeBoardForModel(state);
@@ -512,6 +503,57 @@ function shortVibe(id: string): string {
     case "noor": return "deadpan one-liner master";
     default: return "classmate";
   }
+}
+
+// One-line voice/vibe per NPC, used to give teachers + classmates a hint
+// of who else is in the room without dumping each character's full system
+// prompt into every turn.
+const STUDENT_VIBES: Record<string, string> = {
+  lyra:  "anxious overachiever",
+  sami:  "dry, sarcastic, deeply chill",
+  ravi:  "loud, enthusiastic, drops obscure facts",
+  indra: "quiet, observant, drops one perfect line",
+  mika:  "supportive himbo energy, hypes the room",
+  noor:  "deadpan, master of the one-liner",
+};
+
+function npcRoomDescriptor(npc: NpcStudentState): string {
+  const s = STUDENTS[npc.id];
+  const name = s?.name ?? npc.id;
+  const vibe = STUDENT_VIBES[npc.id];
+  return vibe ? `${name} (${vibe})` : name;
+}
+
+/** Group-chat framing for the teacher: who's in the room. The player and
+ *  the seated NPCs (the classmates whose dice rolled alongside the player
+ *  on the last question) get named. Tells the teacher: "you're running a
+ *  class, not tutoring." Without this the model defaults to 1:1 framing
+ *  and either ignores the NPCs or invents new ones. */
+function describeRoomForTeacher(state: QuizState): string {
+  if (!state.character) return "";
+  const c = state.character;
+  const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
+  const lines: string[] = [];
+  lines.push(`You are running a class — group chat, not 1:1 tutoring.`);
+  // Classmate roster (the seated NPCs in the active classroom).
+  const room = roomForFaculty(state.faculty);
+  if (room && room.teaches && state.currentGrade) {
+    const roster = state.npcRosters[state.currentGrade] ?? [];
+    const inRoom = npcsInRoom(roster, room.id as TeachingRoomId);
+    if (inRoom.length) {
+      lines.push(`Other students in the room with you right now:`);
+      for (const npc of inRoom) lines.push(`  - ${npcRoomDescriptor(npc)}`);
+    }
+  }
+  // The player is just one of the students — but the one whose roll the
+  // teacher's reactions hinge on. Name them, give a brief sketch, and
+  // make explicit that they're a person, not a "user."
+  lines.push(`The PLAYER in this room is ${c.name}.`);
+  lines.push(`  Personality: ${c.personality}`);
+  lines.push(`  Stats: HEAD ${fmt(c.stats.head)}, HEART ${fmt(c.stats.heart)}, HUSTLE ${fmt(c.stats.hustle)}, HONOR ${fmt(c.stats.honor)}.`);
+  if (c.arcAnswer) lines.push(`  Their arc answer: "${c.arcAnswer}".`);
+  lines.push(`Address whoever just acted by name. ${c.name.split(" ")[0] ?? c.name} is the player; the others are AI classmates but treat them as real students in the room.`);
+  return lines.join("\n");
 }
 
 function describeBoardForModel(state: QuizState): string {
