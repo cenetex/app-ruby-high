@@ -436,6 +436,10 @@ async function generateStudentLine(args: {
    *  is in the group chat — avoids "wait who's everyone else" hallucinations
    *  and lets NPCs riff on each other by name. */
   classmateNames?: string[];
+  /** The teacher's most recent spoken line. Without this NPCs would react
+   *  to a faceless event instead of the words on screen — "can't see what
+   *  edward said so i got nothing" was a real complaint. */
+  teacherSaid?: string;
 }): Promise<string> {
   const facultyContext = args.faculty
     ? `The current class is taught by ${args.faculty.replace("-", " ")}.`
@@ -446,12 +450,16 @@ async function generateStudentLine(args: {
   const classmatesContext = args.classmateNames && args.classmateNames.length
     ? `Other classmates also here: ${args.classmateNames.join(", ")}.`
     : "";
+  const teacherSaidContext = args.teacherSaid && args.teacherSaid.trim()
+    ? `The teacher just said: "${args.teacherSaid.trim()}"`
+    : "";
   const noteContext = args.note ? `Context: ${args.note}` : "";
   const userPrompt = [
     `Situation: ${args.situation}.`,
     facultyContext,
     playerContext,
     classmatesContext,
+    teacherSaidContext,
     noteContext,
     "React in one short line — like a text in a group chat. Lowercase, 12 words max. Address whoever just acted by name when natural. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
   ].filter(Boolean).join("\n");
@@ -936,6 +944,21 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           .map((n) => STUDENTS[n.id]?.name ?? n.id);
       }
     }
+    // Pull the teacher's most recent spoken line so the NPC reacts to actual
+    // words on screen, not a faceless event tag. Without this an NPC will
+    // openly admit it can't see the conversation ("can't see what edward
+    // actually said to iris so i got nothing rn lol").
+    let teacherSaid: string | undefined;
+    if (body?.faculty) {
+      const history = chat.history({ sessionToken: token, faculty: body.faculty });
+      for (let i = history.length - 1; i >= 0; i--) {
+        const m = history[i];
+        if (m.role === "assistant" && m.content && m.content.trim()) {
+          teacherSaid = m.content.trim();
+          break;
+        }
+      }
+    }
     try {
       const line = await generateStudentLine({
         apiKey: record.apiKey,
@@ -945,6 +968,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         faculty: body?.faculty,
         playerName,
         classmateNames,
+        teacherSaid,
       });
       ctx.json(ctx.res, {
         ok: true,
