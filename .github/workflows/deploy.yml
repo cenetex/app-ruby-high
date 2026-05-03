@@ -9,6 +9,15 @@ permissions:
   id-token: write
   contents: read
 
+# Serialize deploys per branch. App Runner only allows one in-flight
+# UpdateService call per service; back-to-back merges otherwise race and
+# the second one fails with InvalidStateException ("OPERATION_IN_PROGRESS").
+# cancel-in-progress: false is deliberate — we want the queued run to wait
+# its turn, not pre-empt a half-completed App Runner update.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-1
   ECR_REPO: 022118847419.dkr.ecr.us-east-1.amazonaws.com/ruby-high
