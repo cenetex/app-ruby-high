@@ -457,6 +457,11 @@ async function generateStudentLine(args: {
    *  to a faceless event instead of the words on screen — "can't see what
    *  edward said so i got nothing" was a real complaint. */
   teacherSaid?: string;
+  /** What the player just typed in chat. Required for the "mention"
+   *  situation — without it the model produces a generic acknowledgement
+   *  ("yo", "fr") instead of an actual reply. Quoted into the prompt
+   *  verbatim so the student can react to the words on screen. */
+  playerText?: string;
 }): Promise<string> {
   const facultyContext = args.faculty
     ? `The current class is taught by ${args.faculty.replace("-", " ")}.`
@@ -470,6 +475,13 @@ async function generateStudentLine(args: {
   const teacherSaidContext = args.teacherSaid && args.teacherSaid.trim()
     ? `The teacher just said: "${args.teacherSaid.trim()}"`
     : "";
+  // Quote the player's actual message when present. Sanitize the
+  // closing quote so a player message containing " can't break out
+  // of the surrounding quotation. Also cap length so a megapaste
+  // doesn't blow the prompt budget.
+  const playerSaidContext = args.playerText
+    ? `The player just said to you: "${args.playerText.replace(/"/g, "'").slice(0, 400)}"`
+    : "";
   const noteContext = args.note ? `Context: ${args.note}` : "";
   const userPrompt = [
     `Situation: ${args.situation}.`,
@@ -477,6 +489,7 @@ async function generateStudentLine(args: {
     playerContext,
     classmatesContext,
     teacherSaidContext,
+    playerSaidContext,
     noteContext,
     "React in one short line — like a text in a group chat. Lowercase, 12 words max. Address whoever just acted by name when natural. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
   ].filter(Boolean).join("\n");
@@ -1030,9 +1043,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // a recoverable error than crashing the SSE stream.
       const needsFreshQuestion = trigger === "channel-enter" || trigger === "answer-graded";
       if (needsFreshQuestion && toolsFired === 0) {
+        const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         try {
-          const sessionId = getSessionId(runtime, ctx.cookieHeader);
-          const state = ruby.pickAndPose(sessionId, { faculty });
+          const state = ruby.pickAndPose(agentSessionId, { faculty });
           send("tool", {
             tool: "pick_from_bank",
             args: { faculty },
@@ -1040,9 +1053,27 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             state,
           });
         } catch (err) {
-          // Don't fail the whole turn — just log via SSE so the client knows.
-          log.error("chat.tool-fallback", err, { faculty, trigger });
-          send("error", { type: "error", message: `${trigger} fallback skipped: ${err instanceof Error ? err.message : String(err)}` });
+          // pickAndPose failed — most often "bank exhausted for this
+          // filter." That is NOT a user-facing error: it's a chat-state
+          // condition the model is well-equipped to handle. Log it as a
+          // room event and run a second agent turn whose directive
+          // explains the situation. The model can pose_question (custom)
+          // or just pivot the conversation — either way the player sees
+          // a teacher response, not a red error line.
+          log.event("chat.bank-exhausted", { faculty, trigger, reason: err instanceof Error ? err.message : String(err) });
+          chat.appendEvent(
+            { sessionToken: token, faculty },
+            { kind: "note", text: `The bank is dry for this filter (${err instanceof Error ? err.message : "unknown"}). No fresh banked question available.` },
+          );
+          for await (const ev of chat.send({
+            apiKey,
+            sessionToken: token,
+            agentSessionId,
+            faculty,
+            systemEventNote: "The question bank is exhausted for the obvious filters. Either call pose_question to write a custom one in your subject, or just chat with the room and let the player decide what's next. Do NOT mention 'the bank' or 'the filter' — keep it in-character.",
+          })) {
+            send(ev.type, ev);
+          }
         }
       }
     } catch (err) {
@@ -1071,7 +1102,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
-      | { studentId?: string; situation?: string; note?: string; faculty?: string }
+      | { studentId?: string; situation?: string; note?: string; faculty?: string; playerText?: string }
       | null;
     const student = STUDENTS[String(body?.studentId ?? "")];
     if (!student) {
@@ -1120,6 +1151,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         playerName,
         classmateNames,
         teacherSaid,
+        playerText: body?.playerText?.trim() || undefined,
       });
       // Stamp the chime into the active teacher's room awareness so the
       // next teacher turn's RECENT EVENTS synopsis includes it. Without
