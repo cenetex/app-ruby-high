@@ -310,29 +310,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
   }
   function showBlackboardLoaded(isOpinion) {
-    // Opinion mode: keep the chalkboard prompt visible but hide the A/B/C/D
-    // grid. Player and AI students all answer in chat — the teacher reads
-    // them and grades from there.
+    // Visibility of the blackboard pieces (panel, answers host, footer) is
+    // governed by applyViewMode via data-mode CSS rules. This function
+    // just paints the live state: clear the empty placeholder, mark
+    // opinion mode so the answers grid hides for opinion rounds, and
+    // populate meta/board contents.
     els.blackboardPanel.classList.remove("is-empty");
     els.blackboardEmpty.hidden = true;
     els.blackboardMeta.hidden = false;
     els.boardFrameHost.hidden = false;
-    // After a wrong answer on the CURRENT question, hide the A/B/C/D grid
-    // so the teacher's reaction + explanation in the chat stream gets the
-    // mobile vertical space. The verdict line on the board itself still
-    // tells the player they were wrong; the colored outlines are just a
-    // celebration accent we can afford to drop on a miss. Re-shows
-    // automatically when the next question lands (lastReveal.questionId
-    // diverges from current.id).
-    const reveal = lastTelemetry?.lastReveal;
-    const wrongOnCurrent = !!(reveal
-      && !reveal.wasCorrect
-      && lastTelemetry?.current
-      && reveal.questionId === lastTelemetry.current.id);
-    els.answersHost.hidden = !!isOpinion || wrongOnCurrent;
-    // Footer (Question N + difficulty filter + Next btn) only when signed
-    // in. Pre-auth users can't act on it.
-    els.blackboardFoot.hidden = !authed;
+    els.blackboardPanel.dataset.opinion = String(!!isOpinion);
   }
 
   // ── top-bar arc indicator (live progress through the 4-year arc) ────────
@@ -373,22 +360,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
   function renderRaceStrip(t) {
     const round = t.active_round;
-    // Hard gate: race strip ONLY when authed + active round + matching live
-    // question + unresolved + still-counting. A stale round whose questionId
-    // no longer matches the board's question (faculty switched, next question
-    // posed, etc.) gets hidden — otherwise its frozen "22s" pill sits
-    // forever while everything else has moved on.
-    const liveRound = round
-      && t.current
-      && round.questionId === t.current.id
-      && !round.resolved
-      && (round.remainingMs ?? 0) > 0;
-    if (!authed || !liveRound) {
-      els.raceStrip.hidden = true;
+    // Visibility is owned by applyViewMode/CSS via data-mode. We bail
+    // here only when there's NO content to paint — applyViewMode has
+    // already hidden the strip if mode != round-live.
+    if (!round || !t.current || round.questionId !== t.current.id) {
       els.raceRow.innerHTML = "";
       return;
     }
-    els.raceStrip.hidden = false;
     // Timer label (uses server-derived remainingMs as the source of truth).
     const remainingS = Math.max(0, Math.ceil(round.remainingMs / 1000));
     els.timerLabel.textContent = round.resolved
@@ -921,16 +899,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   let rollingAdvantage = false;
   function renderAdvantageBar(t) {
     const round = t && t.active_round;
-    const isMcLive = !!(authed && t && t.current && round && !round.resolved
-      && round.type === "multiple-choice" && !t.is_opinion && t.character);
-    if (!isMcLive) {
-      els.advantageBar.hidden = true;
-      els.advantageResult.hidden = true;
-      // Make sure no stale eliminated styling lingers from the previous round.
+    // Visibility (the bar itself) is owned by applyViewMode/CSS via
+    // data-mode. We only paint contents when there's a live round to
+    // describe; otherwise clear stale eliminated-button styling so it
+    // doesn't survive into the next round.
+    if (!round || !t || !t.current) {
       els.answers.forEach((btn) => btn.classList.remove("is-eliminated"));
       return;
     }
-    els.advantageBar.hidden = false;
     const adv = round.advantage;
     const playerLocked = round.player.isLocked;
     if (adv && adv.rolled) {
@@ -991,21 +967,22 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     return "between-rounds";
   }
   function applyViewMode(mode) {
+    // The single authority for "what should be visible right now". Sets
+    // a data-mode attribute on the blackboard panel + on the shell, and
+    // CSS hides per mode (see the .blackboard-panel[data-mode=...] rules).
+    // Sub-renderers below (renderRaceStrip, renderAdvantageBar) only paint
+    // CONTENT — they no longer fight over visibility.
+    els.blackboardPanel.dataset.mode = mode;
+    els.shell.dataset.mode = mode;
     // Composer: only enabled when the player is in a state that can chat.
     const canChat = authed && (mode === "between-rounds" || mode === "round-live" || mode === "round-revealed" || mode === "in-lounge");
     els.signinCta.hidden = mode !== "needs-auth";
     els.chatForm.hidden = !canChat;
     if (canChat) { els.chatInput.disabled = false; els.chatSend.disabled = false; }
-    // Race strip: only during a live round.
-    if (mode !== "round-live") {
-      els.raceStrip.hidden = true;
-      if (els.raceRow) els.raceRow.innerHTML = "";
-    }
-    // Blackboard footer (Question N + difficulty filter + Next): only when
-    // the player can actually act on it.
-    const showBoardFoot = mode === "round-live" || mode === "round-revealed";
-    if (els.blackboardFoot) els.blackboardFoot.hidden = !showBoardFoot;
-    if (els.difficultyFilter) els.difficultyFilter.hidden = !authed;
+    // Race strip + answers + advantage + footer-filter all hide via CSS now.
+    // We still null out the race-row contents on mode exit so the next
+    // round-live paint doesn't double-render stale cards.
+    if (mode !== "round-live" && els.raceRow) els.raceRow.innerHTML = "";
   }
 
   function render(s) {

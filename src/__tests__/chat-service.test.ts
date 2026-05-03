@@ -100,6 +100,40 @@ describe("ChatService.send — message composition", () => {
     expect(messages[0].content.length).toBeGreaterThan(20);
   });
 
+  it("frames the teacher as running a group chat — names player + classmates", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    // Attach a character so the group-chat block has a player to name.
+    ruby["sessions"] // force-init by getOrCreate
+      ;
+    const state = ruby.getOrCreate("session:1");
+    state.character = {
+      name: "Rayan", playbookId: "overachiever",
+      stats: { head: 1, heart: 0, hustle: 0, honor: 0 },
+      arcAnswer: "—", personality: "—", xp: 0, strings: {},
+      conditions: [], yearbook: [], createdAt: Date.now(),
+    };
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      systemEventNote: "EVENT: A round just resolved.",
+    })) { /* consume */ }
+    const messages: any[] = captured!.body.messages;
+    const systemBlob = messages
+      .filter((m: any) => m.role === "system")
+      .map((m: any) => String(m.content))
+      .join("\n");
+    // Group framing — NOT 1:1 tutoring.
+    expect(systemBlob).toMatch(/group chat|class/i);
+    // Player named explicitly.
+    expect(systemBlob).toContain("Rayan");
+    // Classmates from the seating chart land in the prompt (Ruby's room is
+    // homeroom; the layout puts Lyra + Mika there at Freshman year).
+    expect(systemBlob).toMatch(/Lyra|Mika/);
+  });
+
   it("threads systemEventNote into history as a system message", async () => {
     mockOpenRouter(buildSseChunk([{ content: "got it", finish: "stop" }]));
     const { chat } = await makeServices();
