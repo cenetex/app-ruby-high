@@ -7,18 +7,41 @@ import type { AnkiDeck } from "../content/anki/parse.js";
 // the rest of the system reads.
 
 let calls = 0;
+let personaCalls = 0;
+
+const STUB_PERSONA = {
+  className: "Cell Biology",
+  teacherName: "Dr. Penha",
+  teacherTitle: "Dr.",
+  bio: "A cell biologist who hates rote memorization and rewards mechanism explanations.",
+  signature: "name a cell, and I'll name three things wrong with it",
+  systemPrompt: "You are Dr. Penha, a cell biology teacher running a small classroom drilling this material. You reward mechanism explanations and hate rote memorization. Tools: pick_from_bank, clear_board. Keep replies tight (1-2 sentences).",
+};
 
 function mockOpenRouter(distractors: string[]) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    // Distinguish the persona call from the distractor calls. The
+    // persona prompt has a system message identifying itself; everything
+    // else is a distractor request. Count distractors separately so
+    // tests that assert "10 cards = 10 calls" stay meaningful.
+    const body = init && typeof init.body === "string" ? init.body : "";
+    const isPersona = body.includes("teacher personas");
+    if (isPersona) {
+      personaCalls += 1;
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: JSON.stringify(STUB_PERSONA) } }] }),
+        { status: 200 },
+      );
+    }
     calls += 1;
-    const body = JSON.stringify({
-      choices: [{ message: { content: JSON.stringify(distractors) } }],
-    });
-    return new Response(body, { status: 200 });
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: JSON.stringify(distractors) } }] }),
+      { status: 200 },
+    );
   });
 }
 
-beforeEach(() => { calls = 0; });
+beforeEach(() => { calls = 0; personaCalls = 0; });
 afterEach(() => { vi.restoreAllMocks(); });
 
 const sampleDeck: AnkiDeck = {

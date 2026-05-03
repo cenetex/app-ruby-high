@@ -11,7 +11,9 @@
 
 import type { ContentPack, PackFaculty, PackRoom } from "../types.js";
 import { generateBankFromCards, type DistractorOpts } from "./distractors.js";
-import type { AnkiDeck } from "./parse.js";
+import type { AnkiDeck, AnkiCard } from "./parse.js";
+import { generateAnkiPersona, type PersonaResult } from "./persona.js";
+import { log } from "../../services/logger.js";
 
 export interface BuildAnkiPackOpts {
   apiKey: string;
@@ -52,46 +54,96 @@ export async function buildAnkiPack(
   const suffix = opts.idSuffix ?? defaultIdSuffix();
   const baseSlug = slug(opts.packId ?? deck.name);
   const facultyId = `${baseSlug}-${suffix}`;
-  const subject = slug(deck.name) || "anki";
   const accent = opts.accent ?? hashedAccent(deck.name);
+
+  // Thematic persona: name the class + the teacher off a sample of
+  // the deck. One LLM call, runs in parallel with the distractor
+  // generation below so we don't pay the latency twice. When the
+  // caller has overridden the displayName explicitly, we still call
+  // the persona path for the in-voice systemPrompt + signature, but
+  // the override wins for the visible name.
+  const personaPromise = opts.facultyName
+    ? Promise.resolve(null as PersonaResult | null)
+    : generateAnkiPersona({ apiKey: opts.apiKey, deckName: deck.name, sampleCards: pickSampleCards(cards) })
+        .catch((err) => {
+          log.error("anki.persona-failed", err, { deckName: deck.name });
+          return null as PersonaResult | null;
+        });
+
   const distractorOpts: DistractorOpts = {
     apiKey: opts.apiKey,
     facultyId,
-    subject,
+    // Subject pill on the chalkboard. We patch this with the persona's
+    // className once it's resolved (below) so the pill reads thematic
+    // ("Vertebrate Anatomy") instead of slug-flat ("animal-physiology").
+    subject: slug(deck.name) || "anki",
     difficulty: "medium",
     concurrency: opts.concurrency,
     onProgress: opts.onProgress,
   };
-  const { questions, skipped } = await generateBankFromCards(cards, distractorOpts);
+  const [persona, { questions, skipped }] = await Promise.all([
+    personaPromise,
+    generateBankFromCards(cards, distractorOpts),
+  ]);
+
+  const className = persona?.className || opts.facultyName || deck.name;
+  const teacherDisplay = persona
+    ? (persona.teacherTitle ? `${persona.teacherTitle} ${persona.teacherName}` : persona.teacherName)
+    : (opts.facultyName ?? deck.name);
+  const subjectPill = slug(persona?.className || deck.name) || "anki";
+
+  // Re-stamp questions' subject field with the persona-driven class
+  // name slug so the chalkboard pill reads thematic.
+  if (persona) {
+    for (const q of questions) q.subject = subjectPill;
+  }
 
   const faculty: PackFaculty = {
     id: facultyId,
-    displayName: opts.facultyName ?? deck.name,
-    shortName: shortenName(opts.facultyName ?? deck.name),
-    subjects: [subject],
-    bio: `Anki-imported deck: ${deck.name}.`,
+    displayName: teacherDisplay,
+    shortName: shortenName(teacherDisplay),
+    subjects: [subjectPill],
+    bio: persona?.bio || `Anki-imported deck: ${deck.name}.`,
     accent,
-    systemPrompt: anchoredTeacherPrompt(deck.name),
+    systemPrompt: persona?.systemPrompt || anchoredTeacherPrompt(deck.name),
     defaultModel: "anthropic/claude-haiku-4.5",
     questions,
   };
   const room: PackRoom = {
     id: `${facultyId}-room`,
-    name: faculty.displayName,
-    channelName: baseSlug,
+    name: className,
+    channelName: slug(className) || baseSlug,
     teacherId: facultyId,
-    description: `Anki: ${deck.name}.`,
+    description: persona?.signature ? `“${persona.signature}”` : `Anki: ${deck.name}.`,
     teaches: true,
   };
   const pack: ContentPack = {
     id: opts.packId ?? `anki:${facultyId}`,
-    name: opts.packName ?? deck.name,
-    description: `Imported from Anki: ${deck.name}. ${questions.length} questions.`,
+    name: opts.packName ?? className,
+    description: persona
+      ? `${className} with ${teacherDisplay} — ${questions.length} questions imported from "${deck.name}".`
+      : `Imported from Anki: ${deck.name}. ${questions.length} questions.`,
     version: "1.0.0",
     faculty: [faculty],
     rooms: [room],
   };
   return { pack, skipped };
+}
+
+/** Pick a representative slice of the deck for the persona LLM. The
+ *  goal is "give the model a feel for the material" — so we sample
+ *  evenly across the deck rather than taking the first N (Anki decks
+ *  often start with table-of-contents-style cards that don't represent
+ *  the body). */
+function pickSampleCards(cards: AnkiCard[]): AnkiCard[] {
+  if (cards.length <= 6) return cards.slice();
+  const out: AnkiCard[] = [];
+  const stride = cards.length / 6;
+  for (let i = 0; i < 6; i++) {
+    const idx = Math.min(cards.length - 1, Math.floor(i * stride));
+    out.push(cards[idx]!);
+  }
+  return out;
 }
 
 function slug(s: string): string {
