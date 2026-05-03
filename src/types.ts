@@ -44,6 +44,15 @@ export const DEFAULT_GRADE: Grade = "9";
  *
  *  The streak resets on a miss. Combined with a cumulative XP threshold,
  *  these are the two gates a player must clear to advance years. */
+/** Per-grade cap on "Roll for advantage" usage. The player gets this many
+ *  rolls in EACH grade (Freshman, Sophomore, Junior, Senior). Once spent
+ *  for a grade, the advantage button is disabled until they advance. The
+ *  per-grade reset happens implicitly because the counter is keyed by
+ *  grade — entering a new grade reads 0 from the new key.
+ *  Tuned at 3 to keep rolls scarce enough to feel meaningful while not
+ *  hard-walling the player out of help on their first few questions. */
+export const ADVANTAGE_ROLLS_PER_GRADE = 3;
+
 export function requiredStreakForGrade(grade: Grade): number {
   const idx = GRADES.indexOf(grade);
   if (idx === -1) return 1;
@@ -439,6 +448,12 @@ export interface PlayerCharacter {
    *  subjectXp — that's pure pass count, no notion of attempts. Optional
    *  for legacy characters; defaulted to {} on hydrate. */
   subjectScores?: Record<string, { correct: number; total: number }>;
+  /** Per-grade "Roll for advantage" usage. Keyed by grade. Each grade
+   *  allows ADVANTAGE_ROLLS_PER_GRADE rolls; once spent, rollAdvantage
+   *  returns null with reason="exhausted" and the UI greys the button.
+   *  Partial<> because not every grade has a key — only ones the player
+   *  has rolled in. Defaulted to {} on hydrate. */
+  advantageRollsUsed?: Partial<Record<Grade, number>>;
   /** Per-faculty XP pool. Each Daily PASS increments the pool of the
    *  faculty whose room the question was posed in. Year advancement
    *  requires `requiredSubjectXpForGrade(grade)` in EACH teaching

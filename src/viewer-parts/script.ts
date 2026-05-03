@@ -1038,8 +1038,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         if (elim) btn.disabled = true;
       });
     } else {
-      els.advantageBtn.disabled = playerLocked || rollingAdvantage;
-      els.advantageBtn.textContent = "🎲 Roll for advantage";
+      // Per-grade cap: when remaining=0, button reads "out of rolls" and
+      // is disabled. Otherwise label includes the remaining count so the
+      // player can budget across the rest of the grade.
+      const budget = (t && t.advantage_rolls) || { remaining: 3, cap: 3 };
+      const exhausted = budget.remaining <= 0;
+      els.advantageBtn.disabled = playerLocked || rollingAdvantage || exhausted;
+      els.advantageBtn.textContent = exhausted
+        ? "🎲 Out of rolls this grade"
+        : "🎲 Roll for advantage (" + budget.remaining + "/" + budget.cap + " left)";
       els.advantageResult.hidden = true;
       els.answers.forEach((btn) => btn.classList.remove("is-eliminated"));
     }
@@ -2138,23 +2145,30 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           scrollIfPinned();
         } else if (event === "tool") {
           // Flavor-string the tool call instead of raw args — args for
-          // pose_question include `correct: "C"`, leaking the answer
-          // straight into the visible chat. Keep the same dice/emoji
-          // language as the answer-reveal chips so the row reads as
-          // "the teacher is doing a thing" not "here's a JSON dump."
+          // pose_question include the correct-choice field, leaking the
+          // answer straight into the visible chat. Keep the same dice
+          // and emoji language as the answer-reveal chips so the row
+          // reads as "the teacher is doing a thing" not "here is a
+          // JSON dump." (NB: do not write literal backticks inside
+          // this script — the whole file is inside an outer template
+          // literal and a stray backtick closes it.)
           const teacherName = (speaker && speaker.name) || "Teacher";
           const ok = !!(parsed.result && parsed.result.ok);
+          // String concatenation, NOT template literals — see the
+          // big comment above; this whole script.ts body is wrapped
+          // in an outer template literal at compose time and any
+          // backtick here closes it prematurely.
           const summary = (() => {
             switch (parsed.tool) {
-              case "pick_from_bank": return ok ? `🎲 ${teacherName} drew a fresh question` : `${teacherName} reached for the bank — empty`;
-              case "pose_question": return ok ? `✍️ ${teacherName} wrote a custom question` : `${teacherName} tried to write a question — failed`;
-              case "pose_opinion":  return ok ? `💭 ${teacherName} asked for opinions` : `${teacherName} tried to ask for opinions — failed`;
-              case "clear_board":   return ok ? `✨ ${teacherName} cleared the board` : `${teacherName} tried to clear the board — failed`;
+              case "pick_from_bank": return ok ? "🎲 " + teacherName + " drew a fresh question" : teacherName + " reached for the bank — empty";
+              case "pose_question": return ok ? "✍️ " + teacherName + " wrote a custom question" : teacherName + " tried to write a question — failed";
+              case "pose_opinion":  return ok ? "💭 " + teacherName + " asked for opinions" : teacherName + " tried to ask for opinions — failed";
+              case "clear_board":   return ok ? "✨ " + teacherName + " cleared the board" : teacherName + " tried to clear the board — failed";
               case "handoff_faculty": {
                 const target = (parsed.args && parsed.args.faculty) || "another teacher";
-                return ok ? `↪ ${teacherName} handed class off to ${target}` : `${teacherName} tried to hand off — failed`;
+                return ok ? "↪ " + teacherName + " handed class off to " + target : teacherName + " tried to hand off — failed";
               }
-              default: return ok ? `${teacherName} did a thing (${parsed.tool})` : `${teacherName} tried ${parsed.tool} — failed`;
+              default: return ok ? teacherName + " did a thing (" + parsed.tool + ")" : teacherName + " tried " + parsed.tool + " — failed";
             }
           })();
           appendTool(summary);

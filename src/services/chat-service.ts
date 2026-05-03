@@ -755,7 +755,7 @@ function describeBoardForModel(state: QuizState): string {
     !!round && round.questionId === q.id && round.resolved &&
     !!state.lastReveal && state.lastReveal.questionId === q.id;
   const statusLine = resolvedThisQ && state.lastReveal
-    ? `(The student already answered ${state.lastReveal.picked} — ${state.lastReveal.wasCorrect ? "correct" : "missed; correct was " + state.lastReveal.correct}. React to the outcome and call pick_from_bank for the next question. Do NOT ask them to pick again.)`
+    ? `(The student already answered ${state.lastReveal.picked} — ${state.lastReveal.wasCorrect ? "correct" : "missed; correct was " + state.lastReveal.correct}. React to the outcome and call pick_from_bank for the next question.)`
     : "(The student is now picking. Wait for the answer-graded event before calling another tool.)";
   return [
     `Active faculty: ${state.faculty}.`,
