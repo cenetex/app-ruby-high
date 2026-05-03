@@ -196,9 +196,12 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (!bootReady) {
-      res.statusCode = 503;
+      // This endpoint is a platform liveness check: once the socket is open,
+      // Fly should keep the machine alive while the app finishes hydration.
+      // User-facing API routes still return 503 until bootReady flips true.
+      res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ...healthPayload(), ok: false, status: "starting", t: Date.now() }));
+      res.end(JSON.stringify({ ...healthPayload(), status: "starting", t: Date.now() }));
       return;
     }
     res.statusCode = 200;
