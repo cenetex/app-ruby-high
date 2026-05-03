@@ -1554,6 +1554,135 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
   sheetEl.addEventListener("click", (e) => { if (e.target === sheetEl) closeSheet(); });
 
+  // ── pack store overlay (Anki import + pack switcher) ────────────────────
+  const packEl = $("pack-overlay");
+  const packListEl = $("pack-list");
+  const packFileInput = $("pack-anki-file");
+  const packImportBtn = $("pack-import-btn");
+  const packCloseBtn = $("pack-close-btn");
+  const packStatusEl = $("pack-import-status");
+  const packBtn = $("pack-btn");
+
+  function openPackStore() {
+    packEl.classList.add("is-open");
+    renderPackList();
+  }
+  function closePackStore() {
+    packEl.classList.remove("is-open");
+    packStatusEl.textContent = "";
+    packStatusEl.classList.remove("is-invalid");
+  }
+  function renderPackList() {
+    const t = lastTelemetry || {};
+    const packs = t.available_packs || [];
+    const activeId = t.active_pack && t.active_pack.id;
+    packListEl.innerHTML = "";
+    if (packs.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "sub";
+      empty.textContent = "No packs registered yet.";
+      packListEl.appendChild(empty);
+      return;
+    }
+    for (const p of packs) {
+      const row = document.createElement("div");
+      row.className = "pack-row" + (p.id === activeId ? " is-active" : "");
+      const body = document.createElement("div");
+      body.className = "pack-body";
+      const name = document.createElement("div");
+      name.className = "pack-name";
+      name.textContent = p.name;
+      const meta = document.createElement("div");
+      meta.className = "pack-meta";
+      meta.textContent = (p.faculty_count || 0) + " faculty · " + (p.question_count || 0) + " questions" + (p.description ? " — " + p.description : "");
+      body.appendChild(name);
+      body.appendChild(meta);
+      row.appendChild(body);
+      if (p.id === activeId) {
+        const tag = document.createElement("span");
+        tag.className = "pack-active-tag";
+        tag.textContent = "Active";
+        row.appendChild(tag);
+      } else {
+        row.addEventListener("click", () => switchPack(p.id));
+      }
+      packListEl.appendChild(row);
+    }
+  }
+  async function switchPack(packId) {
+    packStatusEl.textContent = "Switching…";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const r = await fetch("/api/apps/ruby-high/packs/active", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packId }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: r.status }));
+        throw new Error(err.error || "switch " + r.status);
+      }
+      packStatusEl.textContent = "Active pack switched. Reloading…";
+      // Pack swap blew away faculty + question banks; safest bet is a clean
+      // reload so the channels rail + chalkboard rebuild against the new pack.
+      setTimeout(() => window.location.reload(), 300);
+    } catch (err) {
+      packStatusEl.textContent = "Couldn't switch · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    }
+  }
+  packFileInput.addEventListener("change", () => {
+    const file = packFileInput.files && packFileInput.files[0];
+    packImportBtn.disabled = !file;
+    if (file) packStatusEl.textContent = file.name + " — " + Math.round(file.size / 1024) + " KB";
+  });
+  packImportBtn.addEventListener("click", async () => {
+    const file = packFileInput.files && packFileInput.files[0];
+    if (!file) return;
+    packImportBtn.disabled = true;
+    packFileInput.disabled = true;
+    packStatusEl.textContent = "Reading file…";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const buf = await file.arrayBuffer();
+      const b64 = bytesToBase64(new Uint8Array(buf));
+      packStatusEl.textContent = "Parsing + generating distractors (~$0.05, ~30s)…";
+      const r = await fetch("/api/apps/ruby-high/packs/import-anki", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, data: b64, maxCards: 50 }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: r.status }));
+        throw new Error(err.error || "import " + r.status);
+      }
+      const data = await r.json();
+      const skipped = data.skipped || 0;
+      const imported = data.pack && data.pack.question_count;
+      packStatusEl.textContent = "Imported " + imported + " questions" + (skipped > 0 ? " (" + skipped + " skipped)" : "") + ". Reloading…";
+      setTimeout(() => window.location.reload(), 600);
+    } catch (err) {
+      packStatusEl.textContent = "Import failed · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+      packImportBtn.disabled = false;
+      packFileInput.disabled = false;
+    }
+  });
+  packCloseBtn.addEventListener("click", closePackStore);
+  packEl.addEventListener("click", (e) => { if (e.target === packEl) closePackStore(); });
+  packBtn.addEventListener("click", openPackStore);
+  function bytesToBase64(bytes) {
+    // Avoid String.fromCharCode(...bytes) overflow on big files by chunking.
+    let s = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(s);
+  }
+
   // ── student chime ─────────────────────────────────────────────────────────
   // When authed, fire the LLM-backed /chat/student-chime endpoint so the AI
   // students respond in their own voice. Falls back to canned lines when the

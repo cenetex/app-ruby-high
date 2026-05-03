@@ -35,12 +35,15 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1041.0",
     "@aws-sdk/lib-dynamodb": "^3.1041.0",
-    "@elizaos/core": "2.0.0-alpha.173"
+    "@elizaos/core": "2.0.0-alpha.173",
+    "jszip": "^3.10.1",
+    "sql.js": "^1.14.1"
   },
   "peerDependencies": {
     "@elizaos/core": "2.0.0-alpha.173"
   },
   "devDependencies": {
+    "@types/sql.js": "^1.4.11",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"

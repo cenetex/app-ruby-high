@@ -29,8 +29,10 @@ import {
 import { PLAYBOOKS, isValidStatDistribution } from "./characters/playbooks.js";
 import { renderViewerHtml, VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "./viewer.js";
 import { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
+import { handlePackRoutes } from "./pack-routes.js";
+import { AuthService } from "./services/auth-service.js";
 import { log } from "./services/logger.js";
-import { activeFaculty, activeRooms, activeRoomsWithLounge } from "./content/registry.js";
+import { activeFaculty, activeRooms, activeRoomsWithLounge, availablePacks, getLoadedPack } from "./content/registry.js";
 import type { PackRoom } from "./content/types.js";
 
 const APP_NAME = "@cenetex/app-ruby-high";
@@ -119,6 +121,20 @@ interface SessionTelemetry extends Record<string, unknown> {
   current_grade: Grade | null;
   completed_grades: Grade[];
   has_seen_intro: boolean;
+  /** Active content pack id and the list of registered packs the user
+   *  can switch to. The viewer renders these as a pack-store/switcher UI. */
+  active_pack: {
+    id: string;
+    name: string;
+    description: string;
+  };
+  available_packs: Array<{
+    id: string;
+    name: string;
+    description: string;
+    faculty_count: number;
+    question_count: number;
+  }>;
   /** Channel rail entries for the active pack — typically 3 teaching
    *  rooms (one per faculty) plus the universal lounge. */
   rooms: PackRoom[];
@@ -392,6 +408,17 @@ function buildSessionState(args: {
     current_grade: state.currentGrade,
     completed_grades: state.completedGrades,
     has_seen_intro: state.hasSeenIntro,
+    active_pack: (() => {
+      const p = getLoadedPack();
+      return { id: p.id, name: p.name, description: p.description };
+    })(),
+    available_packs: availablePacks().map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      faculty_count: p.faculty.length,
+      question_count: p.faculty.reduce((s, f) => s + f.questions.length, 0),
+    })),
     rooms: activeRoomsWithLounge(),
     npc_roster: state.currentGrade ? (state.npcRosters[state.currentGrade] ?? []) : [],
     room_cohort: state.currentGrade
@@ -577,6 +604,34 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       json: ctx.json,
       readJsonBody: ctx.readJsonBody,
     });
+  }
+
+  // Pack store endpoints (import-anki, switch active, list).
+  if (ctx.pathname.startsWith("/api/apps/ruby-high/packs")) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    if (!auth) {
+      ctx.error(ctx.res, "AuthService unavailable", 503);
+      return true;
+    }
+    const facultySvc = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
+    return handlePackRoutes(
+      {
+        method: ctx.method,
+        pathname: ctx.pathname,
+        res: ctx.res,
+        cookieHeader: ctx.cookieHeader,
+        clientIp: ctx.clientIp,
+        error: ctx.error,
+        json: ctx.json,
+        readJsonBody: ctx.readJsonBody,
+      },
+      {
+        auth,
+        // After a pack swap the FacultyService's cached banks are stale —
+        // tell it to reload from the new active pack.
+        onPackSwapped: async () => { if (facultySvc) await facultySvc.loadFromActivePack(); },
+      },
+    );
   }
 
   if (ctx.method === "GET" && ctx.pathname === VIEWER_PATH) {

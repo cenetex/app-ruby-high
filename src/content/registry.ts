@@ -11,6 +11,10 @@
 import type { ContentPack, PackFaculty, PackRoom } from "./types.js";
 import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
 
+/** Registry of every pack the runtime knows about. Keyed by pack id.
+ *  Populated lazily — the original pack lands on first getActivePack();
+ *  user-imported packs (Anki, etc.) get registered via registerPack. */
+const packs = new Map<string, ContentPack>();
 let active: Promise<ContentPack> | null = null;
 /** Sync mirror of the resolved pack. Populated when the async getActivePack
  *  promise settles. Sync callers (telemetry derivation, render handlers)
@@ -21,8 +25,42 @@ let loadedPack: ContentPack | null = null;
 
 /** Returns the currently active pack. Cached after first call. */
 export function getActivePack(): Promise<ContentPack> {
-  if (!active) active = getRubyHighOriginal().then((p) => { loadedPack = p; return p; });
+  if (!active) {
+    active = getRubyHighOriginal().then((p) => {
+      packs.set(p.id, p);
+      loadedPack = p;
+      return p;
+    });
+  }
   return active;
+}
+
+/** Register a pack so it shows up in availablePacks() + can be activated
+ *  by id. Runtime imports (Anki, LLM-generated, etc.) call this. */
+export function registerPack(pack: ContentPack): void {
+  packs.set(pack.id, pack);
+}
+
+/** All packs currently known to the runtime (original + any imports). */
+export function availablePacks(): ContentPack[] {
+  return Array.from(packs.values());
+}
+
+export function getPackById(id: string): ContentPack | null {
+  return packs.get(id) ?? null;
+}
+
+/** Switch the active pack to one already registered. Throws if the pack
+ *  id isn't known — register it first. */
+export function setActivePackById(id: string): ContentPack {
+  const pack = packs.get(id);
+  if (!pack) {
+    const known = Array.from(packs.keys()).join(", ") || "(none)";
+    throw new Error(`Unknown pack id: ${id}. Registered packs: ${known}`);
+  }
+  loadedPack = pack;
+  active = Promise.resolve(pack);
+  return pack;
 }
 
 /** Sync access to the active pack. Throws if no pack has been loaded yet —
@@ -40,8 +78,11 @@ export function isPackLoaded(): boolean {
   return loadedPack !== null;
 }
 
-/** Override the active pack. For tests + future runtime pack switching. */
+/** Override the active pack with an inline pack object. Used by tests
+ *  and the runtime import path (Anki adapter). The pack is also
+ *  registered so it shows up in availablePacks(). */
 export function setActivePack(pack: ContentPack): void {
+  packs.set(pack.id, pack);
   loadedPack = pack;
   active = Promise.resolve(pack);
 }
@@ -50,6 +91,7 @@ export function setActivePack(pack: ContentPack): void {
 export function resetActivePack(): void {
   active = null;
   loadedPack = null;
+  packs.clear();
 }
 
 // ── sync accessors over the loaded pack ─────────────────────────────────
