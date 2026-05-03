@@ -13,17 +13,50 @@ the same DynamoDB table that App Runner uses (`ruby-high-state` in
 
 ### 1. Create the dedicated IAM user
 
-The Fly app authenticates to DynamoDB with static access keys. Use a
+The Fly app authenticates to AWS with static access keys. Use a
 dedicated IAM user with least-privilege scope (the policy in
-[`iam-fly-policy.json`](./iam-fly-policy.json) only allows the four
-operations the `DynamoStateStore` actually performs, on the one table).
+[`iam-fly-policy.json`](./iam-fly-policy.json) allows the four
+DynamoDB operations the `DynamoStateStore` performs on the one
+state table, plus `s3:PutObject` on the portraits bucket).
 
 ```sh
+# Bucket for AI-generated character portraits + diplomas. Their bytes
+# are too big to live inline in the DynamoDB character record; a
+# single AI portrait can be 200KB-1MB and DDB caps items at 400KB.
+aws s3api create-bucket --bucket ruby-high-portraits --region us-east-1
+
+# Allow a bucket policy to grant public read (without disabling
+# account-level Block Public Access). Keep ACLs blocked — we don't
+# use them; only the bucket policy grants access.
+aws s3api put-public-access-block \
+  --bucket ruby-high-portraits \
+  --public-access-block-configuration \
+    'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=false,RestrictPublicBuckets=false'
+
+# Bucket policy: public-read on /portrait/* and /diploma/* only.
+cat > /tmp/ruby-high-portraits-policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "PublicReadPortraits", "Effect": "Allow", "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::ruby-high-portraits/portrait/*",
+        "arn:aws:s3:::ruby-high-portraits/diploma/*"
+      ]
+    }
+  ]
+}
+EOF
+aws s3api put-bucket-policy --bucket ruby-high-portraits \
+  --policy file:///tmp/ruby-high-portraits-policy.json
+
+# IAM user + inline policy.
 aws iam create-user --user-name ruby-high-fly
 
 aws iam put-user-policy \
   --user-name ruby-high-fly \
-  --policy-name dynamodb-state \
+  --policy-name ruby-high-fly \
   --policy-document file://infra/iam-fly-policy.json
 
 aws iam create-access-key --user-name ruby-high-fly \
