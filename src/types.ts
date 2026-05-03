@@ -34,13 +34,6 @@ export const GRADE_SHORT_LABELS: Record<Grade, string> = {
  *  the next. Senior completion = graduation (yearbook write, run ends). */
 export const DEFAULT_GRADE: Grade = "9";
 
-/** Legacy single-threshold gate. Used by the playtest mode where a fixed
- *  N correct answers in a year completes it. The Daily-as-arc spec
- *  (DESIGN.md Pillar 1) replaces this with a per-year streak length —
- *  see requiredStreakForGrade(). The constant stays for now until the
- *  Daily mechanic itself lands; once it does, this constant goes. */
-export const GRADE_COMPLETION_THRESHOLD = 5;
-
 /** Per the Daily-as-arc spec: the required consecutive-Daily-pass streak
  *  for advancing out of `grade`.
  *
@@ -218,10 +211,8 @@ export interface QuizState {
   askedQuestionIds: string[];
   /** Currently selected grade. null until the student picks one. */
   currentGrade: Grade | null;
-  /** Grades the student has completed (≥ GRADE_COMPLETION_THRESHOLD correct). */
+  /** Grades the student has completed (yearbook entries written for each). */
   completedGrades: Grade[];
-  /** Per-grade correct-answer counter, working toward completion. */
-  gradeProgress: Record<string, number>;
   /** Whether the student has finished the splash/intro and is into the app. */
   hasSeenIntro: boolean;
   /** The player's character sheet. Created once (on first run) and
@@ -534,9 +525,12 @@ export const NPC_STAT_DEFAULTS: Record<string, CharacterStats> = {
 export interface NpcStudentState {
   id: string;
   grade: Grade;
-  currentRoom: TeachingRoomId | null; // null when all subjects done for this grade
+  /** Which classroom this NPC is sitting in. Drives the seating chart in
+   *  the channels rail and the in-room race when the player poses a
+   *  question. Static for the year — the per-question NPC redistribution
+   *  was part of the legacy free-play loop. */
+  currentRoom: TeachingRoomId | null;
   stats: CharacterStats;
-  subjects: Record<TeachingRoomId, { correct: number; completed: boolean }>;
 }
 
 /** Per-NPC arc state — tracks each classmate's independent progression
@@ -621,9 +615,9 @@ export interface ActiveRound {
    *  eliminated choices are rejected by submitAnswer. */
   advantage?: AdvantageRoll | null;
   /** True when this round was opened by playDaily — i.e. it represents
-   *  today's Daily, the only thing that ticks the streak / arc.
-   *  Free-play rounds (legacy pickAndPose) leave this false/undefined
-   *  and tick the legacy gradeProgress counter instead. */
+   *  today's Daily, the only thing that ticks the streak / arc gate.
+   *  Free-play rounds (pickAndPose) leave this false/undefined and don't
+   *  tick anything player-side. */
   isDaily?: boolean;
   /** Daily key (YYYY-MM-DD with school-bell cutoff) the round was opened
    *  on. Set together with isDaily; informational. */
@@ -721,8 +715,10 @@ export function rollNpcAnswer(stats: CharacterStats, correct: Choice): {
   return { pick, total, dice: r.dice, outcome, delayMs };
 }
 
-/** Initial distribution per grade — used as the FIRST seating chart. As
- *  students pass subjects they redistribute via redistributeStudent(). */
+/** Initial seating chart per grade — drives the per-classroom NPC race
+ *  (when the player poses a question, the NPCs in that room roll
+ *  alongside). Static for the year now that per-question redistribution
+ *  is gone (cohort dice, not seating, drive arc progression). */
 export const INITIAL_STUDENT_LAYOUT: Record<Grade, Record<TeachingRoomId, string[]>> = {
   "9":  { homeroom: ["lyra", "mika"],  science: ["sami", "ravi"],  literature: ["indra", "noor"] },
   "10": { homeroom: ["sami", "noor"],  science: ["ravi", "mika"],  literature: ["lyra", "indra"] },
@@ -743,15 +739,11 @@ export function initialNpcRoster(grade: Grade): NpcStudentState[] {
     grade,
     currentRoom: where[id] ?? null,
     stats: { ...(NPC_STAT_DEFAULTS[id] ?? { head: 0, heart: 0, hustle: 0, honor: 0 }) },
-    subjects: {
-      homeroom:   { correct: 0, completed: false },
-      science:    { correct: 0, completed: false },
-      literature: { correct: 0, completed: false },
-    },
   }));
 }
 
-/** Roster of students currently in a given room (max 2). */
+/** Roster of students currently in a given room (static — set by the
+ *  initial seating chart for the year). */
 export function npcsInRoom(roster: NpcStudentState[], room: TeachingRoomId): NpcStudentState[] {
   return roster.filter((n) => n.currentRoom === room);
 }
@@ -772,25 +764,4 @@ export function initialNpcCohort(): NpcArcState[] {
 /** NPC stats keyed by id — for dice rolls during the Daily. */
 export function npcStatsFor(id: string): CharacterStats {
   return { ...(NPC_STAT_DEFAULTS[id] ?? { head: 0, heart: 0, hustle: 0, honor: 0 }) };
-}
-
-/** When a student completes a subject, find their next room: an incomplete
- *  subject for them with capacity (< 2 active students). Prefers rooms with
- *  fewer active students. Returns null if no room has space + work for them. */
-export function pickNextRoomForStudent(
-  roster: NpcStudentState[],
-  student: NpcStudentState,
-): TeachingRoomId | null {
-  const candidates = TEACHING_ROOMS.filter(
-    (r) => r !== student.currentRoom && !student.subjects[r].completed,
-  );
-  const occupancy: Record<TeachingRoomId, number> = {
-    homeroom: npcsInRoom(roster, "homeroom").length,
-    science: npcsInRoom(roster, "science").length,
-    literature: npcsInRoom(roster, "literature").length,
-  };
-  const open = candidates.filter((r) => occupancy[r] < 2);
-  if (open.length === 0) return null;
-  open.sort((a, b) => occupancy[a] - occupancy[b]);
-  return open[0] ?? null;
 }
