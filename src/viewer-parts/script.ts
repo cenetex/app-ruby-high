@@ -2425,8 +2425,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // in an outer template literal — a literal backtick in this file would
     // close the wrapping template prematurely. charCode 96 is the fence char.
     const FENCE = String.fromCharCode(96).repeat(3);
-    const fenced = (s) => FENCE + "\n" + s + "\n" + FENCE;
-    const tail = RECENT_ERRORS.length ? fenced(RECENT_ERRORS.join("\n")) : "_(none in this session)_";
+    // NB: this whole script is wrapped in an outer TS template literal, so
+    // a single-backslash newline-escape here would be consumed at build
+    // time and emit an actual newline inside the double-quoted string
+    // (→ unterminated literal). Double the backslash so the rendered JS
+    // keeps the escape.
+    const fenced = (s) => FENCE + "\\n" + s + "\\n" + FENCE;
+    const tail = RECENT_ERRORS.length ? fenced(RECENT_ERRORS.join("\\n")) : "_(none in this session)_";
     const body = [
       "**What happened?**",
       "<!-- describe the bug here, including what you expected -->",
@@ -2452,7 +2457,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       tail,
       "",
       "</details>",
-    ].join("\n");
+    ].join("\\n");
     const issueUrl = "https://github.com/cenetex/app-ruby-high/issues/new?title="
       + encodeURIComponent("[bug] ")
       + "&body=" + encodeURIComponent(body)
