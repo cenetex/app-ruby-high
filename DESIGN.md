@@ -1,6 +1,6 @@
 # Ruby High
 
-> A small school where the teachers grade you in their own voice, once a day, and the grade is yours to keep.
+> A school where the teachers grade you in their own voice. Once a day. The grade is yours to keep.
 
 <!-- promo-asset: hero-classroom — wide screenshot of the viewer with Ruby's chalkboard, the room rail, and the character card visible -->
 
@@ -20,15 +20,17 @@ Ruby High is built around the bet that the failure is structural, not creative. 
 
 Ruby High stacks all four. A 2–3 sentence essay graded by Professor Edward on a Tuesday, delivered alongside three classmates' essays, archived to a yearbook page you can show a friend — that is something no other AI product produces. The combination is the product. Each ingredient on its own is commodity.
 
+**It's free.** You sign in with your own OpenRouter key — no card, no subscription, your inference bill is yours. We never see the key. The full economic argument is in §8.
+
 ---
 
 ## 2. What a day looks like
 
 > *The school bell rings at 17:00 UTC. One teacher is on the floor. They post one question. That question is the day.*
 
-You open the app on Tuesday afternoon. Professor Edward is at the chalkboard — Tuesdays are his. He posts an opinion question: a passage to discuss, three sentences asked of you. You write your response in the box. Lyra writes hers. Sami writes his. Edward reads all three and grades them in his voice — a 0–10 score, a single sentence of comment, one named "best response."
+You open the app on Tuesday afternoon. Professor Edward is at the chalkboard — Tuesdays are his. He posts an opinion question: a passage to discuss, three sentences asked of you. You're a Junior this year, so Sami and Mika are your two classmates in the literature room. You write your response. They write theirs. Edward reads all three and grades them in his voice — a 0–10 score, one sentence of comment, a single named "best response."
 
-Your streak ticks. Indra graduated last week while you were gone — you can see her name has moved up the cohort rail. The grade lives on your report card under Edward's name.
+Your streak ticks. Indra graduated last week while you were still here — you can see her name has moved up the cohort rail. The grade lives on your report card under Edward's name.
 
 Tomorrow is Wednesday. Wednesday is Ruby's. The bell rings at the same time.
 
@@ -57,6 +59,8 @@ This is the second-session hook. The streak is what brings you back; the cohort 
 [live] Every year you complete writes a permanent yearbook entry. Senior completion writes a fourth entry, generates a sticker diploma image with a subject-themed accessory based on your highest-scoring class, and unlocks Mentor mode — your next character can inherit the previous one's playbook move and quote.
 
 The yearbook is the social object the product produces. Every other AI product produces ephemeral chat. Ruby High produces report cards.
+
+<!-- promo-asset: yearbook-page — mock of a graduated character's yearbook entry: sticker portrait, top essay highlighted, teachers + classmates of the year, completion date -->
 
 ---
 
@@ -140,7 +144,9 @@ The mechanics layer is released **CC BY 4.0**. It draws on Apocalypse World (Vin
 | **Class Clown** | HEART +2, HUSTLE +1, HONOR 0, HEAD −1 | *What can't you say without a joke?* | Crack the room — roll HEART instead of HEAD on a miss |
 | **Lifer** | HEAD +1, HEART +1, HUSTLE +1, HONOR −1 | *What's the best gossip you've picked up about this place?* | Old gossip — start with 1 String on each faculty member |
 
-[partial] The playbook moves render on the character card and are passed in to the teacher's context, but only the Slacker's "Wing it" and the Overachiever's "Margins are sacred" have wired-up gameplay rules today. The other four are flavor + roleplay until further PRs land them.
+[partial] The playbook moves render on the character card and are passed in to the teacher's context as flavor. None of the six change round resolution today — that's the next layer of mechanical wiring (see §6.9).
+
+<!-- promo-asset: playbook-cards — six trading-card-style sticker portraits, one per playbook, with stat array + hook + move on each -->
 
 ### 6.4 The dice — bonus only
 
@@ -157,6 +163,8 @@ The dice can only ever upgrade the outcome. They never punish. A wrong answer is
 [live] **Cheat-proof by construction.** The student-facing LLM never sees the question's correct answer. NPC accuracy is dice + their stat block — they roll before the question is shown to them. Cheating-by-prompt-injection is mathematically impossible.
 
 [live] **Advantage roll.** Once per multiple-choice round the player can tap "Roll for advantage" to cross wrong choices off the board: hit eliminates two, mixed eliminates one, miss eliminates none. The roll is consumed regardless of outcome.
+
+<!-- promo-asset: dice-resolve — animated mock of the chalkboard at resolution: 2d6 + HEAD ticker, NPCs racing in the room, XP +N popping out -->
 
 ### 6.5 The Daily — gates
 
@@ -187,6 +195,8 @@ Opinion mode is the artifact other AI products do not produce. ChatGPT will give
 
 NPCs gate on streak alone — no XP gate. They feel hungrier than the player, which is what makes the rivalry tense.
 
+<!-- promo-asset: cohort-rail — vertical rail of the six classmates with grade pips and streak chips, one or two ahead of the player, one or two behind -->
+
 ### 6.8 Mentor mode
 
 [live] When a graduated character is cleared, the system stashes a mentor offer — the character's name, their playbook, and the playbook's starting move. The next character can accept the offer at creation; if they do, the previous character's move name and description are stamped onto the new sheet under `inheritedFrom` and rendered on the character card.
@@ -208,6 +218,8 @@ These are real future work, not a pivot — the schema is shaped for them and th
 ## 7. What's built · what's next
 
 > *Most of what the original design called "Phase 5+" is already in. The work that's actually next is smaller and sharper than the old roadmap.*
+
+<!-- promo-asset: status-grid — three-column "Shipped / Next / Aspirational" grid where each row is a chip with a tag color matching the [live]/[partial]/[aspirational] semantics from §6 -->
 
 ### Shipped
 
@@ -322,7 +334,7 @@ The plugin is also a standalone Node service. The Docker container is host-agnos
 
 **The teacher is the chatbot, the chatbot drives the board.** Each teacher is a separate OpenRouter-streamed chat with their own system prompt and their own model. They drive the chalkboard via tool calls (`pick_from_bank`, `pose_question`, `pose_opinion`, `clear_board`, `handoff_faculty`). When the player picks an answer in the viewer, the teacher gets a system-event note and reacts in character.
 
-**The state machine is the spine.** Five phases (`intro`, `in-room`, `asking`, `revealed`, `lounge`) and a small action vocabulary (`select-grade`, `enter-room`, `enter-lounge`, `pose-question`, `resolve-round`, `clear-board`). Every mutator routes through one transition function. A `phaseToken` bumps on every transition so the viewer can dedupe one-shot effects without races.
+**The state machine is the spine.** Five phases (`intro`, `in-room`, `asking`, `revealed`, `lounge`) and seven actions (`select-grade`, `enter-room`, `enter-lounge`, `pose-question`, `resolve-round`, `clear-board`, `reset`). Every mutator routes through one transition function. A `phaseToken` bumps on every transition so the viewer can dedupe one-shot effects without races.
 
 **Persistence is per-session by design.** One row per session — keyed by either `rh:user:<openrouter-token>` for signed-in users or `rh:anonymous` for the preview bucket. DynamoDB TTL auto-expires idle sessions. The JSON-file backend is a single atomic-write file at `~/.ruby-high/state.json`.
 
