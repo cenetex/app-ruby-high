@@ -164,6 +164,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   let activeQuestionId = null; // currently displayed question id on the blackboard
   let questionCounter = 0;     // session-local question count for "Question N" label
   let lastShownGrade = null;
+  // Tracks the yearbook's length on the previous telemetry tick so we
+  // can detect Senior completion (the only grade transition that
+  // doesn't change current_grade). null on first boot — same suppress-
+  // toast-on-first-tick semantics as lastShownGrade.
+  let lastYearbookLen = null;
   let lastShownFaculty = null;
   let agentBusy = false;       // true while a teacher-driven SSE turn is running
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
@@ -620,7 +625,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
       } else {
-        els.blackboardEmptyText.textContent = "The teacher will write a question on the board in a moment.";
+        // Surface the "what you need" hint here too so the empty board
+        // is informative instead of "the teacher will be with you in a
+        // moment" forever. The hint comes second — the lead is still
+        // the room's status, the hint is the actionable detail.
+        const hint = lastTelemetry && lastTelemetry.character ? buildNextStepHint(lastTelemetry.character) : "";
+        els.blackboardEmptyText.textContent = hint
+          ? "The teacher will write a question on the board in a moment. " + hint
+          : "The teacher will write a question on the board in a moment.";
       }
       return;
     }
@@ -642,6 +654,18 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (question.subject) { const s = document.createElement("span"); s.className = "pill subject"; s.textContent = question.subject; els.blackboardMeta.appendChild(s); }
     if (question.difficulty) { const d = document.createElement("span"); d.className = "pill difficulty " + question.difficulty; d.textContent = question.difficulty; els.blackboardMeta.appendChild(d); }
     if (currentGrade) { const g = document.createElement("span"); g.className = "pill"; g.textContent = "Grade " + currentGrade; els.blackboardMeta.appendChild(g); }
+    // DAILY vs PRACTICE pill — surfaces which kind of round this is so the
+    // player understands which questions move them toward year advancement.
+    // Backend exposes isDaily on active_round (routes.ts). Falls back to
+    // PRACTICE when the flag is missing (legacy rounds, or freshly-posed
+    // questions before the round entry has materialized).
+    const ar = lastTelemetry && lastTelemetry.active_round;
+    if (ar) {
+      const pill = document.createElement("span");
+      pill.className = "pill " + (ar.isDaily ? "daily" : "practice");
+      pill.textContent = ar.isDaily ? "DAILY" : "PRACTICE";
+      els.blackboardMeta.appendChild(pill);
+    }
 
     // Prompt — always wipe + rewrite on new question (chalkboard re-erasing).
     if (isNewQuestion) {
@@ -1153,6 +1177,35 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       void maybeFireDiplomaGen(t.character);
     }
 
+    // Grade-advancement celebration. Fires when current_grade ticks up
+    // OR when the yearbook grows (catches Senior→graduated, where
+    // current_grade may not change). lastShownGrade is null on the
+    // first tick; we suppress the toast then so re-opening the app
+    // mid-Sophomore doesn't say "You're a Sophomore now!" every time.
+    if (
+      t.character && t.current_grade
+      && lastShownGrade !== null
+      && t.current_grade !== lastShownGrade
+    ) {
+      const label = (typeof GRADE_LABELS !== "undefined" && GRADE_LABELS[t.current_grade]) || ("Grade " + t.current_grade);
+      showCongrats("You're a " + label + " now!", true);
+      // Open the sheet so the new year's "what you need" hint is the
+      // first thing the player sees post-advance. Timeout matches the
+      // congrats-toast cadence so the modal doesn't land on top of it.
+      setTimeout(() => { if (!sheetOverlayOpen) openSheet(); }, 900);
+    }
+    if (
+      t.character && Array.isArray(t.character.yearbook)
+      && lastYearbookLen !== null
+      && t.character.yearbook.length > lastYearbookLen
+      && graduatedFor(t.character)
+    ) {
+      // Senior completion. The diploma modal handles the bigger beat;
+      // the toast just marks the moment.
+      showCongrats("You graduated.", true);
+    }
+    lastYearbookLen = t.character && Array.isArray(t.character.yearbook) ? t.character.yearbook.length : 0;
+
     // Header
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
     els.channelTitle.textContent = fac ? channelNameFor(fac) : "general";
@@ -1270,63 +1323,25 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     lastShownFaculty = t.faculty;
   }
 
-  // ── portrait generation ────────────────────────────────────────────────
-  // Image-gen is the flakiest call we make: model overload, content-filter
-  // empty responses, occasional timeouts. The server retries once
-  // internally; the client retries once more on top of that, so a single
-  // user-facing portrait gen actually attempts up to 4 times (server: 2,
-  // client: 2 wrappers) before giving up. After that the regenerate-avatar
-  // button on the character sheet is the manual recovery path.
-  let portraitInFlight = false;
-  async function generateAndAttachPortrait(c, opts) {
-    if (!authed) return false;
-    if (portraitInFlight) return false;
-    portraitInFlight = true;
-    const showStatus = !!(opts && opts.showStatus);
-    if (showStatus) showCongrats("Regenerating avatar…", true);
-    let lastErr = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: c.name, playbookId: c.playbookId, personality: c.personality, stats: c.stats }),
-        });
-        if (!r.ok) {
-          const errBody = await r.json().catch(() => ({}));
-          lastErr = errBody.error || ("HTTP " + r.status);
-          if (r.status === 429) break; // rate-limited; second swing won't help
-          continue;
-        }
-        const data = await r.json();
-        if (data && data.portraitDataUrl) {
-          await command({ type: "set-portrait", portraitDataUrl: data.portraitDataUrl });
-          portraitInFlight = false;
-          if (showStatus) showCongrats("Avatar updated.", true);
-          if (sheetOverlayOpen) renderSheet();
-          return true;
-        }
-        lastErr = "no image in response";
-      } catch (err) {
-        lastErr = err && err.message ? err.message : "network error";
-      }
-      // Brief backoff between client-side attempts so we're not hammering
-      // the same overloaded model.
-      await new Promise((res) => setTimeout(res, 1500));
-    }
-    portraitInFlight = false;
-    if (showStatus) showCongrats("Couldn't generate avatar — try again later.", false);
-    if (typeof console !== "undefined" && console.warn) {
-      console.warn("[ruby-high] portrait gen failed after retries:", lastErr);
-    }
-    return false;
-  }
+  // The post-acceptance background portrait gen path is GONE in this
+  // PR. Portrait selection happens entirely at character creation now:
+  // the player either keeps the playbook's default portrait or hits
+  // "✨ Generate AI portrait" and confirms the AI image before
+  // accepting. Mid-game avatar regeneration is deliberately NOT a
+  // surface — the only place a post-creation regenerate exists is the
+  // graduation flow (diploma image with a "try a different look"
+  // button), which is its own self-contained path on
+  // /chat/character/diploma.
 
   // ── unified CCG-style character card ────────────────────────────────────
   // One renderer for player, student, AND teacher cards. Big art on top,
   // name banner, stats line, body text, optional quote, optional footer.
+  // Actions (when present) render as a footer strip INSIDE the card —
+  // not as a separate sibling row underneath. The "two stacked cards"
+  // visual the player complained about is the legacy of the prior
+  // append-trailing-row pattern; it's gone now.
   function buildCharacterCard(spec) {
-    // spec: { role, name, subtitle, portraitUrl, accent, stats?, bodyText, quote?, footer?, actions? }
+    // spec: { role, name, subtitle, portraitUrl, accent, stats?, bodyText, quote?, nextStepHint?, footer?, actions? }
     const card = document.createElement("div");
     card.className = "ccg-card";
     if (spec.accent) card.style.borderColor = spec.accent;
@@ -1386,6 +1401,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       q.textContent = "“" + spec.quote + "”";
       body.appendChild(q);
     }
+    if (spec.nextStepHint) {
+      const ns = document.createElement("div");
+      ns.className = "ccg-next-step";
+      ns.textContent = spec.nextStepHint;
+      body.appendChild(ns);
+    }
     if (spec.progression && Array.isArray(spec.progression.rungs)) {
       const wrap = document.createElement("div");
       wrap.className = "ccg-progression";
@@ -1441,23 +1462,23 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       ft.appendChild(document.createTextNode(spec.footer.content));
       body.appendChild(ft);
     }
-    card.appendChild(body);
     if (spec.actions && spec.actions.length) {
       const actionsRow = document.createElement("div");
-      actionsRow.className = "sheet-actions";
+      actionsRow.className = "ccg-card-actions";
       for (const a of spec.actions) {
         const btn = document.createElement("button");
+        btn.type = "button";
         if (a.secondary) btn.className = "secondary";
         btn.textContent = a.label;
         btn.addEventListener("click", a.onClick);
         actionsRow.appendChild(btn);
       }
-      // The actions row sits OUTSIDE the card, in the sheet card container,
-      // so the card itself stays self-contained art.
-      sheetCard.appendChild(card);
-      sheetCard.appendChild(actionsRow);
-      return null; // already appended
+      // Actions render as the LAST element inside .ccg-body — keeps the
+      // card a single rectangle. The teacher/student profile cards still
+      // use this for their Close button until the X-corner pattern lands.
+      body.appendChild(actionsRow);
     }
+    card.appendChild(body);
     return card;
   }
   function appendCard(spec) {
@@ -1488,7 +1509,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       accent: fac.accent,
       quote: signatureMap[fac.id] || fac.bio,
       footer: { title: "Teaches", content: subjectMap[fac.id] || fac.bio },
-      actions: [{ label: "Close", secondary: true, onClick: closeSheet }],
+      // Close lives in the overlay corner now (X), so no per-card button.
     });
   }
 
@@ -1515,7 +1536,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       accent: s.color,
       stats: npc.stats,
       quote: studentVibe(npc.id),
-      actions: [{ label: "Close", secondary: true, onClick: closeSheet }],
+      // Close lives in the overlay corner now (X), so no per-card button.
     });
   }
   function studentVibe(id) {
@@ -1585,6 +1606,63 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
   }
 
+  // ── "What you need" hint ───────────────────────────────────────────────
+  // The most-blocking gate as ONE short sentence. Computed off the same
+  // numbers the rungs use; surfaces in the sheet (above the ladder) and
+  // the chalkboard empty state. Reading order chosen to match the
+  // player's likely question: "what's stopping me from advancing?" →
+  // streak first (the daily anchor), then per-class XP, then the daily
+  // status itself. Order matters because the *last* gate hit is the one
+  // the hint shows.
+  function buildNextStepHint(c) {
+    if (!c) return "";
+    if (graduatedFor(c)) return "You graduated. Keep playing if you want; the arc is done.";
+    const t = lastTelemetry || {};
+    const grade = String(t.current_grade ?? "9");
+    const streakReq = STREAK_REQUIRED[grade] || 1;
+    const subjectReq = SUBJECT_XP_REQUIRED[grade] || 2;
+    const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
+    const subjectXp = c.subjectXp || {};
+    const ROOM_LABEL = { ruby: "homeroom", "sally-science": "Sally's class", "professor-edward": "Edward's class" };
+
+    const streakNeeded = Math.max(0, streakReq - streakHere);
+    const classGaps = TEACHING_FACULTY_IDS
+      .map((fid) => ({ fid, gap: Math.max(0, subjectReq - (subjectXp[fid] || 0)) }))
+      .filter((x) => x.gap > 0);
+
+    const allMet = streakNeeded === 0 && classGaps.length === 0;
+    if (allMet) {
+      // Player has cleared both gates. Advancement happens on the next
+      // Daily pass. If today's Daily is gone, that's tomorrow.
+      if (t.daily && t.daily.available === false && t.daily.reason === "completed") {
+        return "All gates cleared. Tomorrow's Daily advances you.";
+      }
+      return "All gates cleared. Pass today's Daily to advance.";
+    }
+
+    // Daily availability shapes the call to action. If the player has
+    // already used today's Daily and still needs a streak day, the only
+    // useful instruction is "come back tomorrow."
+    const dailyAvailable = t.daily && t.daily.available === true;
+    const parts = [];
+    if (streakNeeded > 0) {
+      parts.push(streakNeeded === 1 ? "1 more Daily streak day" : streakNeeded + " more Daily streak days");
+    }
+    if (classGaps.length > 0) {
+      const segs = classGaps.map((cg) => (ROOM_LABEL[cg.fid] || cg.fid) + " (+" + cg.gap + ")");
+      parts.push("XP needed in " + segs.join(", "));
+    }
+    let hint = parts.join(" · ");
+    if (!dailyAvailable && t.daily && t.daily.reason === "completed") {
+      hint += " · today's Daily is done — come back at 5pm UTC";
+    } else if (!dailyAvailable && t.daily && t.daily.reason === "no-grade") {
+      hint += " · pick a grade first";
+    } else if (dailyAvailable) {
+      hint += " · take today's Daily — practice rounds don't advance the year";
+    }
+    return hint;
+  }
+
   // Build the four-rung "Freshman → Sophomore → Junior → Senior" ladder for
   // the character sheet. Each rung names the gates (streak + XP) so the
   // player can see what unlocks each year. The current rung shows live
@@ -1620,53 +1698,157 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   function renderSheetReadonly(c, playbooks) {
-    const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
-    const grade = lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Freshman";
-    appendCard({
-      role: "player",
-      name: c.name,
-      subtitle: graduatedFor(c) ? "Graduated · " + (c.xp ?? 0) + " XP" : pb.name + " · " + grade + " · " + (c.xp ?? 0) + " XP",
-      // Graduated character: show the diploma image (cap+gown) instead of
-      // the standing portrait. Falls back to the standing portrait while
-      // diploma image gen is still in flight.
-      portraitUrl: (graduatedFor(c) && c.diplomaImageDataUrl) || c.portraitDataUrl || (apiBase + "/assets/teachers/ruby-full.png"),
-      accent: pb.accent,
-      stats: c.stats,
-      // Card quote prefers the MTG-style flavor line; legacy characters
-      // created before that field existed fall back to the arc answer.
-      quote: c.flavorQuote || c.arcAnswer,
-      progression: buildProgressionForCharacter(c),
-      footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
-      actions: [
-        {
-          label: c.portraitDataUrl ? "Regenerate avatar" : "Try avatar again",
+    // Yearbook-stack layout: one card per grade, current year on TOP,
+    // completed years below. The pack grows as the player advances:
+    //   Year 1 (Freshman, in progress)        — 1 card
+    //   Year 2 (Sophomore in progress + FR ✓) — 2 cards, Sophomore on top
+    //   …
+    //   Senior graduated                       — 4 cards, Senior on top
+    // Each completed-year card carries that year's summary
+    // (correct/total). The top card carries live progression + the
+    // "what you need" hint.
+    const pb = playbooks.find((p) => p.id === c.playbookId)
+      || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
+    const portraitFallback = defaultPortraitFor(c.playbookId);
+    const liveGrade = String(lastTelemetry?.current_grade ?? "9");
+    const yearbook = Array.isArray(c.yearbook) ? c.yearbook : [];
+    const completedSet = new Set(yearbook.map((y) => y.grade));
+    const grad = graduatedFor(c);
+
+    // Top-most grade is the current grade for an in-progress player,
+    // OR the senior cap for a graduate. Below cards are previous
+    // years in REVERSE order so the most recent completion sits
+    // closest to the top.
+    const stackOrder = [];
+    if (!grad) {
+      stackOrder.push({ grade: liveGrade, kind: "current" });
+    } else {
+      stackOrder.push({ grade: "12", kind: "graduated" });
+    }
+    const completedDesc = yearbook
+      .slice()
+      .sort((a, b) => Number(b.grade) - Number(a.grade));
+    for (const y of completedDesc) {
+      // Skip the senior entry on graduated characters — already top.
+      if (grad && y.grade === "12") continue;
+      // Skip a current-grade dup (shouldn't happen but defensive).
+      if (!grad && y.grade === liveGrade) continue;
+      stackOrder.push({ grade: y.grade, kind: "completed", summary: y.summary });
+    }
+
+    sheetCard.innerHTML = "";
+    const stack = document.createElement("div");
+    stack.className = "yearbook-stack";
+    sheetCard.appendChild(stack);
+
+    for (const entry of stackOrder) {
+      const isTop = entry === stackOrder[0];
+      const gradeLabel = (typeof GRADE_LABELS !== "undefined" && GRADE_LABELS[entry.grade]) || ("Grade " + entry.grade);
+      let subtitle;
+      let portraitUrl;
+      let progression;
+      let nextStepHint;
+      if (entry.kind === "graduated") {
+        subtitle = "Graduated · " + gradeLabel + " · " + (c.xp ?? 0) + " XP";
+        portraitUrl = c.diplomaImageDataUrl || c.portraitDataUrl || portraitFallback;
+        progression = buildProgressionForCharacter(c); // graduated rendering shows yearbook-style
+        nextStepHint = buildNextStepHint(c);
+      } else if (entry.kind === "current") {
+        subtitle = pb.name + " · " + gradeLabel + " · " + (c.xp ?? 0) + " XP";
+        portraitUrl = c.portraitDataUrl || portraitFallback;
+        progression = buildProgressionForCharacter(c);
+        nextStepHint = buildNextStepHint(c);
+      } else {
+        // completed (non-senior) prior year: a "yearbook page" card.
+        const s = entry.summary || { correct: 0, total: 0 };
+        subtitle = "✓ " + gradeLabel + " · " + s.correct + "/" + s.total + " correct";
+        portraitUrl = c.portraitDataUrl || portraitFallback;
+        // No live progression on completed-year cards — they're
+        // historical snapshots, not in-progress dashboards. Listing
+        // the gates again would just clutter the stack.
+        progression = null;
+        nextStepHint = undefined;
+      }
+
+      // Graduation is the ONE post-creation place where the player can
+      // ask the AI to redo the portrait — specifically the diploma
+      // (cap-and-gown) image. Hits /chat/character/diploma which already
+      // has its own retry. No global flag — disable the button on click,
+      // re-render the sheet when the new image lands.
+      const cardActions = [];
+      if (entry.kind === "graduated") {
+        cardActions.push({
+          label: "✨ Try a different look",
           secondary: true,
-          onClick: async () => {
-            // Re-fire the portrait pipeline from the existing character.
-            // The portrait field is the only thing that changes; everything
-            // else on the sheet stays put.
-            await generateAndAttachPortrait(c, { showStatus: true });
+          onClick: async (e) => {
+            const btn = e && e.currentTarget;
+            if (btn) { btn.disabled = true; btn.textContent = "✨ Generating…"; }
+            try {
+              const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}",
+              });
+              if (!r.ok) throw new Error("diploma " + r.status);
+              await fetchSession();
+              if (sheetOverlayOpen) renderSheet();
+            } catch {
+              if (btn) { btn.disabled = false; btn.textContent = "✨ Try a different look"; }
+            }
           },
-        },
-        {
-          label: "Reroll character",
-          secondary: true,
-          onClick: async () => {
-            if (!confirm("Throw away " + c.name + " and roll a new student? Your XP and class progress will be reset too.")) return;
-            await command({ type: "clear-character" });
-            await command({ type: "reset" });
-            sheetAutoShown = false;
-            renderSheet();
-          },
-        },
-        { label: "Close", onClick: closeSheet },
-      ],
-    });
+        });
+      }
+      const card = buildCharacterCard({
+        role: "player",
+        name: c.name,
+        subtitle,
+        portraitUrl,
+        accent: pb.accent,
+        // Stats only on the top card — they don't change year-to-year
+        // and a stack of identical stat blocks is just visual noise.
+        stats: isTop ? c.stats : undefined,
+        // Quote only on the top card for the same reason.
+        quote: isTop ? (c.flavorQuote || c.arcAnswer) : undefined,
+        nextStepHint,
+        progression,
+        footer: isTop && pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
+        actions: cardActions.length > 0 ? cardActions : undefined,
+      });
+      // The completed cards carry a small badge in the corner so the
+      // stack reads as "year n cleared" at a glance. Done via a wrapper
+      // class on the card.
+      if (entry.kind === "completed") card.classList.add("yearbook-completed");
+      if (entry.kind === "graduated") card.classList.add("yearbook-graduated");
+      stack.appendChild(card);
+    }
   }
   function fmtStat(n) { return (n >= 0 ? "+" : "") + n; }
+
+  // ── default-pack portraits ──────────────────────────────────────────────
+  // Every playbook owns one of the six unused student portraits in
+  // assets/students/. The player picks a portrait by playbook before
+  // ever paying for AI gen. If they upgrade ("✨ Generate AI portrait")
+  // and it succeeds, that data URL replaces the default in the create-
+  // character command. If they don't, the default ships with the
+  // character and the post-acceptance "background portrait gen" path is
+  // gone entirely — what you saw at creation is what you get.
+  const PLAYBOOK_DEFAULT_PORTRAIT = {
+    overachiever: "indra",
+    slacker: "sami",
+    heart: "mika",
+    outsider: "noor",
+    "class-clown": "ravi",
+    lifer: "lyra",
+  };
+  function defaultPortraitFor(playbookId) {
+    const id = PLAYBOOK_DEFAULT_PORTRAIT[playbookId] || "indra";
+    return apiBase + "/assets/students/" + id + "-full.png";
+  }
+
   // Random-roll character creation. The player INHABITS an AI student rather
   // than building one. Server picks playbook + stats; LLM fills in the
-  // name/hook/personality. Single "Roll" or "Reroll" button.
+  // name/hook/personality. Each component has a small ↻ reroll button so the
+  // player can lock in the parts they like and cycle the rest.
   //
   // Auth invariant: this function only runs when authed === true. The
   // unauth surface is the mandatory #signin-overlay shown by deriveAuth();
@@ -1680,93 +1862,139 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     sheetCard.appendChild(h);
     const sub = document.createElement("p");
     sub.className = "sub";
-    sub.textContent = "You're inhabiting an AI student. Hit roll to draw a character — name, vibe, stats, the lot. Reroll until one feels right.";
+    sub.textContent = "You're inhabiting an AI student. Lock in the parts that fit; reroll the rest.";
     sheetCard.appendChild(sub);
 
-    // Preview area (filled after first roll).
-    const preview = document.createElement("div");
-    preview.id = "char-preview";
-    preview.style.cssText = "display:none;flex-direction:column;gap:10px;margin-top:8px;";
-    sheetCard.appendChild(preview);
+    // Portrait section — default-pack PNG by playbook, plus an opt-in
+    // "✨ Generate AI portrait" button that swaps in a custom image.
+    const portraitWrap = document.createElement("div");
+    portraitWrap.className = "creation-portrait";
+    sheetCard.appendChild(portraitWrap);
+    const portraitImg = document.createElement("img");
+    portraitImg.alt = "";
+    portraitWrap.appendChild(portraitImg);
+    const portraitBtn = document.createElement("button");
+    portraitBtn.type = "button";
+    portraitBtn.className = "creation-ai-portrait";
+    portraitBtn.textContent = "✨ Generate AI portrait";
+    portraitWrap.appendChild(portraitBtn);
+    const portraitStatus = document.createElement("div");
+    portraitStatus.className = "creation-portrait-status";
+    portraitWrap.appendChild(portraitStatus);
+
+    // Form rows: one per component. Each row has a reroll button that
+    // re-fires /chat/character/generate with regen=[<field>], keep=<rest>.
+    const fields = document.createElement("div");
+    fields.className = "creation-fields";
+    sheetCard.appendChild(fields);
+
+    function makeRow(label, key) {
+      const row = document.createElement("div");
+      row.className = "creation-row";
+      const lab = document.createElement("div");
+      lab.className = "creation-row-label";
+      lab.textContent = label;
+      const val = document.createElement("div");
+      val.className = "creation-row-value";
+      val.dataset.key = key;
+      const reroll = document.createElement("button");
+      reroll.type = "button";
+      reroll.className = "creation-reroll";
+      reroll.title = "Reroll " + label.toLowerCase();
+      reroll.textContent = "↻";
+      reroll.dataset.key = key;
+      row.appendChild(lab);
+      row.appendChild(val);
+      row.appendChild(reroll);
+      fields.appendChild(row);
+      return { val, reroll };
+    }
+    const nameRow = makeRow("Name", "name");
+    const playbookRow = makeRow("Playbook", "playbook");
+    const statsRow = makeRow("Stats", "stats");
+    const personalityRow = makeRow("Voice", "personality");
+    const quoteRow = makeRow("Quote", "flavorQuote");
 
     // Status line for in-flight rolls / errors.
     const status = document.createElement("div");
     status.className = "stat-budget";
-    status.textContent = "";
     sheetCard.appendChild(status);
 
-    // Actions
+    // Actions — single primary button. No "Reroll all" because each
+    // field has its own reroll. If the player wants a clean slate they
+    // can spam ↻ on every row.
     const actions = document.createElement("div");
     actions.className = "sheet-actions";
-    const rollBtn = document.createElement("button");
-    rollBtn.textContent = "Roll a character";
     const acceptBtn = document.createElement("button");
-    acceptBtn.textContent = "Start the school year";
-    acceptBtn.style.display = "none";
-    actions.appendChild(rollBtn);
+    acceptBtn.textContent = "Lock it in";
+    acceptBtn.disabled = true;
     actions.appendChild(acceptBtn);
     sheetCard.appendChild(actions);
 
     let rolled = null;
-    let rolling = false;
+    // Per-component in-flight flags so the user can mash multiple rerolls
+    // and the buttons disable independently. Module-scope portraitInFlight
+    // is gone in this PR.
+    const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false };
+    let aiPortraitDataUrl = null; // when set, replaces the default at accept-time
 
-    function renderPreview(c) {
-      preview.innerHTML = "";
-      preview.style.display = "flex";
-      const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, startingMove: { name: "—", description: "" } };
-      const head = document.createElement("div");
-      head.style.cssText = "display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;";
-      const name = document.createElement("div");
-      name.style.cssText = "font-size:20px;font-weight:800;color:var(--text);";
-      name.textContent = c.name;
-      head.appendChild(name);
-      const tag = document.createElement("span");
-      tag.style.cssText = "font-size:11px;background:var(--accent);color:#fff;padding:2px 8px;border-radius:999px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;";
-      tag.textContent = pb.name;
-      head.appendChild(tag);
-      preview.appendChild(head);
-
-      const fmt = (n) => (n >= 0 ? "+" : "") + n;
-      const statLine = document.createElement("div");
-      statLine.style.cssText = "font-size:12px;color:var(--text-mute);letter-spacing:0.06em;";
-      statLine.textContent = "HEAD " + fmt(c.stats.head) + " · HEART " + fmt(c.stats.heart) + " · HUSTLE " + fmt(c.stats.hustle) + " · HONOR " + fmt(c.stats.honor);
-      preview.appendChild(statLine);
-
-      const body = document.createElement("div");
-      body.style.cssText = "color:var(--text);font-size:14px;line-height:1.5;background:var(--bg-elev);border-radius:10px;padding:10px 12px;";
-      body.textContent = c.personality;
-      preview.appendChild(body);
-
-      const arc = document.createElement("div");
-      arc.style.cssText = "border-left:3px solid var(--accent);padding:6px 10px;color:var(--text-soft);font-style:italic;font-size:13px;line-height:1.5;background:var(--bg-elev);border-radius:0 8px 8px 0;";
-      // Show the flavor quote on the preview when present; legacy rolls
-      // (no flavorQuote yet) fall back to the arc answer.
-      arc.textContent = "“" + (c.flavorQuote || c.arcAnswer) + "”";
-      preview.appendChild(arc);
-
-      const move = document.createElement("div");
-      move.style.cssText = "font-size:11px;color:var(--text-mute);";
-      const moveName = document.createElement("strong");
-      moveName.style.color = "var(--text)";
-      moveName.textContent = pb.startingMove.name;
-      move.appendChild(moveName);
-      move.appendChild(document.createTextNode(" — " + pb.startingMove.description));
-      preview.appendChild(move);
+    function setStatus(text, invalid) {
+      status.textContent = text || "";
+      status.classList.toggle("is-invalid", !!invalid);
+    }
+    function applyDisabled() {
+      acceptBtn.disabled = !rolled || inFlight.all;
+      [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
+        const k = reroll.dataset.key;
+        reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
+      });
+      portraitBtn.disabled = !rolled || inFlight.portrait;
     }
 
-    async function roll() {
-      if (rolling) return;
-      rolling = true;
-      rollBtn.disabled = true;
-      acceptBtn.disabled = true;
-      acceptBtn.style.display = rolled ? "" : "none";
-      status.textContent = "Rolling…";
-      status.classList.remove("is-invalid");
+    function renderRolled(c) {
+      const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, startingMove: { name: "—", description: "" } };
+      nameRow.val.textContent = c.name;
+      playbookRow.val.textContent = pb.name;
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      statsRow.val.textContent = "HEAD " + fmt(c.stats.head) + " · HEART " + fmt(c.stats.heart) + " · HUSTLE " + fmt(c.stats.hustle) + " · HONOR " + fmt(c.stats.honor);
+      personalityRow.val.textContent = c.personality;
+      quoteRow.val.textContent = c.flavorQuote ? "“" + c.flavorQuote + "”" : (c.arcAnswer ? "“" + c.arcAnswer + "”" : "—");
+      // Default portrait swaps with playbook unless the player has opted
+      // in to AI gen. AI portrait is keyed to the rolled identity — if
+      // they reroll the playbook AFTER generating an AI portrait, the
+      // AI image probably no longer matches; we drop it back to default.
+      // (The player can always click ✨ again.)
+      if (!aiPortraitDataUrl) {
+        portraitImg.src = defaultPortraitFor(c.playbookId);
+      }
+    }
+
+    async function rollComponents(components) {
+      if (inFlight.all) return;
+      // Mark per-component flags so individual button states track.
+      const isFullRoll = !components || components.length === 0;
+      if (isFullRoll) {
+        inFlight.all = true;
+      } else {
+        for (const c of components) inFlight[c] = true;
+      }
+      applyDisabled();
+      setStatus(isFullRoll ? "Rolling…" : "Rerolling " + components.join(", ") + "…");
       try {
+        // If the player reroll-cycles the playbook OR the name AFTER
+        // generating an AI portrait, the AI image no longer matches —
+        // drop it so the default takes over. The player can re-fire ✨
+        // if they want a new AI portrait against the new identity.
+        if (!isFullRoll && (components.includes("playbook") || components.includes("name"))) {
+          aiPortraitDataUrl = null;
+        }
+        const body = isFullRoll
+          ? {}
+          : { regen: components, keep: rolled || {} };
         const r = await apiFetch("/api/apps/ruby-high/chat/character/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: "{}",
+          body: JSON.stringify(body),
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({ error: r.status }));
@@ -1774,52 +2002,103 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         }
         const data = await r.json();
         rolled = data.character;
-        rollBtn.textContent = "Reroll";
-        acceptBtn.style.display = "";
-        renderPreview(rolled);
-        status.textContent = "";
+        renderRolled(rolled);
+        setStatus("");
       } catch (err) {
-        // 401-from-stale-localStorage is caught by apiFetch's interceptor
-        // before we reach here — by the time this catch runs in that case,
-        // deriveAuth has already re-rendered the sheet in its sign-in branch
-        // and these elements are detached. Writing to status.textContent on
-        // a detached node is a harmless no-op. For genuine non-auth errors
-        // (network, 5xx) we surface a tighter message.
         if (status.isConnected) {
-          status.textContent = err && err.message ? err.message : "Roll failed — try again.";
-          status.classList.add("is-invalid");
+          setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
         }
       } finally {
-        rolling = false;
-        rollBtn.disabled = false;
-        acceptBtn.disabled = !rolled;
+        if (isFullRoll) {
+          inFlight.all = false;
+        } else {
+          for (const c of components) inFlight[c] = false;
+        }
+        applyDisabled();
       }
     }
 
-    rollBtn.addEventListener("click", roll);
+    // Wire per-row reroll buttons.
+    [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
+      reroll.addEventListener("click", () => {
+        const key = reroll.dataset.key;
+        // arcAnswer doesn't render as its own row (the quote shows
+        // flavorQuote || arcAnswer); we still expose the reroll
+        // implicitly via the quote row, but the LLM may not always
+        // touch arcAnswer — fine. The visible field is what matters.
+        rollComponents([key]);
+      });
+    });
+
+    // ✨ Generate AI portrait — fires /chat/character/portrait. On
+    // success, replaces the default img and stashes the data URL so it
+    // ships with the create-character command. On failure, leaves the
+    // default in place and shows an inline error.
+    portraitBtn.addEventListener("click", async () => {
+      if (!rolled || inFlight.portrait) return;
+      inFlight.portrait = true;
+      portraitBtn.textContent = "✨ Generating…";
+      portraitStatus.textContent = "";
+      portraitStatus.classList.remove("is-invalid");
+      applyDisabled();
+      try {
+        const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: rolled.name, playbookId: rolled.playbookId, personality: rolled.personality, stats: rolled.stats }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ error: r.status }));
+          throw new Error(err.error || "portrait " + r.status);
+        }
+        const data = await r.json();
+        if (!data || !data.portraitDataUrl) throw new Error("no image returned");
+        aiPortraitDataUrl = data.portraitDataUrl;
+        portraitImg.src = aiPortraitDataUrl;
+        portraitBtn.textContent = "✨ Try again";
+        portraitStatus.textContent = "AI portrait ready.";
+      } catch (err) {
+        portraitStatus.textContent = "Couldn't generate — keeping the default.";
+        portraitStatus.classList.add("is-invalid");
+        portraitBtn.textContent = "✨ Generate AI portrait";
+      } finally {
+        inFlight.portrait = false;
+        applyDisabled();
+      }
+    });
+
     acceptBtn.addEventListener("click", async () => {
-      if (!rolled) return;
+      if (!rolled || inFlight.all) return;
       acceptBtn.disabled = true;
-      rollBtn.disabled = true;
-      status.textContent = "Saving character…";
-      const saved = rolled;
-      const data = await command({ type: "create-character", ...rolled });
+      setStatus("Saving character…");
+      // Lock-in shape: ship the rolled character + whichever portrait
+      // is currently visible (AI if generated, default otherwise). The
+      // post-acceptance background portrait gen path that used to live
+      // here is GONE — what you see is what you get.
+      const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
+      const data = await command({
+        type: "create-character",
+        ...rolled,
+        portraitDataUrl: portraitUrl,
+      });
       if (data && data.session) {
-        // Close immediately; portrait gen runs in background and lands on
-        // the character via /chat/character/portrait → /command set-portrait.
         closeSheet();
-        void generateAndAttachPortrait(saved);
       } else {
-        acceptBtn.disabled = false;
-        rollBtn.disabled = false;
+        applyDisabled();
+        setStatus("Save failed — try again.", true);
       }
     });
 
     // Auto-roll on first open. By the time we get here authed is guaranteed
     // true (the unauth branch returned above).
-    roll();
+    rollComponents();
   }
   sheetEl.addEventListener("click", (e) => { if (e.target === sheetEl) closeSheet(); });
+  // Universal close affordance — replaces every per-card "Close" button.
+  // The X is absolutely positioned in the overlay corner (CSS), so it
+  // tracks the overlay rather than any individual card variant.
+  const sheetCloseBtn = $("sheet-close");
+  if (sheetCloseBtn) sheetCloseBtn.addEventListener("click", closeSheet);
 
   // ── pack store overlay (Anki import + pack switcher) ────────────────────
   const packEl = $("pack-overlay");
