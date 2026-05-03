@@ -88,13 +88,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
     blackboardFoot: $("blackboard-foot"),
-    qnum: $("qnum"),
     nextBtn: $("next-btn"),
     raceStrip: $("race-strip"),
     raceRow: $("race-row"),
     timerPill: $("timer-pill"),
     timerLabel: $("timer-label"),
-    difficultyFilter: $("difficulty-filter"),
     composerZone: $("composer-zone"),
     chatForm: $("chat-form"),
     chatInput: $("chat-input"),
@@ -319,6 +317,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.blackboardEmpty.hidden = true;
     els.blackboardMeta.hidden = false;
     els.boardFrameHost.hidden = false;
+    // showBlackboardEmpty sets the answers-host hidden attribute; clear it
+    // here so the data-mode CSS rules can take over for round-live.
+    els.answersHost.hidden = false;
     els.blackboardPanel.dataset.opinion = String(!!isOpinion);
   }
 
@@ -549,13 +550,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       btn.disabled = role === "agent";
     });
 
-    // Footer — Question N label always visible; difficulty filter + Next
-    // button only when the player is signed in (otherwise nothing they can
-    // press should be visible).
-    els.qnum.textContent = "Question " + questionCounter;
+    // Footer — Next button shown only when the player is signed in and only
+    // after a reveal (revealRound clears the inline display:none).
     els.nextBtn.disabled = false;
     els.nextBtn.style.display = "none"; // hidden until reveal
-    if (els.difficultyFilter) els.difficultyFilter.hidden = !authed;
     els.blackboardFoot.hidden = !authed;
 
     // Opinion-mode bookkeeping resets on new question.
@@ -874,10 +872,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       if (daily && daily.available) {
         await command({ type: "play-daily" });
       } else {
-        await command({
-          type: "pick",
-          difficulty: els.difficultyFilter.value || undefined,
-        });
+        await command({ type: "pick" });
       }
       lockedFor = null;
     } finally {
@@ -1966,7 +1961,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
   els.nextBtn.addEventListener("click", pickNext);
-  els.difficultyFilter.addEventListener("click", (e) => e.stopPropagation());
   els.hamburger.addEventListener("click", toggleRails);
   els.scrim.addEventListener("click", closeRails);
   els.homeBtn.addEventListener("click", openRails);
