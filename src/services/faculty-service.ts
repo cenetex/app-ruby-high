@@ -1,16 +1,11 @@
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { Service, type IAgentRuntime } from "@elizaos/core";
 import {
-  ALL_FACULTY,
-  CHOICES,
-  DIFFICULTIES,
   type BankedQuestion,
   type Difficulty,
   type FacultyMember,
   type QuestionBank,
 } from "../types.js";
+import { getActivePack } from "../content/registry.js";
 
 export interface PickFilter {
   faculty?: string;
@@ -19,12 +14,6 @@ export interface PickFilter {
   exclude?: Iterable<string>;
 }
 
-const PACK_FILES: Record<string, string> = {
-  ruby: "ruby.json",
-  "sally-science": "sally-science.json",
-  "professor-edward": "professor-edward.json",
-};
-
 export class FacultyService extends Service {
   static override readonly serviceType = "ruby-high-faculty";
 
@@ -32,48 +21,44 @@ export class FacultyService extends Service {
     "Loads faculty question packs from disk and picks questions by faculty, subject, and difficulty.";
 
   private readonly banks = new Map<string, QuestionBank>();
+  private facultyList: FacultyMember[] = [];
   private loaded = false;
 
   static async start(runtime: IAgentRuntime): Promise<FacultyService> {
     const svc = new FacultyService(runtime);
-    await svc.loadBanks();
+    await svc.loadFromActivePack();
     return svc;
   }
 
   async stop(): Promise<void> {
     this.banks.clear();
+    this.facultyList = [];
     this.loaded = false;
   }
 
-  private async loadBanks(): Promise<void> {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const candidates = [
-      resolve(here, "..", "..", "assets", "questions"),
-      resolve(here, "..", "assets", "questions"),
-      resolve(here, "assets", "questions"),
-    ];
-
-    for (const [facultyId, fileName] of Object.entries(PACK_FILES)) {
-      let bank: QuestionBank | null = null;
-      for (const dir of candidates) {
-        try {
-          const raw = await readFile(resolve(dir, fileName), "utf8");
-          bank = validateBank(JSON.parse(raw));
-          break;
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
-          throw new Error(
-            `Failed to load question pack '${fileName}': ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      if (!bank) {
-        throw new Error(`Question pack not found: ${fileName} (looked in ${candidates.join(", ")})`);
-      }
-      if (bank.faculty !== facultyId) {
-        throw new Error(`Question pack ${fileName} declares faculty='${bank.faculty}', expected '${facultyId}'`);
-      }
-      this.banks.set(bank.faculty, bank);
+  /** Load faculty + question banks from the active content pack. Replaces
+   *  the previous fs-based pack-file loader; the active pack is now the
+   *  single source of truth (see src/content/registry.ts). Tests/future
+   *  pack-switching logic call setActivePack() then re-call this. */
+  async loadFromActivePack(): Promise<void> {
+    const pack = await getActivePack();
+    this.banks.clear();
+    this.facultyList = pack.faculty.map((f) => ({
+      id: f.id,
+      displayName: f.displayName,
+      shortName: f.shortName,
+      subjects: f.subjects,
+      bio: f.bio,
+      available: true,
+      accent: f.accent,
+    }));
+    for (const f of pack.faculty) {
+      this.banks.set(f.id, {
+        faculty: f.id,
+        displayName: f.displayName,
+        description: f.bio,
+        questions: f.questions,
+      });
     }
     this.loaded = true;
   }
@@ -83,11 +68,11 @@ export class FacultyService extends Service {
   }
 
   faculty(): FacultyMember[] {
-    return ALL_FACULTY;
+    return this.facultyList;
   }
 
   facultyById(id: string): FacultyMember | null {
-    return ALL_FACULTY.find((f) => f.id === id) ?? null;
+    return this.facultyList.find((f) => f.id === id) ?? null;
   }
 
   bank(facultyId: string): QuestionBank | null {
@@ -182,53 +167,4 @@ export class FacultyService extends Service {
     }
     return null;
   }
-}
-
-function validateBank(value: unknown): QuestionBank {
-  if (!value || typeof value !== "object") throw new Error("Bank must be an object");
-  const v = value as Record<string, unknown>;
-  if (typeof v.faculty !== "string") throw new Error("Bank.faculty missing");
-  if (typeof v.displayName !== "string") throw new Error("Bank.displayName missing");
-  if (typeof v.description !== "string") throw new Error("Bank.description missing");
-  if (!Array.isArray(v.questions)) throw new Error("Bank.questions must be an array");
-
-  const questions: BankedQuestion[] = v.questions.map((q, i) => {
-    if (!q || typeof q !== "object") throw new Error(`questions[${i}] not an object`);
-    const r = q as Record<string, unknown>;
-    if (typeof r.id !== "string") throw new Error(`questions[${i}].id missing`);
-    if (typeof r.prompt !== "string") throw new Error(`questions[${i}].prompt missing`);
-    const correct = r.correct as string;
-    if (!CHOICES.includes(correct as never)) {
-      throw new Error(`questions[${i}].correct must be A/B/C/D`);
-    }
-    const opts = r.options as Record<string, unknown> | undefined;
-    if (!opts) throw new Error(`questions[${i}].options missing`);
-    for (const c of CHOICES) {
-      if (typeof opts[c] !== "string" || (opts[c] as string).trim().length === 0) {
-        throw new Error(`questions[${i}].options.${c} missing or empty`);
-      }
-    }
-    if (typeof r.subject !== "string") throw new Error(`questions[${i}].subject missing`);
-    const difficulty = r.difficulty as string;
-    if (!DIFFICULTIES.includes(difficulty as never)) {
-      throw new Error(`questions[${i}].difficulty must be easy/medium/hard`);
-    }
-    return {
-      id: r.id,
-      prompt: r.prompt,
-      options: { A: opts.A as string, B: opts.B as string, C: opts.C as string, D: opts.D as string },
-      correct: correct as BankedQuestion["correct"],
-      explanation: typeof r.explanation === "string" ? r.explanation : undefined,
-      subject: r.subject,
-      difficulty: difficulty as Difficulty,
-      faculty: v.faculty as string,
-    };
-  });
-
-  return {
-    faculty: v.faculty,
-    displayName: v.displayName,
-    description: v.description,
-    questions,
-  };
 }
