@@ -6,7 +6,10 @@ Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service
 
 **For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
 
-For the production AWS deploy (ECR, App Runner, DynamoDB, IAM bootstrap), see [`infra/README.md`](./infra/README.md).
+For the production deploy:
+
+- **Fly.io** *(cheaper, scales to zero)* — see [`infra/fly-deploy.md`](./infra/fly-deploy.md).
+- **AWS App Runner** *(legacy / always-on)* — see [`infra/README.md`](./infra/README.md).
 
 ## Run it locally
 
