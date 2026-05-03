@@ -1,8 +1,8 @@
-name: deploy
+name: deploy-app-runner-legacy
 
 on:
-  push:
-    branches: [main]
+  # Production is Fly.io. This App Runner path is retained as a manual
+  # legacy fallback and must not auto-run on main pushes.
   workflow_dispatch: {}
 
 permissions:

@@ -1082,7 +1082,7 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     log.event("character.created", {
-      sessionId, name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
+      sessionId, characterName: name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
     });
     return state;
   }
@@ -1161,8 +1161,9 @@ export class RubyHighService extends Service {
 
   resetSession(sessionId: string): QuizState {
     this.sessions.delete(sessionId);
+    const state = this.getOrCreate(sessionId);
     void this.persistSession(sessionId);
-    return this.getOrCreate(sessionId);
+    return state;
   }
 
   /** Switch the active content pack for THIS session. Per-session so a

@@ -45,7 +45,7 @@ function mockOpenRouter(sseBody: Uint8Array) {
       url: typeof input === "string" ? input : input.url,
       body: init?.body ? JSON.parse(init.body) : null,
     };
-    return new Response(sseBody, {
+    return new Response(sseBody as BodyInit, {
       status: 200,
       headers: { "Content-Type": "text/event-stream" },
     });

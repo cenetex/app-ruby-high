@@ -8,12 +8,14 @@ const buildId = process.env.RUBY_HIGH_BUILD?.slice(0, 12) ?? "dev";
 function emit(level: "event" | "error", name: string, data: Record<string, unknown>): void {
   // Stable field order: ts, level, build, name, ...data. Keeps log lines
   // diffable and easy to scan in a tail.
+  const { name: payloadName, ...safeData } = data;
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     level,
     build: buildId,
     name,
-    ...data,
+    ...safeData,
+    ...(payloadName === undefined ? {} : { payloadName }),
   });
   // Errors → stderr so CloudWatch can split them; events → stdout.
   if (level === "error") process.stderr.write(line + "\n");

@@ -6,10 +6,8 @@ Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service
 
 **For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
 
-For the production deploy:
-
-- **Fly.io** *(cheaper, scales to zero)* — see [`infra/fly-deploy.md`](./infra/fly-deploy.md).
-- **AWS App Runner** *(legacy / always-on)* — see [`infra/README.md`](./infra/README.md).
+Production is on **Fly.io**; see [`infra/fly-deploy.md`](./infra/fly-deploy.md).
+AWS App Runner is legacy / manual-only; see [`infra/README.md`](./infra/README.md).
 
 ## Run it locally
 
@@ -70,13 +68,17 @@ No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with
 npm test
 ```
 
-16 test files (~3k lines) covering the Daily mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, and the content-pack registry.
+18 test files covering the Daily mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, pack routes, and the content-pack registry.
 
 ## Deploy
 
-The current production deploy is **AWS App Runner via ECR**, driven by [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml). Push to `main` → GHA assumes an AWS role via OIDC → builds the Docker image → pushes to ECR → updates the App Runner service → waits for it to settle.
+The current production deploy is **Fly.io**, driven locally by `npm run deploy`:
 
-The container itself is host-agnostic — anywhere that speaks Docker, sets `PORT`, and populates `x-forwarded-*` works.
+```bash
+npm run deploy
+```
+
+The App Runner workflow is retained as a legacy manual fallback only. The container itself is host-agnostic — anywhere that speaks Docker, sets `PORT`, and populates `x-forwarded-*` works.
 
 For the IAM trust policies, the DynamoDB bootstrap, and the manual deploy fallback, see [`infra/README.md`](./infra/README.md).
 

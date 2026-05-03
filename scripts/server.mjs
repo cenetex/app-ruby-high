@@ -55,9 +55,13 @@ const rubySvc = await (async () => {
 chatSvc.setRubyHighService(rubySvc);
 
 // 1 MB cap keeps the host from OOM'ing on malformed or hostile requests.
-// Legitimate Ruby High traffic is well under 4 KB per request.
+// Legitimate Ruby High traffic is well under 4 KB per request. Anki imports
+// are the exception: they carry a base64 .apkg payload and are route-capped
+// in pack-routes.ts at 16 MB.
 const MAX_BODY_BYTES = 1024 * 1024;
-function readJsonBody(req) {
+const MAX_IMPORT_BODY_BYTES = 16 * 1024 * 1024;
+const IMPORT_BODY_HOST_CAP_BYTES = MAX_IMPORT_BODY_BYTES + 1024 * 1024;
+function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0;
@@ -65,7 +69,7 @@ function readJsonBody(req) {
     req.on("data", (c) => {
       if (rejected) return;
       bytes += c.length;
-      if (bytes > MAX_BODY_BYTES) {
+      if (bytes > maxBytes) {
         rejected = true;
         const err = new Error("Request body too large");
         err.statusCode = 413;
@@ -145,7 +149,12 @@ function makeRouteContext(req, res, url) {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(data));
     },
-    readJsonBody: () => readJsonBody(req),
+    readJsonBody: () => readJsonBody(
+      req,
+      url.pathname === "/api/apps/ruby-high/packs/import-anki"
+        ? IMPORT_BODY_HOST_CAP_BYTES
+        : MAX_BODY_BYTES,
+    ),
   };
 }
 

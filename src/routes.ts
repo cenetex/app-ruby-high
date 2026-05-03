@@ -358,6 +358,9 @@ function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
   const fac = facultyForDay(key);
   if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
   if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
+  if (state.character.lastBonusDate === key) {
+    return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
+  }
   return { available: true, facultyId: fac, dailyKey: key };
 }
 

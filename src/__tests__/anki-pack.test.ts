@@ -68,10 +68,11 @@ describe("buildAnkiPack — happy path", () => {
     for (const q of fac.questions) {
       expect(q.id).toMatch(/^anki-/);
       expect(["A", "B", "C", "D"]).toContain(q.correct);
-      expect(q.options.A).toBeTruthy();
-      expect(q.options.B).toBeTruthy();
-      expect(q.options.C).toBeTruthy();
-      expect(q.options.D).toBeTruthy();
+      const options = q.options!;
+      expect(options.A).toBeTruthy();
+      expect(options.B).toBeTruthy();
+      expect(options.C).toBeTruthy();
+      expect(options.D).toBeTruthy();
       expect(q.faculty).toBe(fac.id);
     }
   });

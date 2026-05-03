@@ -11,7 +11,6 @@ import type { AnkiCard } from "../content/anki/parse.js";
 // without touching the network.
 
 let calls = 0;
-let fetchSpy: ReturnType<typeof vi.spyOn>;
 
 function makeCards(n: number): AnkiCard[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -23,7 +22,7 @@ function makeCards(n: number): AnkiCard[] {
 }
 
 function mockOpenRouter(handler: (count: number) => { ok: boolean; status?: number; body: string }) {
-  fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     calls += 1;
     const r = handler(calls);
     return new Response(r.body, { status: r.status ?? (r.ok ? 200 : 500) });
@@ -57,11 +56,13 @@ describe("generateBankFromCards — happy path", () => {
     expect(result.skipped).toBe(0);
     for (const q of result.questions) {
       expect(["A", "B", "C", "D"]).toContain(q.correct);
-      const correctOption = q.options[q.correct];
+      const options = q.options!;
+      const correct = q.correct!;
+      const correctOption = options[correct];
       // Correct option matches the card's back ("A1", "A2", or "A3")
       expect(correctOption).toMatch(/^A\d+$/);
       // All four options unique
-      const set = new Set(Object.values(q.options));
+      const set = new Set(Object.values(options));
       expect(set.size).toBe(4);
       // Faculty id stamped per the schema
       expect(q.faculty).toBe("test-teacher");
