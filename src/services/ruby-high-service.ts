@@ -3,6 +3,11 @@ import {
   ADVANTAGE_ROLLS_PER_GRADE,
   CHOICES,
   DEFAULT_GRADE,
+  daysBetween,
+  legendariesPerDayFor,
+  rollRarity,
+  xpForRarity,
+  type Rarity,
   DEFAULT_ROUND_DURATION_MS,
   GRADES,
   LOUNGE_FACULTY,
@@ -69,6 +74,10 @@ export interface PoseInput {
   difficulty?: Difficulty;
   faculty?: string;
   questionId?: string;
+  /** Optional override for the question's rarity. When omitted, pose()
+   *  rolls one against the global RARITY_WEIGHTS distribution. The
+   *  daily-bonus path passes "legendary" to force the guaranteed roll. */
+  rarity?: Rarity;
 }
 
 export interface PoseOpinionInput {
@@ -77,6 +86,7 @@ export interface PoseOpinionInput {
   subject?: string;
   faculty?: string;
   questionId?: string;
+  rarity?: Rarity;
 }
 
 export interface PickAndPoseInput {
@@ -463,15 +473,15 @@ export class RubyHighService extends Service {
       playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
 
-    // Player progression — Daily ticks the streak (the arc gate). Free-play
-    // questions don't tick anything player-side (they're warm-up). The
-    // cohort rolls alongside the player on every Daily — their streaks
-    // are independent of pass/fail.
-    if (round.isDaily) {
-      this.applyPlayerStreak(state, wasCorrect, state.faculty);
+    // Player progression. Post-rarity-refactor every resolved round
+    // flows through applyPlayerProgress: rarity drives both XP and
+    // the per-day Legendary count toward the streak. The cohort
+    // ticks on Legendary rounds (the per-day pass marker) so NPC
+    // pacing roughly matches the player's UTC-day cadence.
+    this.applyPlayerProgress(state, wasCorrect, state.faculty, q.rarity ?? "common");
+    if ((q.rarity ?? "common") === "legendary") {
       const correctAns = (q.correct ?? "A") as Choice;
-      const dailyKeyForRound = round.dailyKey ?? dailyKey(new Date());
-      this.applyCohortDaily(state, correctAns, dailyKeyForRound);
+      this.applyCohortDaily(state, correctAns, dailyKey());
     }
 
     state.lastReveal = {
@@ -491,63 +501,72 @@ export class RubyHighService extends Service {
     void this.persistSession(state.sessionId);
   }
 
-  /** Tick the player's Daily-pass streak after a question resolves. Per
-   *  DESIGN.md Pillar 1:
-   *    - On a pass: streak.count += 1; if it hits requiredStreakForGrade
-   *      for the current year, the player advances (and on Senior, the
-   *      yearbook entry writes and the run effectively graduates).
-   *    - On a miss: streak.count resets to 0. The grade does NOT change.
+  /** Apply rarity-driven progression after a question resolves. Called
+   *  on EVERY resolved round (the Daily-as-arc model is gone). Steps:
    *
-   *  This is called from resolveRound + recordGrades only when the resolved
-   *  question was today's Daily (state.current.id matched the Daily that
-   *  was posed). Free-play questions don't tick the streak. */
-  private applyPlayerStreak(state: QuizState, passed: boolean, faculty: string): void {
+   *    1. subjectScores tick (independent of pass/rarity) — drives
+   *       the diploma's subject-themed accessory at graduation.
+   *    2. On a pass: subjectXp[faculty] += xpForRarity(r); ch.xp += same.
+   *       Common = 0 XP — free reps with no progression weight.
+   *    3. On a Legendary pass: bump legendariesToday.count for today.
+   *       The first time count meets `legendariesPerDayFor(grade)` on
+   *       a given UTC date is a "day complete": tick the streak (with
+   *       date-gap reset) and check the year-advancement gate.
+   *
+   *  Rarity comes from the question itself (state.current.rarity); the
+   *  caller passes it through so this method doesn't have to peek at
+   *  state.current. */
+  private applyPlayerProgress(state: QuizState, passed: boolean, faculty: string, rarity: Rarity): void {
     const ch = state.character;
     if (!ch || !state.currentGrade) return;
     const grade = state.currentGrade;
+    const today = dailyKey();
 
-    // Subject-score tracking — used for the diploma image's subject-themed
-    // accessory at graduation. Tick whether or not the answer passed.
+    // 1. Subject-score tracking.
     ch.subjectScores = ch.subjectScores ?? {};
     const subj = ch.subjectScores[faculty] ?? { correct: 0, total: 0 };
     subj.total += 1;
     if (passed) subj.correct += 1;
     ch.subjectScores[faculty] = subj;
 
-    // Per-class XP pool. Pass adds to the pool of THIS daily's faculty
-    // (which equals state.faculty since playDaily sets the room before
-    // posing). The advancement gate below checks each teaching room's
-    // pool against the per-class minimum, so passing only one teacher's
-    // questions can no longer graduate you.
+    // 2. XP. Award only on pass; amount is rarity-tiered.
+    const xp = passed ? xpForRarity(rarity) : 0;
     ch.subjectXp = ch.subjectXp ?? {};
-    if (passed) {
-      ch.subjectXp[faculty] = (ch.subjectXp[faculty] ?? 0) + 1;
+    if (xp > 0) {
+      ch.subjectXp[faculty] = (ch.subjectXp[faculty] ?? 0) + xp;
+      ch.xp = (ch.xp ?? 0) + xp;
     }
 
-    // Mark today's Daily as completed so the player can't replay it.
-    ch.lastDailyDate = dailyKey(new Date());
+    // 3. Day-target tracking. Only Legendary correctness moves it.
+    if (!passed || rarity !== "legendary") return;
 
-    if (!passed) {
-      // Streak resets but stays anchored to the current grade.
-      ch.streak = { grade, count: 0 };
-      return;
+    if (!ch.legendariesToday || ch.legendariesToday.date !== today) {
+      ch.legendariesToday = { date: today, count: 0 };
     }
+    ch.legendariesToday.count += 1;
 
-    // Pass — increment, anchored to the current grade.
-    const prev = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
-    const next = prev + 1;
-    ch.streak = { grade, count: next };
+    const target = legendariesPerDayFor(grade);
+    // Only the FIRST crossing of the target on this date bumps the
+    // streak. Post-crossing legendaries on the same day still award
+    // XP via the path above; the day was already "complete."
+    if (ch.legendariesToday.count !== target) return;
 
-    // Two gates to advance (Plan C — see DESIGN.md §6.5):
+    const prevLastDate = ch.streak && ch.streak.grade === grade ? ch.streak.lastDate : undefined;
+    if (prevLastDate === today) return; // already credited today
+    let nextCount: number;
+    if (prevLastDate && daysBetween(prevLastDate, today) === 1) {
+      nextCount = (ch.streak?.grade === grade ? ch.streak.count : 0) + 1;
+    } else {
+      nextCount = 1; // fresh streak — first day, gap > 1, or new grade
+    }
+    ch.streak = { grade, count: nextCount, lastDate: today };
+
+    // Two gates to advance:
     //   1. streak >= requiredStreakForGrade(grade)
     //   2. subjectXp[teacher] >= requiredSubjectXpForGrade(grade) for EVERY
     //      teaching room (homeroom + science + literature)
-    //
-    // The total-XP gate is gone — it was undifferentiated and let players
-    // graduate having ducked a whole subject. Per-class minimums force
-    // engagement with all three teachers.
     const required = requiredStreakForGrade(grade);
-    if (next < required) return;
+    if (nextCount < required) return;
     const subjectFloor = requiredSubjectXpForGrade(grade);
     for (const room of TEACHING_ROOMS) {
       const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
@@ -564,7 +583,7 @@ export class RubyHighService extends Service {
     ch.yearbook.push({
       grade,
       completedAt: Date.now(),
-      summary: { correct: next, total: next },
+      summary: { correct: nextCount, total: nextCount },
     });
     const advance = nextGradeAfter(grade);
     if (advance) {
@@ -651,6 +670,7 @@ export class RubyHighService extends Service {
       }
     }
     const id = input.questionId ?? `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const rarity = input.rarity ?? rollRarity();
     const question: Question = {
       id,
       prompt: input.prompt.trim(),
@@ -661,6 +681,7 @@ export class RubyHighService extends Service {
       subject: input.subject?.trim() || state.subject || undefined,
       difficulty: input.difficulty,
       faculty: input.faculty?.trim() || state.faculty,
+      rarity,
     };
     state.current = question;
     state.subject = question.subject ?? state.subject;
@@ -728,6 +749,9 @@ export class RubyHighService extends Service {
       opinionResponses: [],
       opinionGrades: [],
       bestResponder: null,
+      // Mirror rarity from the question so the SSE telemetry can drive
+      // the chalkboard's COMMON/RARE/LEGENDARY pill without re-deriving.
+      rarity: question.rarity,
     };
   }
 
@@ -737,6 +761,7 @@ export class RubyHighService extends Service {
   poseOpinion(sessionId: string, input: PoseOpinionInput): QuizState {
     const state = this.getOrCreate(sessionId);
     const id = input.questionId ?? `qo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const rarity = input.rarity ?? rollRarity();
     const question: Question = {
       id,
       prompt: input.prompt.trim(),
@@ -744,6 +769,7 @@ export class RubyHighService extends Service {
       rubric: input.rubric?.trim() || undefined,
       subject: input.subject?.trim() || state.subject || undefined,
       faculty: input.faculty?.trim() || state.faculty,
+      rarity,
     };
     state.current = question;
     state.subject = question.subject ?? state.subject;
@@ -817,19 +843,15 @@ export class RubyHighService extends Service {
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
-      // Daily streak tick — free-play opinion rounds don't tick the arc
-      // gate (they're warm-up). The cohort still rolls so NPCs march on
-      // their own time.
-      if (round.isDaily) {
-        this.applyPlayerStreak(state, passed, state.faculty);
-        // Opinion mode has no "correct letter" — NPCs already submitted essays
-        // and got graded above. Use a neutral "A" so the cohort dice still
-        // roll without leaking the rubric. Opinion-mode pass for an NPC is
-        // their dice roll matching that neutral letter; functionally a coin
-        // flip per-NPC tied to HEAD. (Future: tie cohort opinion ticks to
-        // their grading score directly.)
-        const dailyKeyForRound = round.dailyKey ?? dailyKey(new Date());
-        this.applyCohortDaily(state, "A", dailyKeyForRound);
+      // Same rarity-driven progression as MC rounds. Opinion rounds
+      // can carry any rarity; if the LLM rolled a Legendary opinion
+      // and the player passed (essay grade ≥ pass threshold), it
+      // counts toward today's Legendary target.
+      this.applyPlayerProgress(state, passed, state.faculty, q.rarity ?? "common");
+      if ((q.rarity ?? "common") === "legendary") {
+        // NPCs roll a coin-flip-ish dice; "A" is a neutral sentinel
+        // since opinion mode has no correct letter to leak.
+        this.applyCohortDaily(state, "A", dailyKey());
       }
       state.lastReveal = {
         questionId: q.id,
@@ -882,9 +904,14 @@ export class RubyHighService extends Service {
     });
   }
 
-  /** "Today's Daily" status — what the viewer needs to render the empty
-   *  state. The Daily runs every day; after completion for the day,
-   *  available=false with reason="completed." */
+  /** Daily-bonus status. Replaces the legacy `dailyStatus` (the Daily-as-arc
+   *  model is gone; this is now strictly about the once-per-day forced-
+   *  Legendary "bonus question"). The bonus is the cheap retention hook
+   *  that survived the rarity refactor — the player gets a guaranteed
+   *  Legendary draw once per UTC date, available={true} until they
+   *  use it. The faculty-of-the-day rotation still works the same way
+   *  (deterministic by date), so the bonus also nudges the player
+   *  toward different rooms over the week. */
   dailyStatus(sessionId: string, now: Date = new Date()): {
     available: boolean;
     reason?: "completed" | "no-grade" | "no-character";
@@ -896,27 +923,25 @@ export class RubyHighService extends Service {
     const fac = facultyForDay(key);
     if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
     if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
-    if (state.character.lastDailyDate === key) {
+    if (state.character.lastBonusDate === key) {
       return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
     }
     return { available: true, facultyId: fac, dailyKey: key };
   }
 
-  /** Pose today's Daily — the deterministic-by-date question, gated to
-   *  one play per UTC school-day. Throws if not available (call
-   *  dailyStatus() first to render the right empty state). */
-  playDaily(sessionId: string, now: Date = new Date()): QuizState {
+  /** Pose today's daily bonus — a forced-Legendary draw, one per UTC
+   *  date. Throws if the bonus has already been used today (the viewer
+   *  reads dailyStatus() first to render the banner appropriately). */
+  playBonus(sessionId: string, now: Date = new Date()): QuizState {
     if (!this.faculty) {
       throw new Error("FacultyService is not bound. Call setFacultyService() first.");
     }
     const state = this.getOrCreate(sessionId);
     const status = this.dailyStatus(sessionId, now);
     if (!status.available) {
-      throw new Error(`Daily not available: ${status.reason ?? "unknown"}`);
+      throw new Error(`Daily bonus not available: ${status.reason ?? "unknown"}`);
     }
     const facultyId = status.facultyId;
-    // Set the room to today's faculty before posing — this also clears
-    // any stale board state (the transition reset rules handle it).
     if (state.faculty !== facultyId) {
       this.setFaculty(sessionId, facultyId);
     }
@@ -927,8 +952,9 @@ export class RubyHighService extends Service {
       exclude: state.askedQuestionIds,
     }, packForSession(state));
     if (!q) {
-      throw new Error(`Bank for ${facultyId} is exhausted; cannot pose today's Daily.`);
+      throw new Error(`Bank for ${facultyId} is exhausted; cannot pose today's bonus.`);
     }
+    // Force rarity = legendary — that's the bonus's defining gift.
     const next = this.pose(sessionId, {
       prompt: q.prompt,
       options: q.options as Record<Choice, string>,
@@ -938,16 +964,25 @@ export class RubyHighService extends Service {
       difficulty: q.difficulty,
       faculty: q.faculty,
       questionId: q.id,
+      rarity: "legendary",
     });
-    // Mark the round as the Daily so resolveRound ticks the streak.
     if (next.activeRound) {
-      next.activeRound.isDaily = true;
-      next.activeRound.dailyKey = status.dailyKey;
+      next.activeRound.isBonus = true;
+      next.activeRound.rarity = "legendary";
     }
-    log.event("daily.posed", {
+    if (state.character) {
+      state.character.lastBonusDate = status.dailyKey;
+    }
+    log.event("bonus.posed", {
       sessionId, faculty: facultyId, dailyKey: status.dailyKey, questionId: q.id,
     });
     return next;
+  }
+
+  /** Back-compat alias. Older route handlers and tests call playDaily.
+   *  Internally identical to playBonus now. */
+  playDaily(sessionId: string, now: Date = new Date()): QuizState {
+    return this.playBonus(sessionId, now);
   }
 
   submitAnswer(sessionId: string, picked: Choice): QuizState {

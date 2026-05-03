@@ -23,6 +23,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // without an extra telemetry round-trip.
   const STREAK_REQUIRED       = { "9": 1, "10": 2, "11": 3, "12": 4 };
   const SUBJECT_XP_REQUIRED   = { "9": 2, "10": 5, "11": 10, "12": 16 };
+  // Legendaries-per-day target by grade. Mirror of the server-side
+  // legendariesPerDayFor() helper. The first time the player hits this
+  // count of correct Legendary answers on a given UTC date counts as
+  // a "day complete" and ticks the streak.
+  const LEGENDARIES_PER_DAY   = { "9": 1, "10": 1, "11": 2, "12": 3 };
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
   const LOUNGE_ID = "lounge";
 
@@ -596,10 +601,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const dailyFaculty = (t.faculty_roster || []).find((f) => f.id === daily.facultyId) || null;
     const profName = dailyFaculty?.displayName || "today's teacher";
     const inRoom = t.faculty === daily.facultyId;
+    // Banner now describes the once-per-day BONUS — a guaranteed
+    // Legendary draw. The button label nudges the player toward
+    // today's faculty's room when they're somewhere else.
     els.dailyBannerSub.textContent = inRoom
-      ? "You're in " + profName + "'s room — tap Begin to take it."
-      : "Ask " + profName + " — they're on the floor today.";
-    els.dailyCtaBtn.textContent = inRoom ? "Begin" : "Go to " + profName;
+      ? "Today's bonus is a guaranteed Legendary in " + profName + "'s room — tap to draw it."
+      : "Today's bonus is in " + profName + "'s room — guaranteed Legendary.";
+    els.dailyCtaBtn.textContent = inRoom ? "Draw bonus ★" : "Go to " + profName;
     els.dailyBanner.hidden = false;
   }
 
@@ -654,17 +662,24 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (question.subject) { const s = document.createElement("span"); s.className = "pill subject"; s.textContent = question.subject; els.blackboardMeta.appendChild(s); }
     if (question.difficulty) { const d = document.createElement("span"); d.className = "pill difficulty " + question.difficulty; d.textContent = question.difficulty; els.blackboardMeta.appendChild(d); }
     if (currentGrade) { const g = document.createElement("span"); g.className = "pill"; g.textContent = "Grade " + currentGrade; els.blackboardMeta.appendChild(g); }
-    // DAILY vs PRACTICE pill — surfaces which kind of round this is so the
-    // player understands which questions move them toward year advancement.
-    // Backend exposes isDaily on active_round (routes.ts). Falls back to
-    // PRACTICE when the flag is missing (legacy rounds, or freshly-posed
-    // questions before the round entry has materialized).
+    // Rarity pill — server stamps active_round.rarity from the question.
+    // Drives the COMMON / RARE / LEGENDARY chip and signals "this one
+    // doesn't move me / moves me a little / moves me toward today's
+    // legendary target." Bonus rounds add a "★ BONUS" badge alongside
+    // the rarity (always Legendary by definition).
     const ar = lastTelemetry && lastTelemetry.active_round;
-    if (ar) {
+    const rarity = (ar && ar.rarity) || (question && question.rarity);
+    if (rarity) {
       const pill = document.createElement("span");
-      pill.className = "pill " + (ar.isDaily ? "daily" : "practice");
-      pill.textContent = ar.isDaily ? "DAILY" : "PRACTICE";
+      pill.className = "pill rarity " + rarity;
+      pill.textContent = rarity.toUpperCase();
       els.blackboardMeta.appendChild(pill);
+    }
+    if (ar && ar.isBonus) {
+      const bonus = document.createElement("span");
+      bonus.className = "pill bonus";
+      bonus.textContent = "★ BONUS";
+      els.blackboardMeta.appendChild(bonus);
     }
 
     // Prompt — always wipe + rewrite on new question (chalkboard re-erasing).
@@ -1038,18 +1053,23 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   async function pickNext() {
     els.nextBtn.disabled = true;
     try {
-      // Prefer today's Daily — that's the arc. Falls through to free-play
-      // ("pick") only when the Daily isn't available (already done, or no
-      // character). Free-play doesn't tick the streak; it's playtest sandbox.
-      const daily = lastTelemetry && lastTelemetry.daily;
-      if (daily && daily.available) {
-        await command({ type: "play-daily" });
-      } else {
-        await command({ type: "pick" });
-      }
+      // The "play-bonus" command pulls today's once-per-day forced-
+      // Legendary question. It only fires when the player explicitly
+      // taps the bonus banner — pickNext (the regular Next button)
+      // always pulls a fresh-rarity question via "pick." Two distinct
+      // surfaces, two distinct entry points.
+      await command({ type: "pick" });
       lockedFor = null;
     } finally {
       els.nextBtn.disabled = false;
+    }
+  }
+  async function playBonus() {
+    try {
+      await command({ type: "play-bonus" });
+      lockedFor = null;
+    } catch (err) {
+      // command() already surfaces errors via appendSystem.
     }
   }
   async function pickAnswer(choice, btn) {
@@ -1607,13 +1627,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   // ── "What you need" hint ───────────────────────────────────────────────
-  // The most-blocking gate as ONE short sentence. Computed off the same
-  // numbers the rungs use; surfaces in the sheet (above the ladder) and
-  // the chalkboard empty state. Reading order chosen to match the
-  // player's likely question: "what's stopping me from advancing?" →
-  // streak first (the daily anchor), then per-class XP, then the daily
-  // status itself. Order matters because the *last* gate hit is the one
-  // the hint shows.
+  // Post-rarity-refactor the gates are:
+  //   1. Today's Legendary target — answer N Legendaries on this UTC
+  //      date (N = legendariesPerDayFor(grade), 1/1/2/3 for FR/SO/JR/SR).
+  //      The first time the player hits N today is a "day complete"
+  //      and ticks the streak.
+  //   2. Streak — consecutive days the per-day target was hit.
+  //   3. Per-class XP — accrued via Rare (+1) and Legendary (+2)
+  //      correctness. Same target numbers as before (2/5/10/16).
+  // The hint surfaces the most-blocking gate as one short sentence.
   function buildNextStepHint(c) {
     if (!c) return "";
     if (graduatedFor(c)) return "You graduated. Keep playing if you want; the arc is done.";
@@ -1621,44 +1643,44 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const grade = String(t.current_grade ?? "9");
     const streakReq = STREAK_REQUIRED[grade] || 1;
     const subjectReq = SUBJECT_XP_REQUIRED[grade] || 2;
+    const legendariesPerDay = LEGENDARIES_PER_DAY[grade] || 1;
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
+    const todayKey = (t.daily && t.daily.dailyKey) || "";
+    const legsToday = c.legendariesToday && c.legendariesToday.date === todayKey
+      ? c.legendariesToday.count : 0;
     const subjectXp = c.subjectXp || {};
     const ROOM_LABEL = { ruby: "homeroom", "sally-science": "Sally's class", "professor-edward": "Edward's class" };
 
+    const legsNeededToday = Math.max(0, legendariesPerDay - legsToday);
     const streakNeeded = Math.max(0, streakReq - streakHere);
     const classGaps = TEACHING_FACULTY_IDS
       .map((fid) => ({ fid, gap: Math.max(0, subjectReq - (subjectXp[fid] || 0)) }))
       .filter((x) => x.gap > 0);
 
-    const allMet = streakNeeded === 0 && classGaps.length === 0;
-    if (allMet) {
-      // Player has cleared both gates. Advancement happens on the next
-      // Daily pass. If today's Daily is gone, that's tomorrow.
-      if (t.daily && t.daily.available === false && t.daily.reason === "completed") {
-        return "All gates cleared. Tomorrow's Daily advances you.";
-      }
-      return "All gates cleared. Pass today's Daily to advance.";
-    }
-
-    // Daily availability shapes the call to action. If the player has
-    // already used today's Daily and still needs a streak day, the only
-    // useful instruction is "come back tomorrow."
-    const dailyAvailable = t.daily && t.daily.available === true;
     const parts = [];
-    if (streakNeeded > 0) {
-      parts.push(streakNeeded === 1 ? "1 more Daily streak day" : streakNeeded + " more Daily streak days");
+    if (legsNeededToday > 0) {
+      parts.push(legsNeededToday === 1
+        ? "1 Legendary needed today (you have " + legsToday + "/" + legendariesPerDay + ")"
+        : legsNeededToday + " Legendaries needed today (" + legsToday + "/" + legendariesPerDay + ")");
+    } else if (streakNeeded > 0) {
+      // Today's target is met; the rest depends on streak length.
+      parts.push("Today complete — streak " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
     if (classGaps.length > 0) {
       const segs = classGaps.map((cg) => (ROOM_LABEL[cg.fid] || cg.fid) + " (+" + cg.gap + ")");
       parts.push("XP needed in " + segs.join(", "));
     }
+
+    if (parts.length === 0) {
+      return "All gates cleared — your next Legendary advances the year.";
+    }
     let hint = parts.join(" · ");
-    if (!dailyAvailable && t.daily && t.daily.reason === "completed") {
-      hint += " · today's Daily is done — come back at 5pm UTC";
-    } else if (!dailyAvailable && t.daily && t.daily.reason === "no-grade") {
-      hint += " · pick a grade first";
-    } else if (dailyAvailable) {
-      hint += " · take today's Daily — practice rounds don't advance the year";
+    // Daily-bonus nudge: if available, mention it as a free path to a
+    // Legendary today. (The bonus ALWAYS rolls Legendary — a guaranteed
+    // tick toward the per-day target.)
+    const bonusAvailable = t.daily && t.daily.available === true;
+    if (bonusAvailable && legsNeededToday > 0) {
+      hint += " · ★ today's bonus is a free Legendary";
     }
     return hint;
   }
@@ -2726,14 +2748,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
   els.nextBtn.addEventListener("click", pickNext);
-  // The daily-challenge CTA on the empty blackboard reuses pickNext —
-  // pickNext already prefers playDaily when daily.available, and
-  // playDaily auto-switches to the day's faculty room before posing.
-  // Disable the button while the request is in flight so a doubletap
-  // doesn't fire two play-daily calls.
+  // The bonus banner now invokes playBonus() directly — playBonus
+  // auto-switches to the day's faculty room before posing the
+  // forced-Legendary draw. Disable while in flight to suppress
+  // doubletap.
   els.dailyCtaBtn.addEventListener("click", async () => {
     els.dailyCtaBtn.disabled = true;
-    try { await pickNext(); }
+    try { await playBonus(); }
     finally { els.dailyCtaBtn.disabled = false; }
   });
   els.hamburger.addEventListener("click", toggleRails);

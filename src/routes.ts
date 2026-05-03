@@ -156,10 +156,14 @@ interface SessionTelemetry extends Record<string, unknown> {
   active_round: {
     type: "multiple-choice" | "opinion";
     questionId: string;
-    /** True when this round is the player's daily-arc question. The viewer
-     *  surfaces a DAILY vs PRACTICE pill so the player understands which
-     *  rounds count toward year advancement and which are warm-ups. */
-    isDaily: boolean;
+    /** Rarity stamped on the underlying question. Drives the
+     *  COMMON / RARE / LEGENDARY pill on the chalkboard meta. */
+    rarity?: "common" | "rare" | "legendary";
+    /** True when this round is the once-per-day forced-Legendary
+     *  bonus question. The viewer can surface a "★ BONUS" badge
+     *  on the meta so the player knows which round used today's
+     *  bonus token. */
+    isBonus: boolean;
     startedAt: number;
     durationMs: number;
     expiresAt: number;
@@ -289,7 +293,8 @@ function deriveActiveRound(state: QuizState) {
   return {
     type: round.type,
     questionId: round.questionId,
-    isDaily: !!round.isDaily,
+    rarity: round.rarity ?? state.current?.rarity,
+    isBonus: !!round.isBonus,
     startedAt: round.startedAt,
     durationMs: round.durationMs,
     expiresAt: round.expiresAt,
@@ -755,11 +760,13 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         return true;
       }
 
-      if (type === "play-daily") {
-        const state = ruby.playDaily(stateKey);
+      if (type === "play-bonus" || type === "play-daily") {
+        // Renamed from play-daily; old clients still send the legacy
+        // name during the rolling window.
+        const state = ruby.playBonus(stateKey);
         ctx.json(ctx.res, {
           success: true,
-          message: "Today's Daily is on the board.",
+          message: "Today's bonus question is on the board.",
           session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
