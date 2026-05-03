@@ -143,11 +143,20 @@ export class ChatService extends Service {
       return;
     }
 
-    const tools = opts.disableTools ? [] : buildToolDefs();
+    const toolDefs = opts.disableTools ? [] : buildToolDefs();
     // 2 rounds is enough for the standard "speak + pose question" flow.
     // More than that has only ever produced loops where the model tries to
     // "fix" a non-problem (e.g., re-picking what it thinks is a duplicate).
     let safety = opts.disableTools ? 1 : 2;
+    // Once any tool has fired in this turn, iteration 2 runs without tools
+    // — it's narration-only. This is the structural fix for the
+    // "model second-guesses pick_from_bank and picks again" loop: in
+    // iteration 2 the system message describes the freshly-placed question,
+    // and the model's own tool result from iteration 1 describes the same
+    // question; reading both literally, the model sometimes concludes
+    // "same question on the board, must re-pick." Removing the tools from
+    // its iteration-2 menu forecloses that path entirely.
+    let toolsFiredThisTurn = false;
 
     while (safety-- > 0) {
       const messages = this.composeForOpenRouter({
@@ -162,7 +171,7 @@ export class ChatService extends Service {
         apiKey: opts.apiKey,
         model: opts.model ?? teacher.defaultModel,
         messages,
-        tools,
+        tools: toolsFiredThisTurn ? [] : toolDefs,
         maxTokens: opts.maxTokens ?? 600,
       });
 
@@ -204,6 +213,11 @@ export class ChatService extends Service {
         return;
       }
 
+      // Mark the turn as having fired tools BEFORE dispatch — even if
+      // dispatch fails, the next iteration must be narration-only so we
+      // don't loop. (Tool-result framing tells the model what happened;
+      // re-trying is the user-event handler's job, not this loop's.)
+      toolsFiredThisTurn = true;
       let handoffFired = false;
       for (const call of assistantToolCalls) {
         const result = await this.dispatchTool(opts.agentSessionId, call);
@@ -360,19 +374,21 @@ export class ChatService extends Service {
             difficulty: args.difficulty as Difficulty | undefined,
           });
           const q = state.current;
-          // The tool-result message frames the new question as REPLACING
-          // whatever was on the board. Earlier wording ("Fresh question
-          // is on the blackboard") let the model read that beside the
-          // new board-context system message and conclude "the system
-          // gave me the same question I just had" — see DESIGN open issue.
-          // Explicit replacement framing + a "do not comment on the act
-          // of drawing" instruction reduces the fourth-wall hallucination.
+          // Keep this message minimal. Earlier versions echoed the new
+          // question's id + prompt back to the model — and because the
+          // very next iteration's system block already contains the
+          // freshly-placed question, the model would read its own tool
+          // result alongside that block and conclude "two messages show
+          // the same question, the bank must have repeated, let me re-pick."
+          // The structural fix (no tools on iteration 2) closes that
+          // entirely; the prompt-side fix is to stop handing the model
+          // ammunition to misread.
           return {
             args,
             payload: {
               ok: true,
               message: q
-                ? `Done. The previous question (if any) has been wiped from the chalkboard and replaced with a fresh one — id=${q.id}, prompt: "${q.prompt}". This is a new question the student hasn't been asked this session; the bank guarantees no repeats. Your turn now: react to the player's previous answer in 1 sentence (do not narrate the act of drawing or comment on the bank, the system, or duplicate questions — just teach), then end.`
+                ? `Done — fresh question is on the board. Now react to the previous outcome in 1 short sentence and stop. Do not call another tool, do not narrate the act of drawing, do not mention the bank or "duplicate" questions.`
                 : "Bank is empty for that filter. Try a different subject.",
             },
             state,
