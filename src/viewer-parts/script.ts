@@ -50,10 +50,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // 401 handling: when the server says "not authenticated" — typically because
   // the rh_session cookie expired but localStorage still has a stale key — we
   // clear the local credential and re-derive auth state. That fires the same
-  // re-render path as a logout: the welcome modal flips to its sign-in view,
-  // chat is hidden, the footer button shows "Sign in." The caller's error
-  // path may still run, but it'll be writing to detached DOM nodes by then,
-  // so no stale "Couldn't roll" string ever lands on screen.
+  // re-render path as a logout: the mandatory #signin-overlay covers the
+  // app, chat + footer button are hidden. The caller's error path may
+  // still run, but it'll be writing to detached DOM nodes by then, so no
+  // stale "Couldn't roll" string ever lands on screen.
   function apiFetch(url, init) {
     const opts = init ? Object.assign({}, init) : {};
     const headers = new Headers(opts.headers || {});
@@ -1486,6 +1486,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // ── character sheet UI ──────────────────────────────────────────────────
   const sheetEl = $("sheet-overlay");
   const sheetCard = $("sheet-card");
+  // Mandatory sign-in surface. Lifecycle: shown whenever authed === false;
+  // hidden whenever authed === true. No dismiss affordance — there is
+  // nothing else to do in the app while unauthed.
+  const signinEl = $("signin-overlay");
   function openSheet() {
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
@@ -1616,44 +1620,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // than building one. Server picks playbook + stats; LLM fills in the
   // name/hook/personality. Single "Roll" or "Reroll" button.
   //
-  // Auth gate: if the player isn't signed in to OpenRouter, this modal IS
-  // the sign-in surface. There is no "Couldn't roll" sub-state — the auth
-  // check happens before any roll request goes out, and stale-localStorage
-  // gets caught by apiFetch's 401 interceptor (which clears the key and
-  // re-renders this modal in its sign-in branch).
+  // Auth invariant: this function only runs when authed === true. The
+  // unauth surface is the mandatory #signin-overlay shown by deriveAuth();
+  // the sheet overlay is suppressed entirely while signed out, so there is
+  // no unauth branch to render here.
   function renderSheetCreation(playbooks) {
     sheetCard.innerHTML = "";
-    if (!authed) {
-      const h = document.createElement("h2");
-      h.textContent = "Welcome to Ruby High";
-      sheetCard.appendChild(h);
-      const sub = document.createElement("p");
-      sub.className = "sub";
-      sub.textContent = "Your character is rolled by an LLM and your chat with the teachers runs on your account. Sign in with OpenRouter to begin — it's free, and your inference key never leaves your browser.";
-      sheetCard.appendChild(sub);
-      const actions = document.createElement("div");
-      actions.className = "sheet-actions";
-      const close = document.createElement("button");
-      close.className = "secondary";
-      close.textContent = "Not now";
-      close.addEventListener("click", closeSheet);
-      const signin = document.createElement("a");
-      // Same-tab navigation, on purpose. Opening OAuth in a new tab depends
-      // on cross-tab storage events to ferry the API key back to the
-      // original tab, and iOS Safari does not reliably fire those — the
-      // user OAuths in the new tab, the new tab's localStorage gets the
-      // key, the original tab never wakes up. Same-tab nav: we leave for
-      // OpenRouter, come back to /auth/callback, callback HTML writes
-      // localStorage and redirects back to the viewer in the same tab.
-      // Boot reads localStorage, authed flips to true, sheet auto-rolls.
-      signin.href = "/api/apps/ruby-high/auth/start";
-      signin.textContent = "Sign in with OpenRouter";
-      signin.style.cssText = "display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;font-weight:800;font-size:14px;";
-      actions.appendChild(close);
-      actions.appendChild(signin);
-      sheetCard.appendChild(actions);
-      return;
-    }
 
     const h = document.createElement("h2");
     h.textContent = "Welcome to Ruby High";
@@ -2018,6 +1990,18 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     lastAuthState = next;
     authed = next;
     applyAuthUI();
+    // Sign-in overlay is the unconditional unauth surface. Anywhere we
+    // discover the user is unauthed, this overlay must be visible and
+    // every other modal must be closed — there is exactly one screen
+    // when signed out, and it is the sign-in screen.
+    if (authed === false) {
+      signinEl.classList.add("is-open");
+      signinEl.setAttribute("aria-hidden", "false");
+      if (sheetOverlayOpen) closeSheet();
+    } else {
+      signinEl.classList.remove("is-open");
+      signinEl.setAttribute("aria-hidden", "true");
+    }
     if (authed && lastTelemetry) loadHistory(lastTelemetry.faculty);
     if (sheetOverlayOpen) renderSheet();
     if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
@@ -2034,19 +2018,21 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.footerAction.hidden = true;
       return;
     }
-    els.footerAction.hidden = false;
     if (authed) {
       els.youState.textContent = "signed in";
       els.footerAction.textContent = "Sign out";
+      els.footerAction.hidden = false;
       els.chatForm.hidden = false;
       els.chatInput.disabled = false;
       els.chatSend.disabled = false;
     } else {
+      // Unauthed: the mandatory sign-in overlay is the only thing the user
+      // can see. No "Sign in" button on the chrome — the chrome is
+      // hidden behind the overlay anyway, and a sign-in button that opens
+      // a sign-in overlay is exactly the cruft we tore out. Footer button
+      // exists ONLY as the sign-out affordance.
       els.youState.textContent = "signed out";
-      els.footerAction.textContent = "Sign in";
-      // Hide the textarea + send entirely until auth — no half-disabled state.
-      // The welcome modal is the unified sign-in surface; tapping the footer
-      // "Sign in" button opens it.
+      els.footerAction.hidden = true;
       els.chatForm.hidden = true;
       els.chatInput.disabled = true;
       els.chatSend.disabled = true;
@@ -2385,8 +2371,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   els.scrim.addEventListener("click", closeRails);
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
+    // Footer button is sign-out only. The unauthed surface is the
+    // mandatory #signin-overlay shown by deriveAuth — never reached
+    // through a button on the chrome.
     if (authed) logout();
-    else openSheet(); // The welcome modal is the unified sign-in surface.
   });
 
   // ── bug-report surface ─────────────────────────────────────────────────
@@ -2467,9 +2455,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 
   // Click your name/avatar to open the character sheet.
   const youCardBlock = document.querySelector(".channels-footer .you-meta");
-  if (youCardBlock) youCardBlock.addEventListener("click", openSheet);
+  if (youCardBlock) youCardBlock.addEventListener("click", () => { if (authed) openSheet(); });
   const youAvatarEl = document.querySelector(".channels-footer .you-avatar");
-  if (youAvatarEl) youAvatarEl.addEventListener("click", openSheet);
+  if (youAvatarEl) youAvatarEl.addEventListener("click", () => { if (authed) openSheet(); });
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
   els.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }

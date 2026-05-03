@@ -1382,6 +1382,23 @@ export const VIEWER_CSS = `
     overflow-y: auto;
   }
   .sheet-overlay.is-open { display: flex; }
+  /* Mandatory overlay: shown unconditionally while unauthed. No close
+     affordance — it covers the app and the only way past it is to sign
+     in. Always rendered (display:flex) so the unauthed boot has nothing
+     paint behind it; aria-hidden flips off when the user signs in. */
+  .sheet-overlay.is-mandatory { display: flex; }
+  .sheet-overlay.is-mandatory[aria-hidden="true"] { display: none; }
+  .signin-card { text-align: center; max-width: 440px; }
+  .signin-card .primary-link {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    padding: 12px 22px;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 15px;
+  }
   .sheet-card {
     background: var(--bg);
     border: 1px solid var(--line);
