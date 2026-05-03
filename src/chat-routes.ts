@@ -354,31 +354,95 @@ const FORBIDDEN_NAMES_HINT = [
   "Olivia", "Noah", "Ava", "Mia", "Ethan", "Aiden", "Lucas", "Harper", "Sophia",
 ];
 
-/** Roll a random character: random playbook + random stat distribution, then
- *  LLM-generated name + arc + flavor + personality grounded in those choices.
- *  The prompt deliberately avoids steering toward any cultural template or
- *  thematic register — we want a kid in school, not a manifesto or an
- *  edgelord. Anti-pattern guards live at the bottom of the prompt. */
-async function rollRandomCharacter(args: { apiKey: string }): Promise<{
+/** Component identifiers the creation card can ask the server to reroll.
+ *  Stats and playbook are dice (instant, no LLM); the four text fields go
+ *  through a single LLM call with the unchanged fields locked in the
+ *  prompt so the model can match register. */
+export type CharacterComponent = "name" | "personality" | "arcAnswer" | "flavorQuote" | "stats" | "playbook";
+const ALL_COMPONENTS: CharacterComponent[] = ["name", "personality", "arcAnswer", "flavorQuote", "stats", "playbook"];
+
+interface RolledCharacter {
   name: string;
   playbookId: string;
   stats: CharacterStats;
   arcAnswer: string;
   flavorQuote: string;
   personality: string;
-}> {
-  const playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
-  const stats = randomStatDistribution();
+}
+
+/** Roll a character. Three modes:
+ *
+ *  - Full roll (regen omitted or includes everything) — current behaviour.
+ *  - Dice-only reroll (regen ⊆ {stats, playbook}) — no LLM call. Returns
+ *    the reshuffled fields merged with `keep`.
+ *  - Text reroll (regen contains any of name / personality / arcAnswer /
+ *    flavorQuote) — one LLM call with `keep` fields locked into the
+ *    prompt. The model is asked to emit only the requested fields; the
+ *    rest are echoed back from `keep` server-side so the contract is
+ *    "always returns a full character." */
+async function rollRandomCharacter(args: {
+  apiKey: string;
+  regen?: CharacterComponent[];
+  keep?: Partial<RolledCharacter>;
+}): Promise<RolledCharacter> {
+  const regenSet = new Set<CharacterComponent>(args.regen && args.regen.length > 0 ? args.regen : ALL_COMPONENTS);
+  const keep = args.keep ?? {};
+
+  // ── dice rolls (no LLM) ───────────────────────────────────────────────
+  let playbook = regenSet.has("playbook")
+    ? PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!
+    : PLAYBOOKS.find((p) => p.id === keep.playbookId);
+  if (!playbook) {
+    // keep.playbookId was missing or unknown — fall back to a fresh roll
+    // rather than throwing. Same for stats below.
+    playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
+  }
+  const stats: CharacterStats = regenSet.has("stats") || !keep.stats
+    ? randomStatDistribution()
+    : keep.stats;
+
+  // Text fields needing the LLM. If none, return the dice-only result.
+  const textFields: CharacterComponent[] = ["name", "personality", "arcAnswer", "flavorQuote"];
+  const textRegen = textFields.filter((f) => regenSet.has(f));
+  if (textRegen.length === 0) {
+    // Pure dice reroll. All text fields must be present in `keep`.
+    const name = String(keep.name ?? "").trim();
+    const arcAnswer = String(keep.arcAnswer ?? "").trim();
+    const flavorQuote = String(keep.flavorQuote ?? "").trim();
+    const personality = String(keep.personality ?? "").trim();
+    if (!name || !arcAnswer || !personality) {
+      throw new Error("Dice-only reroll requires name, arcAnswer, and personality in `keep`.");
+    }
+    return { name, playbookId: playbook.id, stats, arcAnswer, flavorQuote, personality };
+  }
+
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
+
+  // Locked-fields block: only fields the user is KEEPING (i.e. text
+  // fields not in regen) get fed back to the model so it can match
+  // register. The fresh-roll path leaves this block empty, which
+  // collapses back to the original prompt shape.
+  const lockedLines: string[] = [];
+  if (!regenSet.has("name") && keep.name) lockedLines.push(`Existing name (do not change): ${keep.name}`);
+  if (!regenSet.has("personality") && keep.personality) lockedLines.push(`Existing personality (do not change): ${keep.personality}`);
+  if (!regenSet.has("arcAnswer") && keep.arcAnswer) lockedLines.push(`Existing arcAnswer (do not change): ${keep.arcAnswer}`);
+  if (!regenSet.has("flavorQuote") && keep.flavorQuote) lockedLines.push(`Existing flavorQuote (do not change): ${keep.flavorQuote}`);
+
+  // Schema string: only the fields being regenerated appear. The LLM
+  // returns a partial JSON object; we merge with `keep` server-side.
+  const schemaFields = textRegen.map((f) => `"${f}":"..."`).join(",");
+  const schemaLine = `{${schemaFields}}`;
+
   const userPrompt = [
     "Roll a random AI student attending Ruby High (a high school RPG). The player inhabits this character. Aim for a real teenager with small specific concerns — the register of group-chat texts, lunch-line gossip, a half-finished homework excuse.",
     "",
     `Playbook (locked): ${playbook.name} — ${playbook.blurb}`,
     `Hook question (locked): "${playbook.hookQuestion}"`,
     `Stats (locked): HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}`,
+    ...lockedLines,
     "",
-    "Generate JSON exactly in this shape (no other text, no markdown, no code fences):",
-    `{"name":"...","arcAnswer":"...","flavorQuote":"...","personality":"..."}`,
+    `Generate JSON containing ONLY the fields below (no other text, no markdown, no code fences). Output exactly this shape:`,
+    schemaLine,
     "",
     "Field guidance:",
     "- name: ONE first name. Anything goes — common, uncommon, a chosen name, a nickname, a strange spelling. The kind of name a teenager actually has. Examples of the spread: Kit, Theo, Saoirse, Mei, Pip, Yusuf, Birta, Lior, Niamh, Tomás, Arlo, Vic, Ren, Esi, Soren. Skip the AI-default picks: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
@@ -429,11 +493,22 @@ async function rollRandomCharacter(args: { apiKey: string }): Promise<{
   } catch (err) {
     throw new Error(`Could not parse character JSON: ${(err as Error).message} — body: ${cleaned.slice(0, 200)}`);
   }
-  const name = String(parsed.name ?? "").trim();
-  const arcAnswer = String(parsed.arcAnswer ?? "").trim();
-  // Trim wrapping curly/straight quotes if the model added them despite instructions.
-  const flavorQuote = String(parsed.flavorQuote ?? "").trim().replace(/^["“'\s]+|["”'\s]+$/g, "");
-  const personality = String(parsed.personality ?? "").trim();
+  // Merge: the LLM only emits fields named in `regen`. For the others
+  // we trust the `keep` payload. The full-roll path has empty `keep`
+  // but `regen` covers everything, so the merge collapses to the
+  // current-behaviour shape.
+  const pick = (field: "name" | "arcAnswer" | "flavorQuote" | "personality"): string => {
+    if (regenSet.has(field)) {
+      const v = String(parsed[field] ?? "").trim();
+      // Strip wrapping quotes the model sometimes adds to flavorQuote.
+      return field === "flavorQuote" ? v.replace(/^["“'\s]+|["”'\s]+$/g, "") : v;
+    }
+    return String(keep[field] ?? "").trim();
+  };
+  const name = pick("name");
+  const arcAnswer = pick("arcAnswer");
+  const flavorQuote = pick("flavorQuote");
+  const personality = pick("personality");
   if (!name || !arcAnswer || !personality) {
     throw new Error("Generated character missing required fields.");
   }
@@ -1402,13 +1477,34 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const { token, apiKey } = cred;
-    const rlKey = rateLimitKey(ctx, token);
-    if (!CHAT_LIMITER.take(rlKey)) {
-      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
-      return true;
+    // Body: { regen?: CharacterComponent[], keep?: Partial<RolledCharacter> }
+    // No body / empty body → full roll (current behaviour).
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as
+      | { regen?: unknown; keep?: unknown }
+      | null;
+    const regen = Array.isArray(body?.regen)
+      ? (body!.regen.filter((x): x is CharacterComponent =>
+          x === "name" || x === "personality" || x === "arcAnswer" ||
+          x === "flavorQuote" || x === "stats" || x === "playbook"))
+      : undefined;
+    const keep = body?.keep && typeof body.keep === "object"
+      ? body.keep as Partial<RolledCharacter>
+      : undefined;
+    // Rate-limit only when an LLM call is actually going to fire. Pure
+    // dice rerolls (regen ⊆ {stats, playbook}) skip the limiter so
+    // tapping the dice icon stays snappy.
+    const willHitLLM =
+      !regen ||
+      regen.some((c) => c === "name" || c === "personality" || c === "arcAnswer" || c === "flavorQuote");
+    if (willHitLLM) {
+      const rlKey = rateLimitKey(ctx, token);
+      if (!CHAT_LIMITER.take(rlKey)) {
+        reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
+        return true;
+      }
     }
     try {
-      const c = await rollRandomCharacter({ apiKey });
+      const c = await rollRandomCharacter({ apiKey, regen, keep });
       ctx.json(ctx.res, { ok: true, character: c });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);

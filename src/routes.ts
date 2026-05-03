@@ -156,6 +156,10 @@ interface SessionTelemetry extends Record<string, unknown> {
   active_round: {
     type: "multiple-choice" | "opinion";
     questionId: string;
+    /** True when this round is the player's daily-arc question. The viewer
+     *  surfaces a DAILY vs PRACTICE pill so the player understands which
+     *  rounds count toward year advancement and which are warm-ups. */
+    isDaily: boolean;
     startedAt: number;
     durationMs: number;
     expiresAt: number;
@@ -285,6 +289,7 @@ function deriveActiveRound(state: QuizState) {
   return {
     type: round.type,
     questionId: round.questionId,
+    isDaily: !!round.isDaily,
     startedAt: round.startedAt,
     durationMs: round.durationMs,
     expiresAt: round.expiresAt,

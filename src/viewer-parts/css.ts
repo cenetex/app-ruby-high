@@ -1399,6 +1399,27 @@ export const VIEWER_CSS = `
     overflow-y: auto;
   }
   .sheet-overlay.is-open { display: flex; }
+  /* Universal close affordance for the sheet overlay. The X tracks the
+     overlay rather than any individual card variant — replaces every
+     per-card "Close" button. Hidden on the mandatory signin overlay
+     (no escape from sign-in). */
+  .sheet-close {
+    position: absolute;
+    top: max(env(safe-area-inset-top, 0), 12px);
+    right: max(env(safe-area-inset-right, 0), 12px);
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    border: 1px solid var(--line);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 1;
+  }
+  .sheet-close:hover { background: rgba(0,0,0,0.75); }
+  .sheet-overlay.is-mandatory .sheet-close { display: none; }
   /* Mandatory overlay: shown unconditionally while unauthed. No close
      affordance — it covers the app and the only way past it is to sign
      in. Always rendered (display:flex) so the unauthed boot has nothing
@@ -1566,6 +1587,184 @@ export const VIEWER_CSS = `
   .sheet-actions button.secondary {
     background: var(--bg-elev);
     color: var(--text-soft);
+  }
+
+  /* ── creation card surfaces ──────────────────────────────────────────── */
+  .creation-portrait {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 12px;
+  }
+  .creation-portrait img {
+    width: 160px;
+    height: 200px;
+    object-fit: cover;
+    object-position: center top;
+    border-radius: 12px;
+    border: 2px solid var(--accent);
+    background: var(--bg-elev-2);
+  }
+  .creation-ai-portrait {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .creation-ai-portrait:hover { background: var(--bg-elev-2); }
+  .creation-ai-portrait:disabled { opacity: 0.5; cursor: not-allowed; }
+  .creation-portrait-status {
+    font-size: 11px;
+    color: var(--text-mute);
+    min-height: 14px;
+  }
+  .creation-portrait-status.is-invalid { color: #ff8c8c; }
+  .creation-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 4px 0 8px;
+  }
+  .creation-row {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    align-items: start;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .creation-row-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-mute);
+    font-weight: 800;
+    padding-top: 2px;
+  }
+  .creation-row-value {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text);
+    word-break: break-word;
+  }
+  .creation-reroll {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 999px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .creation-reroll:hover { background: var(--bg-elev-2); }
+  .creation-reroll:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── in-card actions strip ───────────────────────────────────────────── */
+  /* Replaces the legacy .sheet-actions row that used to render OUTSIDE
+     the card. Lives inside .ccg-body so the card stays a single
+     rectangle. Kept thin and right-aligned so it doesn't compete with
+     the body content for visual weight. */
+  .ccg-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .ccg-card-actions button {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .ccg-card-actions button.secondary {
+    background: var(--bg-elev);
+    color: var(--text-soft);
+  }
+
+  /* ── progression "what you need" hint ────────────────────────────────── */
+  .ccg-next-step {
+    padding: 8px 10px;
+    background: rgba(210, 42, 42, 0.10);
+    border: 1px solid rgba(210, 42, 42, 0.32);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 4px;
+  }
+
+  /* ── yearbook stack ──────────────────────────────────────────────────── */
+  /* Read-only character sheet renders one card per grade, current year
+     on TOP. The pack grows as the player advances. Cards overlap
+     slightly so the stack reads as a deck, not a list — the player
+     "collects" a card when they pass each year. The top card is full
+     fidelity (stats, quote, progression, hint, move); below cards
+     compress to a portrait + summary line. */
+  .yearbook-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding-top: 12px;
+  }
+  .yearbook-stack .ccg-card {
+    /* Negative top-margin makes each card peek behind the one above it,
+       creating the stacked-deck visual. The first card sits at 0. */
+    margin-top: -28px;
+    transform: rotate(0deg);
+    transition: transform 0.18s ease, margin 0.18s ease;
+  }
+  .yearbook-stack .ccg-card:first-child {
+    margin-top: 0;
+  }
+  /* Slight alternating tilt on completed cards so the stack feels
+     hand-arranged instead of mechanically aligned. */
+  .yearbook-stack .yearbook-completed:nth-child(even) { transform: rotate(-1.2deg); }
+  .yearbook-stack .yearbook-completed:nth-child(odd)  { transform: rotate(1.4deg); }
+  .yearbook-stack .yearbook-completed:hover,
+  .yearbook-stack .yearbook-graduated:hover {
+    transform: rotate(0deg) translateY(-4px);
+  }
+  /* Completed-year cards are dimmed + scaled down a touch — they're
+     archive, not the active surface. */
+  .yearbook-stack .yearbook-completed {
+    opacity: 0.78;
+    filter: saturate(0.9);
+  }
+  .yearbook-stack .yearbook-completed .ccg-art {
+    aspect-ratio: 5/2; /* shorter art on completed cards */
+  }
+  .yearbook-stack .yearbook-graduated {
+    /* Senior-graduated cap card sits on top with its diploma image. */
+    border-color: gold;
+  }
+
+  /* ── DAILY / PRACTICE pill ───────────────────────────────────────────── */
+  /* Surfaces which kind of round the player is in. DAILY uses the accent
+     color (this is the gate); PRACTICE is muted (warm-up only). */
+  .pill.daily {
+    background: var(--accent);
+    color: #fff;
+  }
+  .pill.practice {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-mute);
   }
   .sheet-readonly { display: flex; flex-direction: column; gap: 12px; }
   .sheet-readonly .row {

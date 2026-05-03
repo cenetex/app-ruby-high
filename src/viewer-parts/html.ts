@@ -169,8 +169,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </div>
 </div>
 
-<!-- Character sheet overlay (creation + profile view) -->
+<!-- Character sheet overlay (creation + profile view). The X-button in
+     the corner is the universal close affordance now — per-card "Close"
+     buttons are gone. Click anywhere outside .sheet-card also closes. -->
 <div class="sheet-overlay" id="sheet-overlay">
+  <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card" id="sheet-card"></div>
 </div>
 
