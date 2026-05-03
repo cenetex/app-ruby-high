@@ -452,8 +452,7 @@ export const VIEWER_CSS = `
    */
   .blackboard-panel[data-mode="round-revealed"] .answers-host,
   .blackboard-panel[data-mode="round-revealed"] .advantage-bar,
-  .blackboard-panel[data-mode="round-revealed"] .race-strip,
-  .blackboard-panel[data-mode="round-revealed"] .filter-mini {
+  .blackboard-panel[data-mode="round-revealed"] .race-strip {
     display: none !important;
   }
   .blackboard-panel[data-mode="between-rounds"] .answers-host,
@@ -684,21 +683,6 @@ export const VIEWER_CSS = `
     margin-left: auto;
   }
   .blackboard-foot .next-btn:disabled { opacity: 0.5; }
-  .blackboard-foot .filter-mini {
-    appearance: none;
-    background: var(--bg-elev);
-    border: 1px solid var(--line);
-    color: var(--text-soft);
-    font-size: 12px;
-    border-radius: 999px;
-    padding: 6px 10px;
-  }
-  .blackboard-foot .qnum {
-    font-size: 11px;
-    color: var(--text-mute);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
 
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {

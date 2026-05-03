@@ -106,13 +106,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="race-row" id="race-row"></span>
       </div>
       <div class="blackboard-foot" id="blackboard-foot" hidden>
-        <span class="qnum" id="qnum">Question 1</span>
-        <select class="filter-mini" id="difficulty-filter" aria-label="Difficulty">
-          <option value="">any difficulty</option>
-          <option value="easy">easy</option>
-          <option value="medium">medium</option>
-          <option value="hard">hard</option>
-        </select>
         <button class="next-btn" id="next-btn" type="button">Next question →</button>
       </div>
     </section>
