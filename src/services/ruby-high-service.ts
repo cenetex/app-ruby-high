@@ -1,5 +1,6 @@
 import { Service, type IAgentRuntime } from "@elizaos/core";
 import {
+  ADVANTAGE_ROLLS_PER_GRADE,
   CHOICES,
   DEFAULT_GRADE,
   DEFAULT_ROUND_DURATION_MS,
@@ -124,18 +125,29 @@ export class RubyHighService extends Service {
    *  Returns the updated state and the roll result. If the player already
    *  rolled this round, the existing roll is returned unchanged (idempotent).
    *  If there's no active MC round, returns a null result. */
-  rollAdvantage(sessionId: string): { state: QuizState; result: AdvantageRoll | null } {
+  rollAdvantage(sessionId: string): { state: QuizState; result: AdvantageRoll | null; reason?: "no-round" | "already-rolled" | "answered" | "exhausted" } {
     const state = this.getOrCreate(sessionId);
     const round = state.activeRound;
     if (!round || round.resolved || round.type !== "multiple-choice") {
-      return { state, result: null };
+      return { state, result: null, reason: "no-round" };
     }
     if (round.advantage?.rolled) {
-      return { state, result: round.advantage };
+      return { state, result: round.advantage, reason: "already-rolled" };
     }
     if (round.player.answeredAt != null) {
       // Already locked in their answer — too late to roll for advantage.
-      return { state, result: null };
+      return { state, result: null, reason: "answered" };
+    }
+    // Per-grade cap. Counter is incremented BELOW only on a successful
+    // roll, so a "no-round" / "answered" gate above doesn't burn a roll
+    // accidentally. The counter is per-grade, so advancing implicitly
+    // refills the pool.
+    const grade = state.currentGrade;
+    if (state.character && grade) {
+      const used = state.character.advantageRollsUsed?.[grade] ?? 0;
+      if (used >= ADVANTAGE_ROLLS_PER_GRADE) {
+        return { state, result: null, reason: "exhausted" };
+      }
     }
     const stat: keyof CharacterStats = "head";
     const r = roll2d6();
@@ -154,9 +166,24 @@ export class RubyHighService extends Service {
       rolledAt: Date.now(),
     };
     round.advantage = advantage;
+    if (state.character && grade) {
+      const map = state.character.advantageRollsUsed ?? {};
+      map[grade] = (map[grade] ?? 0) + 1;
+      state.character.advantageRollsUsed = map;
+    }
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, result: advantage };
+  }
+
+  /** Snapshot of advantage-roll usage for the current grade. Used by the
+   *  session-state payload so the viewer can render "2/3 left" and disable
+   *  the button when the pool is empty. */
+  advantageRollsRemaining(sessionId: string): { used: number; cap: number; remaining: number } {
+    const state = this.getOrCreate(sessionId);
+    const grade = state.currentGrade;
+    const used = (grade && state.character?.advantageRollsUsed?.[grade]) ?? 0;
+    return { used, cap: ADVANTAGE_ROLLS_PER_GRADE, remaining: Math.max(0, ADVANTAGE_ROLLS_PER_GRADE - used) };
   }
 
   /** DM tool — teacher asks the player to roll a stat against a DC. Stored

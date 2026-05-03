@@ -11,6 +11,7 @@ import type {
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { FacultyService, toFacultyMember } from "./services/faculty-service.js";
 import {
+  ADVANTAGE_ROLLS_PER_GRADE,
   CHOICES,
   GRADES,
   TEACHING_ROOMS,
@@ -215,6 +216,9 @@ interface SessionTelemetry extends Record<string, unknown> {
     facultyId: string;
     dailyKey: string;
   };
+  /** Per-grade advantage-roll budget. Lets the viewer label the button
+   *  with "n left" and disable when the pool is exhausted. */
+  advantage_rolls: { used: number; cap: number; remaining: number };
 }
 
 function getRuntime(value: unknown): IAgentRuntime | null {
@@ -320,6 +324,14 @@ function deriveActiveRound(state: QuizState) {
         }
       : null,
   };
+}
+
+/** Per-grade advantage-roll budget — mirrors RubyHighService.advantageRollsRemaining
+ *  but stays inline so buildSessionState doesn't need a service handle. */
+function deriveAdvantageRolls(state: QuizState): { used: number; cap: number; remaining: number } {
+  const grade = state.currentGrade;
+  const used = (grade && state.character?.advantageRollsUsed?.[grade]) ?? 0;
+  return { used, cap: ADVANTAGE_ROLLS_PER_GRADE, remaining: Math.max(0, ADVANTAGE_ROLLS_PER_GRADE - used) };
 }
 
 /** Derives "today's Daily" status for the viewer. Mirrors
@@ -433,6 +445,7 @@ function buildSessionState(args: {
     daily: deriveDailyStatus(state),
     npc_cohort: state.npcCohort ?? [],
     mentor_offer: state.mentorOffer ?? null,
+    advantage_rolls: deriveAdvantageRolls(state),
   };
 
   const summary = state.current
@@ -789,9 +802,13 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       }
 
       if (type === "roll-advantage") {
-        const { state, result } = ruby.rollAdvantage(stateKey);
+        const { state, result, reason } = ruby.rollAdvantage(stateKey);
         const message = result == null
-          ? "No active question to roll on."
+          ? reason === "exhausted"
+            ? "Out of advantage rolls for this grade — pass your year to refill."
+            : reason === "answered"
+              ? "You already locked in your answer — too late to roll."
+              : "No active question to roll on."
           : result.outcome === "hit"
             ? `Hit (${result.total}) — eliminated ${result.eliminated.join(" & ")}.`
             : result.outcome === "mixed"

@@ -1070,7 +1070,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             sessionToken: token,
             agentSessionId,
             faculty,
-            systemEventNote: "The question bank is exhausted for the obvious filters. Either call pose_question to write a custom one in your subject, or just chat with the room and let the player decide what's next. Do NOT mention 'the bank' or 'the filter' — keep it in-character.",
+            // Phrased without naming "bank" or "filter" — telling the
+            // model NOT to say those words is the surest way to put
+            // them in mouth. Just describe the desired action.
+            systemEventNote: "Decide what's next while staying in character. You can write a custom question with pose_question, or chat with the room and let the player steer.",
           })) {
             send(ev.type, ev);
           }
