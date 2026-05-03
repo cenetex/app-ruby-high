@@ -121,10 +121,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </svg>
         </button>
       </form>
-      <div class="signin-cta" id="signin-cta">
-        <div class="help">Sign in with OpenRouter to chat with the teachers and the class.</div>
-        <a id="login-btn" href="/api/apps/ruby-high/auth/start" target="_blank" rel="noopener">Sign in with OpenRouter</a>
-      </div>
       <div class="checking" id="checking" hidden>checking…</div>
     </section>
   </main>

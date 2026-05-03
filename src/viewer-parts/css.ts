@@ -1553,26 +1553,6 @@ export const VIEWER_CSS = `
   }
   .composer-form .send-btn:disabled { opacity: 0.4; }
   .composer-form .send-btn svg { width: 18px; height: 18px; }
-  .signin-cta {
-    text-align: center;
-  }
-  .signin-cta .help {
-    color: var(--text-soft);
-    font-size: 13px;
-    margin: 4px 0 10px;
-    line-height: 1.4;
-  }
-  .signin-cta a {
-    display: inline-block;
-    background: var(--accent);
-    color: #fff;
-    text-decoration: none;
-    padding: 11px 20px;
-    border-radius: 999px;
-    font-weight: 800;
-    font-size: 15px;
-    box-shadow: var(--shadow);
-  }
   .checking {
     text-align: center;
     color: var(--text-mute);

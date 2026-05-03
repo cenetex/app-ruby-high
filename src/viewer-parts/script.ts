@@ -44,9 +44,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     try { localStorage.removeItem("rh_openrouter_at"); } catch (e) {}
   }
   // Wrapper around fetch that attaches the OpenRouter key header when one
-  // is present in localStorage. Use this for every same-origin API call —
-  // it's a no-op when there's no key (server returns 401 then, which the
-  // caller handles).
+  // is present in localStorage. Use this for every same-origin API call.
+  //
+  // 401 handling: when the server says "not authenticated" — typically because
+  // the rh_session cookie expired but localStorage still has a stale key — we
+  // clear the local credential and re-derive auth state. That fires the same
+  // re-render path as a logout: the welcome modal flips to its sign-in view,
+  // chat is hidden, the footer button shows "Sign in." The caller's error
+  // path may still run, but it'll be writing to detached DOM nodes by then,
+  // so no stale "Couldn't roll" string ever lands on screen.
   function apiFetch(url, init) {
     const opts = init ? Object.assign({}, init) : {};
     const headers = new Headers(opts.headers || {});
@@ -54,7 +60,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (key) headers.set("X-Openrouter-Key", key);
     opts.headers = headers;
     if (!opts.credentials) opts.credentials = "same-origin";
-    return fetch(url, opts);
+    return fetch(url, opts).then((r) => {
+      if (r.status === 401 && getStoredApiKey()) {
+        clearStoredAuth();
+        try { deriveAuth(); } catch (_e) { /* deriveAuth not yet defined on boot */ }
+      }
+      return r;
+    });
   }
 
   // ── AI students ──────────────────────────────────────────────────────────
@@ -129,7 +141,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     chatForm: $("chat-form"),
     chatInput: $("chat-input"),
     chatSend: $("chat-send"),
-    signinCta: $("signin-cta"),
     checking: $("checking"),
     scrim: $("scrim"),
     congrats: $("congrats-toast"),
@@ -527,7 +538,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       activeQuestionId = null;
       const daily = lastTelemetry && lastTelemetry.daily;
       if (!authed) {
-        els.blackboardEmptyText.textContent = "Sign in below to start class.";
+        els.blackboardEmptyText.textContent = "Sign in with OpenRouter to start class.";
       } else if (!lastTelemetry?.character) {
         els.blackboardEmptyText.textContent = "Roll a character — your name will appear in the seating chart.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
@@ -1000,7 +1011,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.shell.dataset.mode = mode;
     // Composer: only enabled when the player is in a state that can chat.
     const canChat = authed && (mode === "between-rounds" || mode === "round-live" || mode === "round-revealed" || mode === "in-lounge");
-    els.signinCta.hidden = mode !== "needs-auth";
     els.chatForm.hidden = !canChat;
     if (canChat) { els.chatInput.disabled = false; els.chatSend.disabled = false; }
     // Race strip + answers + advantage + footer-filter all hide via CSS now.
@@ -1476,8 +1486,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // than building one. Server picks playbook + stats; LLM fills in the
   // name/hook/personality. Single "Roll" or "Reroll" button.
   //
-  // Auth gate: if the player isn't signed in to OpenRouter, render the
-  // sign-in CTA instead — they need the LLM to roll a character.
+  // Auth gate: if the player isn't signed in to OpenRouter, this modal IS
+  // the sign-in surface. There is no "Couldn't roll" sub-state — the auth
+  // check happens before any roll request goes out, and stale-localStorage
+  // gets caught by apiFetch's 401 interceptor (which clears the key and
+  // re-renders this modal in its sign-in branch).
   function renderSheetCreation(playbooks) {
     sheetCard.innerHTML = "";
     if (!authed) {
@@ -1486,20 +1499,20 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       sheetCard.appendChild(h);
       const sub = document.createElement("p");
       sub.className = "sub";
-      sub.textContent = "Sign in with your OpenRouter account first — your character is rolled by an LLM and the chat with the teachers runs on your account.";
+      sub.textContent = "Your character is rolled by an LLM and your chat with the teachers runs on your account. Sign in with OpenRouter to begin — it's free, and your inference key never leaves your browser.";
       sheetCard.appendChild(sub);
       const actions = document.createElement("div");
       actions.className = "sheet-actions";
+      const close = document.createElement("button");
+      close.className = "secondary";
+      close.textContent = "Not now";
+      close.addEventListener("click", closeSheet);
       const signin = document.createElement("a");
       signin.href = "/api/apps/ruby-high/auth/start";
       signin.target = "_blank";
       signin.rel = "noopener";
       signin.textContent = "Sign in with OpenRouter";
       signin.style.cssText = "display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;font-weight:800;font-size:14px;";
-      const close = document.createElement("button");
-      close.className = "secondary";
-      close.textContent = "Close";
-      close.addEventListener("click", closeSheet);
       actions.appendChild(close);
       actions.appendChild(signin);
       sheetCard.appendChild(actions);
@@ -1610,8 +1623,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         renderPreview(rolled);
         status.textContent = "";
       } catch (err) {
-        status.textContent = "Couldn't roll · " + (err && err.message ? err.message : "error");
-        status.classList.add("is-invalid");
+        // 401-from-stale-localStorage is caught by apiFetch's interceptor
+        // before we reach here — by the time this catch runs in that case,
+        // deriveAuth has already re-rendered the sheet in its sign-in branch
+        // and these elements are detached. Writing to status.textContent on
+        // a detached node is a harmless no-op. For genuine non-auth errors
+        // (network, 5xx) we surface a tighter message.
+        if (status.isConnected) {
+          status.textContent = err && err.message ? err.message : "Roll failed — try again.";
+          status.classList.add("is-invalid");
+        }
       } finally {
         rolling = false;
         rollBtn.disabled = false;
@@ -1733,7 +1754,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function applyAuthUI() {
     els.checking.hidden = authed !== null;
     if (authed === null) {
-      els.signinCta.hidden = true;
       els.chatForm.hidden = true;
       els.checking.hidden = false;
       els.youState.textContent = "checking…";
@@ -1744,15 +1764,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (authed) {
       els.youState.textContent = "signed in";
       els.footerAction.textContent = "Sign out";
-      els.signinCta.hidden = true;
       els.chatForm.hidden = false;
       els.chatInput.disabled = false;
       els.chatSend.disabled = false;
     } else {
       els.youState.textContent = "signed out";
       els.footerAction.textContent = "Sign in";
-      els.signinCta.hidden = false;
       // Hide the textarea + send entirely until auth — no half-disabled state.
+      // The welcome modal is the unified sign-in surface; tapping the footer
+      // "Sign in" button opens it.
       els.chatForm.hidden = true;
       els.chatInput.disabled = true;
       els.chatSend.disabled = true;
@@ -2057,7 +2077,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
     if (authed) logout();
-    else window.open("/api/apps/ruby-high/auth/start", "_blank", "noopener");
+    else openSheet(); // The welcome modal is the unified sign-in surface.
   });
   // Click your name/avatar to open the character sheet.
   const youCardBlock = document.querySelector(".channels-footer .you-meta");
