@@ -1189,6 +1189,46 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       q.textContent = "“" + spec.quote + "”";
       body.appendChild(q);
     }
+    if (spec.progression && Array.isArray(spec.progression.rungs)) {
+      const wrap = document.createElement("div");
+      wrap.className = "ccg-progression";
+      const head = document.createElement("div");
+      head.className = "ccg-progression-title";
+      head.textContent = spec.progression.graduated ? "Yearbook" : "How to graduate";
+      wrap.appendChild(head);
+      const list = document.createElement("ol");
+      list.className = "rungs";
+      for (const r of spec.progression.rungs) {
+        const li = document.createElement("li");
+        li.className = "rung is-" + r.state;
+        const dot = document.createElement("span");
+        dot.className = "rung-dot";
+        dot.textContent = r.state === "completed" ? "✓" : r.state === "current" ? "●" : "○";
+        const label = document.createElement("span");
+        label.className = "rung-label";
+        label.textContent = r.label;
+        const gates = document.createElement("span");
+        gates.className = "rung-gates";
+        if (r.state === "current" && r.streakProgress && r.xpProgress) {
+          const sChip = document.createElement("span");
+          sChip.className = "gate-chip" + (r.streakProgress.have >= r.streakProgress.need ? " is-met" : "");
+          sChip.textContent = "streak " + r.streakProgress.have + "/" + r.streakProgress.need;
+          const xChip = document.createElement("span");
+          xChip.className = "gate-chip" + (r.xpProgress.have >= r.xpProgress.need ? " is-met" : "");
+          xChip.textContent = "XP " + r.xpProgress.have + "/" + r.xpProgress.need;
+          gates.appendChild(sChip);
+          gates.appendChild(xChip);
+        } else {
+          gates.textContent = r.streakReq + " streak · " + r.xpReq + " XP";
+        }
+        li.appendChild(dot);
+        li.appendChild(label);
+        li.appendChild(gates);
+        list.appendChild(li);
+      }
+      wrap.appendChild(list);
+      body.appendChild(wrap);
+    }
     if (spec.footer) {
       const ft = document.createElement("div");
       ft.className = "ccg-footer";
@@ -1339,6 +1379,34 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
   }
 
+  // Build the four-rung "Freshman → Sophomore → Junior → Senior" ladder for
+  // the character sheet. Each rung names the gates (streak + XP) so the
+  // player can see what unlocks each year. The current rung shows live
+  // progress; completed rungs show a check; future rungs show targets.
+  function buildProgressionForCharacter(c) {
+    if (!c) return null;
+    const completed = new Set((Array.isArray(c.yearbook) ? c.yearbook : []).map((y) => y.grade));
+    const currentGrade = String(lastTelemetry?.current_grade ?? "9");
+    const streakHere = c.streak && c.streak.grade === currentGrade ? c.streak.count : 0;
+    const xp = c.xp ?? 0;
+    const rungs = ["9", "10", "11", "12"].map((g) => {
+      const streakReq = STREAK_REQUIRED[g] || 1;
+      const xpReq     = XP_REQUIRED[g] || 5;
+      let state, streakProgress, xpProgress;
+      if (completed.has(g)) {
+        state = "completed";
+      } else if (g === currentGrade && !graduatedFor(c)) {
+        state = "current";
+        streakProgress = { have: streakHere, need: streakReq };
+        xpProgress = { have: xp, need: xpReq };
+      } else {
+        state = "future";
+      }
+      return { grade: g, label: GRADE_LABELS[g], streakReq, xpReq, state, streakProgress, xpProgress };
+    });
+    return { rungs, graduated: graduatedFor(c) };
+  }
+
   function renderSheetReadonly(c, playbooks) {
     const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
     const grade = lastTelemetry?.current_grade ? "Grade " + lastTelemetry.current_grade : "Freshman";
@@ -1355,6 +1423,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       // Card quote prefers the MTG-style flavor line; legacy characters
       // created before that field existed fall back to the arc answer.
       quote: c.flavorQuote || c.arcAnswer,
+      progression: buildProgressionForCharacter(c),
       footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
       actions: [
         {

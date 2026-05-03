@@ -1119,6 +1119,71 @@ export const VIEWER_CSS = `
     background: rgba(0,0,0,0.18);
     border-radius: 0 8px 8px 0;
   }
+  .ccg-progression {
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-top: 4px;
+  }
+  .ccg-progression-title {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+  }
+  .ccg-progression .rungs {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ccg-progression .rung {
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.3;
+    padding: 4px 2px;
+    border-radius: 6px;
+  }
+  .ccg-progression .rung.is-completed { color: var(--text-mute); }
+  .ccg-progression .rung.is-current {
+    color: var(--text);
+    background: rgba(255,255,255,0.04);
+  }
+  .ccg-progression .rung.is-future { color: var(--text-mute); opacity: 0.7; }
+  .ccg-progression .rung-dot {
+    text-align: center;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .ccg-progression .rung.is-future .rung-dot { color: var(--text-mute); }
+  .ccg-progression .rung-label { font-weight: 700; }
+  .ccg-progression .rung.is-current .rung-label { color: var(--accent); }
+  .ccg-progression .rung-gates {
+    display: inline-flex;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-soft);
+  }
+  .ccg-progression .gate-chip {
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  .ccg-progression .gate-chip.is-met {
+    background: rgba(76, 181, 85, 0.18);
+    border-color: rgba(76, 181, 85, 0.45);
+    color: #b6f5b9;
+  }
   .ccg-footer {
     padding: 8px 10px;
     background: rgba(0,0,0,0.22);
