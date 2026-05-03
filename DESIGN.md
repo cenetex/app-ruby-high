@@ -20,7 +20,7 @@ Ruby High is built around the bet that the failure is structural, not creative. 
 
 Ruby High stacks all four. A 2–3 sentence essay graded by Professor Edward on a Tuesday, delivered alongside three classmates' essays, archived to a yearbook page you can show a friend — that is something no other AI product produces. The combination is the product. Each ingredient on its own is commodity.
 
-**It's free.** You sign in with your own OpenRouter key — no card, no subscription, your inference bill is yours. We never see the key. The full economic argument is in §8.
+**It's free.** You sign in with your own OpenRouter key — no card, no subscription. Your inference bill is yours, not ours. The key never touches our server: it lives in your browser's localStorage and rides along on each request as a header.
 
 ---
 
@@ -44,7 +44,7 @@ Tomorrow is Wednesday. Wednesday is Ruby's. The bell rings at the same time.
 
 ### The Daily — cadence
 
-[live] Every weekday at 17:00 UTC the school is in session. One teacher is on the floor. One question is on the board. Pass enough Dailies in your year to advance; graduate after Senior. Streak resets on a miss. Weekends are off — streaks hold across them.
+[live] Every day at 17:00 UTC the school is in session. One teacher is on the floor. One question is on the board. Pass enough Dailies in your year to advance; graduate after Senior. Streak resets on a miss.
 
 The Daily is not a side mode. The Daily is the entire arc. Scarcity is the credibility — if Edward will grade an essay any time you ask, his attention is cheap.
 
@@ -195,6 +195,10 @@ Opinion mode is the artifact other AI products do not produce. ChatGPT will give
 
 NPCs gate on streak alone — no XP gate. They feel hungrier than the player, which is what makes the rivalry tense.
 
+[aspirational] **The cohort is who's in the room with you.** NPCs only sit in your classrooms while they're at your cohort grade. Fall behind, and you'll find your literature room empty when Sami and Mika have moved on. Pull ahead, and the underclassmen are still grinding in last year's homeroom while you're solo in Senior lit. The cohort isn't a side chart — it's the seating chart.
+
+[partial] Today, the seating chart is a static layout per *player* grade and the cohort is rendered separately on the rail. The two are not coupled in code yet. Coupling them is the design call for the next mechanics PR (see §7 Next).
+
 <!-- promo-asset: cohort-rail — vertical rail of the six classmates with grade pips and streak chips, one or two ahead of the player, one or two behind -->
 
 ### 6.8 Mentor mode
@@ -237,13 +241,16 @@ These are real future work, not a pivot — the schema is shaped for them and th
 - [live] Per-session phase machine (`intro → in-room → asking → revealed → lounge`).
 - [live] Two persistence backends (JSON file for local dev, DynamoDB for production).
 - [live] Production deploy via ECR → AWS App Runner. Stateless container, host-agnostic.
+- [live] OpenRouter API key lives only in browser localStorage; the server never holds a credential. Redeploys don't log anyone out.
+- [live] Pluggable content-pack architecture (`src/content/registry.ts`) with a built-in pack and an Anki `.apkg` parser + LLM distractor generator for ingesting outside decks.
 
 ### Next
 
 1. **Event log + retention dashboard.** The product cannot be tuned without measurement. `sign_in`, `character_created`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`. Three core metrics: D1 retention, questions per session, grade-completion rate.
 2. **Yearbook share-card.** A `/yearbook/:characterId/:grade` route that renders a shareable static page + PNG export. The yearbook exists; it is not yet visible to anyone outside the player's session.
-3. **Question pack scaling.** Three packs of 15 questions is roughly two weeks of Daily exhaust. Path: hand-authored core → LLM-authored expansion packs vetted via PR → in-voice runtime authoring with bank fallback. Target ≥ 200 vetted questions per teacher.
+3. **Real content in the active pack.** The pluggable pack architecture and the Anki ingest pipeline already shipped, but the only loaded pack is still `ruby-high-original` at 15 questions per teacher. Next: ingest a few real Anki decks into in-voice teacher packs; let players bring their own packs at runtime.
 4. **Per-essay grade history.** A "Report Card" tab — every essay grade, filterable by teacher, with an average and a "Lyra has out-essayed you 3 of the last 5 Tuesdays" line.
+5. **Couple the seating chart to cohort grade.** Filter `INITIAL_STUDENT_LAYOUT` at render time to only seat NPCs whose cohort grade matches the player's. Rooms can have 0–2 NPCs depending on cohort drift; that's the felt cost of falling behind. Makes the cohort consequential instead of decorative — Indra graduating means her seat is empty, not just a chip on a rail.
 
 ### Aspirational
 
@@ -299,7 +306,7 @@ Then open http://127.0.0.1:3000/api/apps/ruby-high/viewer. You will be asked to 
 
 ### Read the source
 
-The repository is at [github.com/cenetex/app-ruby-high](https://github.com/cenetex/app-ruby-high). Start with `src/services/ruby-high-service.ts` for the game loop, `src/services/chat-service.ts` for the LLM bridge, `src/types.ts` for the schema. ~6,000 lines of TypeScript, ~2,250 lines of tests.
+The repository is at [github.com/cenetex/app-ruby-high](https://github.com/cenetex/app-ruby-high). Start with `src/services/ruby-high-service.ts` for the game loop, `src/services/chat-service.ts` for the LLM bridge, `src/content/` for the pack architecture, `src/types.ts` for the schema. Roughly 11.5k lines of TypeScript and 3k lines of tests.
 
 ### Wire it into a character
 
@@ -318,16 +325,17 @@ The plugin is also a standalone Node service. The Docker container is host-agnos
 
 ## 11. Architecture (engineer's appendix)
 
-> *One container, one DynamoDB table, four services, no queue.*
+> *One container, one DynamoDB table, four services + a content-pack registry, no queue.*
 
-### Services
+### Services and supporting modules
 
-| Service | File | Job |
+| Component | File | Job |
 |---|---|---|
 | `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, the Daily, the cohort. |
-| `FacultyService` | `src/services/faculty-service.ts` | Loads the question packs at boot. Picks for free-play and for the Daily. |
+| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks for the Daily and for free-play. |
 | `ChatService` | `src/services/chat-service.ts` | OpenRouter SSE per-teacher. Owns chat history, dispatches tools into the game state. |
-| `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Opaque cookie sessions. Keys live in process memory only. |
+| `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions for QuizState routing; the API key itself never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. |
+| Content registry | `src/content/registry.ts` (+ `src/content/anki/`, `src/content/packs/`) | Active content pack resolver, global and per-session. Today serves the built-in `ruby-high-original`; the Anki `.apkg` parser + LLM distractor generator + per-session active-pack switching are wired ahead of bring-your-own packs. |
 | `StateStore` | `src/services/state-store.ts` + `dynamo-state-store.ts` | Two backends: atomic JSON-file for local dev, DynamoDB on-demand for production. |
 
 ### Key design choices

@@ -124,7 +124,7 @@ loudly at the first AWS API call rather than silently misconfiguring.
 ## Production caveats
 
 - **JSON backend is per-container-lifetime only.** Use the DynamoDB backend in production. The default JSON-file path is fine for local dev.
-- **API keys still live in process memory.** A redeploy or VM restart wipes authenticated sessions; users sign in again. Migrating these to DynamoDB is a separate, smaller PR.
+- **API keys live in the player's browser, not the server.** A redeploy or VM restart no longer logs anyone out — the OpenRouter key is stored in browser localStorage and re-attaches on the next request. The cookie identity (server-side `AuthRecord`) just routes the player back to their `QuizState` row in DynamoDB.
 - **Rate limiting is in place** for LLM-burning endpoints (60/min per `(ip, cookie)` for chat; 8 burst, 1 per 30s for portrait gen). Auth endpoints are unbounded by design — keep an eye on them.
 
 ## Manual deploy (without GHA)
