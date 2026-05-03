@@ -423,6 +423,79 @@ export const VIEWER_CSS = `
     .arc-indicator .arc-streak,
     .arc-indicator .arc-xp { display: none; }
   }
+  /* Pack-store button — sits next to the arc chip in the top bar. Opens
+   * the pack-overlay where the user can switch curricula or import an
+   * Anki deck. Always visible (no character needed) so the user can
+   * preview / import packs before rolling. */
+  .pack-btn {
+    appearance: none;
+    background: var(--bg-elev);
+    color: var(--text-soft);
+    border: none;
+    border-radius: 999px;
+    width: 32px;
+    height: 32px;
+    margin-right: calc(var(--safe-right));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+  .pack-btn:hover { color: var(--text); background: var(--bg-elev-2); }
+  .pack-btn svg { width: 18px; height: 18px; }
+  /* Pack list inside the pack-store overlay. Each row is a pack the
+   * user can switch to; the active one is highlighted. */
+  .pack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .pack-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-elev);
+    border-radius: 12px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.15s ease;
+  }
+  .pack-row:hover { background: var(--bg-elev-2); }
+  .pack-row.is-active { border-color: var(--accent); cursor: default; }
+  .pack-row .pack-name {
+    font-weight: 700;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .pack-row .pack-meta {
+    font-size: 11px;
+    color: var(--text-mute);
+    margin-top: 2px;
+  }
+  .pack-row .pack-body { flex: 1 1 auto; min-width: 0; }
+  .pack-row .pack-active-tag {
+    font-size: 10px;
+    color: var(--accent);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex: 0 0 auto;
+  }
+  /* Lounge placeholder — shown when an Anki-imported faculty has no
+   * portrait asset on disk. Single colored circle with the teacher's
+   * initial; matches the size of the real portrait images. */
+  .lounge-placeholder {
+    width: 90px;
+    height: 90px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 28px;
+    color: #fff;
+  }
   /* ── blackboard panel (single, persistent, updates in place) ───────────── */
   .blackboard-panel {
     grid-row: 2;
