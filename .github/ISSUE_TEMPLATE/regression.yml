@@ -1,0 +1,71 @@
+name: Regression
+description: Post-mortem template for a user-blocking regression that reached production
+title: "[regression] "
+labels: ["regression", "post-mortem"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template after a regression has been fixed. The point of the
+        template is to extract leverage from the incident — what would have
+        caught it earlier, and is that catch wired into smoke / CI now.
+        See issue #45 for context.
+
+  - type: input
+    id: pr-introduced
+    attributes:
+      label: PR that introduced it
+      description: e.g. "#42" or "f8370fe"
+    validations:
+      required: true
+
+  - type: input
+    id: pr-fixed
+    attributes:
+      label: PR that fixed it
+    validations:
+      required: true
+
+  - type: textarea
+    id: timeline
+    attributes:
+      label: Timeline (UTC)
+      description: When did the regression land, when was it detected, when did the fix deploy
+      placeholder: |
+        2026-05-03T05:23 — landed on main (PR #30)
+        2026-05-03T07:18 — detected during agent pass (no user report; agent noticed 401s)
+        2026-05-03T07:45 — fix merged (PR #40)
+        2026-05-03T07:55 — fix live on Fly
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User impact
+      description: Sessions affected if measurable. "Unknown" is acceptable but state it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: smoke-coverage
+    attributes:
+      label: Would smoke have caught this?
+      description: |
+        Walk through the existing scripts/smoke.mjs checks. Would any of them
+        have failed on the regressed build? If yes, why didn't smoke catch it
+        in time? If no, what new check would?
+    validations:
+      required: true
+
+  - type: textarea
+    id: action-items
+    attributes:
+      label: Action items
+      description: Concrete follow-ups. Each should land as its own PR or issue.
+      placeholder: |
+        - [ ] Add smoke check for X (PR / issue ref)
+        - [ ] Update PR template to require Y
+        - [ ] Document the gotcha in INFRA.md
+    validations:
+      required: true

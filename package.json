@@ -30,6 +30,9 @@
     "start": "node scripts/server.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
+    "deploy": "flyctl deploy --app ruby-high --remote-only && npm run smoke:prod",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
