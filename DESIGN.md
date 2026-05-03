@@ -1,12 +1,12 @@
 # Ruby High
 
-> A school where the teachers grade you in their own voice. Once a day. The grade is yours to keep.
+> A school where the teachers grade you in their own voice. Chase rare questions, bank grades, and keep the yearbook.
 
 <!-- promo-asset: hero-classroom — wide screenshot of the viewer with Ruby's chalkboard, the room rail, and the character card visible -->
 
 This is the strategic and mechanics doc for the Ruby High project. It is the source of truth for the product. The marketing site is a stylesheet on top.
 
-For the run-it-yourself runbook, see [`README.md`](./README.md). For the deploy-it-to-AWS runbook, see [`infra/README.md`](./infra/README.md).
+For the run-it-yourself and Fly deploy runbook, see [`README.md`](./README.md). For the legacy AWS fallback runbook, see [`infra/README.md`](./infra/README.md).
 
 ---
 
@@ -28,29 +28,29 @@ Ruby High stacks all four. A 2–3 sentence essay graded by Professor Edward on 
 
 > *The school bell rings at 17:00 UTC. One teacher is on the floor. They post one question. That question is the day.*
 
-You open the app on Tuesday afternoon. Professor Edward is at the chalkboard — Tuesdays are his. He posts an opinion question: a passage to discuss, three sentences asked of you. You're a Junior this year, so Sami and Mika are your two classmates in the literature room. You write your response. They write theirs. Edward reads all three and grades them in his voice — a 0–10 score, one sentence of comment, a single named "best response."
+You open the app on Tuesday afternoon. Professor Edward is at the chalkboard — Tuesdays are his bonus day. He posts an opinion question: a passage to discuss, three sentences asked of you. You're a Junior this year, so Sami and Mika are your two classmates in the literature room. You write your response. They write theirs. Edward reads all three and grades them in his voice — a 0–10 score, one sentence of comment, a single named "best response."
 
 Your streak ticks. Indra graduated last week while you were still here — you can see her name has moved up the cohort rail. The grade lives on your report card under Edward's name.
 
-Tomorrow is Wednesday. Wednesday is Ruby's. The bell rings at the same time.
+Tomorrow is Wednesday. Wednesday's bonus belongs to Ruby. The bell rings at the same time.
 
-<!-- promo-asset: daily-walkthrough-clip — short looping mp4 of a real Daily resolving end to end -->
+<!-- promo-asset: question-walkthrough-clip — short looping mp4 of a real round resolving end to end -->
 
 ---
 
 ## 3. Three pillars
 
-> *The Daily is the cadence. The Cohort is the company. The Yearbook is the artifact. Each pillar is load-bearing.*
+> *Legendary days are the cadence. The Cohort is the company. The Yearbook is the artifact. Each pillar is load-bearing.*
 
-### The Daily — cadence
+### The Legendary Day — cadence
 
-[live] Every day at 17:00 UTC the school is in session. One teacher is on the floor. One question is on the board. Pass enough Dailies in your year to advance; graduate after Senior. Streak resets on a miss.
+[live] Every day at 17:00 UTC the school refreshes its once-per-day forced-Legendary bonus. Regular play is open-ended: every question rolls common / rare / legendary, and passing enough Legendary days in your year advances you; graduate after Senior. Streak resets when a Legendary-day target is missed.
 
-The Daily is not a side mode. The Daily is the entire arc. Scarcity is the credibility — if Edward will grade an essay any time you ask, his attention is cheap.
+The daily cadence is not a side mode. It is the arc's clock. Scarcity now lives in the Legendary target and the once-per-day bonus, while regular questions stay playable whenever the student shows up.
 
 ### The Cohort — company
 
-[live] Six AI classmates run their own four-year arcs alongside you. They roll their own Dailies on their own dice. Indra might graduate while you are still a Sophomore. Mika might fall behind. Coming back to the app means coming back to *people*, not to a save file.
+[live] Six AI classmates run their own four-year arcs alongside you. They roll their own Legendary-day progress on their own dice. Indra might graduate while you are still a Sophomore. Mika might fall behind. Coming back to the app means coming back to *people*, not to a save file.
 
 This is the second-session hook. The streak is what brings you back; the cohort is what makes coming back feel like coming back to a place.
 
@@ -110,7 +110,7 @@ ChatGPT will give you feedback. It will not give you Edward's feedback. The tast
 
 ## 6. Mechanics
 
-> *A light Powered-by-the-Apocalypse layer under the daily quiz. The mechanics are the connective tissue that makes a Daily feel like progression instead of a worksheet.*
+> *A light Powered-by-the-Apocalypse layer under the classroom quiz. The mechanics are the connective tissue that makes question play feel like progression instead of a worksheet.*
 
 The mechanics layer is released **CC BY 4.0**. It draws on Apocalypse World (Vincent Baker), Dungeon World (Sage LaTorra & Adam Koebel), and is distantly inspired by Monsterhearts 2 (Avery Alder).
 
@@ -126,7 +126,7 @@ The mechanics layer is released **CC BY 4.0**. It draws on Apocalypse World (Vin
 
 - **Identity** — a name, a playbook, a sticker portrait, a personality blurb, an arc-answer to the playbook's hook question, and a flavor quote.
 - **Stats** — HEAD (recall), HEART (empathy), HUSTLE (speed), HONOR (integrity). Range −1 to +3. Each playbook starts with one +2, one +1, one 0, one −1.
-- **State** — XP, conditions, strings, current Daily streak, last-Daily-played date.
+- **State** — XP, conditions, strings, current Legendary-day streak, last bonus-played date.
 - **Yearbook** — completed years archived. Sealed at graduation.
 
 [live] Character creation is **LLM-rolled**. The system picks a playbook at random, assigns the +2/+1/0/−1 distribution, and writes the name, personality, arc-answer, and flavor quote in voice. The player accepts or re-rolls. There is no build screen.
@@ -166,7 +166,7 @@ The dice can only ever upgrade the outcome. They never punish. A wrong answer is
 
 <!-- promo-asset: dice-resolve — animated mock of the chalkboard at resolution: 2d6 + HEAD ticker, NPCs racing in the room, XP +N popping out -->
 
-### 6.5 The Daily — gates
+### 6.5 Legendary Days — gates
 
 [live] To advance out of a year, two gates must both hold:
 
@@ -177,13 +177,13 @@ The dice can only ever upgrade the outcome. They never punish. A wrong answer is
 | Junior | 3 in a row | 10 |
 | Senior | 4 in a row → graduate | 16 |
 
-Streaks reset on a miss. Per-class XP accumulates across the run; each Daily pass adds 1 XP to the pool of the day's faculty. To advance, the player needs **the streak AND the per-class minimum in every teaching room** — homeroom, science, and literature. The earlier total-XP gate is gone: an undifferentiated pool let players graduate having ducked a whole subject (a streak of Sally days could reach Senior without ever sitting in Edward's room). Per-class minimums force engagement with all three teachers and give the rooms real mechanical weight.
+Streaks reset when the per-day Legendary target is missed. Per-class XP accumulates across the run; Rare passes add 1 XP and Legendary passes add 2 XP to the pool of the question's faculty. To advance, the player needs **the streak AND the per-class minimum in every teaching room** — homeroom, science, and literature. The earlier total-XP gate is gone: an undifferentiated pool let players graduate having ducked a whole subject. Per-class minimums force engagement with all three teachers and give the rooms real mechanical weight.
 
-[live] **Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The Daily runs every day; the rotation continues across the weekend.
+[live] **Bonus faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The forced-Legendary bonus runs every day; the rotation continues across the weekend.
 
-[live] **Bell.** 17:00 UTC. Before the bell, "today" is yesterday's Daily.
+[live] **Bell.** 17:00 UTC. Before the bell, "today" still means yesterday's bonus window.
 
-[live] **Discoverability.** When today's Daily is available and the chalkboard is empty, the viewer surfaces a primary CTA — *"Ask Professor Edward about today's challenge"* — labelled with the day's faculty. Tapping it switches the player into that teacher's room and poses the day's question. The Daily is no longer something you have to walk to; it's the first thing the empty board offers you.
+[live] **Discoverability.** The always-on Next Question flow is the primary surface. The daily bonus remains available as a guaranteed Legendary route, but no longer appears as a separate chrome banner.
 
 ### 6.6 Opinion mode — the moat
 
@@ -193,7 +193,7 @@ Opinion mode is the artifact other AI products do not produce. ChatGPT will give
 
 ### 6.7 The Cohort
 
-[live] Six NPCs, each running an independent four-year arc. On every Daily, every still-in-school NPC rolls 2d6 + HEAD against today's correct answer. Pass ticks their streak; miss resets it. They graduate on Senior streak. They can outpace the player or fall behind.
+[live] Six NPCs, each running an independent four-year arc. On every Legendary-day tick, every still-in-school NPC rolls 2d6 + HEAD against the day's progress check. Pass ticks their streak; miss resets it. They graduate on Senior streak. They can outpace the player or fall behind.
 
 NPCs gate on streak alone — no XP gate. They feel hungrier than the player, which is what makes the rivalry tense.
 
@@ -217,7 +217,7 @@ NPCs gate on streak alone — no XP gate. They feel hungrier than the player, wh
 - **Strings** — relational currency, earned by interaction, spent for hints / skips / classmate advantage / a piece of gossip. Currently never written.
 - **Room moves** — once-per-period playbook moves wired into the round resolution. Currently flavor only.
 
-These are real future work, not a pivot — the schema is shaped for them and the docs name what they will be. They are deliberately not on the next-up list because the Daily-as-arc loop is more load-bearing.
+These are real future work, not a pivot — the schema is shaped for them and the docs name what they will be. They are deliberately not on the next-up list because the rarity/streak/yearbook loop is more load-bearing.
 
 ---
 
@@ -234,15 +234,15 @@ These are real future work, not a pivot — the schema is shaped for them and th
 - [live] Six playbooks, four stats, four rooms, three teachers, six classmates.
 - [live] Multiple choice with bonus-only 2d6 + stat dice + once-per-round advantage roll.
 - [live] Opinion mode with full LLM-graded essays.
-- [live] The Daily — deterministic-by-date question, faculty rotation, school-bell cutoff. Runs every day.
+- [live] Legendary-day progression — rarity-rolled questions plus one forced-Legendary daily bonus, with faculty rotation and a 17:00 UTC bell.
 - [live] Streak + XP gates per year. Auto-advance on threshold. Senior completion graduates.
 - [live] Yearbook write per grade, sealed at graduation.
 - [live] Sticker diploma image generation at Senior completion, with subject-themed accessory.
 - [live] Mentor mode — a graduated character offers their playbook move to the next character.
-- [live] The Cohort — six NPCs running parallel arcs, ticking on every Daily.
+- [live] The Cohort — six NPCs running parallel arcs, ticking on Legendary-day progress.
 - [live] Per-session phase machine (`intro → in-room → asking → revealed → lounge`).
 - [live] Two persistence backends (JSON file for local dev, DynamoDB for production).
-- [live] Production deploy via ECR → AWS App Runner. Stateless container, host-agnostic.
+- [live] Production deploy via Fly.io. Container remains host-agnostic.
 - [live] OpenRouter API key lives only in browser localStorage; the server never holds a credential. Redeploys don't log anyone out.
 - [live] Pluggable content-pack architecture (`src/content/registry.ts`) with a built-in pack and an Anki `.apkg` parser + LLM distractor generator for ingesting outside decks.
 
@@ -259,7 +259,7 @@ These are real future work, not a pivot — the schema is shaped for them and th
 - Conditions, Strings, and the rest of the playbook moves wired into real round mechanics.
 - Faculty expansion — history, logic, music theory, philosophy, art history. Goal: a five-day week with a different voice each day.
 - A weekly invitational essay tournament (Faculty Cup). Bracket, ELO, spectator viewer.
-- Multiplayer co-op — same Daily, two students, one shared lounge.
+- Multiplayer co-op — same daily bonus window, two students, one shared lounge.
 
 ---
 
@@ -269,7 +269,7 @@ These are real future work, not a pivot — the schema is shaped for them and th
 
 [live] LLM costs are paid by the user via their own OpenRouter API key. Per-user, the inference is free to us. The PKCE flow is the entire payment mechanism — no key ever touches our servers.
 
-State persistence runs on DynamoDB on-demand. ~5–20 KB per session. A single App Runner container handles hundreds of concurrent users before any rearchitecture.
+State persistence runs on DynamoDB on-demand. ~5–20 KB per session. A single Fly machine handles hundreds of concurrent users before any rearchitecture.
 
 This unlocks two product moves:
 
@@ -284,10 +284,10 @@ Anything that breaks the user-paid-inference model needs an extremely good reaso
 
 > *Where the design hasn't settled, and where we want collaborator input.*
 
-- **NPC essay regeneration.** Are NPC essay responses the same every Tuesday or generated fresh per Daily? Currently fresh per Daily, which costs the user's own tokens and produces novelty. Acceptable but worth measuring.
+- **NPC essay regeneration.** Are NPC essay responses deterministic for a given prompt or generated fresh per round? Currently fresh per round, which costs the user's own tokens and produces novelty. Acceptable but worth measuring.
 - **Faculty voice at scale.** The system prompt is the contract. We will need an evaluation harness for "is this question in voice?" before community-authored faculty.
 - **Public yearbook.** Are yearbook pages opt-in public, opt-out, or always private? Lean: every artifact's privacy is set by the player, default private.
-- **Lounge as a Daily product.** A "Tuesday Lounge" thread between the three teachers, separately graded as conversation, screenshot-able. Tempting; deferred until the core Daily lands harder.
+- **Lounge as a cadence product.** A "Tuesday Lounge" thread between the three teachers, separately graded as conversation, screenshot-able. Tempting; deferred until the core question loop lands harder.
 - **Conditions UX.** When Conditions land, does the player invoke them ("I'm Tired, this should be HEART not HEAD") or are they auto-applied? Lean: player-invoked, narrative justification required.
 
 ---
@@ -333,8 +333,8 @@ The plugin is also a standalone Node service. The Docker container is host-agnos
 
 | Component | File | Job |
 |---|---|---|
-| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, the Daily, the cohort. |
-| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks for the Daily and for free-play. |
+| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, rarity/bonus progression, the cohort. |
+| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks for the daily bonus and for free-play. |
 | `ChatService` | `src/services/chat-service.ts` | OpenRouter SSE per-teacher. Owns chat history, dispatches tools into the game state. |
 | `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions for QuizState routing; the API key itself never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. |
 | Content registry | `src/content/registry.ts` (+ `src/content/anki/`, `src/content/packs/`) | Active content pack resolver, global and per-session. Today serves the built-in `ruby-high-original`; the Anki `.apkg` parser + LLM distractor generator + per-session active-pack switching are wired ahead of bring-your-own packs. |

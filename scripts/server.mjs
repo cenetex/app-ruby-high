@@ -2,9 +2,8 @@
 // Production entry point. Same wiring as scripts/dev-server.mjs but with
 // container-friendly defaults: binds 0.0.0.0, reads PORT from env, exposes
 // /health for the platform's healthcheck, and writes session state to
-// `RUBY_HIGH_DATA_DIR` when set. The current deploy (App Runner) is
-// stateless — that path is ephemeral per-container — so state survives a
-// session but not a deploy. See README "Deploy" for the persistence note.
+// `RUBY_HIGH_DATA_DIR` when set. Production runs on Fly.io with DynamoDB
+// persistence; the JSON path is retained for local/container fallback.
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
@@ -24,14 +23,17 @@ const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH
 const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? null;
 const ROOT_REDIRECT = process.env.RUBY_HIGH_ROOT_REDIRECT ?? "/api/apps/ruby-high/viewer";
 
-// State backend: defaults to a JSON file (ephemeral on App Runner). Set
+// State backend: defaults to a JSON file. Set
 // RUBY_HIGH_STORE_BACKEND=dynamodb + RUBY_HIGH_DYNAMO_TABLE to persist
 // across container restarts.
 const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
 
-const facultySvc = await FacultyService.start({});
-const authSvc = await AuthService.start({});
-const chatSvc = await ChatService.start({});
+let facultySvc = null;
+let authSvc = null;
+let chatSvc = null;
+let rubySvc = null;
+let bootReady = false;
+let bootError = null;
 
 const fakeRuntime = {
   agentId: "ruby-high-server",
@@ -46,13 +48,17 @@ const fakeRuntime = {
   getSetting: (k) => process.env[k] ?? null,
 };
 
-const rubySvc = await (async () => {
+async function bootServices() {
+  facultySvc = await FacultyService.start(fakeRuntime);
+  authSvc = await AuthService.start(fakeRuntime);
+  chatSvc = await ChatService.start(fakeRuntime);
   const svc = new RubyHighService(fakeRuntime, stateStore);
   await svc["hydrate"]();
   svc.setFacultyService(facultySvc);
-  return svc;
-})();
-chatSvc.setRubyHighService(rubySvc);
+  chatSvc.setRubyHighService(svc);
+  rubySvc = svc;
+  bootReady = true;
+}
 
 // 1 MB cap keeps the host from OOM'ing on malformed or hostile requests.
 // Legitimate Ruby High traffic is well under 4 KB per request. Anki imports
@@ -92,8 +98,8 @@ function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
 
 function deriveBaseFromReq(req) {
   if (PUBLIC_BASE) return PUBLIC_BASE;
-  // The platform's edge proxy (App Runner / any LB / a custom reverse
-  // proxy) sets x-forwarded-* headers; trust the first hop.
+  // The platform's edge proxy (Fly / any LB / a custom reverse proxy) sets
+  // x-forwarded-* headers; trust the first hop.
   const proto = (req.headers["x-forwarded-proto"] ?? "http").toString().split(",")[0].trim();
   const host = (req.headers["x-forwarded-host"] ?? req.headers.host ?? `${HOST}:${PORT}`).toString().split(",")[0].trim();
   return `${proto}://${host}`;
@@ -105,9 +111,9 @@ function isSecureReq(req) {
 }
 
 function deriveClientIp(req) {
-  // The edge proxy (App Runner / LB / reverse proxy) puts the original
-  // client IP first in x-forwarded-for. Fall back to the socket address
-  // when the header is missing (direct connection on a private network).
+  // The edge proxy (Fly / LB / reverse proxy) puts the original client IP
+  // first in x-forwarded-for. Fall back to the socket address when the header
+  // is missing (direct connection on a private network).
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff === "string" && xff.length > 0) {
     return xff.split(",")[0].trim();
@@ -173,6 +179,24 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${HOST}:${PORT}`}`);
 
   if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
+    if (bootError) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({
+        ...HEALTH_PAYLOAD,
+        ok: false,
+        status: "boot-failed",
+        error: bootError instanceof Error ? bootError.message : String(bootError),
+        t: Date.now(),
+      }));
+      return;
+    }
+    if (!bootReady) {
+      res.statusCode = 503;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ...HEALTH_PAYLOAD, ok: false, status: "starting", t: Date.now() }));
+      return;
+    }
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ ...HEALTH_PAYLOAD, t: Date.now() }));
@@ -212,6 +236,12 @@ server.listen(PORT, HOST, () => {
   console.log(`[ruby-high] build: ${HEALTH_PAYLOAD.build}`);
   if (PUBLIC_BASE) console.log(`[ruby-high] public base: ${PUBLIC_BASE}`);
   console.log(`[ruby-high] state: ${HEALTH_PAYLOAD.state}`);
+  bootServices()
+    .then(() => console.log("[ruby-high] services ready"))
+    .catch((err) => {
+      bootError = err;
+      console.error("[ruby-high] boot failed:", err);
+    });
 });
 
 // Graceful shutdown so a rolling deploy doesn't sever in-flight SSE rudely.

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
+import { handleAppRoutes } from "../routes.js";
 import {
   dailyKey,
   dailyIndex,
@@ -143,6 +144,45 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     expect(status.reason).toBe("completed");
   });
 
+  it("session telemetry also hides today's bonus once used", async () => {
+    const { ruby, faculty } = await makeServices();
+    const stateKey = "rh:anonymous";
+    const state = attachCharacter(ruby, stateKey);
+    const today = dailyKey();
+    state.character!.lastBonusDate = today;
+    const runtime = {
+      agentId: "test-agent",
+      character: { name: "Ruby" },
+      getService: (type: string) => {
+        if (type === RubyHighService.serviceType) return ruby;
+        if (type === FacultyService.serviceType) return faculty;
+        return null;
+      },
+    };
+    let response: any = null;
+    const handled = await handleAppRoutes({
+      method: "GET",
+      pathname: "/api/apps/ruby-high/session/test",
+      runtime,
+      res: {},
+      error: (_res, message, status = 500) => {
+        response = { status, error: message };
+      },
+      json: (_res, data, status = 200) => {
+        response = { status, data };
+      },
+      readJsonBody: async () => ({}),
+    });
+    expect(handled).toBe(true);
+    expect(response.status).toBe(200);
+    expect(response.data.telemetry.daily).toEqual({
+      available: false,
+      reason: "completed",
+      facultyId: facultyForDay(today),
+      dailyKey: today,
+    });
+  });
+
   it("playBonus poses a forced-Legendary draw, marks the round as bonus", async () => {
     const { ruby } = await makeServices();
     const sid = "test:play";
@@ -164,6 +204,24 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     expect(after.activeRound?.isBonus).toBe(true);
     expect(after.activeRound?.rarity).toBe("legendary");
     expect(after.faculty).toBe("ruby"); // Sat → Ruby in the rotation
+  });
+});
+
+describe("RubyHighService.resetSession persistence", () => {
+  it("persists the fresh reset state so a new process does not hydrate the old character", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:reset-persist";
+    attachCharacter(ruby, sid);
+    await ruby.flush();
+    ruby.resetSession(sid);
+    await ruby.flush();
+
+    const fresh = new RubyHighService({} as never, new StateStore(storePath));
+    await fresh["hydrate"]();
+    const after = fresh.getOrCreate(sid);
+    expect(after.character).toBeNull();
+    expect(after.score).toEqual({ correct: 0, total: 0 });
+    expect(after.history).toEqual([]);
   });
 });
 

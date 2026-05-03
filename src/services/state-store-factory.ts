@@ -10,10 +10,10 @@ import { DynamoStateStore } from "./dynamo-state-store.js";
  * To opt in to DynamoDB:
  *   RUBY_HIGH_STORE_BACKEND=dynamodb
  *   RUBY_HIGH_DYNAMO_TABLE=ruby-high-state   (or whatever you provisioned)
- *   AWS_REGION=us-east-1                      (already set by App Runner)
+ *   AWS_REGION=us-east-1                      (or set as a Fly env/secret)
  *   RUBY_HIGH_STATE_TTL_SECONDS=7776000       (optional; default 90 days)
  *
- * Required IAM permissions for the App Runner role on the table:
+ * Required IAM permissions for the AWS principal used by the app:
  *   dynamodb:Scan, dynamodb:GetItem, dynamodb:PutItem, dynamodb:BatchWriteItem
  */
 export interface CreateStateStoreOptions {

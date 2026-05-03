@@ -10,14 +10,14 @@ RUN npm run build
 
 FROM node:22-slim AS runtime
 WORKDIR /app
+ARG RUBY_HIGH_BUILD=dev
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV HOST=0.0.0.0
+ENV RUBY_HIGH_BUILD=$RUBY_HIGH_BUILD
 # RUBY_HIGH_DATA_DIR points the JSON state-store at /data. On the current
-# deploy target (AWS App Runner) this directory is ephemeral — state lives
-# only as long as the container instance. The convention is preserved for
-# when state moves behind a real persistence layer (DynamoDB or
-# @elizaos/plugin-sql); see README "Production caveats."
+# deploy target (Fly.io) this is only used if the JSON backend is selected.
+# Production uses DynamoDB; the path is retained for local/container fallback.
 ENV RUBY_HIGH_DATA_DIR=/data
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force

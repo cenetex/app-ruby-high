@@ -64,7 +64,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="arc-indicator" id="arc-indicator" hidden>
         <span class="arc-year" id="arc-year">—</span>
         <span class="arc-sep">·</span>
-        <span class="arc-streak" id="arc-streak" title="Daily streak this year">streak —</span>
+        <span class="arc-streak" id="arc-streak" title="Legendary-day streak this year">streak —</span>
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Cumulative XP">— XP</span>
       </div>

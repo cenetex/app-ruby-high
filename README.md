@@ -1,8 +1,8 @@
 # Ruby High
 
-> A school where the teachers grade you in their own voice. Once a day. The grade is yours to keep.
+> A school where the teachers grade you in their own voice. Chase rare questions, bank grades, and keep the yearbook.
 
-Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, answer the Daily question, and graduate after Senior year.
+Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, answer rarity-rolled questions, and graduate after Senior year.
 
 **For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
 
@@ -68,7 +68,7 @@ No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with
 npm test
 ```
 
-18 test files covering the Daily mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, pack routes, and the content-pack registry.
+18 test files covering the rarity/bonus progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, pack routes, and the content-pack registry.
 
 ## Deploy
 

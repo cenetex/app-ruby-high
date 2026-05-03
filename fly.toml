@@ -4,10 +4,10 @@
 #
 #  1. auto_stop_machines = "stop" + min_machines_running = 0. The container
 #     genuinely scales to zero on idle and wakes on the first incoming
-#     request (~300-500ms cold start). Ruby High's traffic is daily and
+#     request (~300-500ms cold start). Ruby High's traffic is cadence-driven and
 #     extremely spiky — most of the day is idle — so this turns the bill
 #     into roughly $0 on the free tier instead of $50+/month always-on.
-#     Cold starts are invisible inside a Daily product since the user
+#     Cold starts are invisible inside this product since the user
 #     already expects a small loading moment when they open the app.
 #
 #  2. The app reaches DynamoDB in us-east-1 for state, so we deploy to iad

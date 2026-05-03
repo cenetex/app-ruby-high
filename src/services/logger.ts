@@ -1,7 +1,7 @@
-// Structured stdout logger. App Runner forwards stdout to CloudWatch, so a
-// single-line JSON record per event is all we need to stop being blind in
-// prod. No log levels, no deps, no external transports — just events +
-// errors with enough metadata to grep on.
+// Structured stdout logger. Fly streams stdout/stderr into deploy logs, so a
+// single-line JSON record per event is enough to stop being blind in prod. No
+// log levels, no deps, no external transports — just events + errors with
+// enough metadata to grep on.
 
 const buildId = process.env.RUBY_HIGH_BUILD?.slice(0, 12) ?? "dev";
 
@@ -17,7 +17,7 @@ function emit(level: "event" | "error", name: string, data: Record<string, unkno
     ...safeData,
     ...(payloadName === undefined ? {} : { payloadName }),
   });
-  // Errors → stderr so CloudWatch can split them; events → stdout.
+  // Errors → stderr so the platform can split them; events → stdout.
   if (level === "error") process.stderr.write(line + "\n");
   else process.stdout.write(line + "\n");
 }

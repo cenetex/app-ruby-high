@@ -503,7 +503,8 @@ export class RubyHighService extends Service {
   }
 
   /** Apply rarity-driven progression after a question resolves. Called
-   *  on EVERY resolved round (the Daily-as-arc model is gone). Steps:
+   *  on every resolved round now that the one-question-per-day arc is gone.
+   *  Steps:
    *
    *    1. subjectScores tick (independent of pass/rarity) — drives
    *       the diploma's subject-themed accessory at graduation.
@@ -614,16 +615,15 @@ export class RubyHighService extends Service {
   }
 
   /** Cohort tick — every NPC who's still in school rolls against today's
-   *  Daily and ticks their own streak. Independent of the player's pass:
+   *  Legendary-day progress check and ticks their own streak. Independent of the player's pass:
    *  Indra might pass while you miss, or vice versa. Streak resets on
    *  miss; advances on threshold; graduates after Senior streak.
    *
    *  NPCs gate on streak alone — no XP gate. They feel hungrier than the
    *  player, which makes the rivalry tense ("Indra graduated last week").
    *
-   *  The day-key dedupe prevents double-tick if the player retries on
-   *  the same day (which the dailyStatus gate prevents anyway, but
-   *  defense in depth). */
+   *  The day-key dedupe prevents double-tick if the player clears multiple
+   *  Legendary rounds on the same day after the target has already been met. */
   private applyCohortDaily(state: QuizState, correctAnswer: Choice, key: string): void {
     if (!state.npcCohort) state.npcCohort = initialNpcCohort();
     const cohort = state.npcCohort;
@@ -915,9 +915,8 @@ export class RubyHighService extends Service {
     });
   }
 
-  /** Daily-bonus status. Replaces the legacy `dailyStatus` (the Daily-as-arc
-   *  model is gone; this is now strictly about the once-per-day forced-
-   *  Legendary "bonus question"). The bonus is the cheap retention hook
+  /** Daily-bonus status. This is now strictly about the once-per-day forced-
+   *  Legendary "bonus question". The bonus is the cheap retention hook
    *  that survived the rarity refactor — the player gets a guaranteed
    *  Legendary draw once per UTC date, available={true} until they
    *  use it. The faculty-of-the-day rotation still works the same way
@@ -1235,7 +1234,7 @@ export class RubyHighService extends Service {
 // The state machine is action-driven, not phase-driven. Mutators name what
 // the player just did ("clear the board", "pose a question") rather than
 // which phase to land in — the phase mapping is internal. Adding new
-// product features (The Daily, Yearbook) means adding actions here, not
+// product features (bonus flow, Yearbook) means adding actions here, not
 // fiddling with module flags scattered across viewer + server.
 type TransitionAction =
   | { kind: "select-grade" }

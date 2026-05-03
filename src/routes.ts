@@ -216,8 +216,8 @@ interface SessionTelemetry extends Record<string, unknown> {
    *  available. The viewer's character-creation flow checks this and
    *  shows an "inherit / fresh" choice. */
   mentor_offer: PlayerCharacter["inheritedFrom"] | null;
-  /** "Today's Daily" status — drives the empty-state copy and the
-   *  play-daily CTA visibility. */
+  /** Today's bonus status — drives the empty-state copy and the bonus CTA
+   *  visibility. */
   daily: {
     available: boolean;
     reason?: "completed" | "no-grade" | "no-character";
@@ -344,7 +344,7 @@ function deriveAdvantageRolls(state: QuizState): { used: number; cap: number; re
   return { used, cap: ADVANTAGE_ROLLS_PER_GRADE, remaining: Math.max(0, ADVANTAGE_ROLLS_PER_GRADE - used) };
 }
 
-/** Derives "today's Daily" status for the viewer. Mirrors
+/** Derives today's bonus status for the viewer. Mirrors
  *  RubyHighService.dailyStatus() — kept inline here so buildSessionState
  *  doesn't need a service handle. Both implementations use the same
  *  dailyKey / facultyForDay helpers, so they stay in lockstep. */

@@ -12,9 +12,9 @@ import type { StateStoreLike } from "./state-store.js";
  * DynamoDB-backed state store. One item per session, primary key = sessionId.
  *
  * Why DynamoDB over the JSON-file default:
- *  - Survives container restarts. App Runner is stateless; the JSON file
- *    lives only as long as the instance. DynamoDB is the cheapest hosted
- *    persistence the app's existing IAM role can already see.
+ *  - Survives machine replacement. JSON state is local to one container
+ *    filesystem; DynamoDB gives the Fly app hosted persistence without
+ *    coupling state to the machine lifecycle.
  *  - Per-session writes. Each mutation touches one item, not the whole
  *    snapshot — a player picking an answer doesn't rewrite every other
  *    player's character.

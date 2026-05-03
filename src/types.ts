@@ -8,7 +8,7 @@ export const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 
 /** Ruby HIGH School — only grades 9-12 (Freshman, Sophomore, Junior, Senior).
  *  Players start at Freshman and progress year by year. Each year completes
- *  when the player passes the per-grade Daily threshold. After Senior,
+ *  when the player passes the per-grade Legendary-day threshold. After Senior,
  *  graduation closes the run. */
 export type Grade = "9" | "10" | "11" | "12";
 
@@ -30,18 +30,19 @@ export const GRADE_SHORT_LABELS: Record<Grade, string> = {
 };
 
 /** Players start at Freshman year. Per the spec commit (DESIGN.md): the
- *  Daily IS the arc — pass enough Dailies in your year to advance to
- *  the next. Senior completion = graduation (yearbook write, run ends). */
+ *  rarity/streak/yearbook loop is the arc — clear enough Legendary days
+ *  in your year to advance to the next. Senior completion = graduation
+ *  (yearbook write, run ends). */
 export const DEFAULT_GRADE: Grade = "9";
 
 /** Question rarity. Rolled at pose time. Drives both the XP a correct
  *  answer awards and the player's per-day "Legendaries cleared" count
  *  that anchors the streak.
  *
- *  Replaces the prior Daily-as-arc model where ONE deterministic
- *  question per UTC day was the gate. The player now plays as much
- *  as they want; rarity creates the same scarcity effect via the
- *  pull-of-randomness instead of a 24-hour cooldown. */
+ *  Replaces the prior one-question-per-day arc model. The player now plays as
+ *  much as they want; rarity creates the same scarcity effect via the
+ *  pull-of-randomness, with the once-per-day bonus as a guaranteed Legendary
+ *  route rather than the whole gate. */
 export type Rarity = "common" | "rare" | "legendary";
 
 export const RARITIES: Rarity[] = ["common", "rare", "legendary"];
@@ -323,7 +324,7 @@ export interface QuizState {
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
   /** The cohort — each of the 6 NPCs running their own 4-year arc
    *  alongside the player. Independent grades + streaks. Initialized at
-   *  grade 9 (everyone starts as Freshmen together). The Daily ticks
+   *  grade 9 (everyone starts as Freshmen together). Legendary-day ticks
    *  every NPC's streak via their HEAD stat + 2d6 roll. */
   npcCohort?: NpcArcState[];
   /** Mentor offer from a graduated previous character. Set by
@@ -518,7 +519,7 @@ export interface PlayerCharacter {
     arcAnswer?: string;
     subjectScores?: Record<string, { correct: number; total: number }>;
   }>;
-  /** Daily-target streak in the active grade. A "day complete" is the
+  /** Legendary-day streak in the active grade. A "day complete" is the
    *  first time on a given UTC date that the player has answered
    *  `legendariesPerDayFor(grade)` Legendary questions correctly.
    *  Each completion increments `count` (capped to once per UTC date,
@@ -534,7 +535,7 @@ export interface PlayerCharacter {
    *  on the current UTC date. Resets implicitly when `date` ages out
    *  (any update on a new date overwrites the count). */
   legendariesToday?: { date: string; count: number };
-  /** UTC date of the last Daily-bonus question played. The bonus
+  /** UTC date of the last bonus question played. The bonus
    *  question is a forced-Legendary, available once per UTC day —
    *  the cheap retention hook that survived the rarity refactor.
    *  Replaces the old `lastDailyDate` (same shape, different
@@ -554,7 +555,7 @@ export interface PlayerCharacter {
    *  Partial<> because not every grade has a key — only ones the player
    *  has rolled in. Defaulted to {} on hydrate. */
   advantageRollsUsed?: Partial<Record<Grade, number>>;
-  /** Per-faculty XP pool. Each Daily PASS increments the pool of the
+  /** Per-faculty XP pool. Each Rare/Legendary pass increments the pool of the
    *  faculty whose room the question was posed in. Year advancement
    *  requires `requiredSubjectXpForGrade(grade)` in EACH teaching
    *  faculty's pool — the rule that gives the rooms mechanical weight.
@@ -578,19 +579,17 @@ export interface PlayerCharacter {
   createdAt: number;
 }
 
-// ── Daily mechanic ─────────────────────────────────────────────────────────
+// ── Daily-key / bonus mechanic ─────────────────────────────────────────────
 //
-// "The Daily IS the arc" (DESIGN.md Pillar 1). One teacher per weekday,
-// one question per day, deterministic by date so every player on a given
-// day sees the same Tuesday. The school bell rings at 17:00 UTC — anything
-// before that counts as the previous day. Weekends have no Daily; streaks
-// hold across them ("question reset only" semantics).
+// The daily key is now the cadence primitive for the once-per-day forced
+// Legendary bonus and streak math. Regular play is open-ended and rarity
+// rolled; the 17:00 UTC bell decides which bonus window "today" means.
 
 /** The school-bell cutoff: 17:00 UTC. Before that, "today" is yesterday's
- *  date for Daily purposes. After, "today" advances. */
+ *  date for bonus/streak purposes. After, "today" advances. */
 export const DAILY_BELL_HOUR_UTC = 17;
 
-/** YYYY-MM-DD key for the Daily on a given moment. Anchors all streak +
+/** YYYY-MM-DD key for the bonus/streak window on a given moment. Anchors all streak +
  *  rotation arithmetic. The same date string everywhere — no timezone
  *  drift between server and client.
  *
@@ -602,7 +601,7 @@ export function dailyKey(now: Date = new Date(Date.now())): string {
   const adjusted = new Date(now.getTime());
   if (adjusted.getUTCHours() < DAILY_BELL_HOUR_UTC) {
     // Before 17:00 UTC — the bell hasn't rung yet, so we're still on
-    // yesterday's Daily.
+    // yesterday's bonus window.
     adjusted.setUTCDate(adjusted.getUTCDate() - 1);
   }
   const y = adjusted.getUTCFullYear();
@@ -635,7 +634,7 @@ export function dailyIndex(key: string): number {
   return Math.max(0, Math.floor((ms - DAILY_EPOCH) / (24 * 60 * 60 * 1000)));
 }
 
-/** Day-of-week (0=Sun..6=Sat) for a Daily key. Drives faculty rotation. */
+/** Day-of-week (0=Sun..6=Sat) for a daily key. Drives bonus faculty rotation. */
 export function dayOfWeekForKey(key: string): number {
   const [yStr, mStr, dStr] = key.split("-");
   const y = Number(yStr), m = Number(mStr), d = Number(dStr);
@@ -643,10 +642,10 @@ export function dayOfWeekForKey(key: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-/** Faculty rotation — runs every day of the week. The 5-teacher cycle
+/** Bonus faculty rotation — runs every day of the week. The 5-teacher cycle
  *  (Sally / Edward / Ruby / Sally / Edward) extends across Sat/Sun by
  *  continuing the rotation: Sat → Ruby, Sun → Sally. Always returns a
- *  faculty id; the Daily is available 7 days a week. */
+ *  faculty id; the bonus is available 7 days a week. */
 export function facultyForDay(key: string): string {
   const dow = dayOfWeekForKey(key);
   switch (dow) {
@@ -690,20 +689,20 @@ export interface NpcStudentState {
 /** Per-NPC arc state — tracks each classmate's independent progression
  *  through the 4-year arc. Same shape as the player: a streak in their
  *  current grade, a list of completed grades, a graduated flag. NPCs
- *  ride along on the player's Daily completions — when the player plays
- *  today's Daily, every still-in-school NPC also rolls their pass/fail
+ *  ride along on the player's Legendary-day completions — when the player
+ *  hits today's Legendary target, every still-in-school NPC also rolls pass/fail
  *  and ticks their own streak. They can outpace or fall behind. The
  *  cohort is the rivalry layer: "Indra graduated last week" is real. */
 export interface NpcArcState {
   id: string;
   /** Current grade. Independent of `currentGrade` on QuizState. */
   grade: Grade;
-  /** Per-grade Daily-pass streak, anchored to the current grade. */
+  /** Per-grade Legendary-day streak, anchored to the current grade. */
   streak: { grade: Grade; count: number };
   completedGrades: Grade[];
   /** True once Senior streak completes. Stops further ticking. */
   graduated: boolean;
-  /** Day key (YYYY-MM-DD) of the last Daily this NPC participated in.
+  /** Day key (YYYY-MM-DD) of the last Legendary-day tick this NPC participated in.
    *  Prevents double-tick if the player retries on the same day. */
   lastDailyDate?: string;
 }
@@ -911,7 +910,7 @@ export function npcsInRoom(roster: NpcStudentState[], room: TeachingRoomId): Npc
 }
 
 /** Initial cohort — all 6 NPCs as Freshmen, fresh streaks. They'll diverge
- *  from this baseline as the player plays Dailies and the dice roll for
+ *  from this baseline as the player clears Legendary days and the dice roll for
  *  each one independently. */
 export function initialNpcCohort(): NpcArcState[] {
   return ALL_STUDENT_IDS.map((id) => ({
@@ -923,7 +922,7 @@ export function initialNpcCohort(): NpcArcState[] {
   }));
 }
 
-/** NPC stats keyed by id — for dice rolls during the Daily. */
+/** NPC stats keyed by id — for dice rolls during Legendary-day ticks. */
 export function npcStatsFor(id: string): CharacterStats {
   return { ...(NPC_STAT_DEFAULTS[id] ?? { head: 0, heart: 0, hustle: 0, honor: 0 }) };
 }

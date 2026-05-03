@@ -120,9 +120,9 @@ export class FacultyService extends Service {
   }
 
   /**
-   * Deterministic pick for "today's Daily" — every player on a given (date,
-   * faculty, pack) sees the same question. Uses dailyIndex(key) modulo the
-   * bank size as the ratchet; difficulty filter optional.
+   * Deterministic pick for today's forced-Legendary bonus — every player on
+   * a given (date, faculty, pack) sees the same question. Uses dailyIndex(key)
+   * modulo the bank size as the ratchet; difficulty filter optional.
    */
   pickDaily(
     opts: {

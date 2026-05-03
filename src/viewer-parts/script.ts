@@ -606,8 +606,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!question) {
       showBlackboardEmpty(true);
       activeQuestionId = null;
-      // The empty-board message is just text — the daily-challenge CTA
-      // lives in its own banner above the chalkboard (see updateDailyBanner).
+      // The empty-board message is just text — the old daily-challenge CTA
+      // was removed when progression moved to rarity draws.
       if (!authed) {
         els.blackboardEmptyText.textContent = "Sign in with OpenRouter to start class.";
       } else if (!lastTelemetry?.character) {
@@ -1648,7 +1648,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       return "All gates cleared — your next Legendary advances the year.";
     }
     let hint = parts.join(" · ");
-    // Daily-bonus nudge: if available, mention it as a free path to a
+    // Bonus nudge: if available, mention it as a free path to a
     // Legendary today. (The bonus ALWAYS rolls Legendary — a guaranteed
     // tick toward the per-day target.)
     const bonusAvailable = t.daily && t.daily.available === true;
@@ -2950,7 +2950,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   applyAuthUI();
   // The session is born already enrolled at Freshman year (server-side
   // default). The player progresses Freshman → Sophomore → Junior → Senior
-  // → graduate as they pass per-grade Daily thresholds. There is no year
+  // → graduate as they clear per-grade Legendary-day thresholds. There is no year
   // picker — they walk in, get started, and advance by playing.
   fetchSession();
   // Auth is local — derive once on boot and again whenever the OAuth tab
