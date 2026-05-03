@@ -76,14 +76,6 @@ export function requiredSubjectXpForGrade(grade: Grade): number {
   }
 }
 
-/** @deprecated Total-XP gate replaced by per-class minimums (see
- *  `requiredSubjectXpForGrade`). Kept for one minor version so older
- *  state files and tests don't blow up — remove after the next pack
- *  iteration. Returns the floor across all three teaching rooms. */
-export function xpForGrade(grade: Grade): number {
-  return requiredSubjectXpForGrade(grade) * 3;
-}
-
 /** Difficulty progression up the high school years. */
 export function difficultyForGrade(grade: Grade): Difficulty {
   if (grade === "9") return "easy";
@@ -441,11 +433,13 @@ export interface PlayerCharacter {
    *  to { grade: newGrade, count: 0 }. */
   streak?: { grade: Grade; count: number };
   /** Per-faculty score record — {correct, total} keyed by faculty id.
-   *  Drives "highest-scoring subject" at graduation (used for the
-   *  diploma image's subject-themed accessory). Optional for legacy
-   *  characters; defaulted to {} on hydrate. */
+   *  Tracks attempts AND passes so we can compute a CORRECTNESS RATIO
+   *  per teacher, used at graduation to pick the diploma image's
+   *  subject-themed accessory (best ratio wins). NOT redundant with
+   *  subjectXp — that's pure pass count, no notion of attempts. Optional
+   *  for legacy characters; defaulted to {} on hydrate. */
   subjectScores?: Record<string, { correct: number; total: number }>;
-  /** Per-faculty XP pool. Each Daily pass increments the pool of the
+  /** Per-faculty XP pool. Each Daily PASS increments the pool of the
    *  faculty whose room the question was posed in. Year advancement
    *  requires `requiredSubjectXpForGrade(grade)` in EACH teaching
    *  faculty's pool — the rule that gives the rooms mechanical weight.

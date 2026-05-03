@@ -196,12 +196,60 @@ const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 
 
 /** One-shot portrait gen using the same sticker style as the teachers/students.
  *  Returns a base64 data URL. */
+/** Image-gen retry strategy: image models are flaky in three ways
+ *  (overload 5xx, slow-stall hang, success-with-empty-image content
+ *  filter). One retry catches all three with high probability. We
+ *  also bound each attempt to PORTRAIT_TIMEOUT_MS so a stalled
+ *  request can't block the response indefinitely.
+ *
+ *  Rate limiter (PORTRAIT_LIMITER) is on the OUTER endpoint, so the
+ *  retry consumes the same budget as the original request — no
+ *  amplification. */
+const PORTRAIT_TIMEOUT_MS = 60_000;
+async function fetchPortraitOnce(args: {
+  apiKey: string;
+  prompt: string;
+}): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PORTRAIT_TIMEOUT_MS);
+  try {
+    const r = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${args.apiKey}`,
+        "HTTP-Referer": REFERER,
+        "X-Title": TITLE,
+      },
+      body: JSON.stringify({
+        model: PORTRAIT_MODEL,
+        modalities: ["image", "text"],
+        messages: [{ role: "user", content: args.prompt }],
+        max_tokens: PORTRAIT_MAX_TOKENS,
+      }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      throw new Error(`OpenRouter ${r.status}: ${(text || r.statusText).slice(0, 240)}`);
+    }
+    const body = await r.json() as {
+      choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
+    };
+    const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    if (!url) throw new Error("OpenRouter returned no image (likely a content-filter trip; try a different name/personality).");
+    return url;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function renderCharacterPortrait(args: {
   apiKey: string;
   name: string;
   personality: string;
 }): Promise<string> {
-  const userPrompt = [
+  const prompt = [
     `JRPG dialog-portrait of ${args.name}, a high schooler at Ruby High.`,
     `Personality: ${args.personality}`,
     "",
@@ -210,31 +258,16 @@ async function renderCharacterPortrait(args: {
     "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale lavender background (#ece6f5). The background fills the entire frame as one perfectly even color — no gradient, no texture, no pattern, no scenery, no objects, no border, no transparency. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
     "No text, no logo, no signature, no caption.",
   ].join("\n");
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
-      model: PORTRAIT_MODEL,
-      modalities: ["image", "text"],
-      messages: [{ role: "user", content: userPrompt }],
-      max_tokens: PORTRAIT_MAX_TOKENS,
-    }),
-  });
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`OpenRouter ${r.status}: ${text || r.statusText}`);
+  try {
+    return await fetchPortraitOnce({ apiKey: args.apiKey, prompt });
+  } catch (err) {
+    log.event("portrait.first-attempt-failed", {
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    // Single retry. Most flake is transient (model overload / abort);
+    // a second swing inside the same request budget catches it.
+    return fetchPortraitOnce({ apiKey: args.apiKey, prompt });
   }
-  const body = await r.json() as {
-    choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
-  };
-  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-  if (!url) throw new Error("No image returned");
-  return url;
 }
 
 /** Diploma image — generated at Senior graduation. Same image model as
@@ -261,7 +294,7 @@ async function renderDiplomaImage(args: {
       default: return "holding a rolled diploma scroll tied with a red ribbon";
     }
   })();
-  const userPrompt = [
+  const prompt = [
     `JRPG dialog-portrait of ${args.name} at their Ruby High graduation.`,
     `Personality: ${args.personality}`,
     "",
@@ -270,31 +303,15 @@ async function renderDiplomaImage(args: {
     "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale gold background (#f5e8c2). The background fills the entire frame as one perfectly even color — no gradient, no texture, no pattern, no scenery, no objects, no border, no transparency. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
     "No text, no logo, no signature, no caption.",
   ].join("\n");
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
-      model: PORTRAIT_MODEL,
-      modalities: ["image", "text"],
-      messages: [{ role: "user", content: userPrompt }],
-      max_tokens: PORTRAIT_MAX_TOKENS,
-    }),
-  });
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`OpenRouter ${r.status}: ${text || r.statusText}`);
+  // Same retry-once-on-flake strategy as the regular portrait path.
+  try {
+    return await fetchPortraitOnce({ apiKey: args.apiKey, prompt });
+  } catch (err) {
+    log.event("diploma.first-attempt-failed", {
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return fetchPortraitOnce({ apiKey: args.apiKey, prompt });
   }
-  const body = await r.json() as {
-    choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
-  };
-  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-  if (!url) throw new Error("No image returned");
-  return url;
 }
 
 /** Determine the player's highest-scoring faculty for the diploma image's
