@@ -1089,6 +1089,22 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         classmateNames,
         teacherSaid,
       });
+      // Stamp the chime into the active teacher's history so the next
+      // teacher turn knows what was said in the room. Without this, an
+      // NPC can speak ON SCREEN ("ok ok vee, didn't know you had it
+      // like that"), the player can reply ("Thanks Sami!"), and the
+      // teacher — whose history only contains her own messages plus
+      // the player's — has no record of Sami at all and asks "who is
+      // Sami?" That breaks the group-chat illusion the rest of the
+      // app maintains. Appending as a system note (not as an
+      // assistant/user message) keeps the speaker attribution visible
+      // in the prompt without polluting role-shaped history.
+      if (line && body?.faculty) {
+        chat.appendSystemNote(
+          { sessionToken: token, faculty: body.faculty },
+          `[${student.name} (classmate) chimed in: "${line}"]`,
+        );
+      }
       ctx.json(ctx.res, {
         ok: true,
         student: { id: student.id, name: student.name, color: student.color },
