@@ -215,6 +215,14 @@ export interface QuizState {
   completedGrades: Grade[];
   /** Whether the student has finished the splash/intro and is into the app. */
   hasSeenIntro: boolean;
+  /** Active content pack id for this session. Null = use the default
+   *  ("ruby-high-original"). The pack determines which faculty + rooms +
+   *  question banks the player sees; per-session so a future pack switch
+   *  doesn't yank the rug out from under another user (or another tab) on
+   *  the same server. Today there's only one pack so this is always null
+   *  or "ruby-high-original" — the field exists so the per-session
+   *  abstraction can land before the runtime pack adapters do. */
+  activePackId: string | null;
   /** The player's character sheet. Created once (on first run) and
    *  immutable thereafter (graduation flow archives it to a yearbook). */
   character: PlayerCharacter | null;

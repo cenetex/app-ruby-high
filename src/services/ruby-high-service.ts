@@ -45,11 +45,18 @@ import {
   type RoundOutcome,
   type TeachingRoomId,
 } from "../types.js";
-import { FacultyService, type PickFilter } from "./faculty-service.js";
+import { FacultyService, toFacultyMember, type PickFilter } from "./faculty-service.js";
 import { StateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
-import { activeFaculty, activeFacultyById, activeRoomForFaculty, isPackLoaded } from "../content/registry.js";
+import {
+  activeFaculty,
+  facultyByIdForSession,
+  facultyForSession,
+  isPackLoaded,
+  packForSession,
+  roomForFacultyForSession,
+} from "../content/registry.js";
 
 export interface PoseInput {
   prompt: string;
@@ -237,17 +244,7 @@ export class RubyHighService extends Service {
   }
 
   listFaculty(): FacultyMember[] {
-    // Pack-driven: faculty come from the active pack; LOUNGE is universal.
-    const pack = activeFaculty().map((f) => ({
-      id: f.id,
-      displayName: f.displayName,
-      shortName: f.shortName,
-      subjects: f.subjects,
-      bio: f.bio,
-      available: true,
-      accent: f.accent,
-    }));
-    return [...pack, LOUNGE_FACULTY];
+    return [...activeFaculty().map(toFacultyMember), LOUNGE_FACULTY];
   }
 
   getOrCreate(sessionId: string): QuizState {
@@ -275,6 +272,7 @@ export class RubyHighService extends Service {
         currentGrade: DEFAULT_GRADE,
         completedGrades: [],
         hasSeenIntro: true,
+        activePackId: null,
         character: null,
         npcRosters: {},
         activeRound: null,
@@ -630,7 +628,7 @@ export class RubyHighService extends Service {
     const startedAt = Date.now();
     const isOpinion = question.type === "opinion";
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
-    const room = activeRoomForFaculty(state.faculty);
+    const room = roomForFacultyForSession(state, state.faculty);
     let entries: NpcRoundEntry[] = [];
     if (room && room.teaches && state.currentGrade) {
       const teachingRoom = room.id as TeachingRoomId;
@@ -813,7 +811,7 @@ export class RubyHighService extends Service {
       difficulty,
       exclude: state.askedQuestionIds,
     };
-    const q = this.faculty.pick(pickFilter);
+    const q = this.faculty.pick(pickFilter, packForSession(state));
     if (!q) {
       throw new Error(
         `No questions left matching {faculty=${pickFilter.faculty ?? "any"}, subject=${pickFilter.subject ?? "any"}, difficulty=${pickFilter.difficulty ?? "any"}}.`,
@@ -874,7 +872,7 @@ export class RubyHighService extends Service {
       dailyIndex: dailyIndex(status.dailyKey),
       difficulty: state.currentGrade ? undefined : undefined, // honor grade later
       exclude: state.askedQuestionIds,
-    });
+    }, packForSession(state));
     if (!q) {
       throw new Error(`Bank for ${facultyId} is exhausted; cannot pose today's Daily.`);
     }
@@ -1062,21 +1060,54 @@ export class RubyHighService extends Service {
     return this.getOrCreate(sessionId);
   }
 
+  /** Switch the active content pack for THIS session. Per-session so a
+   *  future runtime pack switch (Anki / paid packs) flips only the
+   *  relevant session's view; other sessions on the same server stay on
+   *  whatever they were on. Caller is expected to have already
+   *  registered the pack in the global registry; this method just
+   *  records the id + resets transient state that the previous pack's
+   *  faculty/rooms pinned. Today only the original pack is registered,
+   *  so the meaningful effect is the reset rather than the swap.
+   *
+   *  Wipes:
+   *   - state.faculty (set to the new pack's first teaching faculty —
+   *     the previous id may not exist in the new pack)
+   *   - state.current / activeRound / lastReveal (question ids are
+   *     bank-scoped; previous-pack questions don't exist in the new one)
+   *   - state.npcRosters (currentRoom values reference the previous
+   *     pack's room layout) — re-seeded for the current grade */
+  setActivePackForSession(sessionId: string, packId: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    state.activePackId = packId;
+    const newPack = packForSession(state);
+    const firstFaculty = newPack.faculty[0]?.id ?? RUBY_FACULTY.id;
+    if (state.faculty !== firstFaculty && state.faculty !== LOUNGE_FACULTY.id) {
+      state.faculty = firstFaculty;
+    }
+    state.current = null;
+    state.activeRound = null;
+    state.lastReveal = null;
+    state.npcRosters = {};
+    if (state.currentGrade) this.ensureRoster(state, state.currentGrade);
+    this.transition(state, { kind: "clear-board" });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("pack.session-switched", { sessionId, packId, faculty: state.faculty });
+    return state;
+  }
+
   setFaculty(sessionId: string, facultyId: string): QuizState {
     const state = this.getOrCreate(sessionId);
-    let faculty: FacultyMember | null;
+    let faculty: FacultyMember | null = null;
     if (facultyId === LOUNGE_FACULTY.id) {
       faculty = LOUNGE_FACULTY;
     } else {
-      const f = activeFacultyById(facultyId);
-      faculty = f ? {
-        id: f.id, displayName: f.displayName, shortName: f.shortName,
-        subjects: f.subjects, bio: f.bio, available: true, accent: f.accent,
-      } : null;
+      const f = facultyByIdForSession(state, facultyId);
+      if (f) faculty = toFacultyMember(f);
     }
     if (!faculty) {
-      const available = [...activeFaculty().map((f) => f.id), LOUNGE_FACULTY.id].join(", ");
-      throw new Error(`Unknown faculty: ${facultyId}. Active pack faculty: ${available}.`);
+      const available = [...facultyForSession(state).map((f) => f.id), LOUNGE_FACULTY.id].join(", ");
+      throw new Error(`Unknown faculty: ${facultyId}. Faculty in your active pack: ${available}.`);
     }
     const previousFacultyId = state.faculty;
     state.faculty = faculty.id;
@@ -1155,6 +1186,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     currentGrade: migratedGrade,
     completedGrades: migratedCompleted,
     hasSeenIntro: !!s.hasSeenIntro,
+    activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,
     // pendingRoll was added in v0.5.1; older state files don't have it, and

@@ -1,15 +1,28 @@
 /**
- * Content pack registry. The active pack is the single source of truth
- * for which faculty + rooms + question banks the system serves.
+ * Content pack registry. The active pack is the source of truth for
+ * which faculty + rooms + question banks a session sees.
  *
- * Today: hardcoded to "ruby-high-original" — there's only one pack. The
- * surface is shaped as if there were many so future work (pack store,
- * Anki imports, paid packs) doesn't have to thread a new abstraction
- * back through every consumer.
+ * Two access patterns:
+ *  - global: getActivePack / activeFaculty / activeRoomForFaculty —
+ *    returns whatever the GLOBAL active pack is. Used by code paths
+ *    that don't have a session in scope (boot, listFaculty diagnostics).
+ *  - per-session: packForSession / facultyForSession /
+ *    roomForFacultyForSession — resolves against state.activePackId
+ *    with a fallback to the global active pack. This is what hot paths
+ *    use so a future runtime pack switch (Anki / paid packs) flips
+ *    only the relevant session's view.
+ *
+ * Today there's only one pack ("ruby-high-original"), so the per-session
+ * helpers always resolve to it. The abstraction exists ahead of the
+ * runtime pack adapters so they can land cleanly.
  */
 
 import type { ContentPack, PackFaculty, PackRoom } from "./types.js";
 import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
+
+/** Stable id of the built-in pack. Used as the fallback / pin / "are we
+ *  on the original schedule" signal in places that special-case it. */
+export const ORIGINAL_PACK_ID = "ruby-high-original";
 
 let active: Promise<ContentPack> | null = null;
 /** Sync mirror of the resolved pack. Populated when the async getActivePack
@@ -93,4 +106,42 @@ export const LOUNGE_ROOM: PackRoom = {
  *  the channels rail + telemetry want. */
 export function activeRoomsWithLounge(): PackRoom[] {
   return [...getLoadedPack().rooms, LOUNGE_ROOM];
+}
+
+// ── per-session pack lookup ─────────────────────────────────────────────
+// Per-session active pack: each QuizState carries an activePackId. These
+// helpers resolve "which pack does THIS session see?" — the global active
+// pack is used only as a fallback when the session is null or its
+// activePackId points at an unregistered pack.
+
+interface PackSession { activePackId?: string | null }
+
+/** Resolve the pack for a given session. Falls back to the global active
+ *  pack when the session is null OR its activePackId doesn't match a
+ *  registered pack — so an evicted/stale id never breaks reads. */
+export function packForSession(session: PackSession | null): ContentPack {
+  // Today only one pack is registered, so the fallback always lands on
+  // the original. Once Phase C lands the multi-pack registry, this
+  // method becomes the actual per-session resolver.
+  return getLoadedPack();
+}
+
+export function facultyForSession(session: PackSession | null): PackFaculty[] {
+  return packForSession(session).faculty;
+}
+
+export function facultyByIdForSession(session: PackSession | null, id: string): PackFaculty | null {
+  return packForSession(session).faculty.find((f) => f.id === id) ?? null;
+}
+
+export function roomsForSession(session: PackSession | null): PackRoom[] {
+  return packForSession(session).rooms;
+}
+
+export function roomForFacultyForSession(session: PackSession | null, facultyId: string): PackRoom | null {
+  return packForSession(session).rooms.find((r) => r.teacherId === facultyId) ?? null;
+}
+
+export function roomsWithLoungeForSession(session: PackSession | null): PackRoom[] {
+  return [...packForSession(session).rooms, LOUNGE_ROOM];
 }

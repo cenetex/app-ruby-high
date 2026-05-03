@@ -9,7 +9,7 @@ import type {
   PluginAppSessionState,
 } from "@elizaos/core";
 import { RubyHighService } from "./services/ruby-high-service.js";
-import { FacultyService } from "./services/faculty-service.js";
+import { FacultyService, toFacultyMember } from "./services/faculty-service.js";
 import {
   CHOICES,
   GRADES,
@@ -30,7 +30,12 @@ import { PLAYBOOKS, isValidStatDistribution } from "./characters/playbooks.js";
 import { renderViewerHtml, VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "./viewer.js";
 import { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
 import { log } from "./services/logger.js";
-import { activeFaculty, activeRooms, activeRoomsWithLounge } from "./content/registry.js";
+import {
+  facultyForSession,
+  packForSession,
+  roomsForSession,
+  roomsWithLoungeForSession,
+} from "./content/registry.js";
 import type { PackRoom } from "./content/types.js";
 
 const APP_NAME = "@cenetex/app-ruby-high";
@@ -238,21 +243,16 @@ function parseRhSessionCookie(cookieHeader: string | null | undefined): string |
   return null;
 }
 
-function facultyById(id: string): FacultyMember {
-  // Fall back to the first faculty in the active pack — that role used
-  // to belong to the static RUBY_FACULTY constant. Pack-driven now.
-  const pack = activeFaculty();
+function facultyForState(state: QuizState, id: string): FacultyMember {
+  // Resolve faculty against the SESSION's pack — fresh sessions inherit
+  // the global default; per-session pack switching reads from their
+  // chosen pack. Falls back to the pack's first faculty if the
+  // requested id isn't there (e.g. state.faculty stale right after a
+  // swap).
+  const pack = facultyForSession(state);
   const hit = pack.find((f) => f.id === id) ?? pack[0];
-  if (!hit) throw new Error("Active pack has no faculty — cannot resolve facultyById.");
-  return {
-    id: hit.id,
-    displayName: hit.displayName,
-    shortName: hit.shortName,
-    subjects: hit.subjects,
-    bio: hit.bio,
-    available: true,
-    accent: hit.accent,
-  };
+  if (!hit) throw new Error("Active pack has no faculty — cannot resolve facultyForState.");
+  return toFacultyMember(hit);
 }
 
 function deriveActiveRound(state: QuizState) {
@@ -327,12 +327,11 @@ function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
   return { available: true, facultyId: fac, dailyKey: key };
 }
 
-function deriveRoomCohort(roster: NpcStudentState[]): Record<string, string[]> {
-  // Build the per-room cohort map keyed off the active pack's rooms so a
-  // pack with non-default room ids (a future SAT pack with "math-lab",
-  // "verbal-lab") still maps cleanly. Lounge is excluded via teaches.
+function deriveRoomCohort(roster: NpcStudentState[], state: QuizState): Record<string, string[]> {
+  // Build the per-room cohort map keyed off THIS session's pack's rooms so
+  // a session that switched to a different pack sees the right room layout.
   const out: Record<string, string[]> = {};
-  for (const room of activeRooms()) {
+  for (const room of roomsForSession(state)) {
     if (room.teaches) out[room.id] = [];
   }
   for (const npc of roster) {
@@ -341,9 +340,10 @@ function deriveRoomCohort(roster: NpcStudentState[]): Record<string, string[]> {
   return out;
 }
 
-function buildFacultyRoster(faculty: FacultyService | null): FacultyTelemetry[] {
-  return activeFaculty().map((f) => {
-    const bank = faculty?.bank(f.id);
+function buildFacultyRoster(faculty: FacultyService | null, state: QuizState): FacultyTelemetry[] {
+  const pack = packForSession(state);
+  return facultyForSession(state).map((f) => {
+    const bank = faculty?.bank(f.id, pack);
     const subjects = bank ? Array.from(new Set(bank.questions.map((q) => q.subject))).sort() : f.subjects;
     return {
       id: f.id,
@@ -366,7 +366,7 @@ function buildSessionState(args: {
 }): PluginAppSessionState {
   const { runtime, state, faculty } = args;
   const sessionId = getSessionId(runtime, args.cookieHeader);
-  const fac = facultyById(state.faculty);
+  const fac = facultyForState(state, state.faculty);
 
   const telemetry: SessionTelemetry = {
     faculty: state.faculty,
@@ -389,16 +389,16 @@ function buildSessionState(args: {
         }
       : null,
     lastReveal: state.lastReveal,
-    faculty_roster: buildFacultyRoster(faculty),
+    faculty_roster: buildFacultyRoster(faculty, state),
     asked_count: state.askedQuestionIds.length,
     store_path: null,
     current_grade: state.currentGrade,
     completed_grades: state.completedGrades,
     has_seen_intro: state.hasSeenIntro,
-    rooms: activeRoomsWithLounge(),
+    rooms: roomsWithLoungeForSession(state),
     npc_roster: state.currentGrade ? (state.npcRosters[state.currentGrade] ?? []) : [],
     room_cohort: state.currentGrade
-      ? deriveRoomCohort(state.npcRosters[state.currentGrade] ?? [])
+      ? deriveRoomCohort(state.npcRosters[state.currentGrade] ?? [], state)
       : {},
     active_round: deriveActiveRound(state),
     is_opinion: state.current?.type === "opinion",
