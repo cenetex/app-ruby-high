@@ -84,20 +84,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
-    <!-- Today's-challenge banner. Lives ABOVE the blackboard so it is
-         not fighting the chalkboard's green texture for legibility, and
-         it stays present even when the player is in another teacher's
-         room (the CTA pulls them into the day's faculty room). -->
-    <section class="daily-banner" id="daily-banner" hidden>
-      <div class="daily-banner-inner">
-        <div class="daily-banner-text">
-          <div class="daily-banner-title">Today's challenge</div>
-          <div class="daily-banner-sub" id="daily-banner-sub">—</div>
-        </div>
-        <button class="daily-cta-btn" id="daily-cta-btn" type="button">Begin</button>
-      </div>
-    </section>
-
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
         <div id="blackboard-empty-text">The teacher will write a question on the board in a moment.</div>

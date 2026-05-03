@@ -129,9 +129,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     teacherFigure: $("teacher-figure"),
     blackboardEmpty: $("blackboard-empty"),
     blackboardEmptyText: $("blackboard-empty-text"),
-    dailyBanner: $("daily-banner"),
-    dailyBannerSub: $("daily-banner-sub"),
-    dailyCtaBtn: $("daily-cta-btn"),
+    // (Today's-challenge banner removed — bonus path is no longer
+    //  surfaced as a chrome banner. The bonus endpoint stays alive
+    //  on the server for future re-introduction.)
     reportBugLink: $("report-bug-link"),
     blackboardMeta: $("blackboard-meta"),
     boardFrameHost: $("board-frame-host"),
@@ -587,29 +587,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     div.textContent = (faculty.shortName || faculty.displayName || faculty.id || "?").charAt(0).toUpperCase();
     return div;
   }
-  // Today's-challenge banner. Lives above the chalkboard so the CTA
-  // doesn't fight the green texture for legibility, and is visible
-  // regardless of which room the player is currently standing in.
-  // Hidden in three cases: not signed in, no character, daily already
-  // done, lounge mode, or no daily faculty for the day.
-  function updateDailyBanner(t) {
-    const daily = t && t.daily;
-    if (!daily || !daily.available || !authed || !t.character || t.faculty === LOUNGE_ID) {
-      els.dailyBanner.hidden = true;
-      return;
-    }
-    const dailyFaculty = (t.faculty_roster || []).find((f) => f.id === daily.facultyId) || null;
-    const profName = dailyFaculty?.displayName || "today's teacher";
-    const inRoom = t.faculty === daily.facultyId;
-    // Banner now describes the once-per-day BONUS — a guaranteed
-    // Legendary draw. The button label nudges the player toward
-    // today's faculty's room when they're somewhere else.
-    els.dailyBannerSub.textContent = inRoom
-      ? "Today's bonus is a guaranteed Legendary in " + profName + "'s room — tap to draw it."
-      : "Today's bonus is in " + profName + "'s room — guaranteed Legendary.";
-    els.dailyCtaBtn.textContent = inRoom ? "Draw bonus ★" : "Go to " + profName;
-    els.dailyBanner.hidden = false;
-  }
+  // Today's-challenge banner is gone. The bonus surface was removed
+  // because rarity itself is the variable-reward gate — every
+  // question is a draw. Players never need a separate "click here for
+  // today's bonus" affordance. The /chat/play-bonus endpoint stays
+  // available server-side if we ever want to re-introduce it.
 
   function renderBlackboard(question, faculty, currentGrade) {
     if (faculty && faculty.id === LOUNGE_ID) {
@@ -1064,14 +1046,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.nextBtn.disabled = false;
     }
   }
-  async function playBonus() {
-    try {
-      await command({ type: "play-bonus" });
-      lockedFor = null;
-    } catch (err) {
-      // command() already surfaces errors via appendSystem.
-    }
-  }
   async function pickAnswer(choice, btn) {
     if (!btn || btn.disabled) return;
     els.answers.forEach((b) => (b.disabled = true));
@@ -1238,7 +1212,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     renderBlackboard(t.current || null, fac || null, t.current_grade);
     renderRaceStrip(t);
     renderAdvantageBar(t);
-    updateDailyBanner(t);
     if (t.is_opinion && t.active_round) {
       renderOpinionsIntoChat(t.active_round);
       maybeAutoTriggerGrading(t);
@@ -1879,12 +1852,28 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function renderSheetCreation(playbooks) {
     sheetCard.innerHTML = "";
 
+    // Full-pane loading state — covers the sheet while the initial
+    // roll is in flight so the player isn't staring at empty form
+    // rows wondering why nothing's there. Hidden once the rolled
+    // payload lands; re-shown if the player triggers a full reroll
+    // later. (No literal backticks — script.ts is wrapped in an
+    // outer template literal at compose time.)
+    const loading = document.createElement("div");
+    loading.className = "creation-loading";
+    loading.innerHTML =
+      '<div class="creation-loading-spinner" aria-hidden="true"></div>'
+      + '<div class="creation-loading-title">Rolling…</div>'
+      + '<div class="creation-loading-sub">Drawing your character. Please wait.</div>';
+    sheetCard.appendChild(loading);
+
     const h = document.createElement("h2");
     h.textContent = "Welcome to Ruby High";
+    h.style.display = "none"; // hidden during loading; revealed when rolled lands
     sheetCard.appendChild(h);
     const sub = document.createElement("p");
     sub.className = "sub";
     sub.textContent = "You're inhabiting an AI student. Lock in the parts that fit; reroll the rest.";
+    sub.style.display = "none";
     sheetCard.appendChild(sub);
 
     // Two-column wrap: portrait on the left, rerollable fields on the
@@ -1892,6 +1881,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // builds independently below.
     const card = document.createElement("div");
     card.className = "creation-card";
+    card.style.display = "none";
     sheetCard.appendChild(card);
 
     // Portrait section — default-pack PNG by playbook, plus an opt-in
@@ -1947,6 +1937,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // Status line for in-flight rolls / errors.
     const status = document.createElement("div");
     status.className = "stat-budget";
+    status.style.display = "none";
     sheetCard.appendChild(status);
 
     // Actions — single primary button. No "Reroll all" because each
@@ -1954,11 +1945,23 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // can spam ↻ on every row.
     const actions = document.createElement("div");
     actions.className = "sheet-actions";
+    actions.style.display = "none";
     const acceptBtn = document.createElement("button");
     acceptBtn.textContent = "Lock it in";
     acceptBtn.disabled = true;
     actions.appendChild(acceptBtn);
     sheetCard.appendChild(actions);
+
+    // Reveal the form (and hide the loading state) once the first
+    // roll lands. Subsequent component-rerolls don't re-trigger this.
+    function revealForm() {
+      loading.style.display = "none";
+      h.style.display = "";
+      sub.style.display = "";
+      card.style.display = "";
+      status.style.display = "";
+      actions.style.display = "";
+    }
 
     let rolled = null;
     // Per-component in-flight flags so the user can mash multiple rerolls
@@ -2032,6 +2035,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         const data = await r.json();
         rolled = data.character;
         renderRolled(rolled);
+        // First roll lands → swap from loading-state to form.
+        revealForm();
         setStatus("");
       } catch (err) {
         if (status.isConnected) {
@@ -2112,6 +2117,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       });
       if (data && data.session) {
         closeSheet();
+        // Auto-pose the first question so the new player lands on a
+        // live board instead of an empty chalkboard with the cryptic
+        // "the teacher will write a question on the board in a moment."
+        // The default faculty after createCharacter is "ruby" (homeroom),
+        // and command({type:"pick"}) routes through the rarity path.
+        try { await command({ type: "pick" }); }
+        catch { /* swallow — empty board is the worst case, not a crash */ }
       } else {
         applyDisabled();
         setStatus("Save failed — try again.", true);
@@ -2748,15 +2760,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
   els.nextBtn.addEventListener("click", pickNext);
-  // The bonus banner now invokes playBonus() directly — playBonus
-  // auto-switches to the day's faculty room before posing the
-  // forced-Legendary draw. Disable while in flight to suppress
-  // doubletap.
-  els.dailyCtaBtn.addEventListener("click", async () => {
-    els.dailyCtaBtn.disabled = true;
-    try { await playBonus(); }
-    finally { els.dailyCtaBtn.disabled = false; }
-  });
   els.hamburger.addEventListener("click", toggleRails);
   els.scrim.addEventListener("click", closeRails);
   els.homeBtn.addEventListener("click", openRails);
