@@ -489,21 +489,21 @@ export function dayOfWeekForKey(key: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-/** Faculty rotation per DESIGN.md Pillar 1:
- *    Mon → Sally Science    Thu → Sally Science
- *    Tue → Professor Edward Fri → Professor Edward
- *    Wed → Ruby
- *    Sat / Sun → null (school closed; streak holds, no Daily available)
- */
-export function facultyForDay(key: string): string | null {
+/** Faculty rotation — runs every day of the week. The 5-teacher cycle
+ *  (Sally / Edward / Ruby / Sally / Edward) extends across Sat/Sun by
+ *  continuing the rotation: Sat → Ruby, Sun → Sally. Always returns a
+ *  faculty id; the Daily is available 7 days a week. */
+export function facultyForDay(key: string): string {
   const dow = dayOfWeekForKey(key);
   switch (dow) {
-    case 1: return "sally-science"; // Monday
+    case 1: return "sally-science";    // Monday
     case 2: return "professor-edward"; // Tuesday
-    case 3: return "ruby"; // Wednesday
-    case 4: return "sally-science"; // Thursday
+    case 3: return "ruby";             // Wednesday
+    case 4: return "sally-science";    // Thursday
     case 5: return "professor-edward"; // Friday
-    default: return null; // Saturday + Sunday → school closed
+    case 6: return "ruby";             // Saturday
+    case 0: return "sally-science";    // Sunday
+    default: return "sally-science";   // unreachable; defensive default
   }
 }
 

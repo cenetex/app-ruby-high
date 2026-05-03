@@ -87,15 +87,15 @@ describe("dailyIndex + facultyForDay", () => {
     }
   });
 
-  it("facultyForDay rotates Mon-Fri × Sally/Edward/Ruby; weekends null", () => {
+  it("facultyForDay rotates the 5-teacher cycle across all 7 days", () => {
     // 2026-05-04 = Monday → sally
     expect(facultyForDay("2026-05-04")).toBe("sally-science");
     expect(facultyForDay("2026-05-05")).toBe("professor-edward"); // Tue
     expect(facultyForDay("2026-05-06")).toBe("ruby");             // Wed
     expect(facultyForDay("2026-05-07")).toBe("sally-science");    // Thu
     expect(facultyForDay("2026-05-08")).toBe("professor-edward"); // Fri
-    expect(facultyForDay("2026-05-09")).toBeNull();               // Sat
-    expect(facultyForDay("2026-05-10")).toBeNull();               // Sun
+    expect(facultyForDay("2026-05-09")).toBe("ruby");             // Sat
+    expect(facultyForDay("2026-05-10")).toBe("sally-science");    // Sun
   });
 });
 
@@ -109,14 +109,14 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     expect(status.reason).toBe("no-character");
   });
 
-  it("dailyStatus reports weekend on Saturday/Sunday even with character", async () => {
+  it("dailyStatus is available on Saturday too (Daily runs every day)", async () => {
     const { ruby } = await makeServices();
     const sid = "test:weekend";
     attachCharacter(ruby, sid);
     const sat = new Date("2026-05-09T18:00:00Z"); // Saturday after bell
     const status = ruby.dailyStatus(sid, sat);
-    expect(status.available).toBe(false);
-    expect(status.reason).toBe("weekend");
+    expect(status.available).toBe(true);
+    expect(status.facultyId).toBe("ruby"); // Sat → Ruby in the rotation
   });
 
   it("dailyStatus reports available on a weekday with no prior completion", async () => {
@@ -152,11 +152,14 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     expect(after.faculty).toBe("sally-science"); // Mon → sally
   });
 
-  it("playDaily refuses on a weekend", async () => {
+  it("playDaily runs on a Saturday (no weekend gating)", async () => {
     const { ruby } = await makeServices();
-    const sid = "test:weekend-refuse";
+    const sid = "test:weekend-allowed";
     attachCharacter(ruby, sid);
-    expect(() => ruby.playDaily(sid, new Date("2026-05-09T18:00:00Z"))).toThrow(/weekend/);
+    const after = ruby.playDaily(sid, new Date("2026-05-09T18:00:00Z"));
+    expect(after.current).not.toBeNull();
+    expect(after.activeRound?.isDaily).toBe(true);
+    expect(after.faculty).toBe("ruby"); // Sat → Ruby in the rotation
   });
 });
 
@@ -332,8 +335,6 @@ describe("XP gate — streak alone is not enough", () => {
     let day = 5;
     while (s.character!.xp < 5) {
       now = new Date(`2026-05-${String(day).padStart(2, "0")}T18:00:00Z`);
-      // Skip weekends.
-      if (now.getUTCDay() === 0 || now.getUTCDay() === 6) { day++; continue; }
       try {
         ruby.playDaily(sid, now);
       } catch {

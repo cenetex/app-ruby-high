@@ -179,7 +179,7 @@ The dice can only ever upgrade the outcome. They never punish. A wrong answer is
 
 Streaks reset on miss. XP accumulates across the whole run. The streak alone is not enough — XP confirms the player has been engaging. The XP alone is not enough — the streak confirms they can perform.
 
-[live] **Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward. Saturday and Sunday: school closed, streak holds.
+[live] **Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The Daily runs every day; the rotation just continues across the weekend.
 
 [live] **Bell.** 17:00 UTC. Before the bell, "today" is yesterday's Daily.
 
@@ -228,7 +228,7 @@ These are real future work, not a pivot — the schema is shaped for them and th
 - [live] Six playbooks, four stats, four rooms, three teachers, six classmates.
 - [live] Multiple choice with bonus-only 2d6 + stat dice + once-per-round advantage roll.
 - [live] Opinion mode with full LLM-graded essays.
-- [live] The Daily — deterministic-by-date question, faculty rotation, school-bell cutoff, weekday-only.
+- [live] The Daily — deterministic-by-date question, faculty rotation, school-bell cutoff. Runs every day.
 - [live] Streak + XP gates per year. Auto-advance on threshold. Senior completion graduates.
 - [live] Yearbook write per grade, sealed at graduation.
 - [live] Sticker diploma image generation at Senior completion, with subject-themed accessory.

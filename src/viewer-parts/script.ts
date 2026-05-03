@@ -502,8 +502,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
       } else if (daily && daily.reason === "completed") {
         els.blackboardEmptyText.textContent = "School's out for today. The next bell rings at 17:00 UTC tomorrow — your streak holds until then.";
-      } else if (daily && daily.reason === "weekend") {
-        els.blackboardEmptyText.textContent = "School's closed for the weekend. Class is back Monday at 17:00 UTC. Streak holds across the break.";
       } else if (daily && daily.available) {
         els.blackboardEmptyText.textContent = "Today's Daily is ready. Tap Next question to start.";
       } else {
@@ -865,9 +863,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.nextBtn.disabled = true;
     try {
       // Prefer today's Daily — that's the arc. Falls through to free-play
-      // ("pick") only when the Daily isn't available (weekend, already done,
-      // or no character). Free-play doesn't tick the streak; it's playtest
-      // sandbox.
+      // ("pick") only when the Daily isn't available (already done, or no
+      // character). Free-play doesn't tick the streak; it's playtest sandbox.
       const daily = lastTelemetry && lastTelemetry.daily;
       if (daily && daily.available) {
         await command({ type: "play-daily" });
