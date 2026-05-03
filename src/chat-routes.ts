@@ -3,6 +3,7 @@ import { AuthService } from "./services/auth-service.js";
 import { ChatService } from "./services/chat-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
+import { log } from "./services/logger.js";
 import { parseTeacherGrades } from "./grading.js";
 import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
@@ -845,10 +846,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           });
         } catch (err) {
           // Don't fail the whole turn — just log via SSE so the client knows.
+          log.error("chat.channel-enter-fallback", err, { faculty });
           send("error", { type: "error", message: `channel-enter fallback skipped: ${err instanceof Error ? err.message : String(err)}` });
         }
       }
     } catch (err) {
+      log.error("chat.event-failed", err, { faculty, trigger });
       send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
       res.write("event: end\ndata: {}\n\n");

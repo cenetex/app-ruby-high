@@ -1999,9 +1999,17 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
   function renderRaceStrip(t) {
     const round = t.active_round;
-    // Hard gate: race strip ONLY when authed + active round + question on the
-    // board. Pre-auth or empty-blackboard should never see it.
-    if (!authed || !round || !t.current || round.resolved) {
+    // Hard gate: race strip ONLY when authed + active round + matching live
+    // question + unresolved + still-counting. A stale round whose questionId
+    // no longer matches the board's question (faculty switched, next question
+    // posed, etc.) gets hidden — otherwise its frozen "22s" pill sits
+    // forever while everything else has moved on.
+    const liveRound = round
+      && t.current
+      && round.questionId === t.current.id
+      && !round.resolved
+      && (round.remainingMs ?? 0) > 0;
+    if (!authed || !liveRound) {
       els.raceStrip.hidden = true;
       els.raceRow.innerHTML = "";
       return;
@@ -2683,6 +2691,11 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
         scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade);
         // Teacher reacts + queues next question. Small delay so the
         // congrats toast lands first and the chat doesn't feel stacked.
+        // force=true: bypass the agentBusy guard. If a prior turn's SSE
+        // stream stuck (network drop, server hang), agentBusy stays true
+        // and answer-graded gets silently dropped — leaving the player
+        // staring at a revealed answer with no next question. The teacher
+        // reaction is the thing that unsticks the flow; never gate it.
         if (authed && t.faculty !== LOUNGE_ID) {
           setTimeout(() => {
             runAgentTurn("answer-graded", {
@@ -2690,7 +2703,7 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
               picked: t.lastReveal.picked,
               correct: t.lastReveal.correct,
               wasCorrect: t.lastReveal.wasCorrect,
-            });
+            }, { force: true });
           }, 600);
         }
       }
@@ -3367,6 +3380,12 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     // Default speaker = current channel's teacher; overridden by speaker events.
     let speaker = teacherInfo(lastTelemetry && lastTelemetry.faculty);
     let buf = "";
+    // Hard ceiling: if the server hangs or the connection drops without a
+    // proper close, the loop below would await reader.read() forever and
+    // hold the agentBusy lock forever. Cancel after 45s so the surrounding
+    // try/finally always reaches its release.
+    const watchdog = setTimeout(() => { try { reader.cancel(); } catch { /* ignore */ } }, 45000);
+    try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -3405,6 +3424,9 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
           streamingMsgEl = null;
         }
       }
+    }
+    } finally {
+      clearTimeout(watchdog);
     }
   }
 

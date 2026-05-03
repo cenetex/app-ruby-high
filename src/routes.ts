@@ -33,6 +33,7 @@ import {
 import { PLAYBOOKS, isValidStatDistribution } from "./characters/playbooks.js";
 import { renderViewerHtml, VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "./viewer.js";
 import { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
+import { log } from "./services/logger.js";
 
 const APP_NAME = "@cenetex/app-ruby-high";
 const APP_DISPLAY_NAME = "Ruby High";
@@ -806,6 +807,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      log.error("command.failed", err, { command: typeof body?.type === "string" ? body.type : "?" });
       ctx.error(ctx.res, message, 400);
       return true;
     }
