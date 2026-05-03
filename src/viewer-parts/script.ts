@@ -686,6 +686,35 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
   }
 
+  function applyOpinionRevealToBlackboard(round) {
+    // Opinion rounds don't have a picked letter / correct letter — the MC
+    // reveal pipeline leaks "✗ You picked A — answer was A" + the raw rubric
+    // when reused. Paint the board with the player's grade + the teacher's
+    // per-responder comment instead.
+    if (!round) return;
+    const grades = round.opinionGrades || [];
+    const playerGrade = grades.find((g) => g.responder === "player");
+    if (!playerGrade) return;
+    const passed = playerGrade.score >= 7;
+    els.boardReveal.hidden = false;
+    els.boardReveal.classList.toggle("correct", passed);
+    els.boardReveal.classList.toggle("wrong", !passed);
+    els.boardReveal.replaceChildren();
+    const verdict = document.createElement("span");
+    verdict.className = "reveal-verdict";
+    const isBest = round.bestResponder === "player";
+    verdict.textContent = (isBest ? "★ " : "") + "Your grade: " + playerGrade.score.toFixed(1) + "/10";
+    els.boardReveal.appendChild(verdict);
+    if (playerGrade.comment) {
+      const expl = document.createElement("div");
+      expl.className = "reveal-explanation";
+      expl.textContent = playerGrade.comment;
+      els.boardReveal.appendChild(expl);
+    }
+    els.nextBtn.style.display = "";
+    els.nextBtn.focus();
+  }
+
   function applyRevealToBlackboard(reveal) {
     if (!reveal) return;
     els.answers.forEach((btn) => {
@@ -1150,8 +1179,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       if (revealId !== lastRevealId) {
         lastRevealId = revealId;
         if (activeQuestionId === t.lastReveal.questionId) {
-          applyRevealToBlackboard(t.lastReveal);
-          appendResultChip(t.lastReveal);
+          if (t.is_opinion) {
+            applyOpinionRevealToBlackboard(t.active_round);
+          } else {
+            applyRevealToBlackboard(t.lastReveal);
+            appendResultChip(t.lastReveal);
+          }
         }
         showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
         if (t.lastReveal.playerRoll && t.lastReveal.playerRoll.xpAwarded > 0) {
@@ -2352,14 +2385,23 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // Walk the chat log backwards and stamp the most recent body that came
     // from this responder. Cheap heuristic — acceptable for v1.
     const nodes = Array.from(els.stream.querySelectorAll(".msg"));
+    // Player messages render under playerDisplayName() (character first name,
+    // or "You" when no character exists yet). Match either so the player's
+    // grade-tag actually lands on their nametag.
+    const playerNames = grade.responder === "player"
+      ? new Set(["You", playerDisplayName()].filter(Boolean))
+      : null;
     for (let i = nodes.length - 1; i >= 0; i--) {
       const node = nodes[i];
       const nameEl = node.querySelector(".head .name");
       if (!nameEl) continue;
       const name = (nameEl.textContent || "").trim();
-      const target = grade.responder === "player" ? "You" :
-        (STUDENTS.find((s) => s.id === grade.responder)?.name || grade.responder);
-      if (name !== target) continue;
+      if (playerNames) {
+        if (!playerNames.has(name)) continue;
+      } else {
+        const target = STUDENTS.find((s) => s.id === grade.responder)?.name || grade.responder;
+        if (name !== target) continue;
+      }
       // Avoid double-stamping.
       if (node.querySelector(".grade-tag")) continue;
       const tag = document.createElement("span");
