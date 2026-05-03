@@ -178,6 +178,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   let sheetAutoShown = false;
 
   // Track scroll-to-bottom intent: only auto-scroll if user is near bottom.
+  // The player's display name in chat + race UI. Falls back to "You" only
+  // when there's no character yet (rare — the welcome modal auto-rolls one).
+  function playerDisplayName() {
+    const fullName = lastTelemetry && lastTelemetry.character && lastTelemetry.character.name;
+    if (!fullName) return "You";
+    const first = String(fullName).trim().split(/\s+/)[0];
+    return first || "You";
+  }
+
   function isNearBottom() {
     const { scrollTop, scrollHeight, clientHeight } = els.stream;
     return scrollHeight - (scrollTop + clientHeight) < 80;
@@ -277,7 +286,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (kind === "teacher") {
       const tag = document.createElement("span"); tag.className = "role-tag bot"; tag.textContent = "Teacher"; head.appendChild(tag);
     } else if (kind === "you") {
-      const tag = document.createElement("span"); tag.className = "role-tag you"; tag.textContent = "You"; head.appendChild(tag);
+      const tag = document.createElement("span"); tag.className = "role-tag you"; tag.textContent = "you"; head.appendChild(tag);
     } else if (kind === "student") {
       const tag = document.createElement("span"); tag.className = "role-tag student"; tag.textContent = "Student"; head.appendChild(tag);
     }
@@ -426,7 +435,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     cards.push({
       kind: "player",
       id: "player",
-      name: "You",
+      name: playerDisplayName(),
       faceUrl: null,
       isLocked: round.player.isLocked,
       pick: round.player.picked, // null until reveal
@@ -1798,9 +1807,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const buf = await file.arrayBuffer();
       const b64 = bytesToBase64(new Uint8Array(buf));
       packStatusEl.textContent = "Parsing + generating distractors (~$0.05, ~30s)…";
-      const r = await fetch("/api/apps/ruby-high/packs/import-anki", {
+      // Use apiFetch — the server-side import handler reads the OpenRouter
+      // key from X-Openrouter-Key (it pays for the distractor LLM calls).
+      // Plain fetch() would skip the header and the import would 400 with
+      // "OpenRouter API key required."
+      const r = await apiFetch("/api/apps/ruby-high/packs/import-anki", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: file.name, data: b64, maxCards: 50 }),
       });
@@ -1844,9 +1856,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     lastChimeAt = now;
     return true;
   }
-  async function fireStudentChime({ situation, note, grade, faculty, delayMs }) {
-    if (!studentChimeAllowed()) return;
-    const who = pickRandom(studentsForGrade(grade));
+  async function fireStudentChime({ situation, note, grade, faculty, delayMs, studentId, bypassCooldown }) {
+    if (!bypassCooldown && !studentChimeAllowed()) return;
+    // If a specific studentId is requested (e.g. a @-mention), use them
+    // when they're actually in the active room. Otherwise pick a random
+    // in-room student.
+    const inRoom = studentsForGrade(grade);
+    const explicit = studentId ? inRoom.find((s) => s.id === studentId) : null;
+    const who = explicit || pickRandom(inRoom);
+    if (!who) return;
     if (!authed) {
       const fallback = situation === "answer-correct"
         ? pickRandom(STUDENT_LINES_RIGHT)
@@ -1981,7 +1999,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const teacherName = fac ? fac.displayName : facultyId;
       const teacherAccent = fac ? fac.accent : "#d22a2a";
       msgs.forEach((m) => {
-        if (m.role === "user") appendMsg({ kind: "you", name: "You", body: m.content, color: "var(--accent)" });
+        if (m.role === "user") appendMsg({ kind: "you", name: playerDisplayName(), body: m.content, color: "var(--accent)" });
         else if (m.role === "assistant" && m.content) appendMsg({ kind: "teacher", name: teacherName, body: m.content, color: teacherAccent, facultyId });
       });
       scrollIfPinned(true);
@@ -2072,7 +2090,32 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // of the regular agent loop.
     const inOpinion = !!(lastTelemetry && lastTelemetry.is_opinion && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && !opinionSubmitted);
 
-    appendMsg({ kind: "you", name: "You", body: text, color: "var(--accent)" });
+    appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
+
+    // @-mention: if the player named an in-room classmate, that student
+    // chimes in directly. Each mention bypasses the 5s cooldown and a
+    // small per-student delay keeps overlapping mentions from stomping
+    // each other. Out-of-room mentions are silently ignored.
+    const inRoomStudents = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
+    const mentionedIds = new Set();
+    for (const s of inRoomStudents) {
+      const re = new RegExp("\\b" + s.name + "\\b", "i");
+      if (re.test(text)) mentionedIds.add(s.id);
+    }
+    let mentionDelayBase = 600;
+    for (const sid of mentionedIds) {
+      fireStudentChime({
+        situation: "mention",
+        note: "The player just addressed you by name. Respond directly to them in 1 sentence — react to what they said, in your voice.",
+        grade: lastTelemetry && lastTelemetry.current_grade,
+        faculty: lastTelemetry && lastTelemetry.faculty,
+        delayMs: mentionDelayBase,
+        studentId: sid,
+        bypassCooldown: true,
+      });
+      mentionDelayBase += 800 + Math.random() * 600;
+    }
+
     els.chatInput.value = "";
     els.chatInput.style.height = "40px";
     els.chatInput.disabled = true;

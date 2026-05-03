@@ -13,3 +13,6 @@ test-outputs/
 # Local-only: keep your OpenRouter key out of the repo.
 .env
 .env.local
+
+# Claude Code internal state
+.claude/
