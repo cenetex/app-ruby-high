@@ -134,10 +134,10 @@ describe("ChatService.send — message composition", () => {
     expect(systemBlob).toMatch(/Lyra|Mika/);
   });
 
-  it("threads systemEventNote into history as a system message", async () => {
+  it("threads systemEventNote into the composed messages as a turn directive", async () => {
     mockOpenRouter(buildSseChunk([{ content: "got it", finish: "stop" }]));
     const { chat } = await makeServices();
-    const directive = "EVENT: The student picked B; correct was A; they MISSED IT.";
+    const directive = "The student picked B; correct was A; they MISSED IT.";
     for await (const _ of chat.send({
       apiKey: "sk-test",
       sessionToken: "t1",
@@ -149,7 +149,102 @@ describe("ChatService.send — message composition", () => {
     const systemContents = messages
       .filter((m: any) => m.role === "system")
       .map((m: any) => String(m.content));
-    expect(systemContents.some((c: string) => c.includes("MISSED IT"))).toBe(true);
+    // The directive lands in a system block prefixed with "THIS TURN —".
+    expect(systemContents.some((c: string) => c.includes("THIS TURN") && c.includes("MISSED IT"))).toBe(true);
+  });
+
+  it("does NOT persist systemEventNote into history (turn directives are ephemeral)", async () => {
+    // Turn 1: deliver a directive.
+    mockOpenRouter(buildSseChunk([{ content: "got it", finish: "stop" }]));
+    const { chat } = await makeServices();
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      systemEventNote: "EVENT: very specific marker XYZQ123",
+    })) { /* consume */ }
+    vi.restoreAllMocks();
+
+    // Turn 2: a fresh user message, no directive. The XYZQ123 marker
+    // from turn 1 must NOT show up in turn 2's payload anywhere — it
+    // was a turn-scoped instruction, not part of the conversation.
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      userMessage: "follow-up",
+    })) { /* consume */ }
+    const allText = JSON.stringify(captured!.body.messages);
+    expect(allText).not.toContain("XYZQ123");
+  });
+
+  it("appendEvent surfaces room events as a RECENT EVENTS synopsis on the next turn", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    const { chat } = await makeServices();
+    chat.appendEvent(
+      { sessionToken: "t1", faculty: "ruby" },
+      { kind: "chime", text: 'Sami (classmate) chimed in: "yo nice"' },
+    );
+    chat.appendEvent(
+      { sessionToken: "t1", faculty: "ruby" },
+      { kind: "answer-resolved", text: "Round resolved (correct: B). Player picked B — right." },
+    );
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      systemEventNote: "React in 1 sentence.",
+    })) { /* consume */ }
+    const messages: any[] = captured!.body.messages;
+    const systemBlob = messages.filter((m: any) => m.role === "system").map((m: any) => String(m.content)).join("\n");
+    expect(systemBlob).toContain("RECENT EVENTS");
+    expect(systemBlob).toContain("Sami");
+    expect(systemBlob).toContain("Round resolved");
+  });
+
+  it("history payload contains no system messages — Tier A is dialogue-only", async () => {
+    // Set up: an event in the log, a user message, then a turn.
+    mockOpenRouter(buildSseChunk([{ content: "first.", finish: "stop" }]));
+    const { chat } = await makeServices();
+    chat.appendEvent(
+      { sessionToken: "t1", faculty: "ruby" },
+      { kind: "note", text: "background hum" },
+    );
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      userMessage: "hello",
+      systemEventNote: "Greet briefly.",
+    })) { /* consume */ }
+    vi.restoreAllMocks();
+
+    // Second turn: inspect the history slice (everything after the
+    // composed-fresh system blocks). The block boundary is wherever
+    // role transitions from system to non-system; all subsequent
+    // messages are history. None of them should be role:system.
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      userMessage: "second message",
+    })) { /* consume */ }
+    const messages: any[] = captured!.body.messages;
+    let inHistory = false;
+    for (const m of messages) {
+      if (!inHistory && m.role !== "system") inHistory = true;
+      if (inHistory) {
+        // Once we cross into history, no system messages allowed.
+        expect(m.role).not.toBe("system");
+      }
+    }
   });
 
   it("persists conversation history across send() calls in the same bucket", async () => {
