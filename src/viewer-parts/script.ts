@@ -1541,9 +1541,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       close.textContent = "Not now";
       close.addEventListener("click", closeSheet);
       const signin = document.createElement("a");
+      // Same-tab navigation, on purpose. Opening OAuth in a new tab depends
+      // on cross-tab storage events to ferry the API key back to the
+      // original tab, and iOS Safari does not reliably fire those — the
+      // user OAuths in the new tab, the new tab's localStorage gets the
+      // key, the original tab never wakes up. Same-tab nav: we leave for
+      // OpenRouter, come back to /auth/callback, callback HTML writes
+      // localStorage and redirects back to the viewer in the same tab.
+      // Boot reads localStorage, authed flips to true, sheet auto-rolls.
       signin.href = "/api/apps/ruby-high/auth/start";
-      signin.target = "_blank";
-      signin.rel = "noopener";
       signin.textContent = "Sign in with OpenRouter";
       signin.style.cssText = "display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:10px 18px;border-radius:999px;font-weight:800;font-size:14px;";
       actions.appendChild(close);
@@ -2276,7 +2282,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   window.addEventListener("storage", (e) => {
     if (e.key === AUTH_KEY || e.key === null) deriveAuth();
   });
+  // Belt-and-braces wake-up triggers. The OAuth flow is now same-tab so
+  // none of these are load-bearing on the happy path, but they cover any
+  // edge where the user returns from a separate-tab flow (a stray
+  // target=_blank link, a back-forward cache hit, a tab-switch on iOS
+  // Safari which does not fire focus reliably between same-window tabs).
   window.addEventListener("focus", deriveAuth);
+  window.addEventListener("pageshow", deriveAuth);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") deriveAuth();
+  });
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.
   let sessionPollHandle = null;
