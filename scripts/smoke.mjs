@@ -102,7 +102,21 @@ async function check2ViewerRenders() {
     if (!html.includes('id="daily-banner"')) {
       return fail(name, "daily-challenge banner element missing from rendered HTML");
     }
-    ok(name, `${html.length} bytes, quiz buttons + daily banner present`);
+    // Inline <script> must be parseable JS. The viewer is stitched from
+    // a TS template literal that wraps another template literal; an
+    // unescaped \n / \t / ` inside a double-quoted string in the source
+    // collapses into the rendered output and produces "Unexpected EOF".
+    // new Function(src) is a parse-only check — the body never runs.
+    const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+    if (!scriptMatch) {
+      return fail(name, "no inline <script> found in viewer");
+    }
+    try {
+      new Function(scriptMatch[1]);
+    } catch (e) {
+      return fail(name, `inline <script> failed to parse: ${e?.message || e}`);
+    }
+    ok(name, `${html.length} bytes, quiz buttons + daily banner present, inline JS parses`);
   } catch (e) {
     fail(name, e?.message || String(e));
   }
