@@ -240,19 +240,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     font-weight: 800;
     margin-top: 2px;
   }
-  .channels-header .progress-bar {
-    height: 5px;
-    background: var(--line);
-    border-radius: 999px;
-    margin-top: 10px;
-    overflow: hidden;
-  }
-  .channels-header .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), #f0922a);
-    width: 0%;
-    transition: width 0.3s ease;
-  }
   .channels-list {
     flex: 1 1 auto;
     overflow-y: auto;
@@ -1598,7 +1585,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     <div class="channels-header">
       <div class="grade-label">School</div>
       <div class="grade-name" id="grade-title">Ruby High</div>
-      <div class="progress-bar"><div class="progress-fill" id="grade-progress-fill"></div></div>
     </div>
     <div class="channels-list" id="channels-list"></div>
     <div class="channels-footer">
@@ -1728,7 +1714,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   const STREAK_REQUIRED = { "9": 1, "10": 2, "11": 3, "12": 4 };
   const XP_REQUIRED     = { "9": 5, "10": 15, "11": 30, "12": 50 };
   const LOUNGE_ID = "lounge";
-  const COMPLETION_THRESHOLD = 5;
 
   // ── AI students ──────────────────────────────────────────────────────────
   const STUDENTS = [
@@ -1765,7 +1750,6 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
     channelsRail: $("channels-rail"),
     homeBtn: $("home-btn"),
     gradeTitle: $("grade-title"),
-    gradeProgressFill: $("grade-progress-fill"),
     channelsList: $("channels-list"),
     youAvatar: $("you-avatar"),
     youName: $("you-name"),
@@ -2401,15 +2385,10 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
 
     if (t.faculty === LOUNGE_ID) {
       els.gradeTitle.textContent = (grade ? (GRADE_LABELS[grade] || grade) + " · " : "") + "Lounge";
-      els.gradeProgressFill.style.width = "0%";
     } else if (grade) {
       els.gradeTitle.textContent = (GRADE_LABELS[grade] || grade) + " year";
-      const progress = (t.grade_progress && t.grade_progress[grade]) || 0;
-      const pct = Math.min(100, (progress / COMPLETION_THRESHOLD) * 100);
-      els.gradeProgressFill.style.width = pct + "%";
     } else {
       els.gradeTitle.textContent = "Ruby High";
-      els.gradeProgressFill.style.width = "0%";
     }
 
     els.channelsList.innerHTML = "";
@@ -2995,19 +2974,25 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
   function openStudentProfile(npc, s) {
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
-    const subjectChips = ["homeroom", "science", "literature"].map((r) => {
-      const subj = npc.subjects[r];
-      return r + (subj.completed ? " ✓" : " " + subj.correct + "/" + COMPLETION_THRESHOLD);
-    }).join(" · ");
+    // Pull this NPC's parallel-arc state from the cohort. That's the
+    // rivalry surface — what year they're on, what their streak looks
+    // like, whether they've already graduated past you.
+    const arc = (lastTelemetry && lastTelemetry.npc_cohort)
+      ? lastTelemetry.npc_cohort.find((n) => n.id === npc.id)
+      : null;
+    const arcLine = !arc
+      ? (GRADE_LABELS[npc.grade] || npc.grade)
+      : arc.graduated
+        ? "Graduated · " + arc.completedGrades.length + " years"
+        : (GRADE_LABELS[arc.grade] || arc.grade) + " · streak " + arc.streak.count;
     appendCard({
       role: "student",
       name: s.name,
-      subtitle: (GRADE_LABELS[npc.grade] || npc.grade) + " · " + (npc.currentRoom ? "currently in #" + npc.currentRoom : "graduated this year"),
+      subtitle: arcLine + (npc.currentRoom ? " · #" + npc.currentRoom : ""),
       portraitUrl: apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-full.png",
       accent: s.color,
       stats: npc.stats,
       quote: studentVibe(npc.id),
-      footer: { title: "Subjects", content: subjectChips },
       actions: [{ label: "Close", secondary: true, onClick: closeSheet }],
     });
   }

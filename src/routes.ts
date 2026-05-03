@@ -120,12 +120,11 @@ interface SessionTelemetry extends Record<string, unknown> {
   store_path: string | null;
   current_grade: Grade | null;
   completed_grades: Grade[];
-  grade_progress: Record<string, number>;
   has_seen_intro: boolean;
   /** Fixed room schedule — homeroom / science / literature / lounge. */
   rooms: Room[];
-  /** Currently-active student ids in each teaching room (max 2). Derived from
-   *  npc_roster — students migrate as they pass subjects. */
+  /** Currently-seated student ids in each teaching room (max 2). Static
+   *  for the year — set by the initial seating chart in INITIAL_STUDENT_LAYOUT. */
   room_cohort: Record<string, string[]>;
   /** Full NPC roster for the active grade. */
   npc_roster: NpcStudentState[];
@@ -368,7 +367,6 @@ function buildSessionState(args: {
     store_path: null,
     current_grade: state.currentGrade,
     completed_grades: state.completedGrades,
-    grade_progress: state.gradeProgress,
     has_seen_intro: state.hasSeenIntro,
     rooms: ROOMS,
     npc_roster: state.currentGrade ? (state.npcRosters[state.currentGrade] ?? []) : [],

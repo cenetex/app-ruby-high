@@ -5,7 +5,6 @@ import {
   DEFAULT_GRADE,
   DEFAULT_ROUND_DURATION_MS,
   GRADES,
-  GRADE_COMPLETION_THRESHOLD,
   LOUNGE_FACULTY,
   OPINION_ROUND_DURATION_MS,
   RUBY_FACULTY,
@@ -13,7 +12,6 @@ import {
   difficultyForGrade,
   initialNpcRoster,
   npcsInRoom,
-  pickNextRoomForStudent,
   roomForFaculty,
   classifyTotal,
   dailyIndex,
@@ -263,7 +261,6 @@ export class RubyHighService extends Service {
         askedQuestionIds: [],
         currentGrade: DEFAULT_GRADE,
         completedGrades: [],
-        gradeProgress: { [DEFAULT_GRADE]: 0 },
         hasSeenIntro: true,
         character: null,
         npcRosters: {},
@@ -419,20 +416,16 @@ export class RubyHighService extends Service {
       playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
 
-    // Player progression — Daily ticks the streak (the arc gate); free-play
-    // ticks the legacy count-based gradeProgress. The cohort rolls alongside
-    // the player on every Daily — their streaks are independent of pass/fail.
+    // Player progression — Daily ticks the streak (the arc gate). Free-play
+    // questions don't tick anything player-side (they're warm-up). The
+    // cohort rolls alongside the player on every Daily — their streaks
+    // are independent of pass/fail.
     if (round.isDaily) {
       this.applyPlayerStreak(state, wasCorrect, state.faculty);
       const correctAns = (q.correct ?? "A") as Choice;
       const dailyKeyForRound = round.dailyKey ?? dailyKey(new Date());
       this.applyCohortDaily(state, correctAns, dailyKeyForRound);
-    } else if (wasCorrect) {
-      this.applyPlayerGradeProgress(state);
     }
-
-    // NPC subject progress + redistribution (deterministic from the round).
-    const npcEvents = this.applyRoundToNpcs(state, round);
 
     state.lastReveal = {
       questionId: q.id,
@@ -442,7 +435,6 @@ export class RubyHighService extends Service {
       explanation: q.explanation ?? null,
       encouragement: forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
       playerRoll,
-      ...(npcEvents.length ? { npcEvents } : {}),
     };
     round.resolved = true;
     round.resolvedAt = Date.now();
@@ -513,7 +505,6 @@ export class RubyHighService extends Service {
     const advance = nextGradeAfter(grade);
     if (advance) {
       state.currentGrade = advance;
-      if (state.gradeProgress[advance] === undefined) state.gradeProgress[advance] = 0;
       this.ensureRoster(state, advance);
       ch.streak = { grade: advance, count: 0 };
       log.event("player.grade-advanced", {
@@ -572,73 +563,9 @@ export class RubyHighService extends Service {
     }
   }
 
-  /** LEGACY shim: the older free-play loop ticks gradeProgress on correct
-   *  answers (count not streak). Kept for free-play playtest mode; the
-   *  Daily mechanic uses applyPlayerStreak() and is the authoritative arc
-   *  gate. Once free-play is removed this goes too. */
-  private applyPlayerGradeProgress(state: QuizState): void {
-    const key = state.currentGrade;
-    if (!key) return;
-    const next = (state.gradeProgress[key] ?? 0) + 1;
-    state.gradeProgress[key] = next;
-    if (next < GRADE_COMPLETION_THRESHOLD || state.completedGrades.includes(key)) return;
-    state.completedGrades.push(key);
-    if (state.character) {
-      state.character.yearbook = state.character.yearbook ?? [];
-      state.character.yearbook.push({
-        grade: key,
-        completedAt: Date.now(),
-        summary: { correct: next, total: next },
-      });
-    }
-    const advance = nextGradeAfter(key);
-    if (advance) {
-      state.currentGrade = advance;
-      if (state.gradeProgress[advance] === undefined) state.gradeProgress[advance] = 0;
-      this.ensureRoster(state, advance);
-    }
-  }
-
-  private applyRoundToNpcs(state: QuizState, round: ActiveRound): Array<{
-    studentId: string;
-    gotIt: boolean;
-    completed?: TeachingRoomId;
-    movedTo?: TeachingRoomId | null;
-  }> {
-    const events: Array<{ studentId: string; gotIt: boolean; completed?: TeachingRoomId; movedTo?: TeachingRoomId | null }> = [];
-    if (!state.currentGrade || !state.current) return events;
-    const room = roomForFaculty(state.faculty);
-    if (!room || !room.teaches) return events;
-    const teachingRoom = room.id as TeachingRoomId;
-    const roster = this.ensureRoster(state, state.currentGrade);
-    const correct = state.current.correct;
-    for (const entry of round.npcs) {
-      const npc = roster.find((n) => n.id === entry.studentId);
-      if (!npc) continue;
-      const gotIt = entry.plannedPick === correct;
-      if (!gotIt) {
-        events.push({ studentId: npc.id, gotIt: false });
-        continue;
-      }
-      const subj = npc.subjects[teachingRoom];
-      subj.correct += 1;
-      const ev: { studentId: string; gotIt: boolean; completed?: TeachingRoomId; movedTo?: TeachingRoomId | null } = {
-        studentId: npc.id,
-        gotIt: true,
-      };
-      if (!subj.completed && subj.correct >= GRADE_COMPLETION_THRESHOLD) {
-        subj.completed = true;
-        ev.completed = teachingRoom;
-        const next = pickNextRoomForStudent(roster, npc);
-        npc.currentRoom = next;
-        ev.movedTo = next;
-      }
-      events.push(ev);
-    }
-    return events;
-  }
-
-  /** Ensure an NPC roster exists for the given grade. */
+  /** Ensure an NPC roster exists for the given grade. The seating chart
+   *  is static for the year (the per-question redistribution that used to
+   *  drive student migration was part of the legacy free-play loop). */
   private ensureRoster(state: QuizState, grade: Grade): NpcStudentState[] {
     let roster = state.npcRosters[grade];
     if (!roster) {
@@ -647,12 +574,6 @@ export class RubyHighService extends Service {
     }
     return roster;
   }
-
-  // Note: the previous coin-flip advanceNpcsForAnswer was replaced by
-  // applyRoundToNpcs, which uses the deterministic dice-rolled picks from
-  // the active round. NPCs no longer "auto-answer" at flat probability —
-  // their picks are pre-rolled at pose time and revealed as their delays
-  // elapse during tickRound.
 
   pose(sessionId: string, input: PoseInput): QuizState {
     const state = this.getOrCreate(sessionId);
@@ -832,7 +753,9 @@ export class RubyHighService extends Service {
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
-      // Daily streak tick / free-play count, same routing as MC path.
+      // Daily streak tick — free-play opinion rounds don't tick the arc
+      // gate (they're warm-up). The cohort still rolls so NPCs march on
+      // their own time.
       if (round.isDaily) {
         this.applyPlayerStreak(state, passed, state.faculty);
         // Opinion mode has no "correct letter" — NPCs already submitted essays
@@ -843,39 +766,6 @@ export class RubyHighService extends Service {
         // their grading score directly.)
         const dailyKeyForRound = round.dailyKey ?? dailyKey(new Date());
         this.applyCohortDaily(state, "A", dailyKeyForRound);
-      } else if (passed) {
-        this.applyPlayerGradeProgress(state);
-      }
-      // NPC progress: each NPC scoring ≥7 advances their subject. Same
-      // redistribution rules as the MC path.
-      const npcEvents: Array<{ studentId: string; gotIt: boolean; completed?: TeachingRoomId; movedTo?: TeachingRoomId | null }> = [];
-      const room = roomForFaculty(state.faculty);
-      if (room && room.teaches && state.currentGrade) {
-        const teachingRoom = room.id as TeachingRoomId;
-        const roster = this.ensureRoster(state, state.currentGrade);
-        for (const g of grades) {
-          if (g.responder === "player") continue;
-          const npc = roster.find((n) => n.id === g.responder);
-          if (!npc) continue;
-          const passedNpc = g.score >= 7;
-          if (!passedNpc) {
-            npcEvents.push({ studentId: npc.id, gotIt: false });
-            continue;
-          }
-          const subj = npc.subjects[teachingRoom];
-          subj.correct += 1;
-          const ev: { studentId: string; gotIt: boolean; completed?: TeachingRoomId; movedTo?: TeachingRoomId | null } = {
-            studentId: npc.id, gotIt: true,
-          };
-          if (!subj.completed && subj.correct >= GRADE_COMPLETION_THRESHOLD) {
-            subj.completed = true;
-            ev.completed = teachingRoom;
-            const next = pickNextRoomForStudent(roster, npc);
-            npc.currentRoom = next;
-            ev.movedTo = next;
-          }
-          npcEvents.push(ev);
-        }
       }
       state.lastReveal = {
         questionId: q.id,
@@ -884,7 +774,6 @@ export class RubyHighService extends Service {
         wasCorrect: passed,
         explanation: q.rubric ?? null,
         encouragement: passed ? "Nice essay." : "Take another swing at it tomorrow.",
-        ...(npcEvents.length ? { npcEvents } : {}),
       };
     }
     round.resolved = true;
@@ -1126,7 +1015,6 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     if (!GRADES.includes(grade)) throw new Error(`Unknown grade: ${grade}`);
     state.currentGrade = grade;
-    if (state.gradeProgress[grade] === undefined) state.gradeProgress[grade] = 0;
     state.hasSeenIntro = true;
     // Seed the NPC roster for this grade if it doesn't exist yet.
     this.ensureRoster(state, grade);
@@ -1250,7 +1138,6 @@ function normalizeLoaded(s: QuizState): QuizState {
     lastReveal: s.lastReveal ?? null,
     currentGrade: migratedGrade,
     completedGrades: migratedCompleted,
-    gradeProgress: s.gradeProgress && typeof s.gradeProgress === "object" ? s.gradeProgress : {},
     hasSeenIntro: !!s.hasSeenIntro,
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,

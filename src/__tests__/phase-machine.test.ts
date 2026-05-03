@@ -210,7 +210,6 @@ describe("RubyHighService phase machine", () => {
         askedQuestionIds: ["q1"],
         currentGrade: "11",
         completedGrades: [],
-        gradeProgress: { "11": 0 },
         hasSeenIntro: true,
         character: null,
         npcRosters: {},
@@ -245,7 +244,6 @@ describe("RubyHighService phase machine", () => {
         askedQuestionIds: [],
         currentGrade: "11",
         completedGrades: [],
-        gradeProgress: {},
         hasSeenIntro: true,
         character: null,
         npcRosters: {},
@@ -261,49 +259,10 @@ describe("RubyHighService phase machine", () => {
     activeRuby = ruby;
   });
 
-  it("auto-advances grade on completion + writes yearbook on grade 12", async () => {
-    const { ruby } = await makeServices();
-    const sid = "test:advance";
-    // Start fresh, attach a character (needed for yearbook writes), enroll
-    // at Freshman (DEFAULT_GRADE → 9).
-    ruby.selectGrade(sid, "9");
-    let state = ruby.getOrCreate(sid);
-    state.character = {
-      name: "Pip", playbookId: "overachiever",
-      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
-      arcAnswer: "—", personality: "—", xp: 0, strings: {},
-      conditions: [], yearbook: [], createdAt: Date.now(),
-    };
-
-    // Walk through all four years. Each grade rotates a different faculty
-    // pack so a single bank doesn't exhaust (each pack is 15; we need 5
-    // draws per grade × 4 grades = 20 total, spread across 3 faculties).
-    const expectedTrail: Array<{ before: string; after: string | null; faculty: string }> = [
-      { before: "9",  after: "10", faculty: "ruby" },
-      { before: "10", after: "11", faculty: "sally-science" },
-      { before: "11", after: "12", faculty: "professor-edward" },
-      { before: "12", after: "12", faculty: "ruby" }, // Senior: yearbook writes, currentGrade stays
-    ];
-    for (const step of expectedTrail) {
-      expect(ruby.getOrCreate(sid).currentGrade).toBe(step.before);
-      for (let i = 0; i < 5; i++) {
-        ruby.pickAndPose(sid, { faculty: step.faculty });
-        const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
-        ruby.submitAnswer(sid, correct);
-      }
-      const after = ruby.getOrCreate(sid).currentGrade;
-      if (step.after !== null) expect(after).toBe(step.after);
-    }
-    // After Senior completion the yearbook has 4 entries — one per grade.
-    state = ruby.getOrCreate(sid);
-    expect(state.character!.yearbook).toHaveLength(4);
-    expect(state.character!.yearbook.map((y) => y.grade)).toEqual(["9", "10", "11", "12"]);
-    for (const entry of state.character!.yearbook) {
-      expect(typeof entry.completedAt).toBe("number");
-      expect(entry.summary.correct).toBeGreaterThan(0);
-    }
-    expect(state.completedGrades).toEqual(["9", "10", "11", "12"]);
-  });
+  // Note: the count-based "5 correct = next grade" auto-advance test was
+  // removed when the legacy free-play loop was deleted. Grade advancement
+  // is now exclusively a Daily-streak mechanic — see daily-mechanic.test.ts
+  // for the streak-based progression coverage.
 
   it("derives phase=intro for legacy state with no grade selected", async () => {
     const { writeFile } = await import("node:fs/promises");
@@ -320,7 +279,6 @@ describe("RubyHighService phase machine", () => {
         askedQuestionIds: [],
         currentGrade: null,
         completedGrades: [],
-        gradeProgress: {},
         hasSeenIntro: false,
         character: null,
         npcRosters: {},

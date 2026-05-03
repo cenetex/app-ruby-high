@@ -23,7 +23,6 @@ function blankState(sessionId: string): QuizState {
     askedQuestionIds: [],
     currentGrade: null,
     completedGrades: [],
-    gradeProgress: {},
     hasSeenIntro: false,
     character: null,
     npcRosters: {},
