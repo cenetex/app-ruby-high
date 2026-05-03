@@ -1,13 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FacultyService } from "../services/faculty-service.js";
+import { RubyHighService } from "../services/ruby-high-service.js";
+import { StateStore } from "../services/state-store.js";
 import {
   activeFaculty,
   activeFacultyById,
   activeRoomForFaculty,
   activeRooms,
   activeRoomsWithLounge,
+  facultyByIdForSession,
+  facultyForSession,
   getActivePack,
+  ORIGINAL_PACK_ID,
+  packForSession,
   resetActivePack,
+  roomForFacultyForSession,
+  roomsForSession,
+  roomsWithLoungeForSession,
   setActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
@@ -164,5 +176,114 @@ describe("registry sync accessors — pack-swap propagates everywhere", () => {
     const withLounge = activeRoomsWithLounge();
     expect(withLounge.map((r) => r.id)).toEqual(["math-lab", "lounge"]);
     expect(withLounge[withLounge.length - 1]?.teaches).toBe(false);
+  });
+});
+
+describe("per-session pack helpers — abstraction in place", () => {
+  let tmpDir: string;
+  let storePath: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-persession-"));
+    storePath = join(tmpDir, "state.json");
+  });
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("ORIGINAL_PACK_ID matches the built-in pack's id", async () => {
+    const pack = await getActivePack();
+    expect(pack.id).toBe(ORIGINAL_PACK_ID);
+  });
+
+  it("packForSession resolves a session's pack — falls back to global on null/unknown id", async () => {
+    await getActivePack();
+    expect(packForSession(null).id).toBe(ORIGINAL_PACK_ID);
+    expect(packForSession({ activePackId: null }).id).toBe(ORIGINAL_PACK_ID);
+    // Unknown pack ids fall back to global — never throw, never strand a session.
+    expect(packForSession({ activePackId: "test:gone" }).id).toBe(ORIGINAL_PACK_ID);
+  });
+
+  it("the *ForSession sync helpers all read through packForSession", async () => {
+    await getActivePack();
+    const session = { activePackId: null };
+    expect(facultyForSession(session).map((f) => f.id).sort()).toEqual(
+      ["professor-edward", "ruby", "sally-science"],
+    );
+    expect(facultyByIdForSession(session, "ruby")?.id).toBe("ruby");
+    expect(facultyByIdForSession(session, "no-such")).toBeNull();
+    expect(roomForFacultyForSession(session, "ruby")?.teacherId).toBe("ruby");
+    expect(roomForFacultyForSession(session, "no-such")).toBeNull();
+    const rooms = roomsForSession(session);
+    expect(rooms.length).toBeGreaterThan(0);
+    expect(rooms.every((r) => r.teaches)).toBe(true); // lounge excluded
+    const withLounge = roomsWithLoungeForSession(session);
+    expect(withLounge.at(-1)?.id).toBe("lounge");
+    expect(withLounge.at(-1)?.teaches).toBe(false);
+  });
+
+  it("a fresh QuizState has activePackId: null (uses the global pack)", async () => {
+    await getActivePack();
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    const state = ruby.getOrCreate("session:fresh");
+    expect(state.activePackId).toBeNull();
+    expect(packForSession(state).id).toBe(ORIGINAL_PACK_ID);
+    await ruby.flush();
+  });
+
+  it("setActivePackForSession writes the id + wipes board/roster", async () => {
+    await getActivePack();
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    const sid = "session:swap";
+    // Seed a roster + manufacture an in-flight round so we can prove the
+    // wipe semantics. Use far-future expiresAt so tickRound doesn't
+    // auto-resolve before our setActivePackForSession lands.
+    ruby.selectGrade(sid, "9");
+    const before = ruby.getOrCreate(sid);
+    before.current = { id: "stale-q", prompt: "?", type: "multiple-choice",
+      options: { A: "1", B: "2", C: "3", D: "4" }, correct: "A" } as any;
+    before.activeRound = {
+      questionId: "stale-q",
+      type: "multiple-choice",
+      startedAt: Date.now(),
+      durationMs: 60000,
+      expiresAt: Date.now() + 60000,
+      npcs: [],
+      player: { picked: null, answeredAt: null },
+      resolved: false,
+      resolvedAt: null,
+      firstCorrect: null,
+      opinionResponses: [],
+      opinionGrades: [],
+      bestResponder: null,
+    } as any;
+    before.lastReveal = { questionId: "stale-q" } as any;
+    expect(before.npcRosters["9"]).toBeDefined();
+
+    // Today only the original pack is registered, so passing its id is the
+    // only valid swap target — but the wipe semantics are what we're
+    // exercising (this is the load-bearing primitive for Phase C).
+    const after = ruby.setActivePackForSession(sid, ORIGINAL_PACK_ID);
+    expect(after.activePackId).toBe(ORIGINAL_PACK_ID);
+    expect(after.current).toBeNull();
+    expect(after.activeRound).toBeNull();
+    expect(after.lastReveal).toBeNull();
+    // Roster re-seeded for the current grade after the wipe.
+    expect(after.npcRosters["9"]).toBeDefined();
+    await ruby.flush();
+  });
+
+  it("two sessions on the same RubyHighService have isolated activePackId", async () => {
+    await getActivePack();
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    const a = ruby.setActivePackForSession("session:a", ORIGINAL_PACK_ID);
+    const b = ruby.getOrCreate("session:b");
+    expect(a.activePackId).toBe(ORIGINAL_PACK_ID);
+    expect(b.activePackId).toBeNull(); // session B was never switched
+    expect(packForSession(a).id).toBe(packForSession(b).id); // same pack today
+    await ruby.flush();
   });
 });
