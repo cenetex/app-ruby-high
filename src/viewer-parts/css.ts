@@ -335,6 +335,20 @@ export const VIEWER_CSS = `
     border-radius: 999px;
     flex: 0 0 auto;
   }
+  .channels-rail .report-bug-link {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--text-mute);
+    font-size: 11px;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+    padding: 6px 14px calc(var(--safe-bot) + 10px);
+    cursor: pointer;
+    text-align: left;
+  }
+  .channels-rail .report-bug-link:hover { color: var(--text-soft); }
 
   /* ── workspace (the main scroll container) ─────────────────────────────── */
   main.workspace {

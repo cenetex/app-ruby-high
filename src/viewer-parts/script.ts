@@ -127,6 +127,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     dailyBanner: $("daily-banner"),
     dailyBannerSub: $("daily-banner-sub"),
     dailyCtaBtn: $("daily-cta-btn"),
+    reportBugLink: $("report-bug-link"),
     blackboardMeta: $("blackboard-meta"),
     boardFrameHost: $("board-frame-host"),
     boardPrompt: $("board-prompt"),
@@ -2387,6 +2388,78 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (authed) logout();
     else openSheet(); // The welcome modal is the unified sign-in surface.
   });
+
+  // ── bug-report surface ─────────────────────────────────────────────────
+  // Capture the last few console errors + unhandled rejections so the
+  // GitHub-issue prefill includes them. Limit to a small ring buffer
+  // so a chatty page doesn't bloat the URL we end up encoding.
+  const RECENT_ERRORS = [];
+  const ERROR_LIMIT = 5;
+  function recordError(label, msg) {
+    if (!msg) return;
+    const stamp = new Date().toISOString().slice(11, 19);
+    const line = stamp + " " + label + ": " + String(msg).slice(0, 240);
+    RECENT_ERRORS.push(line);
+    if (RECENT_ERRORS.length > ERROR_LIMIT) RECENT_ERRORS.shift();
+  }
+  window.addEventListener("error", (e) => {
+    recordError("error", (e && (e.message || (e.error && e.error.message))) || "unknown");
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    recordError("unhandledrejection", (e && e.reason && (e.reason.message || e.reason)) || "unknown");
+  });
+  // Wrap console.error so anything we deliberately log lands in the
+  // ring buffer too. The original is preserved.
+  const origConsoleError = console.error.bind(console);
+  console.error = function (...args) {
+    try { recordError("console.error", args.map((a) => a && a.message ? a.message : String(a)).join(" ")); }
+    catch { /* ignore */ }
+    origConsoleError(...args);
+  };
+
+  els.reportBugLink.addEventListener("click", () => {
+    const ch = lastTelemetry && lastTelemetry.character;
+    const grade = lastTelemetry && lastTelemetry.current_grade;
+    const faculty = lastTelemetry && lastTelemetry.faculty;
+    // Markdown fence built dynamically because this whole script is wrapped
+    // in an outer template literal — a literal backtick in this file would
+    // close the wrapping template prematurely. charCode 96 is the fence char.
+    const FENCE = String.fromCharCode(96).repeat(3);
+    const fenced = (s) => FENCE + "\n" + s + "\n" + FENCE;
+    const tail = RECENT_ERRORS.length ? fenced(RECENT_ERRORS.join("\n")) : "_(none in this session)_";
+    const body = [
+      "**What happened?**",
+      "<!-- describe the bug here, including what you expected -->",
+      "",
+      "**Steps to reproduce:**",
+      "1.",
+      "2.",
+      "3.",
+      "",
+      "---",
+      "<details><summary>auto-collected context</summary>",
+      "",
+      "- url: " + window.location.href,
+      "- user-agent: " + navigator.userAgent,
+      "- timestamp: " + new Date().toISOString(),
+      "- signed in: " + (authed ? "yes" : "no"),
+      "- character: " + (ch ? ch.name + " (" + (ch.playbookId || "?") + ")" : "none"),
+      "- grade: " + (grade || "—"),
+      "- faculty: " + (faculty || "—"),
+      "- viewport: " + window.innerWidth + "×" + window.innerHeight,
+      "",
+      "**Recent console errors:**",
+      tail,
+      "",
+      "</details>",
+    ].join("\n");
+    const issueUrl = "https://github.com/cenetex/app-ruby-high/issues/new?title="
+      + encodeURIComponent("[bug] ")
+      + "&body=" + encodeURIComponent(body)
+      + "&labels=" + encodeURIComponent("bug,user-report");
+    window.open(issueUrl, "_blank", "noopener");
+  });
+
   // Click your name/avatar to open the character sheet.
   const youCardBlock = document.querySelector(".channels-footer .you-meta");
   if (youCardBlock) youCardBlock.addEventListener("click", openSheet);

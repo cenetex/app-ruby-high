@@ -42,6 +42,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
       <button class="footer-action" id="footer-action" type="button">Sign in</button>
     </div>
+    <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Open an issue on GitHub.">Report a bug</button>
   </aside>
 
   <!-- workspace -->
