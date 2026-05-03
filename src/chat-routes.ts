@@ -649,7 +649,7 @@ function writeAuthCallbackHtml(
 <body>
 <main>
   <h1>You're signed in.</h1>
-  <p>You can close this tab — your other Ruby High tab just woke up.</p>
+  <p>Heading back to the school…</p>
 </main>
 <script>
 (function () {
@@ -661,16 +661,13 @@ function writeAuthCallbackHtml(
       try { localStorage.setItem("rh_openrouter_at", String(Date.now())); } catch (e) {}
     }
   } catch (e) {}
-  // If we were opened from another tab, that tab already noticed the
-  // storage write — close so the player isn't stuck on this stub.
-  // Otherwise (top-level redirect, or popup blocker stripped opener),
-  // navigate to the viewer ourselves.
-  setTimeout(function () {
-    try {
-      if (window.opener && !window.opener.closed) { window.close(); return; }
-    } catch (e) {}
-    try { window.location.replace(${safeRedirect}); } catch (e) {}
-  }, 200);
+  // Redirect back to the viewer. Always — no opener-close branch. Safari
+  // preserves window.opener across same-origin navigations in some cases,
+  // and the previous "if (window.opener) window.close(); return;" hit
+  // that path and swallowed the redirect, leaving the player stuck on
+  // this stub page after a successful sign-in. localStorage writes above
+  // are synchronous so the next line sees the key already persisted.
+  try { window.location.replace(${safeRedirect}); } catch (e) {}
 })();
 </script>
 </body>
