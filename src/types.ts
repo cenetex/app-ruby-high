@@ -50,20 +50,38 @@ export function requiredStreakForGrade(grade: Grade): number {
   return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
 }
 
-/** Cumulative XP required to advance OUT of a year. Both gates (this AND
- *  the streak) must be met. The curve is intentionally back-loaded:
- *  Freshman is forgiving (you can pass one Daily and have 1-2 XP and
- *  graduate first year), but Senior demands 50 XP — about 25-50 Dailies'
- *  worth of accumulation, so the streak alone isn't enough.
+/** Per-class XP required to advance OUT of a year. The single total-XP
+ *  gate from earlier iterations is gone — it was undifferentiated and
+ *  let players duck a whole subject (a streak of Sally-only days could
+ *  graduate Senior year without ever sitting in Edward's room). New rule:
  *
- *  Tunable. The numbers below are a starting curve for playtest. */
-export function xpForGrade(grade: Grade): number {
+ *    To advance: (a) the streak holds AND (b) at least N XP in EACH
+ *    teaching room (homeroom / science / literature).
+ *
+ *  Three teaching rooms × this per-class minimum = effective total floor:
+ *
+ *    Freshman:  2 each (6 floor)
+ *    Sophomore: 5 each (15 floor)
+ *    Junior:    10 each (30 floor)
+ *    Senior:    16 each (48 floor)
+ *
+ *  Pacing mirrors the previous total curve, but graduation now means
+ *  passing every class — the rooms have mechanical weight. */
+export function requiredSubjectXpForGrade(grade: Grade): number {
   switch (grade) {
-    case "9":  return 5;
-    case "10": return 15;
-    case "11": return 30;
-    case "12": return 50;
+    case "9":  return 2;
+    case "10": return 5;
+    case "11": return 10;
+    case "12": return 16;
   }
+}
+
+/** @deprecated Total-XP gate replaced by per-class minimums (see
+ *  `requiredSubjectXpForGrade`). Kept for one minor version so older
+ *  state files and tests don't blow up — remove after the next pack
+ *  iteration. Returns the floor across all three teaching rooms. */
+export function xpForGrade(grade: Grade): number {
+  return requiredSubjectXpForGrade(grade) * 3;
 }
 
 /** Difficulty progression up the high school years. */
@@ -427,6 +445,12 @@ export interface PlayerCharacter {
    *  diploma image's subject-themed accessory). Optional for legacy
    *  characters; defaulted to {} on hydrate. */
   subjectScores?: Record<string, { correct: number; total: number }>;
+  /** Per-faculty XP pool. Each Daily pass increments the pool of the
+   *  faculty whose room the question was posed in. Year advancement
+   *  requires `requiredSubjectXpForGrade(grade)` in EACH teaching
+   *  faculty's pool — the rule that gives the rooms mechanical weight.
+   *  Optional for legacy characters; defaulted to {} on hydrate. */
+  subjectXp?: Record<string, number>;
   /** UTC date (YYYY-MM-DD with the 17:00 UTC school-bell cutoff applied)
    *  of the last Daily completion. Used to gate "is today's Daily
    *  available." When `dailyKey(now) > lastDailyDate`, today's Daily

@@ -21,8 +21,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // Mirrored from types.ts: gates the player must clear to advance OUT of
   // each year (BOTH must hold). Kept inline so the top-bar chip can render
   // without an extra telemetry round-trip.
-  const STREAK_REQUIRED = { "9": 1, "10": 2, "11": 3, "12": 4 };
-  const XP_REQUIRED     = { "9": 5, "10": 15, "11": 30, "12": 50 };
+  const STREAK_REQUIRED       = { "9": 1, "10": 2, "11": 3, "12": 4 };
+  const XP_REQUIRED           = { "9": 5, "10": 15, "11": 30, "12": 50 }; // legacy total-XP gate (display only — see SUBJECT_XP_REQUIRED)
+  const SUBJECT_XP_REQUIRED   = { "9": 2, "10": 5, "11": 10, "12": 16 };  // per-class minimum (the real gate)
+  const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
   const LOUNGE_ID = "lounge";
 
   // ── auth credential (client-owned) ───────────────────────────────────────
@@ -123,6 +125,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     teacherFigure: $("teacher-figure"),
     blackboardEmpty: $("blackboard-empty"),
     blackboardEmptyText: $("blackboard-empty-text"),
+    dailyCtaBtn: $("daily-cta-btn"),
     blackboardMeta: $("blackboard-meta"),
     boardFrameHost: $("board-frame-host"),
     boardPrompt: $("board-prompt"),
@@ -579,6 +582,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       showBlackboardEmpty(true);
       activeQuestionId = null;
       const daily = lastTelemetry && lastTelemetry.daily;
+      const dailyFacultyId = daily && daily.facultyId;
+      const dailyFaculty = dailyFacultyId
+        ? ((lastTelemetry?.faculty_roster || []).find((f) => f.id === dailyFacultyId) || null)
+        : null;
+      // Default: hide the daily CTA. Each branch below decides whether
+      // to show it and what to label it with.
+      els.dailyCtaBtn.hidden = true;
+      els.dailyCtaBtn.disabled = false;
       if (!authed) {
         els.blackboardEmptyText.textContent = "Sign in with OpenRouter to start class.";
       } else if (!lastTelemetry?.character) {
@@ -588,7 +599,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       } else if (daily && daily.reason === "completed") {
         els.blackboardEmptyText.textContent = "School's out for today. The next bell rings at 17:00 UTC tomorrow — your streak holds until then.";
       } else if (daily && daily.available) {
-        els.blackboardEmptyText.textContent = "Today's Daily is ready. Tap Next question to start.";
+        // Today's Daily is ready. Surface a primary CTA labelled with
+        // the day's faculty so the player knows whose challenge it is.
+        const profName = dailyFaculty?.displayName || "the teacher";
+        els.blackboardEmptyText.textContent = "Today's challenge is ready.";
+        els.dailyCtaBtn.textContent = "Ask " + profName + " about today's challenge";
+        els.dailyCtaBtn.hidden = false;
       } else {
         els.blackboardEmptyText.textContent = "The teacher will write a question on the board in a moment.";
       }
@@ -1292,17 +1308,23 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         label.textContent = r.label;
         const gates = document.createElement("span");
         gates.className = "rung-gates";
-        if (r.state === "current" && r.streakProgress && r.xpProgress) {
+        if (r.state === "current" && r.streakProgress && Array.isArray(r.classProgress)) {
           const sChip = document.createElement("span");
           sChip.className = "gate-chip" + (r.streakProgress.have >= r.streakProgress.need ? " is-met" : "");
           sChip.textContent = "streak " + r.streakProgress.have + "/" + r.streakProgress.need;
-          const xChip = document.createElement("span");
-          xChip.className = "gate-chip" + (r.xpProgress.have >= r.xpProgress.need ? " is-met" : "");
-          xChip.textContent = "XP " + r.xpProgress.have + "/" + r.xpProgress.need;
           gates.appendChild(sChip);
-          gates.appendChild(xChip);
+          // Per-class XP chips. The label uses the room name (homeroom /
+          // science / lit) since that's what the player sees in the
+          // channels rail; class abbreviations match the Sally/Edward map.
+          const ROOM_LABEL = { ruby: "homeroom", "sally-science": "science", "professor-edward": "lit" };
+          for (const cp of r.classProgress) {
+            const c = document.createElement("span");
+            c.className = "gate-chip class-chip" + (cp.have >= cp.need ? " is-met" : "");
+            c.textContent = (ROOM_LABEL[cp.facultyId] || cp.facultyId) + " " + cp.have + "/" + cp.need;
+            gates.appendChild(c);
+          }
         } else {
-          gates.textContent = r.streakReq + " streak · " + r.xpReq + " XP";
+          gates.textContent = r.streakReq + " streak · " + r.subjectReq + " per class";
         }
         li.appendChild(dot);
         li.appendChild(label);
@@ -1471,20 +1493,29 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const currentGrade = String(lastTelemetry?.current_grade ?? "9");
     const streakHere = c.streak && c.streak.grade === currentGrade ? c.streak.count : 0;
     const xp = c.xp ?? 0;
+    const subjectXp = c.subjectXp || {};
     const rungs = ["9", "10", "11", "12"].map((g) => {
       const streakReq = STREAK_REQUIRED[g] || 1;
       const xpReq     = XP_REQUIRED[g] || 5;
-      let state, streakProgress, xpProgress;
+      const subjectReq = SUBJECT_XP_REQUIRED[g] || 2;
+      let state, streakProgress, xpProgress, classProgress;
       if (completed.has(g)) {
         state = "completed";
       } else if (g === currentGrade && !graduatedFor(c)) {
         state = "current";
         streakProgress = { have: streakHere, need: streakReq };
         xpProgress = { have: xp, need: xpReq };
+        // Per-class XP towards the year's minimum. Three rows, one per
+        // teaching room — this is what gives the rooms mechanical weight.
+        classProgress = TEACHING_FACULTY_IDS.map((fid) => ({
+          facultyId: fid,
+          have: subjectXp[fid] || 0,
+          need: subjectReq,
+        }));
       } else {
         state = "future";
       }
-      return { grade: g, label: GRADE_LABELS[g], streakReq, xpReq, state, streakProgress, xpProgress };
+      return { grade: g, label: GRADE_LABELS[g], streakReq, xpReq, subjectReq, state, streakProgress, xpProgress, classProgress };
     });
     return { rungs, graduated: graduatedFor(c) };
   }
@@ -2283,6 +2314,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
   els.nextBtn.addEventListener("click", pickNext);
+  // The daily-challenge CTA on the empty blackboard reuses pickNext —
+  // pickNext already prefers playDaily when daily.available, and
+  // playDaily auto-switches to the day's faculty room before posing.
+  // Disable the button while the request is in flight so a doubletap
+  // doesn't fire two play-daily calls.
+  els.dailyCtaBtn.addEventListener("click", async () => {
+    els.dailyCtaBtn.disabled = true;
+    try { await pickNext(); }
+    finally { els.dailyCtaBtn.disabled = false; }
+  });
   els.hamburger.addEventListener("click", toggleRails);
   els.scrim.addEventListener("click", closeRails);
   els.homeBtn.addEventListener("click", openRails);

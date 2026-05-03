@@ -756,6 +756,23 @@ export const VIEWER_CSS = `
     margin-left: auto;
   }
   .blackboard-foot .next-btn:disabled { opacity: 0.5; }
+  .daily-cta-btn {
+    appearance: none;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-weight: 800;
+    border-radius: 999px;
+    padding: 13px 22px;
+    font-size: 15px;
+    box-shadow: var(--shadow);
+    margin-top: 14px;
+    max-width: 360px;
+    cursor: pointer;
+    transition: transform 0.08s ease, opacity 0.12s ease;
+  }
+  .daily-cta-btn:active { transform: scale(0.97); }
+  .daily-cta-btn:disabled { opacity: 0.5; cursor: default; }
 
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {
@@ -1256,6 +1273,10 @@ export const VIEWER_CSS = `
     background: rgba(76, 181, 85, 0.18);
     border-color: rgba(76, 181, 85, 0.45);
     color: #b6f5b9;
+  }
+  .ccg-progression .gate-chip.class-chip {
+    font-size: 10px;
+    opacity: 0.92;
   }
   .ccg-footer {
     padding: 8px 10px;

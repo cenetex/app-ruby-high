@@ -82,6 +82,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
         <div id="blackboard-empty-text">The teacher will write a question on the board in a moment.</div>
+        <button class="daily-cta-btn" id="daily-cta-btn" type="button" hidden>Take today's challenge</button>
       </div>
 
       <div class="blackboard-meta" id="blackboard-meta" hidden></div>

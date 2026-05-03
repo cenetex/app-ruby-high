@@ -168,20 +168,22 @@ The dice can only ever upgrade the outcome. They never punish. A wrong answer is
 
 ### 6.5 The Daily — gates
 
-[live] To advance out of a year, both gates must hold on the same Daily:
+[live] To advance out of a year, two gates must both hold:
 
-| Year | Streak | Cumulative XP |
+| Year | Streak | Per-class XP (each of 3 rooms) |
 |---|:---:|:---:|
-| Freshman | 1 in a row | 5 |
-| Sophomore | 2 in a row | 15 |
-| Junior | 3 in a row | 30 |
-| Senior | 4 in a row → graduate | 50 |
+| Freshman | 1 in a row | 2 |
+| Sophomore | 2 in a row | 5 |
+| Junior | 3 in a row | 10 |
+| Senior | 4 in a row → graduate | 16 |
 
-Streaks reset on miss. XP accumulates across the whole run. The streak alone is not enough — XP confirms the player has been engaging. The XP alone is not enough — the streak confirms they can perform.
+Streaks reset on a miss. Per-class XP accumulates across the run; each Daily pass adds 1 XP to the pool of the day's faculty. To advance, the player needs **the streak AND the per-class minimum in every teaching room** — homeroom, science, and literature. The earlier total-XP gate is gone: an undifferentiated pool let players graduate having ducked a whole subject (a streak of Sally days could reach Senior without ever sitting in Edward's room). Per-class minimums force engagement with all three teachers and give the rooms real mechanical weight.
 
-[live] **Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The Daily runs every day; the rotation just continues across the weekend.
+[live] **Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The Daily runs every day; the rotation continues across the weekend.
 
 [live] **Bell.** 17:00 UTC. Before the bell, "today" is yesterday's Daily.
+
+[live] **Discoverability.** When today's Daily is available and the chalkboard is empty, the viewer surfaces a primary CTA — *"Ask Professor Edward about today's challenge"* — labelled with the day's faculty. Tapping it switches the player into that teacher's room and poses the day's question. The Daily is no longer something you have to walk to; it's the first thing the empty board offers you.
 
 ### 6.6 Opinion mode — the moat
 

@@ -8,6 +8,7 @@ import {
   OPINION_ROUND_DURATION_MS,
   RUBY_FACULTY,
   ROOMS,
+  TEACHING_ROOMS,
   difficultyForGrade,
   initialNpcRoster,
   npcsInRoom,
@@ -20,11 +21,11 @@ import {
   npcStatsFor,
   pickEliminatedChoices,
   requiredStreakForGrade,
+  requiredSubjectXpForGrade,
   roll2d6,
   rollNpcAnswer,
   rollOpinionDelay,
   statusForPhase,
-  xpForGrade,
   type ActiveRound,
   type AdvantageRoll,
   type AnswerRecord,
@@ -478,6 +479,16 @@ export class RubyHighService extends Service {
     if (passed) subj.correct += 1;
     ch.subjectScores[faculty] = subj;
 
+    // Per-class XP pool. Pass adds to the pool of THIS daily's faculty
+    // (which equals state.faculty since playDaily sets the room before
+    // posing). The advancement gate below checks each teaching room's
+    // pool against the per-class minimum, so passing only one teacher's
+    // questions can no longer graduate you.
+    ch.subjectXp = ch.subjectXp ?? {};
+    if (passed) {
+      ch.subjectXp[faculty] = (ch.subjectXp[faculty] ?? 0) + 1;
+    }
+
     // Mark today's Daily as completed so the player can't replay it.
     ch.lastDailyDate = dailyKey(new Date());
 
@@ -492,16 +503,23 @@ export class RubyHighService extends Service {
     const next = prev + 1;
     ch.streak = { grade, count: next };
 
-    // Both gates must hold to advance (DESIGN.md Pillar 1):
-    //   - streak >= requiredStreakForGrade(grade)
-    //   - xp >= xpForGrade(grade)  (cumulative)
-    // If only one holds, the player keeps playing — streak grows past the
-    // required minimum until XP catches up; or XP keeps banking until
-    // streak reforms. Both falling on the same Daily = advancement.
+    // Two gates to advance (Plan C — see DESIGN.md §6.5):
+    //   1. streak >= requiredStreakForGrade(grade)
+    //   2. subjectXp[teacher] >= requiredSubjectXpForGrade(grade) for EVERY
+    //      teaching room (homeroom + science + literature)
+    //
+    // The total-XP gate is gone — it was undifferentiated and let players
+    // graduate having ducked a whole subject. Per-class minimums force
+    // engagement with all three teachers.
     const required = requiredStreakForGrade(grade);
-    const xpRequired = xpForGrade(grade);
     if (next < required) return;
-    if ((ch.xp ?? 0) < xpRequired) return;
+    const subjectFloor = requiredSubjectXpForGrade(grade);
+    for (const room of TEACHING_ROOMS) {
+      const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
+      if (!teacherId) continue;
+      const have = ch.subjectXp[teacherId] ?? 0;
+      if (have < subjectFloor) return; // not yet — keep playing this year
+    }
 
     // Year complete — write yearbook, advance (or graduate).
     if (!state.completedGrades.includes(grade)) {

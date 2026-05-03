@@ -40,14 +40,16 @@ async function makeServices() {
 function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9", xp = 999) {
   ruby.selectGrade(sid, grade);
   const state = ruby.getOrCreate(sid);
-  // Pre-populate XP high enough to clear the XP gate at any year (Senior
-  // threshold is 50). Tests that want to exercise the XP gate explicitly
-  // should set a lower value via the third arg.
+  // Pre-populate XP + per-class XP high enough to clear advancement gates
+  // at any year (Senior per-class minimum is 16). Tests that want to
+  // exercise the per-class gate explicitly should clear subjectXp + set
+  // a lower xp via the third arg.
   state.character = {
     name: "Pip", playbookId: "overachiever",
     stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
     arcAnswer: "—", personality: "—", xp, strings: {},
     conditions: [], yearbook: [], createdAt: Date.now(),
+    subjectXp: { ruby: 999, "sally-science": 999, "professor-edward": 999 },
   };
   return state;
 }
@@ -313,42 +315,38 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
   });
 });
 
-describe("XP gate — streak alone is not enough", () => {
-  it("Freshman streak hit but XP < threshold → does NOT advance; advances when XP catches up", async () => {
+describe("Per-class XP gate — streak alone is not enough", () => {
+  it("Freshman streak hit but per-class XP < min in any room → does NOT advance; advances when all three classes catch up", async () => {
     const { ruby } = await makeServices();
-    const sid = "test:xp-gate";
-    // Start with 0 XP. Freshman threshold is 1 streak + 5 XP.
+    const sid = "test:per-class-gate";
+    // Start with 0 per-class XP. Freshman per-class minimum is 2 in EACH room.
     attachCharacter(ruby, sid, "9", 0);
-    let now = new Date("2026-05-04T18:00:00Z");
-    ruby.playDaily(sid, now);
-    let correct = ruby.getOrCreate(sid).current!.correct! as Choice;
-    ruby.submitAnswer(sid, correct);
-    let s = ruby.getOrCreate(sid);
-    // Streak is 1 (gate met), but XP is only 1-2 from the player roll
-    // (well under 5). So we should still be in Freshman.
-    expect(s.character!.streak?.count).toBeGreaterThanOrEqual(1);
-    expect(s.currentGrade).toBe("9");
-    expect(s.character!.xp).toBeLessThan(5);
+    const ch0 = ruby.getOrCreate(sid).character!;
+    ch0.subjectXp = {}; // explicit empty — exercise the per-class gate
 
-    // Bank XP up over the threshold without missing — keep playing dailies.
-    // The streak grows past the required 1; each correct answer adds 1-2 XP.
-    let day = 5;
-    while (s.character!.xp < 5) {
-      now = new Date(`2026-05-${String(day).padStart(2, "0")}T18:00:00Z`);
-      try {
-        ruby.playDaily(sid, now);
-      } catch {
-        day++; continue;
-      }
-      correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    // Walk a week of Dailies. The streak builds, but per-class XP only
+    // accumulates against today's faculty. Until each of homeroom /
+    // science / lit has ≥ 2 XP, advancement is blocked.
+    const days: Array<[string, string]> = [
+      ["2026-05-04T18:00:00Z", "sally-science"], // Mon
+      ["2026-05-05T18:00:00Z", "professor-edward"], // Tue
+      ["2026-05-06T18:00:00Z", "ruby"], // Wed
+      ["2026-05-07T18:00:00Z", "sally-science"], // Thu
+      ["2026-05-08T18:00:00Z", "professor-edward"], // Fri
+      ["2026-05-09T18:00:00Z", "ruby"], // Sat
+    ];
+    for (const [iso] of days) {
+      ruby.playDaily(sid, new Date(iso));
+      const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
       ruby.submitAnswer(sid, correct);
-      s = ruby.getOrCreate(sid);
-      day++;
-      if (day > 20) break; // bail-out
     }
-    // Once XP cleared the gate (streak was already past 1), advancement
-    // should have triggered on the latest pass.
-    expect(s.character!.xp).toBeGreaterThanOrEqual(5);
+    const s = ruby.getOrCreate(sid);
+    const subj = s.character!.subjectXp || {};
+    // Each class has ≥ 2 by Saturday: sally Mon+Thu, edward Tue+Fri, ruby Wed+Sat.
+    expect(subj["sally-science"] ?? 0).toBeGreaterThanOrEqual(2);
+    expect(subj["professor-edward"] ?? 0).toBeGreaterThanOrEqual(2);
+    expect(subj["ruby"] ?? 0).toBeGreaterThanOrEqual(2);
+    // … and advancement triggered the moment the last class hit 2.
     expect(s.currentGrade).toBe("10");
   });
 });
@@ -357,6 +355,8 @@ describe("Daily-pass streak + grade advancement", () => {
   it("Daily pass ticks the streak; miss resets to 0", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-tick";
+    // attachCharacter pre-populates subjectXp high enough to clear all
+    // per-class gates; this test exercises ONLY the streak/miss arithmetic.
     attachCharacter(ruby, sid, "9");
     // Day 1: pass.
     let now = new Date("2026-05-04T18:00:00Z");
@@ -364,7 +364,8 @@ describe("Daily-pass streak + grade advancement", () => {
     let correct = ruby.getOrCreate(sid).current!.correct! as Choice;
     ruby.submitAnswer(sid, correct);
     let ch = ruby.getOrCreate(sid).character!;
-    // Freshman threshold is 1 — that single pass advanced us to grade 10.
+    // Freshman threshold is 1 streak, all per-class gates already cleared.
+    // → that single pass advanced us to grade 10.
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
     expect(ch.streak).toEqual({ grade: "10", count: 0 });
     expect(ch.yearbook).toHaveLength(1);
@@ -407,8 +408,9 @@ describe("Daily-pass streak + grade advancement", () => {
     const { ruby } = await makeServices();
     const sid = "test:grad";
     // Inject a state already at Senior with prior 3 grades completed and
-    // ready to start Senior streak. This skips the Freshman/Soph/Junior
-    // walkthrough since the per-grade-streak logic is the same.
+    // ready to start Senior streak. attachCharacter pre-loads subjectXp
+    // high enough to clear all per-class gates so this test exercises
+    // only the streak arithmetic (per-class gate is covered separately).
     attachCharacter(ruby, sid, "12");
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "12", count: 0 };
