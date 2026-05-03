@@ -7,14 +7,6 @@
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
-import {
-  AuthService,
-  ChatService,
-  FacultyService,
-  RubyHighService,
-  createStateStore,
-  handleAppRoutes,
-} from "../dist/index.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -23,11 +15,8 @@ const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH
 const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? null;
 const ROOT_REDIRECT = process.env.RUBY_HIGH_ROOT_REDIRECT ?? "/api/apps/ruby-high/viewer";
 
-// State backend: defaults to a JSON file. Set
-// RUBY_HIGH_STORE_BACKEND=dynamodb + RUBY_HIGH_DYNAMO_TABLE to persist
-// across container restarts.
-const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
-
+let handleAppRoutes = null;
+let stateStore = null;
 let facultySvc = null;
 let authSvc = null;
 let chatSvc = null;
@@ -39,16 +28,30 @@ const fakeRuntime = {
   agentId: "ruby-high-server",
   character: { name: "Ruby" },
   getService: (type) => {
-    if (type === FacultyService.serviceType) return facultySvc;
-    if (type === RubyHighService.serviceType) return rubySvc;
-    if (type === AuthService.serviceType) return authSvc;
-    if (type === ChatService.serviceType) return chatSvc;
+    if (type === "ruby-high-faculty") return facultySvc;
+    if (type === "ruby-high") return rubySvc;
+    if (type === "ruby-high-auth") return authSvc;
+    if (type === "ruby-high-chat") return chatSvc;
     return null;
   },
   getSetting: (k) => process.env[k] ?? null,
 };
 
 async function bootServices() {
+  const mod = await import("../dist/index.js");
+  const {
+    AuthService,
+    ChatService,
+    FacultyService,
+    RubyHighService,
+    createStateStore,
+    handleAppRoutes: appRoutes,
+  } = mod;
+  handleAppRoutes = appRoutes;
+  // State backend: defaults to a JSON file. Set
+  // RUBY_HIGH_STORE_BACKEND=dynamodb + RUBY_HIGH_DYNAMO_TABLE to persist
+  // across container restarts.
+  stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
   facultySvc = await FacultyService.start(fakeRuntime);
   authSvc = await AuthService.start(fakeRuntime);
   chatSvc = await ChatService.start(fakeRuntime);
@@ -164,16 +167,17 @@ function makeRouteContext(req, res, url) {
   };
 }
 
-// /health diagnostic payload, computed once at boot so the route stays cheap.
-// `build` is the short commit SHA the workflow injects (RUBY_HIGH_BUILD); when
-// running locally it falls back to "dev". `state` is the StateStore backend's
-// own description ("/path/to/state.json" or "dynamodb://region/table").
-const HEALTH_PAYLOAD = {
-  ok: true,
-  app: "ruby-high",
-  build: process.env.RUBY_HIGH_BUILD ?? "dev",
-  state: stateStore.describe(),
-};
+// /health diagnostic payload. `build` is the short commit SHA the workflow
+// injects (RUBY_HIGH_BUILD); when running locally it falls back to "dev".
+// `state` is the StateStore backend's own description once boot has loaded it.
+function healthPayload() {
+  return {
+    ok: true,
+    app: "ruby-high",
+    build: process.env.RUBY_HIGH_BUILD ?? "dev",
+    state: stateStore?.describe?.() ?? "starting",
+  };
+}
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${HOST}:${PORT}`}`);
@@ -183,7 +187,7 @@ const server = createServer(async (req, res) => {
       res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({
-        ...HEALTH_PAYLOAD,
+        ...healthPayload(),
         ok: false,
         status: "boot-failed",
         error: bootError instanceof Error ? bootError.message : String(bootError),
@@ -194,12 +198,12 @@ const server = createServer(async (req, res) => {
     if (!bootReady) {
       res.statusCode = 503;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ...HEALTH_PAYLOAD, ok: false, status: "starting", t: Date.now() }));
+      res.end(JSON.stringify({ ...healthPayload(), ok: false, status: "starting", t: Date.now() }));
       return;
     }
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ...HEALTH_PAYLOAD, t: Date.now() }));
+    res.end(JSON.stringify({ ...healthPayload(), t: Date.now() }));
     return;
   }
 
@@ -210,6 +214,18 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname.startsWith("/api/apps/ruby-high")) {
+    if (bootError) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Ruby High boot failed." }));
+      return;
+    }
+    if (!bootReady || !handleAppRoutes) {
+      res.statusCode = 503;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Ruby High is starting." }));
+      return;
+    }
     const ctx = makeRouteContext(req, res, url);
     try {
       const handled = await handleAppRoutes(ctx);
@@ -233,11 +249,13 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[ruby-high] listening on http://${HOST}:${PORT}`);
-  console.log(`[ruby-high] build: ${HEALTH_PAYLOAD.build}`);
+  console.log(`[ruby-high] build: ${healthPayload().build}`);
   if (PUBLIC_BASE) console.log(`[ruby-high] public base: ${PUBLIC_BASE}`);
-  console.log(`[ruby-high] state: ${HEALTH_PAYLOAD.state}`);
   bootServices()
-    .then(() => console.log("[ruby-high] services ready"))
+    .then(() => {
+      console.log(`[ruby-high] state: ${healthPayload().state}`);
+      console.log("[ruby-high] services ready");
+    })
     .catch((err) => {
       bootError = err;
       console.error("[ruby-high] boot failed:", err);
