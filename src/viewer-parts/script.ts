@@ -1916,7 +1916,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     lastChimeAt = now;
     return true;
   }
-  async function fireStudentChime({ situation, note, grade, faculty, delayMs, studentId, bypassCooldown }) {
+  async function fireStudentChime({ situation, note, grade, faculty, delayMs, studentId, bypassCooldown, playerText }) {
     if (!bypassCooldown && !studentChimeAllowed()) return;
     // If a specific studentId is requested (e.g. a @-mention), use them
     // when they're actually in the active room. Otherwise pick a random
@@ -1940,7 +1940,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         const r = await apiFetch("/api/apps/ruby-high/chat/student-chime", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ studentId: who.id, situation, note, faculty }),
+          body: JSON.stringify({ studentId: who.id, situation, note, faculty, playerText }),
         });
         if (!r.ok) throw new Error("student " + r.status);
         const data = await r.json();
@@ -2137,8 +2137,26 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           streamingMsgEl.textContent += parsed.text || "";
           scrollIfPinned();
         } else if (event === "tool") {
-          const args = parsed.args || {};
-          const summary = parsed.tool + "(" + Object.keys(args).slice(0, 3).map((k) => k + "=" + JSON.stringify(args[k])).join(", ") + ") → " + (parsed.result && parsed.result.ok ? "ok" : "fail");
+          // Flavor-string the tool call instead of raw args — args for
+          // pose_question include `correct: "C"`, leaking the answer
+          // straight into the visible chat. Keep the same dice/emoji
+          // language as the answer-reveal chips so the row reads as
+          // "the teacher is doing a thing" not "here's a JSON dump."
+          const teacherName = (speaker && speaker.name) || "Teacher";
+          const ok = !!(parsed.result && parsed.result.ok);
+          const summary = (() => {
+            switch (parsed.tool) {
+              case "pick_from_bank": return ok ? `🎲 ${teacherName} drew a fresh question` : `${teacherName} reached for the bank — empty`;
+              case "pose_question": return ok ? `✍️ ${teacherName} wrote a custom question` : `${teacherName} tried to write a question — failed`;
+              case "pose_opinion":  return ok ? `💭 ${teacherName} asked for opinions` : `${teacherName} tried to ask for opinions — failed`;
+              case "clear_board":   return ok ? `✨ ${teacherName} cleared the board` : `${teacherName} tried to clear the board — failed`;
+              case "handoff_faculty": {
+                const target = (parsed.args && parsed.args.faculty) || "another teacher";
+                return ok ? `↪ ${teacherName} handed class off to ${target}` : `${teacherName} tried to hand off — failed`;
+              }
+              default: return ok ? `${teacherName} did a thing (${parsed.tool})` : `${teacherName} tried ${parsed.tool} — failed`;
+            }
+          })();
           appendTool(summary);
           fetchSession();
           streamingMsgEl = null;
@@ -2180,7 +2198,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     for (const sid of mentionedIds) {
       fireStudentChime({
         situation: "mention",
-        note: "The player just addressed you by name. Respond directly to them in 1 sentence — react to what they said, in your voice.",
+        note: "The player addressed you directly. Respond in 1 sentence — react to what they actually said, in your voice.",
+        playerText: text,
         grade: lastTelemetry && lastTelemetry.current_grade,
         faculty: lastTelemetry && lastTelemetry.faculty,
         delayMs: mentionDelayBase,
