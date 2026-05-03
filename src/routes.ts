@@ -11,11 +11,8 @@ import type {
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { FacultyService } from "./services/faculty-service.js";
 import {
-  ALL_FACULTY,
   CHOICES,
   GRADES,
-  ROOMS,
-  RUBY_FACULTY,
   TEACHING_ROOMS,
   dailyKey,
   facultyForDay,
@@ -27,13 +24,14 @@ import {
   type NpcStudentState,
   type PlayerCharacter,
   type QuizState,
-  type Room,
   type TeachingRoomId,
 } from "./types.js";
 import { PLAYBOOKS, isValidStatDistribution } from "./characters/playbooks.js";
 import { renderViewerHtml, VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "./viewer.js";
 import { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
 import { log } from "./services/logger.js";
+import { activeFaculty, activeRooms, activeRoomsWithLounge } from "./content/registry.js";
+import type { PackRoom } from "./content/types.js";
 
 const APP_NAME = "@cenetex/app-ruby-high";
 const APP_DISPLAY_NAME = "Ruby High";
@@ -121,8 +119,9 @@ interface SessionTelemetry extends Record<string, unknown> {
   current_grade: Grade | null;
   completed_grades: Grade[];
   has_seen_intro: boolean;
-  /** Fixed room schedule — homeroom / science / literature / lounge. */
-  rooms: Room[];
+  /** Channel rail entries for the active pack — typically 3 teaching
+   *  rooms (one per faculty) plus the universal lounge. */
+  rooms: PackRoom[];
   /** Currently-seated student ids in each teaching room (max 2). Static
    *  for the year — set by the initial seating chart in INITIAL_STUDENT_LAYOUT. */
   room_cohort: Record<string, string[]>;
@@ -236,7 +235,20 @@ function parseRhSessionCookie(cookieHeader: string | null | undefined): string |
 }
 
 function facultyById(id: string): FacultyMember {
-  return ALL_FACULTY.find((f) => f.id === id) ?? RUBY_FACULTY;
+  // Fall back to the first faculty in the active pack — that role used
+  // to belong to the static RUBY_FACULTY constant. Pack-driven now.
+  const pack = activeFaculty();
+  const hit = pack.find((f) => f.id === id) ?? pack[0];
+  if (!hit) throw new Error("Active pack has no faculty — cannot resolve facultyById.");
+  return {
+    id: hit.id,
+    displayName: hit.displayName,
+    shortName: hit.shortName,
+    subjects: hit.subjects,
+    bio: hit.bio,
+    available: true,
+    accent: hit.accent,
+  };
 }
 
 function deriveActiveRound(state: QuizState) {
@@ -313,7 +325,13 @@ function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
 }
 
 function deriveRoomCohort(roster: NpcStudentState[]): Record<string, string[]> {
-  const out: Record<string, string[]> = { homeroom: [], science: [], literature: [] };
+  // Build the per-room cohort map keyed off the active pack's rooms so a
+  // pack with non-default room ids (a future SAT pack with "math-lab",
+  // "verbal-lab") still maps cleanly. Lounge is excluded via teaches.
+  const out: Record<string, string[]> = {};
+  for (const room of activeRooms()) {
+    if (room.teaches) out[room.id] = [];
+  }
   for (const npc of roster) {
     if (npc.currentRoom && out[npc.currentRoom]) out[npc.currentRoom]!.push(npc.id);
   }
@@ -321,12 +339,18 @@ function deriveRoomCohort(roster: NpcStudentState[]): Record<string, string[]> {
 }
 
 function buildFacultyRoster(faculty: FacultyService | null): FacultyTelemetry[] {
-  return ALL_FACULTY.map((f) => {
+  return activeFaculty().map((f) => {
     const bank = faculty?.bank(f.id);
+    const subjects = bank ? Array.from(new Set(bank.questions.map((q) => q.subject))).sort() : f.subjects;
     return {
-      ...f,
+      id: f.id,
+      displayName: f.displayName,
+      shortName: f.shortName,
+      bio: f.bio,
+      available: true,
+      accent: f.accent,
       questionCount: bank?.questions.length ?? 0,
-      subjects: bank ? Array.from(new Set(bank.questions.map((q) => q.subject))).sort() : f.subjects,
+      subjects,
     };
   });
 }
@@ -368,7 +392,7 @@ function buildSessionState(args: {
     current_grade: state.currentGrade,
     completed_grades: state.completedGrades,
     has_seen_intro: state.hasSeenIntro,
-    rooms: ROOMS,
+    rooms: activeRoomsWithLounge(),
     npc_roster: state.currentGrade ? (state.npcRosters[state.currentGrade] ?? []) : [],
     room_cohort: state.currentGrade
       ? deriveRoomCohort(state.npcRosters[state.currentGrade] ?? [])
