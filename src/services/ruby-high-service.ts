@@ -832,13 +832,12 @@ export class RubyHighService extends Service {
   }
 
   /** "Today's Daily" status — what the viewer needs to render the empty
-   *  state. The Daily is school-day only (Mon-Fri); weekends return
-   *  available=false with reason="weekend." After completion for the day,
+   *  state. The Daily runs every day; after completion for the day,
    *  available=false with reason="completed." */
   dailyStatus(sessionId: string, now: Date = new Date()): {
     available: boolean;
-    reason?: "weekend" | "completed" | "no-grade" | "no-character";
-    facultyId: string | null;
+    reason?: "completed" | "no-grade" | "no-character";
+    facultyId: string;
     dailyKey: string;
   } {
     const state = this.getOrCreate(sessionId);
@@ -846,7 +845,6 @@ export class RubyHighService extends Service {
     const fac = facultyForDay(key);
     if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
     if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
-    if (!fac) return { available: false, reason: "weekend", facultyId: null, dailyKey: key };
     if (state.character.lastDailyDate === key) {
       return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
     }
@@ -865,7 +863,7 @@ export class RubyHighService extends Service {
     if (!status.available) {
       throw new Error(`Daily not available: ${status.reason ?? "unknown"}`);
     }
-    const facultyId = status.facultyId!;
+    const facultyId = status.facultyId;
     // Set the room to today's faculty before posing — this also clears
     // any stale board state (the transition reset rules handle it).
     if (state.faculty !== facultyId) {

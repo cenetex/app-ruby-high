@@ -187,8 +187,8 @@ interface SessionTelemetry extends Record<string, unknown> {
    *  play-daily CTA visibility. */
   daily: {
     available: boolean;
-    reason?: "weekend" | "completed" | "no-grade" | "no-character";
-    facultyId: string | null;
+    reason?: "completed" | "no-grade" | "no-character";
+    facultyId: string;
     dailyKey: string;
   };
 }
@@ -309,15 +309,14 @@ function deriveActiveRound(state: QuizState) {
  *  dailyKey / facultyForDay helpers, so they stay in lockstep. */
 function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
   available: boolean;
-  reason?: "weekend" | "completed" | "no-grade" | "no-character";
-  facultyId: string | null;
+  reason?: "completed" | "no-grade" | "no-character";
+  facultyId: string;
   dailyKey: string;
 } {
   const key = dailyKey(now);
   const fac = facultyForDay(key);
   if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
   if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
-  if (!fac) return { available: false, reason: "weekend", facultyId: null, dailyKey: key };
   if (state.character.lastDailyDate === key) {
     return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
   }
