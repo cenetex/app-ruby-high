@@ -1,6 +1,5 @@
 import { Service, type IAgentRuntime } from "@elizaos/core";
 import {
-  ALL_FACULTY,
   CHOICES,
   DEFAULT_GRADE,
   DEFAULT_ROUND_DURATION_MS,
@@ -12,7 +11,6 @@ import {
   difficultyForGrade,
   initialNpcRoster,
   npcsInRoom,
-  roomForFaculty,
   classifyTotal,
   dailyIndex,
   dailyKey,
@@ -51,6 +49,7 @@ import { FacultyService, type PickFilter } from "./faculty-service.js";
 import { StateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
+import { activeFaculty, activeFacultyById, activeRoomForFaculty, isPackLoaded } from "../content/registry.js";
 
 export interface PoseInput {
   prompt: string;
@@ -238,7 +237,17 @@ export class RubyHighService extends Service {
   }
 
   listFaculty(): FacultyMember[] {
-    return [...ALL_FACULTY, LOUNGE_FACULTY];
+    // Pack-driven: faculty come from the active pack; LOUNGE is universal.
+    const pack = activeFaculty().map((f) => ({
+      id: f.id,
+      displayName: f.displayName,
+      shortName: f.shortName,
+      subjects: f.subjects,
+      bio: f.bio,
+      available: true,
+      accent: f.accent,
+    }));
+    return [...pack, LOUNGE_FACULTY];
   }
 
   getOrCreate(sessionId: string): QuizState {
@@ -249,9 +258,13 @@ export class RubyHighService extends Service {
       // (loading older state files); fresh sessions skip straight to in-room
       // so there's no grade-bootstrap round-trip and no stranded UI after
       // reset.
+      // Default the new session to the first teaching faculty in the active
+      // pack — used to be the static RUBY_FACULTY.id. Falls back to "ruby"
+      // only during boot before the pack has loaded.
+      const bootFaculty = isPackLoaded() ? (activeFaculty()[0]?.id ?? RUBY_FACULTY.id) : RUBY_FACULTY.id;
       state = {
         sessionId,
-        faculty: RUBY_FACULTY.id,
+        faculty: bootFaculty,
         subject: null,
         current: null,
         history: [],
@@ -617,7 +630,7 @@ export class RubyHighService extends Service {
     const startedAt = Date.now();
     const isOpinion = question.type === "opinion";
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
-    const room = roomForFaculty(state.faculty);
+    const room = activeRoomForFaculty(state.faculty);
     let entries: NpcRoundEntry[] = [];
     if (room && room.teaches && state.currentGrade) {
       const teachingRoom = room.id as TeachingRoomId;
@@ -1053,14 +1066,19 @@ export class RubyHighService extends Service {
 
   setFaculty(sessionId: string, facultyId: string): QuizState {
     const state = this.getOrCreate(sessionId);
-    const faculty = facultyId === LOUNGE_FACULTY.id
-      ? LOUNGE_FACULTY
-      : ALL_FACULTY.find((f) => f.id === facultyId);
-    if (!faculty) throw new Error(`Unknown faculty: ${facultyId}`);
-    if (!faculty.available) {
-      throw new Error(
-        `${faculty.displayName} hasn't started teaching at Ruby High yet — only available faculty are: ${[...ALL_FACULTY, LOUNGE_FACULTY].filter((f) => f.available).map((f) => f.id).join(", ")}.`,
-      );
+    let faculty: FacultyMember | null;
+    if (facultyId === LOUNGE_FACULTY.id) {
+      faculty = LOUNGE_FACULTY;
+    } else {
+      const f = activeFacultyById(facultyId);
+      faculty = f ? {
+        id: f.id, displayName: f.displayName, shortName: f.shortName,
+        subjects: f.subjects, bio: f.bio, available: true, accent: f.accent,
+      } : null;
+    }
+    if (!faculty) {
+      const available = [...activeFaculty().map((f) => f.id), LOUNGE_FACULTY.id].join(", ");
+      throw new Error(`Unknown faculty: ${facultyId}. Active pack faculty: ${available}.`);
     }
     const previousFacultyId = state.faculty;
     state.faculty = faculty.id;

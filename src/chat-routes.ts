@@ -5,7 +5,8 @@ import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseTeacherGrades } from "./grading.js";
-import { GRADE_LABELS, ROOMS, type CharacterStats, type Grade } from "./types.js";
+import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
+import { activeRoomForFaculty } from "./content/registry.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
@@ -928,7 +929,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     let classmateNames: string[] = [];
     if (state.currentGrade && state.faculty) {
       const r = state.npcRosters[state.currentGrade] ?? [];
-      const room = ROOMS.find((x) => x.teacherId === state.faculty);
+      const room = activeRoomForFaculty(state.faculty);
       if (room && room.teaches) {
         classmateNames = r
           .filter((n) => n.currentRoom === room.id && n.id !== student.id)

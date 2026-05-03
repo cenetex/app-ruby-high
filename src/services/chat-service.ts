@@ -2,7 +2,8 @@ import { Service, type IAgentRuntime } from "@elizaos/core";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { STUDENTS, type StudentCharacter } from "../characters/students.js";
 import type { Choice, Difficulty, NpcStudentState, QuizState } from "../types.js";
-import { GRADE_LABELS, npcsInRoom, roomForFaculty, type TeachingRoomId } from "../types.js";
+import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
+import { activeRoomForFaculty } from "../content/registry.js";
 import { RubyHighService } from "./ruby-high-service.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
@@ -536,7 +537,7 @@ function describeRoomForTeacher(state: QuizState): string {
   const lines: string[] = [];
   lines.push(`You are running a class — group chat, not 1:1 tutoring.`);
   // Classmate roster (the seated NPCs in the active classroom).
-  const room = roomForFaculty(state.faculty);
+  const room = activeRoomForFaculty(state.faculty);
   if (room && room.teaches && state.currentGrade) {
     const roster = state.npcRosters[state.currentGrade] ?? [];
     const inRoom = npcsInRoom(roster, room.id as TeachingRoomId);
