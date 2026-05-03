@@ -11,10 +11,44 @@
 import type { ContentPack, PackFaculty, PackRoom } from "./types.js";
 import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
 
+/** Stable id of the built-in pack. Used as the fallback / pin / "are we
+ *  on the original schedule" signal in places that special-case it. */
+export const ORIGINAL_PACK_ID = "ruby-high-original";
+
+/** Pack-id builder for Anki imports. Keeps the `anki:` prefix in one
+ *  place — useful for any future "is this a runtime-imported pack?"
+ *  check. */
+export function ankiPackId(slug: string): string {
+  return `anki:${slug}`;
+}
+
 /** Registry of every pack the runtime knows about. Keyed by pack id.
  *  Populated lazily — the original pack lands on first getActivePack();
- *  user-imported packs (Anki, etc.) get registered via registerPack. */
+ *  user-imported packs (Anki, etc.) get registered via registerPack.
+ *  Soft-capped LRU: when MAX_PACKS is reached, the least-recently
+ *  registered/touched pack is evicted to keep memory bounded under
+ *  pathological re-import loops. The original pack is pinned. */
 const packs = new Map<string, ContentPack>();
+const MAX_PACKS = 32;
+const PINNED_PACK_IDS = new Set<string>([ORIGINAL_PACK_ID]);
+
+function touch(id: string, pack: ContentPack): void {
+  // Map preserves insertion order — re-inserting moves the entry to
+  // the end, so the iteration order doubles as LRU.
+  packs.delete(id);
+  packs.set(id, pack);
+  while (packs.size > MAX_PACKS) {
+    // Evict the oldest non-pinned pack.
+    let evicted = false;
+    for (const [k] of packs) {
+      if (PINNED_PACK_IDS.has(k)) continue;
+      packs.delete(k);
+      evicted = true;
+      break;
+    }
+    if (!evicted) break; // every remaining pack is pinned
+  }
+}
 let active: Promise<ContentPack> | null = null;
 /** Sync mirror of the resolved pack. Populated when the async getActivePack
  *  promise settles. Sync callers (telemetry derivation, render handlers)
@@ -27,7 +61,7 @@ let loadedPack: ContentPack | null = null;
 export function getActivePack(): Promise<ContentPack> {
   if (!active) {
     active = getRubyHighOriginal().then((p) => {
-      packs.set(p.id, p);
+      touch(p.id, p);
       loadedPack = p;
       return p;
     });
@@ -36,9 +70,11 @@ export function getActivePack(): Promise<ContentPack> {
 }
 
 /** Register a pack so it shows up in availablePacks() + can be activated
- *  by id. Runtime imports (Anki, LLM-generated, etc.) call this. */
+ *  by id. Runtime imports (Anki, LLM-generated, etc.) call this. Goes
+ *  through the LRU touch so re-registers move the pack to the end and
+ *  pathological import loops can't blow up the registry size. */
 export function registerPack(pack: ContentPack): void {
-  packs.set(pack.id, pack);
+  touch(pack.id, pack);
 }
 
 /** All packs currently known to the runtime (original + any imports). */
@@ -82,7 +118,7 @@ export function isPackLoaded(): boolean {
  *  and the runtime import path (Anki adapter). The pack is also
  *  registered so it shows up in availablePacks(). */
 export function setActivePack(pack: ContentPack): void {
-  packs.set(pack.id, pack);
+  touch(pack.id, pack);
   loadedPack = pack;
   active = Promise.resolve(pack);
 }

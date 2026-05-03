@@ -9,7 +9,7 @@ import type {
   PluginAppSessionState,
 } from "@elizaos/core";
 import { RubyHighService } from "./services/ruby-high-service.js";
-import { FacultyService } from "./services/faculty-service.js";
+import { FacultyService, toFacultyMember } from "./services/faculty-service.js";
 import {
   CHOICES,
   GRADES,
@@ -257,21 +257,14 @@ function parseRhSessionCookie(cookieHeader: string | null | undefined): string |
 }
 
 function facultyForState(state: QuizState, id: string): FacultyMember {
-  // Per-session pack: a fresh session's faculty defaults to the global
-  // active pack. After the user switches packs, state.activePackId
-  // points at the pack they chose; we resolve faculty against that.
+  // Resolve faculty against the SESSION's pack — fresh sessions inherit
+  // the global default; pack-switched sessions read from their chosen
+  // pack. Falls back to the pack's first faculty if the requested id
+  // isn't there (e.g. state.faculty stale right after a swap).
   const pack = facultyForSession(state);
   const hit = pack.find((f) => f.id === id) ?? pack[0];
   if (!hit) throw new Error("Active pack has no faculty — cannot resolve facultyForState.");
-  return {
-    id: hit.id,
-    displayName: hit.displayName,
-    shortName: hit.shortName,
-    subjects: hit.subjects,
-    bio: hit.bio,
-    available: true,
-    accent: hit.accent,
-  };
+  return toFacultyMember(hit);
 }
 
 function deriveActiveRound(state: QuizState) {

@@ -50,6 +50,16 @@ const IMPORT_LIMITER = new TokenBucket(8, 1 / 30); // 8 burst, ~1 every 30s
  *  point isn't to size for typical use but to prevent a 1 GB JSON DoS. */
 const MAX_IMPORT_BODY_BYTES = 16 * 1024 * 1024;
 
+// Match the chat-routes pattern: drop idle limiter keys once an hour so
+// one-off imports from different IPs don't accumulate forever in the
+// in-memory bucket map.
+const importLimiterGcTimer = setInterval(() => {
+  IMPORT_LIMITER.gc(Date.now());
+}, 60 * 60 * 1000);
+if (typeof importLimiterGcTimer === "object" && importLimiterGcTimer && "unref" in importLimiterGcTimer) {
+  (importLimiterGcTimer as { unref: () => void }).unref();
+}
+
 function rateLimitKey(ctx: PackRouteContext, token: string | null): string {
   return `${ctx.clientIp ?? "unknown"}:${token ?? "anon"}`;
 }

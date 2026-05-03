@@ -46,12 +46,13 @@ import {
   type RoundOutcome,
   type TeachingRoomId,
 } from "../types.js";
-import { FacultyService, type PickFilter } from "./faculty-service.js";
+import { FacultyService, toFacultyMember, type PickFilter } from "./faculty-service.js";
 import { StateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
   activeFaculty,
+  ORIGINAL_PACK_ID,
   facultyByIdForSession,
   facultyForSession,
   isPackLoaded,
@@ -245,17 +246,7 @@ export class RubyHighService extends Service {
   }
 
   listFaculty(): FacultyMember[] {
-    // Pack-driven: faculty come from the active pack; LOUNGE is universal.
-    const pack = activeFaculty().map((f) => ({
-      id: f.id,
-      displayName: f.displayName,
-      shortName: f.shortName,
-      subjects: f.subjects,
-      bio: f.bio,
-      available: true,
-      accent: f.accent,
-    }));
-    return [...pack, LOUNGE_FACULTY];
+    return [...activeFaculty().map(toFacultyMember), LOUNGE_FACULTY];
   }
 
   getOrCreate(sessionId: string): QuizState {
@@ -1053,11 +1044,15 @@ export class RubyHighService extends Service {
     if (state.faculty !== firstFaculty && state.faculty !== LOUNGE_FACULTY.id) {
       state.faculty = firstFaculty;
     }
-    // Wipe board state — current question + activeRound reference question
-    // ids from the previous pack's bank that won't exist in the new one.
+    // Wipe board state AND per-grade NPC rosters — the previous pack's
+    // rooms (and therefore the seating chart's currentRoom values) may
+    // not exist in the new pack. Cohort + character + completedGrades
+    // survive: those are player-arc state, not pack-coupled.
     state.current = null;
     state.activeRound = null;
     state.lastReveal = null;
+    state.npcRosters = {};
+    if (state.currentGrade) this.ensureRoster(state, state.currentGrade);
     this.transition(state, { kind: "clear-board" });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
@@ -1107,15 +1102,12 @@ export class RubyHighService extends Service {
 
   setFaculty(sessionId: string, facultyId: string): QuizState {
     const state = this.getOrCreate(sessionId);
-    let faculty: FacultyMember | null;
+    let faculty: FacultyMember | null = null;
     if (facultyId === LOUNGE_FACULTY.id) {
       faculty = LOUNGE_FACULTY;
     } else {
       const f = facultyByIdForSession(state, facultyId);
-      faculty = f ? {
-        id: f.id, displayName: f.displayName, shortName: f.shortName,
-        subjects: f.subjects, bio: f.bio, available: true, accent: f.accent,
-      } : null;
+      if (f) faculty = toFacultyMember(f);
     }
     if (!faculty) {
       const available = [...facultyForSession(state).map((f) => f.id), LOUNGE_FACULTY.id].join(", ");
@@ -1163,7 +1155,7 @@ function facultyForDayInPack(key: string, session: { activePackId?: string | nul
   if (dow === 0 || dow === 6) return null; // weekend
   const pack = packForSession(session);
   // Original 3-faculty pack keeps the hand-tuned schedule from DESIGN.md.
-  if (pack.id === "ruby-high-original") {
+  if (pack.id === ORIGINAL_PACK_ID) {
     return facultyForDay(key);
   }
   const ids = pack.faculty.map((f) => f.id);

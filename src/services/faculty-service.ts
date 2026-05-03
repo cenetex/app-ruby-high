@@ -163,7 +163,11 @@ export class FacultyService extends Service {
   }
 }
 
-function toFacultyMember(f: { id: string; displayName: string; shortName: string; subjects: string[]; bio: string; accent: string }): FacultyMember {
+/** Adapt a PackFaculty (the inline shape inside a ContentPack) to the
+ *  legacy FacultyMember shape the rest of the codebase reads. The only
+ *  field that needs a default is `available` — pack faculty are always
+ *  available; the field exists for legacy `PLANNED_FACULTY` filtering. */
+export function toFacultyMember(f: { id: string; displayName: string; shortName: string; subjects: string[]; bio: string; accent: string }): FacultyMember {
   return {
     id: f.id,
     displayName: f.displayName,

@@ -7,6 +7,7 @@
  */
 
 import type { ContentPack, PackFaculty, PackRoom } from "../types.js";
+import { ankiPackId } from "../registry.js";
 import { generateBankFromCards, type DistractorOpts } from "./distractors.js";
 import type { AnkiDeck } from "./parse.js";
 
@@ -86,7 +87,7 @@ export async function buildAnkiPack(
     teaches: true,
   };
   const pack: ContentPack = {
-    id: opts.packId ?? `anki:${facultyId}`,
+    id: opts.packId ?? ankiPackId(facultyId),
     name: opts.packName ?? deck.name,
     description: `Imported from Anki: ${deck.name}. ${questions.length} questions.`,
     version: "1.0.0",

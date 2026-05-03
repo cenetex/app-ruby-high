@@ -1292,6 +1292,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   // ── student profile card ─────────────────────────────────────────────────
+  function describeNpcArc(npc, arc) {
+    if (!arc) return GRADE_LABELS[npc.grade] || npc.grade;
+    if (arc.graduated) return "Graduated · " + arc.completedGrades.length + " years";
+    return (GRADE_LABELS[arc.grade] || arc.grade) + " · streak " + arc.streak.count;
+  }
   function openStudentProfile(npc, s) {
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
@@ -1301,11 +1306,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const arc = (lastTelemetry && lastTelemetry.npc_cohort)
       ? lastTelemetry.npc_cohort.find((n) => n.id === npc.id)
       : null;
-    const arcLine = !arc
-      ? (GRADE_LABELS[npc.grade] || npc.grade)
-      : arc.graduated
-        ? "Graduated · " + arc.completedGrades.length + " years"
-        : (GRADE_LABELS[arc.grade] || arc.grade) + " · streak " + arc.streak.count;
+    const arcLine = describeNpcArc(npc, arc);
     appendCard({
       role: "student",
       name: s.name,

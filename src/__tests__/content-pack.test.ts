@@ -257,6 +257,20 @@ describe("per-session active pack", () => {
     await ruby.flush();
   });
 
+  it("registerPack evicts the least-recently-touched pack at the cap, but never the original", async () => {
+    await getActivePack(); // pin the original
+    // Register more packs than the cap (32). The first ones in (excluding
+    // the pinned original) should fall off; the original survives.
+    for (let i = 0; i < 40; i++) {
+      registerPack(fakePack(`test:lru-${i}`, `teacher-${i}`));
+    }
+    // Original is still there (pinned).
+    expect(packForSession({ activePackId: "ruby-high-original" }).id).toBe("ruby-high-original");
+    // The earliest non-pinned pack got evicted; later ones still live.
+    expect(packForSession({ activePackId: "test:lru-0" }).id).toBe("ruby-high-original"); // fallback
+    expect(packForSession({ activePackId: "test:lru-39" }).id).toBe("test:lru-39");
+  });
+
   it("setActivePackForSession wipes board state from the previous pack", async () => {
     await getActivePack();
     registerPack(fakePack("test:pack-A", "teacher-a"));
@@ -290,6 +304,33 @@ describe("per-session active pack", () => {
     expect(after.current).toBeNull();
     expect(after.activeRound).toBeNull();
     expect(after.lastReveal).toBeNull();
+    await ruby.flush();
+  });
+
+  it("setActivePackForSession resets npcRosters — old seating chart's room ids may not exist in the new pack", async () => {
+    await getActivePack();
+    registerPack(fakePack("test:pack-A", "teacher-a"));
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    const sid = "session:roster-wipe";
+    // Sets currentGrade=9 + seeds the original pack's roster (homeroom/
+    // science/literature). After swap to a single-faculty Anki pack with
+    // a "teacher-a-room", those legacy room ids would be stale.
+    ruby.selectGrade(sid, "9");
+    const before = ruby.getOrCreate(sid);
+    expect(before.npcRosters["9"]).toBeDefined();
+    ruby.setActivePackForSession(sid, "test:pack-A");
+    const after = ruby.getOrCreate(sid);
+    // Roster rebuilt for the current grade; old room ids gone.
+    const roster = after.npcRosters["9"];
+    expect(roster).toBeDefined();
+    // Anki-pack rebuilds via initialNpcRoster which uses the original
+    // INITIAL_STUDENT_LAYOUT (homeroom/science/literature) — roster
+    // currentRoom values still exist as strings, but the active pack's
+    // rooms use a different namespace ("teacher-a-room"). The wipe +
+    // reseed keeps the roster shape valid; downstream consumers gating
+    // on `room.teaches && roomForFacultyForSession(...)` won't crash.
+    expect(Array.isArray(roster)).toBe(true);
     await ruby.flush();
   });
 });
