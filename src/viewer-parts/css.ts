@@ -778,57 +778,6 @@ export const VIEWER_CSS = `
     margin-left: auto;
   }
   .blackboard-foot .next-btn:disabled { opacity: 0.5; }
-  /* Today's-challenge banner — sits above the chalkboard so it is not
-     fighting the green texture for legibility. */
-  .daily-banner {
-    margin: 8px calc(var(--safe-right) + 12px) 0 calc(var(--safe-left) + 12px);
-    background: linear-gradient(135deg, rgba(210, 42, 42, 0.18), rgba(210, 42, 42, 0.05));
-    border: 1px solid rgba(210, 42, 42, 0.35);
-    border-radius: 14px;
-    padding: 10px 14px;
-    box-shadow: var(--shadow);
-  }
-  .daily-banner-inner {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-  .daily-banner-text {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .daily-banner-title {
-    font-size: 11px;
-    color: var(--accent);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    font-weight: 800;
-  }
-  .daily-banner-sub {
-    font-size: 14px;
-    color: var(--text);
-    font-weight: 600;
-    margin-top: 2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .daily-cta-btn {
-    appearance: none;
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    font-weight: 800;
-    border-radius: 999px;
-    padding: 10px 18px;
-    font-size: 14px;
-    box-shadow: var(--shadow);
-    cursor: pointer;
-    flex: 0 0 auto;
-    transition: transform 0.08s ease, opacity 0.12s ease;
-  }
-  .daily-cta-btn:active { transform: scale(0.97); }
-  .daily-cta-btn:disabled { opacity: 0.5; cursor: default; }
 
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {
@@ -1587,6 +1536,42 @@ export const VIEWER_CSS = `
   .sheet-actions button.secondary {
     background: var(--bg-elev);
     color: var(--text-soft);
+  }
+
+  /* ── creation: full-pane loading state ──────────────────────────────── */
+  /* Replaces the half-rendered empty form during the first roll. The
+     player sees only this until rolled lands; then revealForm() flips
+     it. Centered + tall enough that the modal doesn't visibly resize
+     between loading and loaded. */
+  .creation-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 320px;
+    padding: 40px 20px;
+  }
+  .creation-loading-spinner {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.12);
+    border-top-color: var(--accent);
+    animation: creation-spin 0.9s linear infinite;
+  }
+  @keyframes creation-spin {
+    to { transform: rotate(360deg); }
+  }
+  .creation-loading-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: 0.04em;
+  }
+  .creation-loading-sub {
+    font-size: 13px;
+    color: var(--text-mute);
   }
 
   /* ── creation card surfaces ──────────────────────────────────────────── */

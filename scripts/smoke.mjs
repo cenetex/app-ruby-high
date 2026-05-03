@@ -96,12 +96,9 @@ async function check2ViewerRenders() {
     if (missing.length > 0) {
       return fail(name, `quiz buttons missing from rendered HTML: ${missing.join(", ")}`);
     }
-    // Daily-challenge banner element must exist in the DOM (hidden by
-    // default; revealed by client when daily.available). Catches the
-    // case where the banner gets reverted out of the template.
-    if (!html.includes('id="daily-banner"')) {
-      return fail(name, "daily-challenge banner element missing from rendered HTML");
-    }
+    // (Daily-banner check retired — the banner was removed in the
+    //  rarity refactor follow-up. Every question is now a draw, so a
+    //  separate daily-bonus surface no longer exists.)
     // Inline <script> must be parseable JS. The viewer is stitched from
     // a TS template literal that wraps another template literal; an
     // unescaped \n / \t / ` inside a double-quoted string in the source
@@ -116,7 +113,7 @@ async function check2ViewerRenders() {
     } catch (e) {
       return fail(name, `inline <script> failed to parse: ${e?.message || e}`);
     }
-    ok(name, `${html.length} bytes, quiz buttons + daily banner present, inline JS parses`);
+    ok(name, `${html.length} bytes, quiz buttons present, inline JS parses`);
   } catch (e) {
     fail(name, e?.message || String(e));
   }
