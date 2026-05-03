@@ -360,17 +360,19 @@ export class ChatService extends Service {
             difficulty: args.difficulty as Difficulty | undefined,
           });
           const q = state.current;
-          // The earlier defensive version of this message was full of "do
-          // NOT" / "never" patterns that paradoxically primed the model to
-          // think about looping (v0.3.5 bug context). Positive framing
-          // works better: tell it this is a fresh question and the work
-          // is done.
+          // The tool-result message frames the new question as REPLACING
+          // whatever was on the board. Earlier wording ("Fresh question
+          // is on the blackboard") let the model read that beside the
+          // new board-context system message and conclude "the system
+          // gave me the same question I just had" — see DESIGN open issue.
+          // Explicit replacement framing + a "do not comment on the act
+          // of drawing" instruction reduces the fourth-wall hallucination.
           return {
             args,
             payload: {
               ok: true,
               message: q
-                ? `Fresh question is on the blackboard. id=${q.id}. Prompt: "${q.prompt}". The bank already guaranteed this is one the student hasn't seen this session. Your turn now — react to the previous answer in 1 sentence and end.`
+                ? `Done. The previous question (if any) has been wiped from the chalkboard and replaced with a fresh one — id=${q.id}, prompt: "${q.prompt}". This is a new question the student hasn't been asked this session; the bank guarantees no repeats. Your turn now: react to the player's previous answer in 1 sentence (do not narrate the act of drawing or comment on the bank, the system, or duplicate questions — just teach), then end.`
                 : "Bank is empty for that filter. Try a different subject.",
             },
             state,
@@ -420,9 +422,35 @@ export class ChatService extends Service {
     const k = this.keyOf(key);
     const list = this.histories.get(k);
     if (!list) return;
-    if (list.length > HISTORY_LIMIT) {
-      this.histories.set(k, list.slice(list.length - HISTORY_LIMIT));
+    if (list.length <= HISTORY_LIMIT) return;
+    let next = list.slice(list.length - HISTORY_LIMIT);
+    // The slice can land between an assistant-with-tool_calls and its
+    // matching tool result, leaving orphan `tool` messages at the head.
+    // Anthropic (and most providers) reject these with
+    //   "tool_result block must have a corresponding tool_use block in the
+    //    previous message"
+    // Drop any leading `tool` messages (and any leading assistant messages
+    // that have tool_calls but whose tool results were trimmed away — these
+    // also dangle and confuse the provider).
+    let drop = 0;
+    while (drop < next.length) {
+      const m = next[drop]!;
+      if (m.role === "tool") { drop++; continue; }
+      if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+        // Check whether the next message satisfies all tool calls. If any
+        // are missing, this assistant message is orphaned and we drop it.
+        const ids = new Set(m.toolCalls.map((tc) => tc.id));
+        let scan = drop + 1;
+        while (scan < next.length && next[scan]!.role === "tool") {
+          ids.delete(next[scan]!.toolCallId ?? "");
+          scan++;
+        }
+        if (ids.size > 0) { drop = scan; continue; }
+      }
+      break;
     }
+    if (drop > 0) next = next.slice(drop);
+    this.histories.set(k, next);
   }
 
   private keyOf(key: ChatHistoryKey): string {
