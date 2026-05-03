@@ -573,11 +573,17 @@ function describeBoardForModel(state: QuizState): string {
     ].filter(Boolean).join("\n");
   }
   const opts = q.options ?? { A: "", B: "", C: "", D: "" };
-  // Don't include lastReveal here — by the time we re-derive board context,
-  // a new question may already be on the board (after a tool call). Surfacing
-  // the old reveal alongside the new question confused the model into thinking
-  // questions were repeating. Pacing notes belong in event-trigger system
-  // messages, not in the perpetual board snapshot.
+  // Only mention the reveal when it belongs to the question CURRENTLY on the
+  // board — otherwise a new question + an old reveal would race-render and
+  // confuse the model into thinking questions repeat. When the active round
+  // is resolved we tell the teacher to react instead of nagging for a pick.
+  const round = state.activeRound;
+  const resolvedThisQ =
+    !!round && round.questionId === q.id && round.resolved &&
+    !!state.lastReveal && state.lastReveal.questionId === q.id;
+  const statusLine = resolvedThisQ && state.lastReveal
+    ? `(The student already answered ${state.lastReveal.picked} — ${state.lastReveal.wasCorrect ? "correct" : "missed; correct was " + state.lastReveal.correct}. React to the outcome and call pick_from_bank for the next question. Do NOT ask them to pick again.)`
+    : "(The student is now picking. Wait for the answer-graded event before calling another tool.)";
   return [
     `Active faculty: ${state.faculty}.`,
     `Score this session: ${state.score.correct}/${state.score.total}.`,
@@ -588,7 +594,7 @@ function describeBoardForModel(state: QuizState): string {
     `  C) ${opts.C}`,
     `  D) ${opts.D}`,
     `Correct answer: ${q.correct ?? "?"}.`,
-    "(The student is now picking. Wait for the answer-graded event before calling another tool.)",
+    statusLine,
   ].join("\n");
 }
 
