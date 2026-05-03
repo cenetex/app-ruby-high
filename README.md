@@ -1,6 +1,6 @@
 # Ruby High
 
-> A small school where the teachers grade you in their own voice, once a day, and the grade is yours to keep.
+> A school where the teachers grade you in their own voice. Once a day. The grade is yours to keep.
 
 Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, answer the Daily question, and graduate after Senior year.
 
@@ -16,7 +16,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (PKCE, your own key, no card).
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (PKCE, your own key, no card). The API key lives in your browser's localStorage; the server never holds it.
 
 ### Dev endpoints
 
@@ -39,7 +39,7 @@ export const character = {
 };
 ```
 
-The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`).
+The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`.
 
 ## Configuration
 
@@ -67,7 +67,7 @@ No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with
 npm test
 ```
 
-12 test files (~2,250 lines) covering the daily mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, and the rate limiter.
+16 test files (~3k lines) covering the Daily mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, and the content-pack registry.
 
 ## Deploy
 
