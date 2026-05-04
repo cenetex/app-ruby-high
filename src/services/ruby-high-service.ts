@@ -12,6 +12,7 @@ import {
   RUBY_FACULTY,
   ROOMS,
   TEACHING_ROOMS,
+  difficultiesForGrade,
   difficultyForGrade,
   initialNpcRoster,
   npcsInRoom,
@@ -1577,8 +1578,12 @@ export class RubyHighService extends Service {
     const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
     const useSrs = this.isSrsCourse(state, facultyId);
     let difficulty = filter.difficulty;
+    const allowedDifficulties = !filter.difficulty && state.currentGrade && !useSrs
+      ? difficultiesForGrade(state.currentGrade)
+      : undefined;
     if (!difficulty && state.currentGrade && !useSrs) {
-      // Without grade-tagged questions yet, lean on difficulty as a proxy.
+      // Until the bank grows explicit grade tags, difficulty is the year-level
+      // proxy: prefer this year's level but allow prior-year material.
       difficulty = difficultyForGrade(state.currentGrade);
     }
     if (useSrs) {
@@ -1605,6 +1610,7 @@ export class RubyHighService extends Service {
       faculty: facultyId,
       subject: filter.subject,
       difficulty,
+      allowedDifficulties,
       exclude: state.askedQuestionIds,
     };
     const q = this.faculty.pick(pickFilter, packForSession(state));
@@ -1654,7 +1660,11 @@ export class RubyHighService extends Service {
     }
     const askedIds = new Set(state.askedQuestionIds);
     const questions = faculty?.questions ?? [];
-    const remaining = questions.filter((q) => !askedIds.has(q.id));
+    const allowedDifficulties = state.currentGrade ? new Set(difficultiesForGrade(state.currentGrade)) : null;
+    const eligible = allowedDifficulties
+      ? questions.filter((q) => allowedDifficulties.has(q.difficulty))
+      : questions;
+    const remaining = eligible.filter((q) => !askedIds.has(q.id));
     const remainingByDifficulty: Partial<Record<Difficulty, number>> = {};
     const remainingBySubject: Record<string, number> = {};
     for (const q of remaining) {
@@ -1665,8 +1675,8 @@ export class RubyHighService extends Service {
       mode: "bank",
       facultyId: fid,
       displayName: faculty?.displayName ?? fid,
-      total: questions.length,
-      asked: questions.length - remaining.length,
+      total: eligible.length,
+      asked: eligible.length - remaining.length,
       remaining: remaining.length,
       readyCount: remaining.length,
       defaultDifficulty: state.currentGrade ? difficultyForGrade(state.currentGrade) : undefined,

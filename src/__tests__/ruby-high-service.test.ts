@@ -79,6 +79,71 @@ function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"):
   };
 }
 
+function fakeLeveledPack(id = "pack:level-test"): ContentPack {
+  return {
+    id,
+    name: "Leveled Test",
+    description: "Small built-in-style pack with easy/medium/hard questions",
+    version: "1.0.0",
+    faculty: [{
+      id: "level-test-course",
+      displayName: "Ruby",
+      shortName: "Ruby",
+      assetTeacherId: "ruby",
+      subjects: ["leveling"],
+      bio: "A tiny level-gated bank.",
+      accent: "#d22a2a",
+      systemPrompt: "You are Ruby testing level-gated picks.",
+      defaultModel: "anthropic/claude-haiku-4.5",
+      questions: [
+        {
+          id: "level-easy",
+          prompt: "Easy?",
+          options: { A: "yes", B: "no", C: "maybe", D: "later" },
+          correct: "A",
+          subject: "leveling",
+          difficulty: "easy",
+          faculty: "level-test-course",
+        },
+        {
+          id: "level-medium",
+          prompt: "Medium?",
+          options: { A: "yes", B: "no", C: "maybe", D: "later" },
+          correct: "A",
+          subject: "leveling",
+          difficulty: "medium",
+          faculty: "level-test-course",
+        },
+        {
+          id: "level-hard",
+          prompt: "Hard?",
+          options: { A: "yes", B: "no", C: "maybe", D: "later" },
+          correct: "A",
+          subject: "leveling",
+          difficulty: "hard",
+          faculty: "level-test-course",
+        },
+      ],
+    }],
+    courses: [{
+      id: "level-test-course",
+      title: "Leveled Test",
+      facultyId: "level-test-course",
+      roomId: "level-test-room",
+      teacherTemplateId: "ruby",
+      subjects: ["leveling"],
+    }],
+    rooms: [{
+      id: "level-test-room",
+      name: "Leveled Test",
+      channelName: "level-test",
+      teacherId: "level-test-course",
+      description: "Test room",
+      teaches: true,
+    }],
+  };
+}
+
 describe("RubyHighService Phase 1", () => {
   it("pickAndPose draws from the current faculty's bank", async () => {
     const { ruby } = await makeServices();
@@ -93,6 +158,7 @@ describe("RubyHighService Phase 1", () => {
   it("never poses the same question twice in a session", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:2";
+    ruby.selectGrade(sid, "12");
     const total = faculty.bank("ruby")!.questions.length;
     const seen = new Set<string>();
     for (let i = 0; i < total; i++) {
@@ -190,6 +256,40 @@ describe("RubyHighService Phase 1", () => {
     expect(bank.facultyId).toBe("vocab-test-course");
     expect(bank.mode).toBe("srs");
     expect(bank.total).toBe(1);
+  });
+
+  it("draws bank questions at the current year level or lower", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:level-gate";
+    const pack = fakeLeveledPack();
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    ruby.selectGrade(sid, "10");
+
+    const state = ruby.getOrCreate(sid);
+    state.askedQuestionIds = ["level-medium"];
+    const picked = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+    expect(picked.current?.id).toBe("level-easy");
+
+    expect(() => ruby.pickAndPose(sid, { faculty: "level-test-course" })).toThrow(/No questions left/);
+    const status = ruby.questionBankStatus(sid, "level-test-course");
+    expect(status.total).toBe(2);
+    expect(status.remaining).toBe(0);
+    expect(status.remainingByDifficulty.hard).toBeUndefined();
+  });
+
+  it("unlocks hard bank questions for Senior year", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:level-gate-senior";
+    const pack = fakeLeveledPack("pack:level-test-senior");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    ruby.selectGrade(sid, "12");
+
+    const state = ruby.getOrCreate(sid);
+    state.askedQuestionIds = ["level-easy", "level-medium"];
+    const picked = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+    expect(picked.current?.id).toBe("level-hard");
   });
 
   it("uses due-card review for imported Anki packs instead of one-use exhaustion", async () => {

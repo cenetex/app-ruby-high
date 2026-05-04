@@ -137,6 +137,14 @@ export function difficultyForGrade(grade: Grade): Difficulty {
   return "hard";
 }
 
+/** Question-bank level cap for each school year. The current year should
+ *  unlock its level plus prior-year material, never future-year material. */
+export function difficultiesForGrade(grade: Grade): Difficulty[] {
+  if (grade === "9") return ["easy"];
+  if (grade === "10" || grade === "11") return ["easy", "medium"];
+  return ["easy", "medium", "hard"];
+}
+
 /** The grade the player advances to after completing `grade`. Returns null
  *  when there's no next year — i.e. Senior year, which means the run is
  *  graduating rather than advancing. */

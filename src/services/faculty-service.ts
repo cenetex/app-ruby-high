@@ -12,6 +12,8 @@ export interface PickFilter {
   faculty?: string;
   subject?: string;
   difficulty?: Difficulty;
+  /** Hard level gate. Used for current-year-or-lower curriculum filtering. */
+  allowedDifficulties?: Iterable<Difficulty>;
   exclude?: Iterable<string>;
 }
 
@@ -91,16 +93,19 @@ export class FacultyService extends Service {
     const p = pack ?? getLoadedPack();
     const exclude = new Set(filter.exclude ?? []);
     const facultyIds = filter.faculty ? [filter.faculty] : p.faculty.map((f) => f.id);
+    const allowedDifficulties = filter.allowedDifficulties ? new Set(filter.allowedDifficulties) : null;
 
     const matchSubject = (q: BankedQuestion) => !filter.subject || q.subject === filter.subject;
     const matchDifficulty = (q: BankedQuestion) => !filter.difficulty || q.difficulty === filter.difficulty;
+    const matchAllowedDifficulty = (q: BankedQuestion) => !allowedDifficulties || allowedDifficulties.has(q.difficulty);
     const notExcluded = (q: BankedQuestion) => !exclude.has(q.id);
+    const base = (q: BankedQuestion) => notExcluded(q) && matchAllowedDifficulty(q);
 
     const tiers: Array<(q: BankedQuestion) => boolean> = [
-      (q) => notExcluded(q) && matchSubject(q) && matchDifficulty(q),
-      (q) => notExcluded(q) && matchSubject(q),
-      (q) => notExcluded(q) && matchDifficulty(q),
-      notExcluded,
+      (q) => base(q) && matchSubject(q) && matchDifficulty(q),
+      (q) => base(q) && matchSubject(q),
+      (q) => base(q) && matchDifficulty(q),
+      base,
     ];
 
     for (const tier of tiers) {

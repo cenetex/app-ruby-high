@@ -859,7 +859,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
     if (question.subject) { const s = document.createElement("span"); s.className = "pill subject"; s.textContent = question.subject; els.blackboardMeta.appendChild(s); }
     if (question.difficulty) { const d = document.createElement("span"); d.className = "pill difficulty " + question.difficulty; d.textContent = question.difficulty; els.blackboardMeta.appendChild(d); }
-    if (currentGrade) { const g = document.createElement("span"); g.className = "pill"; g.textContent = "Grade " + currentGrade; els.blackboardMeta.appendChild(g); }
     const ar = lastTelemetry && lastTelemetry.active_round;
     const stat = (ar && ar.stat) || (question && question.stat);
     const statPill = document.createElement("span");
