@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { DynamoStateStore, type DynamoDBDocumentClientLike } from "../services/dynamo-state-store.js";
 import type { QuizState } from "../types.js";
+import type { ContentPack } from "../content/types.js";
 
 /**
  * In-memory fake of the DynamoDBDocumentClient. Stores items by primary key,
@@ -79,6 +80,34 @@ function blankState(sessionId: string, updatedAt = 1): QuizState {
     activeRound: null,
     pendingRoll: null,
     updatedAt,
+  };
+}
+
+function fakePack(id: string): ContentPack {
+  return {
+    id,
+    name: id,
+    description: "test pack",
+    version: "1.0.0",
+    faculty: [{
+      id: `${id}-teacher`,
+      displayName: "Teacher",
+      shortName: "T",
+      subjects: ["anki"],
+      bio: "test",
+      accent: "#123456",
+      systemPrompt: "teach this imported deck",
+      defaultModel: "anthropic/claude-haiku-4.5",
+      questions: [],
+    }],
+    rooms: [{
+      id: `${id}-room`,
+      name: "Room",
+      channelName: "room",
+      teacherId: `${id}-teacher`,
+      description: "test",
+      teaches: true,
+    }],
   };
 }
 
@@ -207,6 +236,27 @@ describe("DynamoStateStore", () => {
     const auth = await store.loadAuth();
     expect(auth.users.map((u) => u.userId)).toEqual(["usr_1"]);
     expect(auth.sessions.map((s) => s.token)).toEqual(["token-1"]);
+  });
+
+  it("saves and loads imported content packs in separate Dynamo items", async () => {
+    await store.saveSession(blankState("rh:user:state"));
+    await store.savePack({
+      pack: fakePack("anki:cells"),
+      ownerSessionId: "rh:user:test",
+      touchedAt: 123,
+    });
+
+    const snapshot = fake.snapshot();
+    const packItems = Array.from(snapshot.values()).filter((item) => item.contentPack);
+    expect(packItems).toHaveLength(1);
+    expect(packItems[0]?.pk).toBe("pack:rh%3Auser%3Atest:anki%3Acells");
+    expect(packItems[0]?.updatedAt).toBe(123);
+
+    const packs = await store.loadPacks();
+    expect(packs.map((p) => p.pack.id)).toEqual(["anki:cells"]);
+    const loadedSessions = await store.load();
+    expect(loadedSessions.has("rh:user:state")).toBe(true);
+    expect(loadedSessions.has("pack:rh%3Auser%3Atest:anki%3Acells")).toBe(false);
   });
 
   it("deletes auth sessions by opaque token", async () => {

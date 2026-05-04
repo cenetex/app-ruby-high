@@ -11,11 +11,13 @@ import {
   activeRoomForFaculty,
   activeRooms,
   activeRoomsWithLounge,
+  coursesForSession,
   facultyByIdForSession,
   facultyForSession,
   getActivePack,
   ORIGINAL_PACK_ID,
   packForSession,
+  resolveFacultyIdForSession,
   resetActivePack,
   roomForFacultyForSession,
   roomsForSession,
@@ -41,6 +43,9 @@ describe("ContentPack registry", () => {
     expect(pack.faculty.map((f) => f.id).sort()).toEqual(
       ["professor-edward", "ruby", "sally-science"],
     );
+    expect(pack.courses?.map((c) => c.id).sort()).toEqual(
+      ["professor-edward", "ruby", "sally-science"],
+    );
     // Each teaching faculty has a corresponding room.
     for (const f of pack.faculty) {
       const room = pack.rooms.find((r) => r.teacherId === f.id);
@@ -63,6 +68,7 @@ describe("ContentPack registry", () => {
         expect(options.B).toBeTruthy();
         expect(options.C).toBeTruthy();
         expect(options.D).toBeTruthy();
+        expect(["head", "heart", "hustle", "honor"]).toContain(q.stat);
       }
     }
   });
@@ -212,6 +218,10 @@ describe("per-session pack helpers — abstraction in place", () => {
       ["professor-edward", "ruby", "sally-science"],
     );
     expect(facultyByIdForSession(session, "ruby")?.id).toBe("ruby");
+    expect(coursesForSession(session).map((c) => c.teacherTemplateId).sort()).toEqual(
+      ["professor-edward", "ruby", "sally-science"],
+    );
+    expect(resolveFacultyIdForSession(session, "sally-science")).toBe("sally-science");
     expect(facultyByIdForSession(session, "no-such")).toBeNull();
     expect(roomForFacultyForSession(session, "ruby")?.teacherId).toBe("ruby");
     expect(roomForFacultyForSession(session, "no-such")).toBeNull();

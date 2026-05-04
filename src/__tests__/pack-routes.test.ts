@@ -10,7 +10,9 @@ import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import {
   ORIGINAL_PACK_ID,
+  availablePacksForSession,
   getActivePack,
+  packForSession,
   registerPack,
   resetActivePack,
 } from "../content/registry.js";
@@ -277,6 +279,18 @@ describe("/packs/import-anki — end-to-end", () => {
     // Pack is now active for the importing session.
     const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe(pack.id);
+    expect(state.faculty).toBe(pack.faculty[0].id);
+    await ruby.flush();
+    const persisted = await new StateStore(storePath).loadPacks();
+    expect(persisted.map((p) => p.pack.id)).toContain(pack.id);
+
+    resetActivePack();
+    await getActivePack();
+    const rubyAfterRestart = new RubyHighService({} as never, new StateStore(storePath));
+    await rubyAfterRestart["hydrate"]();
+    const visibleAfterRestart = availablePacksForSession("rh:user:test-alice").map((p) => p.id);
+    expect(visibleAfterRestart).toContain(pack.id);
+    expect(packForSession(rubyAfterRestart.getOrCreate("rh:user:test-alice")).id).toBe(pack.id);
     // OpenRouter was called once per card.
     // (The mock captured the LAST call; we rely on the question count
     // assertion to verify per-card calls happened.)

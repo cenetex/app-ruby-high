@@ -9,12 +9,13 @@
  * end-to-end deck → pack assembly.
  */
 
-import type { ContentPack, PackFaculty, PackRoom } from "../types.js";
+import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "../types.js";
 import { generateBankFromCards, type DistractorOpts } from "./distractors.js";
 import type { AnkiDeck, AnkiCard } from "./parse.js";
 import { generateAnkiPersona, type PersonaResult } from "./persona.js";
 import { log } from "../../services/logger.js";
 import { TEACHERS, type TeacherCharacter } from "../../characters/teachers.js";
+import { classifyQuestionStat } from "../../question-stats.js";
 
 export interface BuildAnkiPackOpts {
   apiKey: string;
@@ -100,7 +101,15 @@ export async function buildAnkiPack(
   // Re-stamp questions' subject field with the persona-driven class
   // name slug so the chalkboard pill reads thematic.
   if (persona) {
-    for (const q of questions) q.subject = subjectPill;
+    for (const q of questions) {
+      q.subject = subjectPill;
+      q.stat = classifyQuestionStat({
+        prompt: q.prompt,
+        subject: q.subject,
+        explanation: q.explanation,
+        correctAnswer: q.correct && q.options ? q.options[q.correct] : undefined,
+      });
+    }
   }
 
   const faculty: PackFaculty = {
@@ -127,6 +136,14 @@ export async function buildAnkiPack(
     description: persona?.signature ? `“${persona.signature}”` : `Anki: ${deck.name}.`,
     teaches: true,
   };
+  const course: PackCourse = {
+    id: facultyId,
+    title: className,
+    facultyId,
+    roomId: room.id,
+    ...(selectedTeacher ? { teacherTemplateId: selectedTeacher.id } : {}),
+    subjects: [subjectPill],
+  };
   const pack: ContentPack = {
     id: opts.packId ?? `anki:${facultyId}`,
     name: opts.packName ?? className,
@@ -135,6 +152,7 @@ export async function buildAnkiPack(
       : `Imported from Anki: ${deck.name}. ${questions.length} questions.`,
     version: "1.0.0",
     faculty: [faculty],
+    courses: [course],
     rooms: [room],
   };
   return { pack, skipped };
@@ -201,7 +219,7 @@ function importedModulePrompt(teacher: TeacherCharacter, deckName: string): stri
     "",
     `Imported Anki module: "${deckName}". This deck is assigned to your classroom for this user.`,
     "Teach it in your normal voice. Treat the deck's topic as in-range for this module, even if it would normally belong to another teacher.",
-    "Use pick_from_bank for banked deck cards when available. If the bank is exhausted for the day, do not keep trying it; write one fresh question with pose_question or talk briefly with the class.",
+    "Use pick_from_bank for due deck cards when available. The deck uses spaced review, so cards are never exhausted; when no cards are ready, do not keep trying filters. Write one custom question with pose_question or talk briefly with the class.",
   ].join("\n");
 }
 

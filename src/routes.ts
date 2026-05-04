@@ -8,7 +8,7 @@ import type {
   PluginAppLaunchDiagnostic,
   PluginAppSessionState,
 } from "@elizaos/core";
-import { RubyHighService } from "./services/ruby-high-service.js";
+import { RubyHighService, type CourseProgress } from "./services/ruby-high-service.js";
 import { FacultyService, toFacultyMember } from "./services/faculty-service.js";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
@@ -36,12 +36,14 @@ import { AuthService } from "./services/auth-service.js";
 import { log } from "./services/logger.js";
 import {
   availablePacksForSession,
+  courseForFacultyForSession,
+  coursesForSession,
   facultyForSession,
   packForSession,
   roomsForSession,
   roomsWithLoungeForSession,
 } from "./content/registry.js";
-import type { PackRoom } from "./content/types.js";
+import type { PackCourse, PackRoom } from "./content/types.js";
 
 const APP_NAME = "@cenetex/app-ruby-high";
 const APP_DISPLAY_NAME = "Ruby High";
@@ -108,6 +110,12 @@ interface FacultyTelemetry extends FacultyMember {
   questionCount: number;
   subjects: string[];
   assetTeacherId?: string;
+  courseGrade?: string;
+  readyCount?: number;
+  masteredCount?: number;
+  learningCount?: number;
+  shakyCount?: number;
+  newCount?: number;
 }
 
 interface SessionTelemetry extends Record<string, unknown> {
@@ -129,6 +137,7 @@ interface SessionTelemetry extends Record<string, unknown> {
     prompt: string;
     options: Record<Choice, string>;
     subject: string | null;
+    stat: keyof CharacterStats | null;
     difficulty: Difficulty | null;
   } | null;
   lastReveal: QuizState["lastReveal"];
@@ -143,6 +152,9 @@ interface SessionTelemetry extends Record<string, unknown> {
    *  switcher + the active-pack indicator. Other users' imports are not
    *  exposed (privacy: Anki decks are often private study material). */
   active_pack: { id: string; name: string; description: string };
+  active_course: PackCourse | null;
+  active_course_progress: CourseProgress | null;
+  courses: PackCourse[];
   available_packs: Array<{
     id: string;
     name: string;
@@ -162,13 +174,11 @@ interface SessionTelemetry extends Record<string, unknown> {
   active_round: {
     type: "multiple-choice" | "opinion";
     questionId: string;
-    /** Rarity stamped on the underlying question. Drives the
-     *  COMMON / RARE / LEGENDARY pill on the chalkboard meta. */
+    /** Legacy rarity, present only for older persisted rounds. */
     rarity?: "common" | "rare" | "legendary";
-    /** True when this round is the once-per-day forced-Legendary
-     *  bonus question. The viewer can surface a "★ BONUS" badge
-     *  on the meta so the player knows which round used today's
-     *  bonus token. */
+    /** Question stat that modifies player/NPC rolls. */
+    stat?: keyof CharacterStats;
+    /** True when this round came from the once-per-day bonus endpoint. */
     isBonus: boolean;
     startedAt: number;
     durationMs: number;
@@ -290,6 +300,7 @@ function deriveActiveRound(state: QuizState) {
     type: round.type,
     questionId: round.questionId,
     rarity: round.rarity ?? state.current?.rarity,
+    stat: round.stat ?? state.current?.stat,
     isBonus: !!round.isBonus,
     startedAt: round.startedAt,
     durationMs: round.durationMs,
@@ -375,10 +386,16 @@ function deriveRoomCohort(roster: NpcStudentState[], state: QuizState): Record<s
   return out;
 }
 
-function buildFacultyRoster(faculty: FacultyService | null, state: QuizState): FacultyTelemetry[] {
+function buildFacultyRoster(
+  faculty: FacultyService | null,
+  state: QuizState,
+  ruby: RubyHighService | null,
+  sessionId: string,
+): FacultyTelemetry[] {
   const pack = packForSession(state);
   return facultyForSession(state).map((f) => {
     const bank = faculty?.bank(f.id, pack);
+    const progress = ruby?.courseProgress(sessionId, f.id) ?? null;
     const subjects = bank ? Array.from(new Set(bank.questions.map((q) => q.subject))).sort() : f.subjects;
     return {
       id: f.id,
@@ -389,6 +406,14 @@ function buildFacultyRoster(faculty: FacultyService | null, state: QuizState): F
       accent: f.accent,
       ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
       questionCount: bank?.questions.length ?? 0,
+      ...(progress?.grade ? { courseGrade: progress.grade } : {}),
+      ...(progress ? {
+        readyCount: progress.ready,
+        masteredCount: progress.mastered,
+        learningCount: progress.learning,
+        shakyCount: progress.shaky,
+        newCount: progress.new,
+      } : {}),
       subjects,
     };
   });
@@ -402,6 +427,7 @@ function buildSessionState(args: {
 }): PluginAppSessionState {
   const { runtime, state, faculty } = args;
   const sessionId = getSessionId(runtime, args.cookieHeader);
+  const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
   const fac = facultyForState(state, state.faculty);
 
   const telemetry: SessionTelemetry = {
@@ -421,11 +447,12 @@ function buildSessionState(args: {
           prompt: state.current.prompt,
           options: (state.current.options ?? { A: "", B: "", C: "", D: "" }) as Record<Choice, string>,
           subject: state.current.subject ?? null,
+          stat: state.current.stat ?? null,
           difficulty: state.current.difficulty ?? null,
         }
       : null,
     lastReveal: state.lastReveal,
-    faculty_roster: buildFacultyRoster(faculty, state),
+    faculty_roster: buildFacultyRoster(faculty, state, ruby, sessionId),
     asked_count: state.askedQuestionIds.length,
     store_path: null,
     current_grade: state.currentGrade,
@@ -435,6 +462,9 @@ function buildSessionState(args: {
       const p = packForSession(state);
       return { id: p.id, name: p.name, description: p.description };
     })(),
+    active_course: courseForFacultyForSession(state, state.faculty),
+    active_course_progress: ruby?.courseProgress(sessionId, state.faculty) ?? null,
+    courses: coursesForSession(state),
     available_packs: availablePacksForSession(sessionId).map((p) => ({
       id: p.id,
       name: p.name,

@@ -8,8 +8,8 @@ export const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 
 /** Ruby HIGH School — only grades 9-12 (Freshman, Sophomore, Junior, Senior).
  *  Players start at Freshman and progress year by year. Each year completes
- *  when the player passes the per-grade Legendary-day threshold. After Senior,
- *  graduation closes the run. */
+ *  when the player clears the streak and per-class credit gates. After
+ *  Senior, graduation closes the run. */
 export type Grade = "9" | "10" | "11" | "12";
 
 export const GRADES: Grade[] = ["9", "10", "11", "12"];
@@ -29,33 +29,24 @@ export const GRADE_SHORT_LABELS: Record<Grade, string> = {
   "12": "SR",
 };
 
-/** Players start at Freshman year. Per the spec commit (DESIGN.md): the
- *  rarity/streak/yearbook loop is the arc — clear enough Legendary days
- *  in your year to advance to the next. Senior completion = graduation
- *  (yearbook write, run ends). */
+/** Players start at Freshman year. The streak/yearbook loop is the arc:
+ *  clear enough school days and class credits to advance to the next year. */
 export const DEFAULT_GRADE: Grade = "9";
 
-/** Question rarity. Rolled at pose time. Drives both the XP a correct
- *  answer awards and the player's per-day "Legendaries cleared" count
- *  that anchors the streak.
- *
- *  Replaces the prior one-question-per-day arc model. The player now plays as
- *  much as they want; rarity creates the same scarcity effect via the
- *  pull-of-randomness, with the once-per-day bonus as a guaranteed Legendary
- *  route rather than the whole gate. */
+/** Legacy card rarity. Kept for old persisted states; new credit and streak
+ *  mechanics are driven by question stat + correctness. */
 export type Rarity = "common" | "rare" | "legendary";
 
 export const RARITIES: Rarity[] = ["common", "rare", "legendary"];
 
-/** Per-question rarity weights. Sum to 1.0; rolled by `rollRarity()`. */
+/** Legacy rarity weights. */
 export const RARITY_WEIGHTS: Record<Rarity, number> = {
   common: 0.6,
   rare: 0.3,
   legendary: 0.1,
 };
 
-/** XP awarded for a correct answer at each rarity. Drives both the
- *  per-class subjectXp pool and the player's lifetime XP. */
+/** Legacy rarity XP table. */
 export const XP_FOR_RARITY: Record<Rarity, number> = {
   common: 0,
   rare: 1,
@@ -66,10 +57,7 @@ export function xpForRarity(r: Rarity | undefined): number {
   return r ? XP_FOR_RARITY[r] : 0;
 }
 
-/** Random rarity roll. Caller may inject an RNG for tests; defaults to
- *  Math.random. Single sample, weighted by RARITY_WEIGHTS — same
- *  distribution every roll, no per-grade scaling. (The progression
- *  ramp lives in LEGENDARIES_PER_DAY_FOR_GRADE.) */
+/** Legacy rarity roll helper. New questions do not call this. */
 export function rollRarity(rng: () => number = Math.random): Rarity {
   const r = rng();
   let acc = 0;
@@ -80,19 +68,8 @@ export function rollRarity(rng: () => number = Math.random): Rarity {
   return "common";
 }
 
-/** Per-grade Legendary count required to score a "day complete" — the
- *  unit the streak is now counted in. A day completes the first time
- *  the player has answered this many Legendary questions correctly
- *  on that UTC date.
- *
- *    Freshman:  1
- *    Sophomore: 1
- *    Junior:    2
- *    Senior:    3
- *
- *  Pairs with the 60/30/10 rarity distribution: ~10 questions to draw
- *  one Legendary on average, so a Freshman day finishes in ~10
- *  questions and a Senior day in ~30. */
+/** Legacy per-grade Legendary target. New streaks tick on the first passed
+ *  question of the school day. */
 export function legendariesPerDayFor(grade: Grade): number {
   switch (grade) {
     case "9":  return 1;
@@ -111,18 +88,16 @@ export function legendariesPerDayFor(grade: Grade): number {
  *  hard-walling the player out of help on their first few questions. */
 export const ADVANTAGE_ROLLS_PER_GRADE = 3;
 
-/** Per-grade streak length: how many consecutive UTC days the player
- *  must hit the Legendary target on to advance OUT of `grade`.
+/** Per-grade streak length: how many consecutive school days the player
+ *  must pass at least one question to advance OUT of `grade`.
  *
  *    Freshman → 1 day
  *    Sophomore → 2 days
  *    Junior → 3 days
  *    Senior → 4 days
  *
- *  Same numbers as the prior Daily-pass streak — the metric changed
- *  from "consecutive Daily passes" to "consecutive days the Legendary
- *  target was hit." Combined with the per-class XP gate (below),
- *  these are the two gates a player must clear to advance years. */
+ *  Combined with the per-class credit gate (below), these are the two
+ *  gates a player must clear to advance years. */
 export function requiredStreakForGrade(grade: Grade): number {
   const idx = GRADES.indexOf(grade);
   if (idx === -1) return 1;
@@ -225,11 +200,11 @@ export interface Question {
   /** Shared. */
   explanation?: string;
   subject?: string;
+  /** Which character stat modifies the 2d6 roll for this question. */
+  stat?: keyof CharacterStats;
   difficulty?: Difficulty;
   faculty?: string;
-  /** Stamped by `pose()` if the caller didn't pre-roll one. Drives the
-   *  XP awarded on a correct answer (0 / 1 / 2 for common / rare /
-   *  legendary) and the per-day Legendary count toward the streak. */
+  /** Legacy card rarity. New progression ignores this. */
   rarity?: Rarity;
 }
 
@@ -254,6 +229,61 @@ export interface AnswerRecord {
   at: number;
 }
 
+export type CardReviewRating = "again" | "hard" | "good" | "easy";
+
+export type CardMemoryPhase = "new" | "learning" | "review" | "mastered";
+
+export interface CardMemory {
+  courseId: string;
+  questionId: string;
+  phase: CardMemoryPhase;
+  dueAt: number;
+  stability: number;
+  difficulty: number;
+  consecutiveCorrect: number;
+  correctCount: number;
+  wrongCount: number;
+  delayedCorrectCount: number;
+  lastReviewedAt?: number;
+  lastResult?: CardReviewRating;
+  lapses: number;
+}
+
+export interface LastReveal {
+  questionId: string;
+  picked: Choice;
+  correct: Choice;
+  wasCorrect: boolean;
+  explanation: string | null;
+  encouragement: string | null;
+  /** Player's 2d6 + stat roll for this question. Bonus-only — a good roll
+   *  awards credits, a poor roll never penalizes. NPC rolls (in
+   *  ActiveRound.npcs) are where the actual race stakes live. */
+  playerRoll?: {
+    stat: keyof CharacterStats;
+    dice: [number, number];
+    total: number;
+    outcome: RoundOutcome;       // hit | mixed | miss
+    xpAwarded: number;
+  } | null;
+  /** A class-affinity reward converted a miss into a one-time pass. */
+  affinitySave?: { facultyId: string } | null;
+  /** NPCs in the active room also answered — for UI animation. */
+  npcEvents?: Array<{
+    studentId: string;
+    gotIt: boolean;
+    completed?: string;
+    movedTo?: string | null;
+  }>;
+}
+
+export interface RoomBoardSnapshot {
+  subject: string | null;
+  current: Question | null;
+  lastReveal: LastReveal | null;
+  activeRound: ActiveRound | null;
+}
+
 export interface QuizState {
   sessionId: string;
   faculty: string;
@@ -261,33 +291,7 @@ export interface QuizState {
   current: Question | null;
   history: AnswerRecord[];
   score: { correct: number; total: number };
-  lastReveal: {
-    questionId: string;
-    picked: Choice;
-    correct: Choice;
-    wasCorrect: boolean;
-    explanation: string | null;
-    encouragement: string | null;
-    /** Player's 2d6 + stat roll for this question. Bonus-only — a good roll
-     *  awards XP, a poor roll never penalizes. NPC rolls (in
-     *  ActiveRound.npcs) are where the actual race stakes live. */
-    playerRoll?: {
-      stat: keyof CharacterStats;
-      dice: [number, number];
-      total: number;
-      outcome: RoundOutcome;       // hit | mixed | miss
-      xpAwarded: number;
-    } | null;
-    /** A class-affinity reward converted a miss into a one-time pass. */
-    affinitySave?: { facultyId: string } | null;
-    /** NPCs in the active room also answered — for UI animation. */
-    npcEvents?: Array<{
-      studentId: string;
-      gotIt: boolean;
-      completed?: string;
-      movedTo?: string | null;
-    }>;
-  } | null;
+  lastReveal: LastReveal | null;
   /** Legacy 3-value status. Derived from `phase` for backwards compatibility
    *  with viewer + routes consumers that haven't migrated. New code should
    *  read `phase` instead — it has 5 values and covers the cases this one
@@ -304,6 +308,13 @@ export interface QuizState {
    *  the only thing that bumps it. */
   phaseToken: number;
   askedQuestionIds: string[];
+  /** Hidden SRS state for imported/deck-backed courses. Keyed by
+   *  `${courseId}::${questionId}`. The player sees only a letter grade
+   *  and ready count; this memory drives that abstraction. */
+  cardMemory?: Record<string, CardMemory>;
+  /** Per-classroom board state. When the player switches rooms, the previous
+   *  room's board is stored here and restored when they return. */
+  roomBoards?: Record<string, RoomBoardSnapshot>;
   /** Currently selected grade. null until the student picks one. */
   currentGrade: Grade | null;
   /** Grades the student has completed (yearbook entries written for each). */
@@ -326,8 +337,8 @@ export interface QuizState {
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
   /** The cohort — each of the 6 NPCs running their own 4-year arc
    *  alongside the player. Independent grades + streaks. Initialized at
-   *  grade 9 (everyone starts as Freshmen together). Legendary-day ticks
-   *  every NPC's streak via their HEAD stat + 2d6 roll. */
+   *  grade 9 (everyone starts as Freshmen together). School-day ticks
+   *  every NPC's streak via the current question stat + 2d6 roll. */
   npcCohort?: NpcArcState[];
   /** Mentor offer from a graduated previous character. Set by
    *  clearCharacter() when the cleared character had completed Senior;
@@ -544,28 +555,19 @@ export interface PlayerCharacter {
     reward: GraduationReward;
     awardedAt: number;
   }>;
-  /** Legendary-day streak in the active grade. A "day complete" is the
-   *  first time on a given UTC date that the player has answered
-   *  `legendariesPerDayFor(grade)` Legendary questions correctly.
+  /** School-day streak in the active grade. A "day complete" is the
+   *  first passed question on a given UTC date.
    *  Each completion increments `count` (capped to once per UTC date,
    *  recorded in `lastDate`). Skipping a day (today is more than 1
    *  day past `lastDate`) resets the streak. Switching grade resets
    *  to `{ grade: newGrade, count: 0 }`.
    *
-   *  Pre-rarity-refactor characters had streak counted as Daily passes;
-   *  the count carries forward but anchors to the new metric (no
-   *  in-place migration needed — the field shape is the same). */
+   *  Legacy characters carry this forward without shape migration. */
   streak?: { grade: Grade; count: number; lastDate?: string };
-  /** How many Legendary questions the player has answered correctly
-   *  on the current UTC date. Resets implicitly when `date` ages out
-   *  (any update on a new date overwrites the count). */
+  /** Legacy daily Legendary counter. New code writes {count: 1} only as
+   *  a backwards-compatible "today complete" marker for old UI/state. */
   legendariesToday?: { date: string; count: number };
-  /** UTC date of the last bonus question played. The bonus
-   *  question is a forced-Legendary, available once per UTC day —
-   *  the cheap retention hook that survived the rarity refactor.
-   *  Replaces the old `lastDailyDate` (same shape, different
-   *  semantics — the old one gated the entire arc; this one only
-   *  gates the bonus). */
+  /** UTC date of the last bonus question played. */
   lastBonusDate?: string;
   /** Per-faculty score record — {correct, total} keyed by faculty id.
    *  Tracks attempts AND passes so we can compute a CORRECTNESS RATIO
@@ -586,8 +588,9 @@ export interface PlayerCharacter {
   /** One classroom affinity per grade: the first miss in that class becomes
    *  a second-chance pass and then marks used. */
   classAffinity?: Partial<Record<Grade, { facultyId: string; used: boolean }>>;
-  /** Per-faculty XP pool. Each Rare/Legendary pass increments the pool of the
-   *  faculty whose room the question was posed in. Year advancement
+  /** Per-faculty credit pool. Each passed answer increments the pool of the
+   *  faculty whose room the question was posed in by the awarded roll credits.
+   *  Year advancement
    *  requires `requiredSubjectXpForGrade(grade)` in EACH teaching
    *  faculty's pool — the rule that gives the rooms mechanical weight.
    *  Optional for legacy characters; defaulted to {} on hydrate. */
@@ -612,9 +615,8 @@ export interface PlayerCharacter {
 
 // ── Daily-key / bonus mechanic ─────────────────────────────────────────────
 //
-// The daily key is now the cadence primitive for the once-per-day forced
-// Legendary bonus and streak math. Regular play is open-ended and rarity
-// rolled; the 17:00 UTC bell decides which bonus window "today" means.
+// The daily key is the cadence primitive for the once-per-day bonus and
+// streak math. The 17:00 UTC bell decides which bonus window "today" means.
 
 /** The school-bell cutoff: 17:00 UTC. Before that, "today" is yesterday's
  *  date for bonus/streak purposes. After, "today" advances. */
@@ -643,9 +645,8 @@ export function dailyKey(now: Date = new Date(Date.now())): string {
 
 /** Days between two dailyKey strings. Both must be YYYY-MM-DD as
  *  produced by `dailyKey()`. Returns a non-negative integer when
- *  `b` >= `a`, or a negative number otherwise. Used by the rarity
- *  refactor's streak math to detect "consecutive day" vs "fresh
- *  start." */
+ *  `b` >= `a`, or a negative number otherwise. Used by streak math to detect
+ *  "consecutive day" vs "fresh start." */
 export function daysBetween(a: string, b: string): number {
   const pa = a.split("-").map(Number);
   const pb = b.split("-").map(Number);
@@ -720,20 +721,20 @@ export interface NpcStudentState {
 /** Per-NPC arc state — tracks each classmate's independent progression
  *  through the 4-year arc. Same shape as the player: a streak in their
  *  current grade, a list of completed grades, a graduated flag. NPCs
- *  ride along on the player's Legendary-day completions — when the player
- *  hits today's Legendary target, every still-in-school NPC also rolls pass/fail
- *  and ticks their own streak. They can outpace or fall behind. The
+ *  ride along on the player's school-day completions — when the player's
+ *  streak ticks, every still-in-school NPC also rolls pass/fail and ticks
+ *  their own streak. They can outpace or fall behind. The
  *  cohort is the rivalry layer: "Indra graduated last week" is real. */
 export interface NpcArcState {
   id: string;
   /** Current grade. Independent of `currentGrade` on QuizState. */
   grade: Grade;
-  /** Per-grade Legendary-day streak, anchored to the current grade. */
+  /** Per-grade school-day streak, anchored to the current grade. */
   streak: { grade: Grade; count: number };
   completedGrades: Grade[];
   /** True once Senior streak completes. Stops further ticking. */
   graduated: boolean;
-  /** Day key (YYYY-MM-DD) of the last Legendary-day tick this NPC participated in.
+  /** Day key (YYYY-MM-DD) of the last school-day tick this NPC participated in.
    *  Prevents double-tick if the player retries on the same day. */
   lastDailyDate?: string;
 }
@@ -750,8 +751,10 @@ export interface NpcRoundEntry {
   delayMs: number;
   /** What they will pick when their delay elapses. */
   plannedPick: Choice;
-  /** 2d6 + HEAD total used to pick `plannedPick`. */
+  /** 2d6 + question stat total used to pick `plannedPick`. */
   rolledTotal: number;
+  /** Which stat modified the roll. Older persisted rounds may omit this. */
+  rolledStat?: keyof CharacterStats;
   /** Pair of dice that produced rolledTotal (for replay/audit). */
   rolledDice: [number, number];
   outcome: RoundOutcome;
@@ -798,19 +801,14 @@ export interface ActiveRound {
    *  The roll is consumed once per round regardless of outcome. Picks against
    *  eliminated choices are rejected by submitAnswer. */
   advantage?: AdvantageRoll | null;
-  /** True when this round is the once-per-day bonus question — a
-   *  forced-Legendary draw served by `playBonus`. The bonus's only
-   *  privilege is the guaranteed Legendary roll; XP + streak still
-   *  flow through the same rarity-driven path as any other round. */
+  /** True when this round is the once-per-day bonus question. */
   isBonus?: boolean;
-  /** Rarity stamped on the question this round is built around. Mirrors
-   *  `state.current.rarity` so the SSE telemetry doesn't have to
-   *  re-derive it. Drives the COMMON / RARE / LEGENDARY pill in the
-   *  viewer chalkboard meta. */
+  /** Legacy card rarity. Kept only so older persisted rounds can hydrate. */
   rarity?: Rarity;
+  /** Stat this round rolls against. Mirrors state.current.stat. */
+  stat?: keyof CharacterStats;
   /** Legacy: pre-rarity refactor used "isDaily" to mean "this round
-   *  ticks the arc." Kept on the type for back-compat with any
-   *  persisted activeRound; new code uses `isBonus` + `rarity`. */
+   *  ticks the arc." Kept on the type for back-compat with any persisted activeRound. */
   isDaily?: boolean;
   /** Legacy: paired with the old isDaily. Unused now. */
   dailyKey?: string;
@@ -879,15 +877,16 @@ export function rollOpinionDelay(stats: CharacterStats): number {
   return Math.max(8000, Math.min(95000, base + noise));
 }
 
-export function rollNpcAnswer(stats: CharacterStats, correct: Choice): {
+export function rollNpcAnswer(stats: CharacterStats, correct: Choice, stat: keyof CharacterStats = "head"): {
   pick: Choice;
   total: number;
   dice: [number, number];
   outcome: RoundOutcome;
   delayMs: number;
+  stat: keyof CharacterStats;
 } {
   const r = roll2d6();
-  const total = r.total + stats.head;
+  const total = r.total + stats[stat];
   const outcome = classifyTotal(total);
   const allChoices: Choice[] = ["A", "B", "C", "D"];
   const wrongs = allChoices.filter((c) => c !== correct);
@@ -904,7 +903,7 @@ export function rollNpcAnswer(stats: CharacterStats, correct: Choice): {
   const base = 9000 - stats.hustle * 1800;
   const noise = Math.floor(Math.random() * 6000);
   const delayMs = Math.max(2500, Math.min(22000, base + noise));
-  return { pick, total, dice: r.dice, outcome, delayMs };
+  return { pick, total, dice: r.dice, outcome, delayMs, stat };
 }
 
 /** Initial seating chart per grade — drives the per-classroom NPC race
@@ -941,7 +940,7 @@ export function npcsInRoom(roster: NpcStudentState[], room: TeachingRoomId): Npc
 }
 
 /** Initial cohort — all 6 NPCs as Freshmen, fresh streaks. They'll diverge
- *  from this baseline as the player clears Legendary days and the dice roll for
+ *  from this baseline as the player clears school days and the dice roll for
  *  each one independently. */
 export function initialNpcCohort(): NpcArcState[] {
   return ALL_STUDENT_IDS.map((id) => ({
@@ -953,7 +952,7 @@ export function initialNpcCohort(): NpcArcState[] {
   }));
 }
 
-/** NPC stats keyed by id — for dice rolls during Legendary-day ticks. */
+/** NPC stats keyed by id — for dice rolls during school-day ticks. */
 export function npcStatsFor(id: string): CharacterStats {
   return { ...(NPC_STAT_DEFAULTS[id] ?? { head: 0, heart: 0, hustle: 0, honor: 0 }) };
 }

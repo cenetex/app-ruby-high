@@ -183,15 +183,15 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     });
   });
 
-  it("playBonus poses a forced-Legendary draw, marks the round as bonus", async () => {
+  it("playBonus poses a daily warm-up draw, marks the round as bonus", async () => {
     const { ruby } = await makeServices();
     const sid = "test:play";
     attachCharacter(ruby, sid);
     const after = ruby.playBonus(sid, new Date("2026-05-04T18:00:00Z"));
     expect(after.current).not.toBeNull();
-    expect(after.current?.rarity).toBe("legendary");
+    expect(["head", "heart", "hustle", "honor"]).toContain(after.current?.stat);
     expect(after.activeRound?.isBonus).toBe(true);
-    expect(after.activeRound?.rarity).toBe("legendary");
+    expect(after.activeRound?.stat).toBe(after.current?.stat);
     expect(after.faculty).toBe("sally-science"); // Mon → sally
   });
 
@@ -202,7 +202,7 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     const after = ruby.playBonus(sid, new Date("2026-05-09T18:00:00Z"));
     expect(after.current).not.toBeNull();
     expect(after.activeRound?.isBonus).toBe(true);
-    expect(after.activeRound?.rarity).toBe("legendary");
+    expect(after.activeRound?.stat).toBe(after.current?.stat);
     expect(after.faculty).toBe("ruby"); // Sat → Ruby in the rotation
   });
 });
@@ -379,12 +379,13 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
 });
 
 describe("Per-class XP gate — streak alone is not enough", () => {
-  it("Freshman: a single Legendary correct in a single room hits the streak but not the per-class gate; per-class XP must reach 2 in every room before advancement triggers", async () => {
+  it("Freshman: a single correct answer in one room hits the streak but not the per-class gate; per-class credits must reach 2 in every room before advancement triggers", async () => {
     const { ruby } = await makeServices();
     const sid = "test:per-class-gate";
     attachCharacter(ruby, sid, "9", 0);
     const ch0 = ruby.getOrCreate(sid).character!;
     ch0.subjectXp = {};
+    ch0.stats = { head: 99, heart: 99, hustle: 99, honor: 99 };
 
     // Mock Date.now so the streak-tick math (which reads `new Date()`
     // internally for the daily-key) sees the test's time-travel.
@@ -454,7 +455,7 @@ describe("Per-class XP gate — streak alone is not enough", () => {
   });
 });
 
-describe("Streak + grade advancement (rarity-driven)", () => {
+describe("Streak + grade advancement", () => {
   it("Legendary correctness on a fresh day ticks the streak; skipping a day resets it", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-tick";
@@ -525,10 +526,8 @@ describe("Streak + grade advancement (rarity-driven)", () => {
       { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
     ];
 
-    // Senior target is 3 legendaries / day, streak required is 4. We
-    // need 4 day-completes; each day-complete = 3 forced-Legendary
-    // correct answers. playBonus is once-per-day-gated, so pose
-    // directly with rarity: "legendary" injected.
+    // Senior streak required is 4 school days. One correct answer per
+    // school day ticks the streak.
     const days = [
       "2026-05-04T18:00:00Z", // Mon
       "2026-05-05T18:00:00Z", // Tue
@@ -540,17 +539,14 @@ describe("Streak + grade advancement (rarity-driven)", () => {
     try {
       for (const iso of days) {
         Date.now = () => new Date(iso).getTime();
-        for (let i = 0; i < 3; i++) {
-          ruby.pose(sid, {
-            prompt: "Test " + (qIdx++),
-            options: { A: "a", B: "b", C: "c", D: "d" },
-            correct: "A",
-            faculty: "ruby",
-            rarity: "legendary",
-            questionId: "qtest_" + qIdx,
-          });
-          ruby.submitAnswer(sid, "A");
-        }
+        ruby.pose(sid, {
+          prompt: "Test " + (qIdx++),
+          options: { A: "a", B: "b", C: "c", D: "d" },
+          correct: "A",
+          faculty: "ruby",
+          questionId: "qtest_" + qIdx,
+        });
+        ruby.submitAnswer(sid, "A");
       }
     } finally {
       Date.now = realNow;

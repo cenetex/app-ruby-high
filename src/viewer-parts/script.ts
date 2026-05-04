@@ -25,14 +25,19 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // without an extra telemetry round-trip.
   const STREAK_REQUIRED       = { "9": 1, "10": 2, "11": 3, "12": 4 };
   const SUBJECT_XP_REQUIRED   = { "9": 2, "10": 5, "11": 10, "12": 16 };
-  // Legendaries-per-day target by grade. Mirror of the server-side
-  // legendariesPerDayFor() helper. The first time the player hits this
-  // count of correct Legendary answers on a given UTC date counts as
-  // a "day complete" and ticks the streak.
-  const LEGENDARIES_PER_DAY   = { "9": 1, "10": 1, "11": 2, "12": 3 };
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
   const TEACHING_FACULTY_LABELS = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
   const LOUNGE_ID = "lounge";
+  const STAT_META = {
+    head:   { emoji: "🧠", label: "Head" },
+    heart:  { emoji: "💗", label: "Heart" },
+    hustle: { emoji: "⚡", label: "Hustle" },
+    honor:  { emoji: "🛡️", label: "Honor" },
+  };
+  function statLabel(stat) {
+    const meta = STAT_META[String(stat || "").toLowerCase()];
+    return meta ? meta.emoji + " " + meta.label : "🧠 Head";
+  }
 
   // ── auth credential (client-owned) ───────────────────────────────────────
   // The OpenRouter API key lives ONLY in localStorage. The OAuth callback
@@ -183,7 +188,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   let lastYearbookLen = null;
   let lastShownFaculty = null;
   let agentBusy = false;       // true while a teacher-driven SSE turn is running
+  let agentBusySeq = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
+  let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
   // Reset the guards above whenever the player walks into a new context
   // (faculty change, lounge entry, grade selection). Without this, the
   // dedupe key from a prior visit silently blocks channel-enter on revisit:
@@ -258,6 +265,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   function clearStream() {
+    chatViewSeq++;
     els.stream.innerHTML = "";
     streamingMsgEl = null;
     renderedHistorySig = null;
@@ -794,11 +802,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     div.textContent = (faculty.shortName || faculty.displayName || faculty.id || "?").charAt(0).toUpperCase();
     return div;
   }
-  // Today's-challenge banner is gone. The bonus surface was removed
-  // because rarity itself is the variable-reward gate — every
-  // question is a draw. Players never need a separate "click here for
-  // today's bonus" affordance. The /chat/play-bonus endpoint stays
-  // available server-side if we ever want to re-introduce it.
+  // Today's-challenge banner is gone. Class flow moves through normal
+  // teacher-picked questions; the /chat/play-bonus endpoint stays available
+  // server-side if we ever want a separate daily warm-up affordance.
 
   function renderBlackboard(question, faculty, currentGrade) {
     if (faculty && faculty.id === LOUNGE_ID) {
@@ -814,8 +820,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!question) {
       showBlackboardEmpty(true);
       activeQuestionId = null;
-      // The empty-board message is just text — the old daily-challenge CTA
-      // was removed when progression moved to rarity draws.
+      // The empty-board message is just text; the teacher/chat loop decides
+      // when to write the next question.
       if (!authed) {
         els.blackboardEmptyText.textContent = "Sign in with OpenRouter to start class.";
       } else if (!lastTelemetry?.character) {
@@ -854,19 +860,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (question.subject) { const s = document.createElement("span"); s.className = "pill subject"; s.textContent = question.subject; els.blackboardMeta.appendChild(s); }
     if (question.difficulty) { const d = document.createElement("span"); d.className = "pill difficulty " + question.difficulty; d.textContent = question.difficulty; els.blackboardMeta.appendChild(d); }
     if (currentGrade) { const g = document.createElement("span"); g.className = "pill"; g.textContent = "Grade " + currentGrade; els.blackboardMeta.appendChild(g); }
-    // Rarity pill — server stamps active_round.rarity from the question.
-    // Drives the COMMON / RARE / LEGENDARY chip and signals "this one
-    // doesn't move me / moves me a little / moves me toward today's
-    // legendary target." Bonus rounds add a "★ BONUS" badge alongside
-    // the rarity (always Legendary by definition).
     const ar = lastTelemetry && lastTelemetry.active_round;
-    const rarity = (ar && ar.rarity) || (question && question.rarity);
-    if (rarity) {
-      const pill = document.createElement("span");
-      pill.className = "pill rarity " + rarity;
-      pill.textContent = rarity.toUpperCase();
-      els.blackboardMeta.appendChild(pill);
-    }
+    const stat = (ar && ar.stat) || (question && question.stat);
+    const statPill = document.createElement("span");
+    statPill.className = "pill stat " + (stat || "head");
+    statPill.textContent = statLabel(stat);
+    els.blackboardMeta.appendChild(statPill);
     if (ar && ar.isBonus) {
       const bonus = document.createElement("span");
       bonus.className = "pill bonus";
@@ -977,7 +976,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const mod = r.total - (r.dice[0] + r.dice[1]);
       const chip = document.createElement("span");
       chip.className = "roll-chip " + r.outcome;
-      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + r.stat.toUpperCase() + " = " + r.total;
+      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       els.boardReveal.appendChild(chip);
       if (r.xpAwarded > 0) {
         const xp = document.createElement("span");
@@ -1035,7 +1034,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const fmt = (n) => (n >= 0 ? "+" : "") + n;
       // Recover the stat modifier from total - dice sum so we don't carry it.
       const mod = r.total - (r.dice[0] + r.dice[1]);
-      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + r.stat.toUpperCase() + " = " + r.total;
+      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       body.appendChild(chip);
       if (r.xpAwarded > 0) {
         const xp = document.createElement("span");
@@ -1072,7 +1071,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const t = lastTelemetry || {};
     const grade = t.current_grade;
     const roster = t.faculty_roster || [];
-    const sig = (grade ?? "?") + "::" + roster.map((f) => f.id + ":" + f.available + ":" + f.questionCount).join("|") + "::" + t.faculty;
+    const sig = (grade ?? "?") + "::" + roster.map((f) =>
+      f.id + ":" + f.available + ":" + f.questionCount + ":" + (f.courseGrade || "") + ":" + (f.readyCount ?? "")
+    ).join("|") + "::" + t.faculty;
     if (sig === lastRosterSig) return;
     lastRosterSig = sig;
 
@@ -1132,6 +1133,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       name.style.flex = "1 1 auto";
       name.textContent = room.channelName;
       row.appendChild(name);
+      if (fac && fac.courseGrade) {
+        const courseMark = document.createElement("span");
+        courseMark.className = "course-status-pill";
+        courseMark.title = (fac.readyCount ?? 0) + " ready";
+        courseMark.textContent = fac.courseGrade + " · " + (fac.readyCount ?? 0);
+        row.appendChild(courseMark);
+      }
       const cohortIds = (cohort[room.id] || []).filter((sid) => shouldShowStudentId(sid));
       if (cohortIds.length > 0) {
         const dots = document.createElement("span");
@@ -1249,10 +1257,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // ── primary actions ──────────────────────────────────────────────────────
   function greetingFor(fac, grade) {
     const g = grade ? "Grade " + grade : "class";
-    if (fac.id === "ruby") return "Welcome to " + g + ". Pick \\"Next question\\" whenever you're ready.";
+    if (fac.id === "ruby") return "Welcome to " + g + ". I'll put something on the board.";
     if (fac.id === "sally-science") return "Sally here. " + g + " STEM — let's see what you've got.";
     if (fac.id === "professor-edward") return "You've found my " + g + " literature room. Take a seat.";
-    return "Class is in session. Hit \\"Next question\\" to start.";
+    return "Class is in session. The teacher will put something on the board.";
   }
   async function setFaculty(facultyId) {
     const prev = lastTelemetry && lastTelemetry.faculty;
@@ -1262,10 +1270,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       clearStream();
       resetBlackboard();
       resetAgentGuards();
-      const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === facultyId);
+      const actualFaculty = data.session.telemetry.faculty || facultyId;
+      const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === actualFaculty);
       const grade = data.session.telemetry.current_grade;
       if (authed) {
-        loadHistory(facultyId);
+        loadHistory(actualFaculty);
         runAgentTurn("channel-enter", { grade }, { force: true });
       } else if (fac) {
         appendMsg({ kind: "teacher", name: fac.displayName, body: greetingFor(fac, grade), color: fac.accent, facultyId: fac.id });
@@ -1297,11 +1306,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         openSheet();
         return;
       }
-      // The "play-bonus" command pulls today's once-per-day forced-
-      // Legendary question. It only fires when the player explicitly
-      // taps the bonus banner — pickNext (the regular Next button)
-      // always pulls a fresh-rarity question via "pick." Two distinct
-      // surfaces, two distinct entry points.
       await command({ type: "pick" });
       lockedFor = null;
     } finally {
@@ -1472,8 +1476,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // Header
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
     els.channelTitle.textContent = fac ? channelNameFor(fac) : "general";
+    const courseProgress = t.active_course_progress;
+    const courseStatus = courseProgress && courseProgress.grade
+      ? courseProgress.grade + " · " + (courseProgress.ready || 0) + " ready"
+      : (t.current_grade ? "Grade " + t.current_grade : "settling in");
     els.channelSub.textContent = fac
-      ? fac.displayName + " · " + (t.current_grade ? "Grade " + t.current_grade : "settling in")
+      ? fac.displayName + " · " + courseStatus
       : "loading…";
     renderArcIndicator(t);
 
@@ -1745,8 +1753,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       mark.className = "rung-streak";
       const dayUnit = need === 1 ? "day" : "days";
       mark.title = r.state === "current"
-        ? "Legendary streak: " + Math.min(have, need) + "/" + need
-        : need + " Legendary streak " + dayUnit;
+        ? "School-day streak: " + Math.min(have, need) + "/" + need
+        : need + " school-day streak " + dayUnit;
       mark.setAttribute("aria-label", mark.title);
       for (let i = 0; i < need; i++) {
         const diamond = document.createElement("span");
@@ -2048,7 +2056,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           ]
         : [
             { label: "year", value: gradeLabel, detail: "active grade", met: false },
-            { label: "streak", value: streakHere + "/" + streakReq, detail: "Legendary days", met: streakHere >= streakReq },
+            { label: "streak", value: streakHere + "/" + streakReq, detail: "school days", met: streakHere >= streakReq },
             { label: "room", value: roomLabelFor(npc.currentRoom), detail: "current class", met: false },
           ],
       progression: buildProgressionForNpcArc(arc, grade),
@@ -2130,31 +2138,31 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     streak.appendChild(streakCount);
     wrap.appendChild(streak);
 
-    const legendary = document.createElement("div");
-    legendary.className = "career-token-lane";
-    const legendaryLabel = document.createElement("span");
-    legendaryLabel.className = "career-token-label";
-    legendaryLabel.textContent = "Today";
-    legendary.appendChild(legendaryLabel);
+    const today = document.createElement("div");
+    today.className = "career-token-lane";
+    const todayLabel = document.createElement("span");
+    todayLabel.className = "career-token-label";
+    todayLabel.textContent = "Today";
+    today.appendChild(todayLabel);
     const sockets = document.createElement("span");
     sockets.className = "career-sockets";
-    const socketCap = 3;
-    const required = Math.max(0, Math.min(socketCap, spec.legendariesPerDay || 0));
-    const filled = Math.max(0, Math.min(socketCap, spec.legsToday || 0));
+    const socketCap = 1;
+    const required = 1;
+    const filled = spec.todayDone ? 1 : 0;
     for (let i = 0; i < socketCap; i++) {
       const socket = document.createElement("span");
       socket.className = "career-socket"
         + (i < required ? " is-required" : "")
         + (i < filled ? " is-filled" : "");
-      socket.setAttribute("aria-label", i < filled ? "Legendary earned" : i < required ? "Legendary needed" : "Inactive socket");
+      socket.setAttribute("aria-label", i < filled ? "School day complete" : "Correct answer needed today");
       sockets.appendChild(socket);
     }
-    legendary.appendChild(sockets);
-    const legendaryCount = document.createElement("span");
-    legendaryCount.className = "career-token-count";
-    legendaryCount.textContent = (spec.legsToday || 0) + "/" + (spec.legendariesPerDay || 0);
-    legendary.appendChild(legendaryCount);
-    wrap.appendChild(legendary);
+    today.appendChild(sockets);
+    const todayCount = document.createElement("span");
+    todayCount.className = "career-token-count";
+    todayCount.textContent = filled + "/1";
+    today.appendChild(todayCount);
+    wrap.appendChild(today);
 
     const advantage = document.createElement("div");
     advantage.className = "career-token-lane";
@@ -2282,14 +2290,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   // ── "What you need" hint ───────────────────────────────────────────────
-  // Post-rarity-refactor the gates are:
-  //   1. Today's Legendary target — answer N Legendaries on this UTC
-  //      date (N = legendariesPerDayFor(grade), 1/1/2/3 for FR/SO/JR/SR).
-  //      The first time the player hits N today is a "day complete"
-  //      and ticks the streak.
-  //   2. Streak — consecutive days the per-day target was hit.
-  //   3. Per-class credit — accrued via Rare (+1) and Legendary (+2)
-  //      correctness. Same target numbers as before (2/5/10/16).
+  // Gates:
+  //   1. Today — the first correct answer on a UTC date ticks the streak.
+  //   2. Streak — consecutive school days with at least one correct answer.
+  //   3. Per-class credit — accrued from the question-stat roll on correct answers.
   // The hint surfaces the most-blocking gate as one short sentence.
   function buildNextStepHint(c) {
     if (!c) return "";
@@ -2301,27 +2305,21 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const grade = String(t.current_grade ?? "9");
     const streakReq = STREAK_REQUIRED[grade] || 1;
     const subjectReq = SUBJECT_XP_REQUIRED[grade] || 2;
-    const legendariesPerDay = LEGENDARIES_PER_DAY[grade] || 1;
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
     const todayKey = (t.daily && t.daily.dailyKey) || "";
-    const legsToday = c.legendariesToday && c.legendariesToday.date === todayKey
-      ? c.legendariesToday.count : 0;
+    const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
     const subjectXp = c.subjectXp || {};
     const ROOM_LABEL = { ruby: "homeroom", "sally-science": "Sally's class", "professor-edward": "Edward's class" };
 
-    const legsNeededToday = Math.max(0, legendariesPerDay - legsToday);
     const streakNeeded = Math.max(0, streakReq - streakHere);
     const classGaps = TEACHING_FACULTY_IDS
       .map((fid) => ({ fid, gap: Math.max(0, subjectReq - (subjectXp[fid] || 0)) }))
       .filter((x) => x.gap > 0);
 
     const parts = [];
-    if (legsNeededToday > 0) {
-      parts.push(legsNeededToday === 1
-        ? "1 Legendary needed today (you have " + legsToday + "/" + legendariesPerDay + ")"
-        : legsNeededToday + " Legendaries needed today (" + legsToday + "/" + legendariesPerDay + ")");
+    if (streakNeeded > 0 && !todayDone) {
+      parts.push("Answer one question correctly today to grow your streak (" + streakHere + "/" + streakReq + ")");
     } else if (streakNeeded > 0) {
-      // Today's target is met; the rest depends on streak length.
       parts.push("Today complete — streak " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
     if (classGaps.length > 0) {
@@ -2335,12 +2333,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         : "Ready to advance — your year is complete.";
     }
     let hint = parts.join(" · ");
-    // Bonus nudge: if available, mention it as a free path to a
-    // Legendary today. (The bonus ALWAYS rolls Legendary — a guaranteed
-    // tick toward the per-day target.)
     const bonusAvailable = t.daily && t.daily.available === true;
-    if (bonusAvailable && legsNeededToday > 0) {
-      hint += " · ★ today's bonus is a free Legendary";
+    if (bonusAvailable && streakNeeded > 0 && !todayDone) {
+      hint += " · ★ today's bonus can start the day";
     }
     return hint;
   }
@@ -2581,10 +2576,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
     const streakReq = STREAK_REQUIRED[grade] || 1;
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
-    const legendariesPerDay = LEGENDARIES_PER_DAY[grade] || 1;
     const todayKey = (t.daily && t.daily.dailyKey) || "";
-    const legsToday = c.legendariesToday && c.legendariesToday.date === todayKey
-      ? c.legendariesToday.count : 0;
+    const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
     const budget = t.advantage_rolls || { used: 0, cap: 3, remaining: 3 };
     const yearbookCount = Array.isArray(c.yearbook) ? c.yearbook.length : 0;
 
@@ -2640,8 +2633,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (metrics.children.length > 0) body.appendChild(metrics);
     if (!graduated) {
       body.appendChild(buildCareerTokens({
-        legsToday,
-        legendariesPerDay,
+        todayDone,
         streakHere,
         streakReq,
         advantageRemaining: budget.remaining,
@@ -3126,7 +3118,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         // live board instead of an empty chalkboard with the cryptic
         // "the teacher will write a question on the board in a moment."
         // The default faculty after createCharacter is "ruby" (homeroom),
-        // and command({type:"pick"}) routes through the rarity path.
+        // and command({type:"pick"}) draws the first class question.
         try { await command({ type: "pick" }); }
         catch { /* swallow — empty board is the worst case, not a crash */ }
       } else {
@@ -3311,6 +3303,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
   async function fireStudentChime({ situation, note, grade, faculty, delayMs, studentId, bypassCooldown, playerText }) {
     if (!bypassCooldown && !studentChimeAllowed()) return;
+    const chimeSeq = chatViewSeq;
+    function chimeStillCurrent() {
+      return chimeSeq === chatViewSeq && (!faculty || (lastTelemetry && lastTelemetry.faculty === faculty));
+    }
     // If a specific studentId is requested (e.g. a @-mention), use them
     // when they're actually in the active room. Otherwise pick a random
     // in-room student.
@@ -3324,7 +3320,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         : situation === "answer-wrong"
           ? pickRandom(STUDENT_LINES_WRONG)
           : pickRandom(STUDENT_LINES_GREET);
-      setTimeout(() => appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id }), delayMs ?? 700);
+      setTimeout(() => {
+        if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
+      }, delayMs ?? 700);
       return;
     }
     const wait = delayMs ?? (700 + Math.random() * 800);
@@ -3338,11 +3336,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         if (!r.ok) throw new Error("student " + r.status);
         const data = await r.json();
         const line = (data && data.line) || pickRandom(STUDENT_LINES_GREET);
-        appendMsg({ kind: "student", name: who.name, body: line, color: who.color, studentId: who.id });
+        if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: line, color: who.color, studentId: who.id });
       } catch (err) {
         // Fallback to canned line if the API call fails.
         const fallback = situation === "answer-correct" ? pickRandom(STUDENT_LINES_RIGHT) : pickRandom(STUDENT_LINES_WRONG);
-        appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
+        if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
       }
     }, wait);
   }
@@ -3478,9 +3476,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
   async function loadHistory(facultyId) {
     if (!authed || !facultyId) return;
+    const requestSeq = chatViewSeq;
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/history?faculty=" + encodeURIComponent(facultyId));
       const data = await r.json();
+      if (requestSeq !== chatViewSeq || !lastTelemetry || lastTelemetry.faculty !== facultyId) return;
       authed = !!data.authed;
       const msgs = data.history || [];
       const sig = facultyId + ":" + playerMessageIdentitySig() + ":" + msgs.length;
@@ -3493,7 +3493,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const teacherAccent = fac ? fac.accent : "#d22a2a";
       msgs.forEach((m) => {
         if (m.role === "user") appendMsg({ kind: "you", name: playerDisplayName(), body: m.content, color: "var(--accent)" });
-        else if (m.role === "assistant" && m.content) appendMsg({ kind: "teacher", name: teacherName, body: m.content, color: teacherAccent, facultyId });
+        else if (m.role === "assistant" && m.content) {
+          const info = teacherInfo(m.faculty || facultyId);
+          appendMsg({ kind: "teacher", name: info.name || teacherName, body: m.content, color: info.accent || teacherAccent, facultyId: info.facultyId || facultyId });
+        }
         else if (m.role === "tool") {
           const info = teacherInfo(m.faculty || facultyId);
           appendTool(toolSummary(m, info.name));
@@ -3518,7 +3521,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function toolSummary(parsed, teacherName) {
     const ok = !!(parsed.result && parsed.result.ok);
     switch (parsed.tool) {
-      case "pick_from_bank": return ok ? "🎲 " + teacherName + " drew a fresh question" : teacherName + " reached for the bank — empty";
+      case "pick_from_bank": {
+        const srs = lastTelemetry && lastTelemetry.active_course_progress && lastTelemetry.active_course_progress.mode === "srs";
+        return ok ? "🎲 " + teacherName + " drew a ready card" : teacherName + (srs ? " has no cards ready" : " reached for the bank — empty");
+      }
       case "pose_question": return ok ? "✍️ " + teacherName + " wrote a custom question" : teacherName + " tried to write a question — failed";
       case "pose_opinion":  return ok ? "💭 " + teacherName + " asked for opinions" : teacherName + " tried to ask for opinions — failed";
       case "clear_board":   return ok ? "✨ " + teacherName + " cleared the board" : teacherName + " tried to clear the board — failed";
@@ -3529,10 +3535,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       default: return ok ? teacherName + " did a thing (" + parsed.tool + ")" : teacherName + " tried " + parsed.tool + " — failed";
     }
   }
-  async function consumeSseStream(response) {
+  function chatStreamStillCurrent(opts) {
+    if (!opts) return true;
+    if (opts.viewSeq !== chatViewSeq) return false;
+    if (!opts.facultyId || !lastTelemetry) return true;
+    return lastTelemetry.faculty === opts.facultyId;
+  }
+  async function consumeSseStream(response, opts) {
     if (!response.ok || !response.body) {
       const err = await response.json().catch(() => ({ error: response.status }));
-      appendSystem("chat error · " + (err.error || response.status));
+      if (chatStreamStillCurrent(opts)) appendSystem("chat error · " + (err.error || response.status));
       return;
     }
     streamingMsgEl = null;
@@ -3565,10 +3577,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         if (!data) continue;
         let parsed;
         try { parsed = JSON.parse(data); } catch { continue; }
+        const currentStream = chatStreamStillCurrent(opts);
         if (event === "speaker") {
+          if (!currentStream) continue;
           speaker = teacherInfo(parsed.facultyId);
           streamingMsgEl = null; // force a new bubble for the new speaker
         } else if (event === "delta") {
+          if (!currentStream) continue;
           if (!streamingMsgEl) {
             streamingMsgEl = appendMsg({ kind: "teacher", name: speaker.name, body: "", color: speaker.accent, facultyId: speaker.facultyId });
           }
@@ -3589,10 +3604,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           // big comment above; this whole script.ts body is wrapped
           // in an outer template literal at compose time and any
           // backtick here closes it prematurely.
+          if (!currentStream) continue;
           appendTool(toolSummary(parsed, teacherName));
           fetchSession();
           streamingMsgEl = null;
         } else if (event === "error") {
+          if (!currentStream) continue;
           appendSystem("error · " + (parsed.message || "unknown"));
           streamingMsgEl = null;
         }
@@ -3607,6 +3624,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!authed || !text.trim()) return;
     if (agentBusy) return;
     agentBusy = true;
+    const busySeq = ++agentBusySeq;
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
 
     // If an opinion question is active and the player hasn't submitted their
@@ -3615,6 +3633,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const inOpinion = !!(lastTelemetry && lastTelemetry.is_opinion && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && !opinionSubmitted);
 
     appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
+    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty };
 
     // @-mention: if the player named an in-room classmate, that student
     // chimes in directly. Each mention bypasses the 5s cooldown and a
@@ -3661,15 +3680,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           body: JSON.stringify({ faculty: targetFaculty, message: text }),
         });
       }
-      await consumeSseStream(r);
+      await consumeSseStream(r, streamGuard);
     } catch (err) {
-      appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
+      if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
-      agentBusy = false;
+      if (agentBusySeq === busySeq) agentBusy = false;
       els.chatInput.disabled = !authed;
       els.chatSend.disabled = !authed;
       els.chatInput.focus();
-      if (Math.random() < 0.4) {
+      if (chatStreamStillCurrent(streamGuard) && Math.random() < 0.4) {
         fireStudentChime({
           situation: "teacher-replied-to-player",
           note: "Teacher just replied to the player. Riff briefly.",
@@ -3700,17 +3719,19 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (trigger === "channel-enter" && triggerKey === lastAgentTrigger) return;
     lastAgentTrigger = triggerKey;
     agentBusy = true;
+    const busySeq = ++agentBusySeq;
+    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty };
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ faculty: targetFaculty, trigger, context: context || {} }),
       });
-      await consumeSseStream(r);
+      await consumeSseStream(r, streamGuard);
     } catch (err) {
-      appendSystem("teacher offline · " + (err && err.message ? err.message : "error"));
+      if (chatStreamStillCurrent(streamGuard)) appendSystem("teacher offline · " + (err && err.message ? err.message : "error"));
     } finally {
-      agentBusy = false;
+      if (agentBusySeq === busySeq) agentBusy = false;
     }
   }
 
@@ -3927,7 +3948,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   applyAuthUI();
   // The session is born already enrolled at Freshman year (server-side
   // default). The player progresses Freshman → Sophomore → Junior → Senior
-  // → graduate as they clear per-grade Legendary-day thresholds. There is no year
+  // → graduate as they clear per-grade streak and class-credit gates. There is no year
   // picker — they walk in, get started, and advance by playing.
   fetchSession();
   // Auth is checked once on boot and again whenever the OAuth tab writes

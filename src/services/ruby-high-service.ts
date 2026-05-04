@@ -4,9 +4,6 @@ import {
   CHOICES,
   DEFAULT_GRADE,
   daysBetween,
-  legendariesPerDayFor,
-  rollRarity,
-  xpForRarity,
   type Rarity,
   DEFAULT_ROUND_DURATION_MS,
   GRADES,
@@ -35,6 +32,9 @@ import {
   type ActiveRound,
   type AdvantageRoll,
   type AnswerRecord,
+  type BankedQuestion,
+  type CardMemory,
+  type CardReviewRating,
   type CharacterStats,
   type Choice,
   type Difficulty,
@@ -51,6 +51,7 @@ import {
   type Question,
   type QuestionType,
   type QuizState,
+  type RoomBoardSnapshot,
   type RoundOutcome,
   type TeachingRoomId,
 } from "../types.js";
@@ -58,14 +59,22 @@ import { FacultyService, toFacultyMember, type PickFilter } from "./faculty-serv
 import { getDefaultStateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
+import { statForQuestion, normalizeQuestionStat } from "../question-stats.js";
 import {
   activeFaculty,
+  appendQuestionToPackBank,
+  coursesForPack,
   facultyByIdForSession,
   facultyForSession,
   isPackLoaded,
+  ORIGINAL_PACK_ID,
   packForSession,
+  registerPack,
+  resolveFacultyIdForSession,
   roomForFacultyForSession,
+  setActivePack,
 } from "../content/registry.js";
+import type { ContentPack } from "../content/types.js";
 
 export interface PoseInput {
   prompt: string;
@@ -73,13 +82,16 @@ export interface PoseInput {
   correct: Choice;
   explanation?: string;
   subject?: string;
+  stat?: keyof CharacterStats;
   difficulty?: Difficulty;
   faculty?: string;
   questionId?: string;
-  /** Optional override for the question's rarity. When omitted, pose()
-   *  rolls one against the global RARITY_WEIGHTS distribution. The
-   *  daily-bonus path passes "legendary" to force the guaranteed roll. */
+  /** Legacy: accepted for older callers/tests, but rarity no longer drives
+   *  credit or grade advancement. */
   rarity?: Rarity;
+  /** Teacher-authored custom question should be promoted into the reusable
+   *  Ruby High bank. Banked picks pass questionId and leave this false. */
+  persistToBank?: boolean;
 }
 
 export interface PoseOpinionInput {
@@ -98,14 +110,105 @@ export interface PickAndPoseInput {
 }
 
 export interface QuestionBankStatus {
+  mode: "bank" | "srs";
   facultyId: string;
   displayName: string;
   total: number;
   asked: number;
   remaining: number;
+  grade?: string;
+  readyCount?: number;
+  masteredCount?: number;
+  learningCount?: number;
+  shakyCount?: number;
+  newCount?: number;
   defaultDifficulty?: Difficulty;
   remainingByDifficulty: Partial<Record<Difficulty, number>>;
   remainingBySubject: Record<string, number>;
+}
+
+export interface CourseProgress {
+  mode: "bank" | "srs";
+  facultyId: string;
+  displayName: string;
+  total: number;
+  ready: number;
+  grade?: string;
+  mastered: number;
+  learning: number;
+  shaky: number;
+  new: number;
+}
+
+const SRS_AGAIN_MS = 5 * 60 * 1000;
+const SRS_HARD_MS = 30 * 60 * 1000;
+const SRS_ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const GLOBAL_PACK_OWNER = "__ruby_high_global__";
+const SRS_GOOD_INTERVALS_MS = [
+  10 * 60 * 1000,
+  SRS_ONE_DAY_MS,
+  3 * SRS_ONE_DAY_MS,
+  7 * SRS_ONE_DAY_MS,
+];
+const SRS_EASY_INTERVALS_MS = [
+  30 * 60 * 1000,
+  2 * SRS_ONE_DAY_MS,
+  7 * SRS_ONE_DAY_MS,
+  14 * SRS_ONE_DAY_MS,
+];
+
+function cardMemoryKey(courseId: string, questionId: string): string {
+  return `${courseId}::${questionId}`;
+}
+
+function defaultCardMemory(courseId: string, questionId: string): CardMemory {
+  return {
+    courseId,
+    questionId,
+    phase: "new",
+    dueAt: 0,
+    stability: 0,
+    difficulty: 0.5,
+    consecutiveCorrect: 0,
+    correctCount: 0,
+    wrongCount: 0,
+    delayedCorrectCount: 0,
+    lapses: 0,
+  };
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function intervalForCorrect(rating: CardReviewRating, consecutiveCorrect: number): number {
+  if (rating === "hard") return SRS_HARD_MS;
+  const table = rating === "easy" ? SRS_EASY_INTERVALS_MS : SRS_GOOD_INTERVALS_MS;
+  return table[Math.min(consecutiveCorrect - 1, table.length - 1)] ?? SRS_GOOD_INTERVALS_MS[0]!;
+}
+
+function dueKnownCard(memory: CardMemory, now: number): boolean {
+  return memory.dueAt <= now;
+}
+
+function letterGradeForSrs(total: number, mastered: number, shaky: number, learning: number): string {
+  if (total <= 0) return "F";
+  const pct = mastered / total;
+  let letter = "F";
+  if (pct >= 0.9) letter = "A";
+  else if (pct >= 0.75) letter = "B";
+  else if (pct >= 0.55) letter = "C";
+  else if (pct >= 0.3) letter = "D";
+  const unresolvedPressure = (shaky + learning * 0.5) / total;
+  if (letter === "A") return unresolvedPressure > 0.12 ? "A-" : "A";
+  if (letter === "F") return pct >= 0.2 && unresolvedPressure < 0.4 ? "F+" : "F";
+  const bandProgress =
+    letter === "B" ? (pct - 0.75) / 0.15 :
+    letter === "C" ? (pct - 0.55) / 0.2 :
+    (pct - 0.3) / 0.25;
+  if (unresolvedPressure > 0.25) return `${letter}-`;
+  if (bandProgress >= 0.72) return `${letter}+`;
+  return letter;
 }
 
 export class RubyHighService extends Service {
@@ -116,6 +219,7 @@ export class RubyHighService extends Service {
 
   private readonly sessions = new Map<string, QuizState>();
   private readonly store: StateStoreLike;
+  private readonly backgroundWrites = new Set<Promise<void>>();
   private faculty: FacultyService | null = null;
   private loaded = false;
 
@@ -136,8 +240,14 @@ export class RubyHighService extends Service {
   }
 
   /** Wait for any in-flight persistence writes to flush. Useful in tests. */
-  flush(): Promise<void> {
-    return this.persistAll();
+  async flush(): Promise<void> {
+    await this.persistAll();
+    await Promise.allSettled(Array.from(this.backgroundWrites));
+  }
+
+  /** Persist one session before returning an HTTP mutation response. */
+  flushSession(sessionId: string): Promise<void> {
+    return this.persistSession(sessionId);
   }
 
   /** Player taps "Roll for advantage" once per round. The roll is consumed
@@ -172,7 +282,7 @@ export class RubyHighService extends Service {
         return { state, result: null, reason: "exhausted" };
       }
     }
-    const stat: keyof CharacterStats = "head";
+    const stat: keyof CharacterStats = state.current ? statForQuestion(state.current) : "head";
     const r = roll2d6();
     const mod = state.character?.stats[stat] ?? 0;
     const total = r.total + mod;
@@ -277,9 +387,70 @@ export class RubyHighService extends Service {
 
   private async hydrate(): Promise<void> {
     if (this.loaded) return;
+    const storedPacks = await this.store.loadPacks();
+    storedPacks
+      .slice()
+      .sort((a, b) => a.touchedAt - b.touchedAt)
+      .forEach((record) => {
+        try {
+          if (record.ownerSessionId === GLOBAL_PACK_OWNER) {
+            setActivePack(record.pack);
+          } else {
+            registerPack(record.pack, record.ownerSessionId, record.touchedAt);
+          }
+        } catch (err) {
+          log.error("ruby-high.restore-pack-failed", err, {
+            ownerSessionId: record.ownerSessionId,
+            packId: record.pack?.id,
+          });
+        }
+    });
     const loaded = await this.store.load();
-    for (const [k, v] of loaded) this.sessions.set(k, normalizeLoaded(v));
+    let repaired = false;
+    for (const [k, v] of loaded) {
+      const state = normalizeLoaded(v);
+      repaired = this.reconcileLoadedPackState(state) || repaired;
+      this.sessions.set(k, state);
+    }
     this.loaded = true;
+    if (repaired) await this.persistAll();
+  }
+
+  private reconcileLoadedPackState(state: QuizState): boolean {
+    const resolvedPack = packForSession(state);
+    let repaired = false;
+    if (state.activePackId && resolvedPack.id !== state.activePackId) {
+      state.activePackId = null;
+      state.current = null;
+      state.activeRound = null;
+      state.lastReveal = null;
+      state.roomBoards = {};
+      repaired = true;
+    }
+    if (state.faculty !== LOUNGE_FACULTY.id) {
+      const resolvedFaculty = resolveFacultyIdForSession(state, state.faculty);
+      if (resolvedFaculty && resolvedFaculty !== state.faculty) {
+        state.faculty = resolvedFaculty;
+        state.current = null;
+        state.activeRound = null;
+        state.lastReveal = null;
+        state.roomBoards = {};
+        repaired = true;
+      }
+    }
+    if (
+      state.faculty !== LOUNGE_FACULTY.id &&
+      !resolvedPack.faculty.some((f) => f.id === state.faculty)
+    ) {
+      state.faculty = resolvedPack.faculty[0]?.id ?? RUBY_FACULTY.id;
+      state.current = null;
+      state.activeRound = null;
+      state.lastReveal = null;
+      state.roomBoards = {};
+      repaired = true;
+    }
+    if (repaired) state.updatedAt = Date.now();
+    return repaired;
   }
 
   /** Persist exactly one session — the preferred mutation path. With the
@@ -305,6 +476,33 @@ export class RubyHighService extends Service {
    *  individual mutations should use persistSession(). */
   private persistAll(): Promise<void> {
     return this.store.save(this.sessions.values());
+  }
+
+  persistImportedPack(sessionId: string, pack: ContentPack): Promise<void> {
+    return this.store.savePack({
+      pack,
+      ownerSessionId: sessionId,
+      touchedAt: Date.now(),
+    }).catch((err) => {
+      log.error("ruby-high.persist-pack-failed", err, { sessionId, packId: pack.id });
+    });
+  }
+
+  private trackBackgroundWrite(promise: Promise<void>): void {
+    const tracked = promise.finally(() => {
+      this.backgroundWrites.delete(tracked);
+    });
+    this.backgroundWrites.add(tracked);
+  }
+
+  private persistGlobalPack(pack: ContentPack): void {
+    this.trackBackgroundWrite(this.store.savePack({
+      pack,
+      ownerSessionId: GLOBAL_PACK_OWNER,
+      touchedAt: Date.now(),
+    }).catch((err) => {
+      log.error("ruby-high.persist-global-pack-failed", err, { packId: pack.id });
+    }));
   }
 
   listFaculty(): FacultyMember[] {
@@ -333,6 +531,8 @@ export class RubyHighService extends Service {
         lastReveal: null,
         status: statusForPhase("in-room"),
         askedQuestionIds: [],
+        cardMemory: {},
+        roomBoards: {},
         currentGrade: DEFAULT_GRADE,
         completedGrades: [],
         hasSeenIntro: true,
@@ -351,7 +551,8 @@ export class RubyHighService extends Service {
     }
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
-    if (this.maybeMarkGradeReady(state)) {
+    const repairedSrs = this.backfillSrsMemory(state);
+    if (this.maybeMarkGradeReady(state) || repairedSrs) {
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
     }
@@ -395,6 +596,296 @@ export class RubyHighService extends Service {
     // is three transitions, three tokens, three "channel-enter" events the
     // viewer should fire on).
     state.phaseToken = (state.phaseToken ?? 0) + 1;
+  }
+
+  private shouldStoreBoardForFaculty(facultyId: string | null | undefined): facultyId is string {
+    return !!facultyId && facultyId !== LOUNGE_FACULTY.id;
+  }
+
+  private boardPhase(board: RoomBoardSnapshot): Phase {
+    if (board.activeRound && !board.activeRound.resolved) return "asking";
+    if (board.lastReveal && board.current) return "revealed";
+    return "in-room";
+  }
+
+  private saveActiveBoardForFaculty(state: QuizState, facultyId: string): void {
+    if (!this.shouldStoreBoardForFaculty(facultyId)) return;
+    state.roomBoards = state.roomBoards ?? {};
+    if (!state.current && !state.lastReveal && !state.activeRound) {
+      delete state.roomBoards[facultyId];
+      return;
+    }
+    state.roomBoards[facultyId] = {
+      subject: state.subject,
+      current: state.current,
+      lastReveal: state.lastReveal,
+      activeRound: state.activeRound,
+    };
+  }
+
+  private restoreBoardForFaculty(state: QuizState, facultyId: string): boolean {
+    if (!this.shouldStoreBoardForFaculty(facultyId)) return false;
+    const board = state.roomBoards?.[facultyId];
+    if (!board) return false;
+    state.subject = board.subject;
+    state.current = board.current;
+    state.lastReveal = board.lastReveal;
+    state.activeRound = board.activeRound;
+    delete state.roomBoards![facultyId];
+    const phase = this.boardPhase(board);
+    state.phase = phase;
+    state.status = statusForPhase(phase);
+    this.tickRound(state);
+    return true;
+  }
+
+  private discardBoardForFaculty(state: QuizState, facultyId: string): void {
+    if (!this.shouldStoreBoardForFaculty(facultyId)) return;
+    if (state.roomBoards) delete state.roomBoards[facultyId];
+  }
+
+  private resolveQuestionFaculty(state: QuizState, requested?: string): string {
+    const raw = requested?.trim() || state.faculty;
+    if (raw === LOUNGE_FACULTY.id) return raw;
+    return resolveFacultyIdForSession(state, raw) ?? raw;
+  }
+
+  private subjectsForFaculty(state: QuizState, facultyId: string): string[] {
+    const pack = packForSession(state);
+    const faculty = pack.faculty.find((f) => f.id === facultyId);
+    if (!faculty) return [];
+    const bankSubjects = Array.from(new Set(
+      faculty.questions
+        .map((q) => q.subject)
+        .filter((subject): subject is string => typeof subject === "string" && subject.trim().length > 0),
+    ));
+    return bankSubjects.length > 0 ? bankSubjects : faculty.subjects;
+  }
+
+  private normalizeQuestionSubject(state: QuizState, facultyId: string, requested?: string): string | undefined {
+    const subjects = this.subjectsForFaculty(state, facultyId);
+    const explicit = requested?.trim();
+    if (explicit && (subjects.length === 0 || subjects.includes(explicit))) return explicit;
+    if (state.subject && subjects.includes(state.subject)) return state.subject;
+    return subjects[0] ?? (explicit || undefined);
+  }
+
+  private ensureCardMemory(state: QuizState): Record<string, CardMemory> {
+    if (!state.cardMemory || typeof state.cardMemory !== "object") {
+      state.cardMemory = {};
+    }
+    return state.cardMemory;
+  }
+
+  private isSrsCourse(state: QuizState, facultyId: string): boolean {
+    const pack = packForSession(state);
+    return pack.id.startsWith("anki:") && pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0);
+  }
+
+  private cardMemoryFor(state: QuizState, courseId: string, questionId: string): CardMemory | null {
+    return this.ensureCardMemory(state)[cardMemoryKey(courseId, questionId)] ?? null;
+  }
+
+  private srsQuestionsFor(state: QuizState, facultyId: string): BankedQuestion[] {
+    if (!this.isSrsCourse(state, facultyId)) return [];
+    return packForSession(state).faculty.find((f) => f.id === facultyId)?.questions ?? [];
+  }
+
+  private backfillSrsMemory(state: QuizState): boolean {
+    const pack = packForSession(state);
+    if (!pack.id.startsWith("anki:")) return false;
+    const memory = this.ensureCardMemory(state);
+    const historyByQuestion = new Map<string, AnswerRecord[]>();
+    for (const record of state.history) {
+      let list = historyByQuestion.get(record.questionId);
+      if (!list) {
+        list = [];
+        historyByQuestion.set(record.questionId, list);
+      }
+      list.push(record);
+    }
+
+    let mutated = false;
+    const asked = new Set(state.askedQuestionIds);
+    for (const faculty of pack.faculty) {
+      for (const q of faculty.questions) {
+        const key = cardMemoryKey(faculty.id, q.id);
+        if (memory[key]) continue;
+        const records = (historyByQuestion.get(q.id) ?? []).sort((a, b) => a.at - b.at);
+        const currentUnresolved =
+          state.current?.id === q.id &&
+          state.activeRound?.questionId === q.id &&
+          !state.activeRound.resolved;
+        if (currentUnresolved) continue;
+        if (records.length === 0 && !asked.has(q.id)) continue;
+        const m = defaultCardMemory(faculty.id, q.id);
+        if (records.length > 0) {
+          let trailing = 0;
+          for (let i = records.length - 1; i >= 0; i--) {
+            if (!records[i]!.wasCorrect) break;
+            trailing += 1;
+          }
+          m.correctCount = records.filter((r) => r.wasCorrect).length;
+          m.wrongCount = records.length - m.correctCount;
+          m.consecutiveCorrect = trailing;
+          m.phase = trailing >= 2 ? "review" : "learning";
+          m.lastReviewedAt = records[records.length - 1]!.at;
+          m.lastResult = records[records.length - 1]!.wasCorrect ? "good" : "again";
+        } else {
+          m.phase = "learning";
+        }
+        // Legacy one-use-bank state has already shown the card. Mark it due
+        // now so imports recover into the review queue instead of staying dry.
+        m.dueAt = Date.now();
+        memory[key] = m;
+        mutated = true;
+      }
+    }
+    return mutated;
+  }
+
+  private pickSrsQuestion(
+    state: QuizState,
+    facultyId: string,
+    filter: { subject?: string; difficulty?: Difficulty } = {},
+    now = Date.now(),
+  ): BankedQuestion | null {
+    const all = this.srsQuestionsFor(state, facultyId);
+    if (all.length === 0) return null;
+    const preferred = all.filter((q) =>
+      (!filter.subject || q.subject === filter.subject) &&
+      (!filter.difficulty || q.difficulty === filter.difficulty)
+    );
+    const pool = preferred.length > 0 ? preferred : all;
+    const memory = this.ensureCardMemory(state);
+    const due: BankedQuestion[] = [];
+    const fresh: BankedQuestion[] = [];
+    const masteredDue: BankedQuestion[] = [];
+    for (const q of pool) {
+      const m = memory[cardMemoryKey(facultyId, q.id)];
+      if (!m) {
+        fresh.push(q);
+      } else if (dueKnownCard(m, now)) {
+        if (m.phase === "mastered") masteredDue.push(q);
+        else due.push(q);
+      }
+    }
+    due.sort((a, b) => {
+      const ma = memory[cardMemoryKey(facultyId, a.id)]!;
+      const mb = memory[cardMemoryKey(facultyId, b.id)]!;
+      const phaseRank = (m: CardMemory) => m.phase === "learning" ? 0 : m.phase === "review" ? 1 : 2;
+      return phaseRank(ma) - phaseRank(mb)
+        || mb.wrongCount - ma.wrongCount
+        || ma.consecutiveCorrect - mb.consecutiveCorrect
+        || ma.dueAt - mb.dueAt;
+    });
+    if (due.length > 0) return due[0]!;
+    if (fresh.length > 0) return fresh[Math.floor(Math.random() * fresh.length)] ?? null;
+    masteredDue.sort((a, b) => {
+      const ma = memory[cardMemoryKey(facultyId, a.id)]!;
+      const mb = memory[cardMemoryKey(facultyId, b.id)]!;
+      return ma.dueAt - mb.dueAt;
+    });
+    return masteredDue[0] ?? null;
+  }
+
+  private questionBelongsToSrsCourse(state: QuizState, q: Question): BankedQuestion | null {
+    const facultyId = this.resolveQuestionFaculty(state, q.faculty);
+    if (!this.isSrsCourse(state, facultyId)) return null;
+    return this.srsQuestionsFor(state, facultyId).find((candidate) => candidate.id === q.id) ?? null;
+  }
+
+  private reviewRatingForRound(
+    wasCorrect: boolean,
+    forfeit: boolean,
+    playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
+  ): CardReviewRating {
+    if (!wasCorrect || forfeit) return "again";
+    if (playerRoll?.outcome === "hit") return "easy";
+    if (playerRoll?.outcome === "mixed") return "good";
+    return "hard";
+  }
+
+  private recordSrsReview(
+    state: QuizState,
+    q: Question,
+    rating: CardReviewRating,
+    now = Date.now(),
+  ): void {
+    const banked = this.questionBelongsToSrsCourse(state, q);
+    if (!banked) return;
+    const memory = this.ensureCardMemory(state);
+    const key = cardMemoryKey(banked.faculty, banked.id);
+    const previous = memory[key] ?? defaultCardMemory(banked.faculty, banked.id);
+    const delayed = previous.lastReviewedAt != null && now >= previous.dueAt;
+    const next: CardMemory = { ...previous, lastReviewedAt: now, lastResult: rating };
+
+    if (rating === "again") {
+      next.phase = "learning";
+      next.dueAt = now + SRS_AGAIN_MS;
+      next.consecutiveCorrect = 0;
+      next.wrongCount += 1;
+      next.lapses += 1;
+      next.difficulty = clamp(next.difficulty + 0.15, 0, 1);
+      next.stability = SRS_AGAIN_MS / SRS_ONE_DAY_MS;
+      memory[key] = next;
+      return;
+    }
+
+    next.correctCount += 1;
+    next.consecutiveCorrect += 1;
+    if (delayed) next.delayedCorrectCount += 1;
+    next.difficulty = clamp(
+      next.difficulty + (rating === "hard" ? 0.05 : rating === "good" ? -0.05 : -0.1),
+      0,
+      1,
+    );
+    const interval = intervalForCorrect(rating, next.consecutiveCorrect);
+    const accuracy = next.correctCount / Math.max(1, next.correctCount + next.wrongCount);
+    const mastered = next.consecutiveCorrect >= 3 && next.delayedCorrectCount >= 1 && accuracy >= 0.75;
+    next.phase = mastered ? "mastered" : next.consecutiveCorrect >= 2 ? "review" : "learning";
+    next.dueAt = now + (mastered ? Math.max(interval, 14 * SRS_ONE_DAY_MS) : interval);
+    next.stability = interval / SRS_ONE_DAY_MS;
+    memory[key] = next;
+  }
+
+  private srsCounts(state: QuizState, facultyId: string, now = Date.now()): {
+    asked: number;
+    ready: number;
+    mastered: number;
+    learning: number;
+    shaky: number;
+    fresh: number;
+    remainingByDifficulty: Partial<Record<Difficulty, number>>;
+    remainingBySubject: Record<string, number>;
+  } {
+    const questions = this.srsQuestionsFor(state, facultyId);
+    const memory = this.ensureCardMemory(state);
+    let asked = 0;
+    let ready = 0;
+    let mastered = 0;
+    let learning = 0;
+    let shaky = 0;
+    let fresh = 0;
+    const remainingByDifficulty: Partial<Record<Difficulty, number>> = {};
+    const remainingBySubject: Record<string, number> = {};
+    for (const q of questions) {
+      const m = memory[cardMemoryKey(facultyId, q.id)];
+      const isFresh = !m;
+      if (m?.lastReviewedAt != null) asked += 1;
+      if (isFresh) fresh += 1;
+      else if (m.phase === "mastered") mastered += 1;
+      else if (m.phase === "learning") learning += 1;
+      else if (m.phase === "review") learning += 1;
+      if (m && m.wrongCount > 0 && m.consecutiveCorrect === 0) shaky += 1;
+      const isReady = isFresh || (m ? dueKnownCard(m, now) : false);
+      if (isReady) {
+        ready += 1;
+        remainingByDifficulty[q.difficulty] = (remainingByDifficulty[q.difficulty] ?? 0) + 1;
+        remainingBySubject[q.subject] = (remainingBySubject[q.subject] ?? 0) + 1;
+      }
+    }
+    return { asked, ready, mastered, learning, shaky, fresh, remainingByDifficulty, remainingBySubject };
   }
 
   /** Advance the active round based on wall-clock time:
@@ -488,31 +979,34 @@ export class RubyHighService extends Service {
     state.score.total += 1;
     if (wasCorrect) state.score.correct += 1;
 
-    // 2d6 + HEAD roll for the player — bonus layer on top of their literal
-    // pick. A correct answer earns XP scaled by the roll (10+ = +2, 7-9 = +1,
-    // 6- = +1). A wrong answer earns 0 XP and never imposes a Condition: the
-    // dice can only ever upgrade the outcome, never punish it. NPC rolls (in
-    // activeRound.npcs) carry the actual race stakes.
+    // 2d6 + question stat roll for the player — bonus layer on top of their literal
+    // pick. A correct answer earns class credit scaled by the roll
+    // (10+ = 2, 7-9/6- = 1). A wrong answer earns 0 credits and never imposes
+    // a Condition: the dice can only ever upgrade the outcome, never punish it.
+    // NPC rolls (in activeRound.npcs) carry the actual race stakes.
     let playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null = null;
     if (state.character && picked != null) {
-      const stat: keyof CharacterStats = "head";
+      const stat: keyof CharacterStats = statForQuestion(q);
       const r = roll2d6();
       const total = r.total + state.character.stats[stat];
       const outcome = classifyTotal(total);
       const xpAwarded = wasCorrect
         ? (outcome === "hit" ? 2 : 1)
         : 0;
-      state.character.xp = (state.character.xp ?? 0) + xpAwarded;
       playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
+    this.recordSrsReview(
+      state,
+      q,
+      this.reviewRatingForRound(wasCorrect, forfeit, playerRoll),
+      round.player.answeredAt ?? Date.now(),
+    );
 
-    // Player progression. Post-rarity-refactor every resolved round
-    // flows through applyPlayerProgress: rarity drives both XP and
-    // the per-day Legendary count toward the streak. The cohort
-    // ticks on Legendary rounds (the per-day pass marker) so NPC
-    // pacing roughly matches the player's UTC-day cadence.
-    this.applyPlayerProgress(state, wasCorrect, state.faculty, q.rarity ?? "common");
-    if ((q.rarity ?? "common") === "legendary") {
+    // Player progression. The player roll's awarded credits are the single
+    // source of truth for both lifetime credits and per-class graduation gates.
+    // The first passed question per school day ticks the streak and cohort.
+    const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, playerRoll?.xpAwarded ?? 0);
+    if (progress.dailyTicked) {
       const correctAns = (q.correct ?? "A") as Choice;
       this.applyCohortDaily(state, correctAns, dailyKey());
     }
@@ -537,28 +1031,23 @@ export class RubyHighService extends Service {
     void this.persistSession(state.sessionId);
   }
 
-  /** Apply rarity-driven progression after a question resolves. Called
-   *  on every resolved round now that the one-question-per-day arc is gone.
+  /** Apply grade progression after a question resolves.
    *  Steps:
    *
-   *    1. subjectScores tick (independent of pass/rarity) — drives
+   *    1. subjectScores tick (independent of pass) — drives
    *       the diploma's subject-themed accessory at graduation.
-   *    2. On a pass: subjectXp[faculty] += xpForRarity(r); ch.xp += same.
-   *       Common = 0 XP — free reps with no progression weight.
-   *    3. On a Legendary pass: bump legendariesToday.count for today.
-   *       The first time count meets `legendariesPerDayFor(grade)` on
-   *       a given UTC date is a "day complete": tick the streak (with
-   *       date-gap reset).
+   *    2. On a pass: subjectXp[faculty] += awardedCredits; ch.xp += same.
+   *       Every correct answer carries at least 1 credit from the player roll,
+   *       so visible credits and class-gate progress cannot diverge.
+   *    3. The first passed question on a UTC date is a "school day complete":
+   *       tick the streak, with date-gap reset.
    *    4. Re-check grade completion after every progress mutation. Streak
    *       and class credit can land in either order; once both gates are met,
    *       the year completes immediately.
-   *
-   *  Rarity comes from the question itself (state.current.rarity); the
-   *  caller passes it through so this method doesn't have to peek at
-   *  state.current. */
-  private applyPlayerProgress(state: QuizState, passed: boolean, faculty: string, rarity: Rarity): void {
+   */
+  private applyPlayerProgress(state: QuizState, passed: boolean, faculty: string, awardedCredits: number): { dailyTicked: boolean } {
     const ch = state.character;
-    if (!ch || !state.currentGrade) return;
+    if (!ch || !state.currentGrade) return { dailyTicked: false };
     const grade = state.currentGrade;
     const today = dailyKey();
 
@@ -569,39 +1058,33 @@ export class RubyHighService extends Service {
     if (passed) subj.correct += 1;
     ch.subjectScores[faculty] = subj;
 
-    // 2. XP. Award only on pass; amount is rarity-tiered.
-    const xp = passed ? xpForRarity(rarity) : 0;
+    // 2. Credits. Award only on pass; amount comes from the question-stat roll.
+    const xp = passed ? Math.max(0, Math.floor(awardedCredits)) : 0;
     ch.subjectXp = ch.subjectXp ?? {};
     if (xp > 0) {
       ch.subjectXp[faculty] = (ch.subjectXp[faculty] ?? 0) + xp;
       ch.xp = (ch.xp ?? 0) + xp;
     }
 
-    // 3. Day-target tracking. Only Legendary correctness moves it.
-    if (!passed || rarity !== "legendary") {
+    // 3. Streak tracking. Only the first passed question per school day moves it.
+    let dailyTicked = false;
+    if (!passed) {
       this.maybeMarkGradeReady(state);
-      return;
+      return { dailyTicked };
     }
 
-    if (!ch.legendariesToday || ch.legendariesToday.date !== today) {
-      ch.legendariesToday = { date: today, count: 0 };
-    }
-    ch.legendariesToday.count += 1;
-
-    const target = legendariesPerDayFor(grade);
-    // Only credit the streak once per date. If an older state is already past
-    // target but somehow missed the credit, `>= target` reconciles it.
-    if (ch.legendariesToday.count >= target) {
-      const prevLastDate = ch.streak && ch.streak.grade === grade ? ch.streak.lastDate : undefined;
-      if (prevLastDate !== today) {
-        const nextCount = prevLastDate && daysBetween(prevLastDate, today) === 1
-          ? (ch.streak?.grade === grade ? ch.streak.count : 0) + 1
-          : 1; // fresh streak — first day, gap > 1, or new grade
-        ch.streak = { grade, count: nextCount, lastDate: today };
-      }
+    const prevLastDate = ch.streak && ch.streak.grade === grade ? ch.streak.lastDate : undefined;
+    if (prevLastDate !== today) {
+      const nextCount = prevLastDate && daysBetween(prevLastDate, today) === 1
+        ? (ch.streak?.grade === grade ? ch.streak.count : 0) + 1
+        : 1; // fresh streak — first day, gap > 1, or new grade
+      ch.streak = { grade, count: nextCount, lastDate: today };
+      ch.legendariesToday = { date: today, count: 1 };
+      dailyTicked = true;
     }
 
     this.maybeMarkGradeReady(state);
+    return { dailyTicked };
   }
 
   private gradeCompletionStatus(state: QuizState): {
@@ -726,6 +1209,7 @@ export class RubyHighService extends Service {
     }
 
     this.transition(state, { kind: "clear-board" });
+    this.discardBoardForFaculty(state, state.faculty);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -769,15 +1253,15 @@ export class RubyHighService extends Service {
   }
 
   /** Cohort tick — every NPC who's still in school rolls against today's
-   *  Legendary-day progress check and ticks their own streak. Independent of the player's pass:
+   *  school-day progress check and ticks their own streak. Independent of the player's pass:
    *  Indra might pass while you miss, or vice versa. Streak resets on
    *  miss; advances on threshold; graduates after Senior streak.
    *
    *  NPCs gate on streak alone — no XP gate. They feel hungrier than the
    *  player, which makes the rivalry tense ("Indra graduated last week").
    *
-   *  The day-key dedupe prevents double-tick if the player clears multiple
-   *  Legendary rounds on the same day after the target has already been met. */
+   *  The day-key dedupe prevents double-tick if the player passes multiple
+   *  questions on the same day after the streak has already ticked. */
   private applyCohortDaily(state: QuizState, correctAnswer: Choice, key: string): void {
     if (!state.npcCohort) state.npcCohort = initialNpcCohort();
     const cohort = state.npcCohort;
@@ -786,7 +1270,7 @@ export class RubyHighService extends Service {
       if (npc.graduated) continue;
       if (npc.lastDailyDate === key) continue; // already ticked today
       const stats = npcStatsFor(npc.id);
-      const r = rollNpcAnswer(stats, correctAnswer);
+      const r = rollNpcAnswer(stats, correctAnswer, statForQuestion(state.current));
       const passed = r.pick === correctAnswer;
       npc.lastDailyDate = key;
       if (!passed) {
@@ -838,7 +1322,9 @@ export class RubyHighService extends Service {
       }
     }
     const id = input.questionId ?? `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-    const rarity = input.rarity ?? rollRarity();
+    const facultyId = this.resolveQuestionFaculty(state, input.faculty);
+    const subject = this.normalizeQuestionSubject(state, facultyId, input.subject);
+    const difficulty = input.difficulty ?? (state.currentGrade ? difficultyForGrade(state.currentGrade) : "medium");
     const question: Question = {
       id,
       prompt: input.prompt.trim(),
@@ -846,24 +1332,59 @@ export class RubyHighService extends Service {
       options: { ...input.options },
       correct: input.correct,
       explanation: input.explanation?.trim() || undefined,
-      subject: input.subject?.trim() || state.subject || undefined,
-      difficulty: input.difficulty,
-      faculty: input.faculty?.trim() || state.faculty,
-      rarity,
+      subject,
+      stat: normalizeQuestionStat(input.stat) ?? undefined,
+      difficulty,
+      faculty: facultyId,
+      rarity: input.rarity,
     };
+    question.stat = statForQuestion(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
+    this.maybePromoteAuthoredQuestion(state, question, !!input.persistToBank && !input.questionId);
 
     // Open a new round and pre-roll the NPCs in the active classroom. The
     // student-side LLM never touches the question — picks come from dice +
-    // their HEAD/HUSTLE stats, so they can't cheat by reading the answer.
+    // the question stat, and HUSTLE only controls timing.
     state.activeRound = this.openRound(state, question);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
+  }
+
+  private maybePromoteAuthoredQuestion(state: QuizState, question: Question, shouldPersist: boolean): void {
+    if (!shouldPersist) return;
+    const pack = packForSession(state);
+    // Imported decks are private study material; custom "challenge" boards
+    // should not silently rewrite a user's imported source deck. The original
+    // Ruby High curriculum is the shared server-side bank we grow over time.
+    if (pack.id !== ORIGINAL_PACK_ID) return;
+    if (!question.options || !question.correct || !question.subject || !question.difficulty || !question.faculty) return;
+    const banked: BankedQuestion = {
+      id: question.id,
+      prompt: question.prompt,
+      type: "multiple-choice",
+      options: question.options as Record<Choice, string>,
+      correct: question.correct,
+      explanation: question.explanation,
+      subject: question.subject,
+      stat: question.stat,
+      difficulty: question.difficulty,
+      faculty: question.faculty,
+    };
+    const updated = appendQuestionToPackBank(pack.id, question.faculty, banked);
+    if (updated) {
+      this.persistGlobalPack(updated);
+      log.event("question.promoted-to-bank", {
+        sessionId: state.sessionId,
+        packId: pack.id,
+        faculty: question.faculty,
+        questionId: question.id,
+      });
+    }
   }
 
   private openRound(state: QuizState, question: Question): ActiveRound {
@@ -891,12 +1412,13 @@ export class RubyHighService extends Service {
             answeredAt: null,
           };
         }
-        const r = rollNpcAnswer(npc.stats, question.correct ?? "A");
+        const r = rollNpcAnswer(npc.stats, question.correct ?? "A", statForQuestion(question));
         return {
           studentId: npc.id,
           delayMs: r.delayMs,
           plannedPick: r.pick,
           rolledTotal: r.total,
+          rolledStat: r.stat,
           rolledDice: r.dice,
           outcome: r.outcome,
           answeredAt: null,
@@ -917,8 +1439,7 @@ export class RubyHighService extends Service {
       opinionResponses: [],
       opinionGrades: [],
       bestResponder: null,
-      // Mirror rarity from the question so the SSE telemetry can drive
-      // the chalkboard's COMMON/RARE/LEGENDARY pill without re-deriving.
+      stat: statForQuestion(question),
       rarity: question.rarity,
     };
   }
@@ -929,15 +1450,16 @@ export class RubyHighService extends Service {
   poseOpinion(sessionId: string, input: PoseOpinionInput): QuizState {
     const state = this.getOrCreate(sessionId);
     const id = input.questionId ?? `qo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-    const rarity = input.rarity ?? rollRarity();
+    const facultyId = this.resolveQuestionFaculty(state, input.faculty);
+    const subject = this.normalizeQuestionSubject(state, facultyId, input.subject);
     const question: Question = {
       id,
       prompt: input.prompt.trim(),
       type: "opinion",
       rubric: input.rubric?.trim() || undefined,
-      subject: input.subject?.trim() || state.subject || undefined,
-      faculty: input.faculty?.trim() || state.faculty,
-      rarity,
+      subject,
+      faculty: facultyId,
+      rarity: input.rarity,
     };
     state.current = question;
     state.subject = question.subject ?? state.subject;
@@ -1020,12 +1542,11 @@ export class RubyHighService extends Service {
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
-      // Same rarity-driven progression as MC rounds. Opinion rounds
-      // can carry any rarity; if the LLM rolled a Legendary opinion
-      // and the player passed (essay grade ≥ pass threshold), it
-      // counts toward today's Legendary target.
-      this.applyPlayerProgress(state, passed, state.faculty, q.rarity ?? "common");
-      if ((q.rarity ?? "common") === "legendary") {
+      this.recordSrsReview(state, q, passed ? "good" : "again", record.at);
+      // Same progression as MC rounds. Opinion rounds award a flat credit
+      // on pass because they do not use the A/B/C/D player roll.
+      const progress = this.applyPlayerProgress(state, passed, state.faculty, passed ? 1 : 0);
+      if (progress.dailyTicked) {
         // NPCs roll a coin-flip-ish dice; "A" is a neutral sentinel
         // since opinion mode has no correct letter to leak.
         this.applyCohortDaily(state, "A", dailyKey());
@@ -1053,13 +1574,35 @@ export class RubyHighService extends Service {
       throw new Error("FacultyService is not bound. Call setFacultyService() first.");
     }
     const state = this.getOrCreate(sessionId);
+    const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
+    const useSrs = this.isSrsCourse(state, facultyId);
     let difficulty = filter.difficulty;
-    if (!difficulty && state.currentGrade) {
+    if (!difficulty && state.currentGrade && !useSrs) {
       // Without grade-tagged questions yet, lean on difficulty as a proxy.
       difficulty = difficultyForGrade(state.currentGrade);
     }
+    if (useSrs) {
+      const q = this.pickSrsQuestion(state, facultyId, {
+        subject: filter.subject,
+        difficulty,
+      });
+      if (!q) {
+        throw new Error(`No deck cards are ready for ${facultyId} right now.`);
+      }
+      return this.pose(sessionId, {
+        prompt: q.prompt,
+        options: q.options as Record<Choice, string>,
+        correct: q.correct as Choice,
+        explanation: q.explanation,
+        subject: q.subject,
+        stat: q.stat,
+        difficulty: q.difficulty,
+        faculty: q.faculty,
+        questionId: q.id,
+      });
+    }
     const pickFilter: PickFilter = {
-      faculty: filter.faculty ?? state.faculty,
+      faculty: facultyId,
       subject: filter.subject,
       difficulty,
       exclude: state.askedQuestionIds,
@@ -1076,6 +1619,7 @@ export class RubyHighService extends Service {
       correct: q.correct as Choice,
       explanation: q.explanation,
       subject: q.subject,
+      stat: q.stat,
       difficulty: q.difficulty,
       faculty: q.faculty,
       questionId: q.id,
@@ -1084,9 +1628,30 @@ export class RubyHighService extends Service {
 
   questionBankStatus(sessionId: string, facultyId?: string): QuestionBankStatus {
     const state = this.getOrCreate(sessionId);
-    const fid = facultyId ?? state.faculty;
+    const fid = this.resolveQuestionFaculty(state, facultyId);
     const pack = packForSession(state);
     const faculty = pack.faculty.find((f) => f.id === fid);
+    if (this.isSrsCourse(state, fid)) {
+      const questions = faculty?.questions ?? [];
+      const counts = this.srsCounts(state, fid);
+      return {
+        mode: "srs",
+        facultyId: fid,
+        displayName: faculty?.displayName ?? fid,
+        total: questions.length,
+        asked: counts.asked,
+        remaining: counts.ready,
+        grade: letterGradeForSrs(questions.length, counts.mastered, counts.shaky, counts.learning),
+        readyCount: counts.ready,
+        masteredCount: counts.mastered,
+        learningCount: counts.learning,
+        shakyCount: counts.shaky,
+        newCount: counts.fresh,
+        defaultDifficulty: undefined,
+        remainingByDifficulty: counts.remainingByDifficulty,
+        remainingBySubject: counts.remainingBySubject,
+      };
+    }
     const askedIds = new Set(state.askedQuestionIds);
     const questions = faculty?.questions ?? [];
     const remaining = questions.filter((q) => !askedIds.has(q.id));
@@ -1097,24 +1662,38 @@ export class RubyHighService extends Service {
       remainingBySubject[q.subject] = (remainingBySubject[q.subject] ?? 0) + 1;
     }
     return {
+      mode: "bank",
       facultyId: fid,
       displayName: faculty?.displayName ?? fid,
       total: questions.length,
       asked: questions.length - remaining.length,
       remaining: remaining.length,
+      readyCount: remaining.length,
       defaultDifficulty: state.currentGrade ? difficultyForGrade(state.currentGrade) : undefined,
       remainingByDifficulty,
       remainingBySubject,
     };
   }
 
-  /** Daily-bonus status. This is now strictly about the once-per-day forced-
-   *  Legendary "bonus question". The bonus is the cheap retention hook
-   *  that survived the rarity refactor — the player gets a guaranteed
-   *  Legendary draw once per UTC date, available={true} until they
-   *  use it. The faculty-of-the-day rotation still works the same way
-   *  (deterministic by date), so the bonus also nudges the player
-   *  toward different rooms over the week. */
+  courseProgress(sessionId: string, facultyId?: string): CourseProgress {
+    const status = this.questionBankStatus(sessionId, facultyId);
+    return {
+      mode: status.mode,
+      facultyId: status.facultyId,
+      displayName: status.displayName,
+      total: status.total,
+      ready: status.readyCount ?? status.remaining,
+      grade: status.grade,
+      mastered: status.masteredCount ?? status.asked,
+      learning: status.learningCount ?? 0,
+      shaky: status.shakyCount ?? 0,
+      new: status.newCount ?? Math.max(0, status.remaining),
+    };
+  }
+
+  /** Daily-bonus status. This is a once-per-day warm-up question. The
+   *  faculty-of-the-day rotation still works the same way (deterministic by
+   *  date), so the bonus nudges the player toward different rooms over the week. */
   dailyStatus(sessionId: string, now: Date = new Date()): {
     available: boolean;
     reason?: "completed" | "no-grade" | "no-character";
@@ -1132,9 +1711,7 @@ export class RubyHighService extends Service {
     return { available: true, facultyId: fac, dailyKey: key };
   }
 
-  /** Pose today's daily bonus — a forced-Legendary draw, one per UTC
-   *  date. Throws if the bonus has already been used today (the viewer
-   *  reads dailyStatus() first to render the banner appropriately). */
+  /** Pose today's daily bonus. Throws if the bonus has already been used today. */
   playBonus(sessionId: string, now: Date = new Date()): QuizState {
     if (!this.faculty) {
       throw new Error("FacultyService is not bound. Call setFacultyService() first.");
@@ -1157,21 +1734,21 @@ export class RubyHighService extends Service {
     if (!q) {
       throw new Error(`Bank for ${facultyId} is exhausted; cannot pose today's bonus.`);
     }
-    // Force rarity = legendary — that's the bonus's defining gift.
+    // Daily bonus now just guarantees a fresh school-day question. It no
+    // longer changes credit math; question stat + correctness do that.
     const next = this.pose(sessionId, {
       prompt: q.prompt,
       options: q.options as Record<Choice, string>,
       correct: q.correct as Choice,
       explanation: q.explanation,
       subject: q.subject,
+      stat: q.stat,
       difficulty: q.difficulty,
       faculty: q.faculty,
       questionId: q.id,
-      rarity: "legendary",
     });
     if (next.activeRound) {
       next.activeRound.isBonus = true;
-      next.activeRound.rarity = "legendary";
     }
     if (state.character) {
       state.character.lastBonusDate = status.dailyKey;
@@ -1322,6 +1899,7 @@ export class RubyHighService extends Service {
     if (!GRADES.includes(grade)) throw new Error(`Unknown grade: ${grade}`);
     state.currentGrade = grade;
     state.hasSeenIntro = true;
+    state.roomBoards = {};
     // Seed the NPC roster for this grade if it doesn't exist yet.
     this.ensureRoster(state, grade);
     // Selecting a grade for the first time leaves the player in their
@@ -1346,6 +1924,7 @@ export class RubyHighService extends Service {
   clearBoard(sessionId: string): QuizState {
     const state = this.getOrCreate(sessionId);
     this.transition(state, { kind: "clear-board" });
+    this.discardBoardForFaculty(state, state.faculty);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -1378,13 +1957,15 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     state.activePackId = packId;
     const newPack = packForSession(state);
-    const firstFaculty = newPack.faculty[0]?.id ?? RUBY_FACULTY.id;
-    if (state.faculty !== firstFaculty && state.faculty !== LOUNGE_FACULTY.id) {
+    const firstFaculty = coursesForPack(newPack)[0]?.facultyId ?? newPack.faculty[0]?.id ?? RUBY_FACULTY.id;
+    if (state.faculty !== firstFaculty) {
       state.faculty = firstFaculty;
     }
+    state.subject = null;
     state.current = null;
     state.activeRound = null;
     state.lastReveal = null;
+    state.roomBoards = {};
     state.npcRosters = {};
     if (state.currentGrade) this.ensureRoster(state, state.currentGrade);
     this.transition(state, { kind: "clear-board" });
@@ -1396,26 +1977,38 @@ export class RubyHighService extends Service {
 
   setFaculty(sessionId: string, facultyId: string): QuizState {
     const state = this.getOrCreate(sessionId);
+    const requestedFacultyId = facultyId;
+    const resolvedFacultyId =
+      facultyId === LOUNGE_FACULTY.id
+        ? facultyId
+        : resolveFacultyIdForSession(state, facultyId) ?? facultyId;
     let faculty: FacultyMember | null = null;
-    if (facultyId === LOUNGE_FACULTY.id) {
+    if (resolvedFacultyId === LOUNGE_FACULTY.id) {
       faculty = LOUNGE_FACULTY;
     } else {
-      const f = facultyByIdForSession(state, facultyId);
+      const f = facultyByIdForSession(state, resolvedFacultyId);
       if (f) faculty = toFacultyMember(f);
     }
     if (!faculty) {
       const available = [...facultyForSession(state).map((f) => f.id), LOUNGE_FACULTY.id].join(", ");
-      throw new Error(`Unknown faculty: ${facultyId}. Faculty in your active pack: ${available}.`);
+      throw new Error(`Unknown faculty: ${requestedFacultyId}. Faculty in your active pack: ${available}.`);
     }
     const previousFacultyId = state.faculty;
-    state.faculty = faculty.id;
-    // Walking into a different classroom (or the lounge) leaves the previous
-    // room's chalkboard behind. The transition() reset rules wipe current /
-    // lastReveal / activeRound. Re-select of the same faculty is a no-op.
+    // Walking into a different classroom saves the previous room's chalkboard
+    // and restores the destination room's chalkboard, if it has one.
     if (previousFacultyId !== faculty.id) {
+      this.saveActiveBoardForFaculty(state, previousFacultyId);
+      state.faculty = faculty.id;
       this.transition(state, {
         kind: faculty.id === LOUNGE_FACULTY.id ? "enter-lounge" : "enter-room",
       });
+      if (faculty.id !== LOUNGE_FACULTY.id) {
+        if (!this.restoreBoardForFaculty(state, faculty.id)) {
+          state.subject = null;
+        }
+      }
+    } else {
+      state.faculty = faculty.id;
     }
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
@@ -1475,6 +2068,8 @@ function normalizeLoaded(s: QuizState): QuizState {
   return {
     ...s,
     askedQuestionIds: Array.isArray(s.askedQuestionIds) ? s.askedQuestionIds : [],
+    cardMemory: s.cardMemory && typeof s.cardMemory === "object" ? s.cardMemory : {},
+    roomBoards: s.roomBoards && typeof s.roomBoards === "object" ? s.roomBoards : {},
     history: Array.isArray(s.history) ? s.history : [],
     score: s.score ?? { correct: 0, total: 0 },
     status: statusForPhase(phase),

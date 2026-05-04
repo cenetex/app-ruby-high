@@ -300,6 +300,20 @@ export const VIEWER_CSS = `
     padding: 2px 7px;
     border-radius: 999px;
   }
+  .channel-row .course-status-pill {
+    margin-left: auto;
+    flex: 0 0 auto;
+    color: #f0b441;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: rgba(240,180,65,0.12);
+    border: 1px solid rgba(240,180,65,0.22);
+    border-radius: 7px;
+    padding: 3px 6px;
+    line-height: 1;
+  }
   .channel-row .roster-grade {
     margin-left: auto;
     display: inline-flex;
@@ -1039,6 +1053,16 @@ export const VIEWER_CSS = `
   .pill.difficulty.medium { background: var(--diff-medium); color: #fff; }
   .pill.difficulty.hard { background: var(--diff-hard); color: #fff; }
   .pill.subject { background: var(--bg-elev-2); color: var(--text-soft); }
+  .pill.stat {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    text-transform: none;
+    letter-spacing: 0.02em;
+  }
+  .pill.stat.head { background: rgba(58,163,224,0.28); }
+  .pill.stat.heart { background: rgba(224,88,150,0.28); }
+  .pill.stat.hustle { background: rgba(240,180,65,0.30); }
+  .pill.stat.honor { background: rgba(116,210,136,0.26); }
 
   .board-frame {
     background: linear-gradient(180deg, var(--board-frame-light), var(--board-frame));
@@ -2519,21 +2543,7 @@ export const VIEWER_CSS = `
     color: rgba(255,235,200,0.62);
   }
 
-  /* ── rarity pill (replaces DAILY/PRACTICE) ──────────────────────────── */
-  /* Every question rolls a rarity at pose time:
-       Common (60%) — 0 XP, free reps
-       Rare   (30%) — +1 XP, +1 toward per-class minimum
-       Legendary (10%) — +2 XP, +2 toward per-class minimum, AND counts
-                         toward the per-day target that ticks the streak.
-     Color escalates with stakes. */
-  .pill.rarity.common    { background: rgba(255,255,255,0.06); color: var(--text-mute); }
-  .pill.rarity.rare      { background: #3aa3e0; color: #fff; }
-  .pill.rarity.legendary {
-    background: linear-gradient(135deg, #ffb05a 0%, #f0922a 60%, #d22a2a 100%);
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.45);
-  }
-  /* Bonus badge — once-per-day forced-Legendary draw. */
+  /* Bonus badge — once-per-day fresh question. */
   .pill.bonus {
     background: gold;
     color: #1a2238;

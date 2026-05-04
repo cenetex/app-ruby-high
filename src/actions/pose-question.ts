@@ -1,5 +1,5 @@
 import type { Action, ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
-import type { Choice } from "../types.js";
+import type { CharacterStats, Choice } from "../types.js";
 import { errorText, getService, getSessionId } from "./_helpers.js";
 
 export const poseQuestionAction: Action = {
@@ -25,6 +25,7 @@ export const poseQuestionAction: Action = {
       const correct = String(params.correct ?? "").trim().toUpperCase() as Choice;
       const explanation = params.explanation ? String(params.explanation) : undefined;
       const subject = params.subject ? String(params.subject) : undefined;
+      const stat = params.stat ? String(params.stat) as keyof CharacterStats : undefined;
       const faculty = params.faculty ? String(params.faculty) : undefined;
 
       const state = getService(runtime).pose(getSessionId(runtime), {
@@ -38,7 +39,9 @@ export const poseQuestionAction: Action = {
         correct,
         explanation,
         subject,
+        stat,
         faculty,
+        persistToBank: true,
       });
       return {
         success: true,
@@ -62,6 +65,7 @@ export const poseQuestionAction: Action = {
     { name: "correct", description: "Which option is correct: A, B, C, or D.", required: true, schema: { type: "string", enum: ["A", "B", "C", "D"] } },
     { name: "explanation", description: "What to say when revealing the answer.", required: false, schema: { type: "string" } },
     { name: "subject", description: "Subject tag, e.g. 'physics', 'literature'.", required: false, schema: { type: "string" } },
+    { name: "stat", description: "Optional roll stat for the card. One of head, heart, hustle, honor.", required: false, schema: { type: "string", enum: ["head", "heart", "hustle", "honor"] } },
     { name: "faculty", description: "Which faculty member is asking. Defaults to current.", required: false, schema: { type: "string" } },
   ],
 };

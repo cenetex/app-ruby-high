@@ -18,9 +18,11 @@ import {
   CHOICES,
   DIFFICULTIES,
   type BankedQuestion,
+  type Choice,
   type Difficulty,
 } from "../../types.js";
-import type { ContentPack, PackFaculty, PackRoom } from "../types.js";
+import { classifyQuestionStat, normalizeQuestionStat } from "../../question-stats.js";
+import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "../types.js";
 
 const PACK_FILES: Record<string, string> = {
   ruby: "ruby.json",
@@ -106,12 +108,25 @@ async function loadOnce(): Promise<ContentPack> {
       questions,
     };
   });
+  const courses: PackCourse[] = faculty.map((f) => {
+    const room = ROOMS_META.find((r) => r.teacherId === f.id);
+    if (!room) throw new Error(`No room for faculty '${f.id}'`);
+    return {
+      id: f.id,
+      title: room.name,
+      facultyId: f.id,
+      roomId: room.id,
+      teacherTemplateId: f.id,
+      subjects: f.subjects,
+    };
+  });
   return {
     id: "ruby-high-original",
     name: "Ruby High",
     description: "AI/agent culture, STEM, and postwar literature. The original Ruby High curriculum.",
     version: "1.0.0",
     faculty,
+    courses,
     rooms: ROOMS_META.map((r) => ({ ...r })),
   };
 }
@@ -179,13 +194,21 @@ function parseBank(raw: string, facultyId: string, fileName: string): BankedQues
     if (!DIFFICULTIES.includes(difficulty as never)) {
       throw new Error(`${fileName} questions[${i}].difficulty must be easy/medium/hard`);
     }
+    const options = { A: opts.A as string, B: opts.B as string, C: opts.C as string, D: opts.D as string };
+    const typedCorrect = correct as Choice;
     return {
       id: r.id,
       prompt: r.prompt,
-      options: { A: opts.A as string, B: opts.B as string, C: opts.C as string, D: opts.D as string },
-      correct: correct as BankedQuestion["correct"],
+      options,
+      correct: typedCorrect,
       explanation: typeof r.explanation === "string" ? r.explanation : undefined,
       subject: r.subject,
+      stat: normalizeQuestionStat(r.stat) ?? classifyQuestionStat({
+        prompt: r.prompt,
+        subject: r.subject,
+        explanation: typeof r.explanation === "string" ? r.explanation : undefined,
+        correctAnswer: options[typedCorrect],
+      }),
       difficulty: difficulty as Difficulty,
       faculty: facultyId,
     };

@@ -142,6 +142,12 @@ describe("buildAnkiPack — happy path", () => {
     expect(fac.accent).toBe("#3aa3e0");
     expect(fac.systemPrompt).toContain("You are Sally Science");
     expect(fac.systemPrompt).toContain('Imported Anki module: "AP Biology — Cells"');
+    expect(pack.courses?.[0]).toMatchObject({
+      id: fac.id,
+      facultyId: fac.id,
+      teacherTemplateId: "sally-science",
+      subjects: ["ap-biology-cells"],
+    });
     expect(personaCalls).toBe(0);
     expect(calls).toBe(3);
   });
@@ -156,6 +162,7 @@ describe("buildAnkiPack — pack shape compatibility", () => {
     expect(pack.description).toBeTruthy();
     expect(pack.version).toBeTruthy();
     const fac = pack.faculty[0]!;
+    const course = pack.courses?.[0];
     expect(fac.id).toBeTruthy();
     expect(fac.displayName).toBeTruthy();
     expect(fac.shortName).toBeTruthy();
@@ -164,6 +171,10 @@ describe("buildAnkiPack — pack shape compatibility", () => {
     expect(fac.accent).toMatch(/^#/);
     expect(fac.systemPrompt).toBeTruthy();
     expect(fac.defaultModel).toBeTruthy();
+    expect(course?.id).toBe(fac.id);
+    expect(course?.facultyId).toBe(fac.id);
+    expect(course?.roomId).toBe(pack.rooms[0]?.id);
+    expect(course?.subjects).toEqual(fac.subjects);
     const room = pack.rooms[0]!;
     expect(room.id).toBeTruthy();
     expect(room.name).toBeTruthy();

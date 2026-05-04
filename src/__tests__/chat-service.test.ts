@@ -7,6 +7,8 @@ import { publicChatHistory } from "../chat-routes.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { StateStore } from "../services/state-store.js";
+import { registerPack } from "../content/registry.js";
+import type { ContentPack } from "../content/types.js";
 
 // Smoke tests for the chat layer. The OpenRouter call is mocked so we
 // can assert on the messages that would be sent to the LLM (system
@@ -84,6 +86,52 @@ async function makeServices() {
   return { ruby, chat, faculty };
 }
 
+function fakeImportedPack(): ContentPack {
+  return {
+    id: "anki:cells-chat-test",
+    name: "Cells",
+    description: "Imported cells deck",
+    version: "1.0.0",
+    faculty: [{
+      id: "cells-chat-test-teacher",
+      displayName: "Sally Science",
+      shortName: "Sally",
+      assetTeacherId: "sally-science",
+      subjects: ["cells"],
+      bio: "Sally teaching imported cells.",
+      accent: "#3aa3e0",
+      systemPrompt: "IMPORTED ANKI CELLS PROMPT. Use the cells deck, not the built-in Ruby bank.",
+      defaultModel: "test/imported-model",
+      questions: [{
+        id: "cell-q1",
+        faculty: "cells-chat-test-teacher",
+        subject: "cells",
+        difficulty: "medium",
+        prompt: "What powers the cell?",
+        options: { A: "Mitochondria", B: "Ribosome", C: "Nucleus", D: "Golgi" },
+        correct: "A",
+        explanation: "Mitochondria generate ATP.",
+      }],
+    }],
+    courses: [{
+      id: "cells-chat-test-teacher",
+      title: "Cells",
+      facultyId: "cells-chat-test-teacher",
+      roomId: "cells-room",
+      teacherTemplateId: "sally-science",
+      subjects: ["cells"],
+    }],
+    rooms: [{
+      id: "cells-room",
+      name: "Cells",
+      channelName: "cells",
+      teacherId: "cells-chat-test-teacher",
+      description: "Imported cells",
+      teaches: true,
+    }],
+  };
+}
+
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-"));
   storePath = join(tmpDir, "state.json");
@@ -119,6 +167,104 @@ describe("ChatService.send — message composition", () => {
     // Ruby's persona prompt should be in the first system message.
     expect(typeof messages[0].content).toBe("string");
     expect(messages[0].content.length).toBeGreaterThan(20);
+  });
+
+  it("uses the active pack faculty prompt/model for imported Anki teachers", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    const sid = "session:anki-chat";
+    const pack = fakeImportedPack();
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-anki",
+      agentSessionId: sid,
+      faculty: "sally-science",
+      systemEventNote: "Start the imported deck.",
+    })) { /* consume */ }
+
+    expect(captured).not.toBeNull();
+    expect(captured!.body.model).toBe("test/imported-model");
+    const messages: any[] = captured!.body.messages;
+    expect(messages[0].content).toContain("IMPORTED ANKI CELLS PROMPT");
+    expect(messages[0].content).not.toContain("You are Ruby");
+  });
+
+  it("describes imported decks as no cards ready, not exhausted", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    const sid = "session:anki-chat-srs-dry";
+    const pack = fakeImportedPack();
+    pack.id = "anki:cells-chat-srs-dry";
+    pack.faculty[0]!.questions[0]!.id = "cell-srs-dry-q1";
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    const state = ruby.pickAndPose(sid, { faculty: "sally-science" });
+    ruby.submitAnswer(sid, state.current!.correct === "A" ? "B" : "A");
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-anki-dry",
+      agentSessionId: sid,
+      faculty: "sally-science",
+      userMessage: "next",
+    })) { /* consume */ }
+
+    const toolNames = captured!.body.tools.map((tool: any) => tool.function.name);
+    expect(toolNames).not.toContain("pick_from_bank");
+    const promptText = JSON.stringify(captured!.body.messages);
+    expect(promptText).toContain("no deck cards are ready right now");
+    expect(promptText).not.toContain("EXHAUSTED");
+  });
+
+  it("keeps typed chat tool calls inside an imported course when Sally is only the teacher template", async () => {
+    const sse = buildSseChunk([
+      {
+        toolCalls: [{
+          index: 0,
+          id: "call_pose_custom",
+          function: {
+            name: "pose_question",
+            arguments: JSON.stringify({
+              faculty: "sally-science",
+              subject: "science",
+              prompt: "What powers the cell?",
+              options: { A: "Mitochondria", B: "Desk", C: "Bell", D: "Chalk" },
+              correct: "A",
+            }),
+          },
+        }],
+      },
+      { finish: "tool_calls" },
+    ]);
+    mockOpenRouter(sse);
+    const { ruby, chat } = await makeServices();
+    const sid = "session:anki-chat-tool";
+    const pack = fakeImportedPack();
+    pack.id = "anki:cells-chat-tool-test";
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    ruby.getOrCreate(sid).subject = "general-knowledge";
+
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-anki-tool",
+      agentSessionId: sid,
+      faculty: "sally-science",
+      userMessage: "make me a fresh one",
+    })) {
+      events.push(ev);
+      if (ev.type === "tool") break;
+    }
+
+    const tool = events.find((e) => e.type === "tool");
+    expect(tool).toMatchObject({ tool: "pose_question", result: { ok: true } });
+    expect(tool.state.faculty).toBe("cells-chat-test-teacher");
+    expect(tool.state.current.faculty).toBe("cells-chat-test-teacher");
+    expect(tool.state.current.subject).toBe("cells");
   });
 
   it("frames the teacher as running a group chat — names player + classmates", async () => {
@@ -356,6 +502,42 @@ describe("ChatService.send — message composition", () => {
     expect(types).toContain("tool");
     const tool = events.find((e) => e.type === "tool");
     expect(tool.tool).toBe("pick_from_bank");
+  });
+
+  it("ignores board-changing tool calls from a room turn after the user has switched rooms", async () => {
+    const sse = buildSseChunk([
+      {
+        toolCalls: [
+          { index: 0, id: "call_1", function: { name: "pick_from_bank", arguments: "{}" } },
+        ],
+      },
+      { finish: "tool_calls" },
+    ]);
+    mockOpenRouter(sse);
+    const { ruby, chat } = await makeServices();
+    ruby.setFaculty("session:1", "sally-science");
+
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      systemEventNote: "Put a question on the board.",
+    })) {
+      events.push(ev);
+    }
+
+    const tool = events.find((e) => e.type === "tool");
+    expect(tool).toMatchObject({
+      tool: "pick_from_bank",
+      result: { ok: false },
+    });
+    expect(tool.result.error).toContain("stale");
+    expect(events.at(-1)).toMatchObject({ type: "done", finishReason: "stale-room" });
+    const state = ruby.getOrCreate("session:1");
+    expect(state.faculty).toBe("sally-science");
+    expect(state.current).toBeNull();
   });
 
   it("keeps tools available after a nonterminal tool round", async () => {

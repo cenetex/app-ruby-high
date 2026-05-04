@@ -25,7 +25,8 @@
  * past MAX_PACKS_PER_OWNER.
  */
 
-import type { ContentPack, PackFaculty, PackRoom } from "./types.js";
+import type { BankedQuestion } from "../types.js";
+import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "./types.js";
 import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
 
 /** Stable id of the built-in pack. */
@@ -61,11 +62,11 @@ let active: Promise<ContentPack> | null = null;
  *  the cache is populated. */
 let loadedPack: ContentPack | null = null;
 
-function touch(id: string, pack: ContentPack, ownerSessionId: string | null): void {
+function touch(id: string, pack: ContentPack, ownerSessionId: string | null, touchedAt = Date.now()): void {
   // Map preserves insertion order — re-inserting moves the entry to
   // the end, so iteration order doubles as LRU.
   packs.delete(id);
-  packs.set(id, { pack, ownerSessionId, touchedAt: Date.now() });
+  packs.set(id, { pack, ownerSessionId, touchedAt });
   if (ownerSessionId !== null) evictExcess(ownerSessionId);
 }
 
@@ -116,6 +117,27 @@ export function setActivePack(pack: ContentPack): void {
   active = Promise.resolve(pack);
 }
 
+/** Trusted server-side mutation for extending a pack's inline bank. User
+ *  imports still go through registerPack(); this path is for the app itself
+ *  promoting teacher-authored Ruby High questions into the reusable bank. */
+export function appendQuestionToPackBank(
+  packId: string,
+  facultyId: string,
+  question: BankedQuestion,
+  touchedAt = Date.now(),
+): ContentPack | null {
+  const record = packs.get(packId);
+  if (!record) return null;
+  const faculty = record.pack.faculty.find((f) => f.id === facultyId);
+  if (!faculty) return null;
+  if (!faculty.questions.some((q) => q.id === question.id)) {
+    faculty.questions.push(question);
+  }
+  record.touchedAt = touchedAt;
+  if (loadedPack?.id === packId) loadedPack = record.pack;
+  return record.pack;
+}
+
 /** Reset the entire registry. Test-only. */
 export function resetActivePack(): void {
   active = null;
@@ -129,7 +151,7 @@ export function resetActivePack(): void {
  *  activated. Refuses to overwrite a built-in (pinned) pack id — user
  *  imports can't replace the original. Re-registering a previously
  *  imported pack re-touches it (moves to end of LRU). */
-export function registerPack(pack: ContentPack, ownerSessionId: string): void {
+export function registerPack(pack: ContentPack, ownerSessionId: string, touchedAt = Date.now()): void {
   const existing = packs.get(pack.id);
   if (existing && existing.ownerSessionId === null) {
     throw new Error(`Cannot overwrite pinned built-in pack: ${pack.id}`);
@@ -137,7 +159,7 @@ export function registerPack(pack: ContentPack, ownerSessionId: string): void {
   if (existing && existing.ownerSessionId !== ownerSessionId) {
     throw new Error(`Pack ${pack.id} is owned by another session — cannot re-register.`);
   }
-  touch(pack.id, pack, ownerSessionId);
+  touch(pack.id, pack, ownerSessionId, touchedAt);
 }
 
 /** All packs the given session can see: built-ins + this session's own
@@ -218,6 +240,56 @@ export function packForSession(session: PackSession | null): ContentPack {
     if (r) return r.pack;
   }
   return getLoadedPack();
+}
+
+export function coursesForPack(pack: ContentPack): PackCourse[] {
+  if (pack.courses && pack.courses.length > 0) return pack.courses;
+  return pack.faculty.map((f) => {
+    const room = pack.rooms.find((r) => r.teacherId === f.id);
+    return {
+      id: f.id,
+      title: room?.name ?? f.displayName,
+      facultyId: f.id,
+      roomId: room?.id ?? f.id,
+      teacherTemplateId: f.assetTeacherId ?? builtinTeacherTemplateId(f.id),
+      subjects: f.subjects,
+    };
+  });
+}
+
+function builtinTeacherTemplateId(id: string): string | undefined {
+  return id === "ruby" || id === "sally-science" || id === "professor-edward"
+    ? id
+    : undefined;
+}
+
+export function coursesForSession(session: PackSession | null): PackCourse[] {
+  return coursesForPack(packForSession(session));
+}
+
+export function courseByIdForSession(session: PackSession | null, id: string): PackCourse | null {
+  return coursesForSession(session).find((c) => c.id === id) ?? null;
+}
+
+export function courseForFacultyForSession(session: PackSession | null, facultyId: string): PackCourse | null {
+  return coursesForSession(session).find((c) => c.facultyId === facultyId) ?? null;
+}
+
+export function resolveFacultyIdForSession(session: PackSession | null, requestedId: string): string | null {
+  const pack = packForSession(session);
+  if (pack.faculty.some((f) => f.id === requestedId)) return requestedId;
+
+  const byCourse = coursesForPack(pack).filter((c) =>
+    c.id === requestedId ||
+    c.facultyId === requestedId ||
+    c.teacherTemplateId === requestedId
+  );
+  const byFacultyAsset = pack.faculty.filter((f) => f.assetTeacherId === requestedId);
+  const candidates = new Set<string>([
+    ...byCourse.map((c) => c.facultyId),
+    ...byFacultyAsset.map((f) => f.id),
+  ]);
+  return candidates.size === 1 ? Array.from(candidates)[0]! : null;
 }
 
 export function facultyForSession(session: PackSession | null): PackFaculty[] {

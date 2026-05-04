@@ -123,17 +123,24 @@ describe("RubyHighService phase machine", () => {
     expect(after.activeRound).toBeNull();
   });
 
-  it("setFaculty to a different teacher transitions to in-room and resets the board", async () => {
+  it("setFaculty to a different teacher shows that room, then restores the prior room board on return", async () => {
     const { ruby } = await makeServices();
     const sid = "test:swap";
     ruby.selectGrade(sid, "11"); // 1
     ruby.pickAndPose(sid, { faculty: "sally-science" }); // 2 → asking
+    const sallyQuestion = ruby.getOrCreate(sid).current!.id;
     const after = ruby.setFaculty(sid, "professor-edward"); // 3 → in-room
     expect(after.phase).toBe("in-room");
     expect(after.phaseToken).toBe(3);
     expect(after.faculty).toBe("professor-edward");
     expect(after.current).toBeNull();
     expect(after.activeRound).toBeNull();
+    const back = ruby.setFaculty(sid, "sally-science"); // 4 → asking
+    expect(back.phase).toBe("asking");
+    expect(back.phaseToken).toBe(4);
+    expect(back.faculty).toBe("sally-science");
+    expect(back.current?.id).toBe(sallyQuestion);
+    expect(back.activeRound?.questionId).toBe(sallyQuestion);
   });
 
   it("setFaculty to the SAME teacher is a no-op and does NOT bump the token", async () => {

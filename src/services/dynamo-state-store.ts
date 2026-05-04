@@ -7,7 +7,13 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { QuizState } from "../types.js";
-import type { AuthSessionRecord, AuthStoreSnapshot, AuthUserRecord, StateStoreLike } from "./state-store.js";
+import type {
+  AuthSessionRecord,
+  AuthStoreSnapshot,
+  AuthUserRecord,
+  StateStoreLike,
+  StoredContentPackRecord,
+} from "./state-store.js";
 
 /**
  * DynamoDB-backed state store. One item per session, primary key = sessionId.
@@ -117,6 +123,24 @@ export class DynamoStateStore implements StateStoreLike {
     return { users, sessions };
   }
 
+  async loadPacks(): Promise<StoredContentPackRecord[]> {
+    const records: StoredContentPackRecord[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const record = item.contentPack as StoredContentPackRecord | undefined;
+      if (
+        record &&
+        record.pack &&
+        typeof record.pack.id === "string" &&
+        typeof record.ownerSessionId === "string" &&
+        typeof record.touchedAt === "number"
+      ) {
+        records.push(record);
+      }
+    }
+    return records;
+  }
+
   private async scanAll(): Promise<Array<Record<string, unknown>>> {
     const items: Array<Record<string, unknown>> = [];
     let lastEvaluatedKey: Record<string, unknown> | undefined;
@@ -166,6 +190,21 @@ export class DynamoStateStore implements StateStoreLike {
     }));
   }
 
+  async savePack(record: StoredContentPackRecord): Promise<void> {
+    const item: Record<string, unknown> = {
+      pk: this.packPk(record.ownerSessionId, record.pack.id),
+      contentPack: record,
+      updatedAt: record.touchedAt,
+    };
+    if (this.ttlSeconds > 0) {
+      item.expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+    }
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
+    }));
+  }
+
   async deleteAuthSession(token: string): Promise<void> {
     await this.client.send(new DeleteCommand({
       TableName: this.tableName,
@@ -208,5 +247,9 @@ export class DynamoStateStore implements StateStoreLike {
       item.expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
     }
     return item;
+  }
+
+  private packPk(ownerSessionId: string, packId: string): string {
+    return `pack:${encodeURIComponent(ownerSessionId)}:${encodeURIComponent(packId)}`;
   }
 }

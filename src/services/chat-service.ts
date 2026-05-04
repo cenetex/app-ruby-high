@@ -1,9 +1,9 @@
 import { Service, type IAgentRuntime } from "@elizaos/core";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { STUDENTS, type StudentCharacter } from "../characters/students.js";
-import type { Choice, Difficulty, NpcStudentState, QuizState } from "../types.js";
+import type { CharacterStats, Choice, Difficulty, NpcStudentState, QuizState } from "../types.js";
 import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
-import { roomForFacultyForSession } from "../content/registry.js";
+import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "../content/registry.js";
 import { RubyHighService, type QuestionBankStatus } from "./ruby-high-service.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
@@ -187,9 +187,15 @@ export class ChatService extends Service {
 
   async *send(opts: SendOpts): AsyncGenerator<ChatStreamEvent> {
     if (!this.ruby) throw new Error("RubyHighService not bound to ChatService.");
-    const speakerId = opts.speakerFacultyId ?? opts.faculty;
-    const teacher = teacherById(speakerId);
-    const bucketFaculty = opts.bucketKey ?? opts.faculty;
+    const state = this.ruby.getOrCreate(opts.agentSessionId);
+    const rawSpeakerId = opts.speakerFacultyId ?? opts.faculty;
+    const speakerId = resolveFacultyIdForSession(state, rawSpeakerId) ?? rawSpeakerId;
+    const rawBucketFaculty = opts.bucketKey ?? opts.faculty;
+    const bucketFaculty = rawBucketFaculty === "lounge"
+      ? rawBucketFaculty
+      : (resolveFacultyIdForSession(state, rawBucketFaculty) ?? rawBucketFaculty);
+    const activeFaculty = resolveFacultyIdForSession(state, opts.faculty) ?? opts.faculty;
+    const teacher = teacherForSession(state, speakerId);
     const key: ChatHistoryKey = { sessionToken: opts.sessionToken, faculty: bucketFaculty };
     const history = this.ensure(key);
     this.trim(key);
@@ -233,7 +239,7 @@ export class ChatService extends Service {
         extraSystemContext: opts.extraSystemContext,
         disableTools: !!opts.disableTools,
       });
-      const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, opts.faculty);
+      const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
       const toolDefs = opts.disableTools ? [] : buildToolDefs({ includePickFromBank: bankStatus.remaining > 0 });
 
       const stream = streamOpenRouter({
@@ -284,9 +290,23 @@ export class ChatService extends Service {
 
       let handoffFired = false;
       let boardToolSucceeded = false;
+      let staleRoomTurn = false;
       const toolEvents: ChatStreamEvent[] = [];
       for (const call of assistantToolCalls) {
-        const result = await this.dispatchTool(opts.agentSessionId, call);
+        const liveState = this.ruby.getOrCreate(opts.agentSessionId);
+        const liveFaculty = resolveFacultyIdForSession(liveState, liveState.faculty) ?? liveState.faculty;
+        const turnStillOwnsRoom = liveFaculty === activeFaculty;
+        const result = turnStillOwnsRoom
+          ? await this.dispatchTool(opts.agentSessionId, call)
+          : {
+              args: {},
+              payload: {
+                ok: false,
+                error: `Ignored stale ${speakerId} tool call; active classroom is now ${liveFaculty}.`,
+              },
+              state: liveState,
+            };
+        if (!turnStillOwnsRoom) staleRoomTurn = true;
         history.push({
           role: "tool",
           content: JSON.stringify(result.payload),
@@ -313,6 +333,10 @@ export class ChatService extends Service {
       }
       this.trim(key);
       for (const ev of toolEvents) yield ev;
+      if (staleRoomTurn) {
+        yield { type: "done", finishReason: "stale-room" };
+        return;
+      }
       // After handoff_faculty, stop the agent loop. The current speaker is no
       // longer the active faculty; further turns belong to the new teacher
       // and should be triggered by the next channel-enter event.
@@ -477,8 +501,10 @@ export class ChatService extends Service {
             correct: String(args.correct ?? "").toUpperCase() as Choice,
             explanation: args.explanation ? String(args.explanation) : undefined,
             subject: args.subject ? String(args.subject) : undefined,
+            stat: args.stat ? String(args.stat) as keyof CharacterStats : undefined,
             difficulty: args.difficulty as Difficulty | undefined,
             faculty: args.faculty ? String(args.faculty) : undefined,
+            persistToBank: true,
           });
           return { args, payload: { ok: true, message: "Question posted." }, state };
         }
@@ -685,6 +711,18 @@ async function callOpinionForNpc(args: {
   return ((body.choices?.[0]?.message?.content ?? "").trim()).replace(/^["'\s]+|["'\s]+$/g, "");
 }
 
+function teacherForSession(state: QuizState, speakerId: string): TeacherCharacter {
+  const packFaculty = facultyByIdForSession(state, speakerId);
+  if (!packFaculty) return teacherById(speakerId);
+  return {
+    id: packFaculty.id,
+    displayName: packFaculty.displayName,
+    shortName: packFaculty.shortName,
+    defaultModel: packFaculty.defaultModel,
+    systemPrompt: packFaculty.systemPrompt,
+  };
+}
+
 function shortVibe(id: string): string {
   switch (id) {
     case "lyra": return "anxious overachiever";
@@ -817,6 +855,29 @@ function describeBoardForModel(state: QuizState): string {
 }
 
 function describeQuestionBankForModel(status: QuestionBankStatus): string {
+  if (status.mode === "srs") {
+    const grade = status.grade ?? "F";
+    const mastered = status.masteredCount ?? 0;
+    const shaky = status.shakyCount ?? 0;
+    const learning = status.learningCount ?? 0;
+    if (status.remaining <= 0) {
+      return [
+        `COURSE STATUS for ${status.displayName}: ${grade}; no deck cards are ready right now (${mastered}/${status.total} learned, ${shaky} shaky, ${learning} learning).`,
+        "pick_from_bank is not available this turn because no cards are due. Do not say the deck is exhausted, dry, depleted, or used up.",
+        "If the class needs a board, either speak briefly about progress or call pose_question exactly once for a custom challenge.",
+      ].join("\n");
+    }
+    const subjects = Object.entries(status.remainingBySubject)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 6)
+      .map(([subject, count]) => `${subject}:${count}`)
+      .join(", ");
+    return [
+      `COURSE STATUS for ${status.displayName}: ${grade}; ${status.remaining} deck cards ready (${mastered}/${status.total} learned, ${shaky} shaky).`,
+      subjects ? `Ready by subject: ${subjects}.` : "",
+      "Use pick_from_bank for the next due card. Do not describe cards as consumed or exhausted; this course uses spaced review.",
+    ].filter(Boolean).join("\n");
+  }
   const difficultyCounts = ["easy", "medium", "hard"]
     .map((d) => `${d}:${status.remainingByDifficulty[d as Difficulty] ?? 0}`)
     .join(", ");
@@ -847,7 +908,7 @@ function buildToolDefs(opts: { includePickFromBank?: boolean } = {}): unknown[] 
       function: {
         name: "pick_from_bank",
         description:
-          "Draw the next question from the active faculty's vetted question pack. Preferred over pose_question for normal classroom flow. Never repeats a question in the same session.",
+          "Draw the next ready question from the active faculty's vetted question pack. Preferred over pose_question for normal classroom flow.",
         parameters: {
           type: "object",
           properties: {
@@ -896,6 +957,11 @@ function buildToolDefs(opts: { includePickFromBank?: boolean } = {}): unknown[] 
             correct: { type: "string", enum: ["A", "B", "C", "D"] },
             explanation: { type: "string" },
             subject: { type: "string" },
+            stat: {
+              type: "string",
+              enum: ["head", "heart", "hustle", "honor"],
+              description: "Optional roll stat for this card. Omit to let Ruby High classify it.",
+            },
             difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
             faculty: { type: "string" },
           },

@@ -215,6 +215,37 @@ describe("RubyHighService.rollAdvantage", () => {
 // ── player roll: bonus-only (regression check on the v0.5.x fix) ────────────
 
 describe("Player roll on round resolve — bonus-only", () => {
+  it("uses the question stat for advantage and resolve rolls", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:question-stat-rolls";
+    const state = ruby.pose(sid, {
+      prompt: "How does Lyra feel about the class helping her after a hard answer?",
+      options: { A: "Supported", B: "Radioactive", C: "Faster", D: "Invisible" },
+      correct: "A",
+      subject: "community",
+      stat: "heart",
+    });
+    state.character = {
+      name: "Test",
+      playbookId: "outsider",
+      stats: { head: -1, heart: 3, hustle: 0, honor: 1 },
+      arcAnswer: "-",
+      personality: "-",
+      xp: 0,
+      yearbook: [],
+      createdAt: Date.now(),
+    };
+
+    const advantage = ruby.rollAdvantage(sid).result!;
+    expect(advantage.stat).toBe("heart");
+    expect(advantage.total).toBe(advantage.dice[0] + advantage.dice[1] + 3);
+
+    const after = ruby.submitAnswer(sid, "A");
+    const roll = after.lastReveal!.playerRoll!;
+    expect(roll.stat).toBe("heart");
+    expect(roll.total).toBe(roll.dice[0] + roll.dice[1] + 3);
+  });
+
   it("never decreases XP on a wrong answer, regardless of the dice", async () => {
     const { ruby } = await makeServices();
     // Run many rounds — across a wide range of dice outcomes, a wrong answer

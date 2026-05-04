@@ -6,7 +6,7 @@ import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseTeacherGrades } from "./grading.js";
 import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
-import { roomForFacultyForSession } from "./content/registry.js";
+import { resolveFacultyIdForSession, roomForFacultyForSession } from "./content/registry.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
@@ -103,8 +103,11 @@ function toolPlacedFreshQuestion(ev: ChatStreamEvent): boolean {
   return !!(ev.state?.current && ev.state.activeRound && !ev.state.activeRound.resolved);
 }
 
-function nextBoardInstruction(bank: { remaining: number }, banked: string): string {
+function nextBoardInstruction(bank: { mode?: string; remaining: number; grade?: string }, banked: string): string {
   if (bank.remaining > 0) return banked;
+  if (bank.mode === "srs") {
+    return `No deck cards are ready right now${bank.grade ? ` (${bank.grade})` : ""}. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once for a custom challenge, or talk briefly about progress.`;
+  }
   return "The vetted question bank for this room is exhausted today. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once and write a custom question.";
 }
 
@@ -846,6 +849,21 @@ function requireAuth(
   return { token, apiKey, record, stateKey: auth.stateKeyForRecord(record) };
 }
 
+function canonicalFacultyForRoute(ruby: RubyHighService, sessionId: string, requested?: string | null): string {
+  const state = ruby.getOrCreate(sessionId);
+  const raw = requested && requested.trim().length > 0 ? requested.trim() : state.faculty;
+  if (raw === "lounge") return raw;
+  return resolveFacultyIdForSession(state, raw) ?? raw;
+}
+
+function activeFacultyMatches(ruby: RubyHighService, sessionId: string, faculty: string): boolean {
+  const state = ruby.getOrCreate(sessionId);
+  const active = state.faculty === "lounge"
+    ? state.faculty
+    : (resolveFacultyIdForSession(state, state.faculty) ?? state.faculty);
+  return active === faculty;
+}
+
 function getService<T>(runtime: IAgentRuntime | null, type: string): T | null {
   if (!runtime) return null;
   try {
@@ -1015,13 +1033,14 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
   // ── chat ──────────────────────────────────────────────────────────────────
   if (ctx.method === "GET" && ctx.pathname === `${CHAT_PREFIX}/history`) {
-    const faculty = ctx.url?.searchParams.get("faculty") ?? "ruby";
+    const requestedFaculty = ctx.url?.searchParams.get("faculty") ?? "ruby";
     const token = auth.parseSessionToken(ctx.cookieHeader);
     const record = auth.resolve(token);
     if (!token || !record) {
       ctx.json(ctx.res, { authed: false, history: [] });
       return true;
     }
+    const faculty = canonicalFacultyForRoute(ruby, auth.stateKeyForRecord(record), requestedFaculty);
     const messages = chat.history({ sessionToken: token, faculty });
     // History is bucketed by the cookie; the X-Openrouter-Key header decides
     // whether the client is "authed" for chat actions. Both can be present
@@ -1050,7 +1069,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { faculty?: string; message?: string; model?: string }
       | null;
-    const faculty = body?.faculty ?? ruby.getOrCreate(getSessionId(runtime, ctx.cookieHeader)).faculty;
+    const faculty = canonicalFacultyForRoute(ruby, getSessionId(runtime, ctx.cookieHeader), body?.faculty);
     const message = (body?.message ?? "").trim();
     if (!message) {
       ctx.error(ctx.res, "Missing 'message'.", 400);
@@ -1115,7 +1134,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { faculty?: string; trigger?: string; context?: { grade?: string } }
       | null;
-    const faculty = body?.faculty ?? ruby.getOrCreate(getSessionId(runtime, ctx.cookieHeader)).faculty;
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
     const trigger = String(body?.trigger ?? "manual");
     const grade = body?.context?.grade;
 
@@ -1202,7 +1222,6 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // Pre-refactor these were fused into one bloated system note that got
     // appended to history and then re-read every subsequent turn as if it
     // were a fresh instruction.
-    const sessionId = getSessionId(runtime, ctx.cookieHeader);
     let directive = "";
     let disableToolsForTurn = false;
     if (trigger === "channel-enter") {
@@ -1216,7 +1235,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           text: `${playerName} just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}.`,
         },
       );
-      directive = `Greet ${playerName} in ONE short sentence. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
+      directive = `Greet ${playerName} in ONE short sentence. Do not mention a "Next question" button or tell the player to press a UI control. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
     } else if (trigger === "answer-graded") {
       const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
       const state = ruby.getOrCreate(sessionId);
@@ -1287,7 +1306,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // throws (bank empty for filter, etc.) — better empty board with
       // a recoverable error than crashing the SSE stream.
       const needsFreshQuestion = !disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded");
-      if (needsFreshQuestion && !questionPosted && !handoffFired) {
+      if (needsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         const bank = ruby.questionBankStatus(agentSessionId, faculty);
         let fallbackPosted = false;
@@ -1308,19 +1327,24 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           log.event("chat.bank-exhausted", { faculty, trigger, reason: "active faculty bank exhausted before fallback" });
         }
         if (!fallbackPosted) {
-          // The bank is dry for this room. That is NOT a user-facing error:
-          // it is a chat-state condition the model can handle if we remove
+          const noQuestionNote = bank.mode === "srs"
+            ? `No deck cards are ready for ${bank.displayName} right now${bank.grade ? ` (${bank.grade})` : ""}.`
+            : `The vetted question bank for ${bank.displayName} is exhausted today (${bank.asked}/${bank.total} used).`;
+          const noQuestionDirective = bank.mode === "srs"
+            ? "No deck cards are ready right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. If the class needs a fresh board, call pose_question exactly once for a custom challenge; otherwise chat with the room and let the player steer."
+            : "The vetted bank is exhausted, and pick_from_bank is unavailable. If the class needs a fresh board, call pose_question exactly once and write a custom question; otherwise chat with the room and let the player steer.";
+          // This is a chat-state condition the model can handle if we remove
           // pick_from_bank from the tool surface and ask for a custom board.
           chat.appendEvent(
             { sessionToken: token, faculty },
-            { kind: "note", text: `The vetted question bank for ${bank.displayName} is exhausted today (${bank.asked}/${bank.total} used).` },
+            { kind: "note", text: noQuestionNote },
           );
           for await (const ev of chat.send({
             apiKey,
             sessionToken: token,
             agentSessionId,
             faculty,
-            systemEventNote: "The vetted bank is exhausted, and pick_from_bank is unavailable. If the class needs a fresh board, call pose_question exactly once and write a custom question; otherwise chat with the room and let the player steer.",
+            systemEventNote: noQuestionDirective,
           })) {
             send(ev.type, ev);
           }
@@ -1365,6 +1389,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // on a faceless "user" — and lets them address each other by name.
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const state = ruby.getOrCreate(sessionId);
+    const faculty = body?.faculty ? canonicalFacultyForRoute(ruby, sessionId, body.faculty) : undefined;
     const playerName = state.character?.name;
     let classmateNames: string[] = [];
     if (state.currentGrade && state.faculty) {
@@ -1381,8 +1406,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // openly admit it can't see the conversation ("can't see what edward
     // actually said to iris so i got nothing rn lol").
     let teacherSaid: string | undefined;
-    if (body?.faculty) {
-      const history = chat.history({ sessionToken: token, faculty: body.faculty });
+    if (faculty) {
+      const history = chat.history({ sessionToken: token, faculty });
       for (let i = history.length - 1; i >= 0; i--) {
         const m = history[i];
         if (m.role === "assistant" && m.content && m.content.trim()) {
@@ -1397,7 +1422,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         student,
         situation,
         note: body?.note,
-        faculty: body?.faculty,
+        faculty,
         playerName,
         classmateNames,
         teacherSaid,
@@ -1411,9 +1436,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // denies knowing him. Routed through the structured event log so
       // it shows up in synopsis order, never as a stale system note in
       // the dialogue stream.
-      if (line && body?.faculty) {
+      if (line && faculty) {
         chat.appendEvent(
-          { sessionToken: token, faculty: body.faculty },
+          { sessionToken: token, faculty },
           {
             kind: "chime",
             text: `${student.name} (classmate) chimed in: "${line}"`,
@@ -1693,12 +1718,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/reset`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
-    if (!token || !auth.resolve(token)) {
+    const record = auth.resolve(token);
+    if (!token || !record) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { faculty?: string } | null;
-    const faculty = body?.faculty ?? "ruby";
+    const faculty = canonicalFacultyForRoute(ruby, auth.stateKeyForRecord(record), body?.faculty ?? "ruby");
     chat.resetHistory({ sessionToken: token, faculty });
     ctx.json(ctx.res, { ok: true });
     return true;
@@ -1722,11 +1748,13 @@ export function noteGradedAnswer(args: {
 }): void {
   const auth = getService<AuthService>(args.runtime, AuthService.serviceType);
   const chat = getService<ChatService>(args.runtime, ChatService.serviceType);
-  if (!auth || !chat) return;
+  const ruby = getService<RubyHighService>(args.runtime, RubyHighService.serviceType);
+  if (!auth || !chat || !ruby) return;
   const token = auth.parseSessionToken(args.cookieHeader);
   if (!token || !auth.resolve(token)) return;
+  const faculty = canonicalFacultyForRoute(ruby, getSessionId(getRuntime(args.runtime), args.cookieHeader), args.faculty);
   const note = args.wasCorrect
     ? `The board was answered: the player picked ${args.picked} — correct. Do not ask for this answer again.`
     : `The board was answered: the player picked ${args.picked}, but the correct answer was ${args.correct}. Do not ask for this answer again.`;
-  chat.noteAnswer({ sessionToken: token, faculty: args.faculty }, note);
+  chat.noteAnswer({ sessionToken: token, faculty }, note);
 }

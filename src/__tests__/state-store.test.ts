@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StateStore } from "../services/state-store.js";
 import type { QuizState } from "../types.js";
+import type { ContentPack } from "../content/types.js";
 
 let tmpDir: string;
 let storePath: string;
@@ -30,6 +31,34 @@ function blankState(sessionId: string): QuizState {
     activeRound: null,
     pendingRoll: null,
     updatedAt: 1,
+  };
+}
+
+function fakePack(id: string): ContentPack {
+  return {
+    id,
+    name: id,
+    description: "test pack",
+    version: "1.0.0",
+    faculty: [{
+      id: `${id}-teacher`,
+      displayName: "Teacher",
+      shortName: "T",
+      subjects: ["anki"],
+      bio: "test",
+      accent: "#123456",
+      systemPrompt: "teach this imported deck",
+      defaultModel: "anthropic/claude-haiku-4.5",
+      questions: [],
+    }],
+    rooms: [{
+      id: `${id}-room`,
+      name: "Room",
+      channelName: "room",
+      teacherId: `${id}-teacher`,
+      description: "test",
+      teaches: true,
+    }],
   };
 }
 
@@ -87,6 +116,27 @@ describe("StateStore", () => {
     const raw = await readFile(storePath, "utf8");
     expect(raw).not.toContain("sk-");
     expect(raw).not.toContain("openrouter-user");
+  });
+
+  it("round-trips imported content packs separately from session state", async () => {
+    const store = new StateStore(storePath);
+    await store.save([blankState("a")]);
+    await store.savePack({
+      pack: fakePack("anki:cells"),
+      ownerSessionId: "rh:user:test",
+      touchedAt: 123,
+    });
+
+    const fresh = new StateStore(storePath);
+    const packs = await fresh.loadPacks();
+    expect(packs).toHaveLength(1);
+    expect(packs[0]?.pack.id).toBe("anki:cells");
+    expect(packs[0]?.ownerSessionId).toBe("rh:user:test");
+    expect(packs[0]?.touchedAt).toBe(123);
+
+    await fresh.save([blankState("b")]);
+    const stillThere = await new StateStore(storePath).loadPacks();
+    expect(stillThere.map((p) => p.pack.id)).toEqual(["anki:cells"]);
   });
 
   it("load returns an empty map when the file doesn't exist", async () => {

@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { QuizState } from "../types.js";
+import type { ContentPack } from "../content/types.js";
 
 export interface AuthUserRecord {
   userId: string;
@@ -24,6 +25,12 @@ export interface AuthStoreSnapshot {
   sessions: AuthSessionRecord[];
 }
 
+export interface StoredContentPackRecord {
+  pack: ContentPack;
+  ownerSessionId: string;
+  touchedAt: number;
+}
+
 /**
  * Common shape every state-store backend implements. RubyHighService talks
  * to this abstraction; the JSON-file backend (this file) and the DynamoDB
@@ -41,9 +48,11 @@ export interface AuthStoreSnapshot {
 export interface StateStoreLike {
   load(): Promise<Map<string, QuizState>>;
   loadAuth(): Promise<AuthStoreSnapshot>;
+  loadPacks(): Promise<StoredContentPackRecord[]>;
   saveSession(state: QuizState): Promise<void>;
   saveAuthUser(user: AuthUserRecord): Promise<void>;
   saveAuthSession(session: AuthSessionRecord): Promise<void>;
+  savePack(record: StoredContentPackRecord): Promise<void>;
   deleteAuthSession(token: string): Promise<void>;
   save(states: Iterable<QuizState>): Promise<void>;
   describe(): string;
@@ -71,6 +80,7 @@ export class StateStore implements StateStoreLike {
   private snapshot = new Map<string, QuizState>();
   private authUsers = new Map<string, AuthUserRecord>();
   private authSessions = new Map<string, AuthSessionRecord>();
+  private importedPacks = new Map<string, StoredContentPackRecord>();
 
   constructor(path?: string) {
     this.path =
@@ -95,23 +105,32 @@ export class StateStore implements StateStoreLike {
     };
   }
 
+  async loadPacks(): Promise<StoredContentPackRecord[]> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    return Array.from(this.importedPacks.values());
+  }
+
   private async readFileSnapshot(): Promise<{
     sessions?: QuizState[];
     authUsers?: AuthUserRecord[];
     authSessions?: AuthSessionRecord[];
+    packs?: StoredContentPackRecord[];
   } | null> {
     try {
       const raw = await readFile(this.path, "utf8");
       return JSON.parse(raw) as {
-        sessions?: QuizState[];
-        authUsers?: AuthUserRecord[];
-        authSessions?: AuthSessionRecord[];
-      };
+          sessions?: QuizState[];
+          authUsers?: AuthUserRecord[];
+          authSessions?: AuthSessionRecord[];
+          packs?: StoredContentPackRecord[];
+        };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         this.snapshot = new Map();
         this.authUsers = new Map();
         this.authSessions = new Map();
+        this.importedPacks = new Map();
         return null;
       }
       throw err;
@@ -122,6 +141,7 @@ export class StateStore implements StateStoreLike {
     sessions?: QuizState[];
     authUsers?: AuthUserRecord[];
     authSessions?: AuthSessionRecord[];
+    packs?: StoredContentPackRecord[];
   }): void {
     const sessions = new Map<string, QuizState>();
     for (const s of parsed.sessions ?? []) {
@@ -150,9 +170,22 @@ export class StateStore implements StateStoreLike {
         authSessions.set(s.token, s);
       }
     }
+    const importedPacks = new Map<string, StoredContentPackRecord>();
+    for (const r of parsed.packs ?? []) {
+      if (
+        r &&
+        r.pack &&
+        typeof r.pack.id === "string" &&
+        typeof r.ownerSessionId === "string" &&
+        typeof r.touchedAt === "number"
+      ) {
+        importedPacks.set(packRecordKey(r.ownerSessionId, r.pack.id), r);
+      }
+    }
     this.snapshot = sessions;
     this.authUsers = authUsers;
     this.authSessions = authSessions;
+    this.importedPacks = importedPacks;
   }
 
   /**
@@ -203,6 +236,11 @@ export class StateStore implements StateStoreLike {
     return this.queueWrite();
   }
 
+  savePack(record: StoredContentPackRecord): Promise<void> {
+    this.importedPacks.set(packRecordKey(record.ownerSessionId, record.pack.id), record);
+    return this.queueWrite();
+  }
+
   deleteAuthSession(token: string): Promise<void> {
     if (!this.authSessions.has(token)) return Promise.resolve();
     this.authSessions.delete(token);
@@ -231,6 +269,7 @@ export class StateStore implements StateStoreLike {
       sessions: Array.from(this.snapshot.values()),
       authUsers: Array.from(this.authUsers.values()),
       authSessions: Array.from(this.authSessions.values()),
+      packs: Array.from(this.importedPacks.values()),
     }, null, 2), "utf8");
     await rename(tmp, this.path);
   }
@@ -238,6 +277,10 @@ export class StateStore implements StateStoreLike {
 
 export function authUserKey(provider: AuthUserRecord["provider"], providerUserHash: string): string {
   return `${provider}:${providerUserHash}`;
+}
+
+export function packRecordKey(ownerSessionId: string, packId: string): string {
+  return `${ownerSessionId}:${packId}`;
 }
 
 let defaultStateStore: StateStore | null = null;

@@ -22,6 +22,7 @@
  */
 
 import type { BankedQuestion, Choice, Difficulty } from "../../types.js";
+import { classifyQuestionStat } from "../../question-stats.js";
 import type { AnkiCard } from "./parse.js";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -134,6 +135,11 @@ async function cardToMcQuestion(
         correct,
         explanation: undefined,
         subject: opts.subject,
+        stat: classifyQuestionStat({
+          prompt: card.front,
+          subject: opts.subject,
+          correctAnswer: card.back,
+        }),
         difficulty: opts.difficulty ?? "medium",
         faculty: opts.facultyId,
       };

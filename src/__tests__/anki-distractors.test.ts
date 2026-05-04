@@ -67,6 +67,7 @@ describe("generateBankFromCards — happy path", () => {
       // Faculty id stamped per the schema
       expect(q.faculty).toBe("test-teacher");
       expect(q.subject).toBe("test");
+      expect(["head", "heart", "hustle", "honor"]).toContain(q.stat);
       expect(q.difficulty).toBe("medium");
     }
   });

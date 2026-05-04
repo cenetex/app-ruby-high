@@ -33,7 +33,9 @@ import { buildAnkiPack } from "./content/anki/pack.js";
 import { TEACHERS } from "./characters/teachers.js";
 import {
   availablePacksForSession,
+  coursesForPack,
   getPackByIdForSession,
+  packForSession,
   registerPack,
 } from "./content/registry.js";
 import type { ContentPack } from "./content/types.js";
@@ -97,6 +99,7 @@ function packSummary(pack: ContentPack) {
     version: pack.version,
     faculty_count: pack.faculty.length,
     question_count: questionCount,
+    courses: coursesForPack(pack),
     faculty: pack.faculty.map((f) => ({
       id: f.id,
       displayName: f.displayName,
@@ -131,7 +134,7 @@ export async function handlePackRoutes(
   // imports). Other users' imports are filtered out.
   if (ctx.method === "GET" && sub === "/") {
     ctx.json(ctx.res, {
-      active_pack_id: state.activePackId,
+      active_pack_id: packForSession(state).id,
       packs: availablePacksForSession(sessionId).map(packSummary),
     });
     return true;
@@ -154,6 +157,7 @@ export async function handlePackRoutes(
     }
     try {
       deps.ruby.setActivePackForSession(sessionId, id);
+      await deps.ruby.flushSession(sessionId);
       log.event("pack.activated", { sessionId, packId: id, packName: target.name });
       ctx.json(ctx.res, { ok: true, pack: packSummary(target) });
     } catch (err) {
@@ -236,7 +240,9 @@ export async function handlePackRoutes(
         return true;
       }
       registerPack(pack, sessionId);
+      await deps.ruby.persistImportedPack(sessionId, pack);
       deps.ruby.setActivePackForSession(sessionId, pack.id);
+      await deps.ruby.flushSession(sessionId);
       log.event("pack.import-anki.done", {
         sessionId, packId: pack.id, deckName: deck.name,
         cardsImported: pack.faculty[0]!.questions.length, skipped, teacherId,

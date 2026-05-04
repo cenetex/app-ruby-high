@@ -5,12 +5,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
+import { registerPack, resetActivePack } from "../content/registry.js";
+import type { ContentPack } from "../content/types.js";
 
 let tmpDir: string;
 let storePath: string;
 let activeRuby: RubyHighService | null = null;
 
 beforeEach(async () => {
+  resetActivePack();
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-test-"));
   storePath = join(tmpDir, "state.json");
   activeRuby = null;
@@ -28,6 +31,52 @@ async function makeServices() {
   ruby.setFacultyService(faculty);
   activeRuby = ruby;
   return { ruby, faculty };
+}
+
+function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"): ContentPack {
+  return {
+    id,
+    name: "VOCAB",
+    description: "Imported vocabulary deck",
+    version: "1.0.0",
+    faculty: [{
+      id: "vocab-test-course",
+      displayName: "Sally Science",
+      shortName: "Sally",
+      assetTeacherId: "sally-science",
+      subjects: ["vocab"],
+      bio: "Sally teaching an imported deck.",
+      accent: "#3aa3e0",
+      systemPrompt: "You are Sally Science teaching the imported VOCAB deck.",
+      defaultModel: "anthropic/claude-haiku-4.5",
+      questions: [{
+        id: questionId,
+        prompt: "What does ephemeral mean?",
+        options: { A: "short-lived", B: "loud", C: "ancient", D: "careful" },
+        correct: "A",
+        explanation: "Ephemeral means short-lived.",
+        subject: "vocab",
+        difficulty: "medium",
+        faculty: "vocab-test-course",
+      }],
+    }],
+    courses: [{
+      id: "vocab-test-course",
+      title: "VOCAB",
+      facultyId: "vocab-test-course",
+      roomId: "vocab-test-room",
+      teacherTemplateId: "sally-science",
+      subjects: ["vocab"],
+    }],
+    rooms: [{
+      id: "vocab-test-room",
+      name: "VOCAB",
+      channelName: "vocab",
+      teacherId: "vocab-test-course",
+      description: "Imported vocabulary deck",
+      teaches: true,
+    }],
+  };
 }
 
 describe("RubyHighService Phase 1", () => {
@@ -103,6 +152,163 @@ describe("RubyHighService Phase 1", () => {
     expect(restored.faculty).toBe("sally-science");
   });
 
+  it("clears a persisted activePackId when the imported pack body is gone", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:stranded-pack";
+    const state = ruby.getOrCreate(sid);
+    state.activePackId = "anki:missing";
+    state.faculty = "missing-teacher";
+    await ruby.flush();
+
+    const facultyB = await FacultyService.start({} as never);
+    const rubyB = new RubyHighService({} as never, new StateStore(storePath));
+    await rubyB["hydrate"]();
+    rubyB.setFacultyService(facultyB);
+    activeRuby = rubyB;
+
+    const restored = rubyB.getOrCreate(sid);
+    expect(restored.activePackId).toBeNull();
+    expect(restored.faculty).toBe("ruby");
+  });
+
+  it("treats a selected preset teacher as a course template, not the built-in bank", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-teacher-template";
+    const pack = fakeAnkiPackWithSally();
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    let state = ruby.setFaculty(sid, "sally-science");
+    expect(state.faculty).toBe("vocab-test-course");
+
+    state = ruby.pickAndPose(sid, { faculty: "sally-science" });
+    expect(state.current?.id).toBe("vocab-q1");
+    expect(state.current?.faculty).toBe("vocab-test-course");
+    expect(state.current?.subject).toBe("vocab");
+
+    const bank = ruby.questionBankStatus(sid, "sally-science");
+    expect(bank.facultyId).toBe("vocab-test-course");
+    expect(bank.mode).toBe("srs");
+    expect(bank.total).toBe(1);
+  });
+
+  it("uses due-card review for imported Anki packs instead of one-use exhaustion", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-srs-due";
+    const pack = fakeAnkiPackWithSally("anki:vocab-srs-due", "vocab-due-q1");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    let state = ruby.getOrCreate(sid);
+    state.askedQuestionIds = ["vocab-due-q1"];
+
+    let bank = ruby.questionBankStatus(sid, "sally-science");
+    expect(bank.mode).toBe("srs");
+    expect(bank.remaining).toBe(1);
+    expect(bank.readyCount).toBe(1);
+
+    state = ruby.pickAndPose(sid, { faculty: "sally-science", subject: "science" });
+    expect(state.current?.id).toBe("vocab-due-q1");
+    ruby.submitAnswer(sid, "B");
+
+    bank = ruby.questionBankStatus(sid, "sally-science");
+    expect(bank.remaining).toBe(0);
+    expect(bank.shakyCount).toBe(1);
+
+    const memory = ruby.getOrCreate(sid).cardMemory!;
+    const key = Object.keys(memory)[0]!;
+    memory[key]!.dueAt = Date.now() - 1;
+    bank = ruby.questionBankStatus(sid, "sally-science");
+    expect(bank.remaining).toBe(1);
+    expect(ruby.pickAndPose(sid, { faculty: "sally-science" }).current?.id).toBe("vocab-due-q1");
+  });
+
+  it("compresses imported deck mastery to a letter grade", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-srs-grade";
+    const pack = fakeAnkiPackWithSally("anki:vocab-srs-grade", "vocab-grade-q1");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    for (let i = 0; i < 3; i++) {
+      const state = ruby.pickAndPose(sid, { faculty: "sally-science" });
+      ruby.submitAnswer(sid, state.current!.correct!);
+      const memory = ruby.getOrCreate(sid).cardMemory!;
+      const key = Object.keys(memory)[0]!;
+      memory[key]!.dueAt = Date.now() - 1;
+    }
+
+    const bank = ruby.questionBankStatus(sid, "sally-science");
+    expect(bank.grade).toBe("A");
+    expect(bank.masteredCount).toBe(1);
+    expect(bank.remaining).toBe(1);
+  });
+
+  it("keeps custom questions in the imported course when a teacher template id appears in tool args", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-custom-question-template";
+    const pack = fakeAnkiPackWithSally();
+    pack.id = "anki:vocab-custom-template";
+    registerPack(pack, sid);
+    let state = ruby.getOrCreate(sid);
+    state.subject = "general-knowledge";
+    state = ruby.setActivePackForSession(sid, pack.id);
+    expect(state.subject).toBeNull();
+
+    state = ruby.pose(sid, {
+      prompt: "What does lucid mean?",
+      options: { A: "clear", B: "sticky", C: "ancient", D: "noisy" },
+      correct: "A",
+      subject: "science",
+      faculty: "sally-science",
+    });
+
+    expect(state.activePackId).toBe(pack.id);
+    expect(state.faculty).toBe("vocab-test-course");
+    expect(state.current?.faculty).toBe("vocab-test-course");
+    expect(state.current?.subject).toBe("vocab");
+  });
+
+  it("promotes teacher-authored Ruby High questions into the global bank", async () => {
+    const { ruby, faculty } = await makeServices();
+    const sid = "test:global-custom-bank";
+    const before = faculty.bank("ruby")!.questions.length;
+
+    const state = ruby.pose(sid, {
+      prompt: "Which classroom rule keeps Ruby High agents from pretending old context is new?",
+      options: {
+        A: "Use fresh room events",
+        B: "Ignore the board",
+        C: "Delete the teacher",
+        D: "Shuffle the class list",
+      },
+      correct: "A",
+      explanation: "Room events are rebuilt per turn instead of accumulating as stale instructions.",
+      subject: "agent-culture",
+      faculty: "ruby",
+      persistToBank: true,
+    });
+
+    expect(state.current?.id).toMatch(/^q_/);
+    expect(faculty.bank("ruby")!.questions.length).toBe(before + 1);
+    expect(faculty.bank("ruby")!.questions.at(-1)).toMatchObject({
+      id: state.current?.id,
+      prompt: state.current?.prompt,
+      faculty: "ruby",
+      subject: "agent-culture",
+    });
+
+    await ruby.flush();
+    resetActivePack();
+    const facultyB = await FacultyService.start({} as never);
+    const rubyB = new RubyHighService({} as never, new StateStore(storePath));
+    await rubyB["hydrate"]();
+    rubyB.setFacultyService(facultyB);
+    activeRuby = rubyB;
+
+    expect(facultyB.bank("ruby")!.questions.some((q) => q.id === state.current?.id)).toBe(true);
+  });
+
   it("resetSession wipes everything for that sessionId", async () => {
     const { ruby } = await makeServices();
     const sid = "test:6";
@@ -117,13 +323,14 @@ describe("RubyHighService Phase 1", () => {
     expect(fresh.history).toEqual([]);
   });
 
-  it("setFaculty clears the board when switching to a different teaching room", async () => {
+  it("setFaculty switches to each room's own board", async () => {
     const { ruby } = await makeServices();
     const sid = "test:swap-room";
     // Start in Sally's room, draw a question.
     ruby.setFaculty(sid, "sally-science");
     ruby.pickAndPose(sid, { faculty: "sally-science" });
     let state = ruby.getOrCreate(sid);
+    const sallyQuestion = state.current?.id;
     expect(state.current).not.toBeNull();
     expect(state.activeRound).not.toBeNull();
     // Walk into Edward's room — Sally's question must not follow.
@@ -133,6 +340,12 @@ describe("RubyHighService Phase 1", () => {
     expect(state.lastReveal).toBeNull();
     expect(state.activeRound).toBeNull();
     expect(state.status).toBe("idle");
+    // Returning to Sally restores Sally's board.
+    state = ruby.setFaculty(sid, "sally-science");
+    expect(state.faculty).toBe("sally-science");
+    expect(state.current?.id).toBe(sallyQuestion);
+    expect(state.activeRound?.questionId).toBe(sallyQuestion);
+    expect(state.status).toBe("awaiting-answer");
   });
 
   it("setFaculty preserves the board when re-selecting the same faculty (no-op)", async () => {
@@ -146,15 +359,29 @@ describe("RubyHighService Phase 1", () => {
     expect(state.activeRound).not.toBeNull();
   });
 
-  it("setFaculty also clears the board when entering the lounge", async () => {
-    // Pre-existing behavior; locked in as a regression check now that the
-    // wipe path is shared with the cross-classroom case.
+  it("setFaculty hides the classroom board in the lounge and restores it when returning", async () => {
     const { ruby } = await makeServices();
     const sid = "test:to-lounge";
     ruby.pickAndPose(sid, { faculty: "sally-science" });
-    expect(ruby.getOrCreate(sid).current).not.toBeNull();
-    const state = ruby.setFaculty(sid, "lounge");
+    const sallyQuestion = ruby.getOrCreate(sid).current?.id;
+    let state = ruby.setFaculty(sid, "lounge");
     expect(state.faculty).toBe("lounge");
+    expect(state.current).toBeNull();
+    expect(state.activeRound).toBeNull();
+    state = ruby.setFaculty(sid, "sally-science");
+    expect(state.current?.id).toBe(sallyQuestion);
+    expect(state.activeRound?.questionId).toBe(sallyQuestion);
+  });
+
+  it("clearBoard deletes the active room board instead of letting it resurrect on return", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:clear-room-board";
+    ruby.pickAndPose(sid, { faculty: "sally-science" });
+    ruby.setFaculty(sid, "professor-edward");
+    expect(ruby.setFaculty(sid, "sally-science").current).not.toBeNull();
+    ruby.clearBoard(sid);
+    ruby.setFaculty(sid, "professor-edward");
+    const state = ruby.setFaculty(sid, "sally-science");
     expect(state.current).toBeNull();
     expect(state.activeRound).toBeNull();
   });
