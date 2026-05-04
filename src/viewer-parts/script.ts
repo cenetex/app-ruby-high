@@ -303,9 +303,32 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   let lastSettledCommandSeq = 0;
 
   // ── message factories ────────────────────────────────────────────────────
+  function knownTeacherAssetId(faculty) {
+    const haystack = [
+      faculty && faculty.id,
+      faculty && faculty.displayName,
+      faculty && faculty.shortName,
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (haystack.includes("sally")) return "sally-science";
+    if (haystack.includes("edward")) return "professor-edward";
+    if (haystack.includes("ruby")) return "ruby";
+    return "";
+  }
+  function facultyAssetId(facultyOrId) {
+    if (!facultyOrId) return "";
+    if (typeof facultyOrId === "object") return facultyOrId.assetTeacherId || knownTeacherAssetId(facultyOrId) || facultyOrId.id || "";
+    const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
+    const fac = roster.find((f) => f.id === facultyOrId);
+    return (fac && (fac.assetTeacherId || knownTeacherAssetId(fac))) || facultyOrId;
+  }
+  function teacherAssetUrl(facultyOrId, variant) {
+    const assetId = facultyAssetId(facultyOrId) || "ruby";
+    const suffix = variant ? "-" + variant : "";
+    return apiBase + "/assets/teachers/" + encodeURIComponent(assetId) + suffix + ".png";
+  }
   function teacherStickerUrl(facultyId) {
     if (!facultyId) return null;
-    return apiBase + "/assets/teachers/" + encodeURIComponent(facultyId) + ".png";
+    return teacherAssetUrl(facultyId, "");
   }
   function studentStickerUrl(studentId) {
     if (!studentId) return null;
@@ -386,9 +409,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function appendEmptyState({ title, body, ctaLabel, ctaAction, facultyId }) {
     const wrap = document.createElement("div");
     wrap.className = "empty-state";
-    const heroSrc = facultyId
-      ? apiBase + "/assets/teachers/" + encodeURIComponent(facultyId) + "-full.png"
-      : apiBase + "/assets/teachers/ruby-full.png";
+    const heroSrc = facultyId ? teacherAssetUrl(facultyId, "full") : teacherAssetUrl("ruby", "full");
     wrap.innerHTML =
       '<img class="logo" src="' + heroSrc + '" alt=""/>' +
       '<h2>' + escape(title) + '</h2>' +
@@ -718,14 +739,17 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.teacherFigure.hidden = true;
       els.teacherFigure.removeAttribute("src");
       els.teacherFigure.dataset.facultyId = "";
+      els.teacherFigure.dataset.assetId = "";
       return;
     }
     // Use the -face crop for the corner badge — cleaner head/shoulders fit.
-    const url = apiBase + "/assets/teachers/" + encodeURIComponent(faculty.id) + "-face.png";
-    if (els.teacherFigure.dataset.facultyId !== faculty.id) {
+    const assetId = facultyAssetId(faculty);
+    const url = teacherAssetUrl(faculty, "face");
+    if (els.teacherFigure.dataset.facultyId !== faculty.id || els.teacherFigure.dataset.assetId !== assetId) {
       // Clear first so the browser repaints even if the URL is cached, and
       // restart the entry animation so the speaker change reads visually.
       els.teacherFigure.dataset.facultyId = faculty.id;
+      els.teacherFigure.dataset.assetId = assetId;
       els.teacherFigure.style.borderColor = faculty.accent || "var(--accent)";
       els.teacherFigure.removeAttribute("src");
       // Force reflow so the animation actually re-runs.
@@ -755,7 +779,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.loungeFigures.innerHTML = "";
     for (const f of roster) {
       const img = document.createElement("img");
-      img.src = apiBase + "/assets/teachers/" + encodeURIComponent(f.id) + "-full.png";
+      img.src = teacherAssetUrl(f, "full");
       img.alt = f.displayName || f.id;
       img.addEventListener("error", () => {
         img.replaceWith(loungePlaceholder(f));
@@ -1094,7 +1118,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         thumb.style.cursor = "pointer";
         thumb.addEventListener("click", (e) => { e.stopPropagation(); openTeacherProfile(fac.id); });
         const img = document.createElement("img");
-        img.src = apiBase + "/assets/teachers/" + encodeURIComponent(fac.id) + "-face.png";
+        img.src = teacherAssetUrl(fac, "face");
         img.alt = "";
         img.onerror = () => { thumb.style.background = fac.accent || "#444"; thumb.removeChild(img); };
         thumb.appendChild(img);
@@ -1979,7 +2003,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     })[roomId] || roomId || "class";
   }
   function teacherFullPortraitUrl(facultyId) {
-    return apiBase + "/assets/teachers/" + encodeURIComponent(facultyId) + "-full.png";
+    return teacherAssetUrl(facultyId, "full");
   }
   function buildTeacherProfileCard(fac) {
     const subjectLine = TEACHER_SUBJECT_LINE[fac.id] || (Array.isArray(fac.subjects) ? fac.subjects.join(", ") : fac.bio);

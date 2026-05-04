@@ -107,6 +107,7 @@ export interface RouteContext {
 interface FacultyTelemetry extends FacultyMember {
   questionCount: number;
   subjects: string[];
+  assetTeacherId?: string;
 }
 
 interface SessionTelemetry extends Record<string, unknown> {
@@ -386,6 +387,7 @@ function buildFacultyRoster(faculty: FacultyService | null, state: QuizState): F
       bio: f.bio,
       available: true,
       accent: f.accent,
+      ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
       questionCount: bank?.questions.length ?? 0,
       subjects,
     };

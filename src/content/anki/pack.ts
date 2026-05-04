@@ -107,6 +107,7 @@ export async function buildAnkiPack(
     id: facultyId,
     displayName: teacherDisplay,
     shortName: selectedTeacher?.shortName ?? shortenName(teacherDisplay),
+    ...(selectedTeacher ? { assetTeacherId: selectedTeacher.id } : {}),
     subjects: [subjectPill],
     bio: selectedTeacher
       ? `${selectedTeacher.displayName} teaching Anki-imported deck: ${deck.name}.`

@@ -44,6 +44,9 @@ export interface PackFaculty {
   id: string;
   displayName: string;
   shortName: string;
+  /** Optional built-in teacher asset id used for portraits when a generated
+   *  pack borrows an existing teacher's face/figure but keeps a unique id. */
+  assetTeacherId?: string;
   // ── metadata ──────────────────────────────────────────────────────────
   /** Subjects this teacher covers — surfaced in the UI as filter pills and
    *  fed to the chat layer for routing decisions. */

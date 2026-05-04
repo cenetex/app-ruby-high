@@ -101,6 +101,7 @@ function packSummary(pack: ContentPack) {
       id: f.id,
       displayName: f.displayName,
       shortName: f.shortName,
+      ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
       subjects: f.subjects,
       questionCount: f.questions.length,
     })),

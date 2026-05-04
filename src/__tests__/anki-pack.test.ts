@@ -138,6 +138,7 @@ describe("buildAnkiPack — happy path", () => {
     const fac = pack.faculty[0]!;
     expect(fac.displayName).toBe("Sally Science");
     expect(fac.shortName).toBe("Sally");
+    expect(fac.assetTeacherId).toBe("sally-science");
     expect(fac.accent).toBe("#3aa3e0");
     expect(fac.systemPrompt).toContain("You are Sally Science");
     expect(fac.systemPrompt).toContain('Imported Anki module: "AP Biology — Cells"');

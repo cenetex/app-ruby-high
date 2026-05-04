@@ -273,6 +273,7 @@ describe("/packs/import-anki — end-to-end", () => {
     expect(pack.question_count).toBe(3);
     expect(pack.faculty[0].id).toContain("test-deck");
     expect(pack.faculty[0].displayName).toBe("Professor Edward");
+    expect(pack.faculty[0].assetTeacherId).toBe("professor-edward");
     // Pack is now active for the importing session.
     const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe(pack.id);
