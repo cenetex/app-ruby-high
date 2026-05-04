@@ -499,9 +499,9 @@ export interface PlayerCharacter {
   xp: number;
   /** Past-year archive — populated at grade completion. Each entry is a
    *  **Paper Card**: a frozen snapshot of identity at the moment the year
-   *  closed. Paper cards never change after they're written; the live
-   *  character is the **Stat Card**. The split is the user-facing model:
-   *  one paper card per grade earned, plus a stat card on top.
+   *  closed. Paper cards never change after they're written. The current
+   *  school career renders as two cards: a stable Character Card for identity
+   *  and a dynamic School Career Card for live progress.
    *
    *  Snapshot fields are optional only for legacy entries written before
    *  the snapshot existed — the service backfills them from the live

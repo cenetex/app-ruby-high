@@ -70,6 +70,8 @@ export interface RoomEvent {
 
 const HISTORY_LIMIT = 30;
 const EVENT_LOG_LIMIT = 60;
+const DEFAULT_AGENT_ROUNDS = 4;
+const MAX_AGENT_ROUNDS = readAgentRoundLimit(process.env.RUBY_HIGH_CHAT_AGENT_ROUNDS);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER_HEADER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE_HEADER = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
@@ -190,6 +192,7 @@ export class ChatService extends Service {
     const bucketFaculty = opts.bucketKey ?? opts.faculty;
     const key: ChatHistoryKey = { sessionToken: opts.sessionToken, faculty: bucketFaculty };
     const history = this.ensure(key);
+    this.trim(key);
 
     // systemEventNote is the per-turn directive. It does NOT enter
     // `history` — it is threaded as the last system block before the
@@ -213,19 +216,12 @@ export class ChatService extends Service {
     }
 
     const toolDefs = opts.disableTools ? [] : buildToolDefs();
-    // 2 rounds is enough for the standard "speak + pose question" flow.
-    // More than that has only ever produced loops where the model tries to
-    // "fix" a non-problem (e.g., re-picking what it thinks is a duplicate).
-    let safety = opts.disableTools ? 1 : 2;
-    // Once any tool has fired in this turn, iteration 2 runs without tools
-    // — it's narration-only. This is the structural fix for the
-    // "model second-guesses pick_from_bank and picks again" loop: in
-    // iteration 2 the system message describes the freshly-placed question,
-    // and the model's own tool result from iteration 1 describes the same
-    // question; reading both literally, the model sometimes concludes
-    // "same question on the board, must re-pick." Removing the tools from
-    // its iteration-2 menu forecloses that path entirely.
-    let toolsFiredThisTurn = false;
+    // Keep enough room for recovery flows: e.g. pick_from_bank fails because
+    // a filter is dry, then the teacher writes a custom question. Once a tool
+    // successfully puts a board state in place, the next round is narration-only
+    // to preserve the old anti-repeat-pick guard.
+    let safety = opts.disableTools ? 1 : Math.max(2, MAX_AGENT_ROUNDS);
+    let narrationOnlyNext = false;
 
     while (safety-- > 0) {
       const messages = this.composeForOpenRouter({
@@ -243,7 +239,7 @@ export class ChatService extends Service {
         apiKey: opts.apiKey,
         model: opts.model ?? teacher.defaultModel,
         messages,
-        tools: toolsFiredThisTurn ? [] : toolDefs,
+        tools: narrationOnlyNext ? [] : toolDefs,
         maxTokens: opts.maxTokens ?? 600,
       });
 
@@ -278,19 +274,16 @@ export class ChatService extends Service {
         at: Date.now(),
       };
       history.push(assistantMessage);
-      this.trim(key);
 
       if (assistantToolCalls.length === 0) {
+        this.trim(key);
         yield { type: "done", finishReason };
         return;
       }
 
-      // Mark the turn as having fired tools BEFORE dispatch — even if
-      // dispatch fails, the next iteration must be narration-only so we
-      // don't loop. (Tool-result framing tells the model what happened;
-      // re-trying is the user-event handler's job, not this loop's.)
-      toolsFiredThisTurn = true;
       let handoffFired = false;
+      let boardToolSucceeded = false;
+      const toolEvents: ChatStreamEvent[] = [];
       for (const call of assistantToolCalls) {
         const result = await this.dispatchTool(opts.agentSessionId, call);
         history.push({
@@ -300,21 +293,25 @@ export class ChatService extends Service {
           faculty: opts.faculty,
           at: Date.now(),
         });
-        this.trim(key);
-        yield {
+        toolEvents.push({
           type: "tool",
           tool: call.function.name,
           args: result.args,
           result: { ok: result.payload.ok, message: result.payload.message, error: result.payload.error },
           state: result.state ?? undefined,
-        };
+        });
         if (call.function.name === "pose_opinion" && result.payload.ok && result.state) {
           void this.kickoffNpcOpinions(opts.apiKey, opts.agentSessionId);
         }
         if (call.function.name === "handoff_faculty" && result.payload.ok) {
           handoffFired = true;
         }
+        if (result.payload.ok && toolShouldForceNarration(call.function.name)) {
+          boardToolSucceeded = true;
+        }
       }
+      this.trim(key);
+      for (const ev of toolEvents) yield ev;
       // After handoff_faculty, stop the agent loop. The current speaker is no
       // longer the active faculty; further turns belong to the new teacher
       // and should be triggered by the next channel-enter event.
@@ -322,6 +319,7 @@ export class ChatService extends Service {
         yield { type: "done", finishReason: "handoff" };
         return;
       }
+      narrationOnlyNext = boardToolSucceeded;
     }
 
     yield { type: "error", message: "Tool-call loop exceeded safety bound — stopping." };
@@ -547,40 +545,78 @@ export class ChatService extends Service {
     const k = this.keyOf(key);
     const list = this.histories.get(k);
     if (!list) return;
-    if (list.length <= HISTORY_LIMIT) return;
-    let next = list.slice(list.length - HISTORY_LIMIT);
-    // The slice can land between an assistant-with-tool_calls and its
-    // matching tool result, leaving orphan `tool` messages at the head.
-    // Anthropic (and most providers) reject these with
-    //   "tool_result block must have a corresponding tool_use block in the
-    //    previous message"
-    // Drop any leading `tool` messages (and any leading assistant messages
-    // that have tool_calls but whose tool results were trimmed away — these
-    // also dangle and confuse the provider).
-    let drop = 0;
-    while (drop < next.length) {
-      const m = next[drop]!;
-      if (m.role === "tool") { drop++; continue; }
-      if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-        // Check whether the next message satisfies all tool calls. If any
-        // are missing, this assistant message is orphaned and we drop it.
-        const ids = new Set(m.toolCalls.map((tc) => tc.id));
-        let scan = drop + 1;
-        while (scan < next.length && next[scan]!.role === "tool") {
-          ids.delete(next[scan]!.toolCallId ?? "");
-          scan++;
-        }
-        if (ids.size > 0) { drop = scan; continue; }
-      }
-      break;
-    }
-    if (drop > 0) next = next.slice(drop);
-    this.histories.set(k, next);
+    const next = normalizeHistoryForProvider(list, HISTORY_LIMIT);
+    // Preserve the array identity returned by ensure(). send() holds that
+    // reference while it is appending the current turn; replacing the map
+    // value here would make later pushes land on a detached array.
+    list.splice(0, list.length, ...next);
   }
 
   private keyOf(key: ChatHistoryKey): string {
     return `${key.sessionToken}::${key.faculty}`;
   }
+}
+
+function normalizeHistoryForProvider(list: ChatMessage[], limit: number): ChatMessage[] {
+  const groups = providerSafeHistoryGroups(list);
+  const kept: ChatMessage[][] = [];
+  let count = 0;
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const group = groups[i]!;
+    if (kept.length > 0 && count + group.length > limit) break;
+    kept.push(group);
+    count += group.length;
+  }
+  return kept.reverse().flat();
+}
+
+function providerSafeHistoryGroups(list: ChatMessage[]): ChatMessage[][] {
+  const groups: ChatMessage[][] = [];
+  for (let i = 0; i < list.length;) {
+    const m = list[i]!;
+    if (m.role === "system" || m.role === "tool") {
+      i++;
+      continue;
+    }
+
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      const callIds = m.toolCalls.map((tc) => tc.id).filter(Boolean);
+      const allCallsHaveIds = callIds.length === m.toolCalls.length;
+      const expected = new Set(callIds);
+      const toolsById = new Map<string, ChatMessage>();
+      let scan = i + 1;
+      while (scan < list.length && list[scan]!.role === "tool") {
+        const tool = list[scan]!;
+        if (tool.toolCallId && expected.has(tool.toolCallId) && !toolsById.has(tool.toolCallId)) {
+          toolsById.set(tool.toolCallId, tool);
+        }
+        scan++;
+      }
+
+      if (allCallsHaveIds && expected.size === m.toolCalls.length && toolsById.size === expected.size) {
+        groups.push([m, ...callIds.map((id) => toolsById.get(id)!)]);
+      }
+      i = scan;
+      continue;
+    }
+
+    groups.push([m]);
+    i++;
+  }
+  return groups;
+}
+
+function toolShouldForceNarration(name: string): boolean {
+  return name === "pick_from_bank"
+    || name === "pose_question"
+    || name === "pose_opinion";
+}
+
+function readAgentRoundLimit(raw: string | undefined): number {
+  if (raw == null || raw.trim() === "") return DEFAULT_AGENT_ROUNDS;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_AGENT_ROUNDS;
+  return Math.max(2, Math.floor(n));
 }
 
 /** One-shot OpenRouter call asking an NPC to write an opinion in their voice
@@ -754,12 +790,20 @@ function describeBoardForModel(state: QuizState): string {
   const resolvedThisQ =
     !!round && round.questionId === q.id && round.resolved &&
     !!state.lastReveal && state.lastReveal.questionId === q.id;
-  const statusLine = resolvedThisQ && state.lastReveal
-    ? `(The student already answered ${state.lastReveal.picked} — ${state.lastReveal.wasCorrect ? "correct" : "missed; correct was " + state.lastReveal.correct}. React to the outcome and call pick_from_bank for the next question.)`
-    : "(The student is now picking. Wait for the answer-graded event before calling another tool.)";
+  const statusLines = resolvedThisQ && state.lastReveal
+    ? [
+        "BOARD STATUS: RESOLVED.",
+        `The player already answered ${state.lastReveal.picked} and was ${state.lastReveal.wasCorrect ? "correct" : "wrong; correct was " + state.lastReveal.correct}.`,
+        "Do not ask for an answer to this board again. React to the result, then call pick_from_bank or pose_question to put the next question on the board.",
+      ]
+    : [
+        "BOARD STATUS: WAITING_FOR_STUDENT_ANSWER.",
+        "The player has not answered this board yet. Do not reveal the correct answer. Wait for the answer-graded event before calling another tool.",
+      ];
   return [
     `Active faculty: ${state.faculty}.`,
     `Score this session: ${state.score.correct}/${state.score.total}.`,
+    ...statusLines,
     `Current question on the blackboard (${q.difficulty ?? "?"} · ${q.subject ?? "?"}):`,
     `  ${q.prompt}`,
     `  A) ${opts.A}`,
@@ -767,7 +811,6 @@ function describeBoardForModel(state: QuizState): string {
     `  C) ${opts.C}`,
     `  D) ${opts.D}`,
     `Correct answer: ${q.correct ?? "?"}.`,
-    statusLine,
   ].join("\n");
 }
 

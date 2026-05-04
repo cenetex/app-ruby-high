@@ -412,6 +412,36 @@ describe("Per-class XP gate — streak alone is not enough", () => {
     expect(final.character!.subjectXp?.["ruby"] ?? 0).toBeGreaterThanOrEqual(2);
     expect(final.currentGrade).toBe("10");
   });
+
+  it("advances as soon as the final class gate lands after the streak is already met", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:advance-when-class-gate-lands";
+    attachCharacter(ruby, sid, "9", 0);
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.legendariesToday = { date: "2026-05-04", count: 4 };
+    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 1 };
+
+    const realNow = Date.now;
+    try {
+      Date.now = () => new Date("2026-05-04T20:00:00Z").getTime();
+      ruby.pose(sid, {
+        prompt: "Final class credit",
+        options: { A: "a", B: "b", C: "c", D: "d" },
+        correct: "A",
+        faculty: "professor-edward",
+        rarity: "rare",
+        questionId: "q_class_gate_lands",
+      });
+      ruby.submitAnswer(sid, "A");
+    } finally {
+      Date.now = realNow;
+    }
+
+    const after = ruby.getOrCreate(sid);
+    expect(after.currentGrade).toBe("10");
+    expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(true);
+  });
 });
 
 describe("Streak + grade advancement (rarity-driven)", () => {
@@ -516,6 +546,59 @@ describe("Streak + grade advancement (rarity-driven)", () => {
     expect(finalCh.yearbook[3]?.grade).toBe("12");
     expect(ruby.getOrCreate(sid).currentGrade).toBe("12"); // doesn't advance past Senior
     expect(ruby.getOrCreate(sid).completedGrades).toContain("12");
+  });
+
+  it("reconciles already-cleared Freshman gates on session read", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:reconcile-cleared-freshman";
+    attachCharacter(ruby, sid, "9", 0);
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.legendariesToday = { date: "2026-05-04", count: 4 };
+    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
+
+    const after = ruby.getOrCreate(sid);
+    expect(after.currentGrade).toBe("10");
+    expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(true);
+  });
+
+  it("graduates as soon as Senior's final class gate lands after the streak is already met", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:graduate-when-senior-class-gate-lands";
+    attachCharacter(ruby, sid, "12", 0);
+    const state = ruby.getOrCreate(sid);
+    state.completedGrades = ["9", "10", "11"];
+    const ch = state.character!;
+    ch.streak = { grade: "12", count: 4, lastDate: "2026-05-07" };
+    ch.legendariesToday = { date: "2026-05-07", count: 8 };
+    ch.subjectXp = { ruby: 16, "sally-science": 16, "professor-edward": 15 };
+    ch.yearbook = [
+      { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },
+      { grade: "10", completedAt: 2, summary: { correct: 2, total: 2 } },
+      { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
+    ];
+
+    const realNow = Date.now;
+    try {
+      Date.now = () => new Date("2026-05-07T20:00:00Z").getTime();
+      ruby.pose(sid, {
+        prompt: "Final senior class credit",
+        options: { A: "a", B: "b", C: "c", D: "d" },
+        correct: "A",
+        faculty: "professor-edward",
+        rarity: "rare",
+        questionId: "q_senior_class_gate_lands",
+      });
+      ruby.submitAnswer(sid, "A");
+    } finally {
+      Date.now = realNow;
+    }
+
+    const after = ruby.getOrCreate(sid);
+    expect(after.currentGrade).toBe("12");
+    expect(after.completedGrades).toContain("12");
+    expect(after.character!.yearbook).toHaveLength(4);
+    expect(after.character!.yearbook[3]?.grade).toBe("12");
   });
 
   it("Paper Card: yearbook entry written at advancement freezes identity (later edits to live character don't bleed back)", async () => {

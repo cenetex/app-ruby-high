@@ -1129,6 +1129,7 @@ export const VIEWER_CSS = `
   .ccg-role.student { background: #3aa3e0; }
   .ccg-role.teacher { background: #5865f2; }
   .ccg-role.player  { background: var(--accent); }
+  .ccg-role.career  { background: #f0b441; color: #1a1520; }
   .ccg-art {
     aspect-ratio: 5 / 4;
     width: 100%;
@@ -1163,7 +1164,7 @@ export const VIEWER_CSS = `
     font-size: 18px;
     font-weight: 900;
     color: var(--text);
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
     line-height: 1.1;
   }
   .ccg-subtitle {
@@ -1248,12 +1249,13 @@ export const VIEWER_CSS = `
   }
   .ccg-progression .rung {
     display: grid;
-    grid-template-columns: 18px 1fr auto;
+    grid-template-columns: 46px minmax(42px, 1fr) auto;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     font-size: 12px;
     line-height: 1.3;
-    padding: 4px 2px;
+    min-height: 34px;
+    padding: 3px 2px;
     border-radius: 6px;
   }
   .ccg-progression .rung.is-completed { color: var(--text-mute); }
@@ -1262,35 +1264,125 @@ export const VIEWER_CSS = `
     background: rgba(255,255,255,0.04);
   }
   .ccg-progression .rung.is-future { color: var(--text-mute); opacity: 0.7; }
-  .ccg-progression .rung-dot {
-    text-align: center;
-    font-size: 12px;
-    color: var(--accent);
+  .ccg-progression .rung-streak {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1px;
+    min-width: 0;
+    color: #f0b441;
+    line-height: 1;
   }
-  .ccg-progression .rung.is-future .rung-dot { color: var(--text-mute); }
+  .ccg-progression .rung-streak-diamond {
+    width: 10px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 900;
+  }
+  .ccg-progression .rung.is-future .rung-streak { color: var(--text-mute); }
+  .ccg-progression .rung.is-completed .rung-streak { color: rgba(240,180,65,0.58); }
   .ccg-progression .rung-label { font-weight: 700; }
   .ccg-progression .rung.is-current .rung-label { color: var(--accent); }
   .ccg-progression .rung-gates {
     display: inline-flex;
-    gap: 6px;
+    gap: 5px;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     font-size: 11px;
     color: var(--text-soft);
+    min-width: 0;
   }
-  .ccg-progression .gate-chip {
-    padding: 2px 6px;
+  .ccg-progression .gate-ring {
+    --pct: 0%;
+    width: 28px;
+    height: 28px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid var(--line);
+    padding: 1px;
+    background:
+      conic-gradient(var(--gate-color, #3aa3e0) var(--pct), rgba(255,255,255,0.10) 0),
+      rgba(255,255,255,0.04);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
     font-variant-numeric: tabular-nums;
   }
-  .ccg-progression .gate-chip.is-met {
-    background: rgba(76, 181, 85, 0.18);
-    border-color: rgba(76, 181, 85, 0.45);
-    color: #b6f5b9;
+  .ccg-progression .gate-ring.streak-ring { --gate-color: #f0b441; }
+  .ccg-progression .gate-ring.class-ring { --gate-color: #4cb555; }
+  .ccg-progression .gate-ring.is-met {
+    background:
+      rgba(255,255,255,0.075);
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,0.12);
   }
-  .ccg-progression .gate-chip.class-chip {
+  .ccg-progression .gate-core {
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    background: rgba(25,27,40,0.94);
+    color: var(--text-soft);
+    line-height: 1;
     font-size: 10px;
-    opacity: 0.92;
+    font-weight: 900;
+  }
+  .ccg-progression .gate-ring.is-met .gate-core {
+    color: var(--gate-color);
+    background: rgba(25,27,40,0.94);
+  }
+  .ccg-progression .gate-ring.streak-ring.is-met .gate-core { color: #f0b441; }
+  .ccg-progression .gate-ring.class-ring.is-met {
+    background: #4cb555;
+    box-shadow:
+      inset 0 0 0 1px rgba(228,255,230,0.18);
+  }
+  .ccg-progression .gate-ring.class-ring.is-met .gate-core {
+    color: #f4fff4;
+    background: #4cb555;
+    text-shadow: none;
+  }
+  .ccg-progression .gate-icon {
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .ccg-progression .gate-ring.class-ring .gate-icon {
+    font-size: 16px;
+    transform: translateY(-0.5px);
+  }
+  .ccg-progression .gate-ring.class-ring.is-met .gate-icon { font-size: 17px; }
+  .ccg-progression .gate-count {
+    color: var(--text);
+    font-size: 10px;
+    font-weight: 900;
+  }
+  .ccg-progression .future-req {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: rgba(255,255,255,0.028);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-mute);
+    opacity: 0.58;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .ccg-progression .future-req-icon {
+    font-size: 14px;
+    font-weight: 900;
+  }
+  .ccg-progression .future-req-count {
+    font-size: 11px;
+    font-weight: 900;
   }
   .ccg-footer {
     padding: 8px 10px;
@@ -1396,6 +1488,10 @@ export const VIEWER_CSS = `
     max-height: calc(100dvh - 40px);
     overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .sheet-card.is-card-deck-sheet {
+    max-width: min(840px, calc(100vw - 40px));
+    padding: 16px;
   }
   .sheet-card h2 {
     margin: 0 0 4px;
@@ -1717,40 +1813,83 @@ export const VIEWER_CSS = `
     margin-top: 4px;
   }
 
-  /* ── card deck (Stat Card + Paper Cards) ────────────────────────────── */
-  /* Two card types live in the read-only sheet:
-       Stat Card  — live, current year, counters tick. Exactly one of these.
-                    Glows accent-coloured to read as "active."
-       Paper Card — frozen snapshot of a closed year. Sealed paper-stock
-                    look, slight desaturation, "✓ sealed Mon YYYY"
-                    subtitle. One per grade earned (excluding the year
-                    represented by the Stat Card).
-     The deck is a horizontal scroll-snap carousel — Stat Card at the
-     front, Paper Cards trailing in chronological order. Mobile-first;
-     swipe to flip, dot-row + chevrons for desktop. */
+  /* ── card deck (Character + School Career + Paper Cards) ────────────── */
+  /* Three card types live in the read-only sheet:
+       Character Card     — stable identity. Upgrades to the diploma card
+                            at graduation.
+       School Career Card — live dashboard. Counters tick here, separate
+                            from identity.
+       Paper Card         — frozen snapshot of a closed year. Sealed
+                            paper-stock look, slight desaturation,
+                            "✓ sealed Mon YYYY" subtitle. One per grade
+                            earned (excluding the year represented by the
+                            graduated Character Card).
+     The deck is a horizontal scroll-snap carousel — Character Card at the
+     front, School Career Card second, Paper Cards trailing in chronological order.
+     Mobile-first; swipe to flip, dot-row + chevrons for desktop. */
   .card-deck {
     position: relative;
     width: 100%;
     padding: 8px 0 4px;
+    --deck-card-w: min(292px, 100%);
+    --deck-gap: 18px;
+    --deck-edge-pad: max(0px, calc((100% - var(--deck-card-w)) / 2));
   }
   .card-deck-track {
     display: flex;
-    gap: 18px;
+    gap: var(--deck-gap);
     overflow-x: auto;
     overflow-y: visible;
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
-    padding: 24px 14% 28px;
-    margin: 0 -14%;
+    padding: 24px var(--deck-edge-pad) 28px;
+    margin: 0;
+    scroll-padding-inline: var(--deck-edge-pad);
     scrollbar-width: none;
   }
   .card-deck-track::-webkit-scrollbar { display: none; }
   .card-deck-track > .ccg-card {
-    flex: 0 0 auto;
-    width: 100%;
-    max-width: 300px;
+    flex: 0 0 var(--deck-card-w);
+    width: var(--deck-card-w);
+    max-width: var(--deck-card-w);
     scroll-snap-align: center;
     scroll-snap-stop: always;
+  }
+  @media (min-width: 780px) {
+    .sheet-card.is-card-deck-sheet {
+      --deck-card-w: 328px;
+      --deck-gap: 22px;
+      padding-inline: 18px;
+    }
+    .sheet-card.is-card-deck-sheet.is-two-card-deck {
+      width: auto;
+      max-width: min(calc(100vw - 40px), calc(var(--deck-card-w) + var(--deck-card-w) + var(--deck-gap) + 36px));
+    }
+    .sheet-card.is-card-deck-sheet .card-deck-track {
+      padding: 22px var(--deck-edge-pad) 26px;
+      scroll-padding-inline: var(--deck-edge-pad);
+    }
+    .sheet-card.is-card-deck-sheet.is-two-card-deck .card-deck {
+      width: auto;
+      padding-bottom: 0;
+      --deck-edge-pad: 0px;
+    }
+    .sheet-card.is-card-deck-sheet.is-two-card-deck .card-deck-track {
+      overflow: visible;
+      scroll-snap-type: none;
+      scroll-behavior: auto;
+      justify-content: center;
+      padding: 18px 0 14px;
+    }
+    .sheet-card.is-card-deck-sheet.is-two-card-deck .card-deck-track > .ccg-card {
+      scroll-snap-align: none;
+    }
+    .sheet-card.is-card-deck-sheet.is-two-card-deck .card-deck-dots,
+    .sheet-card.is-card-deck-sheet.is-two-card-deck .card-deck-nav {
+      display: none;
+    }
+    .sheet-card.is-card-deck-sheet .card-deck-nav.prev { left: 10px; }
+    .sheet-card.is-card-deck-sheet .card-deck-nav.next { right: 10px; }
   }
   .card-deck-dots {
     display: flex;
@@ -1793,27 +1932,198 @@ export const VIEWER_CSS = `
     z-index: 3;
   }
   .card-deck-nav:hover { border-color: var(--accent); background: rgba(0,0,0,0.75); }
+  .card-deck-nav[hidden] { display: none; }
   .card-deck-nav.prev { left: 4px; }
   .card-deck-nav.next { right: 4px; }
   /* Hide nav buttons when there's only one card in the deck.
      buildCharacterCard owns the single-card case — controls
      are added only when deck.length > 1, so no rule needed. */
 
-  /* Stat Card — the live one. Accent border glow + a subtle pulse on the
-     role badge to read "this is now." */
-  .card-deck-track > .ccg-card.is-stat-card {
+  /* Character Card — stable identity for the current school career. */
+  .card-deck-track > .ccg-card.is-character-card {
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.08) inset,
       0 18px 40px rgba(0,0,0,0.55),
       0 0 28px rgba(210,42,42,0.32);
   }
-  .card-deck-track > .ccg-card.is-stat-card.is-graduated {
+  .card-deck-track > .ccg-card.is-character-card.is-graduated {
     border-color: gold;
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.10) inset,
       0 18px 40px rgba(0,0,0,0.55),
       0 0 32px rgba(255,215,0,0.28);
   }
+
+  /* School Career Card — dynamic state. No portrait/art block; just the
+     moving counters and progression gates. */
+  .card-deck-track > .ccg-card.is-career-card {
+    border-color: #f0b441;
+    background:
+      linear-gradient(180deg, rgba(240,180,65,0.10) 0%, rgba(240,180,65,0.02) 42%),
+      linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 100%);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08) inset,
+      0 18px 40px rgba(0,0,0,0.50),
+      0 0 24px rgba(240,180,65,0.20);
+  }
+  .card-deck-track > .ccg-card.is-career-card .ccg-body {
+    padding-top: 34px;
+  }
+  .career-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .career-metric {
+    display: grid;
+    grid-template-columns: 78px minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 2px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 12px;
+  }
+  .career-metric:last-child { border-bottom: 0; }
+  .career-metric .k {
+    grid-row: span 2;
+    color: var(--text-mute);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    align-self: center;
+  }
+  .career-metric .v {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 900;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    min-width: 0;
+  }
+  .career-metric .detail {
+    color: var(--text-mute);
+    font-size: 11px;
+    line-height: 1.25;
+    min-width: 0;
+  }
+  .career-metric.is-met .v { color: #b6f5b9; }
+
+  .career-token-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.18);
+  }
+  .career-token-lane {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .career-token-label {
+    color: var(--text-mute);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .career-token-count {
+    color: var(--text-soft);
+    font-size: 11px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .career-sockets,
+  .career-diamonds,
+  .career-dice {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .career-diamond {
+    width: 18px;
+    height: 18px;
+    transform: rotate(45deg);
+    border-radius: 4px;
+    border: 2px solid rgba(240,180,65,0.42);
+    background: rgba(255,255,255,0.045);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.45);
+    opacity: 0.64;
+  }
+  .career-diamond.is-filled {
+    border-color: rgba(255,230,138,0.92);
+    background: linear-gradient(135deg, #ffe68a 0%, #f0b441 56%, #9b5715 100%);
+    box-shadow:
+      0 0 12px rgba(240,180,65,0.45),
+      inset 0 -2px 4px rgba(78,38,0,0.38);
+    opacity: 1;
+  }
+  .career-socket {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    border: 2px solid rgba(255,255,255,0.14);
+    background:
+      radial-gradient(circle at 50% 52%, rgba(0,0,0,0.42) 0 42%, transparent 44%),
+      rgba(255,255,255,0.045);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.55);
+    opacity: 0.42;
+  }
+  .career-socket.is-required {
+    border-color: rgba(240,180,65,0.55);
+    opacity: 1;
+  }
+  .career-socket.is-filled {
+    border-color: rgba(255,230,138,0.92);
+    background:
+      radial-gradient(circle at 34% 28%, rgba(255,255,255,0.90) 0 8%, transparent 9%),
+      radial-gradient(circle at 50% 48%, #ffe68a 0 24%, #f0b441 25% 49%, #9b5715 50% 70%, transparent 72%),
+      rgba(255,213,96,0.18);
+    box-shadow:
+      0 0 12px rgba(240,180,65,0.55),
+      inset 0 -2px 4px rgba(78,38,0,0.45);
+  }
+  .career-die {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.055);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    padding: 4px;
+    opacity: 0.42;
+  }
+  .career-die.is-live {
+    border-color: rgba(182,245,185,0.55);
+    background: linear-gradient(180deg, rgba(182,245,185,0.18), rgba(76,181,85,0.10));
+    box-shadow: 0 0 10px rgba(76,181,85,0.22);
+    opacity: 1;
+  }
+  .career-die span {
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.42);
+    align-self: center;
+    justify-self: center;
+  }
+  .career-die.is-live span { background: #d8ffda; }
+  .career-die span:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .career-die span:nth-child(2) { grid-column: 3; grid-row: 1; }
+  .career-die span:nth-child(3) { grid-column: 2; grid-row: 2; }
+  .career-die span:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .career-die span:nth-child(5) { grid-column: 3; grid-row: 3; }
 
   /* Paper Card — frozen, sealed. Paper-stock cream tint, faint grid
      overlay, slight desaturation. The subtitle ("✓ sealed Mon YYYY")

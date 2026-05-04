@@ -35,7 +35,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // The OpenRouter API key lives ONLY in localStorage. The OAuth callback
   // tab writes it; same-origin storage events fan it out to other tabs;
   // every API call attaches it via the X-Openrouter-Key header. The server
-  // never persists it, so there's nothing to lose on a server restart.
+  // never persists it; server-side auth stores only an opaque app session.
   const AUTH_KEY = "rh_openrouter_key";
   const AUTH_LABEL = "rh_openrouter_label";
   function getStoredApiKey() {
@@ -95,10 +95,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (lastTelemetry && lastTelemetry.room_cohort && lastTelemetry.faculty) {
       const room = (lastTelemetry.rooms || []).find((r) => r.teacherId === lastTelemetry.faculty);
       const ids = (room && lastTelemetry.room_cohort[room.id]) || [];
-      const found = ids.map((sid) => STUDENTS.find((s) => s.id === sid)).filter(Boolean);
+      const found = ids
+        .map((sid) => STUDENTS.find((s) => s.id === sid))
+        .filter(Boolean)
+        .filter((s) => shouldShowStudentId(s.id));
       if (found.length > 0) return found;
     }
-    return STUDENTS.slice(0, 2);
+    return STUDENTS.filter((s) => shouldShowStudentId(s.id)).slice(0, 2);
   }
   function studentsForGrade(_grade) { return studentsInRoom(); }
 
@@ -392,8 +395,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   // ── top-bar arc indicator (live progress through the 4-year arc) ────────
-  // Shape: "Junior · streak 2/3 · 28/50 XP". Hidden until a character
-  // exists. Streak/XP turn accent-colored once the gate is met (player's
+  // Shape: "Junior · streak 2/3 · 2/3 classes". Hidden until a character
+  // exists. Streak/class progress turns accent-colored once the gate is met (player's
   // sitting on the threshold, waiting for the other gate to land). After
   // graduation the year flips to "Graduated" and the gate hints drop.
   function renderArcIndicator(t) {
@@ -410,7 +413,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.arcYear.textContent = "Graduated";
       els.arcStreak.textContent = "diploma earned";
       els.arcStreak.classList.remove("is-met");
-      els.arcXp.textContent = (ch.xp ?? 0) + " XP";
+      els.arcXp.textContent = (ch.xp ?? 0) + " credits";
       els.arcXp.classList.remove("is-met");
       return;
     }
@@ -465,7 +468,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       isFirstCorrect: round.firstCorrect === "player",
       color: "var(--accent)",
     });
-    (round.npcs || []).forEach((n) => {
+    (round.npcs || []).filter((n) => shouldShowStudentId(n.studentId)).forEach((n) => {
       const s = STUDENTS.find((x) => x.id === n.studentId);
       cards.push({
         kind: "student",
@@ -491,8 +494,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const av = document.createElement("span");
       av.className = "race-avatar";
       if (c.kind === "student") {
-        const img = document.createElement("img");
-        img.src = apiBase + "/assets/teachers/" + ""; // placeholder, will use student face below
         // Students don't have face stickers yet — fall back to colored circle with initial.
         av.style.background = c.color;
         av.style.color = "#fff";
@@ -768,7 +769,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       if (r.xpAwarded > 0) {
         const xp = document.createElement("span");
         xp.className = "roll-chip hit";
-        xp.textContent = "+" + r.xpAwarded + " XP";
+        xp.textContent = "+" + r.xpAwarded + " credits";
         els.boardReveal.appendChild(xp);
       }
     }
@@ -804,7 +805,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       if (r.xpAwarded > 0) {
         const xp = document.createElement("span");
         xp.className = "roll-chip hit";
-        xp.textContent = "+" + r.xpAwarded + " XP";
+        xp.textContent = "+" + r.xpAwarded + " credits";
         body.appendChild(xp);
       }
     }
@@ -814,7 +815,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
   function showXpBurst(amount) {
     if (!amount || amount <= 0) return;
-    els.xpBurst.textContent = "+" + amount + " XP";
+    els.xpBurst.textContent = "+" + amount + " credits";
     els.xpBurst.classList.remove("is-visible");
     void els.xpBurst.offsetWidth;
     els.xpBurst.classList.add("is-visible");
@@ -896,7 +897,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       name.style.flex = "1 1 auto";
       name.textContent = room.channelName;
       row.appendChild(name);
-      const cohortIds = cohort[room.id] || [];
+      const cohortIds = (cohort[room.id] || []).filter((sid) => shouldShowStudentId(sid));
       if (cohortIds.length > 0) {
         const dots = document.createElement("span");
         dots.style.display = "inline-flex";
@@ -949,6 +950,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.channelsList.appendChild(studentsTitle);
     const npcRoster = t.npc_roster || [];
     npcRoster.forEach((npc) => {
+      if (!shouldShowStudentId(npc.id)) return;
       const s = STUDENTS.find((x) => x.id === npc.id);
       if (!s) return;
       const row = document.createElement("button");
@@ -1157,6 +1159,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
     lastTelemetry = t;
+    if (authed && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
+      loadHistory(t.faculty);
+    }
     applyViewMode(deriveViewMode(t));
 
     setAccent(t.facultyAccent);
@@ -1197,6 +1202,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       // Senior completion. The diploma modal handles the bigger beat;
       // the toast just marks the moment.
       showCongrats("You graduated.", true);
+      setTimeout(() => { if (!sheetOverlayOpen) openSheet(); }, 900);
     }
     lastYearbookLen = t.character && Array.isArray(t.character.yearbook) ? t.character.yearbook.length : 0;
 
@@ -1244,7 +1250,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         // and answer-graded gets silently dropped — leaving the player
         // staring at a revealed answer with no next question. The teacher
         // reaction is the thing that unsticks the flow; never gate it.
-        if (authed && t.faculty !== LOUNGE_ID) {
+        const arcFinished = t.character && graduatedFor(t.character);
+        if (authed && t.faculty !== LOUNGE_ID && !arcFinished) {
           setTimeout(() => {
             runAgentTurn("answer-graded", {
               grade: t.current_grade,
@@ -1400,52 +1407,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       ns.textContent = spec.nextStepHint;
       body.appendChild(ns);
     }
-    if (spec.progression && Array.isArray(spec.progression.rungs)) {
-      const wrap = document.createElement("div");
-      wrap.className = "ccg-progression";
-      const head = document.createElement("div");
-      head.className = "ccg-progression-title";
-      head.textContent = spec.progression.graduated ? "Yearbook" : "How to graduate";
-      wrap.appendChild(head);
-      const list = document.createElement("ol");
-      list.className = "rungs";
-      for (const r of spec.progression.rungs) {
-        const li = document.createElement("li");
-        li.className = "rung is-" + r.state;
-        const dot = document.createElement("span");
-        dot.className = "rung-dot";
-        dot.textContent = r.state === "completed" ? "✓" : r.state === "current" ? "●" : "○";
-        const label = document.createElement("span");
-        label.className = "rung-label";
-        label.textContent = r.label;
-        const gates = document.createElement("span");
-        gates.className = "rung-gates";
-        if (r.state === "current" && r.streakProgress && Array.isArray(r.classProgress)) {
-          const sChip = document.createElement("span");
-          sChip.className = "gate-chip" + (r.streakProgress.have >= r.streakProgress.need ? " is-met" : "");
-          sChip.textContent = "streak " + r.streakProgress.have + "/" + r.streakProgress.need;
-          gates.appendChild(sChip);
-          // Per-class XP chips. The label uses the room name (homeroom /
-          // science / lit) since that's what the player sees in the
-          // channels rail; class abbreviations match the Sally/Edward map.
-          const ROOM_LABEL = { ruby: "homeroom", "sally-science": "science", "professor-edward": "lit" };
-          for (const cp of r.classProgress) {
-            const c = document.createElement("span");
-            c.className = "gate-chip class-chip" + (cp.have >= cp.need ? " is-met" : "");
-            c.textContent = (ROOM_LABEL[cp.facultyId] || cp.facultyId) + " " + cp.have + "/" + cp.need;
-            gates.appendChild(c);
-          }
-        } else {
-          gates.textContent = r.streakReq + " streak · " + r.subjectReq + " per class";
-        }
-        li.appendChild(dot);
-        li.appendChild(label);
-        li.appendChild(gates);
-        list.appendChild(li);
-      }
-      wrap.appendChild(list);
-      body.appendChild(wrap);
-    }
+    appendProgression(body, spec.progression);
     if (spec.footer) {
       const ft = document.createElement("div");
       ft.className = "ccg-footer";
@@ -1474,10 +1436,243 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     card.appendChild(body);
     return card;
   }
+
+  function appendProgression(parent, progression) {
+    if (!progression || !Array.isArray(progression.rungs)) return;
+    const ROW_GRADE_LABELS = {
+      "9": "Fresh",
+      "10": "Soph",
+      "11": "Junior",
+      "12": "Senior",
+    };
+    const CLASS_GATE_META = [
+      { facultyId: "ruby", label: "Homeroom credit", icon: "⌂" },
+      { facultyId: "sally-science", label: "Science credit", icon: "⚗" },
+      { facultyId: "professor-edward", label: "Literature credit", icon: "✎" },
+    ];
+    const makeGateRing = (spec) => {
+      const have = Number(spec.have || 0);
+      const need = Number(spec.need || 0);
+      const remaining = Math.max(0, need - have);
+      const met = remaining <= 0;
+      const pct = need > 0 ? Math.max(0, Math.min(1, have / need)) : 1;
+      const ring = document.createElement("span");
+      ring.className = "gate-ring"
+        + (spec.kind ? " " + spec.kind + "-ring" : "")
+        + (met ? " is-met" : "");
+      ring.style.setProperty("--pct", String(Math.round(pct * 100)) + "%");
+      const titleUnit = remaining === 1 ? spec.unit : (spec.pluralUnit || spec.unit);
+      ring.title = met
+        ? spec.label + " complete"
+        : spec.label + ": " + remaining + " " + titleUnit + " left";
+      ring.setAttribute("aria-label", ring.title);
+      const core = document.createElement("span");
+      core.className = "gate-core";
+      const icon = document.createElement("span");
+      icon.className = "gate-icon";
+      icon.textContent = spec.icon;
+      core.appendChild(icon);
+      if (!met && remaining > 0) {
+        const count = document.createElement("span");
+        count.className = "gate-count";
+        count.textContent = String(remaining);
+        core.appendChild(count);
+      }
+      ring.appendChild(core);
+      return ring;
+    };
+    const makeStreakMark = (r) => {
+      const need = Math.max(1, Number((r.streakProgress && r.streakProgress.need) || r.streakReq || 1));
+      const have = Math.max(0, Number((r.streakProgress && r.streakProgress.have) || 0));
+      const mark = document.createElement("span");
+      mark.className = "rung-streak";
+      const dayUnit = need === 1 ? "day" : "days";
+      mark.title = r.state === "current"
+        ? "Legendary streak: " + Math.min(have, need) + "/" + need
+        : need + " Legendary streak " + dayUnit;
+      mark.setAttribute("aria-label", mark.title);
+      for (let i = 0; i < need; i++) {
+        const diamond = document.createElement("span");
+        diamond.className = "rung-streak-diamond";
+        diamond.textContent = "◆";
+        mark.appendChild(diamond);
+      }
+      return mark;
+    };
+    const makeFutureReq = (spec) => {
+      const req = document.createElement("span");
+      req.className = "future-req";
+      req.title = spec.title;
+      req.setAttribute("aria-label", spec.title);
+      const icon = document.createElement("span");
+      icon.className = "future-req-icon";
+      icon.textContent = spec.icon;
+      req.appendChild(icon);
+      if (spec.count !== undefined && spec.count !== null) {
+        const count = document.createElement("span");
+        count.className = "future-req-count";
+        count.textContent = String(spec.count);
+        req.appendChild(count);
+      }
+      return req;
+    };
+    const wrap = document.createElement("div");
+    wrap.className = "ccg-progression";
+    const head = document.createElement("div");
+    head.className = "ccg-progression-title";
+    head.textContent = progression.graduated ? "Yearbook" : "Class Schedule";
+    wrap.appendChild(head);
+    const list = document.createElement("ol");
+    list.className = "rungs";
+    for (const r of progression.rungs) {
+      const li = document.createElement("li");
+      li.className = "rung is-" + r.state;
+      const streak = makeStreakMark(r);
+      const label = document.createElement("span");
+      label.className = "rung-label";
+      label.textContent = ROW_GRADE_LABELS[r.grade] || r.label;
+      const gates = document.createElement("span");
+      gates.className = "rung-gates";
+      if (r.state === "current" && r.streakProgress) {
+        if (Array.isArray(r.classProgress)) {
+          for (const cp of r.classProgress) {
+            const meta = CLASS_GATE_META.find((m) => m.facultyId === cp.facultyId)
+              || { label: cp.facultyId + " credit", icon: "□" };
+            gates.appendChild(makeGateRing({
+              kind: "class",
+              label: meta.label,
+              icon: meta.icon,
+              have: cp.have,
+              need: cp.need,
+              unit: "credit",
+              pluralUnit: "credits",
+            }));
+          }
+        } else {
+          gates.appendChild(makeGateRing({
+            kind: "class",
+            label: "Each class",
+            icon: "□",
+            have: 0,
+            need: r.subjectReq,
+            unit: "credit",
+            pluralUnit: "credits",
+          }));
+        }
+      } else {
+        if (r.state === "completed") {
+          for (const meta of CLASS_GATE_META) {
+            gates.appendChild(makeGateRing({
+              kind: "class",
+              label: meta.label,
+              icon: meta.icon,
+              have: 1,
+              need: 1,
+              unit: "gate",
+            }));
+          }
+        } else {
+          for (const meta of CLASS_GATE_META) {
+            gates.appendChild(makeFutureReq({
+              icon: meta.icon,
+              title: meta.label + ": " + r.subjectReq + " credits required",
+            }));
+          }
+        }
+      }
+      li.appendChild(streak);
+      li.appendChild(label);
+      li.appendChild(gates);
+      list.appendChild(li);
+    }
+    wrap.appendChild(list);
+    parent.appendChild(wrap);
+  }
   function appendCard(spec) {
+    sheetCard.classList.remove("is-card-deck-sheet");
+    sheetCard.classList.remove("is-two-card-deck");
     sheetCard.innerHTML = "";
     const card = buildCharacterCard(spec);
     if (card) sheetCard.appendChild(card);
+  }
+
+  function renderCardDeck(cardNodes) {
+    sheetCard.classList.add("is-card-deck-sheet");
+    sheetCard.classList.toggle("is-two-card-deck", cardNodes.length === 2);
+    sheetCard.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "card-deck is-count-" + cardNodes.length;
+    sheetCard.appendChild(wrap);
+
+    const track = document.createElement("div");
+    track.className = "card-deck-track";
+    wrap.appendChild(track);
+
+    cardNodes.forEach((card) => track.appendChild(card));
+
+    // Carousel controls only render when there's more than one card.
+    if (cardNodes.length > 1) {
+      const dots = document.createElement("div");
+      dots.className = "card-deck-dots";
+      const cards = Array.from(track.children);
+      cards.forEach((_, i) => {
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.className = "card-deck-dot" + (i === 0 ? " is-active" : "");
+        dot.setAttribute("aria-label", "Show card " + (i + 1));
+        dot.addEventListener("click", () => scrollToCard(i));
+        dots.appendChild(dot);
+      });
+      wrap.appendChild(dots);
+
+      const prev = document.createElement("button");
+      prev.type = "button";
+      prev.className = "card-deck-nav prev";
+      prev.setAttribute("aria-label", "Previous card");
+      prev.textContent = "‹";
+      const next = document.createElement("button");
+      next.type = "button";
+      next.className = "card-deck-nav next";
+      next.setAttribute("aria-label", "Next card");
+      next.textContent = "›";
+      wrap.appendChild(prev);
+      wrap.appendChild(next);
+
+      const scrollToCard = (i) => {
+        const target = cards[Math.max(0, Math.min(cards.length - 1, i))];
+        if (target && track.scrollTo) {
+          const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+          const left = Math.max(0, Math.min(
+            maxLeft,
+            target.offsetLeft + target.offsetWidth / 2 - track.clientWidth / 2,
+          ));
+          track.scrollTo({ left, behavior: "smooth" });
+        }
+      };
+      const activeIndex = () => {
+        let best = 0;
+        let bestDist = Infinity;
+        const wrapMid = track.scrollLeft + track.clientWidth / 2;
+        cards.forEach((el, i) => {
+          const mid = el.offsetLeft + el.offsetWidth / 2;
+          const d = Math.abs(mid - wrapMid);
+          if (d < bestDist) { bestDist = d; best = i; }
+        });
+        return best;
+      };
+      const refreshControls = () => {
+        const i = activeIndex();
+        Array.from(dots.children).forEach((d, idx) => {
+          d.classList.toggle("is-active", idx === i);
+        });
+        prev.hidden = i <= 0;
+        next.hidden = i >= cards.length - 1;
+      };
+      track.addEventListener("scroll", () => requestAnimationFrame(refreshControls), { passive: true });
+      prev.addEventListener("click", () => scrollToCard(activeIndex() - 1));
+      next.addEventListener("click", () => scrollToCard(activeIndex() + 1));
+      requestAnimationFrame(refreshControls);
+    }
   }
 
   // ── teacher profile (click teacher thumb in channel rail to open) ───────
@@ -1487,23 +1682,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!fac) return;
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
-    const subjectMap = { ruby: "Homeroom · school lore + general", "sally-science": "Science Lab · physics, chem, bio, earth-sci", "professor-edward": "Library · postwar literature & literary theory" };
-    // Short, in-voice quotes — MTG flavor text. One-liner each, character speaking.
-    const signatureMap = {
-      ruby: "My job's the door. The teaching happens in the rooms.",
-      "sally-science": "I'd rather you be wrong with reasons than right by accident.",
-      "professor-edward": "Every wrong answer has a half-truth folded inside it. We start there.",
-    };
-    appendCard({
-      role: "teacher",
-      name: fac.displayName,
-      subtitle: subjectMap[fac.id] || fac.bio,
-      portraitUrl: apiBase + "/assets/teachers/" + encodeURIComponent(fac.id) + "-full.png",
-      accent: fac.accent,
-      quote: signatureMap[fac.id] || fac.bio,
-      footer: { title: "Teaches", content: subjectMap[fac.id] || fac.bio },
-      // Close lives in the overlay corner now (X), so no per-card button.
-    });
+    renderCardDeck([
+      buildTeacherProfileCard(fac),
+      buildTeacherCareerCard(fac),
+    ]);
   }
 
   // ── student profile card ─────────────────────────────────────────────────
@@ -1521,16 +1703,259 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       : arc.graduated
         ? "Graduated · " + arc.completedGrades.length + " years"
         : (GRADE_LABELS[arc.grade] || arc.grade) + " · streak " + arc.streak.count;
-    appendCard({
-      role: "student",
-      name: s.name,
-      subtitle: arcLine + (npc.currentRoom ? " · #" + npc.currentRoom : ""),
-      portraitUrl: apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-full.png",
-      accent: s.color,
-      stats: npc.stats,
-      quote: studentVibe(npc.id),
+    renderCardDeck([
+      buildCharacterCard({
+        role: "student",
+        name: s.name,
+        subtitle: arcLine + (npc.currentRoom ? " · #" + roomLabelFor(npc.currentRoom) : ""),
+        portraitUrl: studentFullPortraitUrl(npc.id),
+        accent: s.color,
+        stats: npc.stats,
+        quote: studentVibe(npc.id),
+        // Close lives in the overlay corner now (X), so no per-card button.
+      }),
+      buildStudentCareerCard(npc, s, arc),
+    ]);
+  }
+
+  const TEACHER_STATS = {
+    ruby: { head: 1, heart: 2, hustle: 1, honor: 0 },
+    "sally-science": { head: 3, heart: 0, hustle: 1, honor: 1 },
+    "professor-edward": { head: 3, heart: 1, hustle: -1, honor: 2 },
+  };
+  const TEACHER_SUBJECT_LINE = {
+    ruby: "Homeroom · school lore + general",
+    "sally-science": "Science Lab · physics, chem, bio, earth-sci",
+    "professor-edward": "Library · postwar literature & literary theory",
+  };
+  const TEACHER_SIGNATURE = {
+    ruby: "My job's the door. The teaching happens in the rooms.",
+    "sally-science": "I'd rather you be wrong with reasons than right by accident.",
+    "professor-edward": "Every wrong answer has a half-truth folded inside it. We start there.",
+  };
+
+  function teacherStatsFor(facultyId) {
+    return TEACHER_STATS[facultyId] || { head: 2, heart: 1, hustle: 1, honor: 1 };
+  }
+  function roomLabelFor(roomId) {
+    return ({
+      homeroom: "homeroom",
+      science: "science",
+      literature: "literature",
+      lounge: "lounge",
+    })[roomId] || roomId || "class";
+  }
+  function teacherFullPortraitUrl(facultyId) {
+    return apiBase + "/assets/teachers/" + encodeURIComponent(facultyId) + "-full.png";
+  }
+  function buildTeacherProfileCard(fac) {
+    const subjectLine = TEACHER_SUBJECT_LINE[fac.id] || (Array.isArray(fac.subjects) ? fac.subjects.join(", ") : fac.bio);
+    return buildCharacterCard({
+      role: "teacher",
+      name: fac.displayName,
+      subtitle: subjectLine,
+      portraitUrl: teacherFullPortraitUrl(fac.id),
+      accent: fac.accent,
+      stats: teacherStatsFor(fac.id),
+      quote: TEACHER_SIGNATURE[fac.id] || fac.bio,
+      footer: { title: "Teaches", content: subjectLine },
       // Close lives in the overlay corner now (X), so no per-card button.
     });
+  }
+  function buildTeacherCareerCard(fac) {
+    return buildProfileCareerCard({
+      badgeLabel: "faculty",
+      subtitle: "Faculty · graduated",
+      metrics: [
+        { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
+        { label: "yearbook", value: "4/4", detail: "paper cards sealed", met: true },
+        { label: "questions", value: String(fac.questionCount || 0), detail: "in this pack", met: false },
+      ],
+      progression: buildCompletedHighSchoolProgression(),
+    });
+  }
+  function buildStudentCareerCard(npc, _s, arc) {
+    const grade = String((arc && arc.grade) || npc.grade || lastTelemetry?.current_grade || "9");
+    const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
+    const graduated = !!(arc && arc.graduated);
+    const streakReq = STREAK_REQUIRED[grade] || 1;
+    const streakHere = arc && arc.streak && arc.streak.grade === grade ? arc.streak.count : 0;
+    return buildProfileCareerCard({
+      badgeLabel: graduated ? "graduated" : gradeLabel,
+      subtitle: graduated ? "Graduated · classmate" : gradeLabel + " · classmate",
+      metrics: graduated
+        ? [
+            { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
+            { label: "yearbook", value: ((arc && arc.completedGrades && arc.completedGrades.length) || 4) + "/4", detail: "paper cards sealed", met: true },
+            { label: "room", value: roomLabelFor(npc.currentRoom), detail: "last seen", met: false },
+          ]
+        : [
+            { label: "year", value: gradeLabel, detail: "active grade", met: false },
+            { label: "streak", value: streakHere + "/" + streakReq, detail: "Legendary days", met: streakHere >= streakReq },
+            { label: "room", value: roomLabelFor(npc.currentRoom), detail: "current class", met: false },
+          ],
+      progression: buildProgressionForNpcArc(arc, grade),
+    });
+  }
+  function buildProfileCareerCard(spec) {
+    const card = document.createElement("div");
+    card.className = "ccg-card is-career-card";
+
+    const role = document.createElement("span");
+    role.className = "ccg-role career";
+    role.textContent = spec.badgeLabel || "career";
+    card.appendChild(role);
+
+    const body = document.createElement("div");
+    body.className = "ccg-body";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "ccg-name";
+    nameEl.textContent = "School Career";
+    body.appendChild(nameEl);
+
+    const sub = document.createElement("div");
+    sub.className = "ccg-subtitle";
+    sub.textContent = spec.subtitle || "";
+    body.appendChild(sub);
+
+    body.appendChild(buildCareerMetrics(spec.metrics || []));
+    appendProgression(body, spec.progression);
+    card.appendChild(body);
+    return card;
+  }
+  function buildCareerMetrics(rows) {
+    const metrics = document.createElement("div");
+    metrics.className = "career-metrics";
+    rows.forEach((m) => {
+      const row = document.createElement("div");
+      row.className = "career-metric" + (m.met ? " is-met" : "");
+      const k = document.createElement("span");
+      k.className = "k";
+      k.textContent = m.label;
+      const v = document.createElement("span");
+      v.className = "v";
+      v.textContent = m.value;
+      const d = document.createElement("span");
+      d.className = "detail";
+      d.textContent = m.detail;
+      row.appendChild(k);
+      row.appendChild(v);
+      row.appendChild(d);
+      metrics.appendChild(row);
+    });
+    return metrics;
+  }
+  function buildCareerTokens(spec) {
+    const wrap = document.createElement("div");
+    wrap.className = "career-token-strip";
+
+    const streak = document.createElement("div");
+    streak.className = "career-token-lane";
+    const streakLabel = document.createElement("span");
+    streakLabel.className = "career-token-label";
+    streakLabel.textContent = "Streak";
+    streak.appendChild(streakLabel);
+    const diamonds = document.createElement("span");
+    diamonds.className = "career-diamonds";
+    const streakCap = Math.max(0, spec.streakReq || 0);
+    const streakFilled = Math.max(0, Math.min(streakCap, spec.streakHere || 0));
+    for (let i = 0; i < streakCap; i++) {
+      const diamond = document.createElement("span");
+      diamond.className = "career-diamond" + (i < streakFilled ? " is-filled" : "");
+      diamond.setAttribute("aria-label", i < streakFilled ? "Streak day complete" : "Streak day needed");
+      diamonds.appendChild(diamond);
+    }
+    streak.appendChild(diamonds);
+    const streakCount = document.createElement("span");
+    streakCount.className = "career-token-count";
+    streakCount.textContent = (spec.streakHere || 0) + "/" + (spec.streakReq || 0);
+    streak.appendChild(streakCount);
+    wrap.appendChild(streak);
+
+    const legendary = document.createElement("div");
+    legendary.className = "career-token-lane";
+    const legendaryLabel = document.createElement("span");
+    legendaryLabel.className = "career-token-label";
+    legendaryLabel.textContent = "Today";
+    legendary.appendChild(legendaryLabel);
+    const sockets = document.createElement("span");
+    sockets.className = "career-sockets";
+    const socketCap = 3;
+    const required = Math.max(0, Math.min(socketCap, spec.legendariesPerDay || 0));
+    const filled = Math.max(0, Math.min(socketCap, spec.legsToday || 0));
+    for (let i = 0; i < socketCap; i++) {
+      const socket = document.createElement("span");
+      socket.className = "career-socket"
+        + (i < required ? " is-required" : "")
+        + (i < filled ? " is-filled" : "");
+      socket.setAttribute("aria-label", i < filled ? "Legendary earned" : i < required ? "Legendary needed" : "Inactive socket");
+      sockets.appendChild(socket);
+    }
+    legendary.appendChild(sockets);
+    const legendaryCount = document.createElement("span");
+    legendaryCount.className = "career-token-count";
+    legendaryCount.textContent = (spec.legsToday || 0) + "/" + (spec.legendariesPerDay || 0);
+    legendary.appendChild(legendaryCount);
+    wrap.appendChild(legendary);
+
+    const advantage = document.createElement("div");
+    advantage.className = "career-token-lane";
+    const advantageLabel = document.createElement("span");
+    advantageLabel.className = "career-token-label";
+    advantageLabel.textContent = "Advantage";
+    advantage.appendChild(advantageLabel);
+    const dice = document.createElement("span");
+    dice.className = "career-dice";
+    const dieCap = Math.max(0, spec.advantageCap || 0);
+    const remaining = Math.max(0, Math.min(dieCap, spec.advantageRemaining || 0));
+    for (let i = 0; i < dieCap; i++) {
+      const die = document.createElement("span");
+      die.className = "career-die" + (i < remaining ? " is-live" : "");
+      die.setAttribute("aria-label", i < remaining ? "Advantage die available" : "Advantage die spent");
+      for (let p = 0; p < 5; p++) die.appendChild(document.createElement("span"));
+      dice.appendChild(die);
+    }
+    advantage.appendChild(dice);
+    const advantageCount = document.createElement("span");
+    advantageCount.className = "career-token-count";
+    advantageCount.textContent = remaining + "/" + dieCap;
+    advantage.appendChild(advantageCount);
+    wrap.appendChild(advantage);
+
+    return wrap;
+  }
+  function buildCompletedHighSchoolProgression() {
+    return {
+      graduated: true,
+      rungs: ["9", "10", "11", "12"].map((g) => ({
+        grade: g,
+        label: GRADE_LABELS[g],
+        streakReq: STREAK_REQUIRED[g] || 1,
+        subjectReq: SUBJECT_XP_REQUIRED[g] || 2,
+        state: "completed",
+      })),
+    };
+  }
+  function buildProgressionForNpcArc(arc, fallbackGrade) {
+    if (arc && arc.graduated) return buildCompletedHighSchoolProgression();
+    const completed = new Set((arc && Array.isArray(arc.completedGrades) ? arc.completedGrades : []));
+    const currentGrade = String((arc && arc.grade) || fallbackGrade || lastTelemetry?.current_grade || "9");
+    const streakHere = arc && arc.streak && arc.streak.grade === currentGrade ? arc.streak.count : 0;
+    const rungs = ["9", "10", "11", "12"].map((g) => {
+      const streakReq = STREAK_REQUIRED[g] || 1;
+      const subjectReq = SUBJECT_XP_REQUIRED[g] || 2;
+      let state = "future";
+      let streakProgress;
+      if (completed.has(g)) {
+        state = "completed";
+      } else if (g === currentGrade) {
+        state = "current";
+        streakProgress = { have: streakHere, need: streakReq };
+      }
+      return { grade: g, label: GRADE_LABELS[g], streakReq, subjectReq, state, streakProgress };
+    });
+    return { rungs, graduated: false };
   }
   function studentVibe(id) {
     // In-voice one-liners — what each student would actually say. MTG-style
@@ -1606,7 +2031,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   //      The first time the player hits N today is a "day complete"
   //      and ticks the streak.
   //   2. Streak — consecutive days the per-day target was hit.
-  //   3. Per-class XP — accrued via Rare (+1) and Legendary (+2)
+  //   3. Per-class credit — accrued via Rare (+1) and Legendary (+2)
   //      correctness. Same target numbers as before (2/5/10/16).
   // The hint surfaces the most-blocking gate as one short sentence.
   function buildNextStepHint(c) {
@@ -1641,11 +2066,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
     if (classGaps.length > 0) {
       const segs = classGaps.map((cg) => (ROOM_LABEL[cg.fid] || cg.fid) + " (+" + cg.gap + ")");
-      parts.push("XP needed in " + segs.join(", "));
+      parts.push("Class credit needed in " + segs.join(", "));
     }
 
     if (parts.length === 0) {
-      return "All gates cleared — your next Legendary advances the year.";
+      return grade === "12"
+        ? "Ready to graduate — your diploma is available now."
+        : "Ready to advance — your year is complete.";
     }
     let hint = parts.join(" · ");
     // Bonus nudge: if available, mention it as a free path to a
@@ -1659,7 +2086,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   // Build the four-rung "Freshman → Sophomore → Junior → Senior" ladder for
-  // the character sheet. Each rung names the gates (streak + XP) so the
+  // the character sheet. Each rung names the gates (streak + class credit) so the
   // player can see what unlocks each year. The current rung shows live
   // progress; completed rungs show a check; future rungs show targets.
   function buildProgressionForCharacter(c) {
@@ -1677,7 +2104,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       } else if (g === currentGrade && !graduatedFor(c)) {
         state = "current";
         streakProgress = { have: streakHere, need: streakReq };
-        // Per-class XP towards the year's minimum. Three rows, one per
+        // Per-class credit towards the year's minimum. Three rows, one per
         // teaching room — this is what gives the rooms mechanical weight.
         classProgress = TEACHING_FACULTY_IDS.map((fid) => ({
           facultyId: fid,
@@ -1693,22 +2120,21 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   function renderSheetReadonly(c, playbooks) {
-    // Two-card model:
-    //   STAT CARD — the live, current grade's card. Counters tick (XP,
-    //     streak, per-class chips), the progression rungs render, the
-    //     starting move shows. Exactly one of these. After graduation
-    //     it's the diploma card (still "live" until cleared).
+    // Current character-sheet model:
+    //   CHARACTER CARD — stable identity: portrait/diploma, playbook,
+    //     stats, quote, and starting move. It upgrades at graduation.
+    //   SCHOOL CAREER CARD — live dashboard: grade, streak, class
+    //     gates, advantage budget, and next-step hint.
     //   PAPER CARDS — frozen snapshots of past years. Each one was
-    //     written into yearbook[] at the moment that year closed. They
-    //     don't change. Identity is read from the snapshot, not the
-    //     live character — a player who renames mid-arc keeps their
-    //     old name on the old paper card.
+    //     written into yearbook[] at the moment that year closed.
+    //     Identity is read from the snapshot, not the live character —
+    //     a player who renames mid-arc keeps their old name on the old
+    //     paper card.
     //
-    // Layout: a single horizontal carousel. Stat Card sits at the front
-    // (index 0). Paper cards trail in chronological order (Freshman →
-    // Sophomore → Junior). For a graduated character, the Senior card
-    // becomes the front-of-deck Stat Card (the diploma) and the three
-    // earlier paper cards trail.
+    // Layout: a single horizontal carousel. Character Card sits at the
+    // front, School Career Card is second, and Paper Cards trail in chronological
+    // order. For a graduated character, the Character Card upgrades to
+    // the diploma card and the Senior Paper Card stays represented there.
     const pb = playbooks.find((p) => p.id === c.playbookId)
       || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
     const portraitFallback = defaultPortraitFor(c.playbookId);
@@ -1716,13 +2142,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const yearbook = Array.isArray(c.yearbook) ? c.yearbook : [];
     const grad = graduatedFor(c);
 
-    // Build the deck. Stat Card first, then Paper Cards in grade order.
+    // Build the deck. Current arc first as two cards, then Paper Cards.
     const deck = [];
-    deck.push(grad
-      ? { kind: "stat", grade: "12", graduated: true }
-      : { kind: "stat", grade: liveGrade, graduated: false });
+    deck.push({ kind: "character", graduated: grad });
+    deck.push({ kind: "career", graduated: grad });
     // Paper cards: every yearbook entry EXCEPT the one represented by
-    // the Stat Card (Senior on a graduated character).
+    // the Character Card (Senior diploma on a graduated character).
     const papers = yearbook.slice().sort((a, b) => Number(a.grade) - Number(b.grade));
     for (const y of papers) {
       if (grad && y.grade === "12") continue;
@@ -1730,87 +2155,24 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       deck.push({ kind: "paper", entry: y });
     }
 
-    sheetCard.innerHTML = "";
-    const wrap = document.createElement("div");
-    wrap.className = "card-deck";
-    sheetCard.appendChild(wrap);
-
-    const track = document.createElement("div");
-    track.className = "card-deck-track";
-    wrap.appendChild(track);
-
-    for (const item of deck) {
-      track.appendChild(item.kind === "stat"
-        ? buildStatCard(c, pb, portraitFallback, item.graduated)
-        : buildPaperCard(item.entry, c, pb, playbooks));
-    }
-
-    // Carousel controls only render when there's more than one card.
-    if (deck.length > 1) {
-      const dots = document.createElement("div");
-      dots.className = "card-deck-dots";
-      const cards = Array.from(track.children);
-      cards.forEach((_, i) => {
-        const dot = document.createElement("button");
-        dot.type = "button";
-        dot.className = "card-deck-dot" + (i === 0 ? " is-active" : "");
-        dot.setAttribute("aria-label", "Show card " + (i + 1));
-        dot.addEventListener("click", () => scrollToCard(i));
-        dots.appendChild(dot);
-      });
-      wrap.appendChild(dots);
-
-      const prev = document.createElement("button");
-      prev.type = "button";
-      prev.className = "card-deck-nav prev";
-      prev.setAttribute("aria-label", "Previous card");
-      prev.textContent = "‹";
-      const next = document.createElement("button");
-      next.type = "button";
-      next.className = "card-deck-nav next";
-      next.setAttribute("aria-label", "Next card");
-      next.textContent = "›";
-      wrap.appendChild(prev);
-      wrap.appendChild(next);
-
-      const scrollToCard = (i) => {
-        const target = cards[Math.max(0, Math.min(cards.length - 1, i))];
-        if (target && target.scrollIntoView) {
-          target.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-        }
-      };
-      const activeIndex = () => {
-        let best = 0;
-        let bestDist = Infinity;
-        const wrapMid = track.scrollLeft + track.clientWidth / 2;
-        cards.forEach((el, i) => {
-          const mid = el.offsetLeft + el.offsetWidth / 2;
-          const d = Math.abs(mid - wrapMid);
-          if (d < bestDist) { bestDist = d; best = i; }
-        });
-        return best;
-      };
-      const refreshDots = () => {
-        const i = activeIndex();
-        Array.from(dots.children).forEach((d, idx) => {
-          d.classList.toggle("is-active", idx === i);
-        });
-      };
-      track.addEventListener("scroll", refreshDots, { passive: true });
-      prev.addEventListener("click", () => scrollToCard(activeIndex() - 1));
-      next.addEventListener("click", () => scrollToCard(activeIndex() + 1));
-    }
+    const cards = deck.map((item) => item.kind === "character"
+        ? buildCurrentCharacterCard(c, pb, portraitFallback, item.graduated)
+        : item.kind === "career"
+          ? buildCareerCard(c, item.graduated)
+          : buildPaperCard(item.entry, c, pb, playbooks));
+    renderCardDeck(cards);
   }
 
-  // ── Stat Card builder ───────────────────────────────────────────────────
-  // The live card. Every counter on this card moves during play.
-  function buildStatCard(c, pb, portraitFallback, graduated) {
+  // ── Current Character Card builder ──────────────────────────────────────
+  // Stable identity for the current school career. The card does not carry live
+  // counters; graduation upgrades the art to the diploma when available.
+  function buildCurrentCharacterCard(c, pb, portraitFallback, graduated) {
     const grade = graduated ? "12" : String(lastTelemetry?.current_grade ?? "9");
     const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
     const portraitUrl = (graduated && c.diplomaImageDataUrl) || c.portraitDataUrl || portraitFallback;
     const subtitle = graduated
-      ? "Graduated · " + gradeLabel + " · " + (c.xp ?? 0) + " XP"
-      : pb.name + " · " + gradeLabel + " · " + (c.xp ?? 0) + " XP";
+      ? "Graduated · " + pb.name
+      : pb.name + " · " + gradeLabel + " character";
 
     const actions = [];
     if (graduated) {
@@ -1844,13 +2206,101 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       accent: pb.accent,
       stats: c.stats,
       quote: c.flavorQuote || c.arcAnswer,
-      nextStepHint: buildNextStepHint(c),
-      progression: buildProgressionForCharacter(c),
       footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
       actions: actions.length > 0 ? actions : undefined,
     });
-    card.classList.add("is-stat-card");
+    card.classList.add("is-character-card");
     if (graduated) card.classList.add("is-graduated");
+    return card;
+  }
+
+  // ── School Career Card builder ──────────────────────────────────────────
+  // Dynamic state for the current school career. Everything here can move after a
+  // question resolves; keep it separate from the identity card above.
+  function buildCareerCard(c, graduated) {
+    const t = lastTelemetry || {};
+    const grade = graduated ? "12" : String(t.current_grade ?? "9");
+    const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
+    const streakReq = STREAK_REQUIRED[grade] || 1;
+    const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
+    const legendariesPerDay = LEGENDARIES_PER_DAY[grade] || 1;
+    const todayKey = (t.daily && t.daily.dailyKey) || "";
+    const legsToday = c.legendariesToday && c.legendariesToday.date === todayKey
+      ? c.legendariesToday.count : 0;
+    const budget = t.advantage_rolls || { used: 0, cap: 3, remaining: 3 };
+    const yearbookCount = Array.isArray(c.yearbook) ? c.yearbook.length : 0;
+
+    const card = document.createElement("div");
+    card.className = "ccg-card is-career-card" + (graduated ? " is-graduated" : "");
+
+    const role = document.createElement("span");
+    role.className = "ccg-role career";
+    role.textContent = graduated ? "graduated" : gradeLabel;
+    card.appendChild(role);
+
+    const body = document.createElement("div");
+    body.className = "ccg-body";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "ccg-name";
+    nameEl.textContent = "School Career";
+    body.appendChild(nameEl);
+
+    const sub = document.createElement("div");
+    sub.className = "ccg-subtitle";
+    sub.textContent = graduated ? "Arc complete · " + (c.xp ?? 0) + " credits" : gradeLabel + " · " + (c.xp ?? 0) + " credits";
+    body.appendChild(sub);
+
+    const metrics = document.createElement("div");
+    metrics.className = "career-metrics";
+    const addMetric = (label, value, detail, met) => {
+      const row = document.createElement("div");
+      row.className = "career-metric" + (met ? " is-met" : "");
+      const k = document.createElement("span");
+      k.className = "k";
+      k.textContent = label;
+      const v = document.createElement("span");
+      v.className = "v";
+      v.textContent = value;
+      const d = document.createElement("span");
+      d.className = "detail";
+      d.textContent = detail;
+      row.appendChild(k);
+      row.appendChild(v);
+      row.appendChild(d);
+      metrics.appendChild(row);
+    };
+
+    if (graduated) {
+      addMetric("status", "graduated", "four-year arc complete", true);
+      addMetric("yearbook", yearbookCount + "/4", "paper cards sealed", yearbookCount >= 4);
+      addMetric("credits", String(c.xp ?? 0), "lifetime total", false);
+    } else {
+      // The active standing already lives in the subtitle + badge. Keep the
+      // live gates compact: diamonds for streak, gems for today, dice for advantage.
+    }
+    if (metrics.children.length > 0) body.appendChild(metrics);
+    if (!graduated) {
+      body.appendChild(buildCareerTokens({
+        legsToday,
+        legendariesPerDay,
+        streakHere,
+        streakReq,
+        advantageRemaining: budget.remaining,
+        advantageCap: budget.cap,
+      }));
+    }
+
+    const hint = buildNextStepHint(c);
+    if (hint) {
+      const ns = document.createElement("div");
+      ns.className = "ccg-next-step";
+      ns.textContent = hint;
+      body.appendChild(ns);
+    }
+
+    appendProgression(body, buildProgressionForCharacter(c));
+    card.appendChild(body);
     return card;
   }
 
@@ -1915,9 +2365,32 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     "class-clown": "ravi",
     lifer: "lyra",
   };
+  function defaultPortraitStudentIdFor(playbookId) {
+    return PLAYBOOK_DEFAULT_PORTRAIT[playbookId] || "indra";
+  }
+  function studentFullPortraitUrl(studentId) {
+    return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-full.png";
+  }
   function defaultPortraitFor(playbookId) {
-    const id = PLAYBOOK_DEFAULT_PORTRAIT[playbookId] || "indra";
-    return apiBase + "/assets/students/" + id + "-full.png";
+    return studentFullPortraitUrl(defaultPortraitStudentIdFor(playbookId));
+  }
+  function isUsingDefaultStudentPortrait(c) {
+    if (!c) return false;
+    const portrait = typeof c.portraitDataUrl === "string" ? c.portraitDataUrl : "";
+    const defaultId = defaultPortraitStudentIdFor(c.playbookId);
+    return !portrait
+      || portrait === defaultPortraitFor(c.playbookId)
+      || portrait.endsWith("/assets/students/" + defaultId + "-full.png");
+  }
+  function hiddenNpcStudentIdFor(c) {
+    return isUsingDefaultStudentPortrait(c) ? defaultPortraitStudentIdFor(c.playbookId) : null;
+  }
+  function hiddenNpcStudentId() {
+    return hiddenNpcStudentIdFor(lastTelemetry && lastTelemetry.character);
+  }
+  function shouldShowStudentId(studentId) {
+    const hidden = hiddenNpcStudentId();
+    return !hidden || studentId !== hidden;
   }
 
   // Random-roll character creation. The player INHABITS an AI student rather
@@ -1930,6 +2403,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // the sheet overlay is suppressed entirely while signed out, so there is
   // no unauth branch to render here.
   function renderSheetCreation(playbooks) {
+    sheetCard.classList.remove("is-card-deck-sheet");
+    sheetCard.classList.remove("is-two-card-deck");
     sheetCard.innerHTML = "";
 
     // Full-pane loading state — covers the sheet while the initial
@@ -2426,13 +2901,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 
   // ── auth ─────────────────────────────────────────────────────────────────
   let lastAuthState = null;
-  // Auth is now derived from localStorage, not a server poll. We re-derive
-  // on boot, on storage events (cross-tab notification from the OAuth tab),
-  // and on focus (covers the "I closed the OAuth tab without it firing
-  // storage" edge). No periodic polling — there's nothing on the wire to
-  // poll for since the server doesn't hold the credential.
-  function deriveAuth() {
-    const next = !!getStoredApiKey();
+  let authCheckSeq = 0;
+  function setAuthState(next) {
     if (next === lastAuthState) return;
     const wasSignedIn = lastAuthState === true;
     lastAuthState = next;
@@ -2455,6 +2925,37 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
       sheetAutoShown = true;
       openSheet();
+    }
+  }
+  // Auth is split: the OpenRouter key stays in localStorage, while the
+  // server owns an opaque Ruby High session cookie that maps to the
+  // persistent character. Verify both on boot and whenever OAuth state may
+  // have changed.
+  async function deriveAuth() {
+    const key = getStoredApiKey();
+    const seq = ++authCheckSeq;
+    if (!key) {
+      setAuthState(false);
+      return;
+    }
+    try {
+      const headers = new Headers();
+      headers.set("X-Openrouter-Key", key);
+      const r = await fetch("/api/apps/ruby-high/auth/me", {
+        credentials: "same-origin",
+        headers,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (seq !== authCheckSeq) return;
+      if (r.ok && data && data.authed) {
+        setAuthState(true);
+      } else {
+        clearStoredAuth();
+        setAuthState(false);
+      }
+    } catch (_e) {
+      if (seq !== authCheckSeq) return;
+      if (lastAuthState === null) setAuthState(false);
     }
   }
   function applyAuthUI() {
@@ -2523,6 +3024,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       msgs.forEach((m) => {
         if (m.role === "user") appendMsg({ kind: "you", name: playerDisplayName(), body: m.content, color: "var(--accent)" });
         else if (m.role === "assistant" && m.content) appendMsg({ kind: "teacher", name: teacherName, body: m.content, color: teacherAccent, facultyId });
+        else if (m.role === "tool") {
+          const info = teacherInfo(m.faculty || facultyId);
+          appendTool(toolSummary(m, info.name));
+        }
       });
       scrollIfPinned(true);
       applyAuthUI();
@@ -2538,6 +3043,20 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       accent: fac ? fac.accent : "#d22a2a",
       facultyId: fac ? fac.id : facultyId,
     };
+  }
+  function toolSummary(parsed, teacherName) {
+    const ok = !!(parsed.result && parsed.result.ok);
+    switch (parsed.tool) {
+      case "pick_from_bank": return ok ? "🎲 " + teacherName + " drew a fresh question" : teacherName + " reached for the bank — empty";
+      case "pose_question": return ok ? "✍️ " + teacherName + " wrote a custom question" : teacherName + " tried to write a question — failed";
+      case "pose_opinion":  return ok ? "💭 " + teacherName + " asked for opinions" : teacherName + " tried to ask for opinions — failed";
+      case "clear_board":   return ok ? "✨ " + teacherName + " cleared the board" : teacherName + " tried to clear the board — failed";
+      case "handoff_faculty": {
+        const target = (parsed.args && parsed.args.faculty) || "another teacher";
+        return ok ? "↪ " + teacherName + " handed class off to " + target : teacherName + " tried to hand off — failed";
+      }
+      default: return ok ? teacherName + " did a thing (" + parsed.tool + ")" : teacherName + " tried " + parsed.tool + " — failed";
+    }
   }
   async function consumeSseStream(response) {
     if (!response.ok || !response.body) {
@@ -2594,25 +3113,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           // this script — the whole file is inside an outer template
           // literal and a stray backtick closes it.)
           const teacherName = (speaker && speaker.name) || "Teacher";
-          const ok = !!(parsed.result && parsed.result.ok);
           // String concatenation, NOT template literals — see the
           // big comment above; this whole script.ts body is wrapped
           // in an outer template literal at compose time and any
           // backtick here closes it prematurely.
-          const summary = (() => {
-            switch (parsed.tool) {
-              case "pick_from_bank": return ok ? "🎲 " + teacherName + " drew a fresh question" : teacherName + " reached for the bank — empty";
-              case "pose_question": return ok ? "✍️ " + teacherName + " wrote a custom question" : teacherName + " tried to write a question — failed";
-              case "pose_opinion":  return ok ? "💭 " + teacherName + " asked for opinions" : teacherName + " tried to ask for opinions — failed";
-              case "clear_board":   return ok ? "✨ " + teacherName + " cleared the board" : teacherName + " tried to clear the board — failed";
-              case "handoff_faculty": {
-                const target = (parsed.args && parsed.args.faculty) || "another teacher";
-                return ok ? "↪ " + teacherName + " handed class off to " + target : teacherName + " tried to hand off — failed";
-              }
-              default: return ok ? teacherName + " did a thing (" + parsed.tool + ")" : teacherName + " tried " + parsed.tool + " — failed";
-            }
-          })();
-          appendTool(summary);
+          appendTool(toolSummary(parsed, teacherName));
           fetchSession();
           streamingMsgEl = null;
         } else if (event === "error") {
@@ -2953,10 +3458,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // → graduate as they clear per-grade Legendary-day thresholds. There is no year
   // picker — they walk in, get started, and advance by playing.
   fetchSession();
-  // Auth is local — derive once on boot and again whenever the OAuth tab
-  // writes the key (storage event fires in every other tab) or the user
-  // returns to this tab from elsewhere (focus). No periodic polling: the
-  // server has no auth state to ask about.
+  // Auth is checked once on boot and again whenever the OAuth tab writes
+  // the key (storage event fires in every other tab) or the user returns
+  // to this tab from elsewhere (focus). No periodic polling: the only
+  // server state we need here is the session cookie's current validity.
   deriveAuth();
   window.addEventListener("storage", (e) => {
     if (e.key === AUTH_KEY || e.key === null) deriveAuth();

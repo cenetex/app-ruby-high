@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BatchWriteCommand,
+  DeleteCommand,
   PutCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
@@ -9,7 +10,7 @@ import type { QuizState } from "../types.js";
 
 /**
  * In-memory fake of the DynamoDBDocumentClient. Stores items by primary key,
- * recognizes the three commands DynamoStateStore actually uses, and records
+ * recognizes the commands DynamoStateStore actually uses, and records
  * every command sent so tests can assert on shape (TableName, TTL, etc.).
  */
 class FakeDdbDocClient implements DynamoDBDocumentClientLike {
@@ -41,6 +42,11 @@ class FakeDdbDocClient implements DynamoDBDocumentClientLike {
       // Single-page response — DynamoStateStore.load() handles pagination
       // but we don't bother emulating it for unit tests at this size.
       return { Items: Array.from(this.items.values()) };
+    }
+    if (command instanceof DeleteCommand) {
+      const { Key } = (command as DeleteCommand).input;
+      if (Key?.pk) this.items.delete(String(Key.pk));
+      return {};
     }
     throw new Error(`FakeDdbDocClient: unhandled command ${command?.constructor?.name}`);
   }
@@ -176,9 +182,55 @@ describe("DynamoStateStore", () => {
     expect(loaded.has("broken")).toBe(false);
   });
 
+  it("saves and loads auth users/sessions in separate Dynamo items", async () => {
+    await store.saveSession(blankState("rh:user:state"));
+    await store.saveAuthUser({
+      userId: "usr_1",
+      provider: "openrouter",
+      providerUserHash: "hash-1",
+      createdAt: 100,
+      lastLoginAt: 200,
+    });
+    await store.saveAuthSession({
+      token: "token-1",
+      userId: "usr_1",
+      createdAt: 300,
+      expiresAt: 400_000,
+    });
+
+    const snapshot = fake.snapshot();
+    expect(snapshot.get("auth:user:openrouter:hash-1")?.authUser).toBeDefined();
+    const sessionItem = snapshot.get("auth:session:token-1")!;
+    expect(sessionItem.authSession).toBeDefined();
+    expect(sessionItem.expiresAt).toBe(400);
+
+    const auth = await store.loadAuth();
+    expect(auth.users.map((u) => u.userId)).toEqual(["usr_1"]);
+    expect(auth.sessions.map((s) => s.token)).toEqual(["token-1"]);
+  });
+
+  it("deletes auth sessions by opaque token", async () => {
+    await store.saveAuthSession({
+      token: "token-1",
+      userId: "usr_1",
+      createdAt: 300,
+      expiresAt: 400_000,
+    });
+    expect(fake.snapshot().has("auth:session:token-1")).toBe(true);
+    await store.deleteAuthSession("token-1");
+    expect(fake.snapshot().has("auth:session:token-1")).toBe(false);
+  });
+
   it("uses the configured TableName on every command", async () => {
     await store.saveSession(blankState("a"));
     await store.save([blankState("b"), blankState("c")]);
+    await store.saveAuthUser({
+      userId: "usr_table",
+      provider: "openrouter",
+      providerUserHash: "hash-table",
+      createdAt: 1,
+      lastLoginAt: 2,
+    });
     await store.load();
     for (const cmd of fake.sent) {
       const input = (cmd as { input?: { TableName?: string; RequestItems?: Record<string, unknown> } }).input;

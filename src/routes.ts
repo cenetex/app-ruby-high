@@ -250,24 +250,13 @@ function getCharacterName(runtime: IAgentRuntime | null): string {
   return character?.name ?? "Ruby";
 }
 
-/** Derive a per-user session key from the rh_session cookie. Pre-auth users
- *  share an "anonymous" bucket — fine for the browse-while-signed-out preview.
- *  Each signed-in OpenRouter user gets their own bucket so state, character,
- *  NPC roster, etc. are isolated per user. THIS IS THE MULTI-TENANCY FIX. */
+/** Derive a per-user state key from the app-owned auth session. Pre-auth users
+ *  share an "anonymous" bucket; signed-in OpenRouter accounts resolve to a
+ *  stable Ruby High user id, so state, character, NPC roster, etc. survive
+ *  cookie rotation and server restarts. */
 function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | null): string {
-  const token = parseRhSessionCookie(cookieHeader);
-  if (token) return `rh:user:${token}`;
-  return "rh:anonymous";
-}
-
-function parseRhSessionCookie(cookieHeader: string | null | undefined): string | null {
-  if (!cookieHeader) return null;
-  for (const part of cookieHeader.split(/;\s*/)) {
-    const i = part.indexOf("=");
-    if (i < 0) continue;
-    if (part.slice(0, i) === "rh_session") return decodeURIComponent(part.slice(i + 1));
-  }
-  return null;
+  const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+  return auth?.stateKeyForCookie(cookieHeader) ?? "rh:anonymous";
 }
 
 function facultyForState(state: QuizState, id: string): FacultyMember {

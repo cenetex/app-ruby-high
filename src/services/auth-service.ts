@@ -1,5 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Service, type IAgentRuntime } from "@elizaos/core";
+import {
+  authUserKey,
+  getDefaultStateStore,
+  type AuthUserRecord,
+  type StateStoreLike,
+} from "./state-store.js";
 
 /** What we keep server-side per session. The OpenRouter API key is NOT
  *  stored here — it's handed back to the browser at PKCE completion and
@@ -7,7 +13,9 @@ import { Service, type IAgentRuntime } from "@elizaos/core";
  *  can still issue a stable cookie identity for QuizState routing without
  *  putting a credential in server memory. */
 export interface AuthRecord {
+  userId: string;
   createdAt: number;
+  expiresAt: number;
   /** OpenRouter username if returned by the token exchange. Cosmetic. */
   label?: string;
 }
@@ -37,10 +45,11 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
  *     OAuth tab. The original SPA picks up the key from localStorage and
  *     attaches it to every LLM request as an `X-Openrouter-Key` header.
  *
- * The server never persists the API key — the only thing it remembers per
- * session is the cookie identity (so QuizState can be routed back to the
- * same player). Restarts wipe session metadata but the player keeps their
- * key in their browser; they re-resolve a session on the next request.
+ * The server never persists the API key. It stores only a random Ruby High
+ * user id, a hash of the OpenRouter identity, and opaque session tokens that
+ * point at that user id. That is enough to route QuizState back to the same
+ * character across restarts without holding provider credentials or raw
+ * provider identifiers.
  */
 export class AuthService extends Service {
   static override readonly serviceType = "ruby-high-auth";
@@ -48,11 +57,20 @@ export class AuthService extends Service {
     "OpenRouter PKCE OAuth + cookie-based session storage for Ruby High chat.";
 
   private readonly sessions = new Map<string, AuthRecord>();
+  private readonly usersByProviderHash = new Map<string, AuthUserRecord>();
+  private readonly usersById = new Map<string, AuthUserRecord>();
+  private readonly store: StateStoreLike;
   private readonly pending = new Map<string, PendingPkce>();
   private gcTimer: ReturnType<typeof setInterval> | null = null;
 
-  static async start(runtime: IAgentRuntime): Promise<AuthService> {
-    const svc = new AuthService(runtime);
+  constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
+    super(runtime);
+    this.store = store ?? getDefaultStateStore();
+  }
+
+  static async start(runtime: IAgentRuntime, store?: StateStoreLike): Promise<AuthService> {
+    const svc = new AuthService(runtime, store);
+    await svc.hydrateAuth();
     // Sweep expired sessions hourly. Read-side TTL checks only catch sessions
     // that get touched again — without this, a user who never returns leaves
     // an entry in the map until process restart.
@@ -70,6 +88,8 @@ export class AuthService extends Service {
       this.gcTimer = null;
     }
     this.sessions.clear();
+    this.usersByProviderHash.clear();
+    this.usersById.clear();
     this.pending.clear();
   }
 
@@ -78,8 +98,12 @@ export class AuthService extends Service {
   gcSessions(now: number = Date.now()): { dropped: number; remaining: number } {
     let dropped = 0;
     for (const [k, v] of this.sessions) {
-      if (now - v.createdAt > SESSION_TTL_MS) {
+      if (this.isExpired(v, now)) {
         this.sessions.delete(k);
+        void this.store.deleteAuthSession(k).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error("[ruby-high] auth session cleanup failed:", err);
+        });
         dropped++;
       }
     }
@@ -123,10 +147,39 @@ export class AuthService extends Service {
     if (Date.now() - pending.createdAt > PENDING_TTL_MS) {
       throw new Error("Auth state expired");
     }
-    const apiKey = await exchangeCodeForKey(code, pending.verifier);
+    const exchanged = await exchangeCodeForKey(code, pending.verifier);
+    const apiKey = exchanged.key;
+    const now = Date.now();
+    const providerUserHash = providerIdentityHash(exchanged.userId ?? apiKey, exchanged.userId ? "user" : "key");
+    const providerKey = authUserKey("openrouter", providerUserHash);
+    const existing = this.usersByProviderHash.get(providerKey);
+    const user: AuthUserRecord = existing
+      ? { ...existing, lastLoginAt: now }
+      : {
+          userId: `usr_${base64url(randomBytes(18))}`,
+          provider: "openrouter",
+          providerUserHash,
+          createdAt: now,
+          lastLoginAt: now,
+        };
+    this.usersByProviderHash.set(providerKey, user);
+    this.usersById.set(user.userId, user);
+    await this.store.saveAuthUser(user);
+
     const token = base64url(randomBytes(24));
-    const record: AuthRecord = { createdAt: Date.now() };
+    const record: AuthRecord = {
+      userId: user.userId,
+      createdAt: now,
+      expiresAt: now + SESSION_TTL_MS,
+      label: user.label,
+    };
     this.sessions.set(token, record);
+    await this.store.saveAuthSession({
+      token,
+      userId: record.userId,
+      createdAt: record.createdAt,
+      expiresAt: record.expiresAt,
+    });
     return { token, record, apiKey };
   }
 
@@ -146,8 +199,12 @@ export class AuthService extends Service {
     if (!token) return null;
     const r = this.sessions.get(token);
     if (!r) return null;
-    if (Date.now() - r.createdAt > SESSION_TTL_MS) {
+    if (this.isExpired(r, Date.now())) {
       this.sessions.delete(token);
+      void this.store.deleteAuthSession(token).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("[ruby-high] auth session cleanup failed:", err);
+      });
       return null;
     }
     return r;
@@ -155,7 +212,25 @@ export class AuthService extends Service {
 
   destroy(token: string | null): boolean {
     if (!token) return false;
-    return this.sessions.delete(token);
+    const deleted = this.sessions.delete(token);
+    void this.store.deleteAuthSession(token).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("[ruby-high] auth session delete failed:", err);
+    });
+    return deleted;
+  }
+
+  stateKeyForCookie(cookieHeader: string | undefined | null): string {
+    return this.stateKeyForToken(this.parseSessionToken(cookieHeader));
+  }
+
+  stateKeyForToken(token: string | null): string {
+    const record = this.resolve(token);
+    return record ? this.stateKeyForRecord(record) : "rh:anonymous";
+  }
+
+  stateKeyForRecord(record: AuthRecord): string {
+    return `rh:user:${record.userId}`;
   }
 
   buildSessionCookie(token: string, opts: { secure: boolean }): string {
@@ -188,9 +263,38 @@ export class AuthService extends Service {
       if (now - v.createdAt > PENDING_TTL_MS) this.pending.delete(k);
     }
   }
+
+  private async hydrateAuth(): Promise<void> {
+    const now = Date.now();
+    const auth = await this.store.loadAuth();
+    for (const user of auth.users) {
+      this.usersByProviderHash.set(authUserKey(user.provider, user.providerUserHash), user);
+      this.usersById.set(user.userId, user);
+    }
+    for (const session of auth.sessions) {
+      if (session.expiresAt < now || !this.usersById.has(session.userId)) {
+        void this.store.deleteAuthSession(session.token).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error("[ruby-high] auth session cleanup failed:", err);
+        });
+        continue;
+      }
+      const user = this.usersById.get(session.userId);
+      this.sessions.set(session.token, {
+        userId: session.userId,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+        label: user?.label,
+      });
+    }
+  }
+
+  private isExpired(record: AuthRecord, now: number): boolean {
+    return now - record.createdAt > SESSION_TTL_MS || record.expiresAt < now;
+  }
 }
 
-async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<string> {
+async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<{ key: string; userId?: string }> {
   const r = await fetch("https://openrouter.ai/api/v1/auth/keys", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -202,9 +306,15 @@ async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<s
   }
   const body = (await r.json()) as { key?: string; user_id?: string };
   if (!body.key) throw new Error("OpenRouter response missing 'key'");
-  return body.key;
+  return { key: body.key, userId: body.user_id };
 }
 
 function base64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function providerIdentityHash(value: string, source: "user" | "key"): string {
+  return createHash("sha256")
+    .update(`openrouter:${source}:${value}`)
+    .digest("hex");
 }

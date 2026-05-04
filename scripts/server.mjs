@@ -53,7 +53,7 @@ async function bootServices() {
   // across container restarts.
   stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
   facultySvc = await FacultyService.start(fakeRuntime);
-  authSvc = await AuthService.start(fakeRuntime);
+  authSvc = await AuthService.start(fakeRuntime, stateStore);
   chatSvc = await ChatService.start(fakeRuntime);
   const svc = new RubyHighService(fakeRuntime, stateStore);
   await svc["hydrate"]();

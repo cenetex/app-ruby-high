@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { AuthService } from "./services/auth-service.js";
-import { ChatService } from "./services/chat-service.js";
+import { AuthService, type AuthRecord } from "./services/auth-service.js";
+import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
@@ -28,9 +28,75 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
 
+export function publicChatHistory(messages: ChatMessage[]): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  const pendingTools = new Map<string, { call: ToolCall; faculty?: string }>();
+  for (const m of messages) {
+    if (m.role === "user") {
+      out.push({ role: "user", content: m.content, faculty: m.faculty, at: m.at });
+      continue;
+    }
+    if (m.role === "assistant") {
+      if (m.content) out.push({ role: "assistant", content: m.content, faculty: m.faculty, at: m.at });
+      if (Array.isArray(m.toolCalls)) {
+        for (const call of m.toolCalls) {
+          pendingTools.set(call.id, { call, faculty: m.faculty });
+        }
+      }
+      continue;
+    }
+    if (m.role === "tool" && m.toolCallId) {
+      const pending = pendingTools.get(m.toolCallId);
+      if (!pending) continue;
+      pendingTools.delete(m.toolCallId);
+      out.push({
+        role: "tool",
+        content: "",
+        faculty: m.faculty ?? pending.faculty,
+        at: m.at,
+        tool: pending.call.function.name,
+        args: publicToolArgs(pending.call),
+        result: safeJsonObject(m.content),
+      });
+    }
+  }
+  return out;
+}
+
+function publicToolArgs(call: ToolCall): Record<string, unknown> {
+  const args = safeJsonObject(call.function.arguments || "{}");
+  if (call.function.name === "handoff_faculty" && typeof args.faculty === "string") {
+    return { faculty: args.faculty };
+  }
+  return {};
+}
+
+function safeJsonObject(text: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function characterGraduated(state: { character?: { yearbook?: unknown[] } | null }): boolean {
+  return !!(state.character && Array.isArray(state.character.yearbook) && state.character.yearbook.length >= 4);
+}
+
 function gradeLabel(grade: string | undefined | null): string {
   if (!grade) return "";
   return (GRADE_LABELS as Record<string, string>)[grade] ?? grade;
+}
+
+function toolPlacedFreshQuestion(ev: ChatStreamEvent): boolean {
+  if (ev.type !== "tool" || !ev.result.ok) return false;
+  if (ev.tool !== "pick_from_bank" && ev.tool !== "pose_question" && ev.tool !== "pose_opinion") {
+    return false;
+  }
+  return !!(ev.state?.current && ev.state.activeRound && !ev.state.activeRound.resolved);
 }
 
 function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string {
@@ -739,16 +805,11 @@ function getRuntime(value: unknown): IAgentRuntime | null {
   return candidate as unknown as IAgentRuntime;
 }
 
-/** See routes.ts for the multi-tenant explanation. Per-user session keys come
- *  from the rh_session cookie. */
+/** See routes.ts for the multi-tenant explanation. Per-user state keys come
+ *  from the app-owned auth session, not the raw cookie token. */
 function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | null): string {
-  if (!cookieHeader) return "rh:anonymous";
-  for (const part of cookieHeader.split(/;\s*/)) {
-    const i = part.indexOf("=");
-    if (i < 0) continue;
-    if (part.slice(0, i) === "rh_session") return "rh:user:" + decodeURIComponent(part.slice(i + 1));
-  }
-  return "rh:anonymous";
+  const auth = getService<AuthService>(runtime, AuthService.serviceType);
+  return auth?.stateKeyForCookie(cookieHeader) ?? "rh:anonymous";
 }
 
 /** Trim + sanity-check the OpenRouter key the client sent in
@@ -768,11 +829,12 @@ function readApiKey(ctx: ChatRouteContext): string | null {
 function requireAuth(
   ctx: ChatRouteContext,
   auth: AuthService,
-): { token: string; apiKey: string } | null {
+): { token: string; apiKey: string; record: AuthRecord; stateKey: string } | null {
   const token = auth.parseSessionToken(ctx.cookieHeader);
   const apiKey = readApiKey(ctx);
-  if (!token || !apiKey) return null;
-  return { token, apiKey };
+  const record = auth.resolve(token);
+  if (!token || !apiKey || !record) return null;
+  return { token, apiKey, record, stateKey: auth.stateKeyForRecord(record) };
 }
 
 function getService<T>(runtime: IAgentRuntime | null, type: string): T | null {
@@ -921,14 +983,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "GET" && ctx.pathname === `${AUTH_PREFIX}/me`) {
-    // Server-side auth state is now just "did the client send a key on this
-    // request." The cookie still exists for QuizState routing but no longer
-    // proves credentialed; clients are authoritative via localStorage.
+    // Auth requires both halves: the browser-owned OpenRouter key and an
+    // app-owned session cookie that resolves to a persisted Ruby High user.
+    // We still do not store the OpenRouter key server-side.
     const apiKey = readApiKey(ctx);
+    const record = auth.resolve(auth.parseSessionToken(ctx.cookieHeader));
     ctx.json(ctx.res, {
-      authed: !!apiKey,
-      since: null,
-      label: null,
+      authed: !!apiKey && !!record,
+      since: record?.createdAt ?? null,
+      label: record?.label ?? null,
     });
     return true;
   }
@@ -945,7 +1008,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "GET" && ctx.pathname === `${CHAT_PREFIX}/history`) {
     const faculty = ctx.url?.searchParams.get("faculty") ?? "ruby";
     const token = auth.parseSessionToken(ctx.cookieHeader);
-    if (!token) {
+    const record = auth.resolve(token);
+    if (!token || !record) {
       ctx.json(ctx.res, { authed: false, history: [] });
       return true;
     }
@@ -956,7 +1020,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // and want history but not have a key yet (or vice versa).
     ctx.json(ctx.res, {
       authed: !!readApiKey(ctx),
-      history: messages.map((m) => ({ role: m.role, content: m.content, faculty: m.faculty, at: m.at })),
+      history: publicChatHistory(messages),
     });
     return true;
   }
@@ -1131,6 +1195,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // were a fresh instruction.
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     let directive = "";
+    let disableToolsForTurn = false;
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
@@ -1166,22 +1231,35 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         { sessionToken: token, faculty },
         { kind: "answer-resolved", text: parts.join(" ") },
       );
-      directive = `A round just resolved (see RECENT EVENTS). React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." Then call pick_from_bank to put the next question on the board.`;
+      if (characterGraduated(state)) {
+        disableToolsForTurn = true;
+        directive = `The player has completed Senior year and graduated. Congratulate ${playerName} in one or two short sentences. Do not call tools or put another question on the board.`;
+      } else {
+        const pickedLine = c?.picked
+          ? `${playerName} already answered ${c.picked}; ${c.wasCorrect ? "that was correct" : `the correct answer was ${correctAns}`}.`
+          : `The round is already resolved; the correct answer was ${correctAns}.`;
+        directive = `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." Then call pick_from_bank to put the next question on the board.`;
+      }
     } else if (trigger === "manual") {
       directive = "The student is asking you to take a turn. Either follow up on the last exchange or call pick_from_bank to put a fresh question on the board.";
     }
 
     try {
       send("speaker", { facultyId: faculty });
-      let toolsFired = 0;
+      let questionPosted = false;
+      let handoffFired = false;
       for await (const ev of chat.send({
         apiKey,
         sessionToken: token,
         agentSessionId: getSessionId(runtime, ctx.cookieHeader),
         faculty,
+        disableTools: disableToolsForTurn,
         systemEventNote: directive,
       })) {
-        if (ev.type === "tool") toolsFired++;
+        if (ev.type === "tool") {
+          if (toolPlacedFreshQuestion(ev)) questionPosted = true;
+          if (ev.tool === "handoff_faculty" && ev.result.ok) handoffFired = true;
+        }
         send(ev.type, ev);
       }
       // Defensive fallback: channel-enter and answer-graded both REQUIRE
@@ -1193,8 +1271,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // board state matches the model's narration. No-op if pickAndPose
       // throws (bank empty for filter, etc.) — better empty board with
       // a recoverable error than crashing the SSE stream.
-      const needsFreshQuestion = trigger === "channel-enter" || trigger === "answer-graded";
-      if (needsFreshQuestion && toolsFired === 0) {
+      const needsFreshQuestion = !disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded");
+      if (needsFreshQuestion && !questionPosted && !handoffFired) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         try {
           const state = ruby.pickAndPose(agentSessionId, { faculty });
@@ -1598,7 +1676,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/reset`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
-    if (!token) {
+    if (!token || !auth.resolve(token)) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
@@ -1629,9 +1707,9 @@ export function noteGradedAnswer(args: {
   const chat = getService<ChatService>(args.runtime, ChatService.serviceType);
   if (!auth || !chat) return;
   const token = auth.parseSessionToken(args.cookieHeader);
-  if (!token) return;
+  if (!token || !auth.resolve(token)) return;
   const note = args.wasCorrect
-    ? `The student picked ${args.picked} — correct. Score updated.`
-    : `The student picked ${args.picked}, but the correct answer was ${args.correct}. Score updated.`;
+    ? `The board was answered: the player picked ${args.picked} — correct. Do not ask for this answer again.`
+    : `The board was answered: the player picked ${args.picked}, but the correct answer was ${args.correct}. Do not ask for this answer again.`;
   chat.noteAnswer({ sessionToken: token, faculty: args.faculty }, note);
 }

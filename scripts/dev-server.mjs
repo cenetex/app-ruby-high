@@ -23,7 +23,7 @@ const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
 console.log(`[ruby-high] state store: ${stateStore.describe()}`);
 
 const facultySvc = await FacultyService.start({});
-const authSvc = await AuthService.start({});
+const authSvc = await AuthService.start({}, stateStore);
 const chatSvc = await ChatService.start({});
 
 const fakeRuntime = {

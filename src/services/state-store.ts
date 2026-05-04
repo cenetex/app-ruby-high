@@ -3,6 +3,27 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { QuizState } from "../types.js";
 
+export interface AuthUserRecord {
+  userId: string;
+  provider: "openrouter";
+  providerUserHash: string;
+  createdAt: number;
+  lastLoginAt: number;
+  label?: string;
+}
+
+export interface AuthSessionRecord {
+  token: string;
+  userId: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface AuthStoreSnapshot {
+  users: AuthUserRecord[];
+  sessions: AuthSessionRecord[];
+}
+
 /**
  * Common shape every state-store backend implements. RubyHighService talks
  * to this abstraction; the JSON-file backend (this file) and the DynamoDB
@@ -19,7 +40,11 @@ import type { QuizState } from "../types.js";
  */
 export interface StateStoreLike {
   load(): Promise<Map<string, QuizState>>;
+  loadAuth(): Promise<AuthStoreSnapshot>;
   saveSession(state: QuizState): Promise<void>;
+  saveAuthUser(user: AuthUserRecord): Promise<void>;
+  saveAuthSession(session: AuthSessionRecord): Promise<void>;
+  deleteAuthSession(token: string): Promise<void>;
   save(states: Iterable<QuizState>): Promise<void>;
   describe(): string;
 }
@@ -44,6 +69,8 @@ export class StateStore implements StateStoreLike {
    *  rewrite the full file without forcing the caller to pass everything.
    *  Updated on load() and on every save()/saveSession(). */
   private snapshot = new Map<string, QuizState>();
+  private authUsers = new Map<string, AuthUserRecord>();
+  private authSessions = new Map<string, AuthSessionRecord>();
 
   constructor(path?: string) {
     this.path =
@@ -53,19 +80,79 @@ export class StateStore implements StateStoreLike {
   }
 
   async load(): Promise<Map<string, QuizState>> {
+    const parsed = await this.readFileSnapshot();
+    if (!parsed) return new Map();
+    this.applyParsedSnapshot(parsed);
+    return new Map(this.snapshot);
+  }
+
+  async loadAuth(): Promise<AuthStoreSnapshot> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    return {
+      users: Array.from(this.authUsers.values()),
+      sessions: Array.from(this.authSessions.values()),
+    };
+  }
+
+  private async readFileSnapshot(): Promise<{
+    sessions?: QuizState[];
+    authUsers?: AuthUserRecord[];
+    authSessions?: AuthSessionRecord[];
+  } | null> {
     try {
       const raw = await readFile(this.path, "utf8");
-      const parsed = JSON.parse(raw) as { sessions?: QuizState[] };
-      const map = new Map<string, QuizState>();
-      for (const s of parsed.sessions ?? []) {
-        if (s && typeof s.sessionId === "string") map.set(s.sessionId, s);
-      }
-      this.snapshot = new Map(map);
-      return map;
+      return JSON.parse(raw) as {
+        sessions?: QuizState[];
+        authUsers?: AuthUserRecord[];
+        authSessions?: AuthSessionRecord[];
+      };
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return new Map();
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        this.snapshot = new Map();
+        this.authUsers = new Map();
+        this.authSessions = new Map();
+        return null;
+      }
       throw err;
     }
+  }
+
+  private applyParsedSnapshot(parsed: {
+    sessions?: QuizState[];
+    authUsers?: AuthUserRecord[];
+    authSessions?: AuthSessionRecord[];
+  }): void {
+    const sessions = new Map<string, QuizState>();
+    for (const s of parsed.sessions ?? []) {
+      if (s && typeof s.sessionId === "string") sessions.set(s.sessionId, s);
+    }
+    const authUsers = new Map<string, AuthUserRecord>();
+    for (const u of parsed.authUsers ?? []) {
+      if (
+        u &&
+        u.provider === "openrouter" &&
+        typeof u.providerUserHash === "string" &&
+        typeof u.userId === "string"
+      ) {
+        authUsers.set(authUserKey(u.provider, u.providerUserHash), u);
+      }
+    }
+    const authSessions = new Map<string, AuthSessionRecord>();
+    for (const s of parsed.authSessions ?? []) {
+      if (
+        s &&
+        typeof s.token === "string" &&
+        typeof s.userId === "string" &&
+        typeof s.createdAt === "number" &&
+        typeof s.expiresAt === "number"
+      ) {
+        authSessions.set(s.token, s);
+      }
+    }
+    this.snapshot = sessions;
+    this.authUsers = authUsers;
+    this.authSessions = authSessions;
   }
 
   /**
@@ -85,10 +172,7 @@ export class StateStore implements StateStoreLike {
     // saveSession() that lands later sees the right baseline.
     this.snapshot = new Map(snapshot.map((s) => [s.sessionId, s]));
     const next = this.writeChain.catch(() => {}).then(async () => {
-      await mkdir(dirname(this.path), { recursive: true });
-      const tmp = `${this.path}.tmp`;
-      await writeFile(tmp, JSON.stringify({ sessions: snapshot }, null, 2), "utf8");
-      await rename(tmp, this.path);
+      await this.writeCurrentSnapshot();
     });
     // Log + swallow on the chain so a fire-and-forget caller can't silently
     // accumulate unhandled rejections; return a fresh handle to the same
@@ -109,7 +193,55 @@ export class StateStore implements StateStoreLike {
     return this.save(this.snapshot.values());
   }
 
+  saveAuthUser(user: AuthUserRecord): Promise<void> {
+    this.authUsers.set(authUserKey(user.provider, user.providerUserHash), user);
+    return this.queueWrite();
+  }
+
+  saveAuthSession(session: AuthSessionRecord): Promise<void> {
+    this.authSessions.set(session.token, session);
+    return this.queueWrite();
+  }
+
+  deleteAuthSession(token: string): Promise<void> {
+    if (!this.authSessions.has(token)) return Promise.resolve();
+    this.authSessions.delete(token);
+    return this.queueWrite();
+  }
+
   describe(): string {
     return this.path;
   }
+
+  private queueWrite(): Promise<void> {
+    const next = this.writeChain.catch(() => {}).then(async () => {
+      await this.writeCurrentSnapshot();
+    });
+    this.writeChain = next.catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[ruby-high] state-store save failed (${this.path}):`, err);
+    });
+    return next;
+  }
+
+  private async writeCurrentSnapshot(): Promise<void> {
+    await mkdir(dirname(this.path), { recursive: true });
+    const tmp = `${this.path}.tmp`;
+    await writeFile(tmp, JSON.stringify({
+      sessions: Array.from(this.snapshot.values()),
+      authUsers: Array.from(this.authUsers.values()),
+      authSessions: Array.from(this.authSessions.values()),
+    }, null, 2), "utf8");
+    await rename(tmp, this.path);
+  }
+}
+
+export function authUserKey(provider: AuthUserRecord["provider"], providerUserHash: string): string {
+  return `${provider}:${providerUserHash}`;
+}
+
+let defaultStateStore: StateStore | null = null;
+export function getDefaultStateStore(): StateStore {
+  if (!defaultStateStore) defaultStateStore = new StateStore();
+  return defaultStateStore;
 }

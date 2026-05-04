@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ChatService } from "../services/chat-service.js";
+import { publicChatHistory } from "../chat-routes.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { StateStore } from "../services/state-store.js";
@@ -50,6 +51,26 @@ function mockOpenRouter(sseBody: Uint8Array) {
       headers: { "Content-Type": "text/event-stream" },
     });
   });
+}
+
+function mockOpenRouterSequence(sseBodies: Uint8Array[]) {
+  const calls: Array<{ url: string; body: any }> = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (...args: any[]) => {
+    const [input, init] = args;
+    const body = sseBodies.shift();
+    if (!body) throw new Error("mockOpenRouterSequence exhausted");
+    const call = {
+      url: typeof input === "string" ? input : input.url,
+      body: init?.body ? JSON.parse(init.body) : null,
+    };
+    captured = call;
+    calls.push(call);
+    return new Response(body as BodyInit, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  });
+  return calls;
 }
 
 async function makeServices() {
@@ -335,6 +356,186 @@ describe("ChatService.send — message composition", () => {
     expect(types).toContain("tool");
     const tool = events.find((e) => e.type === "tool");
     expect(tool.tool).toBe("pick_from_bank");
+  });
+
+  it("keeps tools available after a nonterminal tool round", async () => {
+    const calls = mockOpenRouterSequence([
+      buildSseChunk([
+        {
+          toolCalls: [
+            { index: 0, id: "call_clear", function: { name: "clear_board", arguments: "{}" } },
+          ],
+        },
+        { finish: "tool_calls" },
+      ]),
+      buildSseChunk([{ content: "Fresh slate.", finish: "stop" }]),
+    ]);
+    const { chat } = await makeServices();
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      systemEventNote: "EVENT: reset the board, then continue.",
+    })) {
+      events.push(ev);
+    }
+
+    expect(calls.length).toBe(2);
+    expect(calls[0]!.body.tools.length).toBeGreaterThan(0);
+    expect(calls[1]!.body.tools.length).toBeGreaterThan(0);
+    expect(events.filter((e) => e.type === "tool").map((e) => e.tool)).toEqual(["clear_board"]);
+    expect(events.at(-1)).toMatchObject({ type: "done", finishReason: "stop" });
+  });
+
+  it("marks a resolved board as already answered in the model prompt", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "Got it.", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    ruby.pose("session:1", {
+      prompt: "Ruby High has both human students and AI agents in the same classroom. What do you call a school like that?",
+      options: { A: "A regular classroom", B: "A guild", C: "A lab", D: "An agent-culture school" },
+      correct: "D",
+      explanation: "The exact jargon varies; the point is the mixed human/agent classroom.",
+      subject: "agent-culture",
+      difficulty: "easy",
+      faculty: "ruby",
+      questionId: "prompt-test-q",
+    });
+    ruby.submitAnswer("session:1", "D");
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      userMessage: "alright D",
+    })) { /* consume */ }
+
+    const systemBlob = captured!.body.messages
+      .filter((m: any) => m.role === "system")
+      .map((m: any) => String(m.content))
+      .join("\n");
+    expect(systemBlob).toContain("BOARD STATUS: RESOLVED");
+    expect(systemBlob).toContain("already answered D");
+    expect(systemBlob).toContain("Do not ask for an answer to this board again");
+  });
+
+  it("serializes completed tool calls for viewer history replay", () => {
+    const history = publicChatHistory([
+      {
+        role: "assistant",
+        content: "",
+        faculty: "ruby",
+        at: 1,
+        toolCalls: [
+          {
+            id: "call_pose",
+            type: "function",
+            function: {
+              name: "pose_question",
+              arguments: "{\"prompt\":\"hidden\",\"correct\":\"D\"}",
+            },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: "{\"ok\":true,\"message\":\"Question posted.\"}",
+        toolCallId: "call_pose",
+        faculty: "ruby",
+        at: 2,
+      },
+    ] as any);
+
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      role: "tool",
+      tool: "pose_question",
+      args: {},
+      result: { ok: true, message: "Question posted." },
+    });
+    expect(JSON.stringify(history)).not.toContain("hidden");
+    expect(JSON.stringify(history)).not.toContain("\"correct\":\"D\"");
+  });
+
+  it("drops legacy incomplete tool-call groups before composing", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    const { chat } = await makeServices();
+    (chat as any).histories.set("t1::ruby", [
+      { role: "user", content: "old user", faculty: "ruby", at: 1 },
+      {
+        role: "assistant",
+        content: "tooling",
+        faculty: "ruby",
+        at: 2,
+        toolCalls: [
+          { id: "call_a", type: "function", function: { name: "pick_from_bank", arguments: "{}" } },
+          { id: "call_b", type: "function", function: { name: "clear_board", arguments: "{}" } },
+        ],
+      },
+      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_a", faculty: "ruby", at: 3 },
+      { role: "assistant", content: "after broken group", faculty: "ruby", at: 4 },
+    ]);
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      userMessage: "next",
+    })) { /* consume */ }
+
+    const allText = JSON.stringify(captured!.body.messages);
+    expect(allText).not.toContain("call_a");
+    expect(allText).not.toContain("call_b");
+    expect(captured!.body.messages.some((m: any) => m.role === "tool")).toBe(false);
+    expect(allText).toContain("after broken group");
+  });
+
+  it("trims history without splitting complete tool-call groups", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    const { chat } = await makeServices();
+    const filler = Array.from({ length: 28 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `filler ${i}`,
+      faculty: "ruby",
+      at: i + 1,
+    }));
+    (chat as any).histories.set("t1::ruby", [
+      ...filler,
+      {
+        role: "assistant",
+        content: "tooling",
+        faculty: "ruby",
+        at: 100,
+        toolCalls: [
+          { id: "call_a", type: "function", function: { name: "pick_from_bank", arguments: "{}" } },
+          { id: "call_b", type: "function", function: { name: "clear_board", arguments: "{}" } },
+        ],
+      },
+      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_a", faculty: "ruby", at: 101 },
+      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_b", faculty: "ruby", at: 102 },
+    ]);
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      userMessage: "next",
+    })) { /* consume */ }
+
+    const historyMessages = captured!.body.messages.filter((m: any) => m.role !== "system");
+    const idx = historyMessages.findIndex((m: any) =>
+      m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length === 2
+    );
+    expect(idx).toBeGreaterThan(-1);
+    expect(historyMessages[idx + 1]?.role).toBe("tool");
+    expect(historyMessages[idx + 1]?.tool_call_id).toBe("call_a");
+    expect(historyMessages[idx + 2]?.role).toBe("tool");
+    expect(historyMessages[idx + 2]?.tool_call_id).toBe("call_b");
+    expect(historyMessages.length).toBeLessThanOrEqual(30);
   });
 
   it("surfaces an error event when OpenRouter returns a non-OK response", async () => {

@@ -46,10 +46,7 @@ function makeDeps() {
   return {
     auth,
     ruby,
-    sessionIdFor: (cookie?: string | null) => {
-      const token = cookie?.replace(/^rh_session=/, "") ?? "";
-      return `session-for-${token}`;
-    },
+    sessionIdFor: (cookie?: string | null) => auth.stateKeyForCookie(cookie),
   };
 }
 
@@ -58,8 +55,14 @@ function signInUser(token: string): string {
   // OAuth flow for these tests. The token doubles as the cookie value;
   // the actual OpenRouter key is sent as a per-request header (the
   // chat layer's pattern), not stored on the record.
-  (auth as any).sessions.set(token, { createdAt: Date.now() });
-  return token;
+  const userId = `test-${token}`;
+  const now = Date.now();
+  auth.injectSessionForTest(token, {
+    userId,
+    createdAt: now,
+    expiresAt: now + 30 * 24 * 60 * 60 * 1000,
+  });
+  return `rh:user:${userId}`;
 }
 
 beforeEach(async () => {
@@ -67,14 +70,16 @@ beforeEach(async () => {
   storePath = join(tmpDir, "state.json");
   resetActivePack();
   await getActivePack();
-  auth = await AuthService.start({} as never);
-  ruby = new RubyHighService({} as never, new StateStore(storePath));
+  const store = new StateStore(storePath);
+  auth = await AuthService.start({} as never, store);
+  ruby = new RubyHighService({} as never, store);
   await ruby["hydrate"]();
   captured = null;
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  await auth.stop();
   await ruby.flush();
   await rm(tmpDir, { recursive: true, force: true });
 });
@@ -112,8 +117,8 @@ describe("/packs visibility", () => {
     signInUser("alice");
     signInUser("bob");
     // Alice imports a pack; Bob imports a different one.
-    registerPack(syntheticAnkiPack("anki:alice-1"), "session-for-alice");
-    registerPack(syntheticAnkiPack("anki:bob-1"), "session-for-bob");
+    registerPack(syntheticAnkiPack("anki:alice-1"), "rh:user:test-alice");
+    registerPack(syntheticAnkiPack("anki:bob-1"), "rh:user:test-bob");
 
     const aliceCtx = makeCtx({ method: "GET", path: "/api/apps/ruby-high/packs", cookie: "rh_session=alice" });
     await handlePackRoutes(aliceCtx, makeDeps());
@@ -133,7 +138,7 @@ describe("/packs/active — switch flow", () => {
   it("404s on unknown id (and on someone else's pack — same response, no leak)", async () => {
     signInUser("alice");
     signInUser("bob");
-    registerPack(syntheticAnkiPack("anki:alice-1"), "session-for-alice");
+    registerPack(syntheticAnkiPack("anki:alice-1"), "rh:user:test-alice");
 
     // Bob tries to activate Alice's pack — should look the same as a
     // non-existent id.
@@ -159,7 +164,7 @@ describe("/packs/active — switch flow", () => {
 
   it("activates the pack + writes activePackId to state", async () => {
     signInUser("alice");
-    registerPack(syntheticAnkiPack("anki:alice-1"), "session-for-alice");
+    registerPack(syntheticAnkiPack("anki:alice-1"), "rh:user:test-alice");
 
     const ctx = makeCtx({
       method: "POST",
@@ -169,7 +174,7 @@ describe("/packs/active — switch flow", () => {
     });
     await handlePackRoutes(ctx, makeDeps());
     expect(lastResponse?.status).toBe(200);
-    const state = ruby.getOrCreate("session-for-alice");
+    const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe("anki:alice-1");
   });
 });
@@ -253,7 +258,7 @@ describe("/packs/import-anki — end-to-end", () => {
     const pack = lastResponse?.body.pack;
     expect(pack.question_count).toBe(3);
     // Pack is now active for the importing session.
-    const state = ruby.getOrCreate("session-for-alice");
+    const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe(pack.id);
     // OpenRouter was called once per card.
     // (The mock captured the LAST call; we rely on the question count

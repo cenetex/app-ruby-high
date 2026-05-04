@@ -1,12 +1,13 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   BatchWriteCommand,
+  DeleteCommand,
   DynamoDBDocumentClient,
   PutCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { QuizState } from "../types.js";
-import type { StateStoreLike } from "./state-store.js";
+import type { AuthSessionRecord, AuthStoreSnapshot, AuthUserRecord, StateStoreLike } from "./state-store.js";
 
 /**
  * DynamoDB-backed state store. One item per session, primary key = sessionId.
@@ -24,6 +25,8 @@ import type { StateStoreLike } from "./state-store.js";
  * Table schema (the deploy provisions this; not created by code):
  *   - PK:   pk (string) — sessionId, e.g. "rh:user:<token>" or "rh:anonymous"
  *   - Attrs: state (map), updatedAt (number, ms), expiresAt (number, seconds)
+ *   - Auth user items:    pk = "auth:user:<provider>:<providerUserHash>", authUser (map)
+ *   - Auth session items: pk = "auth:session:<token>", authSession (map), expiresAt (seconds)
  *   - TTL attribute: expiresAt (configured on the table)
  *   - On-demand billing recommended (bursty traffic, predictable item size)
  */
@@ -76,6 +79,46 @@ export class DynamoStateStore implements StateStoreLike {
 
   async load(): Promise<Map<string, QuizState>> {
     const map = new Map<string, QuizState>();
+    const items = await this.scanAll();
+    for (const item of items) {
+      const state = item.state as QuizState | undefined;
+      if (state && typeof state.sessionId === "string") {
+        map.set(state.sessionId, state);
+      }
+    }
+    return map;
+  }
+
+  async loadAuth(): Promise<AuthStoreSnapshot> {
+    const users: AuthUserRecord[] = [];
+    const sessions: AuthSessionRecord[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const user = item.authUser as AuthUserRecord | undefined;
+      if (
+        user &&
+        user.provider === "openrouter" &&
+        typeof user.providerUserHash === "string" &&
+        typeof user.userId === "string"
+      ) {
+        users.push(user);
+      }
+      const session = item.authSession as AuthSessionRecord | undefined;
+      if (
+        session &&
+        typeof session.token === "string" &&
+        typeof session.userId === "string" &&
+        typeof session.createdAt === "number" &&
+        typeof session.expiresAt === "number"
+      ) {
+        sessions.push(session);
+      }
+    }
+    return { users, sessions };
+  }
+
+  private async scanAll(): Promise<Array<Record<string, unknown>>> {
+    const items: Array<Record<string, unknown>> = [];
     let lastEvaluatedKey: Record<string, unknown> | undefined;
     do {
       // Scan is fine at this scale (a few thousand sessions); past that,
@@ -85,20 +128,48 @@ export class DynamoStateStore implements StateStoreLike {
         ExclusiveStartKey: lastEvaluatedKey,
       }))) as { Items?: Array<Record<string, unknown>>; LastEvaluatedKey?: Record<string, unknown> };
       for (const item of result.Items ?? []) {
-        const state = item.state as QuizState | undefined;
-        if (state && typeof state.sessionId === "string") {
-          map.set(state.sessionId, state);
-        }
+        items.push(item);
       }
       lastEvaluatedKey = result.LastEvaluatedKey;
     } while (lastEvaluatedKey);
-    return map;
+    return items;
   }
 
   async saveSession(state: QuizState): Promise<void> {
     await this.client.send(new PutCommand({
       TableName: this.tableName,
       Item: this.toItem(state),
+    }));
+  }
+
+  async saveAuthUser(user: AuthUserRecord): Promise<void> {
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: {
+        pk: `auth:user:${user.provider}:${user.providerUserHash}`,
+        authUser: user,
+        updatedAt: Date.now(),
+      },
+    }));
+  }
+
+  async saveAuthSession(session: AuthSessionRecord): Promise<void> {
+    const item: Record<string, unknown> = {
+      pk: `auth:session:${session.token}`,
+      authSession: session,
+      updatedAt: Date.now(),
+      expiresAt: Math.floor(session.expiresAt / 1000),
+    };
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
+    }));
+  }
+
+  async deleteAuthSession(token: string): Promise<void> {
+    await this.client.send(new DeleteCommand({
+      TableName: this.tableName,
+      Key: { pk: `auth:session:${token}` },
     }));
   }
 

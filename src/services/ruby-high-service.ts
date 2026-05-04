@@ -54,7 +54,7 @@ import {
   type TeachingRoomId,
 } from "../types.js";
 import { FacultyService, toFacultyMember, type PickFilter } from "./faculty-service.js";
-import { StateStore, type StateStoreLike } from "./state-store.js";
+import { getDefaultStateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
@@ -109,7 +109,7 @@ export class RubyHighService extends Service {
 
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
-    this.store = store ?? new StateStore();
+    this.store = store ?? getDefaultStateStore();
   }
 
   static async start(runtime: IAgentRuntime): Promise<RubyHighService> {
@@ -333,6 +333,10 @@ export class RubyHighService extends Service {
     }
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
+    if (this.maybeCompleteGrade(state)) {
+      state.updatedAt = Date.now();
+      void this.persistSession(sessionId);
+    }
     return state;
   }
 
@@ -513,7 +517,10 @@ export class RubyHighService extends Service {
    *    3. On a Legendary pass: bump legendariesToday.count for today.
    *       The first time count meets `legendariesPerDayFor(grade)` on
    *       a given UTC date is a "day complete": tick the streak (with
-   *       date-gap reset) and check the year-advancement gate.
+   *       date-gap reset).
+   *    4. Re-check grade completion after every progress mutation. Streak
+   *       and class credit can land in either order; once both gates are met,
+   *       the year completes immediately.
    *
    *  Rarity comes from the question itself (state.current.rarity); the
    *  caller passes it through so this method doesn't have to peek at
@@ -540,7 +547,10 @@ export class RubyHighService extends Service {
     }
 
     // 3. Day-target tracking. Only Legendary correctness moves it.
-    if (!passed || rarity !== "legendary") return;
+    if (!passed || rarity !== "legendary") {
+      this.maybeCompleteGrade(state);
+      return;
+    }
 
     if (!ch.legendariesToday || ch.legendariesToday.date !== today) {
       ch.legendariesToday = { date: today, count: 0 };
@@ -548,70 +558,124 @@ export class RubyHighService extends Service {
     ch.legendariesToday.count += 1;
 
     const target = legendariesPerDayFor(grade);
-    // Only the FIRST crossing of the target on this date bumps the
-    // streak. Post-crossing legendaries on the same day still award
-    // XP via the path above; the day was already "complete."
-    if (ch.legendariesToday.count !== target) return;
-
-    const prevLastDate = ch.streak && ch.streak.grade === grade ? ch.streak.lastDate : undefined;
-    if (prevLastDate === today) return; // already credited today
-    let nextCount: number;
-    if (prevLastDate && daysBetween(prevLastDate, today) === 1) {
-      nextCount = (ch.streak?.grade === grade ? ch.streak.count : 0) + 1;
-    } else {
-      nextCount = 1; // fresh streak — first day, gap > 1, or new grade
+    // Only credit the streak once per date. If an older state is already past
+    // target but somehow missed the credit, `>= target` reconciles it.
+    if (ch.legendariesToday.count >= target) {
+      const prevLastDate = ch.streak && ch.streak.grade === grade ? ch.streak.lastDate : undefined;
+      if (prevLastDate !== today) {
+        const nextCount = prevLastDate && daysBetween(prevLastDate, today) === 1
+          ? (ch.streak?.grade === grade ? ch.streak.count : 0) + 1
+          : 1; // fresh streak — first day, gap > 1, or new grade
+        ch.streak = { grade, count: nextCount, lastDate: today };
+      }
     }
-    ch.streak = { grade, count: nextCount, lastDate: today };
 
-    // Two gates to advance:
-    //   1. streak >= requiredStreakForGrade(grade)
-    //   2. subjectXp[teacher] >= requiredSubjectXpForGrade(grade) for EVERY
-    //      teaching room (homeroom + science + literature)
-    const required = requiredStreakForGrade(grade);
-    if (nextCount < required) return;
+    this.maybeCompleteGrade(state);
+  }
+
+  private gradeCompletionStatus(state: QuizState): {
+    grade: Grade;
+    requiredStreak: number;
+    streakCount: number;
+    streakMet: boolean;
+    subjectFloor: number;
+    classesMet: number;
+    classCount: number;
+    classesMetAll: boolean;
+    ready: boolean;
+  } | null {
+    const ch = state.character;
+    const grade = state.currentGrade;
+    if (!ch || !grade) return null;
+
+    const requiredStreak = requiredStreakForGrade(grade);
+    const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
     const subjectFloor = requiredSubjectXpForGrade(grade);
+    let classesMet = 0;
+    let classCount = 0;
     for (const room of TEACHING_ROOMS) {
       const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
       if (!teacherId) continue;
-      const have = ch.subjectXp[teacherId] ?? 0;
-      if (have < subjectFloor) return; // not yet — keep playing this year
+      classCount++;
+      if ((ch.subjectXp?.[teacherId] ?? 0) >= subjectFloor) classesMet++;
     }
+    const streakMet = streakCount >= requiredStreak;
+    const classesMetAll = classCount > 0 && classesMet >= classCount;
+    return {
+      grade,
+      requiredStreak,
+      streakCount,
+      streakMet,
+      subjectFloor,
+      classesMet,
+      classCount,
+      classesMetAll,
+      ready: streakMet && classesMetAll,
+    };
+  }
+
+  private maybeCompleteGrade(state: QuizState): boolean {
+    const status = this.gradeCompletionStatus(state);
+    const ch = state.character;
+    if (!status || !ch || !status.ready) return false;
+    const grade = status.grade;
+    ch.yearbook = ch.yearbook ?? [];
+    let changed = false;
+    const alreadyHasPaper = ch.yearbook.some((y) => y.grade === grade);
 
     // Year complete — write yearbook, advance (or graduate).
     if (!state.completedGrades.includes(grade)) {
       state.completedGrades.push(grade);
+      changed = true;
     }
-    ch.yearbook = ch.yearbook ?? [];
-    // Paper Card snapshot: freeze the identity at the moment the year
-    // closes. The live character keeps mutating (Stat Card); this entry
-    // is the sealed page of the yearbook.
-    ch.yearbook.push({
-      grade,
-      completedAt: Date.now(),
-      summary: { correct: nextCount, total: nextCount },
-      name: ch.name,
-      playbookId: ch.playbookId,
-      stats: { ...ch.stats },
-      ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
-      ...(ch.flavorQuote ? { flavorQuote: ch.flavorQuote } : {}),
-      arcAnswer: ch.arcAnswer,
-      ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
-    });
+    if (!alreadyHasPaper) {
+      // Paper Card snapshot: freeze the identity at the moment the year
+      // closes. The current school career keeps rendering as Character Card
+      // + School Career Card; this entry is the sealed page of the yearbook.
+      ch.yearbook.push({
+        grade,
+        completedAt: Date.now(),
+        summary: { correct: status.streakCount, total: status.requiredStreak },
+        name: ch.name,
+        playbookId: ch.playbookId,
+        stats: { ...ch.stats },
+        ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
+        ...(ch.flavorQuote ? { flavorQuote: ch.flavorQuote } : {}),
+        arcAnswer: ch.arcAnswer,
+        ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
+      });
+      changed = true;
+    }
     const advance = nextGradeAfter(grade);
     if (advance) {
-      state.currentGrade = advance;
+      if (state.currentGrade !== advance) {
+        state.currentGrade = advance;
+        changed = true;
+      }
       this.ensureRoster(state, advance);
-      ch.streak = { grade: advance, count: 0 };
-      log.event("player.grade-advanced", {
-        sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, xp: ch.xp,
-      });
+      if (!ch.streak || ch.streak.grade !== advance || ch.streak.count !== 0 || ch.streak.lastDate) {
+        ch.streak = { grade: advance, count: 0 };
+        changed = true;
+      }
+      if (ch.legendariesToday) {
+        delete ch.legendariesToday;
+        changed = true;
+      }
+      if (changed) {
+        log.event("player.grade-advanced", {
+          sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, xp: ch.xp,
+        });
+      }
     } else {
       // Senior complete = graduation. Streak stays at Senior; the diploma
       // flow keys on yearbook.length === 4 + the absence of a "next year."
-      log.event("player.graduated", {
-        sessionId: state.sessionId, character: ch.name, xp: ch.xp,
-      });
+      if (changed) {
+        log.event("player.graduated", {
+          sessionId: state.sessionId, character: ch.name, xp: ch.xp,
+        });
+      }
     }
+    return changed;
   }
 
   /** Cohort tick — every NPC who's still in school rolls against today's

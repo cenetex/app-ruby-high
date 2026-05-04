@@ -53,6 +53,42 @@ describe("StateStore", () => {
     expect(loaded.get("b")?.sessionId).toBe("b");
   });
 
+  it("round-trips auth users and sessions without storing provider ids or keys", async () => {
+    const store = new StateStore(storePath);
+    await store.saveAuthUser({
+      userId: "usr_test",
+      provider: "openrouter",
+      providerUserHash: "hashed-provider-id",
+      createdAt: 100,
+      lastLoginAt: 200,
+    });
+    await store.saveAuthSession({
+      token: "opaque-token",
+      userId: "usr_test",
+      createdAt: 300,
+      expiresAt: 400,
+    });
+
+    const fresh = new StateStore(storePath);
+    const auth = await fresh.loadAuth();
+    expect(auth.users).toEqual([{
+      userId: "usr_test",
+      provider: "openrouter",
+      providerUserHash: "hashed-provider-id",
+      createdAt: 100,
+      lastLoginAt: 200,
+    }]);
+    expect(auth.sessions).toEqual([{
+      token: "opaque-token",
+      userId: "usr_test",
+      createdAt: 300,
+      expiresAt: 400,
+    }]);
+    const raw = await readFile(storePath, "utf8");
+    expect(raw).not.toContain("sk-");
+    expect(raw).not.toContain("openrouter-user");
+  });
+
   it("load returns an empty map when the file doesn't exist", async () => {
     const store = new StateStore(join(tmpDir, "nope.json"));
     const loaded = await store.load();
