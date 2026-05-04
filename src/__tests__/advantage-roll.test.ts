@@ -246,10 +246,10 @@ describe("Player roll on round resolve — bonus-only", () => {
     expect(roll.total).toBe(roll.dice[0] + roll.dice[1] + 3);
   });
 
-  it("never decreases XP on a wrong answer, regardless of the dice", async () => {
+  it("does not change XP on a wrong answer, regardless of the dice", async () => {
     const { ruby } = await makeServices();
     // Run many rounds — across a wide range of dice outcomes, a wrong answer
-    // should never punish the character. XP is monotonically non-decreasing.
+    // should never punish the character. XP is legacy-only now.
     for (let i = 0; i < 50; i++) {
       const sid = `test:no-penalty:${i}`;
       ruby.pickAndPose(sid, { faculty: "ruby" });
@@ -269,18 +269,8 @@ describe("Player roll on round resolve — bonus-only", () => {
     }
   });
 
-  it("awards XP only on a correct answer; sources stack (advantage roll + rarity)", async () => {
+  it("does not award XP on a correct answer; mastery owns progression now", async () => {
     const { ruby } = await makeServices();
-    // Post-rarity-refactor, character.xp accrues from TWO sources on a
-    // correct answer:
-    //   1. The advantage-style player roll on resolve (1 XP for hit,
-    //      2 for mixed, 0 for miss — set by the round-resolve path).
-    //   2. The rarity reward — 0/1/2 for common/rare/legendary.
-    //
-    // So a correct answer can land in [0, 4] XP. The lower bound of 0
-    // hits when rarity = common AND the player roll outcome was "miss"
-    // (which still counts the question as correct, just no advantage
-    // bonus). 30 rounds is plenty to confirm the gate isn't backwards.
     for (let i = 0; i < 30; i++) {
       const sid = `test:xp:${i}`;
       ruby.pickAndPose(sid, { faculty: "ruby" });
@@ -293,8 +283,7 @@ describe("Player roll on round resolve — bonus-only", () => {
       const correct = state.current!.correct! as Choice;
       ruby.submitAnswer(sid, correct);
       const after = ruby.getOrCreate(sid);
-      expect(after.character!.xp).toBeGreaterThanOrEqual(0);
-      expect(after.character!.xp).toBeLessThanOrEqual(4);
+      expect(after.character!.xp).toBe(0);
     }
   });
 });

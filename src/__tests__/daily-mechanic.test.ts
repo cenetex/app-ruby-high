@@ -55,6 +55,30 @@ function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9",
   return state;
 }
 
+function markFacultyMastered(ruby: RubyHighService, faculty: FacultyService, sid: string, facultyId: string) {
+  const state = ruby.getOrCreate(sid);
+  const bank = faculty.bank(facultyId);
+  if (!bank) throw new Error(`No bank for ${facultyId}`);
+  state.cardMemory = state.cardMemory ?? {};
+  for (const q of bank.questions) {
+    state.cardMemory[`${facultyId}::${q.id}`] = {
+      courseId: facultyId,
+      questionId: q.id,
+      phase: "mastered",
+      dueAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
+      stability: 14,
+      difficulty: 0.1,
+      consecutiveCorrect: 3,
+      correctCount: 3,
+      wrongCount: 0,
+      delayedCorrectCount: 1,
+      lastReviewedAt: Date.now(),
+      lastResult: "good",
+      lapses: 0,
+    };
+  }
+}
+
 // ── pure helpers ────────────────────────────────────────────────────────────
 
 describe("dailyKey", () => {
@@ -378,9 +402,9 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
   });
 });
 
-describe("Per-class XP gate — streak alone is not enough", () => {
-  it("Freshman: a single correct answer in one room hits the streak but not the per-class gate; per-class credits must reach 2 in every room before advancement triggers", async () => {
-    const { ruby } = await makeServices();
+describe("Per-class letter-grade gate — streak alone is not enough", () => {
+  it("Freshman: single correct answers tick the streak, but classes must reach C or better before advancement triggers", async () => {
+    const { ruby, faculty } = await makeServices();
     const sid = "test:per-class-gate";
     attachCharacter(ruby, sid, "9", 0);
     const ch0 = ruby.getOrCreate(sid).character!;
@@ -412,39 +436,29 @@ describe("Per-class XP gate — streak alone is not enough", () => {
       Date.now = realNow;
     }
     const final = ruby.getOrCreate(sid);
-    expect(final.character!.subjectXp?.["sally-science"] ?? 0).toBeGreaterThanOrEqual(2);
-    expect(final.character!.subjectXp?.["professor-edward"] ?? 0).toBeGreaterThanOrEqual(2);
-    expect(final.character!.subjectXp?.["ruby"] ?? 0).toBeGreaterThanOrEqual(2);
     expect(final.currentGrade).toBe("9");
-    expect(final.character!.pendingGraduation?.grade).toBe("9");
+    expect(final.character!.pendingGraduation?.grade).toBeUndefined();
+
+    markFacultyMastered(ruby, faculty, sid, "ruby");
+    markFacultyMastered(ruby, faculty, sid, "sally-science");
+    markFacultyMastered(ruby, faculty, sid, "professor-edward");
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
     ruby.completeGraduation(sid, { kind: "advantage" });
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
   });
 
-  it("marks the ceremony ready as soon as the final class gate lands after the streak is already met", async () => {
-    const { ruby } = await makeServices();
+  it("marks the ceremony ready as soon as the final class reaches C after the streak is already met", async () => {
+    const { ruby, faculty } = await makeServices();
     const sid = "test:advance-when-class-gate-lands";
     attachCharacter(ruby, sid, "9", 0);
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
     ch.legendariesToday = { date: "2026-05-04", count: 4 };
-    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 1 };
-
-    const realNow = Date.now;
-    try {
-      Date.now = () => new Date("2026-05-04T20:00:00Z").getTime();
-      ruby.pose(sid, {
-        prompt: "Final class credit",
-        options: { A: "a", B: "b", C: "c", D: "d" },
-        correct: "A",
-        faculty: "professor-edward",
-        rarity: "rare",
-        questionId: "q_class_gate_lands",
-      });
-      ruby.submitAnswer(sid, "A");
-    } finally {
-      Date.now = realNow;
-    }
+    ch.subjectXp = {};
+    markFacultyMastered(ruby, faculty, sid, "ruby");
+    markFacultyMastered(ruby, faculty, sid, "sally-science");
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
+    markFacultyMastered(ruby, faculty, sid, "professor-edward");
 
     const after = ruby.getOrCreate(sid);
     expect(after.currentGrade).toBe("9");
@@ -578,8 +592,8 @@ describe("Streak + grade advancement", () => {
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
   });
 
-  it("opens Senior graduation as soon as the final class gate lands after the streak is already met", async () => {
-    const { ruby } = await makeServices();
+  it("opens Senior graduation as soon as the final class reaches C after the streak is already met", async () => {
+    const { ruby, faculty } = await makeServices();
     const sid = "test:graduate-when-senior-class-gate-lands";
     attachCharacter(ruby, sid, "12", 0);
     const state = ruby.getOrCreate(sid);
@@ -587,28 +601,17 @@ describe("Streak + grade advancement", () => {
     const ch = state.character!;
     ch.streak = { grade: "12", count: 4, lastDate: "2026-05-07" };
     ch.legendariesToday = { date: "2026-05-07", count: 8 };
-    ch.subjectXp = { ruby: 16, "sally-science": 16, "professor-edward": 15 };
+    ch.subjectXp = {};
     ch.yearbook = [
       { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },
       { grade: "10", completedAt: 2, summary: { correct: 2, total: 2 } },
       { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
     ];
 
-    const realNow = Date.now;
-    try {
-      Date.now = () => new Date("2026-05-07T20:00:00Z").getTime();
-      ruby.pose(sid, {
-        prompt: "Final senior class credit",
-        options: { A: "a", B: "b", C: "c", D: "d" },
-        correct: "A",
-        faculty: "professor-edward",
-        rarity: "rare",
-        questionId: "q_senior_class_gate_lands",
-      });
-      ruby.submitAnswer(sid, "A");
-    } finally {
-      Date.now = realNow;
-    }
+    markFacultyMastered(ruby, faculty, sid, "ruby");
+    markFacultyMastered(ruby, faculty, sid, "sally-science");
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
+    markFacultyMastered(ruby, faculty, sid, "professor-edward");
 
     const after = ruby.getOrCreate(sid);
     expect(after.currentGrade).toBe("12");

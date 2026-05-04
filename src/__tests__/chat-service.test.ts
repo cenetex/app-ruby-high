@@ -571,11 +571,30 @@ describe("ChatService.send — message composition", () => {
     expect(events.at(-1)).toMatchObject({ type: "done", finishReason: "stop" });
   });
 
-  it("removes pick_from_bank when the active faculty bank is exhausted", async () => {
+  it("removes pick_from_bank when the active faculty has no ready cards", async () => {
     mockOpenRouter(buildSseChunk([{ content: "I'll write one fresh.", finish: "stop" }]));
     const { ruby, chat, faculty } = await makeServices();
     const state = ruby.getOrCreate("session:1");
-    state.askedQuestionIds = faculty.bank("ruby")!.questions.map((q) => q.id);
+    state.cardMemory = {};
+    const future = Date.now() + 60 * 60 * 1000;
+    for (const q of faculty.bank("ruby")!.questions) {
+      state.askedQuestionIds.push(q.id);
+      state.cardMemory[`ruby::${q.id}`] = {
+        courseId: "ruby",
+        questionId: q.id,
+        phase: "learning",
+        dueAt: future,
+        stability: 1,
+        difficulty: 0.5,
+        consecutiveCorrect: 1,
+        correctCount: 1,
+        wrongCount: 0,
+        delayedCorrectCount: 0,
+        lastReviewedAt: Date.now(),
+        lastResult: "good",
+        lapses: 0,
+      };
+    }
 
     for await (const _ev of chat.send({
       apiKey: "sk-test",
@@ -589,7 +608,8 @@ describe("ChatService.send — message composition", () => {
     expect(toolNames).not.toContain("pick_from_bank");
     expect(toolNames).toContain("pose_question");
     const promptText = JSON.stringify(captured!.body.messages);
-    expect(promptText).toContain("QUESTION BANK STATUS for Ruby: EXHAUSTED");
+    expect(promptText).toContain("COURSE STATUS for Ruby:");
+    expect(promptText).toContain("no Ruby High cards are ready right now");
     expect(promptText).toContain("pick_from_bank is not available this turn");
   });
 

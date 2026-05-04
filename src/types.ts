@@ -104,23 +104,9 @@ export function requiredStreakForGrade(grade: Grade): number {
   return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
 }
 
-/** Per-class XP required to advance OUT of a year. The single total-XP
- *  gate from earlier iterations is gone — it was undifferentiated and
- *  let players duck a whole subject (a streak of Sally-only days could
- *  graduate Senior year without ever sitting in Edward's room). New rule:
- *
- *    To advance: (a) the streak holds AND (b) at least N XP in EACH
- *    teaching room (homeroom / science / literature).
- *
- *  Three teaching rooms × this per-class minimum = effective total floor:
- *
- *    Freshman:  2 each (6 floor)
- *    Sophomore: 5 each (15 floor)
- *    Junior:    10 each (30 floor)
- *    Senior:    16 each (48 floor)
- *
- *  Pacing mirrors the previous total curve, but graduation now means
- *  passing every class — the rooms have mechanical weight. */
+/** Legacy per-class credit gate. Kept for migrating old characters that
+ *  already earned credits before letter-grade mastery replaced XP. New
+ *  progression gates on class letter grades instead. */
 export function requiredSubjectXpForGrade(grade: Grade): number {
   switch (grade) {
     case "9":  return 2;
@@ -128,6 +114,10 @@ export function requiredSubjectXpForGrade(grade: Grade): number {
     case "11": return 10;
     case "12": return 16;
   }
+}
+
+export function letterGradePasses(grade: string | undefined | null): boolean {
+  return !!grade && /^[ABC]/.test(grade);
 }
 
 /** Difficulty progression up the high school years. */
@@ -264,9 +254,9 @@ export interface LastReveal {
   wasCorrect: boolean;
   explanation: string | null;
   encouragement: string | null;
-  /** Player's 2d6 + stat roll for this question. Bonus-only — a good roll
-   *  awards credits, a poor roll never penalizes. NPC rolls (in
-   *  ActiveRound.npcs) are where the actual race stakes live. */
+  /** Player's 2d6 + stat roll for this question. Bonus-only — it informs
+   *  card review quality, not XP. `xpAwarded` is retained for older clients
+   *  and is always 0 in the current progression model. */
   playerRoll?: {
     stat: keyof CharacterStats;
     dice: [number, number];
@@ -527,7 +517,8 @@ export interface PlayerCharacter {
   /** Generated sticker portrait as a base64 data URL. Optional — set by the
    *  /chat/character/portrait endpoint after creation. */
   portraitDataUrl?: string;
-  /** XP accumulated across all years. */
+  /** Legacy lifetime XP/credits. No longer player-facing or awarded by
+   *  current progression; retained so old state can hydrate safely. */
   xp: number;
   /** Past-year archive — populated at grade completion. Each entry is a
    *  **Paper Card**: a frozen snapshot of identity at the moment the year
@@ -596,12 +587,9 @@ export interface PlayerCharacter {
   /** One classroom affinity per grade: the first miss in that class becomes
    *  a second-chance pass and then marks used. */
   classAffinity?: Partial<Record<Grade, { facultyId: string; used: boolean }>>;
-  /** Per-faculty credit pool. Each passed answer increments the pool of the
-   *  faculty whose room the question was posed in by the awarded roll credits.
-   *  Year advancement
-   *  requires `requiredSubjectXpForGrade(grade)` in EACH teaching
-   *  faculty's pool — the rule that gives the rooms mechanical weight.
-   *  Optional for legacy characters; defaulted to {} on hydrate. */
+  /** Legacy per-faculty credit pool. Current advancement uses course letter
+   *  grades from card mastery; this remains as a migration fallback for
+   *  already-progressed characters. */
   subjectXp?: Record<string, number>;
   /** Generated diploma image (Senior graduation). Set by the /chat/diploma
    *  endpoint after the 4th yearbook entry lands. Base64 data URL. */

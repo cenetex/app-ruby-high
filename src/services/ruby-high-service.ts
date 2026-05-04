@@ -17,10 +17,10 @@ import {
   initialNpcRoster,
   npcsInRoom,
   classifyTotal,
-  dailyIndex,
   dailyKey,
   facultyForDay,
   initialNpcCohort,
+  letterGradePasses,
   nextGradeAfter,
   npcStatsFor,
   pickEliminatedChoices,
@@ -56,7 +56,7 @@ import {
   type RoundOutcome,
   type TeachingRoomId,
 } from "../types.js";
-import { FacultyService, toFacultyMember, type PickFilter } from "./faculty-service.js";
+import { FacultyService, toFacultyMember } from "./faculty-service.js";
 import { getDefaultStateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
@@ -192,7 +192,7 @@ function dueKnownCard(memory: CardMemory, now: number): boolean {
   return memory.dueAt <= now;
 }
 
-function letterGradeForSrs(total: number, mastered: number, shaky: number, learning: number): string {
+function letterGradeForMastery(total: number, mastered: number, shaky: number, learning: number): string {
   if (total <= 0) return "F";
   const pct = mastered / total;
   let letter = "F";
@@ -341,9 +341,8 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  /** Resolve the player's pending DM-roll. Bonus-only: a hit/mixed awards
-   *  XP, a miss is a no-op (no Condition, no XP loss). The roll exists to
-   *  reward, not to punish. */
+  /** Resolve the player's pending DM-roll. Bonus-only: it produces a roll
+   *  result for narration but no longer awards XP. */
   resolvePendingRoll(sessionId: string): { state: QuizState; result: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome; xpAwarded: number; reason: string } | null } {
     const state = this.getOrCreate(sessionId);
     const pr = state.pendingRoll;
@@ -351,8 +350,7 @@ export class RubyHighService extends Service {
     const r = roll2d6();
     const total = r.total + state.character.stats[pr.stat];
     const outcome: RoundOutcome = total >= pr.dc + 3 ? "hit" : total >= pr.dc ? "mixed" : "miss";
-    const xpAwarded = outcome === "hit" ? 2 : outcome === "mixed" ? 1 : 0;
-    state.character.xp = (state.character.xp ?? 0) + xpAwarded;
+    const xpAwarded = 0;
     state.pendingRoll = null;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
@@ -362,12 +360,11 @@ export class RubyHighService extends Service {
     };
   }
 
-  /** DM tool — teacher hands out XP directly. */
-  awardXp(sessionId: string, amount: number, _reason: string): QuizState {
+  /** Legacy DM XP hook. Current progression is class mastery, so this is a
+   *  no-op kept for older callers. */
+  awardXp(sessionId: string, _amount: number, _reason: string): QuizState {
     const state = this.getOrCreate(sessionId);
     if (!state.character) return state;
-    const a = Math.max(0, Math.min(10, Math.floor(amount)));
-    state.character.xp = (state.character.xp ?? 0) + a;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -552,8 +549,8 @@ export class RubyHighService extends Service {
     }
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
-    const repairedSrs = this.backfillSrsMemory(state);
-    if (this.maybeMarkGradeReady(state) || repairedSrs) {
+    const repairedMemory = this.backfillCardMemory(state);
+    if (this.maybeMarkGradeReady(state) || repairedMemory) {
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
     }
@@ -678,7 +675,7 @@ export class RubyHighService extends Service {
     return state.cardMemory;
   }
 
-  private isSrsCourse(state: QuizState, facultyId: string): boolean {
+  private isImportedReviewCourse(state: QuizState, facultyId: string): boolean {
     const pack = packForSession(state);
     return pack.id.startsWith("anki:") && pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0);
   }
@@ -687,14 +684,25 @@ export class RubyHighService extends Service {
     return this.ensureCardMemory(state)[cardMemoryKey(courseId, questionId)] ?? null;
   }
 
-  private srsQuestionsFor(state: QuizState, facultyId: string): BankedQuestion[] {
-    if (!this.isSrsCourse(state, facultyId)) return [];
+  private courseQuestionsFor(state: QuizState, facultyId: string): BankedQuestion[] {
     return packForSession(state).faculty.find((f) => f.id === facultyId)?.questions ?? [];
   }
 
-  private backfillSrsMemory(state: QuizState): boolean {
+  private eligibleCourseQuestions(
+    state: QuizState,
+    facultyId: string,
+    filter: { subject?: string; difficulty?: Difficulty; allowedDifficulties?: Iterable<Difficulty> } = {},
+  ): BankedQuestion[] {
+    const allowed = filter.allowedDifficulties ? new Set(filter.allowedDifficulties) : null;
+    return this.courseQuestionsFor(state, facultyId).filter((q) =>
+      (!filter.subject || q.subject === filter.subject) &&
+      (!filter.difficulty || q.difficulty === filter.difficulty) &&
+      (!allowed || allowed.has(q.difficulty))
+    );
+  }
+
+  private backfillCardMemory(state: QuizState): boolean {
     const pack = packForSession(state);
-    if (!pack.id.startsWith("anki:")) return false;
     const memory = this.ensureCardMemory(state);
     const historyByQuestion = new Map<string, AnswerRecord[]>();
     for (const record of state.history) {
@@ -745,55 +753,66 @@ export class RubyHighService extends Service {
     return mutated;
   }
 
-  private pickSrsQuestion(
+  private pickReviewQuestion(
     state: QuizState,
     facultyId: string,
-    filter: { subject?: string; difficulty?: Difficulty } = {},
+    filter: { subject?: string; difficulty?: Difficulty; allowedDifficulties?: Iterable<Difficulty> } = {},
     now = Date.now(),
   ): BankedQuestion | null {
-    const all = this.srsQuestionsFor(state, facultyId);
+    const all = this.eligibleCourseQuestions(state, facultyId, {
+      allowedDifficulties: filter.allowedDifficulties,
+    });
     if (all.length === 0) return null;
     const preferred = all.filter((q) =>
       (!filter.subject || q.subject === filter.subject) &&
       (!filter.difficulty || q.difficulty === filter.difficulty)
     );
-    const pool = preferred.length > 0 ? preferred : all;
     const memory = this.ensureCardMemory(state);
-    const due: BankedQuestion[] = [];
-    const fresh: BankedQuestion[] = [];
-    const masteredDue: BankedQuestion[] = [];
-    for (const q of pool) {
-      const m = memory[cardMemoryKey(facultyId, q.id)];
-      if (!m) {
-        fresh.push(q);
-      } else if (dueKnownCard(m, now)) {
-        if (m.phase === "mastered") masteredDue.push(q);
-        else due.push(q);
+    const choose = (pool: BankedQuestion[]): BankedQuestion | null => {
+      const due: BankedQuestion[] = [];
+      const legacyDue: BankedQuestion[] = [];
+      const fresh: BankedQuestion[] = [];
+      const masteredDue: BankedQuestion[] = [];
+      for (const q of pool) {
+        const currentUnresolved =
+          state.current?.id === q.id &&
+          state.activeRound?.questionId === q.id &&
+          !state.activeRound.resolved;
+        if (currentUnresolved) continue;
+        const m = memory[cardMemoryKey(facultyId, q.id)];
+        if (!m) {
+          fresh.push(q);
+        } else if (dueKnownCard(m, now)) {
+          if (m.phase === "mastered") masteredDue.push(q);
+          else if (m.lastReviewedAt == null) legacyDue.push(q);
+          else due.push(q);
+        }
       }
-    }
-    due.sort((a, b) => {
-      const ma = memory[cardMemoryKey(facultyId, a.id)]!;
-      const mb = memory[cardMemoryKey(facultyId, b.id)]!;
-      const phaseRank = (m: CardMemory) => m.phase === "learning" ? 0 : m.phase === "review" ? 1 : 2;
-      return phaseRank(ma) - phaseRank(mb)
-        || mb.wrongCount - ma.wrongCount
-        || ma.consecutiveCorrect - mb.consecutiveCorrect
-        || ma.dueAt - mb.dueAt;
-    });
-    if (due.length > 0) return due[0]!;
-    if (fresh.length > 0) return fresh[Math.floor(Math.random() * fresh.length)] ?? null;
-    masteredDue.sort((a, b) => {
-      const ma = memory[cardMemoryKey(facultyId, a.id)]!;
-      const mb = memory[cardMemoryKey(facultyId, b.id)]!;
-      return ma.dueAt - mb.dueAt;
-    });
-    return masteredDue[0] ?? null;
+      due.sort((a, b) => {
+        const ma = memory[cardMemoryKey(facultyId, a.id)]!;
+        const mb = memory[cardMemoryKey(facultyId, b.id)]!;
+        const phaseRank = (m: CardMemory) => m.phase === "learning" ? 0 : m.phase === "review" ? 1 : 2;
+        return phaseRank(ma) - phaseRank(mb)
+          || mb.wrongCount - ma.wrongCount
+          || ma.consecutiveCorrect - mb.consecutiveCorrect
+          || ma.dueAt - mb.dueAt;
+      });
+      if (due.length > 0) return due[0]!;
+      if (fresh.length > 0) return fresh[Math.floor(Math.random() * fresh.length)] ?? null;
+      if (legacyDue.length > 0) return legacyDue[0]!;
+      masteredDue.sort((a, b) => {
+        const ma = memory[cardMemoryKey(facultyId, a.id)]!;
+        const mb = memory[cardMemoryKey(facultyId, b.id)]!;
+        return ma.dueAt - mb.dueAt;
+      });
+      return masteredDue[0] ?? null;
+    };
+    return choose(preferred.length > 0 ? preferred : all) ?? (preferred.length > 0 ? choose(all) : null);
   }
 
-  private questionBelongsToSrsCourse(state: QuizState, q: Question): BankedQuestion | null {
+  private questionBelongsToReviewCourse(state: QuizState, q: Question): BankedQuestion | null {
     const facultyId = this.resolveQuestionFaculty(state, q.faculty);
-    if (!this.isSrsCourse(state, facultyId)) return null;
-    return this.srsQuestionsFor(state, facultyId).find((candidate) => candidate.id === q.id) ?? null;
+    return this.courseQuestionsFor(state, facultyId).find((candidate) => candidate.id === q.id) ?? null;
   }
 
   private reviewRatingForRound(
@@ -807,13 +826,13 @@ export class RubyHighService extends Service {
     return "hard";
   }
 
-  private recordSrsReview(
+  private recordCardReview(
     state: QuizState,
     q: Question,
     rating: CardReviewRating,
     now = Date.now(),
   ): void {
-    const banked = this.questionBelongsToSrsCourse(state, q);
+    const banked = this.questionBelongsToReviewCourse(state, q);
     if (!banked) return;
     const memory = this.ensureCardMemory(state);
     const key = cardMemoryKey(banked.faculty, banked.id);
@@ -850,7 +869,7 @@ export class RubyHighService extends Service {
     memory[key] = next;
   }
 
-  private srsCounts(state: QuizState, facultyId: string, now = Date.now()): {
+  private cardCounts(state: QuizState, facultyId: string, questions: BankedQuestion[], now = Date.now()): {
     asked: number;
     ready: number;
     mastered: number;
@@ -860,7 +879,6 @@ export class RubyHighService extends Service {
     remainingByDifficulty: Partial<Record<Difficulty, number>>;
     remainingBySubject: Record<string, number>;
   } {
-    const questions = this.srsQuestionsFor(state, facultyId);
     const memory = this.ensureCardMemory(state);
     let asked = 0;
     let ready = 0;
@@ -980,10 +998,8 @@ export class RubyHighService extends Service {
     state.score.total += 1;
     if (wasCorrect) state.score.correct += 1;
 
-    // 2d6 + question stat roll for the player — bonus layer on top of their literal
-    // pick. A correct answer earns class credit scaled by the roll
-    // (10+ = 2, 7-9/6- = 1). A wrong answer earns 0 credits and never imposes
-    // a Condition: the dice can only ever upgrade the outcome, never punish it.
+    // 2d6 + question stat roll for the player — bonus layer on top of their
+    // literal pick. The roll feeds review quality; it no longer awards XP.
     // NPC rolls (in activeRound.npcs) carry the actual race stakes.
     let playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null = null;
     if (state.character && picked != null) {
@@ -991,21 +1007,19 @@ export class RubyHighService extends Service {
       const r = roll2d6();
       const total = r.total + state.character.stats[stat];
       const outcome = classifyTotal(total);
-      const xpAwarded = wasCorrect
-        ? (outcome === "hit" ? 2 : 1)
-        : 0;
+      const xpAwarded = 0;
       playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
-    this.recordSrsReview(
+    this.recordCardReview(
       state,
       q,
       this.reviewRatingForRound(wasCorrect, forfeit, playerRoll),
       round.player.answeredAt ?? Date.now(),
     );
 
-    // Player progression. The player roll's awarded credits are the single
-    // source of truth for both lifetime credits and per-class graduation gates.
-    // The first passed question per school day ticks the streak and cohort.
+    // Player progression. Card mastery updates above; class grades are derived
+    // from that memory. The first passed question per school day ticks the
+    // streak and cohort.
     const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, playerRoll?.xpAwarded ?? 0);
     if (progress.dailyTicked) {
       const correctAns = (q.correct ?? "A") as Choice;
@@ -1037,9 +1051,8 @@ export class RubyHighService extends Service {
    *
    *    1. subjectScores tick (independent of pass) — drives
    *       the diploma's subject-themed accessory at graduation.
-   *    2. On a pass: subjectXp[faculty] += awardedCredits; ch.xp += same.
-   *       Every correct answer carries at least 1 credit from the player roll,
-   *       so visible credits and class-gate progress cannot diverge.
+   *    2. Card memory already updated before this call; class standing is
+   *       derived from mastery, not XP.
    *    3. The first passed question on a UTC date is a "school day complete":
    *       tick the streak, with date-gap reset.
    *    4. Re-check grade completion after every progress mutation. Streak
@@ -1059,13 +1072,7 @@ export class RubyHighService extends Service {
     if (passed) subj.correct += 1;
     ch.subjectScores[faculty] = subj;
 
-    // 2. Credits. Award only on pass; amount comes from the question-stat roll.
-    const xp = passed ? Math.max(0, Math.floor(awardedCredits)) : 0;
-    ch.subjectXp = ch.subjectXp ?? {};
-    if (xp > 0) {
-      ch.subjectXp[faculty] = (ch.subjectXp[faculty] ?? 0) + xp;
-      ch.xp = (ch.xp ?? 0) + xp;
-    }
+    void awardedCredits;
 
     // 3. Streak tracking. Only the first passed question per school day moves it.
     let dailyTicked = false;
@@ -1093,10 +1100,10 @@ export class RubyHighService extends Service {
     requiredStreak: number;
     streakCount: number;
     streakMet: boolean;
-    subjectFloor: number;
     classesMet: number;
     classCount: number;
     classesMetAll: boolean;
+    classGrades: Record<string, string>;
     ready: boolean;
   } | null {
     const ch = state.character;
@@ -1105,14 +1112,18 @@ export class RubyHighService extends Service {
 
     const requiredStreak = requiredStreakForGrade(grade);
     const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
-    const subjectFloor = requiredSubjectXpForGrade(grade);
     let classesMet = 0;
     let classCount = 0;
+    const classGrades: Record<string, string> = {};
     for (const room of TEACHING_ROOMS) {
       const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
       if (!teacherId) continue;
       classCount++;
-      if ((ch.subjectXp?.[teacherId] ?? 0) >= subjectFloor) classesMet++;
+      const course = this.questionBankStatusForState(state, teacherId);
+      const legacyPass = (ch.subjectXp?.[teacherId] ?? 0) >= requiredSubjectXpForGrade(grade);
+      const gradeLabel = letterGradePasses(course.grade) ? course.grade! : (legacyPass ? "C" : (course.grade ?? "F"));
+      classGrades[teacherId] = gradeLabel;
+      if (letterGradePasses(gradeLabel)) classesMet++;
     }
     const streakMet = streakCount >= requiredStreak;
     const classesMetAll = classCount > 0 && classesMet >= classCount;
@@ -1121,10 +1132,10 @@ export class RubyHighService extends Service {
       requiredStreak,
       streakCount,
       streakMet,
-      subjectFloor,
       classesMet,
       classCount,
       classesMetAll,
+      classGrades,
       ready: streakMet && classesMetAll,
     };
   }
@@ -1142,7 +1153,7 @@ export class RubyHighService extends Service {
       summary: { correct: status.streakCount, total: status.requiredStreak },
     };
     log.event("player.graduation-ready", {
-      sessionId: state.sessionId, character: ch.name, grade, xp: ch.xp,
+      sessionId: state.sessionId, character: ch.name, grade, legacyXp: ch.xp,
     });
     return true;
   }
@@ -1201,11 +1212,11 @@ export class RubyHighService extends Service {
       ch.streak = { grade: advance, count: 0 };
       delete ch.legendariesToday;
       log.event("player.grade-advanced", {
-        sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, xp: ch.xp, reward: normalizedReward.kind,
+        sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, legacyXp: ch.xp, reward: normalizedReward.kind,
       });
     } else {
       log.event("player.graduated", {
-        sessionId: state.sessionId, character: ch.name, xp: ch.xp, reward: normalizedReward.kind,
+        sessionId: state.sessionId, character: ch.name, legacyXp: ch.xp, reward: normalizedReward.kind,
       });
     }
 
@@ -1543,9 +1554,9 @@ export class RubyHighService extends Service {
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
-      this.recordSrsReview(state, q, passed ? "good" : "again", record.at);
-      // Same progression as MC rounds. Opinion rounds award a flat credit
-      // on pass because they do not use the A/B/C/D player roll.
+      this.recordCardReview(state, q, passed ? "good" : "again", record.at);
+      // Same progression as MC rounds. Opinion rounds update card mastery
+      // through the review rating above; no XP is awarded.
       const progress = this.applyPlayerProgress(state, passed, state.faculty, passed ? 1 : 0);
       if (progress.dailyTicked) {
         // NPCs roll a coin-flip-ish dice; "A" is a neutral sentinel
@@ -1576,47 +1587,26 @@ export class RubyHighService extends Service {
     }
     const state = this.getOrCreate(sessionId);
     const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
-    const useSrs = this.isSrsCourse(state, facultyId);
+    const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
     let difficulty = filter.difficulty;
-    const allowedDifficulties = !filter.difficulty && state.currentGrade && !useSrs
+    const allowedDifficulties = !filter.difficulty && state.currentGrade && !importedReviewCourse
       ? difficultiesForGrade(state.currentGrade)
       : undefined;
-    if (!difficulty && state.currentGrade && !useSrs) {
+    if (!difficulty && state.currentGrade && !importedReviewCourse) {
       // Until the bank grows explicit grade tags, difficulty is the year-level
       // proxy: prefer this year's level but allow prior-year material.
       difficulty = difficultyForGrade(state.currentGrade);
     }
-    if (useSrs) {
-      const q = this.pickSrsQuestion(state, facultyId, {
-        subject: filter.subject,
-        difficulty,
-      });
-      if (!q) {
-        throw new Error(`No deck cards are ready for ${facultyId} right now.`);
-      }
-      return this.pose(sessionId, {
-        prompt: q.prompt,
-        options: q.options as Record<Choice, string>,
-        correct: q.correct as Choice,
-        explanation: q.explanation,
-        subject: q.subject,
-        stat: q.stat,
-        difficulty: q.difficulty,
-        faculty: q.faculty,
-        questionId: q.id,
-      });
-    }
-    const pickFilter: PickFilter = {
-      faculty: facultyId,
+    const q = this.pickReviewQuestion(state, facultyId, {
       subject: filter.subject,
       difficulty,
       allowedDifficulties,
-      exclude: state.askedQuestionIds,
-    };
-    const q = this.faculty.pick(pickFilter, packForSession(state));
+    });
     if (!q) {
       throw new Error(
-        `No questions left matching {faculty=${pickFilter.faculty ?? "any"}, subject=${pickFilter.subject ?? "any"}, difficulty=${pickFilter.difficulty ?? "any"}}.`,
+        importedReviewCourse
+          ? `No deck cards are ready for ${facultyId} right now.`
+          : `No questions ready for {faculty=${facultyId}, subject=${filter.subject ?? "any"}, difficulty=${difficulty ?? "any"}}.`,
       );
     }
     return this.pose(sessionId, {
@@ -1635,53 +1625,32 @@ export class RubyHighService extends Service {
   questionBankStatus(sessionId: string, facultyId?: string): QuestionBankStatus {
     const state = this.getOrCreate(sessionId);
     const fid = this.resolveQuestionFaculty(state, facultyId);
+    return this.questionBankStatusForState(state, fid);
+  }
+
+  private questionBankStatusForState(state: QuizState, fid: string): QuestionBankStatus {
     const pack = packForSession(state);
     const faculty = pack.faculty.find((f) => f.id === fid);
-    if (this.isSrsCourse(state, fid)) {
-      const questions = faculty?.questions ?? [];
-      const counts = this.srsCounts(state, fid);
-      return {
-        mode: "srs",
-        facultyId: fid,
-        displayName: faculty?.displayName ?? fid,
-        total: questions.length,
-        asked: counts.asked,
-        remaining: counts.ready,
-        grade: letterGradeForSrs(questions.length, counts.mastered, counts.shaky, counts.learning),
-        readyCount: counts.ready,
-        masteredCount: counts.mastered,
-        learningCount: counts.learning,
-        shakyCount: counts.shaky,
-        newCount: counts.fresh,
-        defaultDifficulty: undefined,
-        remainingByDifficulty: counts.remainingByDifficulty,
-        remainingBySubject: counts.remainingBySubject,
-      };
-    }
-    const askedIds = new Set(state.askedQuestionIds);
-    const questions = faculty?.questions ?? [];
-    const allowedDifficulties = state.currentGrade ? new Set(difficultiesForGrade(state.currentGrade)) : null;
-    const eligible = allowedDifficulties
-      ? questions.filter((q) => allowedDifficulties.has(q.difficulty))
-      : questions;
-    const remaining = eligible.filter((q) => !askedIds.has(q.id));
-    const remainingByDifficulty: Partial<Record<Difficulty, number>> = {};
-    const remainingBySubject: Record<string, number> = {};
-    for (const q of remaining) {
-      remainingByDifficulty[q.difficulty] = (remainingByDifficulty[q.difficulty] ?? 0) + 1;
-      remainingBySubject[q.subject] = (remainingBySubject[q.subject] ?? 0) + 1;
-    }
+    const imported = this.isImportedReviewCourse(state, fid);
+    const allowedDifficulties = state.currentGrade && !imported ? difficultiesForGrade(state.currentGrade) : undefined;
+    const questions = this.eligibleCourseQuestions(state, fid, { allowedDifficulties });
+    const counts = this.cardCounts(state, fid, questions);
     return {
-      mode: "bank",
+      mode: imported ? "srs" : "bank",
       facultyId: fid,
       displayName: faculty?.displayName ?? fid,
-      total: eligible.length,
-      asked: eligible.length - remaining.length,
-      remaining: remaining.length,
-      readyCount: remaining.length,
-      defaultDifficulty: state.currentGrade ? difficultyForGrade(state.currentGrade) : undefined,
-      remainingByDifficulty,
-      remainingBySubject,
+      total: questions.length,
+      asked: counts.asked,
+      remaining: counts.ready,
+      grade: letterGradeForMastery(questions.length, counts.mastered, counts.shaky, counts.learning),
+      readyCount: counts.ready,
+      masteredCount: counts.mastered,
+      learningCount: counts.learning,
+      shakyCount: counts.shaky,
+      newCount: counts.fresh,
+      defaultDifficulty: state.currentGrade && !imported ? difficultyForGrade(state.currentGrade) : undefined,
+      remainingByDifficulty: counts.remainingByDifficulty,
+      remainingBySubject: counts.remainingBySubject,
     };
   }
 
@@ -1735,17 +1704,17 @@ export class RubyHighService extends Service {
     if (state.faculty !== facultyId) {
       this.setFaculty(sessionId, facultyId);
     }
-    const q = this.faculty.pickDaily({
-      facultyId,
-      dailyIndex: dailyIndex(status.dailyKey),
-      difficulty: state.currentGrade ? undefined : undefined, // honor grade later
-      exclude: state.askedQuestionIds,
-    }, packForSession(state));
+    const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
+    const q = this.pickReviewQuestion(state, facultyId, {
+      allowedDifficulties: state.currentGrade && !importedReviewCourse
+        ? difficultiesForGrade(state.currentGrade)
+        : undefined,
+    });
     if (!q) {
-      throw new Error(`Bank for ${facultyId} is exhausted; cannot pose today's bonus.`);
+      throw new Error(`No ready review card for ${facultyId}; cannot pose today's bonus.`);
     }
-    // Daily bonus now just guarantees a fresh school-day question. It no
-    // longer changes credit math; question stat + correctness do that.
+    // Daily bonus guarantees a school-day question; class grades come from
+    // the same card mastery path as regular room questions.
     const next = this.pose(sessionId, {
       prompt: q.prompt,
       options: q.options as Record<Choice, string>,

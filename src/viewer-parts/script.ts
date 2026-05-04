@@ -20,11 +20,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
   const GRADE_SHORT_LABELS = { "9": "Fresh", "10": "Soph", "11": "Junior", "12": "Senior" };
   const GRADE_ORDER = ["9", "10", "11", "12"];
-  // Mirrored from types.ts: gates the player must clear to advance OUT of
-  // each year (BOTH must hold). Kept inline so the top-bar chip can render
-  // without an extra telemetry round-trip.
+  // Mirrored from types.ts: school-day streak gates by year.
   const STREAK_REQUIRED       = { "9": 1, "10": 2, "11": 3, "12": 4 };
-  const SUBJECT_XP_REQUIRED   = { "9": 2, "10": 5, "11": 10, "12": 16 };
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
   const TEACHING_FACULTY_LABELS = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
   const LOUNGE_ID = "lounge";
@@ -37,6 +34,25 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function statLabel(stat) {
     const meta = STAT_META[String(stat || "").toLowerCase()];
     return meta ? meta.emoji + " " + meta.label : "🧠 Head";
+  }
+  function letterGradePasses(grade) {
+    return /^[ABC]/.test(String(grade || ""));
+  }
+  function courseProgressForFaculty(fid) {
+    const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
+    return roster.find((f) => f.id === fid) || null;
+  }
+  function classGradeForFaculty(fid) {
+    const progress = courseProgressForFaculty(fid);
+    return (progress && progress.courseGrade) || "F";
+  }
+  function classGradeSummary() {
+    const grades = TEACHING_FACULTY_IDS.map((fid) => ({
+      facultyId: fid,
+      grade: classGradeForFaculty(fid),
+    }));
+    const met = grades.filter((g) => letterGradePasses(g.grade)).length;
+    return { grades, met, total: grades.length };
   }
 
   // ── auth credential (client-owned) ───────────────────────────────────────
@@ -166,7 +182,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     checking: $("checking"),
     scrim: $("scrim"),
     congrats: $("congrats-toast"),
-    xpBurst: $("xp-burst"),
   };
 
   // ── view state ────────────────────────────────────────────────────────────
@@ -624,7 +639,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.arcYear.textContent = "Graduated";
       els.arcStreak.textContent = "diploma earned";
       els.arcStreak.classList.remove("is-met");
-      els.arcXp.textContent = (ch.xp ?? 0) + " credits";
+      els.arcXp.textContent = "classes passed";
       els.arcXp.classList.remove("is-met");
       return;
     }
@@ -634,17 +649,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const streakReq   = STREAK_REQUIRED[grade] || 1;
     els.arcStreak.textContent = "streak " + streakCount + "/" + streakReq;
     els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
-    // Per-class minimum on the second pill — N classes met / 3.
-    // Detailed per-class chips live on the character sheet's
-    // "How to graduate" rung; the top bar gets an at-a-glance summary.
-    const subjectReq = SUBJECT_XP_REQUIRED[grade] || 2;
-    const subj = ch.subjectXp || {};
-    let classesMet = 0;
-    for (const fid of TEACHING_FACULTY_IDS) {
-      if ((subj[fid] || 0) >= subjectReq) classesMet++;
-    }
-    els.arcXp.textContent = classesMet + "/3 classes";
-    els.arcXp.classList.toggle("is-met", classesMet >= 3);
+    const classes = classGradeSummary();
+    els.arcXp.textContent = classes.met + "/" + classes.total + " classes";
+    els.arcXp.classList.toggle("is-met", classes.met >= classes.total);
   }
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
@@ -977,12 +984,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       chip.className = "roll-chip " + r.outcome;
       chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       els.boardReveal.appendChild(chip);
-      if (r.xpAwarded > 0) {
-        const xp = document.createElement("span");
-        xp.className = "roll-chip hit";
-        xp.textContent = "+" + r.xpAwarded + " credits";
-        els.boardReveal.appendChild(xp);
-      }
     }
     if (reveal.explanation) {
       const expl = document.createElement("div");
@@ -1035,27 +1036,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const mod = r.total - (r.dice[0] + r.dice[1]);
       chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       body.appendChild(chip);
-      if (r.xpAwarded > 0) {
-        const xp = document.createElement("span");
-        xp.className = "roll-chip hit";
-        xp.textContent = "+" + r.xpAwarded + " credits";
-        body.appendChild(xp);
-      }
     }
     wrap.appendChild(body);
     els.stream.appendChild(wrap);
     scrollIfPinned();
   }
-  function showXpBurst(amount) {
-    if (!amount || amount <= 0) return;
-    els.xpBurst.textContent = "+" + amount + " credits";
-    els.xpBurst.classList.remove("is-visible");
-    void els.xpBurst.offsetWidth;
-    els.xpBurst.classList.add("is-visible");
-    clearTimeout(xpBurstTimer);
-    xpBurstTimer = setTimeout(() => els.xpBurst.classList.remove("is-visible"), 1800);
-  }
-  let xpBurstTimer = null;
 
   // ── server rail (just the brand button now — no grade picker) ───────────
   function rebuildServersRail() {
@@ -1508,9 +1493,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           appendResultChip(t.lastReveal);
         }
         showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
-        if (t.lastReveal.playerRoll && t.lastReveal.playerRoll.xpAwarded > 0) {
-          showXpBurst(t.lastReveal.playerRoll.xpAwarded);
-        }
         scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade);
         // Teacher reacts + queues next question. Small delay so the
         // congrats toast lands first and the chat doesn't feel stacked.
@@ -1710,10 +1692,27 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       "12": "Senior",
     };
     const CLASS_GATE_META = [
-      { facultyId: "ruby", label: "Homeroom credit", icon: "⌂" },
-      { facultyId: "sally-science", label: "Science credit", icon: "⚗" },
-      { facultyId: "professor-edward", label: "Literature credit", icon: "✎" },
+      { facultyId: "ruby", label: "Homeroom", icon: "⌂" },
+      { facultyId: "sally-science", label: "Science", icon: "⚗" },
+      { facultyId: "professor-edward", label: "Literature", icon: "✎" },
     ];
+    const makeGradeChip = (spec) => {
+      const grade = spec.grade || "F";
+      const met = grade === "✓" || letterGradePasses(grade);
+      const chip = document.createElement("span");
+      chip.className = "class-grade-chip" + (met ? " is-met" : "");
+      chip.title = spec.label + ": " + grade + (met ? " passing" : " needs C");
+      chip.setAttribute("aria-label", chip.title);
+      const icon = document.createElement("span");
+      icon.className = "class-grade-icon";
+      icon.textContent = spec.icon;
+      const letter = document.createElement("span");
+      letter.className = "class-grade-letter";
+      letter.textContent = grade;
+      chip.appendChild(icon);
+      chip.appendChild(letter);
+      return chip;
+    };
     const makeGateRing = (spec) => {
       const have = Number(spec.have || 0);
       const need = Number(spec.need || 0);
@@ -1801,45 +1800,30 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         if (Array.isArray(r.classProgress)) {
           for (const cp of r.classProgress) {
             const meta = CLASS_GATE_META.find((m) => m.facultyId === cp.facultyId)
-              || { label: cp.facultyId + " credit", icon: "□" };
-            gates.appendChild(makeGateRing({
-              kind: "class",
+              || { label: cp.facultyId, icon: "□" };
+            gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
-              have: cp.have,
-              need: cp.need,
-              unit: "credit",
-              pluralUnit: "credits",
+              grade: cp.grade,
             }));
           }
         } else {
-          gates.appendChild(makeGateRing({
-            kind: "class",
-            label: "Each class",
-            icon: "□",
-            have: 0,
-            need: r.subjectReq,
-            unit: "credit",
-            pluralUnit: "credits",
-          }));
+          gates.appendChild(makeGradeChip({ label: "Each class", icon: "□", grade: "F" }));
         }
       } else {
         if (r.state === "completed") {
           for (const meta of CLASS_GATE_META) {
-            gates.appendChild(makeGateRing({
-              kind: "class",
+            gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
-              have: 1,
-              need: 1,
-              unit: "gate",
+              grade: "✓",
             }));
           }
         } else {
           for (const meta of CLASS_GATE_META) {
             gates.appendChild(makeFutureReq({
               icon: meta.icon,
-              title: meta.label + ": " + r.subjectReq + " credits required",
+              title: meta.label + ": C required",
             }));
           }
         }
@@ -2196,7 +2180,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         grade: g,
         label: GRADE_LABELS[g],
         streakReq: STREAK_REQUIRED[g] || 1,
-        subjectReq: SUBJECT_XP_REQUIRED[g] || 2,
         state: "completed",
       })),
     };
@@ -2208,7 +2191,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const streakHere = arc && arc.streak && arc.streak.grade === currentGrade ? arc.streak.count : 0;
     const rungs = ["9", "10", "11", "12"].map((g) => {
       const streakReq = STREAK_REQUIRED[g] || 1;
-      const subjectReq = SUBJECT_XP_REQUIRED[g] || 2;
       let state = "future";
       let streakProgress;
       if (completed.has(g)) {
@@ -2217,7 +2199,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         state = "current";
         streakProgress = { have: streakHere, need: streakReq };
       }
-      return { grade: g, label: GRADE_LABELS[g], streakReq, subjectReq, state, streakProgress };
+      return { grade: g, label: GRADE_LABELS[g], streakReq, state, streakProgress };
     });
     return { rungs, graduated: false };
   }
@@ -2303,17 +2285,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
     const grade = String(t.current_grade ?? "9");
     const streakReq = STREAK_REQUIRED[grade] || 1;
-    const subjectReq = SUBJECT_XP_REQUIRED[grade] || 2;
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
     const todayKey = (t.daily && t.daily.dailyKey) || "";
     const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
-    const subjectXp = c.subjectXp || {};
     const ROOM_LABEL = { ruby: "homeroom", "sally-science": "Sally's class", "professor-edward": "Edward's class" };
 
     const streakNeeded = Math.max(0, streakReq - streakHere);
-    const classGaps = TEACHING_FACULTY_IDS
-      .map((fid) => ({ fid, gap: Math.max(0, subjectReq - (subjectXp[fid] || 0)) }))
-      .filter((x) => x.gap > 0);
+    const classGaps = classGradeSummary().grades
+      .filter((x) => !letterGradePasses(x.grade));
 
     const parts = [];
     if (streakNeeded > 0 && !todayDone) {
@@ -2322,8 +2301,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       parts.push("Today complete — streak " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
     if (classGaps.length > 0) {
-      const segs = classGaps.map((cg) => (ROOM_LABEL[cg.fid] || cg.fid) + " (+" + cg.gap + ")");
-      parts.push("Class credit needed in " + segs.join(", "));
+      const segs = classGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + cg.grade + ")");
+      parts.push("Bring each class to C or better: " + segs.join(", "));
     }
 
     if (parts.length === 0) {
@@ -2348,27 +2327,19 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const completed = new Set((Array.isArray(c.yearbook) ? c.yearbook : []).map((y) => y.grade));
     const currentGrade = String(lastTelemetry?.current_grade ?? "9");
     const streakHere = c.streak && c.streak.grade === currentGrade ? c.streak.count : 0;
-    const subjectXp = c.subjectXp || {};
     const rungs = ["9", "10", "11", "12"].map((g) => {
       const streakReq = STREAK_REQUIRED[g] || 1;
-      const subjectReq = SUBJECT_XP_REQUIRED[g] || 2;
       let state, streakProgress, classProgress;
       if (completed.has(g)) {
         state = "completed";
       } else if (g === currentGrade && !graduatedFor(c)) {
         state = "current";
         streakProgress = { have: streakHere, need: streakReq };
-        // Per-class credit towards the year's minimum. Three rows, one per
-        // teaching room — this is what gives the rooms mechanical weight.
-        classProgress = TEACHING_FACULTY_IDS.map((fid) => ({
-          facultyId: fid,
-          have: subjectXp[fid] || 0,
-          need: subjectReq,
-        }));
+        classProgress = classGradeSummary().grades;
       } else {
         state = "future";
       }
-      return { grade: g, label: GRADE_LABELS[g], streakReq, subjectReq, state, streakProgress, classProgress };
+      return { grade: g, label: GRADE_LABELS[g], streakReq, state, streakProgress, classProgress };
     });
     return { rungs, graduated: graduatedFor(c) };
   }
@@ -2598,7 +2569,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 
     const sub = document.createElement("div");
     sub.className = "ccg-subtitle";
-    sub.textContent = graduated ? "Arc complete · " + (c.xp ?? 0) + " credits" : gradeLabel + " · " + (c.xp ?? 0) + " credits";
+    const classes = classGradeSummary();
+    const gradeLine = classes.grades.map((g) => g.grade).join(" ");
+    sub.textContent = graduated ? "Arc complete" : gradeLabel + " · " + gradeLine;
     body.appendChild(sub);
 
     const metrics = document.createElement("div");
@@ -2624,7 +2597,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (graduated) {
       addMetric("status", "graduated", "four-year arc complete", true);
       addMetric("yearbook", yearbookCount + "/4", "paper cards sealed", yearbookCount >= 4);
-      addMetric("credits", String(c.xp ?? 0), "lifetime total", false);
     } else {
       // The active standing already lives in the subtitle + badge. Keep the
       // live gates compact: diamonds for streak, gems for today, dice for advantage.

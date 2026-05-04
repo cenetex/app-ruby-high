@@ -66,7 +66,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-streak" id="arc-streak" title="Legendary-day streak this year">streak —</span>
         <span class="arc-sep">·</span>
-        <span class="arc-xp" id="arc-xp" title="Cumulative XP">— XP</span>
+        <span class="arc-xp" id="arc-xp" title="Class standing">— classes</span>
       </div>
       <button class="pack-btn" id="pack-btn" type="button" title="Content packs" aria-label="Content packs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -139,7 +139,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 </div>
 
 <div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
-<div class="xp-burst" id="xp-burst" aria-live="polite"></div>
 
 <!-- Sign-in gate. Mandatory while unauthed: covers the app, no dismiss.
      Detangled from the character sheet so the sign-in surface is a single

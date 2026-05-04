@@ -483,7 +483,7 @@ export const VIEWER_CSS = `
   .arc-indicator .arc-streak.is-met { color: var(--accent); }
   .arc-indicator .arc-xp.is-met { color: var(--accent); }
   .arc-indicator.is-graduated .arc-year { color: #f0b441; }
-  /* Mobile: hide the streak/XP detail, keep just the year tag. The full
+  /* Mobile: hide the streak/class detail, keep just the year tag. The full
    * progress is one tap away on the character sheet. */
   @media (max-width: 540px) {
     .arc-indicator .arc-sep,
@@ -1231,30 +1231,6 @@ export const VIEWER_CSS = `
   .advantage-result.mixed { color: #f5c98a; }
   .advantage-result.miss  { color: #ffb1b1; }
 
-  /* ── XP burst toast (lands on a successful roll, animated) ────────────── */
-  .xp-burst {
-    position: fixed;
-    left: 50%;
-    top: calc(var(--safe-top) + 130px);
-    transform: translate(-50%, -10px) scale(0.9);
-    background: linear-gradient(180deg, #f0d24a, #c8941f);
-    color: #1a1108;
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-weight: 900;
-    font-size: 12px;
-    box-shadow: 0 8px 22px rgba(240, 210, 74, 0.45);
-    z-index: 30;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    white-space: nowrap;
-    border: 2px solid rgba(255,255,255,0.4);
-  }
-  .xp-burst.is-visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
-
   /* Roll badge in the chat result chip */
   .roll-chip {
     display: inline-flex;
@@ -1562,6 +1538,34 @@ export const VIEWER_CSS = `
   .ccg-progression .future-req-count {
     font-size: 11px;
     font-weight: 900;
+  }
+  .ccg-progression .class-grade-chip {
+    min-width: 42px;
+    height: 26px;
+    padding: 0 7px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.09);
+    color: var(--text-mute);
+    font-weight: 900;
+    line-height: 1;
+  }
+  .ccg-progression .class-grade-chip.is-met {
+    background: rgba(76,181,85,0.18);
+    border-color: rgba(76,181,85,0.42);
+    color: #b9f2bd;
+  }
+  .ccg-progression .class-grade-icon {
+    font-size: 15px;
+    line-height: 1;
+  }
+  .ccg-progression .class-grade-letter {
+    font-size: 11px;
+    letter-spacing: 0;
   }
   .ccg-footer {
     padding: 8px 10px;

@@ -155,20 +155,19 @@ describe("RubyHighService Phase 1", () => {
     expect(state.askedQuestionIds).toHaveLength(1);
   });
 
-  it("never poses the same question twice in a session", async () => {
+  it("draws review cards from the current faculty's bank", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:2";
     ruby.selectGrade(sid, "12");
     const total = faculty.bank("ruby")!.questions.length;
     const seen = new Set<string>();
-    for (let i = 0; i < total; i++) {
+    for (let i = 0; i < Math.min(5, total); i++) {
       const s = ruby.pickAndPose(sid, { faculty: "ruby" });
       const id = s.current!.id;
-      expect(seen.has(id)).toBe(false);
       seen.add(id);
     }
-    // After the bank is exhausted, the next pick should throw.
-    expect(() => ruby.pickAndPose(sid, { faculty: "ruby" })).toThrow();
+    expect(seen.size).toBeGreaterThan(0);
+    expect(ruby.questionBankStatus(sid, "ruby").total).toBe(total);
   });
 
   it("scores correct vs incorrect picks", async () => {
@@ -269,12 +268,12 @@ describe("RubyHighService Phase 1", () => {
     const state = ruby.getOrCreate(sid);
     state.askedQuestionIds = ["level-medium"];
     const picked = ruby.pickAndPose(sid, { faculty: "level-test-course" });
-    expect(picked.current?.id).toBe("level-easy");
+    expect(["level-easy", "level-medium"]).toContain(picked.current?.id);
 
-    expect(() => ruby.pickAndPose(sid, { faculty: "level-test-course" })).toThrow(/No questions left/);
+    const review = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+    expect(["level-easy", "level-medium"]).toContain(review.current?.id);
     const status = ruby.questionBankStatus(sid, "level-test-course");
     expect(status.total).toBe(2);
-    expect(status.remaining).toBe(0);
     expect(status.remainingByDifficulty.hard).toBeUndefined();
   });
 
@@ -288,6 +287,34 @@ describe("RubyHighService Phase 1", () => {
 
     const state = ruby.getOrCreate(sid);
     state.askedQuestionIds = ["level-easy", "level-medium"];
+    state.cardMemory = {
+      "level-test-course::level-easy": {
+        courseId: "level-test-course",
+        questionId: "level-easy",
+        phase: "mastered",
+        dueAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
+        stability: 14,
+        difficulty: 0.1,
+        consecutiveCorrect: 3,
+        correctCount: 3,
+        wrongCount: 0,
+        delayedCorrectCount: 1,
+        lapses: 0,
+      },
+      "level-test-course::level-medium": {
+        courseId: "level-test-course",
+        questionId: "level-medium",
+        phase: "mastered",
+        dueAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
+        stability: 14,
+        difficulty: 0.1,
+        consecutiveCorrect: 3,
+        correctCount: 3,
+        wrongCount: 0,
+        delayedCorrectCount: 1,
+        lapses: 0,
+      },
+    };
     const picked = ruby.pickAndPose(sid, { faculty: "level-test-course" });
     expect(picked.current?.id).toBe("level-hard");
   });
@@ -342,6 +369,28 @@ describe("RubyHighService Phase 1", () => {
     expect(bank.grade).toBe("A");
     expect(bank.masteredCount).toBe(1);
     expect(bank.remaining).toBe(1);
+  });
+
+  it("uses the same mastery letter grades for Ruby High packs", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:ruby-bank-mastery-grade";
+    const pack = fakeLeveledPack("pack:ruby-bank-mastery-grade");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    ruby.selectGrade(sid, "9");
+
+    for (let i = 0; i < 3; i++) {
+      const state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+      expect(state.current?.id).toBe("level-easy");
+      ruby.submitAnswer(sid, state.current!.correct!);
+      const memory = ruby.getOrCreate(sid).cardMemory!;
+      memory["level-test-course::level-easy"]!.dueAt = Date.now() - 1;
+    }
+
+    const bank = ruby.questionBankStatus(sid, "level-test-course");
+    expect(bank.mode).toBe("bank");
+    expect(bank.grade).toBe("A");
+    expect(bank.masteredCount).toBe(1);
   });
 
   it("keeps custom questions in the imported course when a teacher template id appears in tool args", async () => {

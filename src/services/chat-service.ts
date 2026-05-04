@@ -888,16 +888,16 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     .join(", ");
   if (status.remaining <= 0) {
     return [
-      `QUESTION BANK STATUS for ${status.displayName}: EXHAUSTED (${status.asked}/${status.total} already used).`,
-      "pick_from_bank is not available this turn. Do not try alternate subject, difficulty, or faculty filters for this room.",
-      "If the class needs a fresh board, call pose_question exactly once and author a custom question. Otherwise speak in character and let the room steer.",
+      `COURSE STATUS for ${status.displayName}: ${status.grade ?? "F"}; no Ruby High cards are ready right now (${status.masteredCount ?? 0}/${status.total} mastered, ${status.shakyCount ?? 0} shaky, ${status.learningCount ?? 0} learning).`,
+      "pick_from_bank is not available this turn because no cards are due. Do not say the bank is exhausted, dry, depleted, or used up.",
+      "If the class needs a board, call pose_question exactly once and author a custom question; it will join the reusable Ruby High bank.",
     ].join("\n");
   }
   return [
-    `QUESTION BANK STATUS for ${status.displayName}: ${status.remaining}/${status.total} unasked banked questions remain.`,
-    status.defaultDifficulty ? `Default grade difficulty: ${status.defaultDifficulty}. Remaining by difficulty: ${difficultyCounts}.` : `Remaining by difficulty: ${difficultyCounts}.`,
-    subjects ? `Remaining by subject: ${subjects}.` : "",
-    "Use pick_from_bank as the normal next-question move. Do not claim the bank is exhausted while remaining questions exist.",
+    `COURSE STATUS for ${status.displayName}: ${status.grade ?? "F"}; ${status.remaining}/${status.total} cards ready.`,
+    status.defaultDifficulty ? `Default grade difficulty: ${status.defaultDifficulty}. Ready by difficulty: ${difficultyCounts}.` : `Ready by difficulty: ${difficultyCounts}.`,
+    subjects ? `Ready by subject: ${subjects}.` : "",
+    "Use pick_from_bank as the normal next-question move. This course uses spaced review; do not describe cards as consumed or exhausted.",
   ].filter(Boolean).join("\n");
 }
 
