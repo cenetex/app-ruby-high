@@ -168,6 +168,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   let lastTelemetry = null;
   let lastRosterSig = "";
   let lastRevealId = null;
+  let lastAnswerGradedTriggerId = null;
   let authed = null; // null = unknown, true/false set after first poll
   let lockedFor = null;
   let streamingMsgEl = null;
@@ -190,6 +191,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function resetAgentGuards() {
     lastAgentTrigger = null;
     lastRevealId = null;
+    lastAnswerGradedTriggerId = null;
   }
   let opinionSubmitted = false; // player's text has been recorded for current round
   let opinionGradeFired = false; // grading has been triggered for current round
@@ -970,6 +972,28 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.nextBtn.focus();
   }
 
+  function maybeRunAnswerGraded(t, delayMs) {
+    const reveal = t && t.lastReveal;
+    if (!reveal) return;
+    const triggerId = reveal.questionId + ":" + reveal.picked + ":" + reveal.correct;
+    if (triggerId === lastAnswerGradedTriggerId) return;
+    const ceremonyReady = !!(t.graduation_ready || (t.character && t.character.pendingGraduation));
+    const arcFinished = t.character && graduatedFor(t.character);
+    if (!authed || t.faculty === LOUNGE_ID || arcFinished || ceremonyReady) return;
+    lastAnswerGradedTriggerId = triggerId;
+    setTimeout(() => {
+      // If the player switches rooms before the delayed reaction fires,
+      // don't let an old answer wake the wrong teacher.
+      if (!lastTelemetry || lastTelemetry.faculty !== t.faculty) return;
+      runAgentTurn("answer-graded", {
+        grade: t.current_grade,
+        picked: reveal.picked,
+        correct: reveal.correct,
+        wasCorrect: reveal.wasCorrect,
+      }, { force: true });
+    }, Math.max(0, delayMs || 0));
+  }
+
   function appendResultChip(reveal) {
     const wrap = document.createElement("div");
     wrap.className = "msg result";
@@ -1266,9 +1290,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const data = await command({ type: "answer", picked: choice, role });
     lockedFor = data && data.session && data.session.telemetry && data.session.telemetry.current
       ? data.session.telemetry.current.id : null;
-    // Note: the teacher's reaction fires when the ROUND RESOLVES, not when
-    // the player clicks — see render() / new-reveal detection below. The
-    // round may stay open for a few seconds while NPCs commit their picks.
+    if (data && data.session && data.session.telemetry) {
+      maybeRunAnswerGraded(data.session.telemetry, 0);
+    }
+    // The command response contains the resolved round. render() normally
+    // schedules the teacher reaction; this direct call is the fallback that
+    // keeps clicked answers from waiting for a later chat message.
   }
 
   // ── advantage roll ──────────────────────────────────────────────────────
@@ -1440,15 +1467,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // react to the full round outcome, not the bare click.
     if (t.lastReveal) {
       const revealId = t.lastReveal.questionId + ":" + t.lastReveal.picked;
-      if (revealId !== lastRevealId) {
+      const revealMatchesCurrent = activeQuestionId === t.lastReveal.questionId;
+      if (revealMatchesCurrent && revealId !== lastRevealId) {
         lastRevealId = revealId;
-        if (activeQuestionId === t.lastReveal.questionId) {
-          if (t.is_opinion) {
-            applyOpinionRevealToBlackboard(t.active_round);
-          } else {
-            applyRevealToBlackboard(t.lastReveal);
-            appendResultChip(t.lastReveal);
-          }
+        if (t.is_opinion) {
+          applyOpinionRevealToBlackboard(t.active_round);
+        } else {
+          applyRevealToBlackboard(t.lastReveal);
+          appendResultChip(t.lastReveal);
         }
         showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
         if (t.lastReveal.playerRoll && t.lastReveal.playerRoll.xpAwarded > 0) {
@@ -1462,21 +1488,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         // and answer-graded gets silently dropped — leaving the player
         // staring at a revealed answer with no next question. The teacher
         // reaction is the thing that unsticks the flow; never gate it.
-        const ceremonyReady = !!(t.graduation_ready || (t.character && t.character.pendingGraduation));
-        const arcFinished = t.character && graduatedFor(t.character);
-        if (authed && t.faculty !== LOUNGE_ID && !arcFinished && !ceremonyReady) {
-          setTimeout(() => {
-            runAgentTurn("answer-graded", {
-              grade: t.current_grade,
-              picked: t.lastReveal.picked,
-              correct: t.lastReveal.correct,
-              wasCorrect: t.lastReveal.wasCorrect,
-            }, { force: true });
-          }, 600);
-        }
+        maybeRunAnswerGraded(t, 600);
       }
     } else if (!t.current && lastRevealId) {
       lastRevealId = null;
+      lastAnswerGradedTriggerId = null;
     }
 
     // Empty-stream welcome (only if no chat yet). New sessions are born
