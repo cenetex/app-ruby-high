@@ -126,6 +126,24 @@ describe("buildAnkiPack — happy path", () => {
     await buildAnkiPack(big, { apiKey: "k", idSuffix: "x", maxCards: 10 });
     expect(calls).toBe(10);
   });
+
+  it("can assign an imported deck to an existing teacher", async () => {
+    mockOpenRouter(["Lysosome", "Nucleus", "Vacuole"]);
+    const { pack } = await buildAnkiPack(sampleDeck, {
+      apiKey: "k",
+      idSuffix: "sally1",
+      teacherId: "sally-science",
+    });
+
+    const fac = pack.faculty[0]!;
+    expect(fac.displayName).toBe("Sally Science");
+    expect(fac.shortName).toBe("Sally");
+    expect(fac.accent).toBe("#3aa3e0");
+    expect(fac.systemPrompt).toContain("You are Sally Science");
+    expect(fac.systemPrompt).toContain('Imported Anki module: "AP Biology — Cells"');
+    expect(personaCalls).toBe(0);
+    expect(calls).toBe(3);
+  });
 });
 
 describe("buildAnkiPack — pack shape compatibility", () => {

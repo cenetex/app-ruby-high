@@ -14,6 +14,7 @@ import { generateBankFromCards, type DistractorOpts } from "./distractors.js";
 import type { AnkiDeck, AnkiCard } from "./parse.js";
 import { generateAnkiPersona, type PersonaResult } from "./persona.js";
 import { log } from "../../services/logger.js";
+import { TEACHERS, type TeacherCharacter } from "../../characters/teachers.js";
 
 export interface BuildAnkiPackOpts {
   apiKey: string;
@@ -23,6 +24,8 @@ export interface BuildAnkiPackOpts {
   packName?: string;
   /** Faculty display name. Defaults to the deck name. */
   facultyName?: string;
+  /** Built-in teacher whose voice should run this imported module. */
+  teacherId?: string;
   /** Faculty hex accent color. Defaults to a hash of the deck name so
    *  multiple Anki packs in the channels rail don't all read as the
    *  same blue. */
@@ -54,15 +57,15 @@ export async function buildAnkiPack(
   const suffix = opts.idSuffix ?? defaultIdSuffix();
   const baseSlug = slug(opts.packId ?? deck.name);
   const facultyId = `${baseSlug}-${suffix}`;
-  const accent = opts.accent ?? hashedAccent(deck.name);
+  const selectedTeacher = opts.teacherId ? TEACHERS[opts.teacherId] ?? null : null;
+  const accent = opts.accent ?? (selectedTeacher ? teacherAccent(selectedTeacher.id) : hashedAccent(deck.name));
 
   // Thematic persona: name the class + the teacher off a sample of
   // the deck. One LLM call, runs in parallel with the distractor
-  // generation below so we don't pay the latency twice. When the
-  // caller has overridden the displayName explicitly, we still call
-  // the persona path for the in-voice systemPrompt + signature, but
-  // the override wins for the visible name.
-  const personaPromise = opts.facultyName
+  // generation below so we don't pay the latency twice. If the caller
+  // has selected a built-in teacher, skip persona generation and let
+  // that teacher run the imported module directly.
+  const personaPromise = selectedTeacher || opts.facultyName
     ? Promise.resolve(null as PersonaResult | null)
     : generateAnkiPersona({ apiKey: opts.apiKey, deckName: deck.name, sampleCards: pickSampleCards(cards) })
         .catch((err) => {
@@ -87,9 +90,11 @@ export async function buildAnkiPack(
   ]);
 
   const className = persona?.className || opts.facultyName || deck.name;
-  const teacherDisplay = persona
-    ? (persona.teacherTitle ? `${persona.teacherTitle} ${persona.teacherName}` : persona.teacherName)
-    : (opts.facultyName ?? deck.name);
+  const teacherDisplay = selectedTeacher
+    ? selectedTeacher.displayName
+    : persona
+      ? (persona.teacherTitle ? `${persona.teacherTitle} ${persona.teacherName}` : persona.teacherName)
+      : (opts.facultyName ?? deck.name);
   const subjectPill = slug(persona?.className || deck.name) || "anki";
 
   // Re-stamp questions' subject field with the persona-driven class
@@ -101,12 +106,16 @@ export async function buildAnkiPack(
   const faculty: PackFaculty = {
     id: facultyId,
     displayName: teacherDisplay,
-    shortName: shortenName(teacherDisplay),
+    shortName: selectedTeacher?.shortName ?? shortenName(teacherDisplay),
     subjects: [subjectPill],
-    bio: persona?.bio || `Anki-imported deck: ${deck.name}.`,
+    bio: selectedTeacher
+      ? `${selectedTeacher.displayName} teaching Anki-imported deck: ${deck.name}.`
+      : persona?.bio || `Anki-imported deck: ${deck.name}.`,
     accent,
-    systemPrompt: persona?.systemPrompt || anchoredTeacherPrompt(deck.name),
-    defaultModel: "anthropic/claude-haiku-4.5",
+    systemPrompt: selectedTeacher
+      ? importedModulePrompt(selectedTeacher, deck.name)
+      : persona?.systemPrompt || anchoredTeacherPrompt(deck.name),
+    defaultModel: selectedTeacher?.defaultModel ?? "anthropic/claude-haiku-4.5",
     questions,
   };
   const room: PackRoom = {
@@ -174,6 +183,25 @@ function hashedAccent(s: string): string {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   const hue = h % 360;
   return hslToHex(hue, 60, 52);
+}
+
+function teacherAccent(id: string): string {
+  switch (id) {
+    case "ruby": return "#d22a2a";
+    case "sally-science": return "#3aa3e0";
+    case "professor-edward": return "#7a4f2a";
+    default: return hashedAccent(id);
+  }
+}
+
+function importedModulePrompt(teacher: TeacherCharacter, deckName: string): string {
+  return [
+    teacher.systemPrompt,
+    "",
+    `Imported Anki module: "${deckName}". This deck is assigned to your classroom for this user.`,
+    "Teach it in your normal voice. Treat the deck's topic as in-range for this module, even if it would normally belong to another teacher.",
+    "Use pick_from_bank for banked deck cards when available. If the bank is exhausted for the day, do not keep trying it; write one fresh question with pose_question or talk briefly with the class.",
+  ].join("\n");
 }
 
 function hslToHex(h: number, s: number, l: number): string {

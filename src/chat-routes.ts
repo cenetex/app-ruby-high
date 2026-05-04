@@ -103,6 +103,11 @@ function toolPlacedFreshQuestion(ev: ChatStreamEvent): boolean {
   return !!(ev.state?.current && ev.state.activeRound && !ev.state.activeRound.resolved);
 }
 
+function nextBoardInstruction(bank: { remaining: number }, banked: string): string {
+  if (bank.remaining > 0) return banked;
+  return "The vetted question bank for this room is exhausted today. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once and write a custom question.";
+}
+
 function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string {
   const TEACHERS = ["ruby", "sally-science", "professor-edward"];
   const history = chat.history({ sessionToken, faculty: "lounge" });
@@ -1203,6 +1208,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
+      const bank = ruby.questionBankStatus(sessionId, faculty);
       chat.appendEvent(
         { sessionToken: token, faculty },
         {
@@ -1210,11 +1216,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           text: `${playerName} just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}.`,
         },
       );
-      directive = `Greet ${playerName} in ONE short sentence, then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.`;
+      directive = `Greet ${playerName} in ONE short sentence. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
     } else if (trigger === "answer-graded") {
       const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
+      const bank = ruby.questionBankStatus(sessionId, faculty);
       const round = state.activeRound;
       const correctAns = c?.correct ?? state.current?.correct ?? "?";
       // Build the round summary as a structured event line. Synopsised
@@ -1245,10 +1252,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         const pickedLine = c?.picked
           ? `${playerName} already answered ${c.picked}; ${c.wasCorrect ? "that was correct" : `the correct answer was ${correctAns}`}.`
           : `The round is already resolved; the correct answer was ${correctAns}.`;
-        directive = `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." Then call pick_from_bank to put the next question on the board.`;
+        directive = `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "manual") {
-      directive = "The student is asking you to take a turn. Either follow up on the last exchange or call pick_from_bank to put a fresh question on the board.";
+      const bank = ruby.questionBankStatus(sessionId, faculty);
+      directive = `The student is asking you to take a turn. Either follow up on the last exchange, or put a fresh question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
     }
 
     try {
@@ -1281,36 +1289,38 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const needsFreshQuestion = !disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded");
       if (needsFreshQuestion && !questionPosted && !handoffFired) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
-        try {
-          const state = ruby.pickAndPose(agentSessionId, { faculty });
-          send("tool", {
-            tool: "pick_from_bank",
-            args: { faculty },
-            result: { ok: true, message: `fallback: auto-posed next question (model narrated ${trigger} without tool)` },
-            state,
-          });
-        } catch (err) {
-          // pickAndPose failed — most often "bank exhausted for this
-          // filter." That is NOT a user-facing error: it's a chat-state
-          // condition the model is well-equipped to handle. Log it as a
-          // room event and run a second agent turn whose directive
-          // explains the situation. The model can pose_question (custom)
-          // or just pivot the conversation — either way the player sees
-          // a teacher response, not a red error line.
-          log.event("chat.bank-exhausted", { faculty, trigger, reason: err instanceof Error ? err.message : String(err) });
+        const bank = ruby.questionBankStatus(agentSessionId, faculty);
+        let fallbackPosted = false;
+        if (bank.remaining > 0) {
+          try {
+            const state = ruby.pickAndPose(agentSessionId, { faculty });
+            send("tool", {
+              tool: "pick_from_bank",
+              args: { faculty },
+              result: { ok: true, message: `fallback: auto-posed next question (model narrated ${trigger} without tool)` },
+              state,
+            });
+            fallbackPosted = true;
+          } catch (err) {
+            log.event("chat.bank-exhausted", { faculty, trigger, reason: err instanceof Error ? err.message : String(err) });
+          }
+        } else {
+          log.event("chat.bank-exhausted", { faculty, trigger, reason: "active faculty bank exhausted before fallback" });
+        }
+        if (!fallbackPosted) {
+          // The bank is dry for this room. That is NOT a user-facing error:
+          // it is a chat-state condition the model can handle if we remove
+          // pick_from_bank from the tool surface and ask for a custom board.
           chat.appendEvent(
             { sessionToken: token, faculty },
-            { kind: "note", text: `The bank is dry for this filter (${err instanceof Error ? err.message : "unknown"}). No fresh banked question available.` },
+            { kind: "note", text: `The vetted question bank for ${bank.displayName} is exhausted today (${bank.asked}/${bank.total} used).` },
           );
           for await (const ev of chat.send({
             apiKey,
             sessionToken: token,
             agentSessionId,
             faculty,
-            // Phrased without naming "bank" or "filter" — telling the
-            // model NOT to say those words is the surest way to put
-            // them in mouth. Just describe the desired action.
-            systemEventNote: "Decide what's next while staying in character. You can write a custom question with pose_question, or chat with the room and let the player steer.",
+            systemEventNote: "The vetted bank is exhausted, and pick_from_bank is unavailable. If the class needs a fresh board, call pose_question exactly once and write a custom question; otherwise chat with the room and let the player steer.",
           })) {
             send(ev.type, ev);
           }

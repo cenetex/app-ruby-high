@@ -97,6 +97,17 @@ export interface PickAndPoseInput {
   difficulty?: Difficulty;
 }
 
+export interface QuestionBankStatus {
+  facultyId: string;
+  displayName: string;
+  total: number;
+  asked: number;
+  remaining: number;
+  defaultDifficulty?: Difficulty;
+  remainingByDifficulty: Partial<Record<Difficulty, number>>;
+  remainingBySubject: Record<string, number>;
+}
+
 export class RubyHighService extends Service {
   static override readonly serviceType = "ruby-high";
 
@@ -1069,6 +1080,32 @@ export class RubyHighService extends Service {
       faculty: q.faculty,
       questionId: q.id,
     });
+  }
+
+  questionBankStatus(sessionId: string, facultyId?: string): QuestionBankStatus {
+    const state = this.getOrCreate(sessionId);
+    const fid = facultyId ?? state.faculty;
+    const pack = packForSession(state);
+    const faculty = pack.faculty.find((f) => f.id === fid);
+    const askedIds = new Set(state.askedQuestionIds);
+    const questions = faculty?.questions ?? [];
+    const remaining = questions.filter((q) => !askedIds.has(q.id));
+    const remainingByDifficulty: Partial<Record<Difficulty, number>> = {};
+    const remainingBySubject: Record<string, number> = {};
+    for (const q of remaining) {
+      remainingByDifficulty[q.difficulty] = (remainingByDifficulty[q.difficulty] ?? 0) + 1;
+      remainingBySubject[q.subject] = (remainingBySubject[q.subject] ?? 0) + 1;
+    }
+    return {
+      facultyId: fid,
+      displayName: faculty?.displayName ?? fid,
+      total: questions.length,
+      asked: questions.length - remaining.length,
+      remaining: remaining.length,
+      defaultDifficulty: state.currentGrade ? difficultyForGrade(state.currentGrade) : undefined,
+      remainingByDifficulty,
+      remainingBySubject,
+    };
   }
 
   /** Daily-bonus status. This is now strictly about the once-per-day forced-

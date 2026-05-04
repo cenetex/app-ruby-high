@@ -221,6 +221,20 @@ describe("/packs/import-anki — body validation", () => {
     expect(lastResponse?.status).toBe(400);
     expect(String(lastResponse?.body.error)).toMatch(/OpenRouter API key/i);
   });
+
+  it("rejects unknown teacher ids with 400", async () => {
+    signInUser("alice");
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/import-anki",
+      cookie: "rh_session=alice",
+      apiKey: "sk-test",
+      body: { filename: "x.apkg", data: "AAAA", teacherId: "fake-teacher" },
+    });
+    await handlePackRoutes(ctx, makeDeps());
+    expect(lastResponse?.status).toBe(400);
+    expect(String(lastResponse?.body.error)).toMatch(/Unknown teacher id/i);
+  });
 });
 
 describe("/packs/import-anki — end-to-end", () => {
@@ -249,7 +263,7 @@ describe("/packs/import-anki — end-to-end", () => {
       path: "/api/apps/ruby-high/packs/import-anki",
       cookie: "rh_session=alice",
       apiKey: "sk-test",
-      body: { filename: "test.apkg", data: b64, maxCards: 5 },
+      body: { filename: "test.apkg", data: b64, maxCards: 5, teacherId: "professor-edward" },
     });
     await handlePackRoutes(ctx, makeDeps());
     expect(lastResponse?.status).toBe(200);
@@ -257,6 +271,8 @@ describe("/packs/import-anki — end-to-end", () => {
     expect(lastResponse?.body.deck_name).toBe("Test Deck");
     const pack = lastResponse?.body.pack;
     expect(pack.question_count).toBe(3);
+    expect(pack.faculty[0].id).toContain("test-deck");
+    expect(pack.faculty[0].displayName).toBe("Professor Edward");
     // Pack is now active for the importing session.
     const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe(pack.id);

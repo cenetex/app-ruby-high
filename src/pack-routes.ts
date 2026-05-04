@@ -30,6 +30,7 @@ import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseApkg } from "./content/anki/parse.js";
 import { buildAnkiPack } from "./content/anki/pack.js";
+import { TEACHERS } from "./characters/teachers.js";
 import {
   availablePacksForSession,
   getPackByIdForSession,
@@ -182,6 +183,7 @@ export async function handlePackRoutes(
       data?: unknown;
       maxCards?: unknown;
       packName?: unknown;
+      teacherId?: unknown;
     } | null;
     const filename = typeof body?.filename === "string" ? body.filename : "deck.apkg";
     const dataB64 = typeof body?.data === "string" ? body.data : "";
@@ -197,6 +199,11 @@ export async function handlePackRoutes(
     }
     const maxCards = typeof body?.maxCards === "number" ? body.maxCards : 50;
     const packName = typeof body?.packName === "string" ? body.packName : undefined;
+    const teacherId = typeof body?.teacherId === "string" ? body.teacherId : undefined;
+    if (teacherId && !TEACHERS[teacherId]) {
+      ctx.error(ctx.res, `Unknown teacher id: ${teacherId}`, 400);
+      return true;
+    }
 
     let bytes: Uint8Array;
     try {
@@ -221,6 +228,7 @@ export async function handlePackRoutes(
         apiKey,
         packName,
         maxCards,
+        teacherId,
       });
       if (pack.faculty[0]!.questions.length === 0) {
         ctx.error(ctx.res, "Distractor generation produced no usable questions. Check that your OpenRouter key has credit, then try again.", 502);
@@ -230,7 +238,7 @@ export async function handlePackRoutes(
       deps.ruby.setActivePackForSession(sessionId, pack.id);
       log.event("pack.import-anki.done", {
         sessionId, packId: pack.id, deckName: deck.name,
-        cardsImported: pack.faculty[0]!.questions.length, skipped,
+        cardsImported: pack.faculty[0]!.questions.length, skipped, teacherId,
       });
       ctx.json(ctx.res, {
         ok: true,

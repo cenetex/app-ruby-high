@@ -4,7 +4,7 @@ import { STUDENTS, type StudentCharacter } from "../characters/students.js";
 import type { Choice, Difficulty, NpcStudentState, QuizState } from "../types.js";
 import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
 import { roomForFacultyForSession } from "../content/registry.js";
-import { RubyHighService } from "./ruby-high-service.js";
+import { RubyHighService, type QuestionBankStatus } from "./ruby-high-service.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -215,7 +215,6 @@ export class ChatService extends Service {
       return;
     }
 
-    const toolDefs = opts.disableTools ? [] : buildToolDefs();
     // Keep enough room for recovery flows: e.g. pick_from_bank fails because
     // a filter is dry, then the teacher writes a custom question. Once a tool
     // successfully puts a board state in place, the next round is narration-only
@@ -234,6 +233,8 @@ export class ChatService extends Service {
         extraSystemContext: opts.extraSystemContext,
         disableTools: !!opts.disableTools,
       });
+      const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, opts.faculty);
+      const toolDefs = opts.disableTools ? [] : buildToolDefs({ includePickFromBank: bankStatus.remaining > 0 });
 
       const stream = streamOpenRouter({
         apiKey: opts.apiKey,
@@ -365,6 +366,7 @@ export class ChatService extends Service {
     if (!disableTools) {
       const ctx = describeBoardForModel(state);
       messages.push({ role: "system", content: `Active board context for this turn:\n${ctx}` });
+      messages.push({ role: "system", content: describeQuestionBankForModel(this.ruby!.questionBankStatus(agentSessionId, state.faculty)) });
     }
     // 4. RECENT EVENTS synopsis — events newer than this speaker's last
     //    assistant turn. Floor at 0 so the very first turn includes the
@@ -814,8 +816,32 @@ function describeBoardForModel(state: QuizState): string {
   ].join("\n");
 }
 
-function buildToolDefs(): unknown[] {
+function describeQuestionBankForModel(status: QuestionBankStatus): string {
+  const difficultyCounts = ["easy", "medium", "hard"]
+    .map((d) => `${d}:${status.remainingByDifficulty[d as Difficulty] ?? 0}`)
+    .join(", ");
+  const subjects = Object.entries(status.remainingBySubject)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 6)
+    .map(([subject, count]) => `${subject}:${count}`)
+    .join(", ");
+  if (status.remaining <= 0) {
+    return [
+      `QUESTION BANK STATUS for ${status.displayName}: EXHAUSTED (${status.asked}/${status.total} already used).`,
+      "pick_from_bank is not available this turn. Do not try alternate subject, difficulty, or faculty filters for this room.",
+      "If the class needs a fresh board, call pose_question exactly once and author a custom question. Otherwise speak in character and let the room steer.",
+    ].join("\n");
+  }
   return [
+    `QUESTION BANK STATUS for ${status.displayName}: ${status.remaining}/${status.total} unasked banked questions remain.`,
+    status.defaultDifficulty ? `Default grade difficulty: ${status.defaultDifficulty}. Remaining by difficulty: ${difficultyCounts}.` : `Remaining by difficulty: ${difficultyCounts}.`,
+    subjects ? `Remaining by subject: ${subjects}.` : "",
+    "Use pick_from_bank as the normal next-question move. Do not claim the bank is exhausted while remaining questions exist.",
+  ].filter(Boolean).join("\n");
+}
+
+function buildToolDefs(opts: { includePickFromBank?: boolean } = {}): unknown[] {
+  const tools: unknown[] = [
     {
       type: "function",
       function: {
@@ -900,6 +926,9 @@ function buildToolDefs(): unknown[] {
       },
     },
   ];
+  return opts.includePickFromBank === false
+    ? tools.filter((tool) => (tool as { function?: { name?: string } }).function?.name !== "pick_from_bank")
+    : tools;
 }
 
 function toOpenRouterMessage(m: ChatMessage): unknown {

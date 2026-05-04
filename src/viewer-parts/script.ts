@@ -204,8 +204,43 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function playerDisplayName() {
     const fullName = lastTelemetry && lastTelemetry.character && lastTelemetry.character.name;
     if (!fullName) return "You";
-    const first = String(fullName).trim().split(/\s+/)[0];
+    const first = String(fullName).trim().split(/\\s+/)[0];
     return first || "You";
+  }
+  function playerMessageIdentitySig() {
+    const ch = lastTelemetry && lastTelemetry.character;
+    return playerDisplayName() + ":" + (ch && ch.portraitDataUrl ? ch.portraitDataUrl.length : 0);
+  }
+  function syncPlayerMessageHeaders() {
+    if (!els.stream) return;
+    const displayName = playerDisplayName();
+    const ch = lastTelemetry && lastTelemetry.character;
+    const portraitSrc = ch && ch.portraitDataUrl ? ch.portraitDataUrl : null;
+    const initial = displayName ? displayName.slice(0, 1).toUpperCase() : "U";
+    els.stream.querySelectorAll(".msg.you").forEach((node) => {
+      const nameEl = node.querySelector(".head .name");
+      if (nameEl && nameEl.textContent !== displayName) nameEl.textContent = displayName;
+      const avatar = node.querySelector(".avatar");
+      if (!avatar) return;
+      const img = avatar.querySelector("img");
+      if (portraitSrc) {
+        avatar.style.background = "#fff";
+        if (img) {
+          if (img.src !== portraitSrc) img.src = portraitSrc;
+          if (img.alt !== displayName) img.alt = displayName;
+        } else {
+          avatar.textContent = "";
+          const nextImg = document.createElement("img");
+          nextImg.src = portraitSrc;
+          nextImg.alt = displayName;
+          avatar.appendChild(nextImg);
+        }
+      } else {
+        avatar.style.background = "var(--accent)";
+        if (img) avatar.replaceChildren();
+        if (avatar.textContent !== initial) avatar.textContent = initial;
+      }
+    });
   }
 
   function isNearBottom() {
@@ -1495,6 +1530,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           }
         }
       }
+      syncPlayerMessageHeaders();
     }
 
     lastShownGrade = t.current_grade;
@@ -3074,13 +3110,20 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const packEl = $("pack-overlay");
   const packListEl = $("pack-list");
   const packFileInput = $("pack-anki-file");
+  const packTeacherSelect = $("pack-teacher-select");
   const packImportBtn = $("pack-import-btn");
   const packCloseBtn = $("pack-close-btn");
   const packStatusEl = $("pack-import-status");
   const packBtn = $("pack-btn");
+  const BUILTIN_IMPORT_TEACHERS = [
+    { id: "ruby", name: "Ruby" },
+    { id: "sally-science", name: "Sally Science" },
+    { id: "professor-edward", name: "Professor Edward" },
+  ];
 
   function openPackStore() {
     packEl.classList.add("is-open");
+    renderPackTeacherOptions();
     renderPackList();
   }
   function closePackStore() {
@@ -3125,6 +3168,18 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       packListEl.appendChild(row);
     }
   }
+  function renderPackTeacherOptions() {
+    if (!packTeacherSelect) return;
+    const previous = packTeacherSelect.value || "ruby";
+    packTeacherSelect.innerHTML = "";
+    for (const teacher of BUILTIN_IMPORT_TEACHERS) {
+      const opt = document.createElement("option");
+      opt.value = teacher.id;
+      opt.textContent = teacher.name;
+      packTeacherSelect.appendChild(opt);
+    }
+    packTeacherSelect.value = BUILTIN_IMPORT_TEACHERS.some((t) => t.id === previous) ? previous : "ruby";
+  }
   async function switchPack(packId) {
     packStatusEl.textContent = "Switching…";
     packStatusEl.classList.remove("is-invalid");
@@ -3168,10 +3223,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       // key from X-Openrouter-Key (it pays for the distractor LLM calls).
       // Plain fetch() would skip the header and the import would 400 with
       // "OpenRouter API key required."
+      const teacherId = packTeacherSelect && packTeacherSelect.value ? packTeacherSelect.value : "ruby";
       const r = await apiFetch("/api/apps/ruby-high/packs/import-anki", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, data: b64, maxCards: 50 }),
+        body: JSON.stringify({ filename: file.name, data: b64, maxCards: 50, teacherId }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ error: r.status }));
@@ -3387,7 +3443,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const data = await r.json();
       authed = !!data.authed;
       const msgs = data.history || [];
-      const sig = facultyId + ":" + msgs.length;
+      const sig = facultyId + ":" + playerMessageIdentitySig() + ":" + msgs.length;
       if (sig === renderedHistorySig) return;
       renderedHistorySig = sig;
       els.stream.innerHTML = "";
@@ -3403,6 +3459,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           appendTool(toolSummary(m, info.name));
         }
       });
+      syncPlayerMessageHeaders();
       scrollIfPinned(true);
       applyAuthUI();
     } catch (err) { /* ignore */ }

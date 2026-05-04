@@ -81,7 +81,7 @@ async function makeServices() {
   const chat = await ChatService.start({} as never);
   chat.setRubyHighService(ruby);
   activeRuby = ruby;
-  return { ruby, chat };
+  return { ruby, chat, faculty };
 }
 
 beforeEach(async () => {
@@ -387,6 +387,28 @@ describe("ChatService.send — message composition", () => {
     expect(calls[1]!.body.tools.length).toBeGreaterThan(0);
     expect(events.filter((e) => e.type === "tool").map((e) => e.tool)).toEqual(["clear_board"]);
     expect(events.at(-1)).toMatchObject({ type: "done", finishReason: "stop" });
+  });
+
+  it("removes pick_from_bank when the active faculty bank is exhausted", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "I'll write one fresh.", finish: "stop" }]));
+    const { ruby, chat, faculty } = await makeServices();
+    const state = ruby.getOrCreate("session:1");
+    state.askedQuestionIds = faculty.bank("ruby")!.questions.map((q) => q.id);
+
+    for await (const _ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: "session:1",
+      faculty: "ruby",
+      systemEventNote: "Put a question on the board.",
+    })) { /* consume */ }
+
+    const toolNames = captured!.body.tools.map((tool: any) => tool.function.name);
+    expect(toolNames).not.toContain("pick_from_bank");
+    expect(toolNames).toContain("pose_question");
+    const promptText = JSON.stringify(captured!.body.messages);
+    expect(promptText).toContain("QUESTION BANK STATUS for Ruby: EXHAUSTED");
+    expect(promptText).toContain("pick_from_bank is not available this turn");
   });
 
   it("marks a resolved board as already answered in the model prompt", async () => {
