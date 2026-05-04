@@ -278,6 +278,8 @@ export interface QuizState {
       outcome: RoundOutcome;       // hit | mixed | miss
       xpAwarded: number;
     } | null;
+    /** A class-affinity reward converted a miss into a one-time pass. */
+    affinitySave?: { facultyId: string } | null;
     /** NPCs in the active room also answered — for UI animation. */
     npcEvents?: Array<{
       studentId: string;
@@ -340,6 +342,17 @@ export interface QuizState {
   pendingRoll: PendingRoll | null;
   updatedAt: number;
 }
+
+export interface GraduationReady {
+  grade: Grade;
+  readyAt: number;
+  summary: { correct: number; total: number };
+}
+
+export type GraduationReward =
+  | { kind: "stat"; stat: keyof CharacterStats }
+  | { kind: "advantage" }
+  | { kind: "affinity"; facultyId: string };
 
 export interface PendingRoll {
   stat: keyof CharacterStats;
@@ -518,6 +531,18 @@ export interface PlayerCharacter {
     flavorQuote?: string;
     arcAnswer?: string;
     subjectScores?: Record<string, { correct: number; total: number }>;
+    graduationReward?: GraduationReward;
+  }>;
+  /** Gates are complete, but the player has not attended the ceremony yet.
+   *  The ceremony writes the Paper Card, applies the level-up reward, and
+   *  advances the grade. */
+  pendingGraduation?: GraduationReady | null;
+  /** Chosen rewards, one per completed year. */
+  levelUps?: Array<{
+    completedGrade: Grade;
+    targetGrade: Grade | null;
+    reward: GraduationReward;
+    awardedAt: number;
   }>;
   /** Legendary-day streak in the active grade. A "day complete" is the
    *  first time on a given UTC date that the player has answered
@@ -555,6 +580,12 @@ export interface PlayerCharacter {
    *  Partial<> because not every grade has a key — only ones the player
    *  has rolled in. Defaulted to {} on hydrate. */
   advantageRollsUsed?: Partial<Record<Grade, number>>;
+  /** Extra advantage-roll budget awarded at graduation, keyed to the grade
+   *  it applies to. */
+  advantageRollBonuses?: Partial<Record<Grade, number>>;
+  /** One classroom affinity per grade: the first miss in that class becomes
+   *  a second-chance pass and then marks used. */
+  classAffinity?: Partial<Record<Grade, { facultyId: string; used: boolean }>>;
   /** Per-faculty XP pool. Each Rare/Legendary pass increments the pool of the
    *  faculty whose room the question was posed in. Year advancement
    *  requires `requiredSubjectXpForGrade(grade)` in EACH teaching

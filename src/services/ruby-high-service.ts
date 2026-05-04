@@ -40,6 +40,7 @@ import {
   type Difficulty,
   type FacultyMember,
   type Grade,
+  type GraduationReward,
   type NpcRoundEntry,
   type NpcArcState,
   type NpcStudentState,
@@ -156,7 +157,7 @@ export class RubyHighService extends Service {
     const grade = state.currentGrade;
     if (state.character && grade) {
       const used = state.character.advantageRollsUsed?.[grade] ?? 0;
-      if (used >= ADVANTAGE_ROLLS_PER_GRADE) {
+      if (used >= this.advantageRollCapFor(state.character, grade)) {
         return { state, result: null, reason: "exhausted" };
       }
     }
@@ -194,7 +195,12 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     const grade = state.currentGrade;
     const used = (grade && state.character?.advantageRollsUsed?.[grade]) ?? 0;
-    return { used, cap: ADVANTAGE_ROLLS_PER_GRADE, remaining: Math.max(0, ADVANTAGE_ROLLS_PER_GRADE - used) };
+    const cap = grade && state.character ? this.advantageRollCapFor(state.character, grade) : ADVANTAGE_ROLLS_PER_GRADE;
+    return { used, cap, remaining: Math.max(0, cap - used) };
+  }
+
+  private advantageRollCapFor(ch: PlayerCharacter, grade: Grade): number {
+    return ADVANTAGE_ROLLS_PER_GRADE + Math.max(0, ch.advantageRollBonuses?.[grade] ?? 0);
   }
 
   /** DM tool — teacher asks the player to roll a stat against a DC. Stored
@@ -322,6 +328,7 @@ export class RubyHighService extends Service {
         activePackId: null,
         character: null,
         npcRosters: {},
+        npcCohort: initialNpcCohort(),
         activeRound: null,
         pendingRoll: null,
         phase: "in-room",
@@ -333,7 +340,7 @@ export class RubyHighService extends Service {
     }
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
-    if (this.maybeCompleteGrade(state)) {
+    if (this.maybeMarkGradeReady(state)) {
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
     }
@@ -446,7 +453,17 @@ export class RubyHighService extends Service {
     // Player scoring. Forfeits (timer expired with no pick) count toward
     // total but don't fake a letter — history records null picked.
     const picked = round.player.picked ?? null;
-    const wasCorrect = !forfeit && picked != null && picked === q.correct;
+    const rawCorrect = !forfeit && picked != null && picked === q.correct;
+    let affinitySave: { facultyId: string } | null = null;
+    if (!rawCorrect && !forfeit && picked != null && state.character && state.currentGrade) {
+      const affinity = state.character.classAffinity?.[state.currentGrade];
+      const facultyId = q.faculty ?? state.faculty;
+      if (affinity && !affinity.used && affinity.facultyId === facultyId) {
+        affinity.used = true;
+        affinitySave = { facultyId };
+      }
+    }
+    const wasCorrect = rawCorrect || !!affinitySave;
     if (picked != null) {
       const record: AnswerRecord = {
         questionId: q.id,
@@ -495,8 +512,11 @@ export class RubyHighService extends Service {
       correct: (q.correct ?? "A") as Choice,
       wasCorrect,
       explanation: q.explanation ?? null,
-      encouragement: forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
+      encouragement: affinitySave
+        ? "Class affinity kicked in — second chance counted."
+        : forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
       playerRoll,
+      affinitySave,
     };
     round.resolved = true;
     round.resolvedAt = Date.now();
@@ -548,7 +568,7 @@ export class RubyHighService extends Service {
 
     // 3. Day-target tracking. Only Legendary correctness moves it.
     if (!passed || rarity !== "legendary") {
-      this.maybeCompleteGrade(state);
+      this.maybeMarkGradeReady(state);
       return;
     }
 
@@ -570,7 +590,7 @@ export class RubyHighService extends Service {
       }
     }
 
-    this.maybeCompleteGrade(state);
+    this.maybeMarkGradeReady(state);
   }
 
   private gradeCompletionStatus(state: QuizState): {
@@ -614,68 +634,127 @@ export class RubyHighService extends Service {
     };
   }
 
-  private maybeCompleteGrade(state: QuizState): boolean {
+  private maybeMarkGradeReady(state: QuizState): boolean {
     const status = this.gradeCompletionStatus(state);
     const ch = state.character;
     if (!status || !ch || !status.ready) return false;
     const grade = status.grade;
-    ch.yearbook = ch.yearbook ?? [];
-    let changed = false;
-    const alreadyHasPaper = ch.yearbook.some((y) => y.grade === grade);
+    if (ch.yearbook?.some((y) => y.grade === grade) || state.completedGrades.includes(grade)) return false;
+    if (ch.pendingGraduation?.grade === grade) return false;
+    ch.pendingGraduation = {
+      grade,
+      readyAt: Date.now(),
+      summary: { correct: status.streakCount, total: status.requiredStreak },
+    };
+    log.event("player.graduation-ready", {
+      sessionId: state.sessionId, character: ch.name, grade, xp: ch.xp,
+    });
+    return true;
+  }
 
-    // Year complete — write yearbook, advance (or graduate).
-    if (!state.completedGrades.includes(grade)) {
-      state.completedGrades.push(grade);
-      changed = true;
+  completeGraduation(sessionId: string, reward: GraduationReward): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    const pending = ch?.pendingGraduation;
+    if (!ch || !pending || !state.currentGrade || pending.grade !== state.currentGrade) {
+      throw new Error("No graduation ceremony is ready.");
     }
-    if (!alreadyHasPaper) {
-      // Paper Card snapshot: freeze the identity at the moment the year
-      // closes. The current school career keeps rendering as Character Card
-      // + School Career Card; this entry is the sealed page of the yearbook.
-      ch.yearbook.push({
-        grade,
-        completedAt: Date.now(),
-        summary: { correct: status.streakCount, total: status.requiredStreak },
-        name: ch.name,
-        playbookId: ch.playbookId,
-        stats: { ...ch.stats },
-        ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
-        ...(ch.flavorQuote ? { flavorQuote: ch.flavorQuote } : {}),
-        arcAnswer: ch.arcAnswer,
-        ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
-      });
-      changed = true;
+    const status = this.gradeCompletionStatus(state);
+    if (!status || !status.ready || status.grade !== pending.grade) {
+      ch.pendingGraduation = null;
+      throw new Error("Graduation requirements are not complete.");
     }
+    const grade = pending.grade;
+    if (ch.yearbook?.some((y) => y.grade === grade) || state.completedGrades.includes(grade)) {
+      ch.pendingGraduation = null;
+      return state;
+    }
+
     const advance = nextGradeAfter(grade);
+    const targetGrade = advance ?? grade;
+    const normalizedReward = this.normalizeGraduationReward(ch, reward, targetGrade);
+
+    ch.yearbook = ch.yearbook ?? [];
+    ch.yearbook.push({
+      grade,
+      completedAt: Date.now(),
+      summary: pending.summary,
+      name: ch.name,
+      playbookId: ch.playbookId,
+      stats: { ...ch.stats },
+      ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
+      ...(ch.flavorQuote ? { flavorQuote: ch.flavorQuote } : {}),
+      arcAnswer: ch.arcAnswer,
+      ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
+      graduationReward: normalizedReward,
+    });
+    if (!state.completedGrades.includes(grade)) state.completedGrades.push(grade);
+
+    this.applyGraduationReward(ch, normalizedReward, targetGrade);
+    ch.levelUps = ch.levelUps ?? [];
+    ch.levelUps.push({
+      completedGrade: grade,
+      targetGrade: advance,
+      reward: normalizedReward,
+      awardedAt: Date.now(),
+    });
+    ch.pendingGraduation = null;
+
     if (advance) {
-      if (state.currentGrade !== advance) {
-        state.currentGrade = advance;
-        changed = true;
-      }
+      state.currentGrade = advance;
       this.ensureRoster(state, advance);
-      if (!ch.streak || ch.streak.grade !== advance || ch.streak.count !== 0 || ch.streak.lastDate) {
-        ch.streak = { grade: advance, count: 0 };
-        changed = true;
-      }
-      if (ch.legendariesToday) {
-        delete ch.legendariesToday;
-        changed = true;
-      }
-      if (changed) {
-        log.event("player.grade-advanced", {
-          sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, xp: ch.xp,
-        });
-      }
+      ch.streak = { grade: advance, count: 0 };
+      delete ch.legendariesToday;
+      log.event("player.grade-advanced", {
+        sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, xp: ch.xp, reward: normalizedReward.kind,
+      });
     } else {
-      // Senior complete = graduation. Streak stays at Senior; the diploma
-      // flow keys on yearbook.length === 4 + the absence of a "next year."
-      if (changed) {
-        log.event("player.graduated", {
-          sessionId: state.sessionId, character: ch.name, xp: ch.xp,
-        });
-      }
+      log.event("player.graduated", {
+        sessionId: state.sessionId, character: ch.name, xp: ch.xp, reward: normalizedReward.kind,
+      });
     }
-    return changed;
+
+    this.transition(state, { kind: "clear-board" });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  private normalizeGraduationReward(ch: PlayerCharacter, reward: GraduationReward, targetGrade: Grade): GraduationReward {
+    if (reward.kind === "stat") {
+      if (!["head", "heart", "hustle", "honor"].includes(reward.stat)) {
+        throw new Error("Pick a valid stat.");
+      }
+      if ((ch.stats[reward.stat] ?? 0) >= 3) {
+        throw new Error(`${reward.stat.toUpperCase()} is already capped at +3.`);
+      }
+      return reward;
+    }
+    if (reward.kind === "advantage") return reward;
+    if (reward.kind === "affinity") {
+      const facultyIds = new Set(TEACHING_ROOMS
+        .map((room) => ROOMS.find((r) => r.id === room)?.teacherId)
+        .filter((id): id is string => typeof id === "string"));
+      if (!facultyIds.has(reward.facultyId)) throw new Error("Pick a valid class affinity.");
+      return { kind: "affinity", facultyId: reward.facultyId };
+    }
+    throw new Error(`Unknown graduation reward: ${(reward as { kind?: string }).kind ?? "?"}`);
+  }
+
+  private applyGraduationReward(ch: PlayerCharacter, reward: GraduationReward, targetGrade: Grade): void {
+    if (reward.kind === "stat") {
+      ch.stats[reward.stat] = Math.min(3, (ch.stats[reward.stat] ?? 0) + 1);
+      return;
+    }
+    if (reward.kind === "advantage") {
+      const map = ch.advantageRollBonuses ?? {};
+      map[targetGrade] = (map[targetGrade] ?? 0) + 1;
+      ch.advantageRollBonuses = map;
+      return;
+    }
+    const affinity = ch.classAffinity ?? {};
+    affinity[targetGrade] = { facultyId: reward.facultyId, used: false };
+    ch.classAffinity = affinity;
   }
 
   /** Cohort tick — every NPC who's still in school rolls against today's
@@ -735,6 +814,9 @@ export class RubyHighService extends Service {
 
   pose(sessionId: string, input: PoseInput): QuizState {
     const state = this.getOrCreate(sessionId);
+    if (state.character?.pendingGraduation) {
+      throw new Error("Graduation ceremony is ready — choose a level-up reward before starting another question.");
+    }
     if (!CHOICES.includes(input.correct)) {
       throw new Error(`'correct' must be one of ${CHOICES.join(", ")}`);
     }
@@ -905,7 +987,16 @@ export class RubyHighService extends Service {
     round.opinionGrades = grades;
     round.bestResponder = bestResponder;
     const playerGrade = grades.find((g) => g.responder === "player");
-    const passed = !!playerGrade && playerGrade.score >= 7;
+    let passed = !!playerGrade && playerGrade.score >= 7;
+    let affinitySave: { facultyId: string } | null = null;
+    if (!passed && playerGrade && state.character && state.currentGrade) {
+      const affinity = state.character.classAffinity?.[state.currentGrade];
+      if (affinity && !affinity.used && affinity.facultyId === state.faculty) {
+        affinity.used = true;
+        affinitySave = { facultyId: state.faculty };
+        passed = true;
+      }
+    }
     const q = state.current;
     if (q) {
       const record: AnswerRecord = {
@@ -934,7 +1025,8 @@ export class RubyHighService extends Service {
         correct: "A" as Choice,
         wasCorrect: passed,
         explanation: q.rubric ?? null,
-        encouragement: passed ? "Nice essay." : "Take another swing at it tomorrow.",
+        encouragement: affinitySave ? "Class affinity kicked in — second chance counted." : passed ? "Nice essay." : "Take another swing at it tomorrow.",
+        affinitySave,
       };
     }
     round.resolved = true;
@@ -1357,6 +1449,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     hasSeenIntro: !!s.hasSeenIntro,
     activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
+    npcCohort: Array.isArray(s.npcCohort) ? s.npcCohort : initialNpcCohort(),
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,
     // pendingRoll was added in v0.5.1; older state files don't have it, and
     // the spread above leaves it `undefined` (type says `null`). Coerce so

@@ -22,6 +22,7 @@ import {
   type Difficulty,
   type FacultyMember,
   type Grade,
+  type GraduationReward,
   type NpcStudentState,
   type PlayerCharacter,
   type QuizState,
@@ -72,6 +73,10 @@ const ASSET_FILES: Record<string, { file: string; mime: string }> = {
   "students/mika-full.png":  { file: "students/mika-full.png",  mime: "image/png" },
   "students/noor-face.png":  { file: "students/noor-face.png",  mime: "image/png" },
   "students/noor-full.png":  { file: "students/noor-full.png",  mime: "image/png" },
+  "fonts/caveat-regular.ttf": { file: "fonts/caveat-regular.ttf", mime: "font/ttf" },
+  "fonts/crafty-girls-regular.ttf": { file: "fonts/crafty-girls-regular.ttf", mime: "font/ttf" },
+  "fonts/give-you-glory-regular.ttf": { file: "fonts/give-you-glory-regular.ttf", mime: "font/ttf" },
+  "fonts/schoolbell-regular.ttf": { file: "fonts/schoolbell-regular.ttf", mime: "font/ttf" },
 };
 
 export interface RouteContext {
@@ -227,6 +232,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   /** Per-grade advantage-roll budget. Lets the viewer label the button
    *  with "n left" and disable when the pool is exhausted. */
   advantage_rolls: { used: number; cap: number; remaining: number };
+  graduation_ready: PlayerCharacter["pendingGraduation"] | null;
 }
 
 function getRuntime(value: unknown): IAgentRuntime | null {
@@ -330,7 +336,9 @@ function deriveActiveRound(state: QuizState) {
 function deriveAdvantageRolls(state: QuizState): { used: number; cap: number; remaining: number } {
   const grade = state.currentGrade;
   const used = (grade && state.character?.advantageRollsUsed?.[grade]) ?? 0;
-  return { used, cap: ADVANTAGE_ROLLS_PER_GRADE, remaining: Math.max(0, ADVANTAGE_ROLLS_PER_GRADE - used) };
+  const bonus = (grade && state.character?.advantageRollBonuses?.[grade]) ?? 0;
+  const cap = ADVANTAGE_ROLLS_PER_GRADE + Math.max(0, bonus);
+  return { used, cap, remaining: Math.max(0, cap - used) };
 }
 
 /** Derives today's bonus status for the viewer. Mirrors
@@ -445,6 +453,7 @@ function buildSessionState(args: {
     npc_cohort: state.npcCohort ?? [],
     mentor_offer: state.mentorOffer ?? null,
     advantage_rolls: deriveAdvantageRolls(state),
+    graduation_ready: state.character?.pendingGraduation ?? null,
   };
 
   const summary = state.current
@@ -708,6 +717,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           faculty?: string;
           subject?: string;
           difficulty?: string;
+          reward?: GraduationReward;
         }
       | null;
     const type = body?.type;
@@ -818,6 +828,22 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         ctx.json(ctx.res, {
           success: true,
           message,
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
+        });
+        return true;
+      }
+
+      if (type === "complete-graduation") {
+        const reward = body?.reward;
+        if (!reward || typeof reward !== "object" || !("kind" in reward)) {
+          throw new Error("Pick a graduation reward.");
+        }
+        const state = ruby.completeGraduation(stateKey, reward);
+        ctx.json(ctx.res, {
+          success: true,
+          message: state.character && (state.character.yearbook ?? []).length >= 4
+            ? "Graduated"
+            : "Advanced",
           session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;

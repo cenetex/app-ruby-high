@@ -18,6 +18,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
+  const GRADE_SHORT_LABELS = { "9": "Fresh", "10": "Soph", "11": "Junior", "12": "Senior" };
+  const GRADE_ORDER = ["9", "10", "11", "12"];
   // Mirrored from types.ts: gates the player must clear to advance OUT of
   // each year (BOTH must hold). Kept inline so the top-bar chip can render
   // without an extra telemetry round-trip.
@@ -29,6 +31,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // a "day complete" and ticks the streak.
   const LEGENDARIES_PER_DAY   = { "9": 1, "10": 1, "11": 2, "12": 3 };
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
+  const TEACHING_FACULTY_LABELS = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
   const LOUNGE_ID = "lounge";
 
   // ── auth credential (client-owned) ───────────────────────────────────────
@@ -604,6 +607,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
     setLoungeMode(false);
     renderTeacherFigure(faculty);
+    els.blackboardPanel.dataset.faculty = faculty ? faculty.id : "";
     if (!question) {
       showBlackboardEmpty(true);
       activeQuestionId = null;
@@ -615,6 +619,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         els.blackboardEmptyText.textContent = "Roll a character — your name will appear in the seating chart.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
+      } else if (lastTelemetry && lastTelemetry.graduation_ready) {
+        els.blackboardEmptyText.textContent = "Requirements complete. Open your School Career card for the graduation ceremony.";
       } else {
         // Surface the "what you need" hint here too so the empty board
         // is informative instead of "the teacher will be with you in a
@@ -696,6 +702,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // Footer — Next button shown only when the player is signed in and only
     // after a reveal (revealRound clears the inline display:none).
     els.nextBtn.disabled = false;
+    els.nextBtn.textContent = "Next question →";
     els.nextBtn.style.display = "none"; // hidden until reveal
     els.blackboardFoot.hidden = !authed;
 
@@ -733,6 +740,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       expl.textContent = playerGrade.comment;
       els.boardReveal.appendChild(expl);
     }
+    els.nextBtn.textContent = (lastTelemetry && lastTelemetry.graduation_ready) ? "Graduation ceremony →" : "Next question →";
     els.nextBtn.style.display = "";
     els.nextBtn.focus();
   }
@@ -754,7 +762,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.boardReveal.replaceChildren();
     const verdict = document.createElement("span");
     verdict.className = "reveal-verdict";
-    verdict.textContent = reveal.wasCorrect
+    verdict.textContent = reveal.affinitySave
+      ? "✓ Class affinity saved " + reveal.picked + " — answer was " + reveal.correct
+      : reveal.wasCorrect
       ? "✓ Correct (" + reveal.picked + ")"
       : "✗ You picked " + reveal.picked + " — answer was " + reveal.correct;
     els.boardReveal.appendChild(verdict);
@@ -942,17 +952,24 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.channelsList.appendChild(row);
     }
 
-    // Class roster — show every student in the year as "online" with a small
-    // face thumb. Click any of them to open their profile card.
+    // Class roster — show every student in the year with their current cohort
+    // grade. Click any of them to open their profile card.
     const studentsTitle = document.createElement("div");
     studentsTitle.className = "channel-section-title";
-    studentsTitle.textContent = "Class — online";
+    studentsTitle.textContent = "Class — grade";
     els.channelsList.appendChild(studentsTitle);
     const npcRoster = t.npc_roster || [];
     npcRoster.forEach((npc) => {
       if (!shouldShowStudentId(npc.id)) return;
       const s = STUDENTS.find((x) => x.id === npc.id);
       if (!s) return;
+      const arc = Array.isArray(t.npc_cohort) ? t.npc_cohort.find((n) => n.id === npc.id) : null;
+      const rosterGrade = arc && !arc.graduated ? arc.grade : npc.grade;
+      const gradeIdx = GRADE_ORDER.indexOf(String(rosterGrade));
+      const diamondCount = arc && arc.graduated ? GRADE_ORDER.length : Math.max(1, gradeIdx + 1);
+      const gradeTitle = arc && arc.graduated
+        ? "Graduated"
+        : (GRADE_LABELS[rosterGrade] || ("Grade " + rosterGrade));
       const row = document.createElement("button");
       row.className = "channel-row";
       row.type = "button";
@@ -970,10 +987,24 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       name.style.flex = "1 1 auto";
       name.textContent = s.name;
       row.appendChild(name);
-      const dot = document.createElement("span");
-      dot.className = "dot";
-      dot.style.cssText = "width:8px;height:8px;border-radius:999px;background:#4cb555;";
-      row.appendChild(dot);
+      const gradeMark = document.createElement("span");
+      gradeMark.className = "roster-grade" + (arc && arc.graduated ? " is-graduated" : "");
+      gradeMark.title = gradeTitle;
+      gradeMark.setAttribute("aria-label", gradeTitle);
+      const diamondWrap = document.createElement("span");
+      diamondWrap.className = "roster-grade-diamonds";
+      for (let i = 0; i < diamondCount; i++) {
+        const diamond = document.createElement("span");
+        diamond.className = "roster-grade-diamond";
+        diamond.textContent = "◆";
+        diamondWrap.appendChild(diamond);
+      }
+      const gradeLabel = document.createElement("span");
+      gradeLabel.className = "roster-grade-label";
+      gradeLabel.textContent = arc && arc.graduated ? "Grad" : (GRADE_SHORT_LABELS[rosterGrade] || String(rosterGrade));
+      gradeMark.appendChild(diamondWrap);
+      gradeMark.appendChild(gradeLabel);
+      row.appendChild(gradeMark);
       row.addEventListener("click", () => openStudentProfile(npc, s));
       els.channelsList.appendChild(row);
     });
@@ -1037,6 +1068,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   async function pickNext() {
     els.nextBtn.disabled = true;
     try {
+      if (lastTelemetry && lastTelemetry.graduation_ready) {
+        openSheet();
+        return;
+      }
       // The "play-bonus" command pulls today's once-per-day forced-
       // Legendary question. It only fires when the player explicitly
       // taps the bonus banner — pickNext (the regular Next button)
@@ -1250,8 +1285,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         // and answer-graded gets silently dropped — leaving the player
         // staring at a revealed answer with no next question. The teacher
         // reaction is the thing that unsticks the flow; never gate it.
+        const ceremonyReady = !!(t.graduation_ready || (t.character && t.character.pendingGraduation));
         const arcFinished = t.character && graduatedFor(t.character);
-        if (authed && t.faculty !== LOUNGE_ID && !arcFinished) {
+        if (authed && t.faculty !== LOUNGE_ID && !arcFinished && !ceremonyReady) {
           setTimeout(() => {
             runAgentTurn("answer-graded", {
               grade: t.current_grade,
@@ -2038,6 +2074,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!c) return "";
     if (graduatedFor(c)) return "You graduated. Keep playing if you want; the arc is done.";
     const t = lastTelemetry || {};
+    if (t.graduation_ready || c.pendingGraduation) {
+      return "Requirements complete — attend the ceremony and choose your level-up reward.";
+    }
     const grade = String(t.current_grade ?? "9");
     const streakReq = STREAK_REQUIRED[grade] || 1;
     const subjectReq = SUBJECT_XP_REQUIRED[grade] || 2;
@@ -2119,22 +2158,125 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     return { rungs, graduated: graduatedFor(c) };
   }
 
+  function nextGradeAfterClient(grade) {
+    const order = ["9", "10", "11", "12"];
+    const idx = order.indexOf(String(grade));
+    return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+  }
+  function facultyLabel(fid) {
+    const fac = ((lastTelemetry && lastTelemetry.faculty_roster) || []).find((f) => f.id === fid);
+    return fac ? (fac.shortName || fac.displayName || fid) : (TEACHING_FACULTY_LABELS[fid] || fid);
+  }
+  function fmtRewardStat(stat, value) {
+    return stat.toUpperCase() + " " + fmtStat(value) + " → " + fmtStat(Math.min(3, value + 1));
+  }
+  function buildGraduationCeremony(c, grade) {
+      const ready = (lastTelemetry && lastTelemetry.graduation_ready) || c.pendingGraduation;
+      if (!ready) return null;
+      const next = nextGradeAfterClient(grade);
+      const targetLabel = next ? (GRADE_LABELS[next] || ("Grade " + next)) : "graduate";
+      const wrap = document.createElement("div");
+      wrap.className = "graduation-ceremony";
+
+      const title = document.createElement("div");
+      title.className = "graduation-title";
+      title.textContent = next ? "Advance to " + targetLabel : "Graduation Ceremony";
+      wrap.appendChild(title);
+
+      const note = document.createElement("div");
+      note.className = "graduation-note";
+      note.textContent = "Requirements complete. Choose one level-up reward to seal the yearbook.";
+      wrap.appendChild(note);
+
+      const status = document.createElement("div");
+      status.className = "graduation-status";
+      wrap.appendChild(status);
+
+      const groups = document.createElement("div");
+      groups.className = "graduation-groups";
+      wrap.appendChild(groups);
+
+      const allButtons = [];
+      const setBusy = (btn, text) => {
+        allButtons.forEach((b) => { b.disabled = true; });
+        btn.textContent = text;
+        status.textContent = "Ceremony in progress…";
+        status.classList.remove("is-invalid");
+      };
+      const submitReward = async (reward, btn) => {
+        setBusy(btn, "Sealing…");
+        const data = await command({ type: "complete-graduation", reward });
+        if (data && data.session) {
+          showCongrats(next ? "You're a " + targetLabel + " now!" : "You graduated.", true);
+          await fetchSession();
+          if (sheetOverlayOpen) renderSheet();
+          return;
+        }
+        status.textContent = "Ceremony failed — pick again.";
+        status.classList.add("is-invalid");
+        allButtons.forEach((b) => { b.disabled = false; });
+      };
+      const addGroup = (label) => {
+        const group = document.createElement("div");
+        group.className = "graduation-group";
+        const h = document.createElement("div");
+        h.className = "graduation-group-label";
+        h.textContent = label;
+        group.appendChild(h);
+        const row = document.createElement("div");
+        row.className = "graduation-choice-row";
+        group.appendChild(row);
+        groups.appendChild(group);
+        return row;
+      };
+      const addChoice = (row, label, detail, reward, disabled) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "graduation-choice";
+        btn.disabled = !!disabled;
+        const main = document.createElement("span");
+        main.className = "main";
+        main.textContent = label;
+        const sub = document.createElement("span");
+        sub.className = "sub";
+        sub.textContent = detail;
+        btn.appendChild(main);
+        btn.appendChild(sub);
+        btn.addEventListener("click", () => submitReward(reward, btn));
+        row.appendChild(btn);
+        allButtons.push(btn);
+      };
+
+      const statRow = addGroup("+1 to a stat");
+      ["head", "heart", "hustle", "honor"].forEach((stat) => {
+        const value = (c.stats && typeof c.stats[stat] === "number") ? c.stats[stat] : 0;
+        addChoice(statRow, fmtRewardStat(stat, value), value >= 3 ? "already capped" : "cap +3", { kind: "stat", stat }, value >= 3);
+      });
+
+      const advRow = addGroup("Extra advantage");
+      addChoice(advRow, "+1 die", next ? "for " + targetLabel + " year" : "for post-grad play", { kind: "advantage" }, false);
+
+      const affinityRow = addGroup("Class affinity");
+      TEACHING_FACULTY_IDS.forEach((fid) => {
+        addChoice(affinityRow, facultyLabel(fid), "first miss counts once", { kind: "affinity", facultyId: fid }, false);
+      });
+      return wrap;
+    }
+
   function renderSheetReadonly(c, playbooks) {
     // Current character-sheet model:
     //   CHARACTER CARD — stable identity: portrait/diploma, playbook,
     //     stats, quote, and starting move. It upgrades at graduation.
     //   SCHOOL CAREER CARD — live dashboard: grade, streak, class
     //     gates, advantage budget, and next-step hint.
-    //   PAPER CARDS — frozen snapshots of past years. Each one was
-    //     written into yearbook[] at the moment that year closed.
-    //     Identity is read from the snapshot, not the live character —
-    //     a player who renames mid-arc keeps their old name on the old
-    //     paper card.
+    //   SEALED YEARS — frozen snapshots of past years. They sit behind the
+    //     current character card as a collapsed yearbook stack, then accordion
+    //     open when clicked.
     //
-    // Layout: a single horizontal carousel. Character Card sits at the
-    // front, School Career Card is second, and Paper Cards trail in chronological
-    // order. For a graduated character, the Character Card upgrades to
-    // the diploma card and the Senior Paper Card stays represented there.
+    // Layout: the carousel only carries the two active surfaces: Character
+    // Card + School Career Card. Sealed prior years live inside the Character
+    // Card so they read as history behind the current year instead of a third
+    // competing card.
     const pb = playbooks.find((p) => p.id === c.playbookId)
       || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
     const portraitFallback = defaultPortraitFor(c.playbookId);
@@ -2142,31 +2284,21 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const yearbook = Array.isArray(c.yearbook) ? c.yearbook : [];
     const grad = graduatedFor(c);
 
-    // Build the deck. Current arc first as two cards, then Paper Cards.
-    const deck = [];
-    deck.push({ kind: "character", graduated: grad });
-    deck.push({ kind: "career", graduated: grad });
-    // Paper cards: every yearbook entry EXCEPT the one represented by
-    // the Character Card (Senior diploma on a graduated character).
-    const papers = yearbook.slice().sort((a, b) => Number(a.grade) - Number(b.grade));
-    for (const y of papers) {
-      if (grad && y.grade === "12") continue;
-      if (!grad && y.grade === liveGrade) continue;
-      deck.push({ kind: "paper", entry: y });
-    }
+    const papers = yearbook.slice()
+      .sort((a, b) => Number(a.grade) - Number(b.grade))
+      .filter((y) => !(grad && y.grade === "12") && !(!grad && y.grade === liveGrade));
 
-    const cards = deck.map((item) => item.kind === "character"
-        ? buildCurrentCharacterCard(c, pb, portraitFallback, item.graduated)
-        : item.kind === "career"
-          ? buildCareerCard(c, item.graduated)
-          : buildPaperCard(item.entry, c, pb, playbooks));
+    const cards = [
+      buildCurrentCharacterCard(c, pb, portraitFallback, grad, papers, playbooks),
+      buildCareerCard(c, grad),
+    ];
     renderCardDeck(cards);
   }
 
   // ── Current Character Card builder ──────────────────────────────────────
   // Stable identity for the current school career. The card does not carry live
   // counters; graduation upgrades the art to the diploma when available.
-  function buildCurrentCharacterCard(c, pb, portraitFallback, graduated) {
+  function buildCurrentCharacterCard(c, pb, portraitFallback, graduated, paperEntries, playbooks) {
     const grade = graduated ? "12" : String(lastTelemetry?.current_grade ?? "9");
     const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
     const portraitUrl = (graduated && c.diplomaImageDataUrl) || c.portraitDataUrl || portraitFallback;
@@ -2209,6 +2341,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       footer: pb.startingMove ? { title: pb.startingMove.name, content: pb.startingMove.description } : undefined,
       actions: actions.length > 0 ? actions : undefined,
     });
+    const archive = buildYearbookArchive(paperEntries, c, pb, playbooks);
+    if (archive) {
+      const body = card.querySelector(".ccg-body");
+      if (body) body.appendChild(archive);
+    }
     card.classList.add("is-character-card");
     if (graduated) card.classList.add("is-graduated");
     return card;
@@ -2291,17 +2428,109 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       }));
     }
 
-    const hint = buildNextStepHint(c);
-    if (hint) {
-      const ns = document.createElement("div");
-      ns.className = "ccg-next-step";
-      ns.textContent = hint;
+      const ceremony = !graduated ? buildGraduationCeremony(c, grade) : null;
+      if (ceremony) {
+        body.appendChild(ceremony);
+      }
+
+      const hint = buildNextStepHint(c);
+      if (hint && !ceremony) {
+        const ns = document.createElement("div");
+        ns.className = "ccg-next-step";
+        ns.textContent = hint;
       body.appendChild(ns);
     }
 
     appendProgression(body, buildProgressionForCharacter(c));
     card.appendChild(body);
     return card;
+  }
+
+  function buildYearbookArchive(entries, liveChar, livePb, playbooks) {
+    if (!Array.isArray(entries) || entries.length === 0) return null;
+    const archive = document.createElement("details");
+    archive.className = "paper-archive";
+
+    const summary = document.createElement("summary");
+    summary.className = "paper-archive-summary";
+    const stack = document.createElement("span");
+    stack.className = "paper-archive-stack";
+    for (let i = 0; i < Math.min(3, entries.length); i++) {
+      const sheet = document.createElement("span");
+      sheet.className = "paper-archive-sheet";
+      stack.appendChild(sheet);
+    }
+    const label = document.createElement("span");
+    label.className = "paper-archive-label";
+    label.textContent = entries.length === 1 ? "1 sealed year" : entries.length + " sealed years";
+    const hint = document.createElement("span");
+    hint.className = "paper-archive-hint";
+    hint.textContent = "open yearbook";
+    summary.appendChild(stack);
+    summary.appendChild(label);
+    summary.appendChild(hint);
+    archive.appendChild(summary);
+
+    const list = document.createElement("div");
+    list.className = "paper-archive-list";
+    entries.forEach((entry) => list.appendChild(buildYearbookArchiveEntry(entry, liveChar, livePb, playbooks)));
+    archive.appendChild(list);
+    return archive;
+  }
+
+  function buildYearbookArchiveEntry(entry, liveChar, livePb, playbooks) {
+    const gradeLabel = GRADE_LABELS[entry.grade] || ("Grade " + entry.grade);
+    const shortGrade = GRADE_SHORT_LABELS[entry.grade] || gradeLabel;
+    const playbookId = entry.playbookId || liveChar.playbookId;
+    const pb = (Array.isArray(playbooks) && playbooks.find((p) => p.id === playbookId)) || livePb;
+    const stats = entry.stats || liveChar.stats || {};
+    const quote = entry.flavorQuote || entry.arcAnswer || "";
+    const summary = entry.summary || { correct: 0, total: 0 };
+    const gradeIdx = GRADE_ORDER.indexOf(String(entry.grade));
+    const diamondCount = Math.max(1, gradeIdx + 1);
+
+    const item = document.createElement("div");
+    item.className = "paper-archive-entry";
+    if (pb && pb.accent) item.style.setProperty("--paper-accent", pb.accent);
+
+    const top = document.createElement("div");
+    top.className = "paper-archive-entry-top";
+    const grade = document.createElement("span");
+    grade.className = "paper-archive-grade";
+    const diamonds = document.createElement("span");
+    diamonds.className = "paper-archive-diamonds";
+    for (let i = 0; i < diamondCount; i++) {
+      const diamond = document.createElement("span");
+      diamond.textContent = "◆";
+      diamonds.appendChild(diamond);
+    }
+    const gradeText = document.createElement("span");
+    gradeText.textContent = shortGrade;
+    grade.appendChild(diamonds);
+    grade.appendChild(gradeText);
+    const meta = document.createElement("span");
+    meta.className = "paper-archive-meta";
+    meta.textContent = "sealed " + formatSealedDate(entry.completedAt) + " · " + summary.correct + "/" + summary.total;
+    top.appendChild(grade);
+    top.appendChild(meta);
+    item.appendChild(top);
+
+    const statsLine = document.createElement("div");
+    statsLine.className = "paper-archive-stats";
+    ["head", "heart", "hustle", "honor"].forEach((k) => {
+      const stat = document.createElement("span");
+      stat.innerHTML = "<b>" + k + "</b> " + fmtStat(Number(stats[k] || 0));
+      statsLine.appendChild(stat);
+    });
+    item.appendChild(statsLine);
+
+    if (quote) {
+      const quoteEl = document.createElement("div");
+      quoteEl.className = "paper-archive-quote";
+      quoteEl.textContent = "“" + quote + "”";
+      item.appendChild(quoteEl);
+    }
+    return item;
   }
 
   // ── Paper Card builder ──────────────────────────────────────────────────

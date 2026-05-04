@@ -259,6 +259,9 @@ describe("NPC cohort — runs in parallel with the player", () => {
       ruby.playDaily(sid, new Date(`${d}T18:00:00Z`));
       const c = ruby.getOrCreate(sid).current!.correct! as Choice;
       ruby.submitAnswer(sid, c);
+      if (ruby.getOrCreate(sid).character?.pendingGraduation) {
+        ruby.completeGraduation(sid, { kind: "advantage" });
+      }
     }
     const cohort = ruby.getOrCreate(sid).npcCohort!;
     // After 5 Dailies, the cohort has diverged — some are still in 9, some
@@ -387,18 +390,19 @@ describe("Per-class XP gate — streak alone is not enough", () => {
     // internally for the daily-key) sees the test's time-travel.
     const realNow = Date.now;
     try {
-      const stepThroughDay = (iso: string, expectGrade: string) => {
+      const stepThroughDay = (iso: string) => {
         const t = new Date(iso).getTime();
         Date.now = () => t;
         ruby.playBonus(sid, new Date(iso));
         const cur = ruby.getOrCreate(sid).current!;
         ruby.submitAnswer(sid, cur.correct as Choice);
-        expect(ruby.getOrCreate(sid).currentGrade).toBe(expectGrade);
       };
-      stepThroughDay("2026-05-04T18:00:00Z", "9"); // Mon, sally → +2 sally only
-      stepThroughDay("2026-05-05T18:00:00Z", "9"); // Tue, edward → +2 edward
+      stepThroughDay("2026-05-04T18:00:00Z"); // Mon, sally → +2 sally only
+      expect(ruby.getOrCreate(sid).currentGrade).toBe("9");
+      stepThroughDay("2026-05-05T18:00:00Z"); // Tue, edward → +2 edward
+      expect(ruby.getOrCreate(sid).currentGrade).toBe("9");
       // Day 3: Ruby bonus. Now every teaching room is at 2, streak is at 3
-      // (≥ FR's required 1) → advancement triggers on this Legendary.
+      // (≥ FR's required 1) → the ceremony becomes available.
       const t3 = new Date("2026-05-06T18:00:00Z").getTime();
       Date.now = () => t3;
       ruby.playBonus(sid, new Date("2026-05-06T18:00:00Z"));
@@ -410,10 +414,13 @@ describe("Per-class XP gate — streak alone is not enough", () => {
     expect(final.character!.subjectXp?.["sally-science"] ?? 0).toBeGreaterThanOrEqual(2);
     expect(final.character!.subjectXp?.["professor-edward"] ?? 0).toBeGreaterThanOrEqual(2);
     expect(final.character!.subjectXp?.["ruby"] ?? 0).toBeGreaterThanOrEqual(2);
-    expect(final.currentGrade).toBe("10");
+    expect(final.currentGrade).toBe("9");
+    expect(final.character!.pendingGraduation?.grade).toBe("9");
+    ruby.completeGraduation(sid, { kind: "advantage" });
+    expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
   });
 
-  it("advances as soon as the final class gate lands after the streak is already met", async () => {
+  it("marks the ceremony ready as soon as the final class gate lands after the streak is already met", async () => {
     const { ruby } = await makeServices();
     const sid = "test:advance-when-class-gate-lands";
     attachCharacter(ruby, sid, "9", 0);
@@ -439,8 +446,11 @@ describe("Per-class XP gate — streak alone is not enough", () => {
     }
 
     const after = ruby.getOrCreate(sid);
-    expect(after.currentGrade).toBe("10");
-    expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(true);
+    expect(after.currentGrade).toBe("9");
+    expect(after.character!.pendingGraduation?.grade).toBe("9");
+    expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(false);
+    ruby.completeGraduation(sid, { kind: "advantage" });
+    expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
   });
 });
 
@@ -459,9 +469,13 @@ describe("Streak + grade advancement (rarity-driven)", () => {
         ruby.submitAnswer(sid, cur.correct as Choice);
       };
       // Day 1: Freshman target = 1 / day, streak required = 1 → one
-      // bonus pass advances to Sophomore.
+      // bonus pass opens the ceremony; the ceremony advances to Sophomore.
       advance("2026-05-04T18:00:00Z");
       let ch = ruby.getOrCreate(sid).character!;
+      expect(ruby.getOrCreate(sid).currentGrade).toBe("9");
+      expect(ch.pendingGraduation?.grade).toBe("9");
+      ruby.completeGraduation(sid, { kind: "advantage" });
+      ch = ruby.getOrCreate(sid).character!;
       expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
       expect(ch.streak).toEqual({ grade: "10", count: 0 });
       expect(ch.yearbook).toHaveLength(1);
@@ -541,14 +555,17 @@ describe("Streak + grade advancement (rarity-driven)", () => {
     } finally {
       Date.now = realNow;
     }
-    const finalCh = ruby.getOrCreate(sid).character!;
+    let finalCh = ruby.getOrCreate(sid).character!;
+    expect(finalCh.pendingGraduation?.grade).toBe("12");
+    ruby.completeGraduation(sid, { kind: "advantage" });
+    finalCh = ruby.getOrCreate(sid).character!;
     expect(finalCh.yearbook).toHaveLength(4);
     expect(finalCh.yearbook[3]?.grade).toBe("12");
     expect(ruby.getOrCreate(sid).currentGrade).toBe("12"); // doesn't advance past Senior
     expect(ruby.getOrCreate(sid).completedGrades).toContain("12");
   });
 
-  it("reconciles already-cleared Freshman gates on session read", async () => {
+  it("reconciles already-cleared Freshman gates into ceremony-ready state on session read", async () => {
     const { ruby } = await makeServices();
     const sid = "test:reconcile-cleared-freshman";
     attachCharacter(ruby, sid, "9", 0);
@@ -558,11 +575,14 @@ describe("Streak + grade advancement (rarity-driven)", () => {
     ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
 
     const after = ruby.getOrCreate(sid);
-    expect(after.currentGrade).toBe("10");
-    expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(true);
+    expect(after.currentGrade).toBe("9");
+    expect(after.character!.pendingGraduation?.grade).toBe("9");
+    expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(false);
+    ruby.completeGraduation(sid, { kind: "advantage" });
+    expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
   });
 
-  it("graduates as soon as Senior's final class gate lands after the streak is already met", async () => {
+  it("opens Senior graduation as soon as the final class gate lands after the streak is already met", async () => {
     const { ruby } = await makeServices();
     const sid = "test:graduate-when-senior-class-gate-lands";
     attachCharacter(ruby, sid, "12", 0);
@@ -596,9 +616,84 @@ describe("Streak + grade advancement (rarity-driven)", () => {
 
     const after = ruby.getOrCreate(sid);
     expect(after.currentGrade).toBe("12");
-    expect(after.completedGrades).toContain("12");
-    expect(after.character!.yearbook).toHaveLength(4);
-    expect(after.character!.yearbook[3]?.grade).toBe("12");
+    expect(after.character!.pendingGraduation?.grade).toBe("12");
+    expect(after.character!.yearbook).toHaveLength(3);
+    ruby.completeGraduation(sid, { kind: "advantage" });
+    const graduated = ruby.getOrCreate(sid);
+    expect(graduated.currentGrade).toBe("12");
+    expect(graduated.completedGrades).toContain("12");
+    expect(graduated.character!.yearbook).toHaveLength(4);
+    expect(graduated.character!.yearbook[3]?.grade).toBe("12");
+  });
+
+  it("graduation stat reward applies +1 with a +3 cap", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:graduation-stat-reward";
+    attachCharacter(ruby, sid, "9", 0);
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.stats.head = 2;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
+
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
+    ruby.completeGraduation(sid, { kind: "stat", stat: "head" });
+    const after = ruby.getOrCreate(sid);
+    expect(after.currentGrade).toBe("10");
+    expect(after.character!.stats.head).toBe(3);
+    expect(after.character!.yearbook[0]?.graduationReward).toEqual({ kind: "stat", stat: "head" });
+    expect(() => ruby.completeGraduation(sid, { kind: "stat", stat: "head" })).toThrow(/No graduation ceremony/);
+  });
+
+  it("graduation advantage reward adds one roll to the next grade cap", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:graduation-advantage-reward";
+    attachCharacter(ruby, sid, "9", 0);
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
+
+    ruby.getOrCreate(sid);
+    ruby.completeGraduation(sid, { kind: "advantage" });
+    expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
+    expect(ruby.advantageRollsRemaining(sid)).toEqual({ used: 0, cap: 4, remaining: 4 });
+  });
+
+  it("graduation class affinity converts the first miss in that class, once", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:graduation-affinity-reward";
+    attachCharacter(ruby, sid, "9", 0);
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
+
+    ruby.getOrCreate(sid);
+    ruby.completeGraduation(sid, { kind: "affinity", facultyId: "ruby" });
+    ruby.pose(sid, {
+      prompt: "Affinity save",
+      options: { A: "a", B: "b", C: "c", D: "d" },
+      correct: "A",
+      faculty: "ruby",
+      rarity: "rare",
+      questionId: "q_affinity_save",
+    });
+    ruby.submitAnswer(sid, "B");
+    let after = ruby.getOrCreate(sid);
+    expect(after.lastReveal?.wasCorrect).toBe(true);
+    expect(after.lastReveal?.affinitySave).toEqual({ facultyId: "ruby" });
+    expect(after.character!.classAffinity?.["10"]?.used).toBe(true);
+
+    ruby.pose(sid, {
+      prompt: "Affinity spent",
+      options: { A: "a", B: "b", C: "c", D: "d" },
+      correct: "A",
+      faculty: "ruby",
+      rarity: "rare",
+      questionId: "q_affinity_spent",
+    });
+    ruby.submitAnswer(sid, "B");
+    after = ruby.getOrCreate(sid);
+    expect(after.lastReveal?.wasCorrect).toBe(false);
+    expect(after.lastReveal?.affinitySave ?? null).toBeNull();
   });
 
   it("Paper Card: yearbook entry written at advancement freezes identity (later edits to live character don't bleed back)", async () => {
@@ -610,26 +705,21 @@ describe("Streak + grade advancement (rarity-driven)", () => {
     ch.flavorQuote = "honestly the syllabus is bullying me";
     ch.stats = { head: 2, heart: 0, hustle: -1, honor: 1 };
 
-    // Force a single Freshman day-complete so the yearbook entry gets written.
-    // Freshman streak target is 1, per-class XP target is 2. Pose 2 legendary
-    // questions in each of the three teaching rooms so the per-class gate clears.
+    // Force a single Freshman day-complete so the ceremony becomes available,
+    // then complete it to write the yearbook entry.
     const realNow = Date.now;
     Date.now = () => new Date("2026-05-04T18:00:00Z").getTime();
     try {
-      let q = 0;
-      for (const fac of ["ruby", "sally-science", "professor-edward"] as const) {
-        for (let i = 0; i < 2; i++) {
-          ruby.pose(sid, {
-            prompt: "Q " + (q++),
-            options: { A: "a", B: "b", C: "c", D: "d" },
-            correct: "A",
-            faculty: fac,
-            rarity: "legendary",
-            questionId: "qsnap_" + fac + "_" + i,
-          });
-          ruby.submitAnswer(sid, "A");
-        }
-      }
+      ruby.pose(sid, {
+        prompt: "Q",
+        options: { A: "a", B: "b", C: "c", D: "d" },
+        correct: "A",
+        faculty: "ruby",
+        rarity: "legendary",
+        questionId: "qsnap_ruby",
+      });
+      ruby.submitAnswer(sid, "A");
+      ruby.completeGraduation(sid, { kind: "advantage" });
     } finally {
       Date.now = realNow;
     }

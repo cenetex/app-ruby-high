@@ -86,6 +86,10 @@ function characterGraduated(state: { character?: { yearbook?: unknown[] } | null
   return !!(state.character && Array.isArray(state.character.yearbook) && state.character.yearbook.length >= 4);
 }
 
+function graduationReady(state: { character?: { pendingGraduation?: unknown } | null }): boolean {
+  return !!(state.character && state.character.pendingGraduation);
+}
+
 function gradeLabel(grade: string | undefined | null): string {
   if (!grade) return "";
   return (GRADE_LABELS as Record<string, string>)[grade] ?? grade;
@@ -1234,6 +1238,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       if (characterGraduated(state)) {
         disableToolsForTurn = true;
         directive = `The player has completed Senior year and graduated. Congratulate ${playerName} in one or two short sentences. Do not call tools or put another question on the board.`;
+      } else if (graduationReady(state)) {
+        disableToolsForTurn = true;
+        directive = `${playerName} has completed the year's requirements and is ready for the graduation ceremony. Congratulate them in one or two short sentences and remind them to choose a ceremony reward on their School Career card. Do not call tools or put another question on the board.`;
       } else {
         const pickedLine = c?.picked
           ? `${playerName} already answered ${c.picked}; ${c.wasCorrect ? "that was correct" : `the correct answer was ${correctAns}`}.`

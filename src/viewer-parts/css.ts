@@ -3,6 +3,27 @@
 // + selectors + media queries.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const VIEWER_CSS = `
+  @font-face {
+    font-family: "RubyHighCaveat";
+    src: url("/api/apps/ruby-high/assets/fonts/caveat-regular.ttf") format("truetype");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "RubyHighCraftyGirls";
+    src: url("/api/apps/ruby-high/assets/fonts/crafty-girls-regular.ttf") format("truetype");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "RubyHighGiveYouGlory";
+    src: url("/api/apps/ruby-high/assets/fonts/give-you-glory-regular.ttf") format("truetype");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "RubyHighSchoolbell";
+    src: url("/api/apps/ruby-high/assets/fonts/schoolbell-regular.ttf") format("truetype");
+    font-display: swap;
+  }
+
   /* ── tokens ────────────────────────────────────────────────────────────── */
   :root {
     color-scheme: dark;
@@ -279,21 +300,39 @@ export const VIEWER_CSS = `
     padding: 2px 7px;
     border-radius: 999px;
   }
-  .student-row {
-    display: flex;
+  .channel-row .roster-grade {
+    margin-left: auto;
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
-    padding: 7px 12px;
-    color: var(--text-soft);
-    font-size: 14px;
-    min-height: 36px;
+    justify-content: flex-end;
+    gap: 5px;
+    min-width: 68px;
+    color: #f0b441;
+    line-height: 1;
+    opacity: 0.9;
   }
-  .student-row .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: #4cb555;
-    flex: 0 0 auto;
+  .channel-row .roster-grade-diamonds {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1px;
+  }
+  .channel-row .roster-grade-diamond {
+    width: 9px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 900;
+    text-shadow: 0 0 8px rgba(240,180,65,0.24);
+  }
+  .channel-row .roster-grade-label {
+    color: var(--text-mute);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .channel-row .roster-grade.is-graduated {
+    color: rgba(240,180,65,0.7);
   }
   .channels-footer {
     padding: 12px 14px calc(var(--safe-bot) + 12px);
@@ -920,10 +959,25 @@ export const VIEWER_CSS = `
     border-radius: 6px;
     min-height: 100px;
     padding: 16px 18px;
-    font-family: "Caveat", "Patrick Hand", "Segoe Print", cursive;
+    font-family: "RubyHighCraftyGirls", "Caveat", "Patrick Hand", "Segoe Print", cursive;
     font-size: 22px;
     line-height: 1.3;
     box-shadow: inset 0 0 60px rgba(0,0,0,0.35);
+  }
+  .blackboard-panel[data-faculty="ruby"] .board {
+    font-family: "RubyHighCaveat", "Caveat", "Patrick Hand", "Segoe Print", cursive;
+    font-size: 26px;
+    line-height: 1.22;
+  }
+  .blackboard-panel[data-faculty="sally-science"] .board {
+    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
+    font-size: 21px;
+    line-height: 1.42;
+  }
+  .blackboard-panel[data-faculty="professor-edward"] .board {
+    font-family: "RubyHighGiveYouGlory", "Segoe Print", cursive;
+    font-size: 24px;
+    line-height: 1.38;
   }
   .board .prompt {
     white-space: pre-wrap;
@@ -1812,8 +1866,86 @@ export const VIEWER_CSS = `
     line-height: 1.45;
     margin-top: 4px;
   }
+  .graduation-ceremony {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid rgba(250, 186, 55, 0.45);
+    background: linear-gradient(180deg, rgba(250, 186, 55, 0.16), rgba(250, 186, 55, 0.06));
+    border-radius: 8px;
+    box-shadow: 0 0 18px rgba(250, 186, 55, 0.10);
+  }
+  .graduation-title {
+    color: #ffd46a;
+    font-weight: 900;
+    font-size: 16px;
+    line-height: 1.1;
+  }
+  .graduation-note {
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.35;
+    margin-top: 4px;
+  }
+  .graduation-status {
+    min-height: 15px;
+    margin-top: 5px;
+    color: #ffd46a;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .graduation-status.is-invalid { color: #ff9b9b; }
+  .graduation-groups {
+    display: grid;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .graduation-group-label {
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 9px;
+    font-weight: 900;
+    margin-bottom: 4px;
+  }
+  .graduation-choice-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .graduation-choice {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.07);
+    color: var(--text);
+    border-radius: 999px;
+    min-height: 34px;
+    padding: 5px 9px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    line-height: 1.05;
+    cursor: pointer;
+  }
+  .graduation-choice .main {
+    font-size: 11px;
+    font-weight: 900;
+  }
+  .graduation-choice .sub {
+    color: var(--text-soft);
+    font-size: 9px;
+    margin-top: 2px;
+  }
+  .graduation-choice:hover {
+    border-color: rgba(250, 186, 55, 0.55);
+    background: rgba(250, 186, 55, 0.14);
+  }
+  .graduation-choice:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 
-  /* ── card deck (Character + School Career + Paper Cards) ────────────── */
+    /* ── card deck (Character + School Career + Paper Cards) ────────────── */
   /* Three card types live in the read-only sheet:
        Character Card     — stable identity. Upgrades to the diploma card
                             at graduation.
@@ -2124,6 +2256,116 @@ export const VIEWER_CSS = `
   .career-die span:nth-child(3) { grid-column: 2; grid-row: 2; }
   .career-die span:nth-child(4) { grid-column: 1; grid-row: 3; }
   .career-die span:nth-child(5) { grid-column: 3; grid-row: 3; }
+
+  /* Sealed years live behind the current character card as a compact
+     accordion. They replace the old third/fourth carousel cards. */
+  .paper-archive {
+    margin-top: 9px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 8px;
+  }
+  .paper-archive-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    cursor: pointer;
+    color: var(--text-soft);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+  }
+  .paper-archive-summary::-webkit-details-marker { display: none; }
+  .paper-archive-stack {
+    position: relative;
+    width: 30px;
+    height: 19px;
+    flex: 0 0 auto;
+  }
+  .paper-archive-sheet {
+    position: absolute;
+    width: 22px;
+    height: 15px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,235,200,0.35);
+    background: linear-gradient(180deg, rgba(255,235,200,0.16), rgba(255,235,200,0.04));
+    box-shadow: 0 4px 8px rgba(0,0,0,0.25);
+  }
+  .paper-archive-sheet:nth-child(1) { left: 0; top: 4px; opacity: 0.55; }
+  .paper-archive-sheet:nth-child(2) { left: 4px; top: 2px; opacity: 0.72; }
+  .paper-archive-sheet:nth-child(3) { left: 8px; top: 0; opacity: 0.9; }
+  .paper-archive-label { color: var(--text); }
+  .paper-archive-hint {
+    margin-left: auto;
+    color: var(--text-mute);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .paper-archive[open] .paper-archive-hint { color: #f0b441; }
+  .paper-archive-list {
+    display: grid;
+    gap: 6px;
+    padding-top: 6px;
+  }
+  .paper-archive-entry {
+    --paper-accent: #a56bff;
+    border-left: 3px solid var(--paper-accent);
+    border-radius: 6px;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.035), rgba(0,0,0,0) 42%),
+      rgba(255,255,255,0.045);
+    padding: 7px 8px;
+  }
+  .paper-archive-entry-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .paper-archive-grade {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #f0b441;
+    font-size: 11px;
+    font-weight: 900;
+    min-width: 68px;
+  }
+  .paper-archive-diamonds {
+    display: inline-flex;
+    gap: 1px;
+    font-size: 10px;
+  }
+  .paper-archive-meta {
+    color: var(--text-mute);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .paper-archive-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 5px;
+    color: var(--text-soft);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .paper-archive-stats b {
+    color: var(--text-mute);
+    font-weight: 700;
+  }
+  .paper-archive-quote {
+    margin-top: 6px;
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.35;
+    font-style: italic;
+  }
 
   /* Paper Card — frozen, sealed. Paper-stock cream tint, faint grid
      overlay, slight desaturation. The subtitle ("✓ sealed Mon YYYY")
