@@ -317,7 +317,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     head.appendChild(stamp);
     const bodyEl = document.createElement("div");
     bodyEl.className = "body";
-    bodyEl.textContent = body || "";
+    bodyEl.dataset.markdownRaw = body || "";
+    renderMarkdownInto(bodyEl, body || "");
     wrap.appendChild(avatar);
     wrap.appendChild(head);
     wrap.appendChild(bodyEl);
@@ -365,7 +366,148 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
     els.stream.appendChild(wrap);
   }
-  function escape(s) { return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c])); }
+  function escape(s) { return escapeHtml(s); }
+  function escapeHtml(value) {
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    return String(value == null ? "" : value).replace(/[&<>"']/g, (c) => map[c]);
+  }
+  function safeMarkdownHref(href) {
+    const raw = String(href || "").trim();
+    if (!raw) return null;
+    try {
+      const url = new URL(raw, window.location.href);
+      return (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") ? raw : null;
+    } catch (_e) {
+      return null;
+    }
+  }
+  function markdownInlineHtml(value) {
+    const start = String.fromCharCode(0xe000);
+    const end = String.fromCharCode(0xe001);
+    const tick = String.fromCharCode(96);
+    const placeholders = [];
+    let text = String(value == null ? "" : value);
+    const stash = (html) => {
+      const key = start + placeholders.length + end;
+      placeholders.push(html);
+      return key;
+    };
+    const codePattern = new RegExp(tick + "([^" + tick + "\\n]+)" + tick, "g");
+    text = text.replace(codePattern, (_match, code) => stash("<code>" + escapeHtml(code) + "</code>"));
+    text = text.replace(/\\[([^\\]\\n]+)\\]\\(([^)\\s]+)\\)/g, (match, label, href) => {
+      const safeHref = safeMarkdownHref(href);
+      if (!safeHref) return match;
+      return stash('<a href="' + escapeHtml(safeHref) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label) + "</a>");
+    });
+    let html = escapeHtml(text);
+    html = html
+      .replace(/\\*\\*([^*\\n]+)\\*\\*/g, "<strong>$1</strong>")
+      .replace(/__([^_\\n]+)__/g, "<strong>$1</strong>")
+      .replace(/~~([^~\\n]+)~~/g, "<del>$1</del>")
+      .replace(/(^|[^\\w])\\*([^*\\n]+)\\*(?=$|[^\\w])/g, "$1<em>$2</em>")
+      .replace(/(^|[^\\w])_([^_\\n]+)_(?=$|[^\\w])/g, "$1<em>$2</em>")
+      .replace(/\\n/g, "<br>");
+    const placeholderPattern = new RegExp(start + "(\\d+)" + end, "g");
+    return html.replace(placeholderPattern, (_match, index) => placeholders[Number(index)] || "");
+  }
+  function appendMarkdownInline(parent, text) {
+    const span = document.createElement("span");
+    span.innerHTML = markdownInlineHtml(text);
+    while (span.firstChild) parent.appendChild(span.firstChild);
+  }
+  function renderMarkdownInto(el, source, options) {
+    if (!el) return;
+    const opts = options || {};
+    el.classList.add("markdown");
+    el.classList.toggle("markdown-inline", !!opts.inline);
+    el.replaceChildren();
+    const text = String(source == null ? "" : source).replace(/\\r\\n?/g, "\\n");
+    if (!text) return;
+    if (opts.inline) {
+      appendMarkdownInline(el, text);
+      return;
+    }
+    const lines = text.split("\\n");
+    const fence = String.fromCharCode(96).repeat(3);
+    const startsBlock = (line) =>
+      /^\\s{0,3}#{1,4}\\s+/.test(line) ||
+      /^\\s{0,3}>\\s?/.test(line) ||
+      /^\\s{0,3}[-*+]\\s+/.test(line) ||
+      /^\\s{0,3}\\d+[.)]\\s+/.test(line) ||
+      line.trim().slice(0, 3) === fence;
+    const appendParagraph = (chunk) => {
+      const p = document.createElement("p");
+      appendMarkdownInline(p, chunk);
+      el.appendChild(p);
+    };
+    let i = 0;
+    while (i < lines.length) {
+      if (!lines[i].trim()) { i += 1; continue; }
+      if (lines[i].trim().slice(0, 3) === fence) {
+        i += 1;
+        const codeLines = [];
+        while (i < lines.length && lines[i].trim().slice(0, 3) !== fence) {
+          codeLines.push(lines[i]);
+          i += 1;
+        }
+        if (i < lines.length) i += 1;
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.textContent = codeLines.join("\\n");
+        pre.appendChild(code);
+        el.appendChild(pre);
+        continue;
+      }
+      if (/^\\s{0,3}#{1,4}\\s+/.test(lines[i])) {
+        const raw = lines[i].replace(/^\\s{0,3}/, "");
+        const depth = Math.min(4, raw.match(/^#+/)[0].length);
+        const heading = document.createElement("h" + depth);
+        appendMarkdownInline(heading, raw.replace(/^#{1,4}\\s+/, ""));
+        el.appendChild(heading);
+        i += 1;
+        continue;
+      }
+      if (/^\\s{0,3}>\\s?/.test(lines[i])) {
+        const quoteLines = [];
+        while (i < lines.length && /^\\s{0,3}>\\s?/.test(lines[i])) {
+          quoteLines.push(lines[i].replace(/^\\s{0,3}>\\s?/, ""));
+          i += 1;
+        }
+        const quote = document.createElement("blockquote");
+        renderMarkdownInto(quote, quoteLines.join("\\n"));
+        el.appendChild(quote);
+        continue;
+      }
+      if (/^\\s{0,3}[-*+]\\s+/.test(lines[i])) {
+        const list = document.createElement("ul");
+        while (i < lines.length && /^\\s{0,3}[-*+]\\s+/.test(lines[i])) {
+          const li = document.createElement("li");
+          appendMarkdownInline(li, lines[i].replace(/^\\s{0,3}[-*+]\\s+/, ""));
+          list.appendChild(li);
+          i += 1;
+        }
+        el.appendChild(list);
+        continue;
+      }
+      if (/^\\s{0,3}\\d+[.)]\\s+/.test(lines[i])) {
+        const list = document.createElement("ol");
+        while (i < lines.length && /^\\s{0,3}\\d+[.)]\\s+/.test(lines[i])) {
+          const li = document.createElement("li");
+          appendMarkdownInline(li, lines[i].replace(/^\\s{0,3}\\d+[.)]\\s+/, ""));
+          list.appendChild(li);
+          i += 1;
+        }
+        el.appendChild(list);
+        continue;
+      }
+      const paraLines = [];
+      while (i < lines.length && lines[i].trim() && !startsBlock(lines[i])) {
+        paraLines.push(lines[i]);
+        i += 1;
+      }
+      appendParagraph(paraLines.join("\\n"));
+    }
+  }
 
   // ── blackboard panel (single, persistent, updates in place) ─────────────
   function showBlackboardEmpty(reset) {
@@ -673,7 +815,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 
     // Prompt — always wipe + rewrite on new question (chalkboard re-erasing).
     if (isNewQuestion) {
-      els.boardPrompt.textContent = question.prompt;
+      renderMarkdownInto(els.boardPrompt, question.prompt || "");
       els.boardReveal.hidden = true;
       els.boardReveal.textContent = "";
       els.boardReveal.classList.remove("correct", "wrong");
@@ -685,7 +827,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const pick = btn.dataset.pick;
       const label = btn.querySelector(".label");
       const text = (question.options && question.options[pick]) || "—";
-      label.textContent = text;
+      renderMarkdownInto(label, text, { inline: true });
       if (text.length > maxLen) maxLen = text.length;
       if (isNewQuestion) {
         btn.classList.remove("is-correct", "is-wrong");
@@ -737,7 +879,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (playerGrade.comment) {
       const expl = document.createElement("div");
       expl.className = "reveal-explanation";
-      expl.textContent = playerGrade.comment;
+      renderMarkdownInto(expl, playerGrade.comment);
       els.boardReveal.appendChild(expl);
     }
     els.nextBtn.textContent = (lastTelemetry && lastTelemetry.graduation_ready) ? "Graduation ceremony →" : "Next question →";
@@ -786,7 +928,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (reveal.explanation) {
       const expl = document.createElement("div");
       expl.className = "reveal-explanation";
-      expl.textContent = reveal.explanation;
+      renderMarkdownInto(expl, reveal.explanation);
       els.boardReveal.appendChild(expl);
     }
     els.nextBtn.style.display = "";
@@ -1434,7 +1576,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (spec.quote) {
       const q = document.createElement("blockquote");
       q.className = "ccg-quote";
-      q.textContent = "“" + spec.quote + "”";
+      renderMarkdownInto(q, "“" + spec.quote + "”", { inline: true });
       body.appendChild(q);
     }
     if (spec.nextStepHint) {
@@ -1450,7 +1592,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const title = document.createElement("strong");
       title.textContent = spec.footer.title;
       ft.appendChild(title);
-      ft.appendChild(document.createTextNode(spec.footer.content));
+      const content = document.createElement("span");
+      content.className = "ccg-footer-content";
+      renderMarkdownInto(content, spec.footer.content || "", { inline: true });
+      ft.appendChild(content);
       body.appendChild(ft);
     }
     if (spec.actions && spec.actions.length) {
@@ -2527,7 +2672,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (quote) {
       const quoteEl = document.createElement("div");
       quoteEl.className = "paper-archive-quote";
-      quoteEl.textContent = "“" + quote + "”";
+      renderMarkdownInto(quoteEl, "“" + quote + "”", { inline: true });
       item.appendChild(quoteEl);
     }
     return item;
@@ -2774,7 +2919,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const fmt = (n) => (n >= 0 ? "+" : "") + n;
       statsRow.val.textContent = "HEAD " + fmt(c.stats.head) + " · HEART " + fmt(c.stats.heart) + " · HUSTLE " + fmt(c.stats.hustle) + " · HONOR " + fmt(c.stats.honor);
       personalityRow.val.textContent = c.personality;
-      quoteRow.val.textContent = c.flavorQuote ? "“" + c.flavorQuote + "”" : (c.arcAnswer ? "“" + c.arcAnswer + "”" : "—");
+      renderMarkdownInto(quoteRow.val, c.flavorQuote ? "“" + c.flavorQuote + "”" : (c.arcAnswer ? "“" + c.arcAnswer + "”" : "—"), { inline: true });
       // Default portrait swaps with playbook unless the player has opted
       // in to AI gen. AI portrait is keyed to the rolled identity — if
       // they reroll the playbook AFTER generating an AI portrait, the
@@ -3330,7 +3475,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
           if (!streamingMsgEl) {
             streamingMsgEl = appendMsg({ kind: "teacher", name: speaker.name, body: "", color: speaker.accent, facultyId: speaker.facultyId });
           }
-          streamingMsgEl.textContent += parsed.text || "";
+          streamingMsgEl.dataset.markdownRaw = (streamingMsgEl.dataset.markdownRaw || "") + (parsed.text || "");
+          renderMarkdownInto(streamingMsgEl, streamingMsgEl.dataset.markdownRaw);
           scrollIfPinned();
         } else if (event === "tool") {
           // Flavor-string the tool call instead of raw args — args for

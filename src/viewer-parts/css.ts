@@ -907,6 +907,74 @@ export const VIEWER_CSS = `
     word-wrap: break-word;
     overflow-wrap: anywhere;
   }
+  .markdown {
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+  .markdown p {
+    margin: 0 0 0.45em;
+    white-space: normal;
+  }
+  .markdown p:last-child { margin-bottom: 0; }
+  .markdown h1,
+  .markdown h2,
+  .markdown h3,
+  .markdown h4 {
+    margin: 0 0 0.4em;
+    color: inherit;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+  .markdown h1 { font-size: 1.3em; }
+  .markdown h2 { font-size: 1.18em; }
+  .markdown h3 { font-size: 1.08em; }
+  .markdown h4 { font-size: 1em; }
+  .markdown ul,
+  .markdown ol {
+    margin: 0.35em 0 0.45em 1.25em;
+    padding: 0;
+    white-space: normal;
+  }
+  .markdown li { margin: 0.16em 0; }
+  .markdown blockquote {
+    margin: 0.45em 0;
+    padding-left: 0.8em;
+    border-left: 2px solid currentColor;
+    opacity: 0.92;
+    white-space: normal;
+  }
+  .markdown pre {
+    margin: 0.45em 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.28);
+    color: var(--text);
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
+  .markdown code {
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 0.92em;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 0.08em 0.28em;
+  }
+  .markdown pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  .markdown a {
+    color: #8bd4ff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .markdown strong { font-weight: 800; }
+  .markdown-inline {
+    white-space: inherit;
+  }
   .msg.system { grid-template-columns: 1fr; }
   .msg.system .body {
     color: var(--text-mute);
@@ -983,6 +1051,13 @@ export const VIEWER_CSS = `
     white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: anywhere;
+  }
+  .board .prompt.markdown,
+  .board .reveal .reveal-explanation.markdown {
+    white-space: normal;
+  }
+  .board .prompt.markdown p {
+    margin-bottom: 0.25em;
   }
   .board .reveal {
     margin-top: 12px;
