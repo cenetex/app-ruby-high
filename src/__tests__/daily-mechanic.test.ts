@@ -453,7 +453,6 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
     attachCharacter(ruby, sid, "9", 0);
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ch.legendariesToday = { date: "2026-05-04", count: 4 };
     ch.subjectXp = {};
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
@@ -581,7 +580,6 @@ describe("Streak + grade advancement", () => {
     attachCharacter(ruby, sid, "9", 0);
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ch.legendariesToday = { date: "2026-05-04", count: 4 };
     ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
 
     const after = ruby.getOrCreate(sid);
@@ -600,7 +598,6 @@ describe("Streak + grade advancement", () => {
     state.completedGrades = ["9", "10", "11"];
     const ch = state.character!;
     ch.streak = { grade: "12", count: 4, lastDate: "2026-05-07" };
-    ch.legendariesToday = { date: "2026-05-07", count: 8 };
     ch.subjectXp = {};
     ch.yearbook = [
       { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },

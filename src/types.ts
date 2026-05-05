@@ -579,9 +579,6 @@ export interface PlayerCharacter {
    *
    *  Legacy characters carry this forward without shape migration. */
   streak?: { grade: Grade; count: number; lastDate?: string };
-  /** Legacy daily Legendary counter. New code writes {count: 1} only as
-   *  a backwards-compatible "today complete" marker for old UI/state. */
-  legendariesToday?: { date: string; count: number };
   /** UTC date of the last bonus question played. */
   lastBonusDate?: string;
   /** Per-faculty score record — {correct, total} keyed by faculty id.

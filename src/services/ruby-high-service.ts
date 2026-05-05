@@ -1112,7 +1112,6 @@ export class RubyHighService extends Service {
         ? (ch.streak?.grade === grade ? ch.streak.count : 0) + 1
         : 1; // fresh streak — first day, gap > 1, or new grade
       ch.streak = { grade, count: nextCount, lastDate: today };
-      ch.legendariesToday = { date: today, count: 1 };
       dailyTicked = true;
     }
 
@@ -1235,7 +1234,6 @@ export class RubyHighService extends Service {
       state.currentGrade = advance;
       this.ensureRoster(state, advance);
       ch.streak = { grade: advance, count: 0 };
-      delete ch.legendariesToday;
       log.event("player.grade-advanced", {
         sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, legacyXp: ch.xp, reward: normalizedReward.kind,
       });
