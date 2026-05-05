@@ -11,6 +11,29 @@
  *
  * `gc()` drops idle keys (those that have refilled back to capacity) so the
  * map doesn't grow unbounded for one-off IP visitors.
+ *
+ * ## Where this is wired
+ *
+ * One bucket per concern. Capacities sized to honest UI bursts; refill
+ * rates sized to keep a hostile floor low.
+ *
+ * | Bucket             | File           | Capacity | Refill | Endpoints |
+ * |--------------------|----------------|---------:|-------:|-----------|
+ * | CHAT_LIMITER       | chat-routes.ts |       60 |  1/sec | POST /chat, /chat/event, /chat/student-chime, /chat/opinion-submit, /chat/character/generate, /chat/reset |
+ * | PORTRAIT_LIMITER   | chat-routes.ts |        8 | 1/30s  | POST /chat/character/portrait, /chat/character/diploma |
+ * | IMPORT_LIMITER     | pack-routes.ts |        8 | 1/30s  | POST /packs/import-anki |
+ * | COMMAND_LIMITER    | routes.ts      |      120 |  2/sec | POST /command (game-state mutation surface) |
+ *
+ * Endpoints intentionally NOT gated:
+ *
+ * - GET routes (auth/me, auth/start, chat/history, viewer, assets, packs, the
+ *   default session GET) — read-only, cheap, not worth false 429s on a
+ *   refresh storm.
+ * - POST /control — no-op stub.
+ * - POST /auth/logout — single delete, cheap.
+ * - GET /auth/callback — cost is one outbound OpenRouter token-exchange.
+ *   Acceptable today; revisit if we ever see hostile callback floods.
+ * - POST /packs/active — pack switch is a small per-session write.
  */
 export class TokenBucket {
   private readonly buckets = new Map<string, { tokens: number; lastRefill: number }>();

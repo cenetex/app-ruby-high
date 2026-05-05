@@ -34,6 +34,7 @@ import { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
 import { handlePackRoutes } from "./pack-routes.js";
 import { AuthService } from "./services/auth-service.js";
 import { log } from "./services/logger.js";
+import { TokenBucket } from "./services/rate-limit.js";
 import {
   availablePacksForSession,
   courseForFacultyForSession,
@@ -47,6 +48,22 @@ import type { PackCourse, PackRoom } from "./content/types.js";
 
 const APP_NAME = "@cenetex/app-ruby-high";
 const APP_DISPLAY_NAME = "Ruby High";
+
+/** Rate limiter for the game-state mutation surface (POST /command).
+ *
+ *  Generous because legitimate UI flows are bursty — a single round can
+ *  fire pose → advantage-roll → answer → reveal in well under a second.
+ *  120 burst / 2 per second sustained accommodates that without flapping
+ *  for any honest player while still capping a hostile floor at ~120 req/min.
+ *
+ *  Keyed by `${clientIp}:${stateKey|"anon"}` so a signed-in user on a
+ *  shared NAT doesn't get throttled by their neighbour and a bot rotating
+ *  cookies still has its IP-share counted. */
+const COMMAND_LIMITER = new TokenBucket(120, 2);
+
+function commandRateKey(clientIp: string | null | undefined, stateKey: string): string {
+  return `${clientIp || "no-ip"}:${stateKey || "anon"}`;
+}
 const APP_ROUTE_PREFIX = "/api/apps/ruby-high";
 const VIEWER_PATH = `${APP_ROUTE_PREFIX}/viewer`;
 const ASSETS_PREFIX = `${APP_ROUTE_PREFIX}/assets/`;
@@ -740,6 +757,14 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.method === "POST" && subroute === "command") {
+    const rlKey = commandRateKey(ctx.clientIp, stateKey);
+    if (!COMMAND_LIMITER.take(rlKey)) {
+      const retryAfter = COMMAND_LIMITER.retryAfterSeconds(rlKey);
+      const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+      res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
+      ctx.error(ctx.res, "Too many requests — slow down a moment.", 429);
+      return true;
+    }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | {
           type?: string;

@@ -352,7 +352,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 | **Cohort-coupled seating** | `INITIAL_STUDENT_LAYOUT` is keyed by player grade, so room composition changes with year. | The render does not filter NPCs by their *cohort drift*. When Indra graduates ahead, her seat should empty; when Mika falls behind, her seat should empty. Both still appear today. Render-time filter, not a re-architecture. |
 | **Playbook moves** | All six moves named, described, rendered on character card, and passed to teacher context as flavor. | None of the six change round resolution. |
 | **Per-session pack switching** | `packForSession()` helper exists; `pack-routes.ts` exposes pack endpoints; LLM-derived class name + teacher persona is wired on Anki import. | End-to-end UX for "load a pack for this session" not fully wired in the viewer. The plumbing is there; the door isn't. |
-| **Rate-limiter endpoint coverage** | Token-bucket utility built and unit-tested. | Routes integrate it optionally; comprehensive per-endpoint policy not documented. Worth auditing what is actually gated. |
+| **Rate-limiter endpoint coverage** | Four buckets cover the LLM-backed chat surface, portrait/diploma generation, Anki import, and (newly) the `/command` game-state mutation surface. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
 
 ## 3.3 Open questions
 
