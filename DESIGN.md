@@ -4,13 +4,23 @@
 
 <!-- promo-asset: hero-classroom — wide screenshot of the viewer with Ruby's chalkboard, the room rail, and the character card visible -->
 
-This is the strategic and mechanics doc for the Ruby High project. It is the source of truth for the product. The marketing site is a stylesheet on top.
+This is the strategic and mechanics doc for Ruby High. It is the source of truth for the product. The marketing site is a stylesheet on top.
+
+The doc is in three parts:
+
+- **Part 1 — Current State.** What is shipped and running today, verified against source.
+- **Part 2 — Future State.** Where the product goes if every aspirational item lands.
+- **Part 3 — Gaps.** Doc-vs-code drift, missing features, partial implementations, open questions, and a prioritized next-steps plan.
 
 For the run-it-yourself and Fly deploy runbook, see [`README.md`](./README.md). For the legacy AWS fallback runbook, see [`infra/README.md`](./infra/README.md).
 
 ---
 
-## 1. The bet
+# Part 1 — Current State
+
+> *Everything in Part 1 is shipped, tested, and running in production. Each claim is grounded in current source.*
+
+## 1.1 The bet
 
 > *Most AI products fail in the same place: the second session.*
 
@@ -22,9 +32,7 @@ Ruby High stacks all four. A 2–3 sentence essay graded by Professor Edward on 
 
 **It's free.** You sign in with your own OpenRouter key — no card, no subscription. Your inference bill is yours, not ours. The key never touches our server: it lives in your browser's localStorage and rides along on each request as a header.
 
----
-
-## 2. What a day looks like
+## 1.2 What a day looks like
 
 > *The school bell rings at 17:00 UTC. One teacher is on the floor. They post one question. That question is the day.*
 
@@ -36,35 +44,31 @@ Tomorrow is Wednesday. Wednesday's bonus belongs to Ruby. The bell rings at the 
 
 <!-- promo-asset: question-walkthrough-clip — short looping mp4 of a real round resolving end to end -->
 
----
+## 1.3 The three pillars
 
-## 3. Three pillars
-
-> *Legendary days are the cadence. The Cohort is the company. The Yearbook is the artifact. Each pillar is load-bearing.*
+> *The Legendary Day is the cadence. The Cohort is the company. The Yearbook is the artifact. Each pillar is load-bearing.*
 
 ### The Legendary Day — cadence
 
-[live] Every day at 17:00 UTC the school refreshes its once-per-day forced-Legendary bonus. Regular play is open-ended: every question rolls common / rare / legendary, and passing enough Legendary days in your year advances you; graduate after Senior. Streak resets when a Legendary-day target is missed.
+Every day at 17:00 UTC the school refreshes its once-per-day forced-Legendary bonus. Regular play is open-ended — every question rolls common / rare / legendary, and passing enough Legendary days in your year advances you. Graduate after Senior. Streak resets when a Legendary-day target is missed.
 
 The daily cadence is not a side mode. It is the arc's clock. Scarcity now lives in the Legendary target and the once-per-day bonus, while regular questions stay playable whenever the student shows up.
 
 ### The Cohort — company
 
-[live] Six AI classmates run their own four-year arcs alongside you. They roll their own Legendary-day progress on their own dice. Indra might graduate while you are still a Sophomore. Mika might fall behind. Coming back to the app means coming back to *people*, not to a save file.
+Six AI classmates run their own four-year arcs alongside you. They roll their own Legendary-day progress on their own dice. Indra might graduate while you are still a Sophomore. Mika might fall behind. Coming back to the app means coming back to *people*, not to a save file.
 
 This is the second-session hook. The streak is what brings you back; the cohort is what makes coming back feel like coming back to a place.
 
 ### The Yearbook — artifact
 
-[live] Every year you complete writes a permanent yearbook entry. Senior completion writes a fourth entry, generates a sticker diploma image with a subject-themed accessory based on your highest-scoring class, and unlocks Mentor mode — your next character can inherit the previous one's playbook move and quote.
+Every year you complete writes a permanent yearbook entry. Senior completion writes a fourth entry, generates a sticker diploma image with a subject-themed accessory based on your highest-scoring class, and unlocks Mentor mode — your next character can inherit the previous one's playbook move and quote.
 
 The yearbook is the social object the product produces. Every other AI product produces ephemeral chat. Ruby High produces report cards.
 
 <!-- promo-asset: yearbook-page — mock of a graduated character's yearbook entry: sticker portrait, top essay highlighted, teachers + classmates of the year, completion date -->
 
----
-
-## 4. The cast
+## 1.4 The cast
 
 > *Three teachers with ranges. Six classmates with voices. One school.*
 
@@ -91,9 +95,7 @@ The yearbook is the social object the product produces. Every other AI product p
 
 Each classmate has stable stats, a real voice prompt, and a seat in the room beside you. Every NPC writes their own essay on every essay day, in their own register, without seeing the answer key.
 
----
-
-## 5. Why no other AI product does this
+## 1.5 Why no other AI product does this
 
 > *Voice, judgment, cadence, and a keepable grade — the four ingredients that nobody else stacks.*
 
@@ -106,170 +108,162 @@ Each classmate has stable stats, a real voice prompt, and a seat in the room bes
 
 ChatGPT will give you feedback. It will not give you Edward's feedback. The taste is the moat.
 
----
+## 1.6 Mechanics — shipped today
 
-## 6. Mechanics
+> *A light Powered-by-the-Apocalypse layer over a spaced-repetition core. The mechanics are the connective tissue that makes question play feel like progression instead of a worksheet.*
 
-> *A light Powered-by-the-Apocalypse layer under the classroom quiz. The mechanics are the connective tissue that makes question play feel like progression instead of a worksheet.*
+The mechanics layer is released **CC BY 4.0**. It draws on Apocalypse World (Vincent Baker), Dungeon World (Sage LaTorra & Adam Koebel), and is distantly inspired by Monsterhearts 2 (Avery Alder). The card-mastery layer is conventional spaced-repetition, in the Anki / SM-2 lineage.
 
-The mechanics layer is released **CC BY 4.0**. It draws on Apocalypse World (Vincent Baker), Dungeon World (Sage LaTorra & Adam Koebel), and is distantly inspired by Monsterhearts 2 (Avery Alder).
+### 1.6.1 The school
 
-### 6.1 The school
+Four rooms. Three classrooms (Homeroom / Science / Library) and the Teachers' Lounge. Rooms are fixed across years.
 
-[live] Four rooms. Three classrooms (Homeroom / Science / Library) and the Teachers' Lounge. Rooms are fixed across years.
+Four years — Freshman, Sophomore, Junior, Senior. Players start at Freshman; Senior completion graduates them.
 
-[live] Four years — Freshman, Sophomore, Junior, Senior. Players start at Freshman; Senior completion graduates them.
+### 1.6.2 The character sheet
 
-### 6.2 The character sheet
-
-[live] Each character has:
+Each character has:
 
 - **Identity** — a name, a playbook, a sticker portrait, a personality blurb, an arc-answer to the playbook's hook question, and a flavor quote.
 - **Stats** — HEAD (recall), HEART (empathy), HUSTLE (speed), HONOR (integrity). Range −1 to +3. Each playbook starts with one +2, one +1, one 0, one −1.
-- **State** — XP, conditions, strings, current Legendary-day streak, last bonus-played date.
+- **State** — current Legendary-day streak, last bonus-played date, per-faculty card-mastery memory.
 - **Yearbook** — completed years archived. Sealed at graduation.
 
-[live] Character creation is **LLM-rolled**. The system picks a playbook at random, assigns the +2/+1/0/−1 distribution, and writes the name, personality, arc-answer, and flavor quote in voice. The player accepts or re-rolls. There is no build screen.
+Character creation is **LLM-rolled**. The system picks a playbook at random, assigns the +2/+1/0/−1 distribution, and writes the name, personality, arc-answer, and flavor quote in voice. The player accepts or re-rolls. There is no build screen.
 
-### 6.3 The six playbooks
+### 1.6.3 The six playbooks
 
-[live] Each playbook is a starting template — stat array, hook question, starting move, accent color.
+Each playbook is a starting template — stat array, hook question, starting move, accent color.
 
 | Playbook | Stats | Hook | Move |
 |---|---|---|---|
 | **Overachiever** | HEAD +2, HONOR +1, HEART 0, HUSTLE −1 | *Why is Cs not enough?* | Margins are sacred — once per year, retake one missed question |
 | **Slacker** | HUSTLE +2, HEART +1, HEAD 0, HONOR −1 | *Who do you not want to disappoint?* | Wing it — when you'd fail a HEAD roll, swap it for HUSTLE |
-| **Heart** | HEART +2, HONOR +1, HUSTLE 0, HEAD −1 | *Whose orbit are you stuck in?* | Pep talk — spend a String to give a classmate advantage |
+| **Heart** | HEART +2, HONOR +1, HUSTLE 0, HEAD −1 | *Whose orbit are you stuck in?* | Pep talk — give a classmate advantage |
 | **Outsider** | HONOR +2, HEAD +1, HEART 0, HUSTLE −1 | *What did you leave behind?* | Outside eyes — see one explanation before answering |
 | **Class Clown** | HEART +2, HUSTLE +1, HONOR 0, HEAD −1 | *What can't you say without a joke?* | Crack the room — roll HEART instead of HEAD on a miss |
-| **Lifer** | HEAD +1, HEART +1, HUSTLE +1, HONOR −1 | *What's the best gossip you've picked up about this place?* | Old gossip — start with 1 String on each faculty member |
+| **Lifer** | HEAD +1, HEART +1, HUSTLE +1, HONOR −1 | *What's the best gossip you've picked up about this place?* | Old gossip — start ahead with each faculty member |
 
-[partial] The playbook moves render on the character card and are passed in to the teacher's context as flavor. None of the six change round resolution today — that's the next layer of mechanical wiring (see §6.9).
+Stats, hook, and accent color are wired and active. The playbook moves render on the character card and pass into the teacher's context as flavor; **mechanical wiring of the moves is in Part 3 (Gaps)**.
 
 <!-- promo-asset: playbook-cards — six trading-card-style sticker portraits, one per playbook, with stat array + hook + move on each -->
 
-### 6.4 The dice — bonus only
+### 1.6.4 The dice — bonus only, no XP
 
-[live] When a question resolves, the server rolls 2d6 + your relevant stat:
+When a question resolves, the server rolls 2d6 + your relevant stat:
 
-| Total | Outcome | Effect |
-|---|---|---|
-| 10+ | strong hit | correct → +2 XP |
-| 7–9 | mixed | correct → +1 XP, wrong → no penalty |
-| 6− | miss | correct → +1 XP, wrong → no penalty |
+| Total | Outcome |
+|---|---|
+| 10+ | strong hit |
+| 7–9 | mixed |
+| 6− | miss |
 
-The dice can only ever upgrade the outcome. They never punish. A wrong answer is its own consequence; piling on hurts retention more than it adds depth.
+The dice no longer award XP directly. They classify the round outcome (hit / mixed / miss), which feeds the **card review rating** described in §1.6.5. A wrong answer is its own consequence; the dice cannot pile on. Rolls only ever upgrade the outcome, never punish.
 
-[live] **Cheat-proof by construction.** The student-facing LLM never sees the question's correct answer. NPC accuracy is dice + their stat block — they roll before the question is shown to them. Cheating-by-prompt-injection is mathematically impossible.
+**Cheat-proof by construction.** The student-facing LLM never sees the question's correct answer. NPC accuracy is dice + their stat block — they roll before the question is shown to them. Cheating-by-prompt-injection is mathematically impossible.
 
-[live] **Advantage roll.** Once per multiple-choice round the player can tap "Roll for advantage" to cross wrong choices off the board: hit eliminates two, mixed eliminates one, miss eliminates none. The roll is consumed regardless of outcome.
+**Advantage roll.** Once per multiple-choice round the player can tap "Roll for advantage" to cross wrong choices off the board: hit eliminates two, mixed eliminates one, miss eliminates none. The roll is consumed regardless of outcome.
 
-<!-- promo-asset: dice-resolve — animated mock of the chalkboard at resolution: 2d6 + HEAD ticker, NPCs racing in the room, XP +N popping out -->
+<!-- promo-asset: dice-resolve — animated mock of the chalkboard at resolution: 2d6 + HEAD ticker, NPCs racing in the room, hit/mixed/miss popping out -->
 
-### 6.5 Legendary Days — gates
+### 1.6.5 Card mastery — the progression core
 
-[live] To advance out of a year, two gates must both hold:
+Every question has per-character mastery memory with one of four phases:
 
-| Year | Streak | Per-class XP (each of 3 rooms) |
+| Phase | Meaning |
+|---|---|
+| **new** | never seen |
+| **learning** | seen but not yet stable |
+| **review** | answered correctly two in a row; on a review schedule |
+| **mastered** | answered correctly enough times in a row to be retired from the queue |
+
+Each round's hit/mixed/miss outcome rates the card and pushes it through the phases or knocks it back. Each teaching room earns a **letter grade** (A through F) derived from how many of its cards are in the review/mastered phases vs. learning. The letter grade is what gates year advancement (§1.6.6) — XP counts no longer drive the gate.
+
+This is the layer that makes "answering a question" feel like banking a card, and "coming back tomorrow" feel like clearing a queue. It is also what makes Anki ingest (§1.6.10) a one-pipe import: external SRS decks land natively.
+
+### 1.6.6 The year gates
+
+To advance out of a year, two gates must both hold:
+
+| Year | Streak in a row | Per-room letter grade |
 |---|:---:|:---:|
-| Freshman | 1 in a row | 2 |
-| Sophomore | 2 in a row | 5 |
-| Junior | 3 in a row | 10 |
-| Senior | 4 in a row → graduate | 16 |
+| Freshman | 1 | C or better in each teaching room |
+| Sophomore | 2 | C or better in each teaching room |
+| Junior | 3 | C or better in each teaching room |
+| Senior | 4 → graduate | C or better in each teaching room |
 
-Streaks reset when the per-day Legendary target is missed. Per-class XP accumulates across the run; Rare passes add 1 XP and Legendary passes add 2 XP to the pool of the question's faculty. To advance, the player needs **the streak AND the per-class minimum in every teaching room** — homeroom, science, and literature. The earlier total-XP gate is gone: an undifferentiated pool let players graduate having ducked a whole subject. Per-class minimums force engagement with all three teachers and give the rooms real mechanical weight.
+Per-room letter grade is derived from card mastery (§1.6.5). All three teaching rooms — Homeroom (Ruby), Science (Sally), Library (Edward) — must be passing at the same time. A streak alone is not enough; ducking a room means you do not advance, no matter how many Mondays you've strung together. (A legacy XP-count fallback maps an old run with sufficient subject-XP to a "C" so existing characters don't get stuck — see Gaps for cleanup.)
 
-[live] **Bonus faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The forced-Legendary bonus runs every day; the rotation continues across the weekend.
+### 1.6.7 The Legendary Day
 
-[live] **Bell.** 17:00 UTC. Before the bell, "today" still means yesterday's bonus window.
+Every day at 17:00 UTC the daily-bonus window opens for the day's faculty. The first bonus question of the window is **forced Legendary** — a guaranteed-Legendary opportunity, once per day per character. After the bonus is played, regular play continues with rarity-rolled questions for the rest of the day.
 
-[live] **Discoverability.** The always-on Next Question flow is the primary surface. The daily bonus remains available as a guaranteed Legendary route, but no longer appears as a separate chrome banner.
+**Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The bonus runs every day; the rotation continues across the weekend.
 
-### 6.6 Opinion mode — the moat
+**Bell.** 17:00 UTC. Before the bell, the day-key still resolves to yesterday's bonus window.
 
-[live] The headline mechanic. Multiple choice is the on-ramp. The teacher poses an open question; the player writes 2–3 sentences; two AI classmates write theirs; the teacher grades all three in voice with a score (0–10), a one-line comment, and a single named "best response." Pass = score ≥ 7.
+**Discoverability.** The always-on Next Question flow is the primary surface. The daily bonus remains available as a guaranteed Legendary route, but no longer appears as a separate chrome banner.
+
+### 1.6.8 Opinion mode — the moat
+
+The headline mechanic. Multiple choice is the on-ramp. The teacher poses an open question; the player writes 2–3 sentences; two AI classmates write theirs; the teacher grades all three in voice with a score (0–10), a one-line comment, and a single named "best response." Pass = score ≥ 7.
 
 Opinion mode is the artifact other AI products do not produce. ChatGPT will give you feedback. It will not give you Edward's feedback.
 
-### 6.7 The Cohort
+### 1.6.9 The Cohort
 
-[live] Six NPCs, each running an independent four-year arc. On every Legendary-day tick, every still-in-school NPC rolls 2d6 + HEAD against the day's progress check. Pass ticks their streak; miss resets it. They graduate on Senior streak. They can outpace the player or fall behind.
+Six NPCs, each running an independent four-year arc. On every Legendary-day tick, every still-in-school NPC rolls 2d6 + HEAD against the day's progress check. Pass ticks their streak; miss resets it. They graduate on Senior streak. They can outpace the player or fall behind.
 
-NPCs gate on streak alone — no XP gate. They feel hungrier than the player, which is what makes the rivalry tense.
+NPCs gate on streak alone — no per-room gate. They feel hungrier than the player, which is what makes the rivalry tense.
 
-[aspirational] **The cohort is who's in the room with you.** NPCs only sit in your classrooms while they're at your cohort grade. Fall behind, and you'll find your literature room empty when Sami and Mika have moved on. Pull ahead, and the underclassmen are still grinding in last year's homeroom while you're solo in Senior lit. The cohort isn't a side chart — it's the seating chart.
-
-[partial] Today, the seating chart is a static layout per *player* grade and the cohort is rendered separately on the rail. The two are not coupled in code yet. Coupling them is the design call for the next mechanics PR (see §7 Next).
+The seating chart today is keyed by *player* grade. Coupling NPC drift to seat occupancy is a partial; see Part 3 (3.2).
 
 <!-- promo-asset: cohort-rail — vertical rail of the six classmates with grade pips and streak chips, one or two ahead of the player, one or two behind -->
 
-### 6.8 Mentor mode
+### 1.6.10 Mentor mode and graduation rewards
 
-[live] When a graduated character is cleared, the system stashes a mentor offer — the character's name, their playbook, and the playbook's starting move. The next character can accept the offer at creation; if they do, the previous character's move name and description are stamped onto the new sheet under `inheritedFrom` and rendered on the character card.
+When a graduated character is cleared, the system stashes a mentor offer — the character's name, their playbook, and the playbook's starting move. The next character can accept the offer at creation; if they do, the previous character's move name and description are stamped onto the new sheet under `inheritedFrom` and rendered on the character card.
 
-[partial] The inherited move is cosmetic + lore today. Future PRs can wire it as a real second move on the new character.
+The inherited move is cosmetic + lore today. **Mechanical wiring is in Part 3 (3.2).**
 
-### 6.9 Conditions, Strings, room moves
+Senior completion also writes a `GraduationReward` — one of stat / advantage / affinity — applied at character completion alongside the diploma image. The diploma's subject-themed accessory is selected by best per-faculty correctness ratio.
 
-[aspirational] The schema declares `conditions: string[]`, `strings: Record<string, number>`, and per-playbook starting moves. None of these change gameplay yet. The intent:
+## 1.7 Architecture
 
-- **Conditions** (Tired / Anxious / Hurt / Lonely) — small stat debuffs cleared by specific in-fiction acts. Currently never written.
-- **Strings** — relational currency, earned by interaction, spent for hints / skips / classmate advantage / a piece of gossip. Currently never written.
-- **Room moves** — once-per-period playbook moves wired into the round resolution. Currently flavor only.
+> *One container, one DynamoDB table, four services + a content-pack registry, no queue.*
 
-These are real future work, not a pivot — the schema is shaped for them and the docs name what they will be. They are deliberately not on the next-up list because the rarity/streak/yearbook loop is more load-bearing.
+### Services and supporting modules
 
----
+| Component | File | Job |
+|---|---|---|
+| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, rarity/bonus progression, card mastery, the cohort, graduation. |
+| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks for the daily bonus and for free-play. |
+| `ChatService` | `src/services/chat-service.ts` | OpenRouter SSE per-teacher. Owns chat history, dispatches tools into the game state. |
+| `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions; the API key never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. Maintains a per-user record so a player's character persists across sessions. |
+| Content registry | `src/content/registry.ts` (+ `src/content/anki/`, `src/content/packs/`) | Active content pack resolver, global and per-session. Today serves the built-in `ruby-high-original`; the Anki `.apkg` parser, LLM distractor generator, and LLM-derived class name + teacher persona are wired ahead of bring-your-own packs. |
+| `StateStore` | `src/services/state-store.ts` + `dynamo-state-store.ts` | Two backends: atomic JSON-file for local dev, DynamoDB on-demand for production. Stores both per-session quiz state and per-user identity. |
+| Event log | `src/services/logger.ts` | Structured JSON events emitted to stdout. Today's emissions: `bonus.posed`, `character.created`, `player.grade-advanced`, `player.graduation-ready`, `player.graduated`, `pack.import-anki.*`, `pack.session-switched`, `question.promoted-to-bank`, `chat.bank-exhausted`, `diploma.first-attempt-failed`, `portrait.first-attempt-failed`. |
+| Rate limiter | `src/services/rate-limit.ts` | Token-bucket utility. Wired but optional per route — endpoint coverage is in Gaps (3.2). |
 
-## 7. What's built · what's next
+### Key design choices
 
-> *Most of what the original design called "Phase 5+" is already in. The work that's actually next is smaller and sharper than the old roadmap.*
+**The teacher is the chatbot, the chatbot drives the board.** Each teacher is a separate OpenRouter-streamed chat with their own system prompt and their own model. They drive the chalkboard via tool calls (`pick_from_bank`, `pose_question`, `pose_opinion`, `clear_board`, `handoff_faculty`). When the player picks an answer in the viewer, the teacher gets a system-event note and reacts in character.
 
-<!-- promo-asset: status-grid — three-column "Shipped / Next / Aspirational" grid where each row is a chip with a tag color matching the [live]/[partial]/[aspirational] semantics from §6 -->
+**The state machine is the spine.** Five phases (`intro`, `in-room`, `asking`, `revealed`, `lounge`) and seven transition actions (`select-grade`, `enter-room`, `enter-lounge`, `pose-question`, `resolve-round`, `clear-board`, `reset`). Every mutator routes through one transition function. A `phaseToken` bumps on every transition so the viewer can dedupe one-shot effects without races.
 
-### Shipped
+**Persistence is per-session, with a per-user index.** One row per session — keyed by either `rh:user:<openrouter-token>` for signed-in users or `rh:anonymous` for the preview bucket. A separate `AuthUserRecord` keys sessions to userId so a returning player rejoins their own character. DynamoDB TTL auto-expires idle sessions. The JSON-file backend is a single atomic-write file at `~/.ruby-high/state.json`.
 
-- [live] OpenRouter PKCE login. Each user pays for their own LLM tokens.
-- [live] LLM-rolled character creation with sticker portrait generation.
-- [live] Six playbooks, four stats, four rooms, three teachers, six classmates.
-- [live] Multiple choice with bonus-only 2d6 + stat dice + once-per-round advantage roll.
-- [live] Opinion mode with full LLM-graded essays.
-- [live] Legendary-day progression — rarity-rolled questions plus one forced-Legendary daily bonus, with faculty rotation and a 17:00 UTC bell.
-- [live] Streak + XP gates per year. Auto-advance on threshold. Senior completion graduates.
-- [live] Yearbook write per grade, sealed at graduation.
-- [live] Sticker diploma image generation at Senior completion, with subject-themed accessory.
-- [live] Mentor mode — a graduated character offers their playbook move to the next character.
-- [live] The Cohort — six NPCs running parallel arcs, ticking on Legendary-day progress.
-- [live] Per-session phase machine (`intro → in-room → asking → revealed → lounge`).
-- [live] Two persistence backends (JSON file for local dev, DynamoDB for production).
-- [live] Production deploy via Fly.io. Container remains host-agnostic.
-- [live] OpenRouter API key lives only in browser localStorage; the server never holds a credential. Redeploys don't log anyone out.
-- [live] Pluggable content-pack architecture (`src/content/registry.ts`) with a built-in pack and an Anki `.apkg` parser + LLM distractor generator for ingesting outside decks.
+**Cheat-proofing is structural.** The student-side LLM never sees the answer key. The server rolls the dice, picks the question, and stores the correct answer. NPC accuracy comes from `2d6 + their HEAD stat` rolled before the question is revealed to them. Prompt-injection cannot win because the prompt does not have the information.
 
-### Next
+**Portraits live in S3.** Generated character portraits and diploma images are uploaded to an S3 bucket (`RUBY_HIGH_PORTRAITS_BUCKET`) so they survive container restarts and don't bloat the state row.
 
-1. **Event log + retention dashboard.** The product cannot be tuned without measurement. `sign_in`, `character_created`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`. Three core metrics: D1 retention, questions per session, grade-completion rate.
-2. **Yearbook share-card.** A `/yearbook/:characterId/:grade` route that renders a shareable static page + PNG export. The yearbook exists; it is not yet visible to anyone outside the player's session.
-3. **Real content in the active pack.** The pluggable pack architecture and the Anki ingest pipeline already shipped, but the only loaded pack is still `ruby-high-original` at 15 questions per teacher. Next: ingest a few real Anki decks into in-voice teacher packs; let players bring their own packs at runtime.
-4. **Per-essay grade history.** A "Report Card" tab — every essay grade, filterable by teacher, with an average and a "Lyra has out-essayed you 3 of the last 5 Tuesdays" line.
-5. **Couple the seating chart to cohort grade.** Filter `INITIAL_STUDENT_LAYOUT` at render time to only seat NPCs whose cohort grade matches the player's. Rooms can have 0–2 NPCs depending on cohort drift; that's the felt cost of falling behind. Makes the cohort consequential instead of decorative — Indra graduating means her seat is empty, not just a chip on a rail.
-
-### Aspirational
-
-- Conditions, Strings, and the rest of the playbook moves wired into real round mechanics.
-- Faculty expansion — history, logic, music theory, philosophy, art history. Goal: a five-day week with a different voice each day.
-- A weekly invitational essay tournament (Faculty Cup). Bracket, ELO, spectator viewer.
-- Multiplayer co-op — same daily bonus window, two students, one shared lounge.
-
----
-
-## 8. The economics
+## 1.8 Economics
 
 > *The product is structurally $0 / user / month to operate. This is rare and deliberate.*
 
-[live] LLM costs are paid by the user via their own OpenRouter API key. Per-user, the inference is free to us. The PKCE flow is the entire payment mechanism — no key ever touches our servers.
+LLM costs are paid by the user via their own OpenRouter API key. Per-user, the inference is free to us. The PKCE flow is the entire payment mechanism — no key ever touches our servers.
 
-State persistence runs on DynamoDB on-demand. ~5–20 KB per session. A single Fly machine handles hundreds of concurrent users before any rearchitecture.
+State persistence runs on DynamoDB on-demand. ~5–20 KB per session. Portraits and diplomas live in S3. A single Fly machine handles hundreds of concurrent users before any rearchitecture.
 
 This unlocks two product moves:
 
@@ -280,80 +274,132 @@ Anything that breaks the user-paid-inference model needs an extremely good reaso
 
 ---
 
-## 9. Open questions
+# Part 2 — Future State
+
+> *Where Ruby High goes if every aspirational item lands. Nothing in Part 2 is built.*
+
+## 2.1 Playbook moves wired into round resolution
+
+All six playbook moves render on the character card today as flavor passed to the teacher's context. The future product wires them into round resolution: Overachiever's "retake one missed question per year," Slacker's "swap HEAD → HUSTLE on a fail," Heart's "give a classmate advantage," and so on. This is what turns the four stats into six distinct characters to play.
+
+## 2.2 Faculty expansion — a five-day week
+
+Three teachers shipped (Ruby, Sally Science, Professor Edward) cover a 7-day rotation but only three voices. Future state: history, logic, music theory, philosophy, and art history teachers, each with a stable voice and question bank. Goal — a five-day school week with a different voice each day, weekends off.
+
+This is gated on the faculty-voice evaluation harness (§3.1). Without an automated "is this in voice?" check, voice drift becomes the bottleneck the moment a fourth teacher ships.
+
+## 2.3 The Faculty Cup — weekly invitational essay tournament
+
+A bracket. ELO. A spectator viewer. Top essayists from the week's Legendary days invited; the teachers grade head-to-head matchups. The yearbook records cup wins as a separate decoration.
+
+The weekly tournament is the social object that scales beyond a single player's yearbook page — a leaderboard with taste, not points.
+
+## 2.4 Multiplayer co-op
+
+Same daily bonus window, two students, one shared lounge. The cohort already runs as parallel arcs; co-op is the version where the parallel arc on the seat next to you is another human.
+
+## 2.5 Community-authored faculty packs
+
+The pack registry, per-session pack switching, Anki ingest, and LLM-derived class name + teacher persona are all wired for this. Future state: a teacher pack is a name, a voice prompt, a sticker portrait, a question bank (or an Anki deck the system distractor-fills + persona-fills), and a model preference. Authors publish packs; players load them per-session; the pack switch is a one-click action.
+
+This depends on §2.2's evaluation harness — voice evaluation is a public-good guard, not a private-product nicety, the moment outside packs are loadable.
+
+## 2.6 Public yearbook as a default social object
+
+Today the yearbook is private to the player's session. Future state: every yearbook page is a shareable URL with an OG image, opt-in public per character. Senior diplomas are designed to be screenshotted; the page should be designed to be opened.
+
+The privacy default is an open question (§3.3).
+
+## 2.7 The Lounge as a cadence product
+
+A "Tuesday Lounge" thread between the three teachers, separately graded as conversation, screenshot-able. The lounge phase exists in the state machine; today it is a transition state, not a product. The future version is a thread you can read.
+
+---
+
+# Part 3 — Gaps
+
+> *Three buckets: doc-vs-code drift, missing/partial features, and open design questions — followed by a prioritized next-steps plan.*
+
+## 3.1 Doc-vs-code drift
+
+> *Where the previous DESIGN.md drifted from current source. Worth calling out so future readers don't trust stale claims.*
+
+| Drift | Doc said | Code says | Resolution |
+|---|---|---|---|
+| **XP gates** | Year advancement requires per-class XP minimum (Freshman 2, Sophomore 5, Junior 10, Senior 16). | XP is dead code. `requiredSubjectXpForGrade` has a "legacy" comment. Real gate is `letterGradePasses` in each teaching room — A/B/C derived from card mastery. The XP value is a *fallback* that maps to "C" so old runs aren't stuck. | This doc reflects the new gate. The legacy fallback should be deleted once existing characters drain. |
+| **Conditions / Strings** | Schema declares both; "currently never written"; aspirational. | Both fields **removed from the schema** in PR #63. | Removed from this doc. They are not future work in the current design. |
+| **Event log canonical list** | `sign_in`, `character_created`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`. | Actual emissions: `bonus.posed`, `character.created`, `player.grade-advanced`, `player.graduation-ready`, `player.graduated`, `pack.import-anki.*`, `pack.session-switched`, `question.promoted-to-bank`, `chat.bank-exhausted`, plus failure events. | The event log emits, but the names don't match the canonical list. Either rename emissions to the canonical list or rewrite the canonical list to match what fires. (See P0 in §3.4.) |
+| **AWS App Runner production** | Cited as the production target. | Production is on **Fly.io**. App Runner workflow is retained as a manual fallback only. | This doc and main's README now say Fly. |
+
+## 3.2 Missing or partial
+
+### Missing — listed but not built
+
+| Gap | What it is | Size |
+|---|---|---|
+| **Yearbook share-card route** | A `GET /yearbook/:characterId/:grade` route that renders a shareable static page with OG tags + a `?format=png` server-rendered image. The yearbook entry exists in state; it is not exposed outside the session. | Small (1–2 days). |
+| **Per-essay grade history (Report Card tab)** | A read-only viewer panel that surfaces per-essay grades by teacher, with averages and a "Lyra has out-essayed you 3 of the last 5 Tuesdays" line. The data is in state; no UI surfaces it. | Small (1–2 days). |
+| **Faculty-voice evaluation harness** | A `npm run eval:voice` that scores generated questions and grades against hand-curated reference Q/A pairs per teacher. Required before §2.2 (faculty expansion) and §2.5 (community packs). | Medium (3–4 days for v0). |
+| **Real content beyond ruby-high-original** | Only the built-in pack is loaded, with 15 questions per teacher. Anki ingest pipeline ships and is tested but no real decks have been ingested. | Medium (per pack: 1 day to ingest + curate). |
+| **Retention dashboard** | Three numbers: D1 retention, questions per session, grade-completion rate. Logs emit to stdout; the layer above (a sink + queries + a small JSON endpoint) is missing. | Small (1 day on top of P0 in §3.4). |
+| **Legacy XP fallback removal** | `requiredSubjectXpForGrade` and the "C" fallback can be deleted once existing live characters have advanced past it. | Trivial. |
+
+### Partial — shipped but incomplete
+
+| Gap | What's there | What's missing |
+|---|---|---|
+| **Mentor mode mechanical effect** | `inheritedFrom` field captured on the new character; rendered on card. | No code reads `inheritedFrom` during round resolution. The inherited move is lore, not mechanics. |
+| **Cohort-coupled seating** | `INITIAL_STUDENT_LAYOUT` is keyed by player grade, so room composition changes with year. | The render does not filter NPCs by their *cohort drift*. When Indra graduates ahead, her seat should empty; when Mika falls behind, her seat should empty. Both still appear today. Render-time filter, not a re-architecture. |
+| **Playbook moves** | All six moves named, described, rendered on character card, and passed to teacher context as flavor. | None of the six change round resolution. |
+| **Per-session pack switching** | `packForSession()` helper exists; `pack-routes.ts` exposes pack endpoints; LLM-derived class name + teacher persona is wired on Anki import. | End-to-end UX for "load a pack for this session" not fully wired in the viewer. The plumbing is there; the door isn't. |
+| **Rate-limiter endpoint coverage** | Token-bucket utility built and unit-tested. | Routes integrate it optionally; comprehensive per-endpoint policy not documented. Worth auditing what is actually gated. |
+
+## 3.3 Open questions
 
 > *Where the design hasn't settled, and where we want collaborator input.*
 
 - **NPC essay regeneration.** Are NPC essay responses deterministic for a given prompt or generated fresh per round? Currently fresh per round, which costs the user's own tokens and produces novelty. Acceptable but worth measuring.
-- **Faculty voice at scale.** The system prompt is the contract. We will need an evaluation harness for "is this question in voice?" before community-authored faculty.
-- **Public yearbook.** Are yearbook pages opt-in public, opt-out, or always private? Lean: every artifact's privacy is set by the player, default private.
+- **Faculty voice at scale.** The system prompt is the contract. The eval harness in §3.2 will need a rubric — exact-match-style voice tests, or LLM-judge with criteria? Lean: LLM-judge + a small held-out set of human-graded references.
+- **Public yearbook default.** Are yearbook pages opt-in public, opt-out, or always private? Lean: every artifact's privacy is set by the player, default private.
 - **Lounge as a cadence product.** A "Tuesday Lounge" thread between the three teachers, separately graded as conversation, screenshot-able. Tempting; deferred until the core question loop lands harder.
-- **Conditions UX.** When Conditions land, does the player invoke them ("I'm Tired, this should be HEART not HEAD") or are they auto-applied? Lean: player-invoked, narrative justification required.
+
+## 3.4 Prioritized next steps
+
+> *Sequencing across the missing and partial buckets. Each step is sized to a small PR.*
+
+### P0 — unblocks tuning
+
+1. **Reconcile the event log.** Decide whether to (a) rename existing emissions to match the doc's canonical list (`sign_in`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`) or (b) update this doc to match what already fires. Lean: (a), and add the four missing canonical events. Then ship logs to a queryable sink and add three saved queries — D1 retention, questions/session, grade-completion rate. Three numbers in JSON is enough to start tuning. Without this, the second-session bet is a hypothesis, not a result.
+
+### P1 — closes the two real shipped-but-unfinished social gaps
+
+2. **Yearbook share-card route.** `GET /yearbook/:characterId/:grade` → static HTML page with OG tags + a `?format=png` variant rendered server-side. The data exists; this is the social object the product is supposed to produce.
+3. **Report Card tab.** A viewer panel over per-essay grade history. Adds the "Lyra has out-essayed you 3 of the last 5 Tuesdays" line. Pure viewer + read endpoint — data is already in state.
+
+### P2 — small mechanical wins
+
+4. **Cohort seating filter.** One render-time filter in the layout helper: only seat NPCs whose `cohort.grade === player.grade`. Makes Indra's graduation visible as an empty seat. ~30-line PR; high felt-impact.
+5. **Wire one mentor move mechanically.** Pick the cheapest end-to-end move — likely Overachiever's "retake one missed question per year" or Slacker's "swap HEAD → HUSTLE on a fail." Concrete, testable, finishes the §1.6.10 partial.
+
+### P3 — content & evaluation (the moat)
+
+6. **Ingest one real Anki deck** through the existing pipeline into a teacher pack with the LLM-derived class name + persona. Proves the pipeline works on real data and gives the audit a concrete example.
+7. **Faculty-voice eval harness.** Automate the "is this in voice?" check before community faculty become possible. Cheapest version: 20–30 hand-graded reference Q/A pairs per teacher + an LLM-judge prompt, run as `npm run eval:voice`.
+
+### Defer
+
+- Remaining playbook moves wired in — handle one (P2 step 5) before the rest.
+- Multiplayer co-op, Faculty Cup tournament — premature without retention numbers.
+- Public yearbook default policy — answer falls out of P1 step 2 once share-cards exist; design decision then, not now.
+
+### Sequencing call
+
+Do **P0 → P1.2 → P1.3 → P2.4** in order. Four small PRs that together close every shipped-but-unfinished social gap, give us measurement, and produce the social artifact the product was designed around.
 
 ---
 
-## 10. Try it · read the source · wire it in
+## License
 
-> *Three doors into the project.*
-
-### Try it
-
-```bash
-npm install
-npm run build
-npm run dev:server
-```
-
-Then open http://127.0.0.1:3000/api/apps/ruby-high/viewer. You will be asked to sign in with OpenRouter — a free PKCE flow, your own key, no card.
-
-### Read the source
-
-The repository is at [github.com/cenetex/app-ruby-high](https://github.com/cenetex/app-ruby-high). Start with `src/services/ruby-high-service.ts` for the game loop, `src/services/chat-service.ts` for the LLM bridge, `src/content/` for the pack architecture, `src/types.ts` for the schema. Roughly 11.5k lines of TypeScript and 3k lines of tests.
-
-### Wire it into a character
-
-```ts
-import rubyHighPlugin from "@cenetex/app-ruby-high";
-
-export const character = {
-  name: "Ruby",
-  plugins: [rubyHighPlugin /* , ...others */],
-};
-```
-
-The plugin is also a standalone Node service. The Docker container is host-agnostic — it needs `PORT`, `HOST`, `RUBY_HIGH_PUBLIC_BASE` (must be HTTPS in production for OpenRouter PKCE), and a writable state backend.
-
----
-
-## 11. Architecture (engineer's appendix)
-
-> *One container, one DynamoDB table, four services + a content-pack registry, no queue.*
-
-### Services and supporting modules
-
-| Component | File | Job |
-|---|---|---|
-| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, rarity/bonus progression, the cohort. |
-| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks for the daily bonus and for free-play. |
-| `ChatService` | `src/services/chat-service.ts` | OpenRouter SSE per-teacher. Owns chat history, dispatches tools into the game state. |
-| `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions for QuizState routing; the API key itself never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. |
-| Content registry | `src/content/registry.ts` (+ `src/content/anki/`, `src/content/packs/`) | Active content pack resolver, global and per-session. Today serves the built-in `ruby-high-original`; the Anki `.apkg` parser + LLM distractor generator + per-session active-pack switching are wired ahead of bring-your-own packs. |
-| `StateStore` | `src/services/state-store.ts` + `dynamo-state-store.ts` | Two backends: atomic JSON-file for local dev, DynamoDB on-demand for production. |
-
-### Key design choices
-
-**The teacher is the chatbot, the chatbot drives the board.** Each teacher is a separate OpenRouter-streamed chat with their own system prompt and their own model. They drive the chalkboard via tool calls (`pick_from_bank`, `pose_question`, `pose_opinion`, `clear_board`, `handoff_faculty`). When the player picks an answer in the viewer, the teacher gets a system-event note and reacts in character.
-
-**The state machine is the spine.** Five phases (`intro`, `in-room`, `asking`, `revealed`, `lounge`) and seven actions (`select-grade`, `enter-room`, `enter-lounge`, `pose-question`, `resolve-round`, `clear-board`, `reset`). Every mutator routes through one transition function. A `phaseToken` bumps on every transition so the viewer can dedupe one-shot effects without races.
-
-**Persistence is per-session by design.** One row per session — keyed by either `rh:user:<openrouter-token>` for signed-in users or `rh:anonymous` for the preview bucket. DynamoDB TTL auto-expires idle sessions. The JSON-file backend is a single atomic-write file at `~/.ruby-high/state.json`.
-
-**Cheat-proofing is structural.** The student-side LLM never sees the answer key. The server rolls the dice, picks the question, and stores the correct answer. NPC accuracy comes from `2d6 + their HEAD stat` rolled before the question is revealed to them. Prompt-injection cannot win because the prompt does not have the information.
-
----
-
-## 12. License
-
-[MIT](./LICENSE) for the code. The mechanics layer (§6) is **CC BY 4.0** and inspired by the Apocalypse World / Dungeon World lineage.
+[MIT](./LICENSE) for the code. The mechanics layer (Part 1, §1.6) is **CC BY 4.0** and inspired by the Apocalypse World / Dungeon World lineage. The card-mastery layer is conventional spaced-repetition, in the Anki / SM-2 lineage.
 
 <!-- promo-asset: footer-band — sticker portraits of the three teachers in a row, color blocks behind -->
