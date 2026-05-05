@@ -1,9 +1,13 @@
 # Ruby High — AWS deploy infra
 
-The GHA workflow at `.github/workflows/deploy.yml` builds the Docker image,
-pushes it to ECR (`022118847419.dkr.ecr.us-east-1.amazonaws.com/ruby-high`),
-and triggers App Runner to roll the new image. It assumes role
+The GHA workflow at `.github/workflows/deploy-app-runner-legacy.yml` builds
+the Docker image, pushes it to ECR
+(`022118847419.dkr.ecr.us-east-1.amazonaws.com/ruby-high`), and triggers App
+Runner to roll the new image. It assumes role
 `arn:aws:iam::022118847419:role/github-actions-ruby-high` via OIDC.
+
+Production runs on Fly.io (see [`fly-deploy.md`](./fly-deploy.md)). This path
+is `workflow_dispatch:`-only and exists as a manual fallback.
 
 ## One-time IAM setup
 
