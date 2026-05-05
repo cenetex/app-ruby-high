@@ -132,6 +132,33 @@ describe("Canonical event log emissions", () => {
     expect(picked.wasCorrect).toBe(true);
   });
 
+  it("progression.legacy-xp-fallback fires only when the XP fallback rescues the gate", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:events-fallback";
+    // attachCharacter pre-fills subjectXp at 999, well above any threshold.
+    // The character has no card-mastery state yet, so the gate would fail
+    // on letter-grade alone — the fallback rescues it. That's exactly the
+    // case PR 4b needs zero-count telemetry on before it can ship.
+    attachCharacter(ruby, sid);
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    // Force the gate read by calling getOrCreate (which calls maybeMarkGradeReady).
+    ruby.getOrCreate(sid);
+
+    const fallbacks = captured.filter((e) => e.name === "progression.legacy-xp-fallback");
+    expect(fallbacks.length).toBeGreaterThanOrEqual(1);
+    expect(fallbacks[0]!.grade).toBe("9");
+    expect(Array.isArray(fallbacks[0]!.rescues)).toBe(true);
+
+    // Debounced: a second getOrCreate for the same (session, grade) doesn't
+    // re-emit. (PR 4b's dashboard should show one event per session per grade
+    // per process restart, not one per polling viewer tick.)
+    const beforeSecond = captured.filter((e) => e.name === "progression.legacy-xp-fallback").length;
+    ruby.getOrCreate(sid);
+    const afterSecond = captured.filter((e) => e.name === "progression.legacy-xp-fallback").length;
+    expect(afterSecond).toBe(beforeSecond);
+  });
+
   it("essay.submitted, essay.graded fire across one opinion round", async () => {
     const { ruby } = await makeServices();
     const sid = "test:events-opinion";
@@ -171,32 +198,25 @@ async function makeServices() {
   const dir = await mkdtemp(join(tmpdir(), "ruby-high-events-"));
   const store = new StateStore(join(dir, "state.json"));
   const faculty = await FacultyService.start({} as never);
-  const ruby = await RubyHighService.start({} as never, store);
+  const ruby = new RubyHighService({} as never, store);
+  await ruby["hydrate"]();
   ruby.setFacultyService(faculty);
   return { ruby, faculty, dir, store };
 }
 
 function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9") {
+  ruby.selectGrade(sid, grade);
   const state = ruby.getOrCreate(sid);
-  state.currentGrade = grade;
   state.character = {
     name: "Pip",
-    playbookId: "lifer",
-    portrait: null,
-    blurb: "test",
-    arcAnswer: "test",
-    flavorQuote: "test",
-    stats: { head: 1, heart: 1, hustle: 1, honor: -1 },
+    playbookId: "overachiever",
+    stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
+    arcAnswer: "—",
+    personality: "—",
     xp: 0,
-    streak: { grade, count: 0 },
     yearbook: [],
-    classAffinity: {},
-    advantageRollsUsed: {},
-    pendingGraduation: null,
-    subjectXp: {},
-    subjectScores: {},
-    cardMemory: {},
-    rewards: [],
+    createdAt: Date.now(),
+    subjectXp: { ruby: 999, "sally-science": 999, "professor-edward": 999 },
   } as never;
   return state;
 }

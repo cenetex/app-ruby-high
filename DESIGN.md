@@ -328,7 +328,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 |---|---|---|---|
 | **XP gates** | Year advancement requires per-class XP minimum (Freshman 2, Sophomore 5, Junior 10, Senior 16). | XP is dead code. `requiredSubjectXpForGrade` has a "legacy" comment. Real gate is `letterGradePasses` in each teaching room — A/B/C derived from card mastery. The XP value is a *fallback* that maps to "C" so old runs aren't stuck. | This doc reflects the new gate. The legacy fallback should be deleted once existing characters drain. |
 | **Conditions / Strings** | Schema declares both; "currently never written"; aspirational. | Both fields **removed from the schema** in PR #63. | Removed from this doc. They are not future work in the current design. |
-| **Event log canonical list** | `sign_in`, `character_created`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`. | Actual emissions: `bonus.posed`, `character.created`, `player.grade-advanced`, `player.graduation-ready`, `player.graduated`, `pack.import-anki.*`, `pack.session-switched`, `question.promoted-to-bank`, `chat.bank-exhausted`, plus failure events. | The event log emits, but the names don't match the canonical list. Either rename emissions to the canonical list or rewrite the canonical list to match what fires. (See P0 in §3.4.) |
+| **Event log canonical list** | The retention dashboard depends on `sign_in`, `character_created`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`. | Now emits all eight (in dot-style: `auth.signed-in`, `character.created`, `question.posed`, `answer.picked`, `essay.submitted`, `essay.graded`, `player.grade-advanced` ≈ `grade_completed`, `session.ended`), plus `bonus.posed`, `pack.*`, and the failure events. Existing dot-style names retained — renaming for cosmetic underscore-style consistency would break any downstream sink. Captured in `event-log.test.ts` so a quiet rename is impossible. |
 | **AWS App Runner production** | Cited as the production target. | Production is on **Fly.io**. App Runner workflow is retained as a manual fallback only. | This doc and main's README now say Fly. |
 
 ## 3.2 Missing or partial
@@ -342,7 +342,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 | **Faculty-voice evaluation harness** | A `npm run eval:voice` that scores generated questions and grades against hand-curated reference Q/A pairs per teacher. Required before §2.2 (faculty expansion) and §2.5 (community packs). | Medium (3–4 days for v0). |
 | **Real content beyond ruby-high-original** | Only the built-in pack is loaded, with 15 questions per teacher. Anki ingest pipeline ships and is tested but no real decks have been ingested. | Medium (per pack: 1 day to ingest + curate). |
 | **Retention dashboard** | Three numbers: D1 retention, questions per session, grade-completion rate. Logs emit to stdout; the layer above (a sink + queries + a small JSON endpoint) is missing. | Small (1 day on top of P0 in §3.4). |
-| **Legacy XP fallback removal** | `requiredSubjectXpForGrade` and the "C" fallback can be deleted once existing live characters have advanced past it. | Trivial. |
+| **Legacy XP fallback removal** | `requiredSubjectXpForGrade`, the `subjectXp` field, the `XP_FOR_RARITY` table, and the gate's "C" fallback can be deleted once existing live characters have advanced past it. The `progression.legacy-xp-fallback` event now fires (debounced per session+grade) every time the fallback rescues the gate; this PR is gated on that event reaching zero in production for N consecutive days. | Trivial once the event drops to zero. |
 
 ### Partial — shipped but incomplete
 
@@ -367,9 +367,9 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 > *Sequencing across the missing and partial buckets. Each step is sized to a small PR.*
 
-### P0 — unblocks tuning
+### P0 — unblocks tuning (**event names done; dashboard layer next**)
 
-1. **Reconcile the event log.** Decide whether to (a) rename existing emissions to match the doc's canonical list (`sign_in`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`) or (b) update this doc to match what already fires. Lean: (a), and add the four missing canonical events. Then ship logs to a queryable sink and add three saved queries — D1 retention, questions/session, grade-completion rate. Three numbers in JSON is enough to start tuning. Without this, the second-session bet is a hypothesis, not a result.
+1. **Build the retention dashboard.** All eight canonical events now emit (see §3.1). Next: ship logs to a queryable sink (CloudWatch on App Runner is free; Fly piping to a small ClickHouse / SQLite-on-Litestream is cheap), add three saved queries — D1 retention, questions/session, grade-completion rate — and a small `/admin/metrics` JSON route gated to a single token. Three numbers in JSON is enough to start tuning.
 
 ### P1 — closes the two real shipped-but-unfinished social gaps
 

@@ -240,6 +240,11 @@ export class RubyHighService extends Service {
   private readonly backgroundWrites = new Set<Promise<void>>();
   private faculty: FacultyService | null = null;
   private loaded = false;
+  // In-memory debounce for the legacy XP fallback telemetry. Not persisted —
+  // a process restart re-emits once per session, which is fine and gives us
+  // a heartbeat. Cleared when the entry's grade changes (so each grade gets
+  // its own emission).
+  private readonly fallbackEmitted = new Map<string, Grade>();
 
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
@@ -1119,6 +1124,16 @@ export class RubyHighService extends Service {
     return { dailyTicked };
   }
 
+  /** True the first time the legacy XP fallback rescues this (session, grade)
+   *  combo since process start. Subsequent calls for the same combo return
+   *  false until the grade changes. Keeps the dashboard from drowning in
+   *  duplicates when a polling viewer hits the gate every few seconds. */
+  private shouldEmitFallback(sessionId: string, grade: Grade): boolean {
+    if (this.fallbackEmitted.get(sessionId) === grade) return false;
+    this.fallbackEmitted.set(sessionId, grade);
+    return true;
+  }
+
   private gradeCompletionStatus(state: QuizState): {
     grade: Grade;
     requiredStreak: number;
@@ -1139,18 +1154,44 @@ export class RubyHighService extends Service {
     let classesMet = 0;
     let classCount = 0;
     const classGrades: Record<string, string> = {};
+    const fallbackRescues: Array<{ faculty: string; legacyXp: number; masteryGrade: string | null }> = [];
     for (const room of TEACHING_ROOMS) {
       const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
       if (!teacherId) continue;
       classCount++;
       const course = this.questionBankStatusForState(state, teacherId);
-      const legacyPass = (ch.subjectXp?.[teacherId] ?? 0) >= requiredSubjectXpForGrade(grade);
-      const gradeLabel = letterGradePasses(course.grade) ? course.grade! : (legacyPass ? "C" : (course.grade ?? "F"));
+      const masteryGradePasses = letterGradePasses(course.grade);
+      const legacyXp = ch.subjectXp?.[teacherId] ?? 0;
+      const legacyPass = legacyXp >= requiredSubjectXpForGrade(grade);
+      const gradeLabel = masteryGradePasses ? course.grade! : (legacyPass ? "C" : (course.grade ?? "F"));
       classGrades[teacherId] = gradeLabel;
       if (letterGradePasses(gradeLabel)) classesMet++;
+      if (!masteryGradePasses && legacyPass) {
+        fallbackRescues.push({ faculty: teacherId, legacyXp, masteryGrade: course.grade ?? null });
+      }
     }
     const streakMet = streakCount >= requiredStreak;
     const classesMetAll = classCount > 0 && classesMet >= classCount;
+    // Telemetry: count when the legacy XP fallback was the deciding factor
+    // in the gate being met. PR 4b (deleting the fallback) is gated on
+    // this dropping to zero in production for N consecutive days. Emitted
+    // only when the gate would NOT have been met by card mastery alone —
+    // i.e. the fallback materially contributed. Debounced per (session,
+    // grade) so a polling viewer doesn't spam the log.
+    if (
+      fallbackRescues.length > 0 &&
+      streakMet &&
+      classesMetAll &&
+      this.shouldEmitFallback(state.sessionId, grade)
+    ) {
+      log.event("progression.legacy-xp-fallback", {
+        sessionId: state.sessionId,
+        character: ch.name,
+        grade,
+        rescues: fallbackRescues,
+        threshold: requiredSubjectXpForGrade(grade),
+      });
+    }
     return {
       grade,
       requiredStreak,
