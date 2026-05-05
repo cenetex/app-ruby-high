@@ -1248,6 +1248,18 @@ export const VIEWER_CSS = `
   .roll-chip.hit   { background: rgba(76,181,85,0.22);  color: #b6f5b9; }
   .roll-chip.mixed { background: rgba(240,146,42,0.22); color: #f5c98a; }
   .roll-chip.miss  { background: rgba(210,42,42,0.22);  color: #ffb1b1; }
+  .score-multiplier-chip {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    background: rgba(240,180,65,0.22);
+    color: #ffe08a;
+    font-family: "SF Mono", "Menlo", monospace;
+  }
 
   /* ── unified CCG-style character card ─────────────────────────────────── */
   .ccg-card {
@@ -1404,12 +1416,12 @@ export const VIEWER_CSS = `
   }
   .ccg-progression .rung {
     display: grid;
-    grid-template-columns: 46px minmax(42px, 1fr) auto;
+    grid-template-columns: minmax(34px, 44px) minmax(48px, 1fr) repeat(3, minmax(28px, 34px));
     align-items: center;
-    gap: 7px;
+    gap: 4px;
     font-size: 12px;
     line-height: 1.3;
-    min-height: 34px;
+    min-height: 36px;
     padding: 3px 2px;
     border-radius: 6px;
   }
@@ -1429,7 +1441,7 @@ export const VIEWER_CSS = `
     line-height: 1;
   }
   .ccg-progression .rung-streak-diamond {
-    width: 10px;
+    width: 9px;
     text-align: center;
     font-size: 11px;
     font-weight: 900;
@@ -1439,11 +1451,7 @@ export const VIEWER_CSS = `
   .ccg-progression .rung-label { font-weight: 700; }
   .ccg-progression .rung.is-current .rung-label { color: var(--accent); }
   .ccg-progression .rung-gates {
-    display: inline-flex;
-    gap: 5px;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
+    display: contents;
     font-size: 11px;
     color: var(--text-soft);
     min-width: 0;
@@ -1516,8 +1524,9 @@ export const VIEWER_CSS = `
     font-weight: 900;
   }
   .ccg-progression .future-req {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    min-width: 0;
+    height: 26px;
     padding: 0;
     border-radius: 999px;
     display: inline-flex;
@@ -1530,6 +1539,7 @@ export const VIEWER_CSS = `
     opacity: 0.58;
     font-variant-numeric: tabular-nums;
     line-height: 1;
+    justify-self: center;
   }
   .ccg-progression .future-req-icon {
     font-size: 14px;
@@ -1540,19 +1550,21 @@ export const VIEWER_CSS = `
     font-weight: 900;
   }
   .ccg-progression .class-grade-chip {
-    min-width: 42px;
+    width: 34px;
+    min-width: 0;
     height: 26px;
-    padding: 0 7px;
+    padding: 0 2px;
     border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
+    gap: 2px;
     background: rgba(255,255,255,0.035);
     border: 1px solid rgba(255,255,255,0.09);
     color: var(--text-mute);
     font-weight: 900;
     line-height: 1;
+    justify-self: center;
   }
   .ccg-progression .class-grade-chip.is-met {
     background: rgba(76,181,85,0.18);

@@ -27,6 +27,12 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
+type ToolDispatchResult = {
+  args: Record<string, unknown>;
+  payload: { ok: boolean; message?: string; error?: string };
+  state?: QuizState;
+};
+
 export interface ChatHistoryKey {
   sessionToken: string;
   faculty: string;
@@ -239,8 +245,11 @@ export class ChatService extends Service {
         extraSystemContext: opts.extraSystemContext,
         disableTools: !!opts.disableTools,
       });
+      const liveStateBeforeCall = this.ruby.getOrCreate(opts.agentSessionId);
       const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
-      const toolDefs = opts.disableTools ? [] : buildToolDefs({ includePickFromBank: bankStatus.remaining > 0 });
+      const toolDefs = opts.disableTools || boardIsWaitingForStudent(liveStateBeforeCall)
+        ? []
+        : buildToolDefs({ includePickFromBank: bankStatus.remaining > 0 });
 
       const stream = streamOpenRouter({
         apiKey: opts.apiKey,
@@ -290,22 +299,35 @@ export class ChatService extends Service {
 
       let handoffFired = false;
       let boardToolSucceeded = false;
+      let boardPostAcceptedThisBatch = false;
       let staleRoomTurn = false;
       const toolEvents: ChatStreamEvent[] = [];
       for (const call of assistantToolCalls) {
         const liveState = this.ruby.getOrCreate(opts.agentSessionId);
         const liveFaculty = resolveFacultyIdForSession(liveState, liveState.faculty) ?? liveState.faculty;
         const turnStillOwnsRoom = liveFaculty === activeFaculty;
-        const result = turnStillOwnsRoom
-          ? await this.dispatchTool(opts.agentSessionId, call)
-          : {
+        const boardToolBlocked =
+          turnStillOwnsRoom &&
+          isBoardChangingTool(call.function.name) &&
+          (boardPostAcceptedThisBatch || boardIsWaitingForStudent(liveState));
+        const result = !turnStillOwnsRoom
+          ? {
               args: {},
               payload: {
                 ok: false,
                 error: `Ignored stale ${speakerId} tool call; active classroom is now ${liveFaculty}.`,
               },
               state: liveState,
-            };
+            }
+          : boardToolBlocked
+            ? blockedBoardToolResult(
+                call,
+                liveState,
+                boardPostAcceptedThisBatch
+                  ? "Question already posted by this turn; wait for the student answer or timeout before changing it."
+                  : "Question already on the board; wait for the student answer or timeout before changing it.",
+              )
+            : await this.dispatchTool(opts.agentSessionId, call);
         if (!turnStillOwnsRoom) staleRoomTurn = true;
         history.push({
           role: "tool",
@@ -327,8 +349,9 @@ export class ChatService extends Service {
         if (call.function.name === "handoff_faculty" && result.payload.ok) {
           handoffFired = true;
         }
-        if (result.payload.ok && toolShouldForceNarration(call.function.name)) {
+        if (result.payload.ok && toolShouldForceNarration(call.function.name) && result.state?.current) {
           boardToolSucceeded = true;
+          boardPostAcceptedThisBatch = true;
         }
       }
       this.trim(key);
@@ -475,17 +498,16 @@ export class ChatService extends Service {
   private async dispatchTool(
     agentSessionId: string,
     call: ToolCall,
-  ): Promise<{ args: Record<string, unknown>; payload: { ok: boolean; message?: string; error?: string }; state?: QuizState }> {
+  ): Promise<ToolDispatchResult> {
     const ruby = this.ruby!;
-    let args: Record<string, unknown> = {};
-    try {
-      args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
-    } catch (err) {
+    const parsed = parseToolArgs(call);
+    if (parsed.error) {
       return {
         args: {},
-        payload: { ok: false, error: `Bad tool arguments JSON: ${(err as Error).message}` },
+        payload: { ok: false, error: parsed.error },
       };
     }
+    const args = parsed.args;
 
     try {
       switch (call.function.name) {
@@ -638,6 +660,34 @@ function toolShouldForceNarration(name: string): boolean {
   return name === "pick_from_bank"
     || name === "pose_question"
     || name === "pose_opinion";
+}
+
+function isBoardChangingTool(name: string): boolean {
+  return name === "pick_from_bank"
+    || name === "pose_question"
+    || name === "pose_opinion"
+    || name === "clear_board";
+}
+
+function boardIsWaitingForStudent(state: QuizState): boolean {
+  return !!state.current && !!state.activeRound && !state.activeRound.resolved;
+}
+
+function parseToolArgs(call: ToolCall): { args: Record<string, unknown>; error?: string } {
+  try {
+    return { args: call.function.arguments ? JSON.parse(call.function.arguments) : {} };
+  } catch (err) {
+    return { args: {}, error: `Bad tool arguments JSON: ${(err as Error).message}` };
+  }
+}
+
+function blockedBoardToolResult(call: ToolCall, state: QuizState, error: string): ToolDispatchResult {
+  const parsed = parseToolArgs(call);
+  return {
+    args: parsed.args,
+    payload: { ok: false, error: parsed.error ?? error },
+    state,
+  };
 }
 
 function readAgentRoundLimit(raw: string | undefined): number {

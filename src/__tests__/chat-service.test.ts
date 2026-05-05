@@ -504,6 +504,68 @@ describe("ChatService.send — message composition", () => {
     expect(tool.tool).toBe("pick_from_bank");
   });
 
+  it("does not expose teacher tools while a board is waiting for the student", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "Waiting.", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    ruby.pose("session:waiting-board", {
+      prompt: "What is Ruby High?",
+      options: { A: "A cafe", B: "A school", C: "A spaceship", D: "A library" },
+      correct: "B",
+      explanation: "Ruby High is a school.",
+      subject: "homeroom",
+      difficulty: "easy",
+      faculty: "ruby",
+      questionId: "waiting-board-q",
+    });
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-waiting-board",
+      agentSessionId: "session:waiting-board",
+      faculty: "ruby",
+      userMessage: "hold on",
+    })) { /* consume */ }
+
+    expect(captured!.body.tools).toEqual([]);
+    const promptText = JSON.stringify(captured!.body.messages);
+    expect(promptText).toContain("BOARD STATUS: WAITING_FOR_STUDENT_ANSWER");
+    expect(promptText).toContain("Wait for the answer-graded event before calling another tool");
+  });
+
+  it("rejects duplicate board posts from the same assistant tool batch", async () => {
+    const sse = buildSseChunk([
+      {
+        toolCalls: [
+          { index: 0, id: "call_1", function: { name: "pick_from_bank", arguments: "{}" } },
+          { index: 1, id: "call_2", function: { name: "pick_from_bank", arguments: "{}" } },
+        ],
+      },
+      { finish: "tool_calls" },
+    ]);
+    mockOpenRouter(sse);
+    const { ruby, chat } = await makeServices();
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-duplicate-board",
+      agentSessionId: "session:duplicate-board",
+      faculty: "ruby",
+      systemEventNote: "Put a question on the board.",
+    })) {
+      events.push(ev);
+      if (events.filter((e) => e.type === "tool").length === 2) break;
+    }
+
+    const tools = events.filter((e) => e.type === "tool");
+    expect(tools).toHaveLength(2);
+    expect(tools[0]).toMatchObject({ tool: "pick_from_bank", result: { ok: true } });
+    expect(tools[1]).toMatchObject({ tool: "pick_from_bank", result: { ok: false } });
+    expect(tools[1]!.result.error).toContain("already posted");
+    const state = ruby.getOrCreate("session:duplicate-board");
+    expect(state.current).not.toBeNull();
+    expect(state.askedQuestionIds).toHaveLength(1);
+  });
+
   it("ignores board-changing tool calls from a room turn after the user has switched rooms", async () => {
     const sse = buildSseChunk([
       {

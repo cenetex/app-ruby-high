@@ -38,6 +38,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function letterGradePasses(grade) {
     return /^[ABC]/.test(String(grade || ""));
   }
+  function streakScoreMultiplier(count) {
+    const n = Math.max(0, Math.floor(Number(count || 0)));
+    if (n >= 3) return 3;
+    if (n >= 2) return 2;
+    return 1;
+  }
   function courseProgressForFaculty(fid) {
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     return roster.find((f) => f.id === fid) || null;
@@ -985,6 +991,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       els.boardReveal.appendChild(chip);
     }
+    if (Number(reveal.scoreMultiplier || 1) > 1) {
+      const mult = document.createElement("span");
+      mult.className = "score-multiplier-chip";
+      mult.textContent = "◆ ×" + Number(reveal.scoreMultiplier || 1) + " score";
+      els.boardReveal.appendChild(mult);
+    }
     if (reveal.explanation) {
       const expl = document.createElement("div");
       expl.className = "reveal-explanation";
@@ -1036,6 +1048,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const mod = r.total - (r.dice[0] + r.dice[1]);
       chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       body.appendChild(chip);
+    }
+    if (Number(reveal.scoreMultiplier || 1) > 1) {
+      const mult = document.createElement("span");
+      mult.className = "score-multiplier-chip";
+      mult.textContent = "◆ ×" + Number(reveal.scoreMultiplier || 1);
+      body.appendChild(mult);
     }
     wrap.appendChild(body);
     els.stream.appendChild(wrap);
@@ -1808,7 +1826,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
             }));
           }
         } else {
-          gates.appendChild(makeGradeChip({ label: "Each class", icon: "□", grade: "F" }));
+          for (const meta of CLASS_GATE_META) {
+            gates.appendChild(makeGradeChip({
+              label: meta.label,
+              icon: meta.icon,
+              grade: "F",
+            }));
+          }
         }
       } else {
         if (r.state === "completed") {
@@ -2117,7 +2141,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     streak.appendChild(diamonds);
     const streakCount = document.createElement("span");
     streakCount.className = "career-token-count";
-    streakCount.textContent = (spec.streakHere || 0) + "/" + (spec.streakReq || 0);
+    const mult = streakScoreMultiplier(spec.streakHere || 0);
+    streakCount.textContent = (spec.streakHere || 0) + "/" + (spec.streakReq || 0)
+      + (mult > 1 ? " · ×" + mult : "");
     streak.appendChild(streakCount);
     wrap.appendChild(streak);
 
@@ -3491,6 +3517,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
   function toolSummary(parsed, teacherName) {
     const ok = !!(parsed.result && parsed.result.ok);
+    const errorText = parsed.result && parsed.result.error ? String(parsed.result.error) : "";
+    const blockedByActiveBoard = /Question already (on|posted by).*board|wait for the student answer/i.test(errorText);
+    if (!ok && blockedByActiveBoard) return teacherName + " waited — a card is already up";
     switch (parsed.tool) {
       case "pick_from_bank": {
         const srs = lastTelemetry && lastTelemetry.active_course_progress && lastTelemetry.active_course_progress.mode === "srs";

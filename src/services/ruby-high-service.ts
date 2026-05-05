@@ -30,6 +30,7 @@ import {
   rollNpcAnswer,
   rollOpinionDelay,
   statusForPhase,
+  streakScoreMultiplier,
   type ActiveRound,
   type AdvantageRoll,
   type AnswerRecord,
@@ -176,6 +177,22 @@ function defaultCardMemory(courseId: string, questionId: string): CardMemory {
     delayedCorrectCount: 0,
     lapses: 0,
   };
+}
+
+function projectedStreakCountForPass(state: QuizState, now: number): number {
+  const ch = state.character;
+  const grade = state.currentGrade;
+  if (!ch || !grade) return 0;
+  const today = dailyKey(new Date(now));
+  const current = ch.streak && ch.streak.grade === grade ? ch.streak : null;
+  if (current?.lastDate === today) return current.count;
+  if (current?.lastDate && daysBetween(current.lastDate, today) === 1) return current.count + 1;
+  return 1;
+}
+
+function scoreMultiplierForPass(state: QuizState, passed: boolean, now: number): number {
+  if (!passed) return 1;
+  return streakScoreMultiplier(projectedStreakCountForPass(state, now));
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -831,6 +848,7 @@ export class RubyHighService extends Service {
     q: Question,
     rating: CardReviewRating,
     now = Date.now(),
+    scoreMultiplier = 1,
   ): void {
     const banked = this.questionBelongsToReviewCourse(state, q);
     if (!banked) return;
@@ -844,6 +862,7 @@ export class RubyHighService extends Service {
       next.phase = "learning";
       next.dueAt = now + SRS_AGAIN_MS;
       next.consecutiveCorrect = 0;
+      next.lastScoreMultiplier = 1;
       next.wrongCount += 1;
       next.lapses += 1;
       next.difficulty = clamp(next.difficulty + 0.15, 0, 1);
@@ -852,8 +871,10 @@ export class RubyHighService extends Service {
       return;
     }
 
-    next.correctCount += 1;
-    next.consecutiveCorrect += 1;
+    const scoreCredit = clamp(Math.floor(scoreMultiplier), 1, 3);
+    next.lastScoreMultiplier = scoreCredit;
+    next.correctCount += scoreCredit;
+    next.consecutiveCorrect += scoreCredit;
     if (delayed) next.delayedCorrectCount += 1;
     next.difficulty = clamp(
       next.difficulty + (rating === "hard" ? 0.05 : rating === "good" ? -0.05 : -0.1),
@@ -985,6 +1006,8 @@ export class RubyHighService extends Service {
       }
     }
     const wasCorrect = rawCorrect || !!affinitySave;
+    const reviewAt = round.player.answeredAt ?? Date.now();
+    const scoreMultiplier = scoreMultiplierForPass(state, wasCorrect, reviewAt);
     if (picked != null) {
       const record: AnswerRecord = {
         questionId: q.id,
@@ -1014,7 +1037,8 @@ export class RubyHighService extends Service {
       state,
       q,
       this.reviewRatingForRound(wasCorrect, forfeit, playerRoll),
-      round.player.answeredAt ?? Date.now(),
+      reviewAt,
+      scoreMultiplier,
     );
 
     // Player progression. Card mastery updates above; class grades are derived
@@ -1035,6 +1059,7 @@ export class RubyHighService extends Service {
       encouragement: affinitySave
         ? "Class affinity kicked in — second chance counted."
         : forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
+      scoreMultiplier,
       playerRoll,
       affinitySave,
     };
@@ -1544,17 +1569,19 @@ export class RubyHighService extends Service {
     }
     const q = state.current;
     if (q) {
+      const reviewAt = Date.now();
+      const scoreMultiplier = scoreMultiplierForPass(state, passed, reviewAt);
       const record: AnswerRecord = {
         questionId: q.id,
         picked: "A" as Choice, // sentinel — opinion answers don't have a letter
         correct: "A" as Choice,
         wasCorrect: passed,
-        at: Date.now(),
+        at: reviewAt,
       };
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
-      this.recordCardReview(state, q, passed ? "good" : "again", record.at);
+      this.recordCardReview(state, q, passed ? "good" : "again", record.at, scoreMultiplier);
       // Same progression as MC rounds. Opinion rounds update card mastery
       // through the review rating above; no XP is awarded.
       const progress = this.applyPlayerProgress(state, passed, state.faculty, passed ? 1 : 0);
@@ -1570,6 +1597,7 @@ export class RubyHighService extends Service {
         wasCorrect: passed,
         explanation: q.rubric ?? null,
         encouragement: affinitySave ? "Class affinity kicked in — second chance counted." : passed ? "Nice essay." : "Take another swing at it tomorrow.",
+        scoreMultiplier,
         affinitySave,
       };
     }

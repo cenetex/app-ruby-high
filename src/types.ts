@@ -104,6 +104,17 @@ export function requiredStreakForGrade(grade: Grade): number {
   return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
 }
 
+/** A school-day streak is also a class-score accelerator. The first day is
+ *  normal, a 2-day streak doubles successful review credit, and a 3+ day
+ *  streak triples it. The cap stays at 3x so Senior's fourth day is a
+ *  sustained max streak instead of an unbounded grind multiplier. */
+export function streakScoreMultiplier(streakCount: number | undefined | null): number {
+  const n = Math.max(0, Math.floor(Number(streakCount ?? 0)));
+  if (n >= 3) return 3;
+  if (n >= 2) return 2;
+  return 1;
+}
+
 /** Legacy per-class credit gate. Kept for migrating old characters that
  *  already earned credits before letter-grade mastery replaced XP. New
  *  progression gates on class letter grades instead. */
@@ -244,6 +255,8 @@ export interface CardMemory {
   delayedCorrectCount: number;
   lastReviewedAt?: number;
   lastResult?: CardReviewRating;
+  /** Last successful review's streak multiplier, for debugging/telemetry. */
+  lastScoreMultiplier?: number;
   lapses: number;
 }
 
@@ -254,6 +267,9 @@ export interface LastReveal {
   wasCorrect: boolean;
   explanation: string | null;
   encouragement: string | null;
+  /** Successful answers can earn extra hidden class-mastery credit when a
+   *  school-day streak is active: 1x on day 1, 2x on day 2, 3x on day 3+. */
+  scoreMultiplier?: number;
   /** Player's 2d6 + stat roll for this question. Bonus-only — it informs
    *  card review quality, not XP. `xpAwarded` is retained for older clients
    *  and is always 0 in the current progression model. */
