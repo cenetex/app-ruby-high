@@ -1100,11 +1100,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.channelsList.appendChild(empty);
       return;
     }
-    const title = document.createElement("div");
-    title.className = "channel-section-title";
-    title.textContent = (GRADE_LABELS[grade] || grade) + " year — class periods";
-    els.channelsList.appendChild(title);
-
     // Fixed rooms — homeroom / science / literature — driven by t.rooms.
     const rooms = (t.rooms || []).filter((r) => r.teaches);
     const cohort = t.room_cohort || {};

@@ -15,13 +15,14 @@ function escapeHtml(value: string): string {
 // extracted script module.
 export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   const safeAgent = escapeHtml(opts.agentName);
+  const logoSrc = `${escapeHtml(opts.apiBase)}/assets/logo.png?v=baby-blue-20260504`;
   return `
 <div class="shell" id="shell">
 
   <!-- servers (grades) rail -->
   <aside class="servers-rail" id="servers-rail">
     <button class="server-btn is-home" data-grade="home" id="home-btn" title="Ruby High home">
-      <img src="${escapeHtml(opts.apiBase)}/assets/logo.png" alt="" />
+      <img src="${logoSrc}" alt="" />
     </button>
     <div class="servers-divider"></div>
     <!-- grade buttons injected -->
@@ -30,8 +31,10 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <!-- channels rail -->
   <aside class="channels-rail" id="channels-rail">
     <div class="channels-header">
-      <div class="grade-label">School</div>
-      <div class="grade-name" id="grade-title">Ruby High</div>
+      <img class="school-logo" src="${logoSrc}" alt="Ruby High" />
+      <div class="school-context">
+        <div class="grade-name" id="grade-title">Ruby High</div>
+      </div>
     </div>
     <div class="channels-list" id="channels-list"></div>
     <div class="channels-footer">

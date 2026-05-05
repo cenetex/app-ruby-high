@@ -129,14 +129,14 @@ export const VIEWER_CSS = `
     overflow-y: auto;
     overflow-x: hidden;
     padding: calc(var(--safe-top) + 10px) 6px calc(var(--safe-bot) + 10px);
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 8px;
     align-items: center;
   }
   aside.channels-rail {
-    left: var(--rail-w);
-    width: calc(min(var(--channels-w), 80vw - var(--rail-w)));
+    left: 0;
+    width: min(var(--channels-w), 86vw);
     background: var(--bg);
     border-right: 1px solid var(--line);
     display: flex;
@@ -221,24 +221,29 @@ export const VIEWER_CSS = `
 
   /* ── channels rail ─────────────────────────────────────────────────────── */
   .channels-header {
-    padding: calc(var(--safe-top) + 14px) 16px 12px;
+    padding: calc(var(--safe-top) + 16px) 18px 14px;
     border-bottom: 1px solid var(--line);
   }
-  .channels-header .grade-label {
-    font-size: 11px;
-    color: var(--text-mute);
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
+  .channels-header .school-logo {
+    display: block;
+    width: min(174px, 82%);
+    height: auto;
+    margin: 0 auto 12px;
+    object-fit: contain;
+    filter: drop-shadow(0 10px 18px rgba(0,0,0,0.24));
+  }
+  .channels-header .school-context {
+    border-top: 1px solid rgba(255,255,255,0.07);
+    padding-top: 10px;
   }
   .channels-header .grade-name {
     font-size: 18px;
     font-weight: 800;
-    margin-top: 2px;
   }
   .channels-list {
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: 8px 8px 12px;
+    padding: 10px 8px 12px;
   }
   .channel-section-title {
     color: var(--text-mute);
@@ -2762,16 +2767,6 @@ export const VIEWER_CSS = `
 
   /* ── tablet ≥720 ───────────────────────────────────────────────────────── */
   @media (min-width: 720px) {
-    aside.servers-rail {
-      transform: translateX(0);
-      position: relative;
-      z-index: auto;
-      visibility: visible;
-      pointer-events: auto;
-      transition: none;
-    }
-    .shell { grid-template-columns: var(--rail-w) 1fr; }
-    main.workspace { grid-column: 2; }
     aside.channels-rail { width: var(--channels-w); }
     .answers { grid-template-columns: 1fr 1fr; gap: 10px; }
     .stream { padding: 14px 18px; }
@@ -2788,8 +2783,8 @@ export const VIEWER_CSS = `
       left: auto;
       transition: none;
     }
-    .shell { grid-template-columns: var(--rail-w) var(--channels-w) 1fr; }
-    main.workspace { grid-column: 3; }
+    .shell { grid-template-columns: var(--channels-w) 1fr; }
+    main.workspace { grid-column: 2; }
     .scrim { display: none !important; }
     .hamburger { display: none; }
     .stream { padding: 18px 24px; }
