@@ -1386,6 +1386,10 @@ export class RubyHighService extends Service {
     state.activeRound = this.openRound(state, question);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
+    log.event("question.posed", {
+      sessionId, faculty: question.faculty, questionId: question.id,
+      type: "multiple-choice", rarity: question.rarity, subject: question.subject,
+    });
     void this.persistSession(sessionId);
     return state;
   }
@@ -1503,6 +1507,10 @@ export class RubyHighService extends Service {
     state.activeRound = this.openRound(state, question);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
+    log.event("question.posed", {
+      sessionId, faculty: question.faculty, questionId: question.id,
+      type: "opinion", rarity: question.rarity, subject: question.subject,
+    });
     void this.persistSession(sessionId);
     return state;
   }
@@ -1531,6 +1539,10 @@ export class RubyHighService extends Service {
       const npc = round.npcs.find((n) => n.studentId === responder);
       if (npc) npc.answeredAt = now;
     }
+    log.event("essay.submitted", {
+      sessionId, faculty: state.faculty, questionId: round.questionId,
+      responder, length: bounded.length,
+    });
     state.updatedAt = now;
     void this.persistSession(sessionId);
     return state;
@@ -1603,6 +1615,11 @@ export class RubyHighService extends Service {
     round.resolvedAt = Date.now();
     this.transition(state, { kind: "resolve-round" });
     state.updatedAt = round.resolvedAt;
+    log.event("essay.graded", {
+      sessionId, faculty: state.faculty, questionId: round.questionId,
+      playerScore: playerGrade?.score ?? null, playerPassed: passed,
+      bestResponder, affinitySaved: !!affinitySave, gradeCount: grades.length,
+    });
     void this.persistSession(sessionId);
     return state;
   }
@@ -1793,6 +1810,11 @@ export class RubyHighService extends Service {
     }
     round.player.picked = picked;
     round.player.answeredAt = Date.now();
+    log.event("answer.picked", {
+      sessionId, faculty: state.faculty, questionId: q.id,
+      picked, correct: q.correct, wasCorrect: picked === q.correct,
+      rarity: q.rarity,
+    });
     // Tick first so any NPCs whose delay HAS already elapsed lock in honestly.
     this.tickRound(state);
     // Once the player has committed, the race is decided — any NPC still

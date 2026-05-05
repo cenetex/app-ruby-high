@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Service, type IAgentRuntime } from "@elizaos/core";
+import { log } from "./logger.js";
 import {
   authUserKey,
   getDefaultStateStore,
@@ -104,6 +105,11 @@ export class AuthService extends Service {
           // eslint-disable-next-line no-console
           console.error("[ruby-high] auth session cleanup failed:", err);
         });
+        log.event("session.ended", {
+          userId: v.userId,
+          reason: "ttl-expired",
+          ageMs: now - v.createdAt,
+        });
         dropped++;
       }
     }
@@ -179,6 +185,11 @@ export class AuthService extends Service {
       userId: record.userId,
       createdAt: record.createdAt,
       expiresAt: record.expiresAt,
+    });
+    log.event("auth.signed-in", {
+      userId: user.userId,
+      provider: user.provider,
+      isReturning: !!existing,
     });
     return { token, record, apiKey };
   }
