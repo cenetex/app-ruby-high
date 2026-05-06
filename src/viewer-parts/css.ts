@@ -487,6 +487,7 @@ export const VIEWER_CSS = `
   .arc-indicator .arc-sep { color: var(--text-mute); font-weight: 400; }
   .arc-indicator .arc-streak.is-met { color: var(--accent); }
   .arc-indicator .arc-xp.is-met { color: var(--accent); }
+  .arc-indicator .arc-score { color: #ffe08a; font-variant-numeric: tabular-nums; }
   .arc-indicator.is-graduated .arc-year { color: #f0b441; }
   /* Mobile: hide the streak/class detail, keep just the year tag. The full
    * progress is one tap away on the character sheet. */
@@ -2319,13 +2320,46 @@ export const VIEWER_CSS = `
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  .career-streak-track {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
   .career-sockets,
   .career-diamonds,
-  .career-dice {
+  .career-dice,
+  .career-multipliers {
     display: inline-flex;
     align-items: center;
     gap: 7px;
     min-width: 0;
+  }
+  .career-multipliers {
+    gap: 5px;
+  }
+  .career-multiplier {
+    min-width: 30px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.055);
+    color: rgba(190,198,222,0.54);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    opacity: 0.56;
+  }
+  .career-multiplier.is-live {
+    border-color: rgba(255,230,138,0.78);
+    background: linear-gradient(180deg, rgba(255,230,138,0.20), rgba(240,180,65,0.10));
+    color: #ffe68a;
+    box-shadow: 0 0 10px rgba(240,180,65,0.26);
+    opacity: 1;
   }
   .career-diamond {
     width: 18px;

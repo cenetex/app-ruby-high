@@ -231,20 +231,21 @@ function defaultCardMemory(courseId: string, questionId: string): CardMemory {
   };
 }
 
-function projectedStreakCountForPass(state: QuizState, now: number): number {
+function carriedStreakCountForPass(state: QuizState, now: number): number {
   const ch = state.character;
   const grade = state.currentGrade;
   if (!ch || !grade) return 0;
   const today = dailyKey(new Date(now));
   const current = ch.streak && ch.streak.grade === grade ? ch.streak : null;
-  if (current?.lastDate === today) return current.count;
-  if (current?.lastDate && daysBetween(current.lastDate, today) === 1) return current.count + 1;
-  return 1;
+  if (!current?.lastDate) return 0;
+  if (current.lastDate === today) return Math.max(0, current.count - 1);
+  if (daysBetween(current.lastDate, today) === 1) return current.count;
+  return 0;
 }
 
 function scoreMultiplierForPass(state: QuizState, passed: boolean, now: number): number {
   if (!passed) return 1;
-  return streakScoreMultiplier(projectedStreakCountForPass(state, now));
+  return streakScoreMultiplier(carriedStreakCountForPass(state, now));
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -281,14 +282,26 @@ function letterGradeForClassScore(score: number | undefined): string | undefined
 function classQuestionScore(
   wasCorrect: boolean,
   playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
-  scoreMultiplier = 1,
 ): number {
   const outcome = playerRoll?.outcome ?? "miss";
   const base = wasCorrect
     ? outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80
     : outcome === "hit" ? 55 : outcome === "mixed" ? 40 : 20;
-  const streakBonus = wasCorrect ? (clamp(Math.floor(scoreMultiplier), 1, 3) - 1) * 5 : 0;
-  return clamp(base + streakBonus, 0, 100);
+  return clamp(base, 0, 100);
+}
+
+function awardSessionScore(
+  state: QuizState,
+  baseScore: number,
+  scoreMultiplier = 1,
+): NonNullable<NonNullable<QuizState["lastReveal"]>["scoreAward"]> {
+  const multiplier = clamp(Math.floor(scoreMultiplier), 1, 5);
+  const base = clamp(Math.round(baseScore), 0, 100);
+  const points = base * multiplier;
+  const possible = 100 * multiplier;
+  state.score.points = Math.max(0, Math.floor(Number(state.score.points ?? 0))) + points;
+  state.score.possible = Math.max(0, Math.floor(Number(state.score.possible ?? 0))) + possible;
+  return { base, multiplier, points, possible };
 }
 
 function classAverage(record: DailyClassRecord): number | undefined {
@@ -614,7 +627,7 @@ export class RubyHighService extends Service {
         subject: null,
         current: null,
         history: [],
-        score: { correct: 0, total: 0 },
+        score: { correct: 0, total: 0, points: 0, possible: 0 },
         lastReveal: null,
         status: statusForPhase("in-room"),
         askedQuestionIds: [],
@@ -858,8 +871,7 @@ export class RubyHighService extends Service {
   private recordDailyClassQuestion(
     state: QuizState,
     wasCorrect: boolean,
-    playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
-    scoreMultiplier: number,
+    score: number,
     now = Date.now(),
   ): DailyClassUpdate {
     const round = state.activeRound;
@@ -895,7 +907,6 @@ export class RubyHighService extends Service {
       };
     }
 
-    const score = classQuestionScore(wasCorrect, playerRoll, scoreMultiplier);
     record.questionCount += 1;
     if (wasCorrect) record.correctCount += 1;
     record.scoreTotal += score;
@@ -1106,7 +1117,7 @@ export class RubyHighService extends Service {
       return;
     }
 
-    const scoreCredit = clamp(Math.floor(scoreMultiplier), 1, 3);
+    const scoreCredit = clamp(Math.floor(scoreMultiplier), 1, 5);
     next.lastScoreMultiplier = scoreCredit;
     next.correctCount += scoreCredit;
     next.consecutiveCorrect += scoreCredit;
@@ -1268,6 +1279,8 @@ export class RubyHighService extends Service {
       const xpAwarded = 0;
       playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
     }
+    const rawQuestionScore = picked == null || forfeit ? 0 : classQuestionScore(wasCorrect, playerRoll);
+    const scoreAward = awardSessionScore(state, rawQuestionScore, scoreMultiplier);
     this.recordCardReview(
       state,
       q,
@@ -1278,8 +1291,7 @@ export class RubyHighService extends Service {
     const classProgress = this.recordDailyClassQuestion(
       state,
       wasCorrect,
-      playerRoll,
-      scoreMultiplier,
+      rawQuestionScore,
       reviewAt,
     );
 
@@ -1302,6 +1314,7 @@ export class RubyHighService extends Service {
         ? "Class affinity kicked in — second chance counted."
         : forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
       scoreMultiplier,
+      scoreAward,
       classProgress,
       playerRoll,
       affinitySave,
@@ -1358,7 +1371,7 @@ export class RubyHighService extends Service {
     const prevLastDate = ch.streak && ch.streak.grade === grade ? ch.streak.lastDate : undefined;
     if (prevLastDate !== today) {
       const nextCount = prevLastDate && daysBetween(prevLastDate, today) === 1
-        ? (ch.streak?.grade === grade ? ch.streak.count : 0) + 1
+        ? Math.min(5, (ch.streak?.grade === grade ? ch.streak.count : 0) + 1)
         : 1; // fresh streak — first day, gap > 1, or new grade
       ch.streak = { grade, count: nextCount, lastDate: today };
       dailyTicked = true;
@@ -1598,7 +1611,7 @@ export class RubyHighService extends Service {
         continue;
       }
       const prev = npc.streak.grade === npc.grade ? npc.streak.count : 0;
-      const next = prev + 1;
+      const next = Math.min(5, prev + 1);
       npc.streak = { grade: npc.grade, count: next };
       const required = requiredStreakForGrade(npc.grade);
       if (next < required) continue;
@@ -1878,12 +1891,13 @@ export class RubyHighService extends Service {
       state.history.push(record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
+      const rawQuestionScore = playerGrade ? Math.round(clamp(playerGrade.score, 0, 10) * 10) : 0;
+      const scoreAward = awardSessionScore(state, rawQuestionScore, scoreMultiplier);
       this.recordCardReview(state, q, passed ? "good" : "again", record.at, scoreMultiplier);
       const classProgress = this.recordDailyClassQuestion(
         state,
         passed,
-        null,
-        scoreMultiplier,
+        rawQuestionScore,
         record.at,
       );
       // Same progression as MC rounds. Opinion rounds update card mastery
@@ -1902,6 +1916,7 @@ export class RubyHighService extends Service {
         explanation: q.rubric ?? null,
         encouragement: affinitySave ? "Class affinity kicked in — second chance counted." : passed ? "Nice essay." : "Take another swing at it tomorrow.",
         scoreMultiplier,
+        scoreAward,
         classProgress,
         affinitySave,
       };
@@ -2393,6 +2408,16 @@ function derivePhaseForLegacy(s: QuizState): Phase {
   return "intro";
 }
 
+function normalizeScore(score: QuizState["score"] | null | undefined): QuizState["score"] {
+  const src = score && typeof score === "object" ? score : { correct: 0, total: 0 };
+  return {
+    correct: Math.max(0, Math.floor(Number(src.correct ?? 0))),
+    total: Math.max(0, Math.floor(Number(src.total ?? 0))),
+    points: Math.max(0, Math.floor(Number(src.points ?? 0))),
+    possible: Math.max(0, Math.floor(Number(src.possible ?? 0))),
+  };
+}
+
 function normalizeLoaded(s: QuizState): QuizState {
   // Migrate stale K-8 grades from previous schema versions to a high-school
   // grade so the player isn't stranded on a grade that no longer exists.
@@ -2409,7 +2434,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     cardMemory: s.cardMemory && typeof s.cardMemory === "object" ? s.cardMemory : {},
     roomBoards: s.roomBoards && typeof s.roomBoards === "object" ? s.roomBoards : {},
     history: Array.isArray(s.history) ? s.history : [],
-    score: s.score ?? { correct: 0, total: 0 },
+    score: normalizeScore(s.score),
     status: statusForPhase(phase),
     phase,
     phaseToken: typeof s.phaseToken === "number" && s.phaseToken >= 0 ? s.phaseToken : 0,

@@ -147,6 +147,8 @@ interface SessionTelemetry extends Record<string, unknown> {
   difficulty: Difficulty | null;
   scoreCorrect: number;
   scoreTotal: number;
+  scorePoints: number;
+  scorePossible: number;
   status: QuizState["status"];
   /** Authoritative session phase. The single dedupe primitive for client
    *  effects (greetings, answer reactions). Bumps `phaseToken` on every
@@ -472,6 +474,8 @@ function buildSessionState(args: {
     difficulty: state.current?.difficulty ?? null,
     scoreCorrect: state.score.correct,
     scoreTotal: state.score.total,
+    scorePoints: state.score.points ?? 0,
+    scorePossible: state.score.possible ?? 0,
     status: state.status,
     phase: state.phase,
     phaseToken: state.phaseToken,
@@ -524,7 +528,7 @@ function buildSessionState(args: {
 
   const summary = state.current
     ? `${fac.displayName} · ${state.current.subject ?? "open"} · ${state.current.difficulty ?? "?"} · awaiting answer`
-    : `${fac.displayName} on the floor · ${state.score.correct}/${state.score.total}`;
+    : `${fac.displayName} on the floor · ${state.score.correct}/${state.score.total} · ${state.score.points ?? 0} score`;
 
   const suggested = state.current
     ? [

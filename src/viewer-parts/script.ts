@@ -35,11 +35,19 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const meta = STAT_META[String(stat || "").toLowerCase()];
     return meta ? meta.emoji + " " + meta.label : "🧠 Head";
   }
+  function scoreAwardLabel(award) {
+    if (!award) return "";
+    const points = Math.max(0, Math.round(Number(award.points || 0)));
+    const mult = Math.max(1, Math.round(Number(award.multiplier || 1)));
+    if (mult >= 5) return "+" + points + " score · Friday ×5";
+    return "+" + points + " score" + (mult > 1 ? " · ×" + mult : "");
+  }
   function letterGradePasses(grade) {
     return /^[ABC]/.test(String(grade || ""));
   }
   function streakScoreMultiplier(count) {
     const n = Math.max(0, Math.floor(Number(count || 0)));
+    if (n >= 4) return 5;
     if (n >= 3) return 3;
     if (n >= 2) return 2;
     return 1;
@@ -182,6 +190,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     arcYear: $("arc-year"),
     arcStreak: $("arc-streak"),
     arcXp: $("arc-xp"),
+    arcScore: $("arc-score"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -674,6 +683,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       els.arcStreak.classList.remove("is-met");
       els.arcXp.textContent = "classes passed";
       els.arcXp.classList.remove("is-met");
+      els.arcScore.textContent = Math.round(Number(t.scorePoints || 0)) + " score";
       return;
     }
     const yearLabel = GRADE_LABELS[grade] || ("Grade " + grade);
@@ -685,6 +695,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const classes = classGradeSummary();
     els.arcXp.textContent = classes.met + "/" + classes.total + " classes";
     els.arcXp.classList.toggle("is-met", classes.met >= classes.total);
+    els.arcScore.textContent = Math.round(Number(t.scorePoints || 0)) + " score";
   }
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
@@ -1030,10 +1041,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       els.boardReveal.appendChild(chip);
     }
-    if (Number(reveal.scoreMultiplier || 1) > 1) {
+    if (reveal.scoreAward || Number(reveal.scoreMultiplier || 1) > 1) {
       const mult = document.createElement("span");
       mult.className = "score-multiplier-chip";
-      mult.textContent = "◆ ×" + Number(reveal.scoreMultiplier || 1) + " score";
+      const scoreMult = Number(reveal.scoreMultiplier || 1);
+      mult.textContent = reveal.scoreAward
+        ? scoreAwardLabel(reveal.scoreAward)
+        : (scoreMult >= 5 ? "◆ Friday Bonus ×5" : "◆ ×" + scoreMult + " score");
       els.boardReveal.appendChild(mult);
     }
     if (reveal.explanation) {
@@ -1088,10 +1102,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
       body.appendChild(chip);
     }
-    if (Number(reveal.scoreMultiplier || 1) > 1) {
+    if (reveal.scoreAward || Number(reveal.scoreMultiplier || 1) > 1) {
       const mult = document.createElement("span");
       mult.className = "score-multiplier-chip";
-      mult.textContent = "◆ ×" + Number(reveal.scoreMultiplier || 1);
+      const scoreMult = Number(reveal.scoreMultiplier || 1);
+      mult.textContent = reveal.scoreAward
+        ? scoreAwardLabel(reveal.scoreAward)
+        : (scoreMult >= 5 ? "◆ Friday ×5" : "◆ ×" + scoreMult);
       body.appendChild(mult);
     }
     wrap.appendChild(body);
@@ -2171,50 +2188,47 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     streakLabel.className = "career-token-label";
     streakLabel.textContent = "Streak";
     streak.appendChild(streakLabel);
+    const streakTrack = document.createElement("span");
+    streakTrack.className = "career-streak-track";
     const diamonds = document.createElement("span");
     diamonds.className = "career-diamonds";
     const streakCap = Math.max(0, spec.streakReq || 0);
-    const streakFilled = Math.max(0, Math.min(streakCap, spec.streakHere || 0));
+    const currentStreak = Math.max(0, spec.streakHere || 0);
+    const scoreStreak = spec.streakLastDate && spec.todayKey && spec.streakLastDate === spec.todayKey
+      ? Math.max(0, currentStreak - 1)
+      : currentStreak;
+    const streakFilled = Math.max(0, Math.min(streakCap, currentStreak));
     for (let i = 0; i < streakCap; i++) {
       const diamond = document.createElement("span");
       diamond.className = "career-diamond" + (i < streakFilled ? " is-filled" : "");
       diamond.setAttribute("aria-label", i < streakFilled ? "Streak day complete" : "Streak day needed");
       diamonds.appendChild(diamond);
     }
-    streak.appendChild(diamonds);
+    const boosts = document.createElement("span");
+    boosts.className = "career-multipliers";
+    [
+      { streak: 2, label: "×2" },
+      { streak: 3, label: "×3" },
+      { streak: 4, label: "Fri ×5" },
+    ].forEach((boost) => {
+      const chip = document.createElement("span");
+      const live = scoreStreak >= boost.streak;
+      chip.className = "career-multiplier" + (live ? " is-live" : "");
+      chip.textContent = boost.label;
+      chip.setAttribute("aria-label", live
+        ? boost.label + " score boost active"
+        : boost.label + " score boost unlocks after a " + boost.streak + "-day streak");
+      boosts.appendChild(chip);
+    });
+    streakTrack.appendChild(diamonds);
+    streakTrack.appendChild(boosts);
+    streak.appendChild(streakTrack);
     const streakCount = document.createElement("span");
     streakCount.className = "career-token-count";
-    const mult = streakScoreMultiplier(spec.streakHere || 0);
-    streakCount.textContent = (spec.streakHere || 0) + "/" + (spec.streakReq || 0)
-      + (mult > 1 ? " · ×" + mult : "");
+    const carriedMult = streakScoreMultiplier(scoreStreak);
+    streakCount.textContent = streakFilled + "/" + streakCap + (carriedMult > 1 ? " · ×" + carriedMult : "");
     streak.appendChild(streakCount);
     wrap.appendChild(streak);
-
-    const today = document.createElement("div");
-    today.className = "career-token-lane";
-    const todayLabel = document.createElement("span");
-    todayLabel.className = "career-token-label";
-    todayLabel.textContent = "Today";
-    today.appendChild(todayLabel);
-    const sockets = document.createElement("span");
-    sockets.className = "career-sockets";
-    const socketCap = 1;
-    const required = 1;
-    const filled = spec.todayDone ? 1 : 0;
-    for (let i = 0; i < socketCap; i++) {
-      const socket = document.createElement("span");
-      socket.className = "career-socket"
-        + (i < required ? " is-required" : "")
-        + (i < filled ? " is-filled" : "");
-      socket.setAttribute("aria-label", i < filled ? "School day complete" : "Correct answer needed today");
-      sockets.appendChild(socket);
-    }
-    today.appendChild(sockets);
-    const todayCount = document.createElement("span");
-    todayCount.className = "career-token-count";
-    todayCount.textContent = filled + "/1";
-    today.appendChild(todayCount);
-    wrap.appendChild(today);
 
     const advantage = document.createElement("div");
     advantage.className = "career-token-lane";
@@ -2341,9 +2355,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 
   // ── "What you need" hint ───────────────────────────────────────────────
   // Gates:
-  //   1. Today — the first correct answer on a UTC date ticks the streak.
-  //   2. Streak — consecutive school days with at least one correct answer.
-  //   3. Per-class credit — accrued from the question-stat roll on correct answers.
+  //   1. Daily class — one passed class can tick the school-day streak.
+  //   2. Streak — consecutive school days with at least one passed class.
+  //   3. Class grades — each teaching room must be brought to C or better.
   // The hint surfaces the most-blocking gate as one short sentence.
   function buildNextStepHint(c) {
     if (!c) return "";
@@ -2355,6 +2369,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const grade = String(t.current_grade ?? "9");
     const streakReq = STREAK_REQUIRED[grade] || 1;
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
+    const streakLastDate = c.streak && c.streak.grade === grade ? c.streak.lastDate : "";
+    const todayKey = (t.daily && t.daily.dailyKey) || "";
     const todayKey = (t.daily && t.daily.dailyKey) || "";
     const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
     const ROOM_LABEL = { ruby: "homeroom", "sally-science": "Sally's class", "professor-edward": "Edward's class" };
@@ -2365,9 +2381,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 
     const parts = [];
     if (streakNeeded > 0 && !todayDone) {
-      parts.push("Answer one question correctly today to grow your streak (" + streakHere + "/" + streakReq + ")");
+      parts.push("Complete one daily class at C or better to grow your streak (" + streakHere + "/" + streakReq + ")");
     } else if (streakNeeded > 0) {
-      parts.push("Today complete — streak " + streakHere + "/" + streakReq + ", come back tomorrow");
+      parts.push("Streak banked for this school day — " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
     if (classGaps.length > 0) {
       const segs = classGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + cg.grade + ")");
@@ -2380,10 +2396,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         : "Ready to advance — your year is complete.";
     }
     let hint = parts.join(" · ");
-    const bonusAvailable = t.daily && t.daily.available === true;
-    if (bonusAvailable && streakNeeded > 0 && !todayDone) {
-      hint += " · ★ today's bonus can start the day";
-    }
     return hint;
   }
 
@@ -2615,8 +2627,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
     const streakReq = STREAK_REQUIRED[grade] || 1;
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
-    const todayKey = (t.daily && t.daily.dailyKey) || "";
-    const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
     const budget = t.advantage_rolls || { used: 0, cap: 3, remaining: 3 };
     const yearbookCount = Array.isArray(c.yearbook) ? c.yearbook.length : 0;
 
@@ -2668,14 +2678,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       addMetric("yearbook", yearbookCount + "/4", "paper cards sealed", yearbookCount >= 4);
     } else {
       // The active standing already lives in the subtitle + badge. Keep the
-      // live gates compact: diamonds for streak, gems for today, dice for advantage.
+      // live gates compact: diamonds for the grade streak, boost chips for
+      // post-streak scoring, and dice for advantage.
     }
     if (metrics.children.length > 0) body.appendChild(metrics);
     if (!graduated) {
       body.appendChild(buildCareerTokens({
-        todayDone,
         streakHere,
         streakReq,
+        streakLastDate,
+        todayKey,
         advantageRemaining: budget.remaining,
         advantageCap: budget.cap,
       }));

@@ -194,14 +194,16 @@ describe("RubyHighService Phase 1", () => {
     let s = ruby.getOrCreate(sid);
     const correct = s.current!.correct!;
     s = ruby.submitAnswer(sid, correct);
-    expect(s.score).toEqual({ correct: 1, total: 1 });
+    expect(s.score).toMatchObject({ correct: 1, total: 1, points: 80, possible: 100 });
+    expect(s.lastReveal?.scoreAward).toMatchObject({ base: 80, multiplier: 1, points: 80, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(true);
 
     ruby.pickAndPose(sid, { faculty: "ruby" });
     s = ruby.getOrCreate(sid);
     const wrong = s.current!.correct! === "A" ? "B" : "A";
     s = ruby.submitAnswer(sid, wrong);
-    expect(s.score).toEqual({ correct: 1, total: 2 });
+    expect(s.score).toMatchObject({ correct: 1, total: 2, points: 100, possible: 200 });
+    expect(s.lastReveal?.scoreAward).toMatchObject({ base: 20, multiplier: 1, points: 20, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(false);
   });
 
@@ -390,7 +392,7 @@ describe("RubyHighService Phase 1", () => {
     expect(bank.remaining).toBe(1);
   });
 
-  it("multiplies successful class mastery credit by the active school-day streak", async () => {
+  it("keeps successful class mastery credit normal while carrying a one-day streak", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-score-multiplier";
     const pack = fakeAnkiPackWithSally("anki:vocab-streak-score", "vocab-streak-q1");
@@ -412,8 +414,64 @@ describe("RubyHighService Phase 1", () => {
 
     const after = ruby.getOrCreate(sid);
     const memory = after.cardMemory!["vocab-test-course::vocab-streak-q1"]!;
-    expect(after.score).toEqual({ correct: 3, total: 3 });
+    expect(after.score).toMatchObject({ correct: 3, total: 3, points: 300, possible: 300 });
     expect(after.character!.streak).toEqual({ grade: "9", count: 2, lastDate: "2026-05-05" });
+    expect(after.lastReveal?.scoreMultiplier).toBe(1);
+    expect(after.lastReveal?.classProgress?.completed).toBe(true);
+    expect(memory.correctCount).toBe(3);
+    expect(memory.consecutiveCorrect).toBe(3);
+    expect(memory.lastScoreMultiplier).toBe(1);
+  });
+
+  it("awards multiplied visible score for practice without advancing the daily class", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:practice-score-multiplier";
+    const pack = fakeAnkiPackWithSally("anki:vocab-practice-score", "vocab-practice-score-q1");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid, 3);
+
+    const realNow = Date.now;
+    try {
+      Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
+      const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course", mode: "practice" });
+      ruby.submitAnswer(sid, posed.current!.correct!);
+    } finally {
+      Date.now = realNow;
+    }
+
+    const after = ruby.getOrCreate(sid);
+    expect(after.lastReveal?.classProgress?.mode).toBe("practice");
+    expect(after.lastReveal?.scoreMultiplier).toBe(3);
+    expect(after.lastReveal?.scoreAward).toMatchObject({ base: 100, multiplier: 3, points: 300, possible: 300 });
+    expect(after.score).toMatchObject({ correct: 1, total: 1, points: 300, possible: 300 });
+    expect(after.character!.dailyClasses ?? {}).toEqual({});
+    expect(after.character!.streak).toEqual({ grade: "9", count: 3, lastDate: "2026-05-04" });
+  });
+
+  it("applies 2x class mastery credit when carrying a two-day streak", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:streak-score-two-day";
+    const pack = fakeAnkiPackWithSally("anki:vocab-streak-two-day", "vocab-streak-two-day-q1");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid, 2);
+
+    const realNow = Date.now;
+    try {
+      Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
+      for (let i = 0; i < 3; i++) {
+        const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
+        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-two-day-q1"]!.dueAt = Date.now() - 1;
+      }
+    } finally {
+      Date.now = realNow;
+    }
+
+    const after = ruby.getOrCreate(sid);
+    const memory = after.cardMemory!["vocab-test-course::vocab-streak-two-day-q1"]!;
+    expect(after.character!.streak).toEqual({ grade: "9", count: 3, lastDate: "2026-05-05" });
     expect(after.lastReveal?.scoreMultiplier).toBe(2);
     expect(after.lastReveal?.classProgress?.completed).toBe(true);
     expect(memory.correctCount).toBe(6);
@@ -421,13 +479,43 @@ describe("RubyHighService Phase 1", () => {
     expect(memory.lastScoreMultiplier).toBe(2);
   });
 
-  it("caps the streak score multiplier at 3x", async () => {
+  it("applies 3x class mastery credit when carrying a three-day streak", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:streak-score-three-day";
+    const pack = fakeAnkiPackWithSally("anki:vocab-streak-three-day", "vocab-streak-three-day-q1");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid, 3);
+
+    const realNow = Date.now;
+    try {
+      Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
+      for (let i = 0; i < 3; i++) {
+        const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
+        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-three-day-q1"]!.dueAt = Date.now() - 1;
+      }
+    } finally {
+      Date.now = realNow;
+    }
+
+    const after = ruby.getOrCreate(sid);
+    const memory = after.cardMemory!["vocab-test-course::vocab-streak-three-day-q1"]!;
+    expect(after.character!.streak).toEqual({ grade: "9", count: 4, lastDate: "2026-05-05" });
+    expect(after.lastReveal?.scoreMultiplier).toBe(3);
+    expect(after.lastReveal?.classProgress?.completed).toBe(true);
+    expect(memory.correctCount).toBe(9);
+    expect(memory.consecutiveCorrect).toBe(9);
+    expect(memory.lastScoreMultiplier).toBe(3);
+  });
+
+  it("caps the school-week streak with a 5x Friday Bonus", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-score-cap";
     const pack = fakeAnkiPackWithSally("anki:vocab-streak-cap", "vocab-streak-cap-q1");
     registerPack(pack, sid);
     ruby.setActivePackForSession(sid, pack.id);
-    attachTestCharacter(ruby, sid, 3);
+    attachTestCharacter(ruby, sid, 5);
 
     const realNow = Date.now;
     try {
@@ -443,12 +531,12 @@ describe("RubyHighService Phase 1", () => {
 
     const after = ruby.getOrCreate(sid);
     const memory = after.cardMemory!["vocab-test-course::vocab-streak-cap-q1"]!;
-    expect(after.character!.streak).toEqual({ grade: "9", count: 4, lastDate: "2026-05-05" });
-    expect(after.lastReveal?.scoreMultiplier).toBe(3);
+    expect(after.character!.streak).toEqual({ grade: "9", count: 5, lastDate: "2026-05-05" });
+    expect(after.lastReveal?.scoreMultiplier).toBe(5);
     expect(after.lastReveal?.classProgress?.completed).toBe(true);
-    expect(memory.correctCount).toBe(9);
-    expect(memory.consecutiveCorrect).toBe(9);
-    expect(memory.lastScoreMultiplier).toBe(3);
+    expect(memory.correctCount).toBe(15);
+    expect(memory.consecutiveCorrect).toBe(15);
+    expect(memory.lastScoreMultiplier).toBe(5);
   });
 
   it("uses the same class-grade model for Ruby High packs", async () => {
@@ -548,7 +636,7 @@ describe("RubyHighService Phase 1", () => {
 
     ruby.resetSession(sid);
     const fresh = ruby.getOrCreate(sid);
-    expect(fresh.score).toEqual({ correct: 0, total: 0 });
+    expect(fresh.score).toMatchObject({ correct: 0, total: 0, points: 0, possible: 0 });
     expect(fresh.askedQuestionIds).toEqual([]);
     expect(fresh.history).toEqual([]);
   });

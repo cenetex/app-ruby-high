@@ -104,12 +104,13 @@ export function requiredStreakForGrade(grade: Grade): number {
   return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
 }
 
-/** A school-day streak is also a class-score accelerator. The first day is
- *  normal, a 2-day streak doubles successful review credit, and a 3+ day
- *  streak triples it. The cap stays at 3x so Senior's fourth day is a
- *  sustained max streak instead of an unbounded grind multiplier. */
+/** A school-day streak is also a class-score accelerator based on the streak
+ *  carried into the school day. A 2-day carried streak pays 2x, a 3-day
+ *  carried streak pays 3x, and a 4+ day carried streak pays the capped
+ *  Friday Bonus at 5x. */
 export function streakScoreMultiplier(streakCount: number | undefined | null): number {
   const n = Math.max(0, Math.floor(Number(streakCount ?? 0)));
+  if (n >= 4) return 5;
   if (n >= 3) return 3;
   if (n >= 2) return 2;
   return 1;
@@ -267,9 +268,18 @@ export interface LastReveal {
   wasCorrect: boolean;
   explanation: string | null;
   encouragement: string | null;
-  /** Successful answers can earn extra hidden class-mastery credit when a
-   *  school-day streak is active: 1x on day 1, 2x on day 2, 3x on day 3+. */
+  /** Successful answers can earn extra hidden class-mastery credit from the
+   *  streak carried into the day: 2x after two days, 3x after three days,
+   *  and the 5x Friday Bonus after four days. */
   scoreMultiplier?: number;
+  /** Visible session-score payout for this question. Practice and class
+   *  questions both award this; only class questions affect advancement. */
+  scoreAward?: {
+    base: number;
+    multiplier: number;
+    points: number;
+    possible: number;
+  };
   /** Daily class bookkeeping. Class rounds update visible course standing;
    *  practice rounds still review cards but do not affect advancement. */
   classProgress?: {
@@ -317,7 +327,7 @@ export interface QuizState {
   subject: string | null;
   current: Question | null;
   history: AnswerRecord[];
-  score: { correct: number; total: number };
+  score: { correct: number; total: number; points?: number; possible?: number };
   lastReveal: LastReveal | null;
   /** Legacy 3-value status. Derived from `phase` for backwards compatibility
    *  with viewer + routes consumers that haven't migrated. New code should
@@ -584,11 +594,13 @@ export interface PlayerCharacter {
     awardedAt: number;
   }>;
   /** School-day streak in the active grade. A "day complete" is the
-   *  first passed question on a given UTC date.
+   *  first passed daily class on a given UTC date.
    *  Each completion increments `count` (capped to once per UTC date,
-   *  recorded in `lastDate`). Skipping a day (today is more than 1
-   *  day past `lastDate`) resets the streak. Switching grade resets
-   *  to `{ grade: newGrade, count: 0 }`.
+   *  recorded in `lastDate`). Count caps at 5 to model a school week:
+   *  a carried 2-day streak earns 2x, a carried 3-day streak earns 3x,
+   *  and a carried 4-day streak earns the day-5 Friday Bonus at 5x.
+   *  Skipping a day (today is more than 1 day past `lastDate`) resets
+   *  the streak. Switching grade resets to `{ grade: newGrade, count: 0 }`.
    *
    *  Legacy characters carry this forward without shape migration. */
   streak?: { grade: Grade; count: number; lastDate?: string };

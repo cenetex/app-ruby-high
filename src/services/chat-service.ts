@@ -857,14 +857,15 @@ function describeRoomForTeacher(state: QuizState): string {
 }
 
 function describeBoardForModel(state: QuizState): string {
+  const scoreLine = `${state.score.correct}/${state.score.total} answers · ${state.score.points ?? 0} score`;
   if (!state.current) {
-    return `No question on the board. Faculty: ${state.faculty}. Score this session: ${state.score.correct}/${state.score.total}.`;
+    return `No question on the board. Faculty: ${state.faculty}. Score this session: ${scoreLine}.`;
   }
   const q = state.current;
   if (q.type === "opinion") {
     return [
       `Active faculty: ${state.faculty}.`,
-      `Score this session: ${state.score.correct}/${state.score.total}.`,
+      `Score this session: ${scoreLine}.`,
       `OPINION question on the board:`,
       `  ${q.prompt}`,
       q.rubric ? `  rubric: ${q.rubric}` : "",
@@ -892,7 +893,7 @@ function describeBoardForModel(state: QuizState): string {
       ];
   return [
     `Active faculty: ${state.faculty}.`,
-    `Score this session: ${state.score.correct}/${state.score.total}.`,
+    `Score this session: ${scoreLine}.`,
     ...statusLines,
     `Current question on the blackboard (${q.difficulty ?? "?"} · ${q.subject ?? "?"}):`,
     `  ${q.prompt}`,

@@ -70,6 +70,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-streak" id="arc-streak" title="Legendary-day streak this year">streak —</span>
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Class standing">— classes</span>
+        <span class="arc-sep">·</span>
+        <span class="arc-score" id="arc-score" title="Session score">0 score</span>
       </div>
       <button class="pack-btn" id="pack-btn" type="button" title="Content packs" aria-label="Content packs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

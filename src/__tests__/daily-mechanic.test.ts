@@ -284,7 +284,7 @@ describe("RubyHighService.resetSession persistence", () => {
     await fresh["hydrate"]();
     const after = fresh.getOrCreate(sid);
     expect(after.character).toBeNull();
-    expect(after.score).toEqual({ correct: 0, total: 0 });
+    expect(after.score).toMatchObject({ correct: 0, total: 0, points: 0, possible: 0 });
     expect(after.history).toEqual([]);
   });
 });
