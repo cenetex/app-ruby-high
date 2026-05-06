@@ -195,20 +195,21 @@ describe("RubyHighService.rollAdvantage", () => {
     expect(counts.hit + counts.mixed + counts.miss).toBe(200);
   });
 
-  it("does not award XP or take a Condition (bonus-only mechanic)", async () => {
+  it("rollAdvantage does not mutate stats or score (bonus-only mechanic)", async () => {
     const { ruby } = await makeServices();
     const sid = "test:no-side-effects";
     ruby.pickAndPose(sid, { faculty: "ruby" });
-    // Manually attach a character so we can check XP/conditions before/after.
     const state = ruby.getOrCreate(sid);
     state.character = {
       name: "Test", playbookId: "overachiever", stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
-      arcAnswer: "—", personality: "—", xp: 0, yearbook: [],
+      arcAnswer: "—", personality: "—", yearbook: [],
       createdAt: Date.now(),
     };
-    const beforeXp = state.character.xp;
+    const beforeStats = { ...state.character.stats };
+    const beforeScore = { ...state.score };
     ruby.rollAdvantage(sid);
-    expect(state.character!.xp).toBe(beforeXp);
+    expect(state.character!.stats).toEqual(beforeStats);
+    expect(state.score).toEqual(beforeScore);
   });
 });
 
@@ -231,7 +232,6 @@ describe("Player roll on round resolve — bonus-only", () => {
       stats: { head: -1, heart: 3, hustle: 0, honor: 1 },
       arcAnswer: "-",
       personality: "-",
-      xp: 0,
       yearbook: [],
       createdAt: Date.now(),
     };
@@ -244,46 +244,5 @@ describe("Player roll on round resolve — bonus-only", () => {
     const roll = after.lastReveal!.playerRoll!;
     expect(roll.stat).toBe("heart");
     expect(roll.total).toBe(roll.dice[0] + roll.dice[1] + 3);
-  });
-
-  it("does not change XP on a wrong answer, regardless of the dice", async () => {
-    const { ruby } = await makeServices();
-    // Run many rounds — across a wide range of dice outcomes, a wrong answer
-    // should never punish the character. XP is legacy-only now.
-    for (let i = 0; i < 50; i++) {
-      const sid = `test:no-penalty:${i}`;
-      ruby.pickAndPose(sid, { faculty: "ruby" });
-      const state = ruby.getOrCreate(sid);
-      // Attach a fresh character with HEAD -1 so misses are likelier (worst-case
-      // input for the old penalty path that the v0.5.x fix removed).
-      state.character = {
-        name: "Test", playbookId: "overachiever", stats: { head: -1, heart: 0, hustle: 0, honor: 1 },
-        arcAnswer: "—", personality: "—", xp: 0, yearbook: [],
-        createdAt: Date.now(),
-      };
-      const correct = state.current!.correct! as Choice;
-      const wrong: Choice = (CHOICES.find((c) => c !== correct) as Choice)!;
-      ruby.submitAnswer(sid, wrong);
-      const after = ruby.getOrCreate(sid);
-      expect(after.character!.xp).toBe(0);
-    }
-  });
-
-  it("does not award XP on a correct answer; mastery owns progression now", async () => {
-    const { ruby } = await makeServices();
-    for (let i = 0; i < 30; i++) {
-      const sid = `test:xp:${i}`;
-      ruby.pickAndPose(sid, { faculty: "ruby" });
-      const state = ruby.getOrCreate(sid);
-      state.character = {
-        name: "Test", playbookId: "overachiever", stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
-        arcAnswer: "—", personality: "—", xp: 0, yearbook: [],
-        createdAt: Date.now(),
-      };
-      const correct = state.current!.correct! as Choice;
-      ruby.submitAnswer(sid, correct);
-      const after = ruby.getOrCreate(sid);
-      expect(after.character!.xp).toBe(0);
-    }
   });
 });

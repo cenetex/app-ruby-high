@@ -42,7 +42,6 @@ function attachTestCharacter(ruby: RubyHighService, sid: string, streakCount = 0
     stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
     arcAnswer: "—",
     personality: "—",
-    xp: 0,
     yearbook: [],
     createdAt: Date.now(),
     ...(streakCount > 0 ? { streak: { grade: "9" as const, count: streakCount, lastDate: "2026-05-04" } } : {}),

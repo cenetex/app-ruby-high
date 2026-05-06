@@ -277,7 +277,7 @@ describe("ChatService.send — message composition", () => {
     state.character = {
       name: "Rayan", playbookId: "overachiever",
       stats: { head: 1, heart: 0, hustle: 0, honor: 0 },
-      arcAnswer: "—", personality: "—", xp: 0,
+      arcAnswer: "—", personality: "—",
       yearbook: [], createdAt: Date.now(),
     };
     for await (const _ of chat.send({

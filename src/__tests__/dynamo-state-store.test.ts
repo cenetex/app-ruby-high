@@ -302,7 +302,6 @@ describe("DynamoStateStore", () => {
       arcAnswer: "if i miss one i replay it for a week",
       flavorQuote: "honestly the syllabus is bullying me",
       personality: "—",
-      xp: 4,
       yearbook: [],
       createdAt: 555,
     };
@@ -313,6 +312,6 @@ describe("DynamoStateStore", () => {
     expect(back!.score).toEqual({ correct: 7, total: 12 });
     expect(back!.askedQuestionIds).toEqual(["q1", "q2", "q3"]);
     expect(back!.character?.flavorQuote).toBe("honestly the syllabus is bullying me");
-    expect(back!.character?.xp).toBe(4);
+    expect(back!.character?.playbookId).toBe("overachiever");
   });
 });

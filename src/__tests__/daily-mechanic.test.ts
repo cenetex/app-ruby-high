@@ -42,20 +42,18 @@ async function makeServices() {
   return { ruby, faculty };
 }
 
-function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9", xp = 999) {
+function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9", preFillClasses = true) {
   ruby.selectGrade(sid, grade);
   const state = ruby.getOrCreate(sid);
-  // Pre-populate XP + per-class XP high enough to clear advancement gates
-  // at any year (Senior per-class minimum is 16). Tests that want to
-  // exercise the per-class gate explicitly should clear subjectXp + set
-  // a lower xp via the third arg.
+  // Pre-populate completed daily classes so advancement gates are met from
+  // the start. Tests that want to exercise the per-class gate explicitly
+  // can pass preFillClasses=false.
   state.character = {
     name: "Pip", playbookId: "overachiever",
     stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
-    arcAnswer: "—", personality: "—", xp,
+    arcAnswer: "—", personality: "—",
     yearbook: [], createdAt: Date.now(),
-    subjectXp: { ruby: 999, "sally-science": 999, "professor-edward": 999 },
-    dailyClasses: xp > 0 ? completedClassesForGrade(grade) : undefined,
+    dailyClasses: preFillClasses ? completedClassesForGrade(grade) : undefined,
   };
   return state;
 }
@@ -450,9 +448,8 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
   it("Freshman: a passing class ticks the streak, but all classes must reach C before advancement triggers", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:per-class-gate";
-    attachCharacter(ruby, sid, "9", 0);
+    attachCharacter(ruby, sid, "9", false);
     const ch0 = ruby.getOrCreate(sid).character!;
-    ch0.subjectXp = {};
     ch0.stats = { head: 99, heart: 99, hustle: 99, honor: 99 };
 
     // Mock Date.now so the streak-tick math (which reads `new Date()`
@@ -479,10 +476,9 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
   it("marks the ceremony ready as soon as the final class reaches C after the streak is already met", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:advance-when-class-gate-lands";
-    attachCharacter(ruby, sid, "9", 0);
+    attachCharacter(ruby, sid, "9", false);
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ch.subjectXp = {};
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
@@ -552,9 +548,9 @@ describe("Streak + grade advancement", () => {
     const { ruby } = await makeServices();
     const sid = "test:grad";
     // Inject a state already at Senior with prior 3 grades completed and
-    // ready to start Senior streak. attachCharacter pre-loads subjectXp
-    // high enough to clear all per-class gates so this test exercises
-    // only the streak arithmetic (per-class gate is covered separately).
+    // ready to start Senior streak. attachCharacter pre-fills dailyClasses
+    // for this grade so all per-class gates are met up front; the test
+    // exercises only the streak arithmetic.
     attachCharacter(ruby, sid, "12");
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "12", count: 0 };
@@ -593,10 +589,9 @@ describe("Streak + grade advancement", () => {
   it("reconciles already-cleared Freshman gates into ceremony-ready state on session read", async () => {
     const { ruby } = await makeServices();
     const sid = "test:reconcile-cleared-freshman";
-    attachCharacter(ruby, sid, "9", 0);
+    attachCharacter(ruby, sid, "9");
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
 
     const after = ruby.getOrCreate(sid);
     expect(after.currentGrade).toBe("9");
@@ -609,12 +604,11 @@ describe("Streak + grade advancement", () => {
   it("opens Senior graduation as soon as the final class reaches C after the streak is already met", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:graduate-when-senior-class-gate-lands";
-    attachCharacter(ruby, sid, "12", 0);
+    attachCharacter(ruby, sid, "12", false);
     const state = ruby.getOrCreate(sid);
     state.completedGrades = ["9", "10", "11"];
     const ch = state.character!;
     ch.streak = { grade: "12", count: 4, lastDate: "2026-05-07" };
-    ch.subjectXp = {};
     ch.yearbook = [
       { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },
       { grade: "10", completedAt: 2, summary: { correct: 2, total: 2 } },
@@ -641,11 +635,10 @@ describe("Streak + grade advancement", () => {
   it("graduation stat reward applies +1 with a +3 cap", async () => {
     const { ruby } = await makeServices();
     const sid = "test:graduation-stat-reward";
-    attachCharacter(ruby, sid, "9", 0);
+    attachCharacter(ruby, sid, "9");
     const ch = ruby.getOrCreate(sid).character!;
     ch.stats.head = 2;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
 
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
     ruby.completeGraduation(sid, { kind: "stat", stat: "head" });
@@ -659,10 +652,9 @@ describe("Streak + grade advancement", () => {
   it("graduation advantage reward adds one roll to the next grade cap", async () => {
     const { ruby } = await makeServices();
     const sid = "test:graduation-advantage-reward";
-    attachCharacter(ruby, sid, "9", 0);
+    attachCharacter(ruby, sid, "9");
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
 
     ruby.getOrCreate(sid);
     ruby.completeGraduation(sid, { kind: "advantage" });
@@ -673,10 +665,9 @@ describe("Streak + grade advancement", () => {
   it("graduation class affinity converts the first miss in that class, once", async () => {
     const { ruby } = await makeServices();
     const sid = "test:graduation-affinity-reward";
-    attachCharacter(ruby, sid, "9", 0);
+    attachCharacter(ruby, sid, "9");
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ch.subjectXp = { ruby: 2, "sally-science": 2, "professor-edward": 2 };
 
     ruby.getOrCreate(sid);
     ruby.completeGraduation(sid, { kind: "affinity", facultyId: "ruby" });

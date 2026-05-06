@@ -25,7 +25,6 @@ import {
   npcStatsFor,
   pickEliminatedChoices,
   requiredStreakForGrade,
-  requiredSubjectXpForGrade,
   roll2d6,
   rollNpcAnswer,
   rollOpinionDelay,
@@ -331,11 +330,6 @@ export class RubyHighService extends Service {
   private readonly backgroundWrites = new Set<Promise<void>>();
   private faculty: FacultyService | null = null;
   private loaded = false;
-  // In-memory debounce for the legacy XP fallback telemetry. Not persisted —
-  // a process restart re-emits once per session, which is fine and gives us
-  // a heartbeat. Cleared when the entry's grade changes (so each grade gets
-  // its own emission).
-  private readonly fallbackEmitted = new Map<string, Grade>();
 
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
@@ -459,33 +453,22 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  /** Resolve the player's pending DM-roll. Bonus-only: it produces a roll
-   *  result for narration but no longer awards XP. */
-  resolvePendingRoll(sessionId: string): { state: QuizState; result: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome; xpAwarded: number; reason: string } | null } {
+  /** Resolve the player's pending DM-roll. Produces a roll result for
+   *  narration only — progression is gated on letter-grade mastery. */
+  resolvePendingRoll(sessionId: string): { state: QuizState; result: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome; reason: string } | null } {
     const state = this.getOrCreate(sessionId);
     const pr = state.pendingRoll;
     if (!pr || !state.character) return { state, result: null };
     const r = roll2d6();
     const total = r.total + state.character.stats[pr.stat];
     const outcome: RoundOutcome = total >= pr.dc + 3 ? "hit" : total >= pr.dc ? "mixed" : "miss";
-    const xpAwarded = 0;
     state.pendingRoll = null;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return {
       state,
-      result: { stat: pr.stat, dice: r.dice, total, outcome, xpAwarded, reason: pr.reason },
+      result: { stat: pr.stat, dice: r.dice, total, outcome, reason: pr.reason },
     };
-  }
-
-  /** Legacy DM XP hook. Current progression is class mastery, so this is a
-   *  no-op kept for older callers. */
-  awardXp(sessionId: string, _amount: number, _reason: string): QuizState {
-    const state = this.getOrCreate(sessionId);
-    if (!state.character) return state;
-    state.updatedAt = Date.now();
-    void this.persistSession(sessionId);
-    return state;
   }
 
   /**
@@ -1295,7 +1278,7 @@ export class RubyHighService extends Service {
     if (wasCorrect) state.score.correct += 1;
 
     // 2d6 + question stat roll for the player — bonus layer on top of their
-    // literal pick. The roll feeds review quality; it no longer awards XP.
+    // literal pick. The roll feeds review quality and the UI dice chip.
     // NPC rolls (in activeRound.npcs) carry the actual race stakes.
     let playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null = null;
     if (state.character && picked != null) {
@@ -1303,8 +1286,7 @@ export class RubyHighService extends Service {
       const r = roll2d6();
       const total = r.total + state.character.stats[stat];
       const outcome = classifyTotal(total);
-      const xpAwarded = 0;
-      playerRoll = { stat, dice: r.dice, total, outcome, xpAwarded };
+      playerRoll = { stat, dice: r.dice, total, outcome };
     }
     const rawQuestionScore = picked == null || forfeit ? 0 : classQuestionScore(wasCorrect, playerRoll);
     const scoreAward = awardSessionScore(state, rawQuestionScore, scoreMultiplier);
@@ -1325,7 +1307,7 @@ export class RubyHighService extends Service {
     // Player progression. Card mastery updates above; class grades are derived
     // from completed daily classes. Practice updates card memory but does not
     // tick the school-day streak or the graduation gate.
-    const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, playerRoll?.xpAwarded ?? 0, classProgress);
+    const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, classProgress);
     if (progress.dailyTicked) {
       const correctAns = (q.correct ?? "A") as Choice;
       this.applyCohortDaily(state, correctAns, dailyKey());
@@ -1371,7 +1353,6 @@ export class RubyHighService extends Service {
     state: QuizState,
     passed: boolean,
     faculty: string,
-    awardedCredits: number,
     classProgress?: DailyClassUpdate,
   ): { dailyTicked: boolean } {
     const ch = state.character;
@@ -1386,9 +1367,7 @@ export class RubyHighService extends Service {
     if (passed) subj.correct += 1;
     ch.subjectScores[faculty] = subj;
 
-    void awardedCredits;
-
-    // 3. Streak tracking. Only a passing daily class completion moves it.
+    // 2. Streak tracking. Only a passing daily class completion moves it.
     let dailyTicked = false;
     if (!classProgress?.completed || !classProgress.passedClass) {
       this.maybeMarkGradeReady(state);
@@ -1406,16 +1385,6 @@ export class RubyHighService extends Service {
 
     this.maybeMarkGradeReady(state);
     return { dailyTicked };
-  }
-
-  /** True the first time the legacy XP fallback rescues this (session, grade)
-   *  combo since process start. Subsequent calls for the same combo return
-   *  false until the grade changes. Keeps the dashboard from drowning in
-   *  duplicates when a polling viewer hits the gate every few seconds. */
-  private shouldEmitFallback(sessionId: string, grade: Grade): boolean {
-    if (this.fallbackEmitted.get(sessionId) === grade) return false;
-    this.fallbackEmitted.set(sessionId, grade);
-    return true;
   }
 
   private gradeCompletionStatus(state: QuizState): {
@@ -1438,44 +1407,16 @@ export class RubyHighService extends Service {
     let classesMet = 0;
     let classCount = 0;
     const classGrades: Record<string, string> = {};
-    const fallbackRescues: Array<{ faculty: string; legacyXp: number; masteryGrade: string | null }> = [];
     for (const room of TEACHING_ROOMS) {
       const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
       if (!teacherId) continue;
       classCount++;
       const course = this.courseStandingForState(state, teacherId);
-      const coursePasses = course.passed;
-      const legacyXp = ch.subjectXp?.[teacherId] ?? 0;
-      const legacyPass = legacyXp >= requiredSubjectXpForGrade(grade);
-      const gradeLabel = coursePasses ? course.letterGrade! : (legacyPass ? "C" : (course.letterGrade ?? "—"));
-      classGrades[teacherId] = gradeLabel;
-      if (coursePasses || legacyPass) classesMet++;
-      if (!coursePasses && legacyPass) {
-        fallbackRescues.push({ faculty: teacherId, legacyXp, masteryGrade: course.letterGrade ?? null });
-      }
+      classGrades[teacherId] = course.letterGrade ?? "—";
+      if (course.passed) classesMet++;
     }
     const streakMet = streakCount >= requiredStreak;
     const classesMetAll = classCount > 0 && classesMet >= classCount;
-    // Telemetry: count when the legacy XP fallback was the deciding factor
-    // in the gate being met. PR 4b (deleting the fallback) is gated on
-    // this dropping to zero in production for N consecutive days. Emitted
-    // only when the gate would NOT have been met by card mastery alone —
-    // i.e. the fallback materially contributed. Debounced per (session,
-    // grade) so a polling viewer doesn't spam the log.
-    if (
-      fallbackRescues.length > 0 &&
-      streakMet &&
-      classesMetAll &&
-      this.shouldEmitFallback(state.sessionId, grade)
-    ) {
-      log.event("progression.legacy-xp-fallback", {
-        sessionId: state.sessionId,
-        character: ch.name,
-        grade,
-        rescues: fallbackRescues,
-        threshold: requiredSubjectXpForGrade(grade),
-      });
-    }
     return {
       grade,
       requiredStreak,
@@ -1502,7 +1443,7 @@ export class RubyHighService extends Service {
       summary: { correct: status.streakCount, total: status.requiredStreak },
     };
     log.event("player.graduation-ready", {
-      sessionId: state.sessionId, character: ch.name, grade, legacyXp: ch.xp,
+      sessionId: state.sessionId, character: ch.name, grade,
     });
     return true;
   }
@@ -1578,11 +1519,11 @@ export class RubyHighService extends Service {
       this.ensureRoster(state, advance);
       ch.streak = { grade: advance, count: 0 };
       log.event("player.grade-advanced", {
-        sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, legacyXp: ch.xp, reward: normalizedReward.kind,
+        sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, reward: normalizedReward.kind,
       });
     } else {
       log.event("player.graduated", {
-        sessionId: state.sessionId, character: ch.name, legacyXp: ch.xp, reward: normalizedReward.kind,
+        sessionId: state.sessionId, character: ch.name, reward: normalizedReward.kind,
       });
     }
 
@@ -2013,7 +1954,7 @@ export class RubyHighService extends Service {
       );
       // Same progression as MC rounds. Opinion rounds update card mastery
       // through the review rating above; no XP is awarded.
-      const progress = this.applyPlayerProgress(state, passed, state.faculty, passed ? 1 : 0, classProgress);
+      const progress = this.applyPlayerProgress(state, passed, state.faculty, classProgress);
       if (progress.dailyTicked) {
         // NPCs roll a coin-flip-ish dice; "A" is a neutral sentinel
         // since opinion mode has no correct letter to leak.
@@ -2333,7 +2274,6 @@ export class RubyHighService extends Service {
       ...(flavorQuote ? { flavorQuote } : {}),
       personality: input.personality.trim(),
       portraitDataUrl: input.portraitDataUrl,
-      xp: 0,
       yearbook: [],
       ...(inheritedFrom ? { inheritedFrom } : {}),
       mashCard,

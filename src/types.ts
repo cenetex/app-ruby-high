@@ -116,18 +116,6 @@ export function streakScoreMultiplier(streakCount: number | undefined | null): n
   return 1;
 }
 
-/** Legacy per-class credit gate. Kept for migrating old characters that
- *  already earned credits before letter-grade mastery replaced XP. New
- *  progression gates on class letter grades instead. */
-export function requiredSubjectXpForGrade(grade: Grade): number {
-  switch (grade) {
-    case "9":  return 2;
-    case "10": return 5;
-    case "11": return 10;
-    case "12": return 16;
-  }
-}
-
 export function letterGradePasses(grade: string | undefined | null): boolean {
   return !!grade && /^[ABC]/.test(grade);
 }
@@ -294,14 +282,12 @@ export interface LastReveal {
     score?: number;
   };
   /** Player's 2d6 + stat roll for this question. Bonus-only — it informs
-   *  card review quality, not XP. `xpAwarded` is retained for older clients
-   *  and is always 0 in the current progression model. */
+   *  card review quality and the UI dice chip. */
   playerRoll?: {
     stat: keyof CharacterStats;
     dice: [number, number];
     total: number;
     outcome: RoundOutcome;       // hit | mixed | miss
-    xpAwarded: number;
   } | null;
   /** A class-affinity reward converted a miss into a one-time pass. */
   affinitySave?: { facultyId: string } | null;
@@ -601,9 +587,6 @@ export interface PlayerCharacter {
   /** Generated sticker portrait as a base64 data URL. Optional — set by the
    *  /chat/character/portrait endpoint after creation. */
   portraitDataUrl?: string;
-  /** Legacy lifetime XP/credits. No longer player-facing or awarded by
-   *  current progression; retained so old state can hydrate safely. */
-  xp: number;
   /** Past-year archive — populated at grade completion. Each entry is a
    *  **Paper Card**: a frozen snapshot of identity at the moment the year
    *  closed. Paper cards never change after they're written. The current
@@ -659,9 +642,8 @@ export interface PlayerCharacter {
   /** Per-faculty score record — {correct, total} keyed by faculty id.
    *  Tracks attempts AND passes so we can compute a CORRECTNESS RATIO
    *  per teacher, used at graduation to pick the diploma image's
-   *  subject-themed accessory (best ratio wins). NOT redundant with
-   *  subjectXp — that's pure pass count, no notion of attempts. Optional
-   *  for legacy characters; defaulted to {} on hydrate. */
+   *  subject-themed accessory (best ratio wins). Optional for legacy
+   *  characters; defaulted to {} on hydrate. */
   subjectScores?: Record<string, { correct: number; total: number }>;
   /** Per-grade "Roll for advantage" usage. Keyed by grade. Each grade
    *  allows ADVANTAGE_ROLLS_PER_GRADE rolls; once spent, rollAdvantage
@@ -675,10 +657,6 @@ export interface PlayerCharacter {
   /** One classroom affinity per grade: the first miss in that class becomes
    *  a second-chance pass and then marks used. */
   classAffinity?: Partial<Record<Grade, { facultyId: string; used: boolean }>>;
-  /** Legacy per-faculty credit pool. Current advancement uses course letter
-   *  grades from card mastery; this remains as a migration fallback for
-   *  already-progressed characters. */
-  subjectXp?: Record<string, number>;
   /** One graded class per teacher per school day. These records are the
    *  visible course-standing source of truth; hidden card memory remains only
    *  the scheduler for which questions get asked. Keyed by
