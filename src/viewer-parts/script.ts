@@ -2515,16 +2515,16 @@ const VIEWER_SCRIPT_SUFFIX = `
 
       const note = document.createElement("div");
       note.className = "graduation-note";
-      note.textContent = "Requirements complete. Choose one level-up reward to seal the yearbook.";
+      note.textContent = "Three rewards drawn from the wider set — pick one to seal the yearbook.";
       wrap.appendChild(note);
 
       const status = document.createElement("div");
       status.className = "graduation-status";
       wrap.appendChild(status);
 
-      const groups = document.createElement("div");
-      groups.className = "graduation-groups";
-      wrap.appendChild(groups);
+      const row = document.createElement("div");
+      row.className = "graduation-choice-row";
+      wrap.appendChild(row);
 
       const allButtons = [];
       const setBusy = (btn, text) => {
@@ -2546,24 +2546,10 @@ const VIEWER_SCRIPT_SUFFIX = `
         status.classList.add("is-invalid");
         allButtons.forEach((b) => { b.disabled = false; });
       };
-      const addGroup = (label) => {
-        const group = document.createElement("div");
-        group.className = "graduation-group";
-        const h = document.createElement("div");
-        h.className = "graduation-group-label";
-        h.textContent = label;
-        group.appendChild(h);
-        const row = document.createElement("div");
-        row.className = "graduation-choice-row";
-        group.appendChild(row);
-        groups.appendChild(group);
-        return row;
-      };
-      const addChoice = (row, label, detail, reward, disabled) => {
+      const addChoice = (label, detail, reward) => {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "graduation-choice";
-        btn.disabled = !!disabled;
         const main = document.createElement("span");
         main.className = "main";
         main.textContent = label;
@@ -2577,21 +2563,71 @@ const VIEWER_SCRIPT_SUFFIX = `
         allButtons.push(btn);
       };
 
-      const statRow = addGroup("+1 to a stat");
+      // Build the eligible pool. Stats already at the +3 cap are excluded
+      // from the draw (no point offering "already capped"). Advantage and
+      // class affinity always qualify. Then take a stable random three —
+      // seeded by readyAt so the modal doesn't reshuffle every poll tick.
+      const pool = [];
       ["head", "heart", "hustle", "honor"].forEach((stat) => {
         const value = (c.stats && typeof c.stats[stat] === "number") ? c.stats[stat] : 0;
-        addChoice(statRow, fmtRewardStat(stat, value), value >= 3 ? "already capped" : "cap +3", { kind: "stat", stat }, value >= 3);
+        if (value < 3) {
+          pool.push({
+            label: fmtRewardStat(stat, value),
+            detail: "+1 stat (cap +3)",
+            reward: { kind: "stat", stat },
+          });
+        }
       });
-
-      const advRow = addGroup("Extra advantage");
-      addChoice(advRow, "+1 die", next ? "for " + targetLabel + " year" : "for post-grad play", { kind: "advantage" }, false);
-
-      const affinityRow = addGroup("Class affinity");
+      pool.push({
+        label: "+1 advantage die",
+        detail: next ? "for " + targetLabel + " year" : "for post-grad play",
+        reward: { kind: "advantage" },
+      });
       TEACHING_FACULTY_IDS.forEach((fid) => {
-        addChoice(affinityRow, facultyLabel(fid), "first miss counts once", { kind: "affinity", facultyId: fid }, false);
+        pool.push({
+          label: facultyLabel(fid) + " affinity",
+          detail: "first miss in class counts once",
+          reward: { kind: "affinity", facultyId: fid },
+        });
       });
+
+      const seed = (c.pendingGraduation && c.pendingGraduation.readyAt)
+        || hashCeremonySeed((c.name || "") + ":" + grade);
+      const picked = seededShuffle(pool, seed).slice(0, 3);
+      picked.forEach(({ label, detail, reward }) => addChoice(label, detail, reward));
       return wrap;
     }
+
+  // Fisher-Yates with a deterministic mulberry32 PRNG so the same ceremony
+  // (same readyAt) draws the same three rewards every time it re-renders.
+  // Without this, polling re-renders would reshuffle the modal under the
+  // player's cursor.
+  function seededShuffle(arr, seedInput) {
+    const out = arr.slice();
+    let s = (Number(seedInput) | 0) || 1;
+    const rand = () => {
+      s = (s + 0x6D2B79F5) | 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      const tmp = out[i];
+      out[i] = out[j];
+      out[j] = tmp;
+    }
+    return out;
+  }
+  function hashCeremonySeed(s) {
+    let h = 2166136261 | 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h | 0;
+  }
 
   function renderSheetReadonly(c, playbooks) {
     // Current character-sheet model:
