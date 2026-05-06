@@ -2204,7 +2204,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     streakTrack.className = "career-streak-track";
     const diamonds = document.createElement("span");
     diamonds.className = "career-diamonds";
-    const streakCap = Math.max(0, spec.streakReq || 0);
+    // Streak track: cap visible diamonds at STREAK_TRACK_VISIBLE_CAP (3) so
+    // the day-4 / Friday tier is a surprise reveal, not a spoiled preview.
+    // The underlying gameplay still uses spec.streakReq for advancement.
+    const STREAK_TRACK_VISIBLE_CAP = 3;
+    const streakReq = Math.max(0, spec.streakReq || 0);
+    const streakCap = Math.min(STREAK_TRACK_VISIBLE_CAP, streakReq);
     const currentStreak = Math.max(0, spec.streakHere || 0);
     const scoreStreak = spec.streakLastDate && spec.todayKey && spec.streakLastDate === spec.todayKey
       ? Math.max(0, currentStreak - 1)
@@ -2216,29 +2221,27 @@ const VIEWER_SCRIPT_SUFFIX = `
       diamond.setAttribute("aria-label", i < streakFilled ? "Streak day complete" : "Streak day needed");
       diamonds.appendChild(diamond);
     }
+    // Single live-only bonus chip. We used to render three preview chips
+    // (×2, ×3, Fri ×5) so the player could see the ladder; that telegraphed
+    // the Friday Bonus and made it a chore instead of a surprise. Now we
+    // only render the chip the player has actually unlocked, and only once
+    // they've earned at least the 2× tier.
     const boosts = document.createElement("span");
     boosts.className = "career-multipliers";
-    [
-      { streak: 2, label: "×2" },
-      { streak: 3, label: "×3" },
-      { streak: 4, label: "Fri ×5" },
-    ].forEach((boost) => {
+    const liveMult = streakScoreMultiplier(scoreStreak);
+    if (liveMult >= 2) {
       const chip = document.createElement("span");
-      const live = scoreStreak >= boost.streak;
-      chip.className = "career-multiplier" + (live ? " is-live" : "");
-      chip.textContent = boost.label;
-      chip.setAttribute("aria-label", live
-        ? boost.label + " score boost active"
-        : boost.label + " score boost unlocks after a " + boost.streak + "-day streak");
+      chip.className = "career-multiplier is-live is-bonus";
+      chip.textContent = "×" + liveMult + " Bonus!";
+      chip.setAttribute("aria-label", "×" + liveMult + " score bonus active");
       boosts.appendChild(chip);
-    });
+    }
     streakTrack.appendChild(diamonds);
     streakTrack.appendChild(boosts);
     streak.appendChild(streakTrack);
     const streakCount = document.createElement("span");
     streakCount.className = "career-token-count";
-    const carriedMult = streakScoreMultiplier(scoreStreak);
-    streakCount.textContent = streakFilled + "/" + streakCap + (carriedMult > 1 ? " · ×" + carriedMult : "");
+    streakCount.textContent = streakFilled + "/" + streakCap + (liveMult > 1 ? " · ×" + liveMult : "");
     streak.appendChild(streakCount);
     wrap.appendChild(streak);
 
