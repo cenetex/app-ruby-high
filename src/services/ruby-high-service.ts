@@ -750,6 +750,17 @@ export class RubyHighService extends Service {
     return resolveFacultyIdForSession(state, raw) ?? raw;
   }
 
+  private assertBoardMutationAllowed(state: QuizState, action: "post" | "clear"): void {
+    // getOrCreate() ticks expired rounds before mutators run. If this is still
+    // unresolved, the board is live and the scheduler/AI must wait for the
+    // player answer or timer resolution before replacing it.
+    if (state.activeRound && !state.activeRound.resolved) {
+      const remaining = Math.max(0, state.activeRound.expiresAt - Date.now());
+      const verb = action === "clear" ? "clear the board" : "post another question";
+      throw new Error(`Cannot ${verb} while a question is live. Wait for the answer or timeout (${Math.ceil(remaining / 1000)}s left).`);
+    }
+  }
+
   private subjectsForFaculty(state: QuizState, facultyId: string): string[] {
     const pack = packForSession(state);
     const faculty = pack.faculty.find((f) => f.id === facultyId);
@@ -1642,6 +1653,7 @@ export class RubyHighService extends Service {
 
   pose(sessionId: string, input: PoseInput): QuizState {
     const state = this.getOrCreate(sessionId);
+    this.assertBoardMutationAllowed(state, "post");
     if (state.character?.pendingGraduation) {
       throw new Error("Graduation ceremony is ready — choose a level-up reward before starting another question.");
     }
@@ -1787,6 +1799,7 @@ export class RubyHighService extends Service {
    *  responses and grading via the chat layer. */
   poseOpinion(sessionId: string, input: PoseOpinionInput): QuizState {
     const state = this.getOrCreate(sessionId);
+    this.assertBoardMutationAllowed(state, "post");
     const id = input.questionId ?? `qo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     const facultyId = this.resolveQuestionFaculty(state, input.faculty);
     const subject = this.normalizeQuestionSubject(state, facultyId, input.subject);
@@ -1939,6 +1952,7 @@ export class RubyHighService extends Service {
       throw new Error("FacultyService is not bound. Call setFacultyService() first.");
     }
     const state = this.getOrCreate(sessionId);
+    this.assertBoardMutationAllowed(state, "post");
     const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
     const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
     let difficulty = filter.difficulty;
@@ -2276,6 +2290,7 @@ export class RubyHighService extends Service {
 
   clearBoard(sessionId: string): QuizState {
     const state = this.getOrCreate(sessionId);
+    this.assertBoardMutationAllowed(state, "clear");
     this.transition(state, { kind: "clear-board" });
     this.discardBoardForFaculty(state, state.faculty);
     state.updatedAt = Date.now();

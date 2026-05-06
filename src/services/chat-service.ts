@@ -107,7 +107,8 @@ export interface SendOpts {
   /** Override the chat-history bucket. Defaults to `faculty`. The lounge
    *  uses a shared "lounge" bucket so all three teachers see the same thread. */
   bucketKey?: string;
-  /** Disable the blackboard tool surface for this turn (lounge mode). */
+  /** Disable the blackboard tool surface for this turn (lounge mode, or
+   *  scheduled class flow where the deterministic scheduler owns the board). */
   disableTools?: boolean;
   /** Append additional context to the system prompt for this turn. */
   extraSystemContext?: string;
@@ -409,10 +410,11 @@ export class ChatService extends Service {
     if (groupBlock) {
       messages.push({ role: "system", content: groupBlock });
     }
-    // 3. Board.
+    // 3. Board. Keep the board visible to the teacher even when tools are
+    // disabled so narration-only turns can still explain the live question.
+    const ctx = describeBoardForModel(state);
+    messages.push({ role: "system", content: `Active board context for this turn:\n${ctx}` });
     if (!disableTools) {
-      const ctx = describeBoardForModel(state);
-      messages.push({ role: "system", content: `Active board context for this turn:\n${ctx}` });
       messages.push({ role: "system", content: describeQuestionBankForModel(this.ruby!.questionBankStatus(agentSessionId, state.faculty)) });
     }
     // 4. RECENT EVENTS synopsis — events newer than this speaker's last

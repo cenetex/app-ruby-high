@@ -182,9 +182,24 @@ describe("RubyHighService Phase 1", () => {
       const s = ruby.pickAndPose(sid, { faculty: "ruby" });
       const id = s.current!.id;
       seen.add(id);
+      ruby.submitAnswer(sid, s.current!.correct!);
     }
     expect(seen.size).toBeGreaterThan(0);
     expect(ruby.questionBankStatus(sid, "ruby").total).toBe(total);
+  });
+
+  it("does not replace or clear a live unresolved board", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:live-board-lock";
+    const first = ruby.pickAndPose(sid, { faculty: "ruby" });
+    const firstId = first.current!.id;
+
+    expect(() => ruby.pickAndPose(sid, { faculty: "ruby" })).toThrow(/Cannot post another question while a question is live/);
+    expect(() => ruby.clearBoard(sid)).toThrow(/Cannot clear the board while a question is live/);
+
+    ruby.submitAnswer(sid, first.current!.correct!);
+    const second = ruby.pickAndPose(sid, { faculty: "ruby" });
+    expect(second.current!.id).not.toBe(firstId);
   });
 
   it("scores correct vs incorrect picks", async () => {
@@ -288,6 +303,7 @@ describe("RubyHighService Phase 1", () => {
     state.askedQuestionIds = ["level-medium"];
     const picked = ruby.pickAndPose(sid, { faculty: "level-test-course" });
     expect(["level-easy", "level-medium"]).toContain(picked.current?.id);
+    ruby.submitAnswer(sid, picked.current!.correct!);
 
     const review = ruby.pickAndPose(sid, { faculty: "level-test-course" });
     expect(["level-easy", "level-medium"]).toContain(review.current?.id);
@@ -697,6 +713,7 @@ describe("RubyHighService Phase 1", () => {
     ruby.pickAndPose(sid, { faculty: "sally-science" });
     ruby.setFaculty(sid, "professor-edward");
     expect(ruby.setFaculty(sid, "sally-science").current).not.toBeNull();
+    ruby.forceResolveRound(sid);
     ruby.clearBoard(sid);
     ruby.setFaculty(sid, "professor-edward");
     const state = ruby.setFaculty(sid, "sally-science");

@@ -1643,8 +1643,7 @@ export const VIEWER_CSS = `
   .sheet-overlay.is-open { display: flex; }
   /* Universal close affordance for the sheet overlay. The X tracks the
      overlay rather than any individual card variant — replaces every
-     per-card "Close" button. Hidden on the mandatory signin overlay
-     (no escape from sign-in). */
+     per-card "Close" button. Hidden on the fallback signin overlay. */
   .sheet-close {
     position: absolute;
     top: max(env(safe-area-inset-top, 0), 12px);
@@ -1662,10 +1661,9 @@ export const VIEWER_CSS = `
   }
   .sheet-close:hover { background: rgba(0,0,0,0.75); }
   .sheet-overlay.is-mandatory .sheet-close { display: none; }
-  /* Mandatory overlay: shown unconditionally while unauthed. No close
-     affordance — it covers the app and the only way past it is to sign
-     in. Always rendered (display:flex) so the unauthed boot has nothing
-     paint behind it; aria-hidden flips off when the user signs in. */
+  /* Fallback overlay: shown only when a guest Ruby High session cannot be
+     established. Always rendered (display:flex) so the fallback boot has
+     nothing stale painted behind it; aria-hidden flips off when usable. */
   .sheet-overlay.is-mandatory { display: flex; }
   .sheet-overlay.is-mandatory[aria-hidden="true"] { display: none; }
   .signin-card { text-align: center; max-width: 440px; }

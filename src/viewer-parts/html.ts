@@ -43,10 +43,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="you-name" id="you-name">${safeAgent}</span>
         <span class="you-state" id="you-state">checking…</span>
       </div>
-      <!-- Footer button is sign-out only. Hidden until applyAuthUI() decides
-           the user is signed in. Pre-script "Sign in" text would flash for
-           a frame on boot, then get superseded by the mandatory sign-in
-           overlay anyway — so just start hidden. -->
+      <!-- Footer action is filled by applyAuthUI(): "Enable AI" in offline
+           mode, "Sign out" when an OpenRouter key is active. -->
       <button class="footer-action" id="footer-action" type="button" hidden></button>
     </div>
     <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Open an issue on GitHub.">Report a bug</button>
@@ -145,16 +143,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
 <div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
 
-<!-- Sign-in gate. Mandatory while unauthed: covers the app, no dismiss.
-     Detangled from the character sheet so the sign-in surface is a single
-     dedicated thing instead of the auth state being one of several render
-     branches inside the creation modal. -->
+<!-- Sign-in fallback. Normal boot creates a guest Ruby High session; this only
+     opens if the app cannot establish even that local session. -->
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>
-    <p class="sub">Your character is rolled by an LLM and your chat with the teachers runs on your account. Sign in with OpenRouter to begin — it's free, and your inference key never leaves your browser.</p>
+    <p class="sub">Ruby High can run offline. OpenRouter enables AI chat, custom portraits, and AI-assisted imports; your inference key never leaves your browser.</p>
     <div class="sheet-actions" style="justify-content: center;">
-      <a id="signin-cta" class="primary-link" href="/api/apps/ruby-high/auth/start">Sign in with OpenRouter</a>
+      <a id="signin-cta" class="primary-link" href="/api/apps/ruby-high/auth/start">Enable AI with OpenRouter</a>
     </div>
   </div>
 </div>

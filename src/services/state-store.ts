@@ -6,7 +6,7 @@ import type { ContentPack } from "../content/types.js";
 
 export interface AuthUserRecord {
   userId: string;
-  provider: "openrouter";
+  provider: "openrouter" | "guest";
   providerUserHash: string;
   createdAt: number;
   lastLoginAt: number;
@@ -151,7 +151,7 @@ export class StateStore implements StateStoreLike {
     for (const u of parsed.authUsers ?? []) {
       if (
         u &&
-        u.provider === "openrouter" &&
+        (u.provider === "openrouter" || u.provider === "guest") &&
         typeof u.providerUserHash === "string" &&
         typeof u.userId === "string"
       ) {

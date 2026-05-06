@@ -132,8 +132,25 @@ function makeRouteContext(req, res, url) {
   };
 }
 
+function healthPayload() {
+  return {
+    ok: true,
+    app: "ruby-high",
+    build: process.env.RUBY_HIGH_BUILD ?? "dev",
+    state: stateStore?.describe?.() ?? "starting",
+    t: Date.now(),
+  };
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? HOST}`);
+
+  if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(healthPayload()));
+    return;
+  }
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
     res.writeHead(302, { Location: "/api/apps/ruby-high/viewer" });

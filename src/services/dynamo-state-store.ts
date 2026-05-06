@@ -103,7 +103,7 @@ export class DynamoStateStore implements StateStoreLike {
       const user = item.authUser as AuthUserRecord | undefined;
       if (
         user &&
-        user.provider === "openrouter" &&
+        (user.provider === "openrouter" || user.provider === "guest") &&
         typeof user.providerUserHash === "string" &&
         typeof user.userId === "string"
       ) {

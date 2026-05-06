@@ -119,11 +119,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   //
   // 401 handling: when the server says "not authenticated" — typically because
   // the rh_session cookie expired but localStorage still has a stale key — we
-  // clear the local credential and re-derive auth state. That fires the same
-  // re-render path as a logout: the mandatory #signin-overlay covers the
-  // app, chat + footer button are hidden. The caller's error path may
-  // still run, but it'll be writing to detached DOM nodes by then, so no
-  // stale "Couldn't roll" string ever lands on screen.
+  // clear the local credential and re-derive auth state. That normally creates
+  // a guest session again; only hard failure opens the fallback overlay.
   function apiFetch(url, init) {
     const opts = init ? Object.assign({}, init) : {};
     const headers = new Headers(opts.headers || {});
@@ -231,7 +228,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   let lastRosterSig = "";
   let lastRevealId = null;
   let lastAnswerGradedTriggerId = null;
-  let authed = null; // null = unknown, true/false set after first poll
+  let authed = null; // app-owned Ruby High session ready
+  let aiEnabled = false; // OpenRouter key + Ruby High session present
   let lockedFor = null;
   let streamingMsgEl = null;
   let renderedHistorySig = null;
@@ -874,7 +872,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       // The empty-board message is just text; the teacher/chat loop decides
       // when to write the next question.
       if (!authed) {
-        els.blackboardEmptyText.textContent = "Sign in with OpenRouter to start class.";
+        els.blackboardEmptyText.textContent = "Starting Ruby High…";
       } else if (!lastTelemetry?.character) {
         els.blackboardEmptyText.textContent = "Roll a character — your name will appear in the seating chart.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
@@ -1067,7 +1065,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (triggerId === lastAnswerGradedTriggerId) return;
     const ceremonyReady = !!(t.graduation_ready || (t.character && t.character.pendingGraduation));
     const arcFinished = t.character && graduatedFor(t.character);
-    if (!authed || t.faculty === LOUNGE_ID || arcFinished || ceremonyReady) return;
+    if (!aiEnabled || t.faculty === LOUNGE_ID || arcFinished || ceremonyReady) return;
     lastAnswerGradedTriggerId = triggerId;
     setTimeout(() => {
       // If the player switches rooms before the delayed reaction fires,
@@ -1330,7 +1328,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const actualFaculty = data.session.telemetry.faculty || facultyId;
       const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === actualFaculty);
       const grade = data.session.telemetry.current_grade;
-      if (authed) {
+      if (aiEnabled) {
         loadHistory(actualFaculty);
         runAgentTurn("channel-enter", { grade }, { force: true });
       } else if (fac) {
@@ -1348,10 +1346,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       resetBlackboard();
       resetAgentGuards();
       appendSystem("— You walk into the teachers' lounge —");
-      if (authed) {
+      if (aiEnabled) {
         runAgentTurn("lounge-enter", { }, { force: true });
       } else {
-        appendSystem("Sign in to eavesdrop on the faculty.");
+        appendSystem("Enable AI to eavesdrop on the faculty.");
       }
     }
     closeRails();
@@ -1470,7 +1468,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     els.blackboardPanel.dataset.mode = mode;
     els.shell.dataset.mode = mode;
     // Composer: only enabled when the player is in a state that can chat.
-    const canChat = authed && (mode === "between-rounds" || mode === "round-live" || mode === "round-revealed" || mode === "in-lounge");
+    const canChat = aiEnabled && (mode === "between-rounds" || mode === "round-live" || mode === "round-revealed" || mode === "in-lounge");
     els.chatForm.hidden = !canChat;
     if (canChat) { els.chatInput.disabled = false; els.chatSend.disabled = false; }
     // Race strip + answers + advantage + footer-filter all hide via CSS now.
@@ -1483,7 +1481,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
     lastTelemetry = t;
-    if (authed && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
+    if (aiEnabled && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
     applyViewMode(deriveViewMode(t));
@@ -1597,10 +1595,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       }
     }
 
-    // First-launch character creation: open sheet overlay automatically — but
-    // only once the player is signed in to OpenRouter. Otherwise the chat
-    // panel's sign-in CTA is the priority; we don't want to dangle a Roll
-    // button at someone who can't actually use it.
+    // First-launch character creation: open sheet overlay automatically once
+    // the player has a Ruby High session. Offline mode can roll locally.
     if (authed === true && !t.character && !sheetAutoShown && !sheetOverlayOpen) {
       sheetAutoShown = true;
       openSheet();
@@ -2302,9 +2298,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // ── character sheet UI ──────────────────────────────────────────────────
   const sheetEl = $("sheet-overlay");
   const sheetCard = $("sheet-card");
-  // Mandatory sign-in surface. Lifecycle: shown whenever authed === false;
-  // hidden whenever authed === true. No dismiss affordance — there is
-  // nothing else to do in the app while unauthed.
+  // Sign-in fallback surface. Normal boot creates a guest session and hides
+  // this; it only opens if the app cannot establish a playable Ruby High
+  // session.
   const signinEl = $("signin-overlay");
   function openSheet() {
     sheetOverlayOpen = true;
@@ -2626,6 +2622,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
     const streakReq = STREAK_REQUIRED[grade] || 1;
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
+    const streakLastDate = c.streak && c.streak.grade === grade ? c.streak.lastDate : "";
+    const todayKey = (t.daily && t.daily.dailyKey) || "";
     const budget = t.advantage_rolls || { used: 0, cap: 3, remaining: 3 };
     const yearbookCount = Array.isArray(c.yearbook) ? c.yearbook.length : 0;
 
@@ -2886,15 +2884,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     return !hidden || studentId !== hidden;
   }
 
-  // Random-roll character creation. The player INHABITS an AI student rather
-  // than building one. Server picks playbook + stats; LLM fills in the
-  // name/hook/personality. Each component has a small ↻ reroll button so the
-  // player can lock in the parts they like and cycle the rest.
+  // Random-roll character creation. The player INHABITS a Ruby High student
+  // rather than building one. Offline mode rolls locally; AI mode can ask the
+  // LLM for voice text and an optional custom portrait. Each component has a
+  // small ↻ reroll button so the player can lock in the parts they like and
+  // cycle the rest.
   //
-  // Auth invariant: this function only runs when authed === true. The
-  // unauth surface is the mandatory #signin-overlay shown by deriveAuth();
-  // the sheet overlay is suppressed entirely while signed out, so there is
-  // no unauth branch to render here.
+  // Auth invariant: this function only runs when authed === true. A guest
+  // Ruby High session is enough; OpenRouter is optional.
   function renderSheetCreation(playbooks) {
     sheetCard.classList.remove("is-card-deck-sheet");
     sheetCard.classList.remove("is-two-card-deck");
@@ -2920,7 +2917,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     sheetCard.appendChild(h);
     const sub = document.createElement("p");
     sub.className = "sub";
-    sub.textContent = "You're inhabiting an AI student. Lock in the parts that fit; reroll the rest.";
+    sub.textContent = aiEnabled
+      ? "Lock in the parts that fit; reroll the rest. AI can help with voice and portrait."
+      : "Lock in the parts that fit; reroll the rest. Enable AI later for custom portrait and chat.";
     sub.style.display = "none";
     sheetCard.appendChild(sub);
 
@@ -3018,6 +3017,62 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false };
     let aiPortraitDataUrl = null; // when set, replaces the default at accept-time
 
+    const OFFLINE_NAMES = ["Iris", "Nova", "Vee", "Mara", "Jules", "Theo", "Rin", "Cass", "Ari", "Nico", "Sol", "Mina"];
+    const OFFLINE_VOICES = [
+      "Quietly intense, observant, and allergic to obvious answers.",
+      "Fast-talking, curious, and always one foot into trouble.",
+      "Dry, focused, and more competitive than they admit.",
+      "Warm, chaotic, and very sure the room is improv.",
+      "Careful, sharp, and tracking everyone else's tells.",
+      "Brave in theory, dramatic in practice, loyal by default.",
+    ];
+    const OFFLINE_QUOTES = [
+      "you guys don't see the exit signs are all wrong, do you",
+      "i am not lost, i'm collecting evidence",
+      "if this is extra credit, i am morally required to overdo it",
+      "the answer is probably hiding in the part nobody wants to read",
+      "i brought a pencil, a theory, and one terrible backup plan",
+      "school spirit is just pattern recognition with banners",
+    ];
+    const OFFLINE_ARCS = {
+      outsider: "I want to find the hidden pattern without becoming part of it.",
+      overachiever: "I want proof that being excellent is not the same as being safe.",
+      classclown: "I want to see what happens when everyone stops pretending this is normal.",
+      mystic: "I want to know which rules are real and which ones only scare people.",
+      rebel: "I want a reason to trust the room before the room gets my loyalty.",
+      lifer: "I want to make this place better without letting it own me.",
+    };
+
+    function offlineStats() {
+      const values = [2, 1, 0, -1];
+      for (let i = values.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = values[i];
+        values[i] = values[j];
+        values[j] = tmp;
+      }
+      return { head: values[0], heart: values[1], hustle: values[2], honor: values[3] };
+    }
+    function offlinePlaybook(current, regen) {
+      if (!regen.has("playbook") && current && current.playbookId) {
+        const kept = playbooks.find((p) => p.id === current.playbookId);
+        if (kept) return kept;
+      }
+      return pickRandom(playbooks) || { id: "outsider", name: "Outsider", startingMove: { name: "Move", description: "" } };
+    }
+    function offlineCharacterRoll(components) {
+      const isFullRoll = !components || components.length === 0;
+      const regen = new Set(isFullRoll ? ["name", "personality", "arcAnswer", "flavorQuote", "stats", "playbook"] : components);
+      const prev = rolled || {};
+      const pb = offlinePlaybook(prev, regen);
+      const stats = regen.has("stats") || !prev.stats ? offlineStats() : prev.stats;
+      const name = regen.has("name") || !prev.name ? pickRandom(OFFLINE_NAMES) : prev.name;
+      const personality = regen.has("personality") || !prev.personality ? pickRandom(OFFLINE_VOICES) : prev.personality;
+      const arcAnswer = regen.has("arcAnswer") || !prev.arcAnswer ? (OFFLINE_ARCS[pb.id] || "I want to figure out what kind of student this place makes me.") : prev.arcAnswer;
+      const flavorQuote = regen.has("flavorQuote") || !prev.flavorQuote ? pickRandom(OFFLINE_QUOTES) : prev.flavorQuote;
+      return { name, playbookId: pb.id, stats, personality, arcAnswer, flavorQuote };
+    }
+
     function setStatus(text, invalid) {
       status.textContent = text || "";
       status.classList.toggle("is-invalid", !!invalid);
@@ -3028,7 +3083,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
       });
-      portraitBtn.disabled = !rolled || inFlight.portrait;
+      portraitBtn.hidden = !aiEnabled;
+      portraitBtn.disabled = !rolled || !aiEnabled || inFlight.portrait;
     }
 
     function renderRolled(c) {
@@ -3067,6 +3123,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         // if they want a new AI portrait against the new identity.
         if (!isFullRoll && (components.includes("playbook") || components.includes("name"))) {
           aiPortraitDataUrl = null;
+        }
+        if (!aiEnabled) {
+          rolled = offlineCharacterRoll(components);
+          renderRolled(rolled);
+          revealForm();
+          setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
+          return;
         }
         const body = isFullRoll
           ? {}
@@ -3117,6 +3180,11 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // ships with the create-character command. On failure, leaves the
     // default in place and shows an inline error.
     portraitBtn.addEventListener("click", async () => {
+      if (!aiEnabled) {
+        portraitStatus.textContent = "Enable AI for a custom portrait.";
+        portraitStatus.classList.add("is-invalid");
+        return;
+      }
       if (!rolled || inFlight.portrait) return;
       inFlight.portrait = true;
       portraitBtn.textContent = "✨ Generating…";
@@ -3178,8 +3246,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       }
     });
 
-    // Auto-roll on first open. By the time we get here authed is guaranteed
-    // true (the unauth branch returned above).
+    // Auto-roll on first open. A guest Ruby High session is enough; AI is
+    // only needed for LLM-backed rerolls and custom portraits.
     rollComponents();
   }
   sheetEl.addEventListener("click", (e) => { if (e.target === sheetEl) closeSheet(); });
@@ -3342,9 +3410,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   // ── student chime ─────────────────────────────────────────────────────────
-  // When authed, fire the LLM-backed /chat/student-chime endpoint so the AI
-  // students respond in their own voice. Falls back to canned lines when the
-  // user isn't signed in.
+  // When AI is enabled, fire the LLM-backed /chat/student-chime endpoint so
+  // students respond in their own voice. Offline mode uses canned lines.
   let lastChimeAt = 0;
   function studentChimeAllowed() {
     const now = Date.now();
@@ -3365,7 +3432,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const explicit = studentId ? inRoom.find((s) => s.id === studentId) : null;
     const who = explicit || pickRandom(inRoom);
     if (!who) return;
-    if (!authed) {
+    if (!aiEnabled) {
       const fallback = situation === "answer-correct"
         ? pickRandom(STUDENT_LINES_RIGHT)
         : situation === "answer-wrong"
@@ -3421,16 +3488,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // ── auth ─────────────────────────────────────────────────────────────────
   let lastAuthState = null;
   let authCheckSeq = 0;
-  function setAuthState(next) {
-    if (next === lastAuthState) return;
+  function setAuthState(next, opts) {
+    const nextAi = !!(opts && opts.ai);
+    if (next === lastAuthState && nextAi === aiEnabled) return;
     const wasSignedIn = lastAuthState === true;
     lastAuthState = next;
     authed = next;
+    aiEnabled = nextAi;
     applyAuthUI();
-    // Sign-in overlay is the unconditional unauth surface. Anywhere we
-    // discover the user is unauthed, this overlay must be visible and
-    // every other modal must be closed — there is exactly one screen
-    // when signed out, and it is the sign-in screen.
+    // OpenRouter is optional. The overlay is now only a fallback if the app
+    // cannot establish even a guest Ruby High session.
     if (authed === false) {
       signinEl.classList.add("is-open");
       signinEl.setAttribute("aria-hidden", "false");
@@ -3439,7 +3506,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       signinEl.classList.remove("is-open");
       signinEl.setAttribute("aria-hidden", "true");
     }
-    if (authed && lastTelemetry) loadHistory(lastTelemetry.faculty);
+    if (aiEnabled && lastTelemetry) loadHistory(lastTelemetry.faculty);
     if (sheetOverlayOpen) renderSheet();
     if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
       sheetAutoShown = true;
@@ -3450,31 +3517,43 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // server owns an opaque Ruby High session cookie that maps to the
   // persistent character. Verify both on boot and whenever OAuth state may
   // have changed.
+  async function ensureGuestSession() {
+    const headers = new Headers();
+    const key = getStoredApiKey();
+    if (key) headers.set("X-Openrouter-Key", key);
+    const r = await fetch("/api/apps/ruby-high/auth/guest", {
+      method: "POST",
+      credentials: "same-origin",
+      headers,
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data || !data.session) throw new Error("guest session failed");
+    setAuthState(true, { ai: !!data.ai });
+  }
   async function deriveAuth() {
     const key = getStoredApiKey();
     const seq = ++authCheckSeq;
-    if (!key) {
-      setAuthState(false);
-      return;
-    }
     try {
       const headers = new Headers();
-      headers.set("X-Openrouter-Key", key);
+      if (key) headers.set("X-Openrouter-Key", key);
       const r = await fetch("/api/apps/ruby-high/auth/me", {
         credentials: "same-origin",
         headers,
       });
       const data = await r.json().catch(() => ({}));
       if (seq !== authCheckSeq) return;
-      if (r.ok && data && data.authed) {
-        setAuthState(true);
+      if (r.ok && data && data.session) {
+        setAuthState(true, { ai: !!data.ai });
       } else {
-        clearStoredAuth();
-        setAuthState(false);
+        await ensureGuestSession();
       }
     } catch (_e) {
       if (seq !== authCheckSeq) return;
-      if (lastAuthState === null) setAuthState(false);
+      try {
+        await ensureGuestSession();
+      } catch {
+        if (lastAuthState === null) setAuthState(false, { ai: false });
+      }
     }
   }
   function applyAuthUI() {
@@ -3487,18 +3566,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       return;
     }
     if (authed) {
-      els.youState.textContent = "signed in";
-      els.footerAction.textContent = "Sign out";
+      els.youState.textContent = aiEnabled ? "AI enabled" : "offline mode";
+      els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
       els.footerAction.hidden = false;
-      els.chatForm.hidden = false;
-      els.chatInput.disabled = false;
-      els.chatSend.disabled = false;
+      els.chatForm.hidden = !aiEnabled;
+      els.chatInput.disabled = !aiEnabled;
+      els.chatSend.disabled = !aiEnabled;
     } else {
-      // Unauthed: the mandatory sign-in overlay is the only thing the user
-      // can see. No "Sign in" button on the chrome — the chrome is
-      // hidden behind the overlay anyway, and a sign-in button that opens
-      // a sign-in overlay is exactly the cruft we tore out. Footer button
-      // exists ONLY as the sign-out affordance.
+      // Unauthed means even guest-session creation failed; the fallback
+      // sign-in overlay is the only thing the user can see.
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
       els.chatForm.hidden = true;
@@ -3520,19 +3596,21 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     try {
       await fetch("/api/apps/ruby-high/auth/logout", { method: "POST", credentials: "same-origin" });
     } catch (e) { /* network failure is fine — local state is what matters */ }
-    authed = false;
-    lastAuthState = false;
+    authed = null;
+    aiEnabled = false;
+    lastAuthState = null;
+    await deriveAuth();
     applyAuthUI();
-    if (lastTelemetry) loadHistory(lastTelemetry.faculty);
+    if (aiEnabled && lastTelemetry) loadHistory(lastTelemetry.faculty);
   }
   async function loadHistory(facultyId) {
-    if (!authed || !facultyId) return;
+    if (!aiEnabled || !facultyId) return;
     const requestSeq = chatViewSeq;
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/history?faculty=" + encodeURIComponent(facultyId));
       const data = await r.json();
       if (requestSeq !== chatViewSeq || !lastTelemetry || lastTelemetry.faculty !== facultyId) return;
-      authed = !!data.authed;
+      aiEnabled = !!data.authed;
       const msgs = data.history || [];
       const sig = facultyId + ":" + playerMessageIdentitySig() + ":" + msgs.length;
       if (sig === renderedHistorySig) return;
@@ -3572,7 +3650,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   function toolSummary(parsed, teacherName) {
     const ok = !!(parsed.result && parsed.result.ok);
     const errorText = parsed.result && parsed.result.error ? String(parsed.result.error) : "";
-    const blockedByActiveBoard = /Question already (on|posted by).*board|wait for the student answer/i.test(errorText);
+    const blockedByActiveBoard = /Question already (on|posted by).*board|wait for the student answer|Cannot (post another question|clear the board) while a question is live/i.test(errorText);
     if (!ok && blockedByActiveBoard) return teacherName + " waited — a card is already up";
     switch (parsed.tool) {
       case "pick_from_bank": {
@@ -3675,7 +3753,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
 
   async function sendChatMessage(text) {
-    if (!authed || !text.trim()) return;
+    if (!aiEnabled || !text.trim()) return;
     if (agentBusy) return;
     agentBusy = true;
     const busySeq = ++agentBusySeq;
@@ -3739,8 +3817,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
-      els.chatInput.disabled = !authed;
-      els.chatSend.disabled = !authed;
+      els.chatInput.disabled = !aiEnabled;
+      els.chatSend.disabled = !aiEnabled;
       els.chatInput.focus();
       if (chatStreamStillCurrent(streamGuard) && Math.random() < 0.4) {
         fireStudentChime({
@@ -3764,7 +3842,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   // (group-chat semantics — multiple speakers, no global lock); this flag
   // is the transitional shape.
   async function runAgentTurn(trigger, context, opts) {
-    if (!authed) return;
+    if (!aiEnabled) return;
     const force = !!(opts && opts.force);
     if (!force && agentBusy) return;
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
@@ -3896,10 +3974,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   els.scrim.addEventListener("click", closeRails);
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
-    // Footer button is sign-out only. The unauthed surface is the
-    // mandatory #signin-overlay shown by deriveAuth — never reached
-    // through a button on the chrome.
-    if (authed) logout();
+    if (!authed) return;
+    if (aiEnabled) {
+      logout();
+    } else {
+      window.location.href = "/api/apps/ruby-high/auth/start";
+    }
   });
 
   // ── bug-report surface ─────────────────────────────────────────────────
@@ -3960,7 +4040,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       "- url: " + window.location.href,
       "- user-agent: " + navigator.userAgent,
       "- timestamp: " + new Date().toISOString(),
-      "- signed in: " + (authed ? "yes" : "no"),
+      "- session: " + (authed ? "yes" : "no"),
+      "- ai enabled: " + (aiEnabled ? "yes" : "no"),
       "- character: " + (ch ? ch.name + " (" + (ch.playbookId || "?") + ")" : "none"),
       "- grade: " + (grade || "—"),
       "- faculty: " + (faculty || "—"),

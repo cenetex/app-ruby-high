@@ -118,4 +118,31 @@ describe("AuthService.gcSessions", () => {
     expect(second.record.userId).toBe(first.record.userId);
     expect(authB.stateKeyForToken(second.token)).toBe(`rh:user:${first.record.userId}`);
   });
+
+  it("creates a durable guest session without OpenRouter", async () => {
+    const auth = await freshAuth();
+    const first = await auth.createGuestSession();
+    const again = await auth.createGuestSession(first.token);
+
+    expect(first.record.label).toBe("Guest");
+    expect(again.token).toBe(first.token);
+    expect(again.record.userId).toBe(first.record.userId);
+    expect(auth.resolve(first.token)?.userId).toBe(first.record.userId);
+    expect(auth.stateKeyForToken(first.token)).toBe(`rh:user:${first.record.userId}`);
+  });
+
+  it("upgrades a guest session to OpenRouter without moving the character bucket", async () => {
+    const auth = await freshAuth();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(JSON.stringify({ key: "sk-test", user_id: "openrouter-user-2" }), { status: 200 });
+    });
+
+    const guest = await auth.createGuestSession();
+    const pkce = auth.startPkce("http://localhost/callback");
+    const upgraded = await auth.completePkce(pkce.state, "code-1", guest.token);
+
+    expect(upgraded.token).not.toBe(guest.token);
+    expect(upgraded.record.userId).toBe(guest.record.userId);
+    expect(auth.stateKeyForToken(upgraded.token)).toBe(`rh:user:${guest.record.userId}`);
+  });
 });

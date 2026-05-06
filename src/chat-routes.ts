@@ -111,6 +111,29 @@ function nextBoardInstruction(bank: { mode?: string; remaining: number; grade?: 
   return "No scheduled Ruby High card is available right now. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once and write a custom question.";
 }
 
+function schedulerOwnsBoard(bank: { remaining: number; todayClass?: { status?: string } }): boolean {
+  // During scheduled class flow, the deterministic scheduler is the only board
+  // writer. AI regains the old custom-question tools only after today's class
+  // is complete AND no scheduled card is ready.
+  return bank.remaining > 0 || bank.todayClass?.status !== "complete";
+}
+
+function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; todayClass?: { status?: string; questionCount?: number; totalQuestions?: number } }): string {
+  if (!schedulerOwnsBoard(bank)) {
+    return nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh scheduled card, or pose_question for a custom practice challenge.");
+  }
+  const today = bank.todayClass;
+  const classLine = today?.status === "complete"
+    ? "today's graded class is complete"
+    : today?.status === "active"
+      ? `today's graded class is in progress (${today.questionCount ?? 0}/${today.totalQuestions ?? 3})`
+      : "today's graded class is available";
+  const readyLine = bank.remaining > 0
+    ? `${bank.remaining} scheduled card${bank.remaining === 1 ? "" : "s"} ready`
+    : "no scheduled cards ready";
+  return `The Ruby High scheduler owns the blackboard while ${classLine} and ${readyLine}. Do not call tools or post/replace/clear questions.`;
+}
+
 function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string {
   const TEACHERS = ["ruby", "sally-science", "professor-edward"];
   const history = chat.history({ sessionToken, faculty: "lounge" });
@@ -985,6 +1008,22 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/guest`) {
+    const existingToken = auth.parseSessionToken(ctx.cookieHeader);
+    const { token, record } = await auth.createGuestSession(existingToken);
+    if (token !== existingToken) {
+      setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
+    }
+    ctx.json(ctx.res, {
+      ok: true,
+      session: true,
+      ai: !!readApiKey(ctx),
+      since: record.createdAt,
+      label: record.label ?? "Guest",
+    });
+    return true;
+  }
+
   if (ctx.method === "GET" && ctx.pathname === `${AUTH_PREFIX}/callback`) {
     const code = ctx.url?.searchParams.get("code") ?? "";
     const state = ctx.url?.searchParams.get("state") ?? "";
@@ -993,7 +1032,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     try {
-      const { token, apiKey, record } = await auth.completePkce(state, code);
+      const { token, apiKey, record } = await auth.completePkce(state, code, auth.parseSessionToken(ctx.cookieHeader));
       setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
       const back = ctx.url?.searchParams.get("redirect") ?? "/api/apps/ruby-high/viewer";
       // Hand the API key back to the browser via a tiny HTML shim. We write
@@ -1010,13 +1049,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "GET" && ctx.pathname === `${AUTH_PREFIX}/me`) {
-    // Auth requires both halves: the browser-owned OpenRouter key and an
-    // app-owned session cookie that resolves to a persisted Ruby High user.
-    // We still do not store the OpenRouter key server-side.
+    // Ruby High play requires only the app-owned session cookie. AI/chat
+    // additionally requires the browser-owned OpenRouter key. The key still
+    // never persists server-side.
     const apiKey = readApiKey(ctx);
     const record = auth.resolve(auth.parseSessionToken(ctx.cookieHeader));
     ctx.json(ctx.res, {
-      authed: !!apiKey && !!record,
+      authed: !!record,
+      session: !!record,
+      ai: !!apiKey && !!record,
       since: record?.createdAt ?? null,
       label: record?.label ?? null,
     });
@@ -1096,6 +1137,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     };
 
     try {
+      const bank = ruby.questionBankStatus(getSessionId(runtime, ctx.cookieHeader), faculty);
       for await (const ev of chat.send({
         apiKey,
         sessionToken: token,
@@ -1103,6 +1145,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         faculty,
         userMessage: message,
         model: body?.model,
+        disableTools: schedulerOwnsBoard(bank),
       })) {
         send(ev.type, ev);
       }
@@ -1222,12 +1265,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // Pre-refactor these were fused into one bloated system note that got
     // appended to history and then re-read every subsequent turn as if it
     // were a fresh instruction.
+    const bank = ruby.questionBankStatus(sessionId, faculty);
+    const schedulerControlsBoard = schedulerOwnsBoard(bank);
     let directive = "";
-    let disableToolsForTurn = false;
+    let disableToolsForTurn = schedulerControlsBoard;
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
-      const bank = ruby.questionBankStatus(sessionId, faculty);
       chat.appendEvent(
         { sessionToken: token, faculty },
         {
@@ -1235,12 +1279,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           text: `${playerName} just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}.`,
         },
       );
-      directive = `Greet ${playerName} in ONE short sentence. Do not mention a "Next question" button or tell the player to press a UI control. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
+      directive = schedulerControlsBoard
+        ? `Greet ${playerName} in ONE short sentence. Do not mention UI controls. ${schedulerBoundaryInstruction(bank)}`
+        : `Greet ${playerName} in ONE short sentence. Do not mention a "Next question" button or tell the player to press a UI control. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
     } else if (trigger === "answer-graded") {
       const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
-      const bank = ruby.questionBankStatus(sessionId, faculty);
       const round = state.activeRound;
       const correctAns = c?.correct ?? state.current?.correct ?? "?";
       // Build the round summary as a structured event line. Synopsised
@@ -1271,11 +1316,14 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         const pickedLine = c?.picked
           ? `${playerName} already answered ${c.picked}; ${c.wasCorrect ? "that was correct" : `the correct answer was ${correctAns}`}.`
           : `The round is already resolved; the correct answer was ${correctAns}.`;
-        directive = `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
+        directive = schedulerControlsBoard
+          ? `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." ${schedulerBoundaryInstruction(bank)}`
+          : `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "manual") {
-      const bank = ruby.questionBankStatus(sessionId, faculty);
-      directive = `The student is asking you to take a turn. Either follow up on the last exchange, or put a fresh question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
+      directive = schedulerControlsBoard
+        ? `The student is asking you to take a turn. Follow up on the last exchange, explain the current or recent board if useful, or chat about the class. ${schedulerBoundaryInstruction(bank)}`
+        : `The student is asking you to take a turn. Either follow up on the last exchange, or put a fresh question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
     }
 
     try {
@@ -1296,21 +1344,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
         send(ev.type, ev);
       }
-      // Defensive fallback: channel-enter and answer-graded both REQUIRE
-      // a fresh question on the board afterward (their directives say so
-      // explicitly). If the model narrates without firing pick_from_bank,
-      // the board sits stale and the player thinks the teacher posted
-      // but they didn't — they wait, the teacher seems silent, the only
-      // recovery is the manual "Next question" button. Auto-pose so the
-      // board state matches the model's narration. No-op if pickAndPose
-      // throws (bank empty for filter, etc.) — better empty board with
-      // a recoverable error than crashing the SSE stream.
+      // When the scheduled class loop is done, AI mode regains its previous
+      // board-control behavior. If it narrates a transition but forgets the
+      // tool call, keep the board state matched by posting a scheduled card
+      // when available or asking it once for a custom practice challenge.
       const needsFreshQuestion = !disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded");
       if (needsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
-        const bank = ruby.questionBankStatus(agentSessionId, faculty);
+        const latestBank = ruby.questionBankStatus(agentSessionId, faculty);
         let fallbackPosted = false;
-        if (bank.remaining > 0) {
+        if (latestBank.remaining > 0) {
           try {
             const state = ruby.pickAndPose(agentSessionId, { faculty });
             send("tool", {
@@ -1327,14 +1370,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           log.event("chat.bank-exhausted", { faculty, trigger, reason: "active faculty bank exhausted before fallback" });
         }
         if (!fallbackPosted) {
-          const noQuestionNote = bank.mode === "srs"
-            ? `No scheduled deck card is available for ${bank.displayName} right now.`
-            : `No scheduled Ruby High card is available for ${bank.displayName} right now.`;
-          const noQuestionDirective = bank.mode === "srs"
-            ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. If the class needs a fresh board, call pose_question exactly once for a custom challenge; otherwise chat with the room and let the player steer."
-            : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. If the class needs a fresh board, call pose_question exactly once and write a custom question; otherwise chat with the room and let the player steer.";
-          // This is a chat-state condition the model can handle if we remove
-          // pick_from_bank from the tool surface and ask for a custom board.
+          const noQuestionNote = latestBank.mode === "srs"
+            ? `No scheduled deck card is available for ${latestBank.displayName} right now.`
+            : `No scheduled Ruby High card is available for ${latestBank.displayName} right now.`;
+          const noQuestionDirective = latestBank.mode === "srs"
+            ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. Call pose_question exactly once for a custom practice challenge, or talk briefly about progress."
+            : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question, or talk briefly about progress.";
           chat.appendEvent(
             { sessionToken: token, faculty },
             { kind: "note", text: noQuestionNote },

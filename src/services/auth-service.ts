@@ -127,6 +127,47 @@ export class AuthService extends Service {
     this.sessions.set(token, record);
   }
 
+  /** Mint an app-owned Ruby High session without a provider login. This is the
+   *  default play path: it gives the browser a durable character bucket while
+   *  leaving OpenRouter as an optional AI/chat upgrade. */
+  async createGuestSession(existingToken?: string | null): Promise<{ token: string; record: AuthRecord }> {
+    const existing = this.resolve(existingToken ?? null);
+    if (existing) {
+      return { token: existingToken!, record: existing };
+    }
+
+    const now = Date.now();
+    const providerUserHash = providerIdentityHash(base64url(randomBytes(24)), "guest");
+    const user: AuthUserRecord = {
+      userId: `usr_${base64url(randomBytes(18))}`,
+      provider: "guest",
+      providerUserHash,
+      createdAt: now,
+      lastLoginAt: now,
+      label: "Guest",
+    };
+    this.usersByProviderHash.set(authUserKey(user.provider, user.providerUserHash), user);
+    this.usersById.set(user.userId, user);
+    await this.store.saveAuthUser(user);
+
+    const token = base64url(randomBytes(24));
+    const record: AuthRecord = {
+      userId: user.userId,
+      createdAt: now,
+      expiresAt: now + SESSION_TTL_MS,
+      label: user.label,
+    };
+    this.sessions.set(token, record);
+    await this.store.saveAuthSession({
+      token,
+      userId: record.userId,
+      createdAt: record.createdAt,
+      expiresAt: record.expiresAt,
+    });
+    log.event("auth.guest-session-created", { userId: user.userId });
+    return { token, record };
+  }
+
   startPkce(callbackUrl: string): { state: string; redirectUrl: string } {
     this.gcPending();
     const state = base64url(randomBytes(24));
@@ -146,7 +187,7 @@ export class AuthService extends Service {
    *  to the browser) along with a session token (for the cookie). The key
    *  is NOT retained server-side — once this method returns, AuthService
    *  has forgotten it. */
-  async completePkce(state: string, code: string): Promise<{ token: string; record: AuthRecord; apiKey: string }> {
+  async completePkce(state: string, code: string, existingToken?: string | null): Promise<{ token: string; record: AuthRecord; apiKey: string }> {
     const pending = this.pending.get(state);
     if (!pending) throw new Error("Unknown or expired auth state");
     this.pending.delete(state);
@@ -159,14 +200,17 @@ export class AuthService extends Service {
     const providerUserHash = providerIdentityHash(exchanged.userId ?? apiKey, exchanged.userId ? "user" : "key");
     const providerKey = authUserKey("openrouter", providerUserHash);
     const existing = this.usersByProviderHash.get(providerKey);
+    const existingSession = this.resolve(existingToken ?? null);
+    const sessionUser = existingSession ? this.usersById.get(existingSession.userId) : undefined;
     const user: AuthUserRecord = existing
       ? { ...existing, lastLoginAt: now }
       : {
-          userId: `usr_${base64url(randomBytes(18))}`,
+          userId: sessionUser?.userId ?? `usr_${base64url(randomBytes(18))}`,
           provider: "openrouter",
           providerUserHash,
-          createdAt: now,
+          createdAt: sessionUser?.createdAt ?? now,
           lastLoginAt: now,
+          ...(sessionUser?.label && sessionUser.label !== "Guest" ? { label: sessionUser.label } : {}),
         };
     this.usersByProviderHash.set(providerKey, user);
     this.usersById.set(user.userId, user);
@@ -324,8 +368,8 @@ function base64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function providerIdentityHash(value: string, source: "user" | "key"): string {
+function providerIdentityHash(value: string, source: "user" | "key" | "guest"): string {
   return createHash("sha256")
-    .update(`openrouter:${source}:${value}`)
+    .update(`${source === "guest" ? "guest" : "openrouter"}:${source}:${value}`)
     .digest("hex");
 }
