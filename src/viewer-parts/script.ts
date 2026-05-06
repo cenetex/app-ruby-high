@@ -2627,11 +2627,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       const body = card.querySelector(".ccg-body");
       if (body) body.appendChild(archive);
     }
-    const mash = buildMashGrid(c, graduated);
-    if (mash) {
-      const body = card.querySelector(".ccg-body");
-      if (body) body.appendChild(mash);
-    }
+    // MASH Card lives on the School Career side now — it's live state that
+    // ticks over the arc, so it belongs with the dynamic card, not the
+    // stable identity card.
     card.classList.add("is-character-card");
     if (graduated) card.classList.add("is-graduated");
     return card;
@@ -2813,6 +2811,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
 
     appendProgression(body, buildProgressionForCharacter(c));
+    const mash = buildMashGrid(c, graduated);
+    if (mash) body.appendChild(mash);
     card.appendChild(body);
     return card;
   }
