@@ -321,6 +321,51 @@ export interface RoomBoardSnapshot {
   activeRound: ActiveRound | null;
 }
 
+// ── MASH Card ─────────────────────────────────────────────────────────────
+//
+// Fortune-cookie dating-sim layer over the cohort. Each classmate has one
+// cell on the player's card. Essays tick cells up/down based on the
+// teacher's grade. Cells circle at +2, scratch at -3. One axis resolves
+// per grade-up; Senior also resolves the deterministic bonus axes
+// (money, lucky). Resolved axes become superlatives on the diploma.
+//
+// Pure rules + helpers live in `characters/mash.ts`. The service mutates
+// the card on `recordGrades` and `completeGraduation`; the schema lives
+// here so older state can hydrate safely.
+export type MashAxis = "crush" | "job" | "lives" | "pet" | "money" | "lucky";
+
+export interface MashCell {
+  /** Clamped to [-3, +3]. */
+  affinity: number;
+  /** True once affinity hits the floor. Scratched cells can't resolve. */
+  scratched: boolean;
+  /** True once affinity hits +2 or higher at any point. Circled cells are
+   *  resolution candidates at year-end. */
+  circled: boolean;
+  /** Total tick count (positive + negative) — for tie-breaks. */
+  ticks: number;
+  /** YYYY-MM-DD of the last tick. */
+  lastTouchedDate?: string;
+}
+
+export interface MashResolution {
+  axis: MashAxis;
+  studentId: string;
+  /** The fortune-cookie value picked for this axis (e.g. "armpit sniffer",
+   *  "Hawaii", "snail"). Picked deterministically from a curated list. */
+  value: string;
+  grade: Grade;
+  resolvedAt: number;
+}
+
+export interface MashCard {
+  /** Per-classmate cells, keyed by student id. Initialized for all six
+   *  classmates at character creation. */
+  cells: Record<string, MashCell>;
+  /** Resolved axes, keyed by axis. Each axis is set once per character. */
+  resolved: Partial<Record<MashAxis, MashResolution>>;
+}
+
 export interface QuizState {
   sessionId: string;
   faculty: string;
@@ -581,6 +626,11 @@ export interface PlayerCharacter {
     arcAnswer?: string;
     subjectScores?: Record<string, { correct: number; total: number }>;
     graduationReward?: GraduationReward;
+    /** MASH superlatives stamped at the moment this year was sealed.
+     *  Only the Senior entry typically carries the full set; earlier
+     *  years carry just the axis they resolved. Optional for legacy
+     *  entries written before this field existed. */
+    superlatives?: string[];
   }>;
   /** Gates are complete, but the player has not attended the ceremony yet.
    *  The ceremony writes the Paper Card, applies the level-up reward, and
@@ -649,6 +699,12 @@ export interface PlayerCharacter {
     moveName: string;
     moveDescription: string;
   };
+  /** Fortune-cookie dating-sim card — see MashCard. Initialized at
+   *  character creation; ticks during essay grading; resolves at
+   *  grade-up; superlatives stamped at graduation. Optional only for
+   *  legacy characters created before this field existed (the service
+   *  backfills with `ensureMashCard` on hydrate). */
+  mashCard?: MashCard;
   createdAt: number;
 }
 

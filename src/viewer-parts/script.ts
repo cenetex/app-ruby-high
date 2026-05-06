@@ -2608,9 +2608,99 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       const body = card.querySelector(".ccg-body");
       if (body) body.appendChild(archive);
     }
+    const mash = buildMashGrid(c, graduated);
+    if (mash) {
+      const body = card.querySelector(".ccg-body");
+      if (body) body.appendChild(mash);
+    }
     card.classList.add("is-character-card");
     if (graduated) card.classList.add("is-graduated");
     return card;
+  }
+
+  // ── MASH Card grid (dating-sim layer) ───────────────────────────────────
+  // Six classmates × six fortune axes resolve over 4 years. Cells tick
+  // up/down per essay; circle at +2; scratch at -3. Resolved axes become
+  // superlatives on the diploma. This is the player-facing slice — a
+  // compact 2x3 of cells plus the resolved axis lines underneath.
+  function buildMashGrid(c, graduated) {
+    if (!c || !c.mashCard || !c.mashCard.cells) return null;
+    const card = c.mashCard;
+    const wrap = document.createElement("div");
+    wrap.className = "mash-grid-wrap";
+
+    const heading = document.createElement("div");
+    heading.className = "mash-grid-heading";
+    heading.textContent = graduated ? "MASH Card · sealed" : "MASH Card";
+    wrap.appendChild(heading);
+
+    const grid = document.createElement("div");
+    grid.className = "mash-grid";
+    STUDENTS.forEach((s) => {
+      const cell = card.cells[s.id];
+      const tile = document.createElement("div");
+      tile.className = "mash-tile";
+      const aff = (cell && typeof cell.affinity === "number") ? cell.affinity : 0;
+      if (cell && cell.scratched) tile.classList.add("is-scratched");
+      else if (cell && cell.circled) tile.classList.add("is-circled");
+      else if (aff > 0) tile.classList.add("is-warm");
+      else if (aff < 0) tile.classList.add("is-cool");
+      tile.style.setProperty("--mash-accent", s.color);
+
+      const dot = document.createElement("span");
+      dot.className = "mash-tile-dot";
+      tile.appendChild(dot);
+
+      const name = document.createElement("span");
+      name.className = "mash-tile-name";
+      name.textContent = s.name;
+      tile.appendChild(name);
+
+      const meter = document.createElement("span");
+      meter.className = "mash-tile-meter";
+      meter.setAttribute("aria-label", "affinity " + aff);
+      meter.textContent = cell && cell.scratched
+        ? "✗"
+        : cell && cell.circled
+        ? "○"
+        : aff > 0
+        ? "+" + aff
+        : aff < 0
+        ? String(aff)
+        : "·";
+      tile.appendChild(meter);
+
+      grid.appendChild(tile);
+    });
+    wrap.appendChild(grid);
+
+    const resolved = card.resolved || {};
+    const lines = [];
+    const order = ["crush", "job", "lives", "pet", "money", "lucky"];
+    order.forEach((axis) => {
+      const r = resolved[axis];
+      if (!r) return;
+      const who = (STUDENTS.find((s) => s.id === r.studentId) || {}).name || r.studentId;
+      lines.push({ axis, who, value: r.value });
+    });
+    if (lines.length > 0) {
+      const list = document.createElement("ul");
+      list.className = "mash-resolved";
+      lines.forEach((l) => {
+        const li = document.createElement("li");
+        const tag = document.createElement("span");
+        tag.className = "mash-resolved-axis";
+        tag.textContent = l.axis;
+        const body = document.createElement("span");
+        body.className = "mash-resolved-body";
+        body.textContent = l.who + " — " + l.value;
+        li.appendChild(tag);
+        li.appendChild(body);
+        list.appendChild(li);
+      });
+      wrap.appendChild(list);
+    }
+    return wrap;
   }
 
   // ── School Career Card builder ──────────────────────────────────────────
