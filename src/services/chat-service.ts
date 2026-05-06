@@ -82,6 +82,15 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER_HEADER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE_HEADER = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
 
+/** Wall-clock ceilings for OpenRouter calls. Without these a hung
+ *  upstream holds the Node request slot indefinitely. Non-streaming
+ *  prompts in this file (~220 token NPC opinion responses) finish in
+ *  well under 30s on the configured model; streaming agent turns can
+ *  legitimately run longer when the teacher chains tool calls, so they
+ *  get a more generous ceiling. Both configurable via env. */
+const OPENROUTER_TIMEOUT_MS = Number(process.env.RUBY_HIGH_OPENROUTER_TIMEOUT_MS ?? 60_000);
+const OPENROUTER_STREAM_TIMEOUT_MS = Number(process.env.RUBY_HIGH_OPENROUTER_STREAM_TIMEOUT_MS ?? 180_000);
+
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "tool"; tool: string; args: Record<string, unknown>; result: { ok: boolean; message?: string; error?: string }; state?: QuizState }
@@ -736,24 +745,32 @@ async function callOpinionForNpc(args: {
     "Write 2-3 sentences in your voice (under 60 words). Specific, with an opinion, engaging the question. Reference a classmate or the teacher by name when it fits. The response is the answer itself — just the prose, nothing wrapping it.",
   ].filter(Boolean).join("\n");
 
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER_HEADER,
-      "X-Title": TITLE_HEADER,
-    },
-    body: JSON.stringify({
-      model: "anthropic/claude-haiku-4.5",
-      messages: [
-        { role: "system", content: args.student.systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: 220,
-      temperature: 0.95,
-    }),
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), OPENROUTER_TIMEOUT_MS);
+  let r: Response;
+  try {
+    r = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${args.apiKey}`,
+        "HTTP-Referer": REFERER_HEADER,
+        "X-Title": TITLE_HEADER,
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-haiku-4.5",
+        messages: [
+          { role: "system", content: args.student.systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 220,
+        temperature: 0.95,
+      }),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!r.ok) {
     const text = await r.text().catch(() => "");
     const trimmed = text.length > 500 ? text.slice(0, 500) + "…" : text;
@@ -1094,95 +1111,107 @@ interface OpenRouterArgs {
 }
 
 async function* streamOpenRouter(args: OpenRouterArgs): AsyncGenerator<StreamChunk> {
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER_HEADER,
-      "X-Title": TITLE_HEADER,
-    },
-    body: JSON.stringify({
-      model: args.model,
-      messages: args.messages,
-      tools: args.tools,
-      tool_choice: "auto",
-      stream: true,
-      max_tokens: args.maxTokens,
-    }),
-  });
-  if (!r.ok || !r.body) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`OpenRouter ${r.status}: ${text || r.statusText}`);
-  }
+  // Wall-clock ceiling on the entire stream, not just the initial fetch.
+  // SSE responses can legitimately stream for tens of seconds while the
+  // model thinks; without an outer timer a stalled connection would hang
+  // the request forever. Cleared in the outer try/finally so the timer
+  // can't outlive the generator (early return, throw, consumer abandon).
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), OPENROUTER_STREAM_TIMEOUT_MS);
+  try {
+    const r = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${args.apiKey}`,
+        "HTTP-Referer": REFERER_HEADER,
+        "X-Title": TITLE_HEADER,
+      },
+      body: JSON.stringify({
+        model: args.model,
+        messages: args.messages,
+        tools: args.tools,
+        tool_choice: "auto",
+        stream: true,
+        max_tokens: args.maxTokens,
+      }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok || !r.body) {
+      const text = await r.text().catch(() => "");
+      throw new Error(`OpenRouter ${r.status}: ${text || r.statusText}`);
+    }
 
-  const reader = r.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buf = "";
-  const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buf = "";
+    const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buf.indexOf("\n\n")) !== -1) {
-      const frame = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 2);
-      if (!frame) continue;
-      for (const line of frame.split(/\r?\n/)) {
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
-        if (!payload || payload === "[DONE]") continue;
-        let parsed: any;
-        try { parsed = JSON.parse(payload); } catch { continue; }
-        const choice = parsed.choices?.[0];
-        if (!choice) continue;
-        const delta = choice.delta ?? {};
-        if (typeof delta.content === "string" && delta.content.length > 0) {
-          yield { kind: "text", text: delta.content };
-        }
-        if (Array.isArray(delta.tool_calls)) {
-          for (const tc of delta.tool_calls) {
-            const slot = typeof tc.index === "number" ? tc.index : toolCalls.size;
-            const existing = toolCalls.get(slot) ?? { id: tc.id ?? "", name: "", arguments: "" };
-            if (tc.id) existing.id = tc.id;
-            if (tc.function?.name) existing.name = tc.function.name;
-            if (tc.function?.arguments) existing.arguments += tc.function.arguments;
-            toolCalls.set(slot, existing);
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buf.indexOf("\n\n")) !== -1) {
+        const frame = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 2);
+        if (!frame) continue;
+        for (const line of frame.split(/\r?\n/)) {
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          let parsed: any;
+          try { parsed = JSON.parse(payload); } catch { continue; }
+          const choice = parsed.choices?.[0];
+          if (!choice) continue;
+          const delta = choice.delta ?? {};
+          if (typeof delta.content === "string" && delta.content.length > 0) {
+            yield { kind: "text", text: delta.content };
           }
-        }
-        if (choice.finish_reason) {
-          for (const [, tc] of toolCalls) {
-            if (tc.id && tc.name) {
-              yield {
-                kind: "tool-call",
-                toolCall: {
-                  id: tc.id,
-                  type: "function",
-                  function: { name: tc.name, arguments: tc.arguments || "{}" },
-                },
-              };
+          if (Array.isArray(delta.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              const slot = typeof tc.index === "number" ? tc.index : toolCalls.size;
+              const existing = toolCalls.get(slot) ?? { id: tc.id ?? "", name: "", arguments: "" };
+              if (tc.id) existing.id = tc.id;
+              if (tc.function?.name) existing.name = tc.function.name;
+              if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+              toolCalls.set(slot, existing);
             }
           }
-          yield { kind: "finish", reason: choice.finish_reason };
-          return;
+          if (choice.finish_reason) {
+            for (const [, tc] of toolCalls) {
+              if (tc.id && tc.name) {
+                yield {
+                  kind: "tool-call",
+                  toolCall: {
+                    id: tc.id,
+                    type: "function",
+                    function: { name: tc.name, arguments: tc.arguments || "{}" },
+                  },
+                };
+              }
+            }
+            yield { kind: "finish", reason: choice.finish_reason };
+            return;
+          }
         }
       }
     }
-  }
 
-  for (const [, tc] of toolCalls) {
-    if (tc.id && tc.name) {
-      yield {
-        kind: "tool-call",
-        toolCall: {
-          id: tc.id,
-          type: "function",
-          function: { name: tc.name, arguments: tc.arguments || "{}" },
-        },
-      };
+    for (const [, tc] of toolCalls) {
+      if (tc.id && tc.name) {
+        yield {
+          kind: "tool-call",
+          toolCall: {
+            id: tc.id,
+            type: "function",
+            function: { name: tc.name, arguments: tc.arguments || "{}" },
+          },
+        };
+      }
     }
+    yield { kind: "finish", reason: null };
+  } finally {
+    clearTimeout(timer);
   }
-  yield { kind: "finish", reason: null };
 }

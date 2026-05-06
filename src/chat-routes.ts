@@ -28,6 +28,25 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
 
+/** Default ceiling for non-streaming OpenRouter calls. Without this a
+ *  hung upstream (network blip, model overloaded but not erroring,
+ *  Cloudflare grey-period) holds the Node request slot indefinitely.
+ *  60s is comfortably above realistic completion times for the prompts
+ *  in this file — student lines (~80 tokens), opinion responses
+ *  (~220 tokens), opinion grading (~700 tokens), character JSON
+ *  (~480 tokens) all finish in well under 30s on the configured models.
+ *  Configurable via RUBY_HIGH_OPENROUTER_TIMEOUT_MS for slower models. */
+const OPENROUTER_TIMEOUT_MS = Number(process.env.RUBY_HIGH_OPENROUTER_TIMEOUT_MS ?? 60_000);
+async function openRouterFetch(init: RequestInit, timeoutMs: number = OPENROUTER_TIMEOUT_MS): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(OPENROUTER_URL, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function publicChatHistory(messages: ChatMessage[]): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
   const pendingTools = new Map<string, { call: ToolCall; faculty?: string }>();
@@ -217,7 +236,7 @@ async function generateOpinionResponse(args: {
     question: args.question,
     rubric: args.rubric,
   });
-  const r = await fetch(OPENROUTER_URL, {
+  const r = await openRouterFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -270,7 +289,7 @@ async function gradeOpinionResponses(args: {
     "After the grade lines, write 2-3 short sentences in your voice as the teacher delivering the verdict to the class. Reference at least one student by name. Plain and direct, in your voice.",
   ].filter(Boolean).join("\n");
 
-  const r = await fetch(OPENROUTER_URL, {
+  const r = await openRouterFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -642,7 +661,7 @@ async function rollRandomCharacter(args: {
     `    Third person. Same scale as those — kid stuff, not life themes.`,
   ].join("\n");
 
-  const r = await fetch(OPENROUTER_URL, {
+  const r = await openRouterFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -747,7 +766,7 @@ async function generateStudentLine(args: {
     "React in one short line — like a text in a group chat. Lowercase, 12 words max. Address whoever just acted by name when natural. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
   ].filter(Boolean).join("\n");
 
-  const r = await fetch(OPENROUTER_URL, {
+  const r = await openRouterFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
