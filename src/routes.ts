@@ -128,6 +128,10 @@ interface FacultyTelemetry extends FacultyMember {
   subjects: string[];
   assetTeacherId?: string;
   courseGrade?: string;
+  completedClasses?: number;
+  requiredClasses?: number;
+  averageScore?: number;
+  todayClass?: CourseProgress["today"];
   readyCount?: number;
   masteredCount?: number;
   learningCount?: number;
@@ -197,6 +201,14 @@ interface SessionTelemetry extends Record<string, unknown> {
     stat?: keyof CharacterStats;
     /** True when this round came from the once-per-day bonus endpoint. */
     isBonus: boolean;
+    classSession?: {
+      mode: "class" | "practice";
+      facultyId: string;
+      grade?: Grade;
+      date?: string;
+      index?: number;
+      total?: number;
+    };
     startedAt: number;
     durationMs: number;
     expiresAt: number;
@@ -319,6 +331,7 @@ function deriveActiveRound(state: QuizState) {
     rarity: round.rarity ?? state.current?.rarity,
     stat: round.stat ?? state.current?.stat,
     isBonus: !!round.isBonus,
+    classSession: round.classSession,
     startedAt: round.startedAt,
     durationMs: round.durationMs,
     expiresAt: round.expiresAt,
@@ -425,6 +438,10 @@ function buildFacultyRoster(
       questionCount: bank?.questions.length ?? 0,
       ...(progress?.grade ? { courseGrade: progress.grade } : {}),
       ...(progress ? {
+        completedClasses: progress.completedClasses,
+        requiredClasses: progress.requiredClasses,
+        ...(progress.averageScore != null ? { averageScore: progress.averageScore } : {}),
+        todayClass: progress.today,
         readyCount: progress.ready,
         masteredCount: progress.mastered,
         learningCount: progress.learning,
@@ -774,6 +791,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           faculty?: string;
           subject?: string;
           difficulty?: string;
+          mode?: "class" | "practice";
           reward?: GraduationReward;
         }
       | null;
@@ -807,6 +825,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           faculty: body?.faculty,
           subject: body?.subject,
           difficulty: body?.difficulty as Difficulty | undefined,
+          mode: body?.mode,
         });
         ctx.json(ctx.res, {
           success: true,

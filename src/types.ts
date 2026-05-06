@@ -270,6 +270,19 @@ export interface LastReveal {
   /** Successful answers can earn extra hidden class-mastery credit when a
    *  school-day streak is active: 1x on day 1, 2x on day 2, 3x on day 3+. */
   scoreMultiplier?: number;
+  /** Daily class bookkeeping. Class rounds update visible course standing;
+   *  practice rounds still review cards but do not affect advancement. */
+  classProgress?: {
+    mode: "class" | "practice";
+    facultyId: string;
+    grade?: Grade;
+    date?: string;
+    questionCount?: number;
+    totalQuestions?: number;
+    completed?: boolean;
+    letterGrade?: string;
+    score?: number;
+  };
   /** Player's 2d6 + stat roll for this question. Bonus-only — it informs
    *  card review quality, not XP. `xpAwarded` is retained for older clients
    *  and is always 0 in the current progression model. */
@@ -604,6 +617,11 @@ export interface PlayerCharacter {
    *  grades from card mastery; this remains as a migration fallback for
    *  already-progressed characters. */
   subjectXp?: Record<string, number>;
+  /** One graded class per teacher per school day. These records are the
+   *  visible course-standing source of truth; hidden card memory remains only
+   *  the scheduler for which questions get asked. Keyed by
+   *  `${grade}:${facultyId}:${date}`. */
+  dailyClasses?: Record<string, DailyClassRecord>;
   /** Generated diploma image (Senior graduation). Set by the /chat/diploma
    *  endpoint after the 4th yearbook entry lands. Base64 data URL. */
   diplomaImageDataUrl?: string;
@@ -812,6 +830,16 @@ export interface ActiveRound {
   advantage?: AdvantageRoll | null;
   /** True when this round is the once-per-day bonus question. */
   isBonus?: boolean;
+  /** Whether this board counts toward today's one graded class for this
+   *  teacher, or is free practice. */
+  classSession?: {
+    mode: "class" | "practice";
+    facultyId: string;
+    grade?: Grade;
+    date?: string;
+    index?: number;
+    total?: number;
+  };
   /** Legacy card rarity. Kept only so older persisted rounds can hydrate. */
   rarity?: Rarity;
   /** Stat this round rolls against. Mirrors state.current.stat. */
@@ -831,6 +859,20 @@ export interface AdvantageRoll {
   outcome: RoundOutcome;
   eliminated: Choice[];
   rolledAt: number;
+}
+
+export interface DailyClassRecord {
+  grade: Grade;
+  facultyId: string;
+  date: string;
+  status: "active" | "complete";
+  questionCount: number;
+  correctCount: number;
+  scoreTotal: number;
+  scoreMax: number;
+  letterGrade?: string;
+  completedAt?: number;
+  updatedAt: number;
 }
 
 export const OPINION_ROUND_DURATION_MS = 120000; // 2 minutes — typing takes time

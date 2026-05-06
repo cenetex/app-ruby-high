@@ -192,7 +192,7 @@ describe("ChatService.send — message composition", () => {
     expect(messages[0].content).not.toContain("You are Ruby");
   });
 
-  it("describes imported decks as no cards ready, not exhausted", async () => {
+  it("describes imported decks as no due cards, not exhausted", async () => {
     mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
     const { ruby, chat } = await makeServices();
     const sid = "session:anki-chat-srs-dry";
@@ -215,7 +215,7 @@ describe("ChatService.send — message composition", () => {
     const toolNames = captured!.body.tools.map((tool: any) => tool.function.name);
     expect(toolNames).not.toContain("pick_from_bank");
     const promptText = JSON.stringify(captured!.body.messages);
-    expect(promptText).toContain("no deck cards are ready right now");
+    expect(promptText).toContain("no deck card is due right now");
     expect(promptText).not.toContain("EXHAUSTED");
   });
 
@@ -633,7 +633,7 @@ describe("ChatService.send — message composition", () => {
     expect(events.at(-1)).toMatchObject({ type: "done", finishReason: "stop" });
   });
 
-  it("removes pick_from_bank when the active faculty has no ready cards", async () => {
+  it("removes pick_from_bank when the active faculty has no due cards", async () => {
     mockOpenRouter(buildSseChunk([{ content: "I'll write one fresh.", finish: "stop" }]));
     const { ruby, chat, faculty } = await makeServices();
     const state = ruby.getOrCreate("session:1");
@@ -670,8 +670,8 @@ describe("ChatService.send — message composition", () => {
     expect(toolNames).not.toContain("pick_from_bank");
     expect(toolNames).toContain("pose_question");
     const promptText = JSON.stringify(captured!.body.messages);
-    expect(promptText).toContain("COURSE STATUS for Ruby:");
-    expect(promptText).toContain("no Ruby High cards are ready right now");
+    expect(promptText).toContain("COURSE STATUS for Ruby.");
+    expect(promptText).toContain("no Ruby High card is available right now");
     expect(promptText).toContain("pick_from_bank is not available this turn");
   });
 

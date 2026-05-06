@@ -39,6 +39,7 @@ import {
   type CardReviewRating,
   type CharacterStats,
   type Choice,
+  type DailyClassRecord,
   type Difficulty,
   type FacultyMember,
   type Grade,
@@ -94,6 +95,7 @@ export interface PoseInput {
   /** Teacher-authored custom question should be promoted into the reusable
    *  Ruby High bank. Banked picks pass questionId and leave this false. */
   persistToBank?: boolean;
+  mode?: "class" | "practice";
 }
 
 export interface PoseOpinionInput {
@@ -103,12 +105,14 @@ export interface PoseOpinionInput {
   faculty?: string;
   questionId?: string;
   rarity?: Rarity;
+  mode?: "class" | "practice";
 }
 
 export interface PickAndPoseInput {
   faculty?: string;
   subject?: string;
   difficulty?: Difficulty;
+  mode?: "class" | "practice";
 }
 
 export interface QuestionBankStatus {
@@ -124,6 +128,18 @@ export interface QuestionBankStatus {
   learningCount?: number;
   shakyCount?: number;
   newCount?: number;
+  courseGrade?: string;
+  completedClasses?: number;
+  requiredClasses?: number;
+  averageScore?: number;
+  todayClass?: {
+    mode: "class" | "practice";
+    status: "available" | "active" | "complete";
+    questionCount: number;
+    totalQuestions: number;
+    letterGrade?: string;
+    score?: number;
+  };
   defaultDifficulty?: Difficulty;
   remainingByDifficulty: Partial<Record<Difficulty, number>>;
   remainingBySubject: Record<string, number>;
@@ -136,10 +152,45 @@ export interface CourseProgress {
   total: number;
   ready: number;
   grade?: string;
+  completedClasses: number;
+  requiredClasses: number;
+  averageScore?: number;
+  today: {
+    mode: "class" | "practice";
+    status: "available" | "active" | "complete";
+    questionCount: number;
+    totalQuestions: number;
+    letterGrade?: string;
+    score?: number;
+  };
   mastered: number;
   learning: number;
   shaky: number;
   new: number;
+}
+
+interface CourseStanding {
+  facultyId: string;
+  grade: Grade | null;
+  completed: number;
+  required: number;
+  averageScore?: number;
+  letterGrade?: string;
+  passed: boolean;
+  today: CourseProgress["today"];
+}
+
+interface DailyClassUpdate {
+  mode: "class" | "practice";
+  facultyId: string;
+  grade?: Grade;
+  date?: string;
+  questionCount?: number;
+  totalQuestions?: number;
+  completed?: boolean;
+  letterGrade?: string;
+  score?: number;
+  passedClass?: boolean;
 }
 
 const SRS_AGAIN_MS = 5 * 60 * 1000;
@@ -158,6 +209,7 @@ const SRS_EASY_INTERVALS_MS = [
   7 * SRS_ONE_DAY_MS,
   14 * SRS_ONE_DAY_MS,
 ];
+const CLASS_QUESTIONS_PER_DAY = 3;
 
 function cardMemoryKey(courseId: string, questionId: string): string {
   return `${courseId}::${questionId}`;
@@ -209,24 +261,39 @@ function dueKnownCard(memory: CardMemory, now: number): boolean {
   return memory.dueAt <= now;
 }
 
-function letterGradeForMastery(total: number, mastered: number, shaky: number, learning: number): string {
-  if (total <= 0) return "F";
-  const pct = mastered / total;
-  let letter = "F";
-  if (pct >= 0.9) letter = "A";
-  else if (pct >= 0.75) letter = "B";
-  else if (pct >= 0.55) letter = "C";
-  else if (pct >= 0.3) letter = "D";
-  const unresolvedPressure = (shaky + learning * 0.5) / total;
-  if (letter === "A") return unresolvedPressure > 0.12 ? "A-" : "A";
-  if (letter === "F") return pct >= 0.2 && unresolvedPressure < 0.4 ? "F+" : "F";
-  const bandProgress =
-    letter === "B" ? (pct - 0.75) / 0.15 :
-    letter === "C" ? (pct - 0.55) / 0.2 :
-    (pct - 0.3) / 0.25;
-  if (unresolvedPressure > 0.25) return `${letter}-`;
-  if (bandProgress >= 0.72) return `${letter}+`;
-  return letter;
+function classRecordKey(grade: Grade, facultyId: string, date: string): string {
+  return `${grade}:${facultyId}:${date}`;
+}
+
+function requiredClassCompletionsForGrade(grade: Grade): number {
+  return requiredStreakForGrade(grade);
+}
+
+function letterGradeForClassScore(score: number | undefined): string | undefined {
+  if (score == null || Number.isNaN(score)) return undefined;
+  if (score >= 90) return "A";
+  if (score >= 80) return "B";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
+}
+
+function classQuestionScore(
+  wasCorrect: boolean,
+  playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
+  scoreMultiplier = 1,
+): number {
+  const outcome = playerRoll?.outcome ?? "miss";
+  const base = wasCorrect
+    ? outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80
+    : outcome === "hit" ? 55 : outcome === "mixed" ? 40 : 20;
+  const streakBonus = wasCorrect ? (clamp(Math.floor(scoreMultiplier), 1, 3) - 1) * 5 : 0;
+  return clamp(base + streakBonus, 0, 100);
+}
+
+function classAverage(record: DailyClassRecord): number | undefined {
+  if (record.questionCount <= 0) return undefined;
+  return Math.round(record.scoreTotal / record.questionCount);
 }
 
 export class RubyHighService extends Service {
@@ -702,6 +769,169 @@ export class RubyHighService extends Service {
     return pack.id.startsWith("anki:") && pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0);
   }
 
+  private dailyClassRecord(state: QuizState, facultyId: string, date = dailyKey()): DailyClassRecord | null {
+    const ch = state.character;
+    const grade = state.currentGrade;
+    if (!ch || !grade) return null;
+    return ch.dailyClasses?.[classRecordKey(grade, facultyId, date)] ?? null;
+  }
+
+  private courseStandingForState(state: QuizState, facultyId: string): CourseStanding {
+    const ch = state.character;
+    const grade = state.currentGrade;
+    const required = grade ? requiredClassCompletionsForGrade(grade) : 0;
+    const todayKey = dailyKey();
+    const todayRecord = grade ? this.dailyClassRecord(state, facultyId, todayKey) : null;
+    const today: CourseProgress["today"] = todayRecord?.status === "complete"
+      ? {
+          mode: "practice",
+          status: "complete",
+          questionCount: todayRecord.questionCount,
+          totalQuestions: CLASS_QUESTIONS_PER_DAY,
+          letterGrade: todayRecord.letterGrade,
+          score: classAverage(todayRecord),
+        }
+      : todayRecord
+        ? {
+            mode: "class",
+            status: "active",
+            questionCount: todayRecord.questionCount,
+            totalQuestions: CLASS_QUESTIONS_PER_DAY,
+          }
+        : {
+            mode: "class",
+            status: "available",
+            questionCount: 0,
+            totalQuestions: CLASS_QUESTIONS_PER_DAY,
+          };
+
+    if (!ch || !grade) {
+      return { facultyId, grade: null, completed: 0, required, passed: false, today };
+    }
+
+    const completed = Object.values(ch.dailyClasses ?? {})
+      .filter((r) => r.grade === grade && r.facultyId === facultyId && r.status === "complete");
+    const scores = completed
+      .map((r) => classAverage(r))
+      .filter((n): n is number => typeof n === "number");
+    const averageScore = scores.length > 0
+      ? Math.round(scores.reduce((sum, n) => sum + n, 0) / scores.length)
+      : undefined;
+    const letterGrade = letterGradeForClassScore(averageScore);
+    return {
+      facultyId,
+      grade,
+      completed: completed.length,
+      required,
+      averageScore,
+      letterGrade,
+      passed: completed.length >= required && letterGradePasses(letterGrade),
+      today,
+    };
+  }
+
+  private classSessionForPose(
+    state: QuizState,
+    facultyId: string,
+    requestedMode?: "class" | "practice",
+  ): NonNullable<ActiveRound["classSession"]> {
+    const ch = state.character;
+    const grade = state.currentGrade;
+    const date = dailyKey();
+    if (requestedMode === "practice" || !ch || !grade || facultyId === LOUNGE_FACULTY.id) {
+      return { mode: "practice", facultyId, grade: grade ?? undefined, date };
+    }
+    const record = this.dailyClassRecord(state, facultyId, date);
+    if (record?.status === "complete") {
+      return { mode: "practice", facultyId, grade, date };
+    }
+    return {
+      mode: "class",
+      facultyId,
+      grade,
+      date,
+      index: (record?.questionCount ?? 0) + 1,
+      total: CLASS_QUESTIONS_PER_DAY,
+    };
+  }
+
+  private recordDailyClassQuestion(
+    state: QuizState,
+    wasCorrect: boolean,
+    playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
+    scoreMultiplier: number,
+    now = Date.now(),
+  ): DailyClassUpdate {
+    const round = state.activeRound;
+    const session = round?.classSession;
+    if (!session || session.mode !== "class" || !session.grade || !session.date || !state.character) {
+      return { mode: "practice", facultyId: state.faculty, grade: state.currentGrade ?? undefined };
+    }
+    const ch = state.character;
+    ch.dailyClasses = ch.dailyClasses ?? {};
+    const key = classRecordKey(session.grade, session.facultyId, session.date);
+    const record = ch.dailyClasses[key] ?? {
+      grade: session.grade,
+      facultyId: session.facultyId,
+      date: session.date,
+      status: "active" as const,
+      questionCount: 0,
+      correctCount: 0,
+      scoreTotal: 0,
+      scoreMax: 0,
+      updatedAt: now,
+    };
+    if (record.status === "complete") {
+      return {
+        mode: "practice",
+        facultyId: session.facultyId,
+        grade: session.grade,
+        date: session.date,
+        questionCount: record.questionCount,
+        totalQuestions: CLASS_QUESTIONS_PER_DAY,
+        completed: true,
+        letterGrade: record.letterGrade,
+        score: classAverage(record),
+      };
+    }
+
+    const score = classQuestionScore(wasCorrect, playerRoll, scoreMultiplier);
+    record.questionCount += 1;
+    if (wasCorrect) record.correctCount += 1;
+    record.scoreTotal += score;
+    record.scoreMax += 100;
+    record.updatedAt = now;
+    if (record.questionCount >= CLASS_QUESTIONS_PER_DAY) {
+      record.status = "complete";
+      record.completedAt = now;
+      const avg = classAverage(record);
+      record.letterGrade = letterGradeForClassScore(avg);
+      log.event("class.completed", {
+        sessionId: state.sessionId,
+        faculty: session.facultyId,
+        grade: session.grade,
+        date: session.date,
+        letterGrade: record.letterGrade,
+        score: avg,
+        correct: record.correctCount,
+        total: record.questionCount,
+      });
+    }
+    ch.dailyClasses[key] = record;
+    return {
+      mode: "class",
+      facultyId: session.facultyId,
+      grade: session.grade,
+      date: session.date,
+      questionCount: record.questionCount,
+      totalQuestions: CLASS_QUESTIONS_PER_DAY,
+      completed: record.status === "complete",
+      letterGrade: record.letterGrade,
+      score: classAverage(record),
+      passedClass: record.status === "complete" && letterGradePasses(record.letterGrade),
+    };
+  }
+
   private cardMemoryFor(state: QuizState, courseId: string, questionId: string): CardMemory | null {
     return this.ensureCardMemory(state)[cardMemoryKey(courseId, questionId)] ?? null;
   }
@@ -1045,11 +1275,18 @@ export class RubyHighService extends Service {
       reviewAt,
       scoreMultiplier,
     );
+    const classProgress = this.recordDailyClassQuestion(
+      state,
+      wasCorrect,
+      playerRoll,
+      scoreMultiplier,
+      reviewAt,
+    );
 
     // Player progression. Card mastery updates above; class grades are derived
-    // from that memory. The first passed question per school day ticks the
-    // streak and cohort.
-    const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, playerRoll?.xpAwarded ?? 0);
+    // from completed daily classes. Practice updates card memory but does not
+    // tick the school-day streak or the graduation gate.
+    const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, playerRoll?.xpAwarded ?? 0, classProgress);
     if (progress.dailyTicked) {
       const correctAns = (q.correct ?? "A") as Choice;
       this.applyCohortDaily(state, correctAns, dailyKey());
@@ -1065,6 +1302,7 @@ export class RubyHighService extends Service {
         ? "Class affinity kicked in — second chance counted."
         : forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
       scoreMultiplier,
+      classProgress,
       playerRoll,
       affinitySave,
     };
@@ -1081,15 +1319,21 @@ export class RubyHighService extends Service {
    *
    *    1. subjectScores tick (independent of pass) — drives
    *       the diploma's subject-themed accessory at graduation.
-   *    2. Card memory already updated before this call; class standing is
-   *       derived from mastery, not XP.
-   *    3. The first passed question on a UTC date is a "school day complete":
-   *       tick the streak, with date-gap reset.
+   *    2. Card memory already updated before this call; it only drives
+   *       scheduling/practice.
+   *    3. The first passed class completion on a UTC date is a "school day
+   *       complete": tick the streak, with date-gap reset.
    *    4. Re-check grade completion after every progress mutation. Streak
    *       and class credit can land in either order; once both gates are met,
    *       the year completes immediately.
    */
-  private applyPlayerProgress(state: QuizState, passed: boolean, faculty: string, awardedCredits: number): { dailyTicked: boolean } {
+  private applyPlayerProgress(
+    state: QuizState,
+    passed: boolean,
+    faculty: string,
+    awardedCredits: number,
+    classProgress?: DailyClassUpdate,
+  ): { dailyTicked: boolean } {
     const ch = state.character;
     if (!ch || !state.currentGrade) return { dailyTicked: false };
     const grade = state.currentGrade;
@@ -1104,9 +1348,9 @@ export class RubyHighService extends Service {
 
     void awardedCredits;
 
-    // 3. Streak tracking. Only the first passed question per school day moves it.
+    // 3. Streak tracking. Only a passing daily class completion moves it.
     let dailyTicked = false;
-    if (!passed) {
+    if (!classProgress?.completed || !classProgress.passedClass) {
       this.maybeMarkGradeReady(state);
       return { dailyTicked };
     }
@@ -1159,15 +1403,15 @@ export class RubyHighService extends Service {
       const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
       if (!teacherId) continue;
       classCount++;
-      const course = this.questionBankStatusForState(state, teacherId);
-      const masteryGradePasses = letterGradePasses(course.grade);
+      const course = this.courseStandingForState(state, teacherId);
+      const coursePasses = course.passed;
       const legacyXp = ch.subjectXp?.[teacherId] ?? 0;
       const legacyPass = legacyXp >= requiredSubjectXpForGrade(grade);
-      const gradeLabel = masteryGradePasses ? course.grade! : (legacyPass ? "C" : (course.grade ?? "F"));
+      const gradeLabel = coursePasses ? course.letterGrade! : (legacyPass ? "C" : (course.letterGrade ?? "—"));
       classGrades[teacherId] = gradeLabel;
-      if (letterGradePasses(gradeLabel)) classesMet++;
-      if (!masteryGradePasses && legacyPass) {
-        fallbackRescues.push({ faculty: teacherId, legacyXp, masteryGrade: course.grade ?? null });
+      if (coursePasses || legacyPass) classesMet++;
+      if (!coursePasses && legacyPass) {
+        fallbackRescues.push({ faculty: teacherId, legacyXp, masteryGrade: course.letterGrade ?? null });
       }
     }
     const streakMet = streakCount >= requiredStreak;
@@ -1425,6 +1669,7 @@ export class RubyHighService extends Service {
     // student-side LLM never touches the question — picks come from dice +
     // the question stat, and HUSTLE only controls timing.
     state.activeRound = this.openRound(state, question);
+    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -1546,6 +1791,7 @@ export class RubyHighService extends Service {
     state.faculty = question.faculty ?? state.faculty;
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
     state.activeRound = this.openRound(state, question);
+    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -1633,9 +1879,16 @@ export class RubyHighService extends Service {
       state.score.total += 1;
       if (passed) state.score.correct += 1;
       this.recordCardReview(state, q, passed ? "good" : "again", record.at, scoreMultiplier);
+      const classProgress = this.recordDailyClassQuestion(
+        state,
+        passed,
+        null,
+        scoreMultiplier,
+        record.at,
+      );
       // Same progression as MC rounds. Opinion rounds update card mastery
       // through the review rating above; no XP is awarded.
-      const progress = this.applyPlayerProgress(state, passed, state.faculty, passed ? 1 : 0);
+      const progress = this.applyPlayerProgress(state, passed, state.faculty, passed ? 1 : 0, classProgress);
       if (progress.dailyTicked) {
         // NPCs roll a coin-flip-ish dice; "A" is a neutral sentinel
         // since opinion mode has no correct letter to leak.
@@ -1649,6 +1902,7 @@ export class RubyHighService extends Service {
         explanation: q.rubric ?? null,
         encouragement: affinitySave ? "Class affinity kicked in — second chance counted." : passed ? "Nice essay." : "Take another swing at it tomorrow.",
         scoreMultiplier,
+        classProgress,
         affinitySave,
       };
     }
@@ -1689,8 +1943,8 @@ export class RubyHighService extends Service {
     if (!q) {
       throw new Error(
         importedReviewCourse
-          ? `No deck cards are ready for ${facultyId} right now.`
-          : `No questions ready for {faculty=${facultyId}, subject=${filter.subject ?? "any"}, difficulty=${difficulty ?? "any"}}.`,
+          ? `No scheduled deck card is due for ${facultyId} right now.`
+          : `No scheduled question is due for {faculty=${facultyId}, subject=${filter.subject ?? "any"}, difficulty=${difficulty ?? "any"}}.`,
       );
     }
     return this.pose(sessionId, {
@@ -1703,6 +1957,7 @@ export class RubyHighService extends Service {
       difficulty: q.difficulty,
       faculty: q.faculty,
       questionId: q.id,
+      mode: filter.mode,
     });
   }
 
@@ -1719,6 +1974,7 @@ export class RubyHighService extends Service {
     const allowedDifficulties = state.currentGrade && !imported ? difficultiesForGrade(state.currentGrade) : undefined;
     const questions = this.eligibleCourseQuestions(state, fid, { allowedDifficulties });
     const counts = this.cardCounts(state, fid, questions);
+    const standing = this.courseStandingForState(state, fid);
     return {
       mode: imported ? "srs" : "bank",
       facultyId: fid,
@@ -1726,7 +1982,12 @@ export class RubyHighService extends Service {
       total: questions.length,
       asked: counts.asked,
       remaining: counts.ready,
-      grade: letterGradeForMastery(questions.length, counts.mastered, counts.shaky, counts.learning),
+      grade: standing.letterGrade,
+      courseGrade: standing.letterGrade,
+      completedClasses: standing.completed,
+      requiredClasses: standing.required,
+      averageScore: standing.averageScore,
+      todayClass: standing.today,
       readyCount: counts.ready,
       masteredCount: counts.mastered,
       learningCount: counts.learning,
@@ -1747,6 +2008,15 @@ export class RubyHighService extends Service {
       total: status.total,
       ready: status.readyCount ?? status.remaining,
       grade: status.grade,
+      completedClasses: status.completedClasses ?? 0,
+      requiredClasses: status.requiredClasses ?? 0,
+      averageScore: status.averageScore,
+      today: status.todayClass ?? {
+        mode: "class",
+        status: "available",
+        questionCount: 0,
+        totalQuestions: CLASS_QUESTIONS_PER_DAY,
+      },
       mastered: status.masteredCount ?? status.asked,
       learning: status.learningCount ?? 0,
       shaky: status.shakyCount ?? 0,
@@ -1795,7 +2065,7 @@ export class RubyHighService extends Service {
         : undefined,
     });
     if (!q) {
-      throw new Error(`No ready review card for ${facultyId}; cannot pose today's bonus.`);
+      throw new Error(`No scheduled review card is due for ${facultyId}; cannot pose today's bonus.`);
     }
     // Daily bonus guarantees a school-day question; class grades come from
     // the same card mastery path as regular room questions.

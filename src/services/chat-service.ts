@@ -905,15 +905,25 @@ function describeBoardForModel(state: QuizState): string {
 }
 
 function describeQuestionBankForModel(status: QuestionBankStatus): string {
+  const classLine = status.todayClass
+    ? status.todayClass.status === "complete"
+      ? `Today's graded class is complete${status.todayClass.letterGrade ? `: ${status.todayClass.letterGrade}` : ""}. Further boards are practice.`
+      : status.todayClass.status === "active"
+        ? `Today's graded class is in progress: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}.`
+        : `Today's graded class is available: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}.`
+    : "Today's class status is unavailable.";
+  const standing = status.courseGrade
+    ? `Course standing: ${status.courseGrade} (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} classes complete).`
+    : `Course standing: no completed class yet (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} classes complete).`;
   if (status.mode === "srs") {
-    const grade = status.grade ?? "F";
     const mastered = status.masteredCount ?? 0;
     const shaky = status.shakyCount ?? 0;
     const learning = status.learningCount ?? 0;
     if (status.remaining <= 0) {
       return [
-        `COURSE STATUS for ${status.displayName}: ${grade}; no deck cards are ready right now (${mastered}/${status.total} learned, ${shaky} shaky, ${learning} learning).`,
-        "pick_from_bank is not available this turn because no cards are due. Do not say the deck is exhausted, dry, depleted, or used up.",
+        `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+        `Scheduler detail: no deck card is due right now (${mastered}/${status.total} learned, ${shaky} shaky, ${learning} learning).`,
+        "pick_from_bank is not available this turn. Do not say the deck is exhausted, dry, depleted, or used up.",
         "If the class needs a board, either speak briefly about progress or call pose_question exactly once for a custom challenge.",
       ].join("\n");
     }
@@ -923,9 +933,10 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
       .map(([subject, count]) => `${subject}:${count}`)
       .join(", ");
     return [
-      `COURSE STATUS for ${status.displayName}: ${grade}; ${status.remaining} deck cards ready (${mastered}/${status.total} learned, ${shaky} shaky).`,
-      subjects ? `Ready by subject: ${subjects}.` : "",
-      "Use pick_from_bank for the next due card. Do not describe cards as consumed or exhausted; this course uses spaced review.",
+      `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+      `Scheduler detail: deck material is available (${mastered}/${status.total} learned, ${shaky} shaky).`,
+      subjects ? `Available subjects: ${subjects}.` : "",
+      "Use pick_from_bank for the next board. Do not describe cards as consumed or exhausted; this course uses spaced review.",
     ].filter(Boolean).join("\n");
   }
   const difficultyCounts = ["easy", "medium", "hard"]
@@ -938,16 +949,17 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     .join(", ");
   if (status.remaining <= 0) {
     return [
-      `COURSE STATUS for ${status.displayName}: ${status.grade ?? "F"}; no Ruby High cards are ready right now (${status.masteredCount ?? 0}/${status.total} mastered, ${status.shakyCount ?? 0} shaky, ${status.learningCount ?? 0} learning).`,
-      "pick_from_bank is not available this turn because no cards are due. Do not say the bank is exhausted, dry, depleted, or used up.",
+      `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+      `Scheduler detail: no Ruby High card is available right now (${status.masteredCount ?? 0}/${status.total} mastered, ${status.shakyCount ?? 0} shaky, ${status.learningCount ?? 0} learning).`,
+      "pick_from_bank is not available this turn. Do not say the bank is exhausted, dry, depleted, or used up.",
       "If the class needs a board, call pose_question exactly once and author a custom question; it will join the reusable Ruby High bank.",
     ].join("\n");
   }
   return [
-    `COURSE STATUS for ${status.displayName}: ${status.grade ?? "F"}; ${status.remaining}/${status.total} cards ready.`,
-    status.defaultDifficulty ? `Default grade difficulty: ${status.defaultDifficulty}. Ready by difficulty: ${difficultyCounts}.` : `Ready by difficulty: ${difficultyCounts}.`,
-    subjects ? `Ready by subject: ${subjects}.` : "",
-    "Use pick_from_bank as the normal next-question move. This course uses spaced review; do not describe cards as consumed or exhausted.",
+    `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+    status.defaultDifficulty ? `Default grade difficulty: ${status.defaultDifficulty}. Scheduler by difficulty: ${difficultyCounts}.` : `Scheduler by difficulty: ${difficultyCounts}.`,
+    subjects ? `Available subjects: ${subjects}.` : "",
+    "Use pick_from_bank as the normal next-board move. This course uses spaced review; do not describe cards as consumed or exhausted.",
   ].filter(Boolean).join("\n");
 }
 
@@ -958,7 +970,7 @@ function buildToolDefs(opts: { includePickFromBank?: boolean } = {}): unknown[] 
       function: {
         name: "pick_from_bank",
         description:
-          "Draw the next ready question from the active faculty's vetted question pack. Preferred over pose_question for normal classroom flow.",
+          "Draw the next scheduled question from the active faculty's vetted question pack. Preferred over pose_question for normal classroom flow.",
         parameters: {
           type: "object",
           properties: {

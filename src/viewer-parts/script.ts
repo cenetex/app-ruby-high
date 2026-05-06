@@ -50,14 +50,41 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   }
   function classGradeForFaculty(fid) {
     const progress = courseProgressForFaculty(fid);
-    return (progress && progress.courseGrade) || "F";
+    return (progress && progress.courseGrade) || "—";
+  }
+  function courseStatusText(progress) {
+    if (!progress) return "settling in";
+    const grade = progress.grade || "—";
+    const done = Number(progress.completedClasses || 0);
+    const required = Number(progress.requiredClasses || 0);
+    const today = progress.today || {};
+    if (today.status === "complete") {
+      return "class complete today" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + grade;
+    }
+    if (today.status === "active") {
+      return "class " + Number(today.questionCount || 0) + "/" + Number(today.totalQuestions || 3) + " · " + grade;
+    }
+    return done + "/" + required + " classes · " + grade;
+  }
+  function nextQuestionButtonLabel() {
+    if (lastTelemetry && lastTelemetry.graduation_ready) return "Graduation ceremony →";
+    const progress = lastTelemetry && lastTelemetry.active_course_progress;
+    if (progress && progress.today && progress.today.status === "complete") return "Practice →";
+    if (progress && progress.today && progress.today.status === "active") return "Continue class →";
+    return "Start class →";
   }
   function classGradeSummary() {
     const grades = TEACHING_FACULTY_IDS.map((fid) => ({
       facultyId: fid,
       grade: classGradeForFaculty(fid),
+      progress: courseProgressForFaculty(fid),
     }));
-    const met = grades.filter((g) => letterGradePasses(g.grade)).length;
+    const met = grades.filter((g) => {
+      const p = g.progress || {};
+      const completed = Number(p.completedClasses || 0);
+      const required = Number(p.requiredClasses || 0);
+      return required > 0 && completed >= required && letterGradePasses(g.grade);
+    }).length;
     return { grades, met, total: grades.length };
   }
 
@@ -849,9 +876,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
         // moment" forever. The hint comes second — the lead is still
         // the room's status, the hint is the actionable detail.
         const hint = lastTelemetry && lastTelemetry.character ? buildNextStepHint(lastTelemetry.character) : "";
-        els.blackboardEmptyText.textContent = hint
-          ? "The teacher will write a question on the board in a moment. " + hint
-          : "The teacher will write a question on the board in a moment.";
+        const progress = lastTelemetry && lastTelemetry.active_course_progress;
+        const lead = progress && progress.today && progress.today.status === "complete"
+          ? "Today's graded class is complete. Practice is open."
+          : progress && progress.today && progress.today.status === "active"
+            ? "Continue today's class when the teacher writes the next board."
+            : "Start today's graded class when the teacher writes the next board.";
+        els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
       }
       return;
     }
@@ -883,6 +914,14 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       bonus.className = "pill bonus";
       bonus.textContent = "★ BONUS";
       els.blackboardMeta.appendChild(bonus);
+    }
+    if (ar && ar.classSession) {
+      const cls = document.createElement("span");
+      cls.className = "pill class-mode";
+      cls.textContent = ar.classSession.mode === "class"
+        ? "CLASS " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
+        : "PRACTICE";
+      els.blackboardMeta.appendChild(cls);
     }
 
     // Prompt — always wipe + rewrite on new question (chalkboard re-erasing).
@@ -916,7 +955,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     // Footer — Next button shown only when the player is signed in and only
     // after a reveal (revealRound clears the inline display:none).
     els.nextBtn.disabled = false;
-    els.nextBtn.textContent = "Next question →";
+    els.nextBtn.textContent = nextQuestionButtonLabel();
     els.nextBtn.style.display = "none"; // hidden until reveal
     els.blackboardFoot.hidden = !authed;
 
@@ -954,7 +993,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       renderMarkdownInto(expl, playerGrade.comment);
       els.boardReveal.appendChild(expl);
     }
-    els.nextBtn.textContent = (lastTelemetry && lastTelemetry.graduation_ready) ? "Graduation ceremony →" : "Next question →";
+    els.nextBtn.textContent = nextQuestionButtonLabel();
     els.nextBtn.style.display = "";
     els.nextBtn.focus();
   }
@@ -1074,7 +1113,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const grade = t.current_grade;
     const roster = t.faculty_roster || [];
     const sig = (grade ?? "?") + "::" + roster.map((f) =>
-      f.id + ":" + f.available + ":" + f.questionCount + ":" + (f.courseGrade || "") + ":" + (f.readyCount ?? "")
+      f.id + ":" + f.available + ":" + f.questionCount + ":" + (f.courseGrade || "")
+        + ":" + (f.completedClasses ?? "") + "/" + (f.requiredClasses ?? "")
+        + ":" + ((f.todayClass && f.todayClass.status) || "")
     ).join("|") + "::" + t.faculty;
     if (sig === lastRosterSig) return;
     lastRosterSig = sig;
@@ -1133,8 +1174,10 @@ export function viewerScript(opts: ViewerRenderOptions): string {
       if (fac && fac.courseGrade) {
         const courseMark = document.createElement("span");
         courseMark.className = "course-status-pill";
-        courseMark.title = (fac.readyCount ?? 0) + " ready";
-        courseMark.textContent = fac.courseGrade + " · " + (fac.readyCount ?? 0);
+        const done = Number(fac.completedClasses || 0);
+        const required = Number(fac.requiredClasses || 0);
+        courseMark.title = done + "/" + required + " classes";
+        courseMark.textContent = fac.courseGrade;
         row.appendChild(courseMark);
       }
       const cohortIds = (cohort[room.id] || []).filter((sid) => shouldShowStudentId(sid));
@@ -1474,8 +1517,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
     els.channelTitle.textContent = fac ? channelNameFor(fac) : "general";
     const courseProgress = t.active_course_progress;
-    const courseStatus = courseProgress && courseProgress.grade
-      ? courseProgress.grade + " · " + (courseProgress.ready || 0) + " ready"
+    const courseStatus = courseProgress
+      ? courseStatusText(courseProgress)
       : (t.current_grade ? "Grade " + t.current_grade : "settling in");
     els.channelSub.textContent = fac
       ? fac.displayName + " · " + courseStatus
@@ -1711,10 +1754,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     ];
     const makeGradeChip = (spec) => {
       const grade = spec.grade || "F";
-      const met = grade === "✓" || letterGradePasses(grade);
+      const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
       const chip = document.createElement("span");
       chip.className = "class-grade-chip" + (met ? " is-met" : "");
-      chip.title = spec.label + ": " + grade + (met ? " passing" : " needs C");
+      chip.title = grade === "—"
+        ? spec.label + ": no class grade yet"
+        : spec.label + ": " + grade + (met ? " complete" : " needs C and daily classes");
       chip.setAttribute("aria-label", chip.title);
       const icon = document.createElement("span");
       icon.className = "class-grade-icon";
@@ -1818,6 +1863,9 @@ export function viewerScript(opts: ViewerRenderOptions): string {
               label: meta.label,
               icon: meta.icon,
               grade: cp.grade,
+              met: cp.progress
+                ? Number(cp.progress.completedClasses || 0) >= Number(cp.progress.requiredClasses || 0) && letterGradePasses(cp.grade)
+                : letterGradePasses(cp.grade),
             }));
           }
         } else {
@@ -1825,7 +1873,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
             gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
-              grade: "F",
+              grade: "—",
             }));
           }
         }
@@ -2323,7 +2371,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     }
     if (classGaps.length > 0) {
       const segs = classGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + cg.grade + ")");
-      parts.push("Bring each class to C or better: " + segs.join(", "));
+      parts.push("Complete each daily class at C or better: " + segs.join(", "));
     }
 
     if (parts.length === 0) {
@@ -3518,7 +3566,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     switch (parsed.tool) {
       case "pick_from_bank": {
         const srs = lastTelemetry && lastTelemetry.active_course_progress && lastTelemetry.active_course_progress.mode === "srs";
-        return ok ? "🎲 " + teacherName + " drew a ready card" : teacherName + (srs ? " has no cards ready" : " reached for the bank — empty");
+        return ok ? "🎲 " + teacherName + " drew a board" : teacherName + (srs ? " has no scheduled card" : " reached for the bank — empty");
       }
       case "pose_question": return ok ? "✍️ " + teacherName + " wrote a custom question" : teacherName + " tried to write a question — failed";
       case "pose_opinion":  return ok ? "💭 " + teacherName + " asked for opinions" : teacherName + " tried to ask for opinions — failed";

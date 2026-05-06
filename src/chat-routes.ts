@@ -106,9 +106,9 @@ function toolPlacedFreshQuestion(ev: ChatStreamEvent): boolean {
 function nextBoardInstruction(bank: { mode?: string; remaining: number; grade?: string }, banked: string): string {
   if (bank.remaining > 0) return banked;
   if (bank.mode === "srs") {
-    return `No deck cards are ready right now${bank.grade ? ` (${bank.grade})` : ""}. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once for a custom challenge, or talk briefly about progress.`;
+    return "No scheduled deck card is available right now. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once for a custom challenge, or talk briefly about progress.";
   }
-  return "The vetted question bank for this room is exhausted today. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once and write a custom question.";
+  return "No scheduled Ruby High card is available right now. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once and write a custom question.";
 }
 
 function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string {
@@ -1328,11 +1328,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
         if (!fallbackPosted) {
           const noQuestionNote = bank.mode === "srs"
-            ? `No deck cards are ready for ${bank.displayName} right now${bank.grade ? ` (${bank.grade})` : ""}.`
-            : `The vetted question bank for ${bank.displayName} is exhausted today (${bank.asked}/${bank.total} used).`;
+            ? `No scheduled deck card is available for ${bank.displayName} right now.`
+            : `No scheduled Ruby High card is available for ${bank.displayName} right now.`;
           const noQuestionDirective = bank.mode === "srs"
-            ? "No deck cards are ready right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. If the class needs a fresh board, call pose_question exactly once for a custom challenge; otherwise chat with the room and let the player steer."
-            : "The vetted bank is exhausted, and pick_from_bank is unavailable. If the class needs a fresh board, call pose_question exactly once and write a custom question; otherwise chat with the room and let the player steer.";
+            ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. If the class needs a fresh board, call pose_question exactly once for a custom challenge; otherwise chat with the room and let the player steer."
+            : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. If the class needs a fresh board, call pose_question exactly once and write a custom question; otherwise chat with the room and let the player steer.";
           // This is a chat-state condition the model can handle if we remove
           // pick_from_bank from the tool surface and ask for a custom board.
           chat.appendEvent(

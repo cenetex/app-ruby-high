@@ -11,12 +11,16 @@ import {
   dailyIndex,
   facultyForDay,
   type Choice,
+  type DailyClassRecord,
   type Grade,
 } from "../types.js";
 
 let tmpDir: string;
 let storePath: string;
 let activeRuby: RubyHighService | null = null;
+
+const TEACHING_FACULTY_IDS = ["ruby", "sally-science", "professor-edward"] as const;
+const REQUIRED_CLASSES_BY_GRADE: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-daily-"));
@@ -51,31 +55,67 @@ function attachCharacter(ruby: RubyHighService, sid: string, grade: Grade = "9",
     arcAnswer: "—", personality: "—", xp,
     yearbook: [], createdAt: Date.now(),
     subjectXp: { ruby: 999, "sally-science": 999, "professor-edward": 999 },
+    dailyClasses: xp > 0 ? completedClassesForGrade(grade) : undefined,
   };
   return state;
 }
 
 function markFacultyMastered(ruby: RubyHighService, faculty: FacultyService, sid: string, facultyId: string) {
+  void faculty;
   const state = ruby.getOrCreate(sid);
-  const bank = faculty.bank(facultyId);
-  if (!bank) throw new Error(`No bank for ${facultyId}`);
-  state.cardMemory = state.cardMemory ?? {};
-  for (const q of bank.questions) {
-    state.cardMemory[`${facultyId}::${q.id}`] = {
-      courseId: facultyId,
-      questionId: q.id,
-      phase: "mastered",
-      dueAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
-      stability: 14,
-      difficulty: 0.1,
-      consecutiveCorrect: 3,
-      correctCount: 3,
-      wrongCount: 0,
-      delayedCorrectCount: 1,
-      lastReviewedAt: Date.now(),
-      lastResult: "good",
-      lapses: 0,
-    };
+  const ch = state.character;
+  const grade = state.currentGrade;
+  if (!ch || !grade) throw new Error("No active character grade");
+  ch.dailyClasses = ch.dailyClasses ?? {};
+  Object.assign(ch.dailyClasses, completedClassesForGrade(grade, [facultyId]));
+}
+
+function completedClassesForGrade(
+  grade: Grade,
+  facultyIds: readonly string[] = TEACHING_FACULTY_IDS,
+): Record<string, DailyClassRecord> {
+  const records: Record<string, DailyClassRecord> = {};
+  const required = REQUIRED_CLASSES_BY_GRADE[grade];
+  for (const facultyId of facultyIds) {
+    for (let i = 0; i < required; i++) {
+      const date = `2000-01-0${i + 1}`;
+      records[`${grade}:${facultyId}:${date}`] = {
+        grade,
+        facultyId,
+        date,
+        status: "complete",
+        questionCount: 3,
+        correctCount: 3,
+        scoreTotal: 270,
+        scoreMax: 300,
+        letterGrade: "A",
+        completedAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+    }
+  }
+  return records;
+}
+
+function completeClassOnDate(
+  ruby: RubyHighService,
+  sid: string,
+  facultyId: string,
+  iso: string,
+  picked: Choice = "A",
+) {
+  const day = dailyKey(new Date(iso));
+  Date.now = () => new Date(iso).getTime();
+  for (let i = 0; i < 3; i++) {
+    ruby.pose(sid, {
+      prompt: `Class question ${facultyId} ${day} ${i + 1}`,
+      options: { A: "a", B: "b", C: "c", D: "d" },
+      correct: "A",
+      faculty: facultyId,
+      stat: "head",
+      questionId: `qclass_${facultyId}_${day}_${i + 1}`,
+    });
+    ruby.submitAnswer(sid, picked);
   }
 }
 
@@ -279,13 +319,17 @@ describe("NPC cohort — runs in parallel with the player", () => {
     // their streaks WILL diverge — some will graduate Freshman in 1 try,
     // some will reset multiple times.
     const days = ["2026-05-04", "2026-05-05", "2026-05-06", "2026-05-07", "2026-05-08"];
-    for (const d of days) {
-      ruby.playDaily(sid, new Date(`${d}T18:00:00Z`));
-      const c = ruby.getOrCreate(sid).current!.correct! as Choice;
-      ruby.submitAnswer(sid, c);
-      if (ruby.getOrCreate(sid).character?.pendingGraduation) {
-        ruby.completeGraduation(sid, { kind: "advantage" });
+    const realNow = Date.now;
+    try {
+      for (const d of days) {
+        const iso = `${d}T18:00:00Z`;
+        completeClassOnDate(ruby, sid, facultyForDay(dailyKey(new Date(iso))), iso);
+        if (ruby.getOrCreate(sid).character?.pendingGraduation) {
+          ruby.completeGraduation(sid, { kind: "advantage" });
+        }
       }
+    } finally {
+      Date.now = realNow;
     }
     const cohort = ruby.getOrCreate(sid).npcCohort!;
     // After 5 Dailies, the cohort has diverged — some are still in 9, some
@@ -403,7 +447,7 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
 });
 
 describe("Per-class letter-grade gate — streak alone is not enough", () => {
-  it("Freshman: single correct answers tick the streak, but classes must reach C or better before advancement triggers", async () => {
+  it("Freshman: a passing class ticks the streak, but all classes must reach C before advancement triggers", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:per-class-gate";
     attachCharacter(ruby, sid, "9", 0);
@@ -415,32 +459,17 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
     // internally for the daily-key) sees the test's time-travel.
     const realNow = Date.now;
     try {
-      const stepThroughDay = (iso: string) => {
-        const t = new Date(iso).getTime();
-        Date.now = () => t;
-        ruby.playBonus(sid, new Date(iso));
-        const cur = ruby.getOrCreate(sid).current!;
-        ruby.submitAnswer(sid, cur.correct as Choice);
-      };
-      stepThroughDay("2026-05-04T18:00:00Z"); // Mon, sally → +2 sally only
+      completeClassOnDate(ruby, sid, "sally-science", "2026-05-04T18:00:00Z");
       expect(ruby.getOrCreate(sid).currentGrade).toBe("9");
-      stepThroughDay("2026-05-05T18:00:00Z"); // Tue, edward → +2 edward
-      expect(ruby.getOrCreate(sid).currentGrade).toBe("9");
-      // Day 3: Ruby bonus. Now every teaching room is at 2, streak is at 3
-      // (≥ FR's required 1) → the ceremony becomes available.
-      const t3 = new Date("2026-05-06T18:00:00Z").getTime();
-      Date.now = () => t3;
-      ruby.playBonus(sid, new Date("2026-05-06T18:00:00Z"));
-      ruby.submitAnswer(sid, ruby.getOrCreate(sid).current!.correct as Choice);
     } finally {
       Date.now = realNow;
     }
     const final = ruby.getOrCreate(sid);
     expect(final.currentGrade).toBe("9");
+    expect(final.character!.streak).toEqual({ grade: "9", count: 1, lastDate: "2026-05-04" });
     expect(final.character!.pendingGraduation?.grade).toBeUndefined();
 
     markFacultyMastered(ruby, faculty, sid, "ruby");
-    markFacultyMastered(ruby, faculty, sid, "sally-science");
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
     ruby.completeGraduation(sid, { kind: "advantage" });
@@ -476,14 +505,10 @@ describe("Streak + grade advancement", () => {
     const realNow = Date.now;
     try {
       const advance = (iso: string) => {
-        const t = new Date(iso).getTime();
-        Date.now = () => t;
-        ruby.playBonus(sid, new Date(iso));
-        const cur = ruby.getOrCreate(sid).current!;
-        ruby.submitAnswer(sid, cur.correct as Choice);
+        completeClassOnDate(ruby, sid, "ruby", iso);
       };
-      // Day 1: Freshman target = 1 / day, streak required = 1 → one
-      // bonus pass opens the ceremony; the ceremony advances to Sophomore.
+      // Day 1: Freshman streak required = 1. One completed passing class
+      // opens the ceremony because attachCharacter pre-clears class gates.
       advance("2026-05-04T18:00:00Z");
       let ch = ruby.getOrCreate(sid).character!;
       expect(ruby.getOrCreate(sid).currentGrade).toBe("9");
@@ -547,19 +572,10 @@ describe("Streak + grade advancement", () => {
       "2026-05-06T18:00:00Z", // Wed
       "2026-05-07T18:00:00Z", // Thu
     ];
-    let qIdx = 0;
     const realNow = Date.now;
     try {
       for (const iso of days) {
-        Date.now = () => new Date(iso).getTime();
-        ruby.pose(sid, {
-          prompt: "Test " + (qIdx++),
-          options: { A: "a", B: "b", C: "c", D: "d" },
-          correct: "A",
-          faculty: "ruby",
-          questionId: "qtest_" + qIdx,
-        });
-        ruby.submitAnswer(sid, "A");
+        completeClassOnDate(ruby, sid, "ruby", iso);
       }
     } finally {
       Date.now = realNow;
@@ -701,20 +717,11 @@ describe("Streak + grade advancement", () => {
     ch.flavorQuote = "honestly the syllabus is bullying me";
     ch.stats = { head: 2, heart: 0, hustle: -1, honor: 1 };
 
-    // Force a single Freshman day-complete so the ceremony becomes available,
+    // Force a single Freshman class-complete so the ceremony becomes available,
     // then complete it to write the yearbook entry.
     const realNow = Date.now;
-    Date.now = () => new Date("2026-05-04T18:00:00Z").getTime();
     try {
-      ruby.pose(sid, {
-        prompt: "Q",
-        options: { A: "a", B: "b", C: "c", D: "d" },
-        correct: "A",
-        faculty: "ruby",
-        rarity: "legendary",
-        questionId: "qsnap_ruby",
-      });
-      ruby.submitAnswer(sid, "A");
+      completeClassOnDate(ruby, sid, "ruby", "2026-05-04T18:00:00Z");
       ruby.completeGraduation(sid, { kind: "advantage" });
     } finally {
       Date.now = realNow;

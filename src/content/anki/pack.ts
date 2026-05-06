@@ -219,7 +219,7 @@ function importedModulePrompt(teacher: TeacherCharacter, deckName: string): stri
     "",
     `Imported Anki module: "${deckName}". This deck is assigned to your classroom for this user.`,
     "Teach it in your normal voice. Treat the deck's topic as in-range for this module, even if it would normally belong to another teacher.",
-    "Use pick_from_bank for due deck cards when available. The deck uses spaced review, so cards are never exhausted; when no cards are ready, do not keep trying filters. Write one custom question with pose_question or talk briefly with the class.",
+    "Use pick_from_bank for due deck cards when available. The deck uses spaced review, so cards are never exhausted; when no deck card is due, do not keep trying filters. Write one custom question with pose_question or talk briefly with the class.",
   ].join("\n");
 }
 
