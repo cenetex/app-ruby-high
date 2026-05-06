@@ -75,7 +75,22 @@ flyctl secrets set --app ruby-high \
   AWS_SECRET_ACCESS_KEY=<secret from step 1>
 ```
 
-### 3. Deploy
+### 3. Set the GitHub deploy token
+
+Automatic production deploys run from
+[`deploy-fly.yml`](../.github/workflows/deploy-fly.yml). Add a
+repository secret named `FLY_API_TOKEN` with a Fly deploy token before
+enabling push-to-main deploys.
+
+```sh
+flyctl auth token
+```
+
+PRs targeting `main` run typecheck, tests, and build. Merging to
+`main` deploys `ruby-high` to Fly and then runs the production smoke
+checks against `https://ruby-high.fly.dev`.
+
+### 4. Deploy manually
 
 ```sh
 flyctl deploy --app ruby-high
@@ -85,7 +100,7 @@ The first deploy builds the image, ships it to Fly's registry, and
 boots one machine. Subsequent traffic-induced wake-ups reuse that
 image until the next `flyctl deploy`.
 
-### 4. Update the OpenRouter callback
+### 5. Update the OpenRouter callback
 
 In your OpenRouter settings, add `https://ruby-high.fly.dev/api/apps/ruby-high/auth/callback` to the allowed redirect URIs (or replace the existing App Runner one if you're cutting over rather than running both).
 

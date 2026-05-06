@@ -1,0 +1,58 @@
+name: deploy-fly
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+
+  deploy:
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: fly-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://ruby-high.fly.dev
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: |
+          SHA="${GITHUB_SHA::12}"
+          flyctl deploy --app ruby-high --remote-only --build-arg RUBY_HIGH_BUILD="$SHA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Smoke production
+        run: node scripts/smoke.mjs https://ruby-high.fly.dev

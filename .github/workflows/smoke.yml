@@ -1,10 +1,11 @@
 name: smoke
 
-# Runs the post-deploy smoke against production every 30 minutes and on
-# pushes to main. The four user-blocking regressions cited in #45 (iOS
-# sign-in, A/B/C/D buttons, X-Openrouter-Key plumbing, OAuth callback)
-# would all have been caught by these checks. See scripts/smoke.mjs for
-# the check list.
+# Runs the production smoke on a schedule and manually. Push-to-main smoke
+# runs in deploy-fly.yml after the Fly deploy finishes, so this workflow
+# should not race it before a new image is live. The four user-blocking
+# regressions cited in #45 (iOS sign-in, A/B/C/D buttons,
+# X-Openrouter-Key plumbing, OAuth callback) would all have been caught by
+# these checks. See scripts/smoke.mjs for the check list.
 #
 # Failure delivers a GitHub Actions email to maintainers; it does not
 # auto-rollback. Adding rollback would require deciding which commit to
@@ -12,8 +13,6 @@ name: smoke
 # fine for the current traffic profile.
 
 on:
-  push:
-    branches: [main]
   schedule:
     # Every 30 minutes. Cron is in UTC.
     - cron: "*/30 * * * *"
