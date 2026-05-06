@@ -345,12 +345,17 @@ export class RubyHighService extends Service {
   /** Wait for any in-flight persistence writes to flush. Useful in tests. */
   async flush(): Promise<void> {
     await this.persistAll();
+    if (typeof this.store.flush === "function") await this.store.flush();
     await Promise.allSettled(Array.from(this.backgroundWrites));
   }
 
-  /** Persist one session before returning an HTTP mutation response. */
-  flushSession(sessionId: string): Promise<void> {
-    return this.persistSession(sessionId);
+  /** Persist one session before returning an HTTP mutation response. The
+   *  store debounces saveSession; we drain it here so the awaited promise
+   *  doesn't wait the full debounce window for a fire-and-forget caller. */
+  async flushSession(sessionId: string): Promise<void> {
+    const promise = this.persistSession(sessionId);
+    if (typeof this.store.flush === "function") await this.store.flush();
+    await promise;
   }
 
   /** Player taps "Roll for advantage" once per round. The roll is consumed

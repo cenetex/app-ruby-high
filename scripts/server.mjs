@@ -145,6 +145,7 @@ function makeRouteContext(req, res, url) {
     apiKeyHeader,
     isSecure: isSecureReq(req),
     clientIp: deriveClientIp(req),
+    ifNoneMatch: req.headers["if-none-match"] ?? null,
     callbackUrlBuilder: (path) => new URL(base).origin + path,
     error(_r, message, status = 500) {
       if (res.headersSent) return;

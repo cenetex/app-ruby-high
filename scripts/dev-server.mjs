@@ -107,6 +107,7 @@ function makeRouteContext(req, res, url) {
     apiKeyHeader,
     isSecure: false,
     clientIp: deriveClientIp(req),
+    ifNoneMatch: req.headers["if-none-match"] ?? null,
     callbackUrlBuilder: (path) => {
       const base = new URL(PUBLIC_BASE);
       return base.origin + path;

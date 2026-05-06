@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import type {
   IAgentRuntime,
   PluginAppBridgeLaunchContext,
@@ -121,6 +122,10 @@ export interface RouteContext {
    *  rate limiting in the chat layer. Optional — when absent, rate limiting
    *  falls back to per-cookie keys only. */
   clientIp?: string | null;
+  /** Raw If-None-Match request header. Static asset routes use it to return
+   *  304 Not Modified when the client's cached ETag matches. Optional — if
+   *  absent, assets always serve the full body (correct, just not cached). */
+  ifNoneMatch?: string | null;
 }
 
 interface FacultyTelemetry extends FacultyMember {
@@ -586,36 +591,67 @@ function sendHtmlResponse(res: unknown, html: string): void {
   response.end(html);
 }
 
-async function sendAsset(res: unknown, name: string): Promise<boolean> {
+// In-memory cache for static assets. Assets ship in the package and don't
+// change at runtime, so we read each one at most once. Cached entries also
+// carry a content-hash ETag so clients can revalidate cheaply with 304s.
+interface CachedAsset {
+  body: Buffer;
+  mime: string;
+  etag: string;
+}
+const ASSET_CACHE = new Map<string, CachedAsset>();
+const ASSET_LOAD_INFLIGHT = new Map<string, Promise<CachedAsset | null>>();
+
+async function loadAsset(name: string): Promise<CachedAsset | null> {
+  const cached = ASSET_CACHE.get(name);
+  if (cached) return cached;
+  const inflight = ASSET_LOAD_INFLIGHT.get(name);
+  if (inflight) return inflight;
   const entry = ASSET_FILES[name];
-  if (!entry) return false;
-  try {
+  if (!entry) return null;
+  const promise = (async () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const candidates = [
       resolve(here, "..", "assets", entry.file),
       resolve(here, "assets", entry.file),
     ];
-    let body: Buffer | null = null;
     for (const path of candidates) {
       try {
-        body = await readFile(path);
-        break;
+        const body = await readFile(path);
+        const etag = `"${createHash("sha1").update(body).digest("base64url").slice(0, 22)}"`;
+        const record: CachedAsset = { body, mime: entry.mime, etag };
+        ASSET_CACHE.set(name, record);
+        return record;
       } catch {}
     }
-    if (!body) return false;
-    const response = res as {
-      end: (body?: Buffer) => void;
-      setHeader: (name: string, value: string) => void;
-      statusCode: number;
-    };
-    response.statusCode = 200;
-    response.setHeader("Content-Type", entry.mime);
-    response.setHeader("Cache-Control", "public, max-age=300");
-    response.end(body);
+    return null;
+  })().finally(() => {
+    ASSET_LOAD_INFLIGHT.delete(name);
+  });
+  ASSET_LOAD_INFLIGHT.set(name, promise);
+  return promise;
+}
+
+async function sendAsset(res: unknown, name: string, ifNoneMatch?: string | null): Promise<boolean> {
+  if (!(name in ASSET_FILES)) return false;
+  const asset = await loadAsset(name);
+  if (!asset) return false;
+  const response = res as {
+    end: (body?: Buffer) => void;
+    setHeader: (name: string, value: string) => void;
+    statusCode: number;
+  };
+  response.setHeader("Content-Type", asset.mime);
+  response.setHeader("ETag", asset.etag);
+  response.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  if (ifNoneMatch && ifNoneMatch === asset.etag) {
+    response.statusCode = 304;
+    response.end();
     return true;
-  } catch {
-    return false;
   }
+  response.statusCode = 200;
+  response.end(asset.body);
+  return true;
 }
 
 function parseSessionId(pathname: string): string | null {
@@ -744,7 +780,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   if (ctx.method === "GET" && ctx.pathname.startsWith(ASSETS_PREFIX)) {
     const name = ctx.pathname.slice(ASSETS_PREFIX.length);
-    const sent = await sendAsset(ctx.res, name);
+    const sent = await sendAsset(ctx.res, name, ctx.ifNoneMatch ?? null);
     if (sent) return true;
     ctx.error(ctx.res, `Asset not found: ${name}`, 404);
     return true;

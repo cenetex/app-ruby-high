@@ -44,6 +44,12 @@ export interface StoredContentPackRecord {
  *   - save(states)         — persist all sessions at once. Used for full
  *                             snapshots and tests; the DynamoDB backend
  *                             chunks via BatchWrite.
+ *
+ * Backends MAY debounce per-mutation writes (the JSON backend does, since
+ * one round can fire multiple `void saveSession()` calls in quick succession
+ * and they all rewrite the same file). `flush()` drains any pending writes
+ * synchronously — call it from awaited HTTP paths so the response doesn't
+ * wait for the debounce window.
  */
 export interface StateStoreLike {
   load(): Promise<Map<string, QuizState>>;
@@ -56,6 +62,10 @@ export interface StateStoreLike {
   deleteAuthSession(token: string): Promise<void>;
   save(states: Iterable<QuizState>): Promise<void>;
   describe(): string;
+  /** Optional: drain any debounced writes immediately. No-op for backends
+   *  that don't debounce. Returning the writeChain lets callers `await` it
+   *  to know all in-flight writes have landed. */
+  flush?(): Promise<void>;
 }
 
 /**
@@ -82,11 +92,23 @@ export class StateStore implements StateStoreLike {
   private authSessions = new Map<string, AuthSessionRecord>();
   private importedPacks = new Map<string, StoredContentPackRecord>();
 
-  constructor(path?: string) {
+  // Debounced-write batching. Per-mutation calls (saveSession, saveAuthUser,
+  // savePack, deleteAuthSession) all rewrite the same file, so we coalesce
+  // them: the first call schedules a timer, subsequent calls within the
+  // window join the same pending promise, and the timer flushes one write.
+  // `save()` and `flush()` short-circuit the timer to issue the write now.
+  private readonly debounceMs: number;
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingPromise: Promise<void> | null = null;
+  private pendingResolve: (() => void) | null = null;
+  private pendingReject: ((err: unknown) => void) | null = null;
+
+  constructor(path?: string, opts?: { debounceMs?: number }) {
     this.path =
       path ??
       process.env.RUBY_HIGH_STATE_PATH ??
       resolve(homedir(), ".ruby-high", "state.json");
+    this.debounceMs = opts?.debounceMs ?? readDebounceMsFromEnv();
   }
 
   async load(): Promise<Map<string, QuizState>> {
@@ -204,6 +226,96 @@ export class StateStore implements StateStoreLike {
     // Update our in-memory snapshot before scheduling the write so
     // saveSession() that lands later sees the right baseline.
     this.snapshot = new Map(snapshot.map((s) => [s.sessionId, s]));
+    // save() is the explicit "write everything now" path — supersede any
+    // pending debounced write and resolve its waiters from this same write.
+    return this.writeNow();
+  }
+
+  /** JSON-file mode: rewriting one session means rewriting the whole file
+   *  (it's a single document). We use the in-memory snapshot updated by
+   *  prior load()/save() calls, replace the one entry, and write the lot.
+   *  For DynamoDB this same method writes only one item.
+   *
+   *  Calls within the debounce window coalesce into one file write — every
+   *  caller gets a promise that resolves when that write completes. */
+  saveSession(state: QuizState): Promise<void> {
+    this.snapshot.set(state.sessionId, state);
+    return this.scheduleWrite();
+  }
+
+  saveAuthUser(user: AuthUserRecord): Promise<void> {
+    this.authUsers.set(authUserKey(user.provider, user.providerUserHash), user);
+    return this.scheduleWrite();
+  }
+
+  saveAuthSession(session: AuthSessionRecord): Promise<void> {
+    this.authSessions.set(session.token, session);
+    return this.scheduleWrite();
+  }
+
+  savePack(record: StoredContentPackRecord): Promise<void> {
+    this.importedPacks.set(packRecordKey(record.ownerSessionId, record.pack.id), record);
+    return this.scheduleWrite();
+  }
+
+  deleteAuthSession(token: string): Promise<void> {
+    if (!this.authSessions.has(token)) return Promise.resolve();
+    this.authSessions.delete(token);
+    return this.scheduleWrite();
+  }
+
+  describe(): string {
+    return this.path;
+  }
+
+  /** Drain any pending debounced write right now and wait for everything
+   *  on the writeChain to land. Awaited HTTP paths (flushSession) call this
+   *  so the response doesn't wait for the debounce window. */
+  flush(): Promise<void> {
+    if (this.pendingTimer || this.pendingPromise) {
+      return this.writeNow();
+    }
+    return this.writeChain;
+  }
+
+  /** Schedule a debounced write. Multiple callers within the window share
+   *  one promise + one file write. */
+  private scheduleWrite(): Promise<void> {
+    if (!this.pendingPromise) {
+      this.pendingPromise = new Promise<void>((resolve, reject) => {
+        this.pendingResolve = resolve;
+        this.pendingReject = reject;
+      });
+    }
+    if (this.debounceMs <= 0) {
+      // Effectively immediate but still coalesces synchronous bursts:
+      // queueMicrotask drains the current sync stack first, so multiple
+      // void saveSession() in the same tick fold into one write.
+      if (!this.pendingTimer) {
+        this.pendingTimer = setTimeout(() => this.writeNow(), 0);
+        if (typeof this.pendingTimer.unref === "function") this.pendingTimer.unref();
+      }
+    } else if (!this.pendingTimer) {
+      this.pendingTimer = setTimeout(() => this.writeNow(), this.debounceMs);
+      if (typeof this.pendingTimer.unref === "function") this.pendingTimer.unref();
+    }
+    return this.pendingPromise;
+  }
+
+  /** Force the pending (or no) debounced write through writeChain now and
+   *  return a promise that observes its outcome. Adopts any pending resolvers
+   *  so debounce-batched callers see this write's success/failure. */
+  private writeNow(): Promise<void> {
+    if (this.pendingTimer) {
+      clearTimeout(this.pendingTimer);
+      this.pendingTimer = null;
+    }
+    const resolve = this.pendingResolve;
+    const reject = this.pendingReject;
+    this.pendingPromise = null;
+    this.pendingResolve = null;
+    this.pendingReject = null;
+
     const next = this.writeChain.catch(() => {}).then(async () => {
       await this.writeCurrentSnapshot();
     });
@@ -214,51 +326,7 @@ export class StateStore implements StateStoreLike {
       // eslint-disable-next-line no-console
       console.error(`[ruby-high] state-store save failed (${this.path}):`, err);
     });
-    return next;
-  }
-
-  /** JSON-file mode: rewriting one session means rewriting the whole file
-   *  (it's a single document). We use the in-memory snapshot updated by
-   *  prior load()/save() calls, replace the one entry, and write the lot.
-   *  For DynamoDB this same method writes only one item. */
-  saveSession(state: QuizState): Promise<void> {
-    this.snapshot.set(state.sessionId, state);
-    return this.save(this.snapshot.values());
-  }
-
-  saveAuthUser(user: AuthUserRecord): Promise<void> {
-    this.authUsers.set(authUserKey(user.provider, user.providerUserHash), user);
-    return this.queueWrite();
-  }
-
-  saveAuthSession(session: AuthSessionRecord): Promise<void> {
-    this.authSessions.set(session.token, session);
-    return this.queueWrite();
-  }
-
-  savePack(record: StoredContentPackRecord): Promise<void> {
-    this.importedPacks.set(packRecordKey(record.ownerSessionId, record.pack.id), record);
-    return this.queueWrite();
-  }
-
-  deleteAuthSession(token: string): Promise<void> {
-    if (!this.authSessions.has(token)) return Promise.resolve();
-    this.authSessions.delete(token);
-    return this.queueWrite();
-  }
-
-  describe(): string {
-    return this.path;
-  }
-
-  private queueWrite(): Promise<void> {
-    const next = this.writeChain.catch(() => {}).then(async () => {
-      await this.writeCurrentSnapshot();
-    });
-    this.writeChain = next.catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error(`[ruby-high] state-store save failed (${this.path}):`, err);
-    });
+    if (resolve && reject) next.then(resolve, reject);
     return next;
   }
 
@@ -274,6 +342,16 @@ export class StateStore implements StateStoreLike {
     await rename(tmp, this.path);
   }
 }
+
+function readDebounceMsFromEnv(): number {
+  const raw = process.env.RUBY_HIGH_STATE_DEBOUNCE_MS;
+  if (raw == null || raw === "") return DEFAULT_DEBOUNCE_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_DEBOUNCE_MS;
+  return Math.floor(n);
+}
+
+const DEFAULT_DEBOUNCE_MS = 25;
 
 export function authUserKey(provider: AuthUserRecord["provider"], providerUserHash: string): string {
   return `${provider}:${providerUserHash}`;

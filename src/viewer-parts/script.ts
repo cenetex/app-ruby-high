@@ -6,6 +6,11 @@ import type { ViewerRenderOptions } from "../viewer.js";
 // /session/<id> and /command. Kept as a single string so the whole
 // thing remains a no-build viewer (no bundler step needed for a quick
 // edit).
+//
+// The body is split: a tiny per-request prefix that pins the bootstrap
+// constants, and a static suffix (~4k LOC) that's identical for every
+// caller. The suffix is built once when this module is first imported
+// (VIEWER_SCRIPT_SUFFIX) instead of being re-allocated per request.
 export function viewerScript(opts: ViewerRenderOptions): string {
   const safeSession = encodeURIComponent(opts.sessionId);
   const safeApiBase = encodeURIComponent(opts.apiBase);
@@ -14,7 +19,12 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 (() => {
   const apiBase = decodeURIComponent("${safeApiBase}");
   const sessionId = decodeURIComponent("${safeSession}");
-  const role = "${role}";
+  const role = "${role}";` + VIEWER_SCRIPT_SUFFIX;
+}
+
+// Everything below `const role = ...` in the original IIFE — invariant
+// across requests. Built once at module load.
+const VIEWER_SCRIPT_SUFFIX = `
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
@@ -962,10 +972,16 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     if (answersGrid) answersGrid.classList.toggle("is-long", maxLen > 50);
 
     // Footer — Next button shown only when the player is signed in and only
-    // after a reveal (revealRound clears the inline display:none).
+    // after a reveal (applyRevealToBlackboard clears the inline display:none).
+    // The hide is gated on isNewQuestion: in offline / AI-off mode the
+    // teacher never queues the next question, so the player sits on a
+    // revealed round indefinitely. Re-setting display="none" on every
+    // polling render would erase the visible Next button between the
+    // first reveal-paint and the player's click. Only hide on a fresh
+    // question.
     els.nextBtn.disabled = false;
     els.nextBtn.textContent = nextQuestionButtonLabel();
-    els.nextBtn.style.display = "none"; // hidden until reveal
+    if (isNewQuestion) els.nextBtn.style.display = "none";
     els.blackboardFoot.hidden = !authed;
 
     // Opinion-mode bookkeeping resets on new question.
@@ -4119,4 +4135,3 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   adaptiveSchedule();
 })();
 `;
-}
