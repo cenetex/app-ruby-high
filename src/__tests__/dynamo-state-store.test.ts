@@ -171,6 +171,48 @@ describe("DynamoStateStore", () => {
     expect(item.updatedAt).toBe(2);
   });
 
+  it("saveSession() coalesces concurrent same-pk writes within the debounce window", async () => {
+    // Three concurrent saveSession() calls for the same pk should fold
+    // into a single PutCommand carrying the latest payload. This is the
+    // hot-path coalesce: a round can fire several saveSession() calls in
+    // the same tick (pose / answer / reveal / award), and we don't want
+    // each to issue its own Dynamo write.
+    const debounced = new DynamoStateStore({ tableName: "t", client: fake, ttlSeconds: 60, debounceMs: 50 });
+    await Promise.all([
+      debounced.saveSession(blankState("rh:user:burst", 1)),
+      debounced.saveSession(blankState("rh:user:burst", 2)),
+      debounced.saveSession(blankState("rh:user:burst", 3)),
+    ]);
+    const puts = fake.sent.filter((c) => c instanceof PutCommand);
+    expect(puts.length).toBe(1);
+    expect(fake.snapshot().get("rh:user:burst")?.updatedAt).toBe(3);
+  });
+
+  it("saveSession() with debounceMs=0 writes immediately (no coalesce)", async () => {
+    // The opt-out path: debounce=0 means every call fires its own
+    // PutCommand. Useful for scripts or tests that rely on per-call
+    // observability.
+    const immediate = new DynamoStateStore({ tableName: "t", client: fake, ttlSeconds: 60, debounceMs: 0 });
+    await immediate.saveSession(blankState("rh:user:eager", 1));
+    await immediate.saveSession(blankState("rh:user:eager", 2));
+    const puts = fake.sent.filter((c) => c instanceof PutCommand);
+    expect(puts.length).toBe(2);
+  });
+
+  it("flush() drains pending debounced writes immediately", async () => {
+    // Awaited HTTP paths (RubyHighService.flushSession) call store.flush()
+    // so the response doesn't wait the debounce window. Without this, a
+    // user-blocking command would always pay the debounce latency.
+    const debounced = new DynamoStateStore({ tableName: "t", client: fake, ttlSeconds: 60, debounceMs: 1_000 });
+    const inflight = debounced.saveSession(blankState("rh:user:flush", 7));
+    // No PutCommand yet — timer hasn't fired.
+    expect(fake.sent.filter((c) => c instanceof PutCommand).length).toBe(0);
+    await debounced.flush();
+    await inflight;
+    expect(fake.sent.filter((c) => c instanceof PutCommand).length).toBe(1);
+    expect(fake.snapshot().get("rh:user:flush")?.updatedAt).toBe(7);
+  });
+
   it("save() chunks a >25-session iterable into multiple BatchWrite calls", async () => {
     const states: QuizState[] = [];
     for (let i = 0; i < 60; i++) states.push(blankState(`rh:bulk:${i}`));

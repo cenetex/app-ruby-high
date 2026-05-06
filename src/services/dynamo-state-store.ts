@@ -46,6 +46,11 @@ export interface DynamoStateStoreOptions {
   ttlSeconds?: number;
   /** Pre-built doc client — used by tests to inject a fake without touching AWS. */
   client?: DynamoDBDocumentClientLike;
+  /** Per-session debounce window in milliseconds. Multiple saveSession()
+   *  calls for the same sessionId within the window collapse into a single
+   *  PutItem with the latest payload. Defaults to RUBY_HIGH_DYNAMO_DEBOUNCE_MS
+   *  env var or 25ms. Set to 0 to disable (every call writes immediately). */
+  debounceMs?: number;
 }
 
 /** Minimal interface so tests can mock the SDK without depending on the
@@ -56,17 +61,35 @@ export interface DynamoDBDocumentClientLike {
 
 const DEFAULT_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
+interface PendingSessionWrite {
+  pk: string;
+  item: Record<string, unknown>;
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (err: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export class DynamoStateStore implements StateStoreLike {
   private readonly client: DynamoDBDocumentClientLike;
   private readonly tableName: string;
   private readonly ttlSeconds: number;
   private readonly region: string;
+  // Per-session debounce. saveSession() during a single round can fire 4-6
+  // times (pose / answer / reveal / award / etc); each used to issue its
+  // own PutItem. Coalescing within a small window collapses those into one
+  // write per session per window. Latest-payload-wins semantics: callers
+  // mutate state and call saveSession; we keep the most recent item and
+  // share one promise across all coalesced callers.
+  private readonly debounceMs: number;
+  private readonly pendingSessionWrites = new Map<string, PendingSessionWrite>();
 
   constructor(opts: DynamoStateStoreOptions) {
     if (!opts.tableName) throw new Error("DynamoStateStore: tableName is required");
     this.tableName = opts.tableName;
     this.region = opts.region ?? process.env.AWS_REGION ?? "us-east-1";
     this.ttlSeconds = opts.ttlSeconds ?? DEFAULT_TTL_SECONDS;
+    this.debounceMs = opts.debounceMs ?? readDebounceMsFromEnv();
     if (opts.client) {
       this.client = opts.client;
     } else {
@@ -160,10 +183,52 @@ export class DynamoStateStore implements StateStoreLike {
   }
 
   async saveSession(state: QuizState): Promise<void> {
-    await this.client.send(new PutCommand({
-      TableName: this.tableName,
-      Item: this.toItem(state),
-    }));
+    const item = this.toItem(state);
+    const pk = state.sessionId;
+    if (this.debounceMs <= 0) {
+      await this.client.send(new PutCommand({ TableName: this.tableName, Item: item }));
+      return;
+    }
+    const existing = this.pendingSessionWrites.get(pk);
+    if (existing) {
+      // Latest payload wins. The shared promise resolves when whichever
+      // PutItem actually fires lands.
+      existing.item = item;
+      return existing.promise;
+    }
+    let resolve!: () => void;
+    let reject!: (err: unknown) => void;
+    const promise = new Promise<void>((res, rej) => { resolve = res; reject = rej; });
+    const entry: PendingSessionWrite = {
+      pk,
+      item,
+      promise,
+      resolve,
+      reject,
+      timer: setTimeout(() => this.flushPendingSessionWrite(pk), this.debounceMs),
+    };
+    if (typeof entry.timer.unref === "function") entry.timer.unref();
+    this.pendingSessionWrites.set(pk, entry);
+    return promise;
+  }
+
+  private flushPendingSessionWrite(pk: string): void {
+    const entry = this.pendingSessionWrites.get(pk);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.pendingSessionWrites.delete(pk);
+    this.client.send(new PutCommand({ TableName: this.tableName, Item: entry.item }))
+      .then(() => entry.resolve(), (err) => entry.reject(err));
+  }
+
+  /** Drain every pending debounced session write right now. Called from
+   *  RubyHighService.flush() / awaited HTTP paths so a response doesn't
+   *  wait for the debounce window. Returns once every pending write has
+   *  settled (resolved or rejected). */
+  async flush(): Promise<void> {
+    const entries = Array.from(this.pendingSessionWrites.values());
+    for (const entry of entries) this.flushPendingSessionWrite(entry.pk);
+    await Promise.allSettled(entries.map((e) => e.promise));
   }
 
   async saveAuthUser(user: AuthUserRecord): Promise<void> {
@@ -253,3 +318,13 @@ export class DynamoStateStore implements StateStoreLike {
     return `pack:${encodeURIComponent(ownerSessionId)}:${encodeURIComponent(packId)}`;
   }
 }
+
+function readDebounceMsFromEnv(): number {
+  const raw = process.env.RUBY_HIGH_DYNAMO_DEBOUNCE_MS;
+  if (raw == null || raw === "") return DEFAULT_DEBOUNCE_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_DEBOUNCE_MS;
+  return Math.floor(n);
+}
+
+const DEFAULT_DEBOUNCE_MS = 25;
