@@ -920,6 +920,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardPanel.dataset.faculty = faculty ? faculty.id : "";
     if (!question) {
       showBlackboardEmpty(true);
+      els.blackboardPanel.classList.remove("is-long-prompt", "is-essay-prompt");
       activeQuestionId = null;
       // The empty-board message is just text; the teacher/chat loop decides
       // when to write the next question.
@@ -955,6 +956,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
 
     const isOpinion = (lastTelemetry && lastTelemetry.is_opinion) || question.type === "opinion";
+    const promptText = String(question.prompt || "");
+    const promptLines = promptText.split(/\\n/).length;
+    const longPrompt = promptText.length > 120 || promptLines > 2;
+    const essayPrompt = promptText.length > 220 || promptLines > 4;
+    els.blackboardPanel.classList.toggle("is-long-prompt", longPrompt);
+    els.blackboardPanel.classList.toggle("is-essay-prompt", essayPrompt);
     showBlackboardLoaded(isOpinion);
 
     // Meta pills
@@ -995,12 +1002,14 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     // Answer buttons
     let maxLen = 0;
+    let hasLineBreakAnswer = false;
     els.answers.forEach((btn) => {
       const pick = btn.dataset.pick;
       const label = btn.querySelector(".label");
       const text = (question.options && question.options[pick]) || "—";
       renderMarkdownInto(label, text, { inline: true });
       if (text.length > maxLen) maxLen = text.length;
+      if (String(text).includes("\\n")) hasLineBreakAnswer = true;
       if (isNewQuestion) {
         btn.classList.remove("is-correct", "is-wrong");
       }
@@ -1011,7 +1020,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     // explanation-style answer triggers it but a regular MC option
     // ("the mitochondria is the powerhouse of the cell") doesn't.
     const answersGrid = document.getElementById("answers");
-    if (answersGrid) answersGrid.classList.toggle("is-long", maxLen > 50);
+    if (answersGrid) {
+      answersGrid.classList.toggle("is-long", maxLen > 34 || hasLineBreakAnswer);
+      answersGrid.classList.toggle("is-very-long", maxLen > 72 || hasLineBreakAnswer);
+    }
 
     // Footer — Next button shown only when the player is signed in and only
     // after a reveal (applyRevealToBlackboard clears the inline display:none).

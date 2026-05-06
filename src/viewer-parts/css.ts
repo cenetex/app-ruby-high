@@ -604,6 +604,7 @@ export const VIEWER_CSS = `
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    min-height: 0;
   }
   .blackboard-panel.is-empty {
     background: var(--bg-deep);
@@ -664,6 +665,7 @@ export const VIEWER_CSS = `
     gap: 6px;
     flex-wrap: wrap;
     padding: 10px calc(var(--safe-right) + 12px) 8px calc(var(--safe-left) + 12px);
+    min-width: 0;
   }
   .blackboard-empty {
     padding: 24px 16px;
@@ -674,6 +676,9 @@ export const VIEWER_CSS = `
   .board-frame-host {
     padding: 0 calc(var(--safe-right) + 10px) 0 calc(var(--safe-left) + 10px);
     position: relative;
+    flex: 0 1 auto;
+    min-height: 0;
+    min-width: 0;
   }
   .teacher-figure {
     /* Round head-shoulders portrait pinned to the top-right corner of the
@@ -743,6 +748,9 @@ export const VIEWER_CSS = `
     max-height: 55vh;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
+    flex: 0 1 auto;
+    min-height: 0;
+    min-width: 0;
   }
   .race-strip {
     display: flex;
@@ -1073,6 +1081,7 @@ export const VIEWER_CSS = `
   .board-frame {
     background: linear-gradient(180deg, var(--board-frame-light), var(--board-frame));
     padding: 10px;
+    min-width: 0;
   }
   .board {
     background:
@@ -1087,6 +1096,9 @@ export const VIEWER_CSS = `
     font-size: 22px;
     line-height: 1.3;
     box-shadow: inset 0 0 60px rgba(0,0,0,0.35);
+    min-width: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .blackboard-panel[data-faculty="ruby"] .board {
     font-family: "RubyHighCaveat", "Caveat", "Patrick Hand", "Segoe Print", cursive;
@@ -1107,6 +1119,7 @@ export const VIEWER_CSS = `
     white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: anywhere;
+    hyphens: auto;
   }
   .board .prompt.markdown,
   .board .reveal .reveal-explanation.markdown {
@@ -1140,14 +1153,16 @@ export const VIEWER_CSS = `
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+    min-width: 0;
   }
-  /* Long-answer mode: when any choice exceeds ~50 chars, the script
-     toggles .is-long on the grid. On narrow viewports we drop to a
-     single column so each answer gets full width and stays readable
+  /* Long-answer mode: when any choice exceeds the compact mobile threshold,
+     the script toggles .is-long on the grid. On narrow viewports we drop
+     to a single column so each answer gets full width and stays readable
      instead of wrapping into a tall, half-width brick that's hard
      to scan. The scrollable answers-host keeps the whole stack
      reachable even when several answers are long. */
-  @media (max-width: 600px) {
+  .answers.is-very-long { grid-template-columns: 1fr; }
+  @media (max-width: 720px) {
     .answers.is-long { grid-template-columns: 1fr; }
   }
   .answer {
@@ -1163,6 +1178,8 @@ export const VIEWER_CSS = `
     box-shadow: 0 2px 0 rgba(0,0,0,0.15), 0 4px 10px rgba(0,0,0,0.18);
     position: relative;
     min-height: 56px;
+    min-width: 0;
+    width: 100%;
     transition: transform 0.06s ease, opacity 0.12s ease;
     font-size: 15px;
   }
@@ -1182,6 +1199,13 @@ export const VIEWER_CSS = `
     place-items: center;
     font-weight: 800;
     font-size: 16px;
+  }
+  .answer .label {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    hyphens: auto;
   }
   .answer.A { --bg: #f0922a; }
   .answer.B { --bg: #f7d33a; }
@@ -1909,6 +1933,24 @@ export const VIEWER_CSS = `
       height: min(360px, 105vw);
     }
   }
+  @media (max-width: 430px) {
+    .sheet-overlay {
+      align-items: flex-start;
+      padding: calc(var(--safe-top) + 10px) 8px calc(var(--safe-bot) + 10px);
+    }
+    .sheet-card {
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 20px);
+      padding: 14px;
+      border-radius: 14px;
+    }
+    .sheet-card.is-card-deck-sheet {
+      max-width: calc(100vw - 16px);
+      padding: 8px;
+    }
+    .ccg-card {
+      border-radius: 14px;
+    }
+  }
   .creation-ai-portrait {
     appearance: none;
     border: 1px solid var(--line);
@@ -2212,6 +2254,20 @@ export const VIEWER_CSS = `
   .card-deck-nav[hidden] { display: none; }
   .card-deck-nav.prev { left: 4px; }
   .card-deck-nav.next { right: 4px; }
+  @media (max-width: 430px) {
+    .card-deck {
+      --deck-card-w: min(292px, calc(100vw - 46px));
+      --deck-gap: 12px;
+    }
+    .card-deck-track {
+      padding: 18px var(--deck-edge-pad) 22px;
+    }
+    .card-deck-nav {
+      width: 30px;
+      height: 30px;
+      font-size: 20px;
+    }
+  }
   /* Hide nav buttons when there's only one card in the deck.
      buildCharacterCard owns the single-card case — controls
      are added only when deck.length > 1, so no rule needed. */
@@ -2796,6 +2852,172 @@ export const VIEWER_CSS = `
   .congrats-toast.is-correct { background: rgba(31, 124, 42, 0.95); }
   .congrats-toast.is-wrong { background: rgba(160, 24, 24, 0.95); }
   .congrats-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ── phone fit pass ─────────────────────────────────────────────────────
+     Keep the active question playable on narrow screens: the board and
+     answers each get their own scroll area, metadata/race chrome scrolls
+     sideways instead of stacking, and long prompts opt into smaller chalk
+     type via script-set classes. */
+  @media (max-width: 600px) {
+    main.workspace {
+      grid-template-rows: auto minmax(0, auto) minmax(92px, 1fr) auto;
+    }
+    .blackboard-panel {
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 174px);
+    }
+    .blackboard-panel[data-mode="round-revealed"] {
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 118px);
+    }
+    .blackboard-meta {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding: 6px calc(var(--safe-right) + 8px) 6px calc(var(--safe-left) + 8px);
+      scrollbar-width: none;
+    }
+    .blackboard-meta::-webkit-scrollbar { display: none; }
+    .pill {
+      flex: 0 0 auto;
+      font-size: 9px;
+      padding: 3px 7px;
+    }
+    .board-frame-host {
+      padding-inline: calc(var(--safe-left) + 8px) calc(var(--safe-right) + 8px);
+    }
+    .board-frame { padding: 6px; }
+    .board {
+      min-height: 86px;
+      max-height: 30dvh;
+      padding: 12px 62px 12px 12px;
+      font-size: 20px;
+      line-height: 1.32;
+    }
+    .blackboard-panel[data-faculty="ruby"] .board,
+    .blackboard-panel[data-faculty="professor-edward"] .board {
+      font-size: 21px;
+      line-height: 1.28;
+    }
+    .blackboard-panel[data-faculty="sally-science"] .board {
+      font-size: 19px;
+      line-height: 1.35;
+    }
+    .blackboard-panel.is-long-prompt .board {
+      max-height: 34dvh;
+      font-size: 18px;
+      line-height: 1.32;
+    }
+    .blackboard-panel.is-essay-prompt .board {
+      max-height: 38dvh;
+      font-size: 17px;
+      line-height: 1.32;
+    }
+    .blackboard-panel.is-long-prompt[data-faculty="ruby"] .board,
+    .blackboard-panel.is-long-prompt[data-faculty="professor-edward"] .board,
+    .blackboard-panel.is-essay-prompt[data-faculty="ruby"] .board,
+    .blackboard-panel.is-essay-prompt[data-faculty="professor-edward"] .board {
+      font-size: 18px;
+    }
+    .teacher-figure {
+      width: 48px;
+      height: 48px;
+      right: calc(var(--safe-right) + 10px);
+      top: 8px;
+      border-width: 2px;
+    }
+    .blackboard-panel.is-essay-prompt .teacher-figure {
+      width: 40px;
+      height: 40px;
+    }
+    .answers-host {
+      padding: 8px calc(var(--safe-right) + 8px) 8px calc(var(--safe-left) + 8px);
+      max-height: 34dvh;
+    }
+    .answers { gap: 7px; }
+    .answer {
+      min-height: 46px;
+      padding: 10px 10px 10px 44px;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.25;
+    }
+    .answer .badge {
+      left: 9px;
+      width: 28px;
+      height: 28px;
+      font-size: 14px;
+    }
+    .advantage-bar {
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 8px;
+      padding: 7px 8px;
+    }
+    .advantage-btn {
+      min-height: 34px;
+      padding: 8px 10px;
+      font-size: 11px;
+    }
+    .race-strip {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding: 3px calc(var(--safe-right) + 8px) 7px calc(var(--safe-left) + 8px);
+      scrollbar-width: none;
+    }
+    .race-strip::-webkit-scrollbar { display: none; }
+    .race-row { flex-wrap: nowrap; }
+    .race-card { flex: 0 0 auto; }
+    .blackboard-foot {
+      padding: 0 calc(var(--safe-right) + 8px) 8px calc(var(--safe-left) + 8px);
+    }
+    .blackboard-foot .next-btn {
+      width: 100%;
+      margin-left: 0;
+      padding: 10px 14px;
+    }
+    .stream {
+      padding: 10px calc(var(--safe-right) + 10px) 12px calc(var(--safe-left) + 10px);
+      scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 18px);
+    }
+    .msg {
+      grid-template-columns: 32px minmax(0, 1fr);
+      column-gap: 9px;
+    }
+    .msg .avatar {
+      width: 32px;
+      height: 32px;
+    }
+    .msg .body {
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .composer-zone {
+      padding: 8px calc(var(--safe-right) + 8px) calc(var(--safe-bot) + 8px) calc(var(--safe-left) + 8px);
+    }
+    .composer-form {
+      border-radius: 16px;
+      padding: 4px 5px 4px 12px;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .answers { grid-template-columns: 1fr; }
+    .blackboard-panel {
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 150px);
+    }
+    .board {
+      max-height: 28dvh;
+      padding-right: 54px;
+    }
+    .teacher-figure {
+      width: 42px;
+      height: 42px;
+    }
+    .answer {
+      min-height: 44px;
+      padding-left: 42px;
+      font-size: 13px;
+    }
+  }
 
   /* ── tablet ≥720 ───────────────────────────────────────────────────────── */
   @media (min-width: 720px) {

@@ -83,6 +83,7 @@ export class DynamoStateStore implements StateStoreLike {
   // share one promise across all coalesced callers.
   private readonly debounceMs: number;
   private readonly pendingSessionWrites = new Map<string, PendingSessionWrite>();
+  private readonly sessionWriteChains = new Map<string, Promise<void>>();
 
   constructor(opts: DynamoStateStoreOptions) {
     if (!opts.tableName) throw new Error("DynamoStateStore: tableName is required");
@@ -186,7 +187,7 @@ export class DynamoStateStore implements StateStoreLike {
     const item = this.toItem(state);
     const pk = state.sessionId;
     if (this.debounceMs <= 0) {
-      await this.client.send(new PutCommand({ TableName: this.tableName, Item: item }));
+      await this.enqueueSessionPut(pk, item);
       return;
     }
     const existing = this.pendingSessionWrites.get(pk);
@@ -217,8 +218,21 @@ export class DynamoStateStore implements StateStoreLike {
     if (!entry) return;
     clearTimeout(entry.timer);
     this.pendingSessionWrites.delete(pk);
-    this.client.send(new PutCommand({ TableName: this.tableName, Item: entry.item }))
+    this.enqueueSessionPut(pk, entry.item)
       .then(() => entry.resolve(), (err) => entry.reject(err));
+  }
+
+  private enqueueSessionPut(pk: string, item: Record<string, unknown>): Promise<void> {
+    const previous = this.sessionWriteChains.get(pk) ?? Promise.resolve();
+    const write = previous.catch(() => {}).then(async () => {
+      await this.client.send(new PutCommand({ TableName: this.tableName, Item: item }));
+    });
+    this.sessionWriteChains.set(pk, write);
+    const cleanup = () => {
+      if (this.sessionWriteChains.get(pk) === write) this.sessionWriteChains.delete(pk);
+    };
+    write.then(cleanup, cleanup);
+    return write;
   }
 
   /** Drain every pending debounced session write right now. Called from
@@ -228,7 +242,10 @@ export class DynamoStateStore implements StateStoreLike {
   async flush(): Promise<void> {
     const entries = Array.from(this.pendingSessionWrites.values());
     for (const entry of entries) this.flushPendingSessionWrite(entry.pk);
-    await Promise.allSettled(entries.map((e) => e.promise));
+    await Promise.allSettled([
+      ...entries.map((e) => e.promise),
+      ...Array.from(this.sessionWriteChains.values()),
+    ]);
   }
 
   async saveAuthUser(user: AuthUserRecord): Promise<void> {
@@ -280,6 +297,9 @@ export class DynamoStateStore implements StateStoreLike {
   /** Bulk write — used by tests / migrations. Chunks at 25 (BatchWrite cap). */
   async save(states: Iterable<QuizState>): Promise<void> {
     const items = Array.from(states);
+    if (this.pendingSessionWrites.size > 0 || this.sessionWriteChains.size > 0) {
+      await this.flush();
+    }
     if (items.length === 0) return;
     const CHUNK = 25;
     for (let i = 0; i < items.length; i += CHUNK) {

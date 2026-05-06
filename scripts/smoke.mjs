@@ -165,6 +165,15 @@ async function check2ViewerRenders() {
     if (!scriptMatch[1].includes("/api/apps/ruby-high/auth/guest")) {
       return fail(name, "viewer script does not contain guest-session boot path");
     }
+    const mobileFitSelectors = [
+      ".blackboard-panel.is-long-prompt",
+      ".answers.is-very-long",
+      "@media (max-width: 600px)",
+    ];
+    const missingMobileFit = mobileFitSelectors.filter((s) => !html.includes(s));
+    if (missingMobileFit.length > 0) {
+      return fail(name, `viewer missing mobile fit CSS: ${missingMobileFit.join(", ")}`);
+    }
     const careerBody = extractFunctionBody(scriptMatch[1], "buildCareerCard");
     if (!careerBody) {
       return fail(name, "viewer script missing buildCareerCard()");

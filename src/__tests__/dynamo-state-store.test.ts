@@ -58,6 +58,35 @@ class FakeDdbDocClient implements DynamoDBDocumentClientLike {
   }
 }
 
+class ControlledPutDdbClient implements DynamoDBDocumentClientLike {
+  private items = new Map<string, Record<string, unknown>>();
+  public readonly sent: unknown[] = [];
+  public readonly pendingPuts: Array<{ item: Record<string, unknown>; resolve: () => void; reject: (err: unknown) => void }> = [];
+
+  async send(command: unknown): Promise<unknown> {
+    this.sent.push(command);
+    if (!(command instanceof PutCommand)) {
+      throw new Error(`ControlledPutDdbClient: unhandled command ${command?.constructor?.name}`);
+    }
+    const { Item } = command.input;
+    if (!Item) throw new Error("PutCommand missing Item");
+    return new Promise((resolve, reject) => {
+      this.pendingPuts.push({
+        item: Item,
+        resolve: () => {
+          this.items.set(String(Item.pk), Item);
+          resolve({});
+        },
+        reject,
+      });
+    });
+  }
+
+  snapshot(): Map<string, Record<string, unknown>> {
+    return new Map(this.items);
+  }
+}
+
 function blankState(sessionId: string, updatedAt = 1): QuizState {
   return {
     sessionId,
@@ -211,6 +240,28 @@ describe("DynamoStateStore", () => {
     await inflight;
     expect(fake.sent.filter((c) => c instanceof PutCommand).length).toBe(1);
     expect(fake.snapshot().get("rh:user:flush")?.updatedAt).toBe(7);
+  });
+
+  it("serializes same-session PutCommands so older writes cannot land after newer state", async () => {
+    const controlled = new ControlledPutDdbClient();
+    const serial = new DynamoStateStore({ tableName: "t", client: controlled, ttlSeconds: 60, debounceMs: 0 });
+
+    const first = serial.saveSession(blankState("rh:user:serial", 1));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controlled.pendingPuts.length).toBe(1);
+
+    const second = serial.saveSession(blankState("rh:user:serial", 2));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controlled.pendingPuts.length).toBe(1);
+
+    controlled.pendingPuts[0]!.resolve();
+    await first;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controlled.pendingPuts.length).toBe(2);
+
+    controlled.pendingPuts[1]!.resolve();
+    await second;
+    expect(controlled.snapshot().get("rh:user:serial")?.updatedAt).toBe(2);
   });
 
   it("save() chunks a >25-session iterable into multiple BatchWrite calls", async () => {
