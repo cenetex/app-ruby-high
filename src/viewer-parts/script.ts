@@ -256,6 +256,15 @@ const VIEWER_SCRIPT_SUFFIX = `
   let agentBusySeq = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
+  // Auto-start guard: when the player lands in a teaching room with an
+  // empty board (no current question, no live round), kick off the next
+  // class question without waiting for the AI to call pose_question via a
+  // tool call. Works in both AI and offline mode — in AI mode the teacher's
+  // chat reaction still runs (and its tool call no-ops when a board is
+  // already live). lastAutoPickKey tracks (faculty|grade|today) so we
+  // don't retry within the same context until something changes.
+  let autoPickInFlight = false;
+  let autoPickLastKey = null;
   // Reset the guards above whenever the player walks into a new context
   // (faculty change, lounge entry, grade selection). Without this, the
   // dedupe key from a prior visit silently blocks channel-enter on revisit:
@@ -264,6 +273,39 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastAgentTrigger = null;
     lastRevealId = null;
     lastAnswerGradedTriggerId = null;
+    autoPickLastKey = null;
+  }
+
+  // True when the player is sitting in a teaching room with an empty
+  // board, ready for a question to land. Excludes lounge, graduation
+  // states, completed daily classes, and any time a question is already
+  // up. Used by the auto-start logic so the player isn't stuck waiting
+  // for the AI in offline mode.
+  function shouldAutoStartClass(t) {
+    if (!t || !t.character) return false;
+    if (graduatedFor(t.character)) return false;
+    if (t.character.pendingGraduation) return false;
+    if (t.graduation_ready) return false;
+    if (t.faculty === LOUNGE_ID) return false;
+    if (t.current) return false;
+    if (t.active_round && !t.active_round.resolved) return false;
+    const today = t.active_course_progress && t.active_course_progress.today;
+    if (today && today.status === "complete") return false;
+    return true;
+  }
+  async function maybeAutoStartClass(t) {
+    if (autoPickInFlight) return;
+    if (!shouldAutoStartClass(t)) return;
+    const todayKey = (t.daily && t.daily.dailyKey)
+      || (t.active_course_progress && t.active_course_progress.today && t.active_course_progress.today.dailyKey)
+      || "";
+    const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey;
+    if (key === autoPickLastKey) return;
+    autoPickLastKey = key;
+    autoPickInFlight = true;
+    try { await command({ type: "pick" }); }
+    catch { /* errors already surface via appendSystem in command() */ }
+    finally { autoPickInFlight = false; }
   }
   let opinionSubmitted = false; // player's text has been recorded for current round
   let opinionGradeFired = false; // grading has been triggered for current round
@@ -1649,6 +1691,13 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     lastShownGrade = t.current_grade;
     lastShownFaculty = t.faculty;
+
+    // Auto-start the next class question when the board is empty. Without
+    // this, offline mode sits forever on an empty board (no AI tool call
+    // to fire pose_question), and AI mode just gets a faster start. If a
+    // race produces a double-pose, the server's assertBoardMutationAllowed
+    // makes the second one no-op.
+    void maybeAutoStartClass(t);
   }
 
   // The post-acceptance background portrait gen path is GONE in this
