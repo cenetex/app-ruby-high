@@ -2821,4 +2821,87 @@ export const VIEWER_CSS = `
     .hamburger { display: none; }
     .stream { padding: 18px 24px; }
   }
+
+  /* ── MASH Card (dating-sim layer) ────────────────────────────────────── */
+  .mash-grid-wrap {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mash-grid-heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+  }
+  .mash-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .mash-tile {
+    --mash-accent: #999;
+    display: grid;
+    grid-template-columns: 8px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+    line-height: 1.1;
+  }
+  .mash-tile-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mash-accent);
+    opacity: 0.55;
+  }
+  .mash-tile-name { font-weight: 500; }
+  .mash-tile-meter {
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    opacity: 0.7;
+  }
+  .mash-tile.is-warm { background: color-mix(in oklab, var(--mash-accent) 14%, rgba(255,255,255,0.04)); }
+  .mash-tile.is-cool { opacity: 0.7; }
+  .mash-tile.is-circled {
+    background: color-mix(in oklab, var(--mash-accent) 28%, rgba(255,255,255,0.04));
+    border-color: var(--mash-accent);
+  }
+  .mash-tile.is-circled .mash-tile-dot { opacity: 1; }
+  .mash-tile.is-circled .mash-tile-meter { opacity: 1; font-weight: 600; }
+  .mash-tile.is-scratched {
+    text-decoration: line-through;
+    opacity: 0.35;
+  }
+  .mash-resolved {
+    list-style: none;
+    margin: 4px 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+  }
+  .mash-resolved li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .mash-resolved-axis {
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    opacity: 0.55;
+    min-width: 44px;
+  }
+  .mash-resolved-body { opacity: 0.92; }
 `;

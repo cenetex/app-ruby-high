@@ -44,6 +44,7 @@ import {
   type FacultyMember,
   type Grade,
   type GraduationReward,
+  type MashCard,
   type NpcRoundEntry,
   type NpcArcState,
   type NpcStudentState,
@@ -62,6 +63,16 @@ import { FacultyService, toFacultyMember } from "./faculty-service.js";
 import { getDefaultStateStore, type StateStoreLike } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
+import {
+  applyTick as applyMashTick,
+  buildSuperlatives as buildMashSuperlatives,
+  computeAffinityTicks as computeMashTicks,
+  emptyMashCard,
+  ensureMashCard,
+  resolveAxisForGrade as resolveMashAxisForGrade,
+  resolveSeniorBonusAxes as resolveMashSeniorBonusAxes,
+} from "../characters/mash.js";
+import { studentById } from "../characters/students.js";
 import { statForQuestion, normalizeQuestionStat } from "../question-stats.js";
 import {
   activeFaculty,
@@ -1518,6 +1529,13 @@ export class RubyHighService extends Service {
     const targetGrade = advance ?? grade;
     const normalizedReward = this.normalizeGraduationReward(ch, reward, targetGrade);
 
+    // Resolve any MASH axis whose grade just completed (and the Senior
+    // bonus axes at grade 12). The full superlative list snapshots onto
+    // every yearbook entry from the moment any axis resolves — earlier
+    // entries see fewer lines, the Senior entry sees all of them.
+    const newResolutions = this.resolveMashAxesForGrade(ch, grade);
+    const superlatives = this.buildMashSuperlativesFor(ch);
+
     ch.yearbook = ch.yearbook ?? [];
     ch.yearbook.push({
       grade,
@@ -1531,7 +1549,18 @@ export class RubyHighService extends Service {
       arcAnswer: ch.arcAnswer,
       ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
       graduationReward: normalizedReward,
+      ...(superlatives.length > 0 ? { superlatives } : {}),
     });
+    if (newResolutions.length > 0) {
+      log.event("mash.axes-resolved", {
+        sessionId: state.sessionId,
+        character: ch.name,
+        grade,
+        resolutions: newResolutions.map((r) => ({
+          axis: r.axis, studentId: r.studentId, value: r.value,
+        })),
+      });
+    }
     if (!state.completedGrades.includes(grade)) state.completedGrades.push(grade);
 
     this.applyGraduationReward(ch, normalizedReward, targetGrade);
@@ -1583,6 +1612,70 @@ export class RubyHighService extends Service {
       return { kind: "affinity", facultyId: reward.facultyId };
     }
     throw new Error(`Unknown graduation reward: ${(reward as { kind?: string }).kind ?? "?"}`);
+  }
+
+  /** Apply MASH affinity ticks for one just-graded essay. Pure compute,
+   *  then mutates the player's card. Returns the array of ticks applied
+   *  for the event log. Cap is two non-zero ticks per essay; this function
+   *  is the only thing that ever ticks the card during normal play. */
+  private applyMashTicksForEssay(
+    state: QuizState,
+    inputs: { questionId: string; bestResponder: string | null; playerScore: number; playerPassed: boolean },
+  ): Array<{ studentId: string; delta: number; reason: string }> {
+    const ch = state.character;
+    if (!ch) return [];
+    const card = (ch.mashCard = ensureMashCard(ch.mashCard));
+    const ticks = computeMashTicks({
+      playerScore: inputs.playerScore,
+      playerPassed: inputs.playerPassed,
+      bestResponder: inputs.bestResponder,
+      questionId: inputs.questionId,
+      date: dailyKey(),
+      isHeart: ch.playbookId === "heart",
+    });
+    const applied: Array<{ studentId: string; delta: number; reason: string }> = [];
+    for (const t of ticks) {
+      const cell = card.cells[t.studentId];
+      if (!cell) continue;
+      // Don't keep ticking a scratched cell — once the relationship is
+      // gone, it stays gone for this character's career.
+      if (cell.scratched && t.delta !== 0) continue;
+      applyMashTick(cell, t.delta, dailyKey());
+      applied.push({ studentId: t.studentId, delta: t.delta, reason: t.reason });
+    }
+    return applied;
+  }
+
+  /** Resolve any axis whose grade just completed, plus the Senior bonus
+   *  axes if `grade === 12`. Mutates the card. Returns the resolutions
+   *  applied so the caller can stash them on the yearbook entry. */
+  private resolveMashAxesForGrade(
+    ch: PlayerCharacter,
+    grade: Grade,
+  ): import("../types.js").MashResolution[] {
+    const card = (ch.mashCard = ensureMashCard(ch.mashCard));
+    const out: import("../types.js").MashResolution[] = [];
+    const primary = resolveMashAxisForGrade(card, grade, ch.name);
+    if (primary) {
+      card.resolved[primary.axis] = primary;
+      out.push(primary);
+    }
+    if (grade === "12") {
+      for (const r of resolveMashSeniorBonusAxes(card, ch.name)) {
+        if (!card.resolved[r.axis]) {
+          card.resolved[r.axis] = r;
+          out.push(r);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Build the superlative lines for a yearbook entry, resolving classmate
+   *  short names through the student registry. */
+  private buildMashSuperlativesFor(ch: PlayerCharacter): string[] {
+    const card = ensureMashCard(ch.mashCard);
+    return buildMashSuperlatives(card, (id) => studentById(id)?.shortName ?? id);
   }
 
   private applyGraduationReward(ch: PlayerCharacter, reward: GraduationReward, targetGrade: Grade): void {
@@ -1939,6 +2032,17 @@ export class RubyHighService extends Service {
         affinitySave,
       };
     }
+    // MASH affinity ticks. After every essay, up to two classmates react.
+    // The teacher-named bestResponder gets +1, and a deterministic
+    // applauder/rubber gets +1 or -1 depending on whether the player
+    // passed. Heart playbook converts the rub into a no-op (Pep Talk
+    // passive). Pure compute → mutate the card → log.
+    const mashTicksApplied = this.applyMashTicksForEssay(state, {
+      questionId: round.questionId,
+      bestResponder,
+      playerScore: playerGrade?.score ?? 0,
+      playerPassed: passed,
+    });
     round.resolved = true;
     round.resolvedAt = Date.now();
     this.transition(state, { kind: "resolve-round" });
@@ -1947,6 +2051,7 @@ export class RubyHighService extends Service {
       sessionId, faculty: state.faculty, questionId: round.questionId,
       playerScore: playerGrade?.score ?? null, playerPassed: passed,
       bestResponder, affinitySaved: !!affinitySave, gradeCount: grades.length,
+      mashTicks: mashTicksApplied,
     });
     void this.persistSession(sessionId);
     return state;
@@ -2207,6 +2312,19 @@ export class RubyHighService extends Service {
     // way, clear the offer — it's a one-time consume.
     const inheritedFrom = (input.mentorAccepted && state.mentorOffer) ? { ...state.mentorOffer } : undefined;
     state.mentorOffer = null;
+    // Seed the MASH card. If a mentor was inherited, give a +1 head-start
+    // to one classmate keyed off the mentor's name (deterministic, so a
+    // re-roll lands on the same student). The mentor's relationship
+    // carries forward.
+    const mashCard: MashCard = emptyMashCard();
+    if (inheritedFrom) {
+      const ids = Object.keys(mashCard.cells);
+      let h = 0;
+      for (const c of inheritedFrom.mentorName) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+      const seed = ids[h % ids.length];
+      const cell = seed ? mashCard.cells[seed] : undefined;
+      if (cell) applyMashTick(cell, 1);
+    }
     state.character = {
       name,
       playbookId: input.playbookId,
@@ -2218,6 +2336,7 @@ export class RubyHighService extends Service {
       xp: 0,
       yearbook: [],
       ...(inheritedFrom ? { inheritedFrom } : {}),
+      mashCard,
       createdAt: Date.now(),
     };
     state.updatedAt = Date.now();
@@ -2480,7 +2599,12 @@ function normalizeLoaded(s: QuizState): QuizState {
  *  a migration. New entries always carry their own snapshot. */
 function backfillCharacter(c: PlayerCharacter | null): PlayerCharacter | null {
   if (!c) return null;
-  if (!Array.isArray(c.yearbook) || c.yearbook.length === 0) return c;
+  // Always normalize the MASH card — legacy characters get an empty one,
+  // partial cards get filled in.
+  const mashCard = ensureMashCard(c.mashCard);
+  if (!Array.isArray(c.yearbook) || c.yearbook.length === 0) {
+    return { ...c, mashCard };
+  }
   const yearbook = c.yearbook.map((entry) => ({
     ...entry,
     name: entry.name ?? c.name,
@@ -2494,7 +2618,7 @@ function backfillCharacter(c: PlayerCharacter | null): PlayerCharacter | null {
       : {}),
     arcAnswer: entry.arcAnswer ?? c.arcAnswer,
   }));
-  return { ...c, yearbook };
+  return { ...c, yearbook, mashCard };
 }
 
 const ENCOURAGEMENTS_RIGHT = [
