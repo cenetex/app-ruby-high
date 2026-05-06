@@ -2371,7 +2371,6 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
     const streakLastDate = c.streak && c.streak.grade === grade ? c.streak.lastDate : "";
     const todayKey = (t.daily && t.daily.dailyKey) || "";
-    const todayKey = (t.daily && t.daily.dailyKey) || "";
     const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
     const ROOM_LABEL = { ruby: "homeroom", "sally-science": "Sally's class", "professor-edward": "Edward's class" };
 

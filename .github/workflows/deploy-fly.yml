@@ -45,14 +45,44 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Capture current Fly image
+        id: previous-release
+        run: |
+          set -euo pipefail
+          image="$(
+            flyctl releases --app ruby-high --image --json \
+              | node -e '
+                  const fs = require("fs");
+                  const releases = JSON.parse(fs.readFileSync(0, "utf8"));
+                  const current = releases.find((r) => r.Status === "complete" && r.ImageRef);
+                  process.stdout.write(current?.ImageRef || "");
+                '
+          )"
+          if [ -n "$image" ]; then
+            echo "image=$image" >> "$GITHUB_OUTPUT"
+            echo "Previous Fly image: $image"
+          else
+            echo "No previous Fly image found; rollback will be skipped if deploy smoke fails."
+          fi
+
       - name: Deploy to Fly
         run: |
           SHA="${GITHUB_SHA::12}"
           flyctl deploy --app ruby-high --remote-only --build-arg RUBY_HIGH_BUILD="$SHA"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Smoke production
         run: node scripts/smoke.mjs https://ruby-high.fly.dev
+
+      - name: Roll back Fly on deploy smoke failure
+        if: failure() && steps.previous-release.outputs.image != ''
+        run: |
+          set -euo pipefail
+          echo "Rolling back to ${{ steps.previous-release.outputs.image }}"
+          flyctl deploy \
+            --app ruby-high \
+            --image "${{ steps.previous-release.outputs.image }}" \
+            --strategy immediate
