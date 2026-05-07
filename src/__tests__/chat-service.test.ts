@@ -373,6 +373,52 @@ describe("ChatService.send — message composition", () => {
     expect(systemBlob).toContain("Round resolved");
   });
 
+  it("includes durable MASH relationship facts in teacher room context", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    const sid = "session:relationship-context";
+    ruby.createCharacter(sid, {
+      name: "Pip",
+      playbookId: "overachiever",
+      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+      arcAnswer: "keeps receipts",
+      personality: "careful and intense",
+    });
+    const state = ruby.getOrCreate(sid);
+    const sami = state.character!.mashCard!.cells.sami!;
+    sami.affinity = 2;
+    sami.circled = true;
+    state.schoolEvents.push({
+      id: "ev-test",
+      kind: "relationship.ticked",
+      at: Date.now(),
+      faculty: "ruby",
+      grade: "9",
+      questionId: "q-opinion",
+      studentId: "sami",
+      delta: 1,
+      reason: "applauder",
+      affinity: 2,
+      circled: true,
+      scratched: false,
+    });
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t1",
+      agentSessionId: sid,
+      faculty: "ruby",
+      systemEventNote: "React briefly.",
+    })) { /* consume */ }
+
+    const messages: any[] = captured!.body.messages;
+    const systemBlob = messages.filter((m: any) => m.role === "system").map((m: any) => String(m.content)).join("\n");
+    expect(systemBlob).toContain("MASH relationship state");
+    expect(systemBlob).toContain("Sami");
+    expect(systemBlob).toContain("relationship +1 to +2");
+    expect(systemBlob).toContain("applauded");
+  });
+
   it("history payload contains no system messages — Tier A is dialogue-only", async () => {
     // Set up: an event in the log, a user message, then a turn.
     mockOpenRouter(buildSseChunk([{ content: "first.", finish: "stop" }]));

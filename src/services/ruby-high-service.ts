@@ -42,7 +42,9 @@ import {
   type FacultyMember,
   type Grade,
   type GraduationReward,
+  type MashAxis,
   type MashCard,
+  type MashTickReason,
   type NpcRoundEntry,
   type NpcArcState,
   type NpcStudentState,
@@ -56,6 +58,7 @@ import {
   type QuizState,
   type RoomBoardSnapshot,
   type RoundOutcome,
+  type SchoolEvent,
   type TeachingRoomId,
 } from "../types.js";
 import { FacultyService, toFacultyMember } from "./faculty-service.js";
@@ -156,6 +159,8 @@ export interface QuestionBankStatus {
   remainingByDifficulty: Partial<Record<Difficulty, number>>;
   remainingBySubject: Record<string, number>;
 }
+
+const SCHOOL_EVENT_LIMIT = 80;
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -700,6 +705,7 @@ export class RubyHighService extends Service {
         hasSeenIntro: true,
         activePackId: null,
         character: null,
+        schoolEvents: [],
         npcRosters: {},
         npcCohort: initialNpcCohort(),
         activeRound: null,
@@ -719,6 +725,19 @@ export class RubyHighService extends Service {
       void this.persistSession(sessionId);
     }
     return state;
+  }
+
+  private appendSchoolEvent(state: QuizState, event: SchoolEvent): void {
+    const events = Array.isArray(state.schoolEvents) ? state.schoolEvents : [];
+    events.push(event);
+    if (events.length > SCHOOL_EVENT_LIMIT) {
+      events.splice(0, events.length - SCHOOL_EVENT_LIMIT);
+    }
+    state.schoolEvents = events;
+  }
+
+  private schoolEventId(kind: SchoolEvent["kind"]): string {
+    return `school_${kind}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
   // ── phase transitions ────────────────────────────────────────────────────
@@ -1700,6 +1719,19 @@ export class RubyHighService extends Service {
       ...(superlatives.length > 0 ? { superlatives } : {}),
     });
     if (newResolutions.length > 0) {
+      const schoolEventAt = Date.now();
+      for (const r of newResolutions) {
+        this.appendSchoolEvent(state, {
+          id: this.schoolEventId("mash.axis-resolved"),
+          kind: "mash.axis-resolved",
+          at: schoolEventAt,
+          faculty: state.faculty,
+          grade,
+          axis: r.axis,
+          studentId: r.studentId,
+          value: r.value,
+        });
+      }
       log.event("mash.axes-resolved", {
         sessionId: state.sessionId,
         character: ch.name,
@@ -1774,7 +1806,7 @@ export class RubyHighService extends Service {
   private applyMashTicksForEssay(
     state: QuizState,
     inputs: { questionId: string; bestResponder: string | null; playerScore: number; playerPassed: boolean },
-  ): Array<{ studentId: string; delta: number; reason: string }> {
+  ): Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean }> {
     const ch = state.character;
     if (!ch) return [];
     const card = (ch.mashCard = ensureMashCard(ch.mashCard));
@@ -1786,7 +1818,7 @@ export class RubyHighService extends Service {
       date: dailyKey(),
       isHeart: ch.playbookId === "heart",
     });
-    const applied: Array<{ studentId: string; delta: number; reason: string }> = [];
+    const applied: Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean }> = [];
     for (const t of ticks) {
       const cell = card.cells[t.studentId];
       if (!cell) continue;
@@ -1794,7 +1826,14 @@ export class RubyHighService extends Service {
       // gone, it stays gone for this character's career.
       if (cell.scratched && t.delta !== 0) continue;
       applyMashTick(cell, t.delta, dailyKey());
-      applied.push({ studentId: t.studentId, delta: t.delta, reason: t.reason });
+      applied.push({
+        studentId: t.studentId,
+        delta: t.delta,
+        reason: t.reason,
+        affinity: cell.affinity,
+        circled: cell.circled,
+        scratched: cell.scratched,
+      });
     }
     return applied;
   }
@@ -2267,6 +2306,23 @@ export class RubyHighService extends Service {
       playerScore: playerGrade?.score ?? 0,
       playerPassed: passed,
     });
+    const schoolEventAt = Date.now();
+    for (const tick of mashTicksApplied) {
+      this.appendSchoolEvent(state, {
+        id: this.schoolEventId("relationship.ticked"),
+        kind: "relationship.ticked",
+        at: schoolEventAt,
+        faculty: state.faculty,
+        grade: state.currentGrade,
+        questionId: round.questionId,
+        studentId: tick.studentId,
+        delta: tick.delta,
+        reason: tick.reason,
+        affinity: tick.affinity,
+        circled: tick.circled,
+        scratched: tick.scratched,
+      });
+    }
     round.resolved = true;
     round.resolvedAt = Date.now();
     this.transition(state, { kind: "resolve-round" });
@@ -2684,6 +2740,7 @@ export class RubyHighService extends Service {
       }
     }
     state.character = null;
+    state.schoolEvents = [];
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -2861,6 +2918,61 @@ function normalizeScore(score: QuizState["score"] | null | undefined): QuizState
   };
 }
 
+function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
+  if (!Array.isArray(value)) return [];
+  const out: SchoolEvent[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const kind = e.kind;
+    const at = typeof e.at === "number" && Number.isFinite(e.at) ? e.at : Date.now();
+    const id = typeof e.id === "string" && e.id ? e.id : `school_${String(kind)}_${at}`;
+    const faculty = typeof e.faculty === "string" ? e.faculty : undefined;
+    const grade = typeof e.grade === "string" && (GRADES as string[]).includes(e.grade) ? (e.grade as Grade) : null;
+    if (kind === "relationship.ticked") {
+      const delta = e.delta === -1 || e.delta === 0 || e.delta === 1 ? e.delta : 0;
+      const reason = typeof e.reason === "string" && ["best-responder", "applauder", "rub", "pep-talk"].includes(e.reason)
+        ? e.reason as MashTickReason
+        : "applauder";
+      if (typeof e.questionId !== "string" || typeof e.studentId !== "string") continue;
+      out.push({
+        id,
+        kind,
+        at,
+        ...(faculty ? { faculty } : {}),
+        grade,
+        questionId: e.questionId,
+        studentId: e.studentId,
+        delta,
+        reason,
+        affinity: typeof e.affinity === "number" ? e.affinity : 0,
+        circled: !!e.circled,
+        scratched: !!e.scratched,
+      });
+    } else if (kind === "mash.axis-resolved") {
+      if (
+        typeof e.axis !== "string" ||
+        !["crush", "job", "lives", "pet", "money", "lucky"].includes(e.axis) ||
+        typeof e.studentId !== "string" ||
+        typeof e.value !== "string"
+      ) {
+        continue;
+      }
+      out.push({
+        id,
+        kind,
+        at,
+        ...(faculty ? { faculty } : {}),
+        grade,
+        axis: e.axis as MashAxis,
+        studentId: e.studentId,
+        value: e.value,
+      });
+    }
+  }
+  return out.slice(-SCHOOL_EVENT_LIMIT);
+}
+
 function normalizeLoaded(s: QuizState): QuizState {
   // Migrate stale K-8 grades from previous schema versions to a high-school
   // grade so the player isn't stranded on a grade that no longer exists.
@@ -2886,6 +2998,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     completedGrades: migratedCompleted,
     hasSeenIntro: !!s.hasSeenIntro,
     activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
+    schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     npcCohort: Array.isArray(s.npcCohort) ? s.npcCohort : initialNpcCohort(),
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,

@@ -897,8 +897,74 @@ function describeRoomForTeacher(state: QuizState): string {
   lines.push(`  Personality: ${c.personality}`);
   lines.push(`  Stats: HEAD ${fmt(c.stats.head)}, HEART ${fmt(c.stats.heart)}, HUSTLE ${fmt(c.stats.hustle)}, HONOR ${fmt(c.stats.honor)}.`);
   if (c.arcAnswer) lines.push(`  Their arc answer: "${c.arcAnswer}".`);
+  const relationshipLines = describeRelationshipStateForTeacher(state);
+  if (relationshipLines.length > 0) lines.push(...relationshipLines);
   lines.push(`Address whoever just acted by name. ${c.name.split(" ")[0] ?? c.name} is the player; the others are AI classmates but treat them as real students in the room.`);
   return lines.join("\n");
+}
+
+function describeRelationshipStateForTeacher(state: QuizState): string[] {
+  const card = state.character?.mashCard;
+  if (!card?.cells) return [];
+  const lines: string[] = [];
+  const room = roomForFacultyForSession(state, state.faculty);
+  const roster = state.currentGrade ? (state.npcRosters[state.currentGrade] ?? []) : [];
+  const inRoom = room && room.teaches
+    ? npcsInRoom(roster, room.id as TeachingRoomId).map((npc) => npc.id)
+    : [];
+  const ids = inRoom.length > 0 ? inRoom : Object.keys(card.cells);
+  const cellLines = ids
+    .map((id) => ({ id, cell: card.cells[id] }))
+    .filter((entry) => !!entry.cell)
+    .map(({ id, cell }) => {
+      const status = cell!.scratched
+        ? "scratched"
+        : cell!.circled
+          ? "circled"
+          : cell!.affinity > 0
+            ? "warm"
+            : cell!.affinity < 0
+              ? "strained"
+              : "neutral";
+      return `  - ${studentNameFor(id)}: affinity ${formatSigned(cell!.affinity)} (${status})`;
+    });
+  if (cellLines.length > 0) {
+    lines.push("MASH relationship state for this room (engine-owned facts; react to them, do not change them):");
+    lines.push(...cellLines);
+  }
+
+  const recent = (state.schoolEvents ?? [])
+    .filter((event) => event.kind === "relationship.ticked" || event.kind === "mash.axis-resolved")
+    .slice(-5);
+  if (recent.length > 0) {
+    lines.push("Recent durable school events:");
+    for (const event of recent) lines.push(`  - ${formatSchoolEventForTeacher(event)}`);
+  }
+  return lines;
+}
+
+function formatSchoolEventForTeacher(event: NonNullable<QuizState["schoolEvents"]>[number]): string {
+  if (event.kind === "relationship.ticked") {
+    const name = studentNameFor(event.studentId);
+    const reason = event.reason === "best-responder"
+      ? "teacher picked them as best responder"
+      : event.reason === "applauder"
+        ? "they applauded the player's essay"
+        : event.reason === "pep-talk"
+          ? "Heart pep-talk prevented a relationship hit"
+          : "the essay rubbed them wrong";
+    const state = event.scratched ? ", now scratched" : event.circled ? ", now circled" : "";
+    return `${name} relationship ${formatSigned(event.delta)} to ${formatSigned(event.affinity)} (${reason}${state}).`;
+  }
+  return `${event.axis} resolved through ${studentNameFor(event.studentId)}: ${event.value}.`;
+}
+
+function studentNameFor(id: string): string {
+  return STUDENTS[id]?.shortName ?? id;
+}
+
+function formatSigned(n: number): string {
+  return n >= 0 ? `+${n}` : String(n);
 }
 
 function describeBoardForModel(state: QuizState): string {

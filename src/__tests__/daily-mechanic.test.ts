@@ -6,6 +6,7 @@ import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { handleAppRoutes } from "../routes.js";
+import { applyTick, emptyMashCard } from "../characters/mash.js";
 import {
   dailyKey,
   dailyIndex,
@@ -599,6 +600,28 @@ describe("Streak + grade advancement", () => {
     expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(false);
     ruby.completeGraduation(sid, { kind: "advantage" });
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
+  });
+
+  it("records durable MASH axis resolution events at graduation", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:mash-axis-school-event";
+    attachCharacter(ruby, sid, "9");
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    const card = emptyMashCard();
+    applyTick(card.cells.sami!, 1);
+    applyTick(card.cells.sami!, 1);
+    ch.mashCard = card;
+
+    ruby.getOrCreate(sid);
+    const after = ruby.completeGraduation(sid, { kind: "advantage" });
+    const event = after.schoolEvents.find((e) => e.kind === "mash.axis-resolved");
+    expect(event).toMatchObject({
+      kind: "mash.axis-resolved",
+      grade: "9",
+      axis: "crush",
+      studentId: "sami",
+    });
   });
 
   it("opens Senior graduation as soon as the final class reaches C after the streak is already met", async () => {

@@ -272,6 +272,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     default: ["Can we talk this through?", "What am I missing?", "Can someone give me a nudge?", "What is the read here?"],
   };
   const pickRandom = (a) => a[Math.floor(Math.random() * a.length)];
+  function studentNameById(id) {
+    const s = STUDENTS.find((entry) => entry.id === id);
+    return s ? s.name : id;
+  }
   // Pick the 2 students currently in the active room (driven by the server's
   // (grade, room) cohort pairing). Falls back to a deterministic subset when
   // we don't yet have telemetry.
@@ -1648,6 +1652,40 @@ const VIEWER_SCRIPT_SUFFIX = `
     }, Math.max(0, delayMs || 0));
   }
 
+  function recentRelationshipEvents() {
+    const events = (lastTelemetry && Array.isArray(lastTelemetry.school_events))
+      ? lastTelemetry.school_events
+      : [];
+    return events.filter((event) => event && event.kind === "relationship.ticked");
+  }
+
+  function relationshipEventsForQuestion(questionId) {
+    if (!questionId) return [];
+    return recentRelationshipEvents()
+      .filter((event) => event.questionId === questionId)
+      .slice(-3);
+  }
+
+  function mashTickLabel(event) {
+    const name = studentNameById(event.studentId);
+    if (event.reason === "pep-talk") return name + " steady";
+    const delta = Number(event.delta || 0);
+    const sign = delta > 0 ? "+" + delta : String(delta);
+    return "MASH " + sign + " " + name;
+  }
+
+  function appendMashTickChips(body, reveal) {
+    const events = relationshipEventsForQuestion(reveal && reveal.questionId);
+    events.forEach((event) => {
+      const chip = document.createElement("span");
+      chip.className = "mash-tick-chip " + (event.delta > 0 ? "up" : event.delta < 0 ? "down" : "steady");
+      chip.textContent = mashTickLabel(event);
+      if (event.circled) chip.title = studentNameById(event.studentId) + " is circled on your MASH card.";
+      else if (event.scratched) chip.title = studentNameById(event.studentId) + " is scratched on your MASH card.";
+      body.appendChild(chip);
+    });
+  }
+
   function appendResultChip(reveal) {
     const wrap = document.createElement("div");
     wrap.className = "msg result";
@@ -1681,6 +1719,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         : (scoreMult >= 5 ? "◆ Friday ×5" : "◆ ×" + scoreMult);
       body.appendChild(mult);
     }
+    appendMashTickChips(body, reveal);
     wrap.appendChild(body);
     els.stream.appendChild(wrap);
     scrollIfPinned();
@@ -3406,6 +3445,18 @@ const VIEWER_SCRIPT_SUFFIX = `
       grid.appendChild(tile);
     });
     wrap.appendChild(grid);
+
+    const recentTicks = recentRelationshipEvents().slice(-3);
+    if (recentTicks.length > 0) {
+      const recent = document.createElement("ul");
+      recent.className = "mash-recent";
+      recentTicks.forEach((event) => {
+        const li = document.createElement("li");
+        li.textContent = mashTickLabel(event) + " -> " + (event.affinity >= 0 ? "+" : "") + event.affinity;
+        recent.appendChild(li);
+      });
+      wrap.appendChild(recent);
+    }
 
     const resolved = card.resolved || {};
     const lines = [];

@@ -258,6 +258,9 @@ interface SessionTelemetry extends Record<string, unknown> {
   is_opinion: boolean;
   /** The player's character sheet (null until they create one). */
   character: PlayerCharacter | null;
+  /** Durable engine-owned school events. Chat history is separate; these
+   *  are facts the UI and AI can react to without inventing outcomes. */
+  school_events: QuizState["schoolEvents"];
   /** Playbook catalog for the character creation UI. */
   playbooks: typeof PLAYBOOKS;
   /** Cohort of 6 NPCs running their own arcs. Each has independent
@@ -566,6 +569,7 @@ function buildSessionState(args: {
     active_round: deriveActiveRound(state),
     is_opinion: state.current?.type === "opinion",
     character: state.character,
+    school_events: (state.schoolEvents ?? []).slice(-30),
     playbooks: PLAYBOOKS,
     daily: deriveDailyStatus(state),
     npc_cohort: state.npcCohort ?? [],

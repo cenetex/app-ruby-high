@@ -141,7 +141,7 @@ describe("Canonical event log emissions", () => {
       faculty: "professor-edward",
     });
     ruby.recordOpinion(sid, "player", "A short, earnest take on the postwar novel.");
-    ruby.recordGrades(
+    const state = ruby.recordGrades(
       sid,
       [{ responder: "player", score: 8, comment: "good" }],
       "player",
@@ -160,6 +160,16 @@ describe("Canonical event log emissions", () => {
     expect(graded.playerScore).toBe(8);
     expect(graded.playerPassed).toBe(true);
     expect(graded.bestResponder).toBe("player");
+    const relationshipEvents = state.schoolEvents.filter((event) => event.kind === "relationship.ticked");
+    expect(relationshipEvents).toHaveLength(1);
+    expect(relationshipEvents[0]).toMatchObject({
+      kind: "relationship.ticked",
+      faculty: "professor-edward",
+      questionId: state.lastReveal?.questionId,
+      delta: 1,
+      reason: "applauder",
+      affinity: 1,
+    });
   });
 });
 

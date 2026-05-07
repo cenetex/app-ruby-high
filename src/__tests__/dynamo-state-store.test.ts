@@ -148,6 +148,7 @@ function blankState(sessionId: string, updatedAt = 1): QuizState {
     hasSeenIntro: false,
     activePackId: null,
     character: null,
+    schoolEvents: [],
     npcRosters: {},
     activeRound: null,
     pendingRoll: null,
