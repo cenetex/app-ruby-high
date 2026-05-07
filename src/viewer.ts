@@ -43,14 +43,20 @@ function escapeHtml(value: string): string {
 
 export function renderViewerHtml(opts: ViewerRenderOptions): string {
   const safeAgent = escapeHtml(opts.agentName);
+  const safeApiBase = escapeHtml(opts.apiBase.replace(/\/$/, ""));
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" />
 <meta name="theme-color" content="#1a1c25" />
+<meta name="application-name" content="Ruby High" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Ruby High" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="${safeApiBase}/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="${safeApiBase}/assets/ruby.png" />
 <title>Ruby High — ${safeAgent}</title>
 <style>${VIEWER_CSS}</style>
 </head>

@@ -19,7 +19,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 (() => {
   const apiBase = decodeURIComponent("${safeApiBase}");
   const sessionId = decodeURIComponent("${safeSession}");
-  const role = "${role}";` + VIEWER_SCRIPT_SUFFIX;
+  const role = "${role}";
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })
+        .catch(() => {});
+    });
+  }` + VIEWER_SCRIPT_SUFFIX;
 }
 
 // Everything below `const role = ...` in the original IIFE — invariant
@@ -4869,7 +4875,13 @@ const VIEWER_SCRIPT_SUFFIX = `
       const s = await r.json();
       if (lastSettledCommandSeq > seqAtStart) return;
       render(s);
-    } catch { /* ignore */ }
+    } catch {
+      if (!lastTelemetry && els.blackboardEmptyText) {
+        els.blackboardEmptyText.textContent = navigator.onLine === false
+          ? "Ruby High is offline. Reconnect to resume class."
+          : "Ruby High is unavailable. Retrying...";
+      }
+    }
   }
 
   // ── rails toggling ────────────────────────────────────────────────────────
