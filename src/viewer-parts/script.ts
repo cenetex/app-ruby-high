@@ -25,6 +25,22 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 // Everything below `const role = ...` in the original IIFE — invariant
 // across requests. Built once at module load.
 const VIEWER_SCRIPT_SUFFIX = `
+  // iOS Safari ignores user-scalable=no in the viewport meta (Apple removed
+  // it for accessibility, and maximum-scale=1 also gets ignored on some
+  // versions). Cancel the gesture* events explicitly to keep pinch-zoom
+  // from happening on the app surface — when the viewport is wider than
+  // the layout expects, zoom-in makes the overflow worse, not better.
+  // Pan and tap still work; only the pinch-zoom gesture is suppressed.
+  document.addEventListener("gesturestart", (e) => { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gesturechange", (e) => { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gestureend", (e) => { e.preventDefault(); }, { passive: false });
+  // Block double-tap zoom on iOS without disabling double-click in JS.
+  document.addEventListener("dblclick", (e) => {
+    const el = e.target;
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) return;
+    e.preventDefault();
+  }, { passive: false });
+
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
@@ -3118,14 +3134,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     sheetCard.appendChild(loading);
 
     const h = document.createElement("h2");
-    h.textContent = "Welcome to Ruby High";
+    h.textContent = "Choose your avatar";
     h.style.display = "none"; // hidden during loading; revealed when rolled lands
     sheetCard.appendChild(h);
     const sub = document.createElement("p");
     sub.className = "sub";
     sub.textContent = aiEnabled
-      ? "Lock in the parts that fit; reroll the rest. AI can help with voice and portrait."
-      : "Lock in the parts that fit; reroll the rest. Enable AI later for custom portrait and chat.";
+      ? "Reroll any field you don't like. AI can refresh the voice and portrait."
+      : "Reroll any field you don't like. Enable AI later for a custom portrait.";
     sub.style.display = "none";
     sheetCard.appendChild(sub);
 
