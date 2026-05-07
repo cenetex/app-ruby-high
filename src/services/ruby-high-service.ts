@@ -293,10 +293,15 @@ function classQuestionScore(
   wasCorrect: boolean,
   playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
 ): number {
+  // Wrong answers earn no class score. Per DESIGN.md §1.6.4 the dice
+  // classify the round (hit/mixed/miss) but "rolls only ever upgrade the
+  // outcome, never punish" — and a wrong answer is its own consequence,
+  // so the dice cannot retroactively reward it. Previously a missed
+  // question still paid 20–55 points, which inflated session score and
+  // letter grades on a streak of misses.
+  if (!wasCorrect) return 0;
   const outcome = playerRoll?.outcome ?? "miss";
-  const base = wasCorrect
-    ? outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80
-    : outcome === "hit" ? 55 : outcome === "mixed" ? 40 : 20;
+  const base = outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80;
   return clamp(base, 0, 100);
 }
 
