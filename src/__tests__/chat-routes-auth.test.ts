@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { handleChatRoutes, type ChatRouteContext } from "../chat-routes.js";
 import { AuthService } from "../services/auth-service.js";
 import { ChatService } from "../services/chat-service.js";
+import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
@@ -12,6 +13,7 @@ import { getActivePack } from "../content/registry.js";
 let tmpDir: string;
 let auth: AuthService;
 let chat: ChatService;
+let faculty: FacultyService;
 let ruby: RubyHighService;
 let capturedChatRequest: any | null = null;
 
@@ -55,6 +57,7 @@ function runtime() {
     getService(type: string) {
       if (type === AuthService.serviceType) return auth;
       if (type === ChatService.serviceType) return chat;
+      if (type === FacultyService.serviceType) return faculty;
       if (type === RubyHighService.serviceType) return ruby;
       return null;
     },
@@ -111,7 +114,9 @@ beforeEach(async () => {
   const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
   auth = await AuthService.start({} as never, store);
   chat = await ChatService.start({} as never);
+  faculty = await FacultyService.start({} as never);
   ruby = new RubyHighService({} as never, store);
+  ruby.setFacultyService(faculty);
   chat.setRubyHighService(ruby);
   vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     return new Response(JSON.stringify({ key: "sk-test", user_id: "openrouter-user" }), { status: 200 });
@@ -318,6 +323,7 @@ describe("chat event context", () => {
     expect(messages.some((m) => m.role === "user" && m.content === "Can I sit in for a minute?")).toBe(true);
     const promptText = JSON.stringify(messages);
     expect(promptText).toContain("The student just spoke in the lounge");
+    expect(capturedChatRequest.body.tools).toEqual([]);
   });
 
   it("threads classroom Chat button player lines into the teacher turn", async () => {
@@ -366,6 +372,171 @@ describe("chat event context", () => {
     const promptText = JSON.stringify(messages);
     expect(promptText).toContain("Can someone pressure-test my answer?");
     expect(promptText).toContain("Reply directly in character");
+  });
+
+  it("manual advance Chat turns post a board even when the teacher only narrates", async () => {
+    const token = "route-manual-advance-fallback-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-manual-advance-fallback-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Manual Advance",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    const state = ruby.getOrCreate(sessionId);
+    state.faculty = "ruby";
+    expect(state.current).toBeNull();
+
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("Let's take the next card cleanly.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          trigger: "manual",
+          context: {
+            intent: "advance",
+            playerLine: "What is the read in this room?",
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    expect(JSON.stringify(capturedChatRequest.body.messages)).toContain("scheduler will put the next card on the board");
+    expect(res.body).toContain("pick_from_bank");
+    expect(res.body).toContain("fallback: auto-posed next question");
+    const after = ruby.getOrCreate(sessionId);
+    expect(after.current).not.toBeNull();
+    expect(after.activeRound?.resolved).toBe(false);
+  });
+
+  it("manual hint Chat turns never change the current board", async () => {
+    const token = "route-manual-hint-no-board-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-manual-hint-no-board-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Manual Hint",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    const before = ruby.pickAndPose(sessionId, { faculty: "ruby" });
+    const questionId = before.current!.id;
+
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("Start with the most specific clue.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          trigger: "manual",
+          context: {
+            intent: "hint",
+            playerLine: "What should I notice first?",
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    expect(capturedChatRequest.body.tools).toEqual([]);
+    expect(res.body).not.toContain("pick_from_bank");
+    const after = ruby.getOrCreate(sessionId);
+    expect(after.current?.id).toBe(questionId);
+    expect(after.phase).toBe("asking");
+    expect(after.activeRound?.resolved).toBe(false);
+  });
+
+  it("manual report Chat turns never post a new board", async () => {
+    const token = "route-manual-report-no-board-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-manual-report-no-board-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Manual Report",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.pickAndPose(sessionId, { faculty: "ruby" });
+    const questionId = ruby.getOrCreate(sessionId).current!.id;
+    const correct = ruby.getOrCreate(sessionId).current!.correct as "A" | "B" | "C" | "D";
+    ruby.submitAnswer(sessionId, correct);
+
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("That result tells us where to tighten up.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          trigger: "manual",
+          context: {
+            intent: "report",
+            playerLine: "How did that class actually go?",
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    expect(capturedChatRequest.body.tools).toEqual([]);
+    expect(res.body).not.toContain("pick_from_bank");
+    const after = ruby.getOrCreate(sessionId);
+    expect(after.current?.id).toBe(questionId);
+    expect(after.phase).toBe("revealed");
+    expect(after.activeRound?.resolved).toBe(true);
   });
 
   it("describes answer-graded timeouts without inventing a player pick", async () => {

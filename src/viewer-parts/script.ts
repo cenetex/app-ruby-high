@@ -151,6 +151,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     const cp = t.lastReveal && t.lastReveal.classProgress;
     return !!(cp && cp.mode === "class" && cp.completed);
   }
+  function telemetryPhase(t) {
+    if (!t) return "in-room";
+    if (t.phase) return t.phase;
+    if (t.faculty === LOUNGE_ID) return "lounge";
+    if (t.current && t.active_round && !t.active_round.resolved) return "asking";
+    if (currentRevealMatches(t) || t.status === "revealed") return "revealed";
+    return "in-room";
+  }
   function formatClassScore(score) {
     const n = Number(score);
     return Number.isFinite(n) ? Math.round(n) + "%" : "—";
@@ -503,6 +511,13 @@ const VIEWER_SCRIPT_SUFFIX = `
   function playerChatLine(intent) {
     return intent === "lounge" ? playerLoungeLine() : playerClassLine(intent);
   }
+  function playerChatIntentForServer(intent) {
+    if (intent === "hint") return "hint";
+    if (intent === "report") return "report";
+    if (intent === "class") return "advance";
+    if (intent === "lounge") return "lounge";
+    return "player-chat";
+  }
   function pickChatResponder() {
     const students = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
     if (students.length > 0 && Math.random() < 0.5) {
@@ -529,10 +544,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const responder = pickChatResponder();
     const context = Object.assign({}, extraContext || {}, {
       grade: lastTelemetry && lastTelemetry.current_grade,
-      intent: intent === "hint" ? "hint" : "player-chat",
+      intent: playerChatIntentForServer(intent),
       playerLine,
     });
-    if (responder.kind === "student") {
+    if (aiEnabled && responder.kind === "student") {
       fireStudentChime({
         situation: intent === "hint" ? "player-asked-hint" : "player-chat",
         note: playerChatNote(intent, playerLine),
@@ -543,7 +558,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         studentId: responder.student.id,
         bypassCooldown: true,
       });
-      return;
+      if (intent !== "class") return;
     }
     if (aiEnabled) {
       await runAgentTurn("manual", context, { force: true });
@@ -1916,12 +1931,40 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function pickNext() {
     els.nextBtn.disabled = true;
     try {
-      const liveQuestion = !!(lastTelemetry && lastTelemetry.current && lastTelemetry.active_round && !lastTelemetry.active_round.resolved);
-      if (liveQuestion) {
+      const phase = telemetryPhase(lastTelemetry);
+      if (!aiEnabled) {
+        if (phase === "asking") {
+          appendSystem("Answer the board to continue. Enable AI for hints.");
+          return;
+        }
+        if (phase === "lounge") {
+          appendSystem("Enable AI to hear the lounge conversation continue.");
+          return;
+        }
+        if (lastTelemetry && lastTelemetry.graduation_ready) {
+          if (currentRevealMatches(lastTelemetry)) {
+            await command({ type: "clear" });
+            lockedFor = null;
+            return;
+          }
+          const firstChoice = els.blackboardPanel.querySelector(".graduation-choice");
+          if (firstChoice && typeof firstChoice.focus === "function") firstChoice.focus();
+          return;
+        }
+        if (phase === "revealed") {
+          await command({ type: "clear" });
+          lockedFor = null;
+          return;
+        }
+        await command({ type: "pick" });
+        lockedFor = null;
+        return;
+      }
+      if (phase === "asking") {
         await runPlayerChatTurn("hint", { questionId: lastTelemetry.current && lastTelemetry.current.id });
         return;
       }
-      if (lastTelemetry && lastTelemetry.faculty === LOUNGE_ID) {
+      if (phase === "lounge") {
         await runPlayerChatTurn("lounge");
         return;
       }
@@ -1935,10 +1978,12 @@ const VIEWER_SCRIPT_SUFFIX = `
         if (firstChoice && typeof firstChoice.focus === "function") firstChoice.focus();
         return;
       }
-      if (currentRevealCompletedClass(lastTelemetry)) {
+      if (phase === "revealed") {
         await runPlayerChatTurn("report");
-        await command({ type: "clear" });
-        lockedFor = null;
+        if (currentRevealCompletedClass(lastTelemetry)) {
+          await command({ type: "clear" });
+          lockedFor = null;
+        }
         return;
       }
       await runPlayerChatTurn("class");

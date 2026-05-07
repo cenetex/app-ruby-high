@@ -5,7 +5,15 @@ import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseTeacherGrades } from "./grading.js";
-import { GRADE_LABELS, type CharacterStats, type Grade, type Question, type QuizState } from "./types.js";
+import {
+  GRADE_LABELS,
+  PLAYER_CHAT_INTENTS,
+  type CharacterStats,
+  type Grade,
+  type PlayerChatIntent,
+  type Question,
+  type QuizState,
+} from "./types.js";
 import { resolveFacultyIdForSession, roomForFacultyForSession } from "./content/registry.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
@@ -130,6 +138,14 @@ function nextBoardInstruction(bank: { mode?: string; remaining: number; grade?: 
   return "No scheduled Ruby High card is available right now. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once and write a custom question.";
 }
 
+function requiredNextBoardInstruction(bank: { mode?: string; remaining: number }, banked: string): string {
+  if (bank.remaining > 0) return banked;
+  if (bank.mode === "srs") {
+    return "No scheduled deck card is available right now. Do NOT call pick_from_bank or try alternate filters. Call pose_question exactly once for a custom practice challenge.";
+  }
+  return "No scheduled Ruby High card is available right now. Do NOT call pick_from_bank or try alternate filters. Call pose_question exactly once and write a custom question.";
+}
+
 function schedulerOwnsBoard(bank: { remaining: number; todayClass?: { status?: string } }): boolean {
   // The deterministic scheduler can only own the board when it actually
   // has cards to post. When the bank runs dry — mid-class or in practice
@@ -160,7 +176,7 @@ function classReportOwnsBoard(bank: { todayClass?: { status?: string } }): boole
 }
 
 type AnswerGradedContext = {
-  intent?: string | null;
+  intent?: PlayerChatIntent | null;
   grade?: string;
   playerLine?: string | null;
   questionId?: string | null;
@@ -185,6 +201,11 @@ function cleanText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.trim();
   return text.length > 0 ? text : undefined;
+}
+
+function cleanPlayerChatIntent(value: unknown): PlayerChatIntent | undefined {
+  const text = cleanText(value);
+  return PLAYER_CHAT_INTENTS.includes(text as PlayerChatIntent) ? (text as PlayerChatIntent) : undefined;
 }
 
 function cleanOptions(value: unknown): Record<string, string> | undefined {
@@ -1379,6 +1400,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
     const trigger = String(body?.trigger ?? "manual");
     const grade = body?.context?.grade;
+    const contextIntent = cleanPlayerChatIntent(body?.context?.intent);
     const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
 
     const res = ctx.res as {
@@ -1548,7 +1570,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "manual") {
-      const intent = body?.context?.intent;
+      const intent = contextIntent;
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "The player";
       if (intent === "hint") {
@@ -1557,13 +1579,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           ? `${playerName} just said: "${clipped(playerLine, 140)}" Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.`
           : "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
       } else if (playerLine) {
-        directive = classReportControlsBoard
+        if (intent === "report") disableToolsForTurn = true;
+        directive = intent === "report" || classReportControlsBoard
           ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
+          : intent === "advance" && schedulerControlsBoard
+          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
+          : intent === "advance"
+          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character in ONE short sentence, then put a fresh challenge on the board. ${requiredNextBoardInstruction(bank, "Call pick_from_bank exactly once to put the next scheduled question on the board.")}`
           : schedulerControlsBoard
           ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
           : `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
       } else {
-        directive = classReportControlsBoard
+        if (intent === "report") disableToolsForTurn = true;
+        directive = intent === "report" || classReportControlsBoard
           ? `The player pressed Chat while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
           : schedulerControlsBoard
           ? `The player pressed Chat to move the room forward. Follow up on the last exchange, explain the current or recent board if useful, or keep the scene moving. ${schedulerBoundaryInstruction(bank)}`
@@ -1596,7 +1624,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // board-control behavior. If it narrates a transition but forgets the
       // tool call, keep the board state matched by posting a scheduled card
       // when available or asking it once for a custom practice challenge.
-      const needsFreshQuestion = !disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded");
+      const manualAdvanceNeedsFreshQuestion = trigger === "manual" && contextIntent === "advance" && !classReportControlsBoard;
+      const needsFreshQuestion = manualAdvanceNeedsFreshQuestion
+        || (!disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded"));
       if (needsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         const latestBank = ruby.questionBankStatus(agentSessionId, faculty);
@@ -1622,8 +1652,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             ? `No scheduled deck card is available for ${latestBank.displayName} right now.`
             : `No scheduled Ruby High card is available for ${latestBank.displayName} right now.`;
           const noQuestionDirective = latestBank.mode === "srs"
-            ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. Call pose_question exactly once for a custom practice challenge, or talk briefly about progress."
-            : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question, or talk briefly about progress.";
+            ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. Call pose_question exactly once for a custom practice challenge."
+            : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question.";
           chat.appendEvent(
             { sessionToken: token, faculty },
             { kind: "note", text: noQuestionNote },

@@ -180,6 +180,9 @@ export const PHASES: readonly Phase[] = [
   "intro", "in-room", "asking", "revealed", "lounge",
 ] as const;
 
+export const PLAYER_CHAT_INTENTS = ["hint", "report", "advance", "lounge"] as const;
+export type PlayerChatIntent = typeof PLAYER_CHAT_INTENTS[number];
+
 /** Backwards-compat shim: the old 3-value `status` field is derived from
  *  the new 5-value phase. Keeps existing viewer + routes consumers working
  *  while phase 2 of the refactor migrates them. */
