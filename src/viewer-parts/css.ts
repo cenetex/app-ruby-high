@@ -90,7 +90,16 @@ export const VIEWER_CSS = `
     display: grid;
     grid-template-columns: 1fr;
     background: var(--bg-deep);
+    /* Defensive clip: even with workspace's overflow:hidden, a child grid
+       cell that has min-content wider than the viewport will widen the
+       cell — and on Samsung Internet (and some iOS Safari versions) that
+       widening is visible past the screen edge. Clipping at the shell
+       guarantees nothing draws past the viewport on any browser. */
+    overflow: hidden;
   }
+  /* Grid cells default to min-width:auto, which uses min-content. Force
+     every direct child of the workspace grid to be allowed to shrink. */
+  main.workspace > * { min-width: 0; }
 
   .scrim {
     position: fixed;
@@ -428,8 +437,9 @@ export const VIEWER_CSS = `
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: var(--safe-top) 12px 0 calc(var(--safe-left) + 8px);
+    padding: var(--safe-top) calc(var(--safe-right) + 12px) 0 calc(var(--safe-left) + 8px);
     height: calc(var(--safe-top) + var(--top-h));
+    min-width: 0;
     border-bottom: 1px solid var(--line);
     background: rgba(21, 23, 31, 0.92);
     backdrop-filter: blur(14px);

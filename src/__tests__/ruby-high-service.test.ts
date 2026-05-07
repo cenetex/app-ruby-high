@@ -216,8 +216,10 @@ describe("RubyHighService Phase 1", () => {
     s = ruby.getOrCreate(sid);
     const wrong = s.current!.correct! === "A" ? "B" : "A";
     s = ruby.submitAnswer(sid, wrong);
-    expect(s.score).toMatchObject({ correct: 1, total: 2, points: 100, possible: 200 });
-    expect(s.lastReveal?.scoreAward).toMatchObject({ base: 20, multiplier: 1, points: 20, possible: 100 });
+    // Wrong answers earn no points (the dice can't pile on a miss).
+    // session.points stays at the previous correct's value; possible still ticks.
+    expect(s.score).toMatchObject({ correct: 1, total: 2, points: 80, possible: 200 });
+    expect(s.lastReveal?.scoreAward).toMatchObject({ base: 0, multiplier: 1, points: 0, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(false);
   });
 
