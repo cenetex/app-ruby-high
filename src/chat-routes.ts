@@ -14,7 +14,7 @@ import {
   type Question,
   type QuizState,
 } from "./types.js";
-import { resolveFacultyIdForSession, roomForFacultyForSession } from "./content/registry.js";
+import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "./content/registry.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
@@ -966,6 +966,187 @@ async function generateStudentLine(args: {
   return text.replace(/^["'\s]+|["'\s]+$/g, "");
 }
 
+function playerIntentForPhase(state: QuizState): PlayerChatIntent {
+  if (state.phase === "asking") return "hint";
+  if (state.phase === "revealed") return "report";
+  if (state.phase === "lounge") return "lounge";
+  return "advance";
+}
+
+function facultyDisplayNameForState(state: QuizState, facultyId?: string | null): string {
+  const id = facultyId || state.faculty || "ruby";
+  if (id === "lounge") return "the lounge";
+  const packFaculty = facultyByIdForSession(state, id);
+  if (packFaculty) return packFaculty.displayName;
+  return teacherById(id).displayName;
+}
+
+function classmateContextForPlayer(state: QuizState, facultyId: string): string {
+  if (!state.currentGrade || facultyId === "lounge") return "";
+  const room = roomForFacultyForSession(state, facultyId);
+  if (!room?.teaches) return "";
+  const roster = state.npcRosters[state.currentGrade] ?? [];
+  const names = roster
+    .filter((npc) => npc.currentRoom === room.id)
+    .map((npc) => STUDENTS[npc.id]?.name ?? npc.id);
+  return names.length ? `Classmates in the room: ${names.join(", ")}.` : "";
+}
+
+function playerVisibleBoardContext(state: QuizState, intent: PlayerChatIntent): string {
+  const reveal = state.lastReveal;
+  if (intent === "report" && reveal) {
+    const answer = reveal.forfeit
+      ? "timed out"
+      : reveal.wasCorrect
+        ? `answered ${reveal.answerText ?? reveal.picked ?? "correctly"} and was right`
+        : `answered ${reveal.answerText ?? reveal.picked ?? "incorrectly"} and missed it`;
+    const correct = reveal.expectedAnswer
+      ? `Expected answer: ${reveal.expectedAnswer}.`
+      : reveal.correct
+        ? `Correct choice: ${reveal.correct}.`
+        : "";
+    return [
+      "Visible board: the last challenge has resolved.",
+      `Result: the player ${answer}.`,
+      reveal.questionPrompt ? `Question: ${reveal.questionPrompt}` : "",
+      correct,
+      reveal.explanation ? `Explanation shown on board: ${reveal.explanation}` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  const q = state.current;
+  if (q) {
+    const type = q.type ?? "multiple-choice";
+    const optionLines = type === "multiple-choice" && q.options
+      ? Object.entries(q.options).map(([k, v]) => `  ${k}) ${v}`)
+      : [];
+    return [
+      type === "opinion"
+        ? "Visible board: open free-response challenge."
+        : type === "typed-answer" || type === "image-occlusion"
+          ? "Visible board: typed-response challenge."
+          : "Visible board: multiple-choice challenge.",
+      `Prompt: ${q.prompt}`,
+      ...optionLines,
+      "Hidden from the player right now: the correct answer.",
+    ].join("\n");
+  }
+
+  if (reveal) {
+    return [
+      "Visible board: no live challenge; the recent result may still be in the room's memory.",
+      reveal.questionPrompt ? `Recent question: ${reveal.questionPrompt}` : "",
+      reveal.wasCorrect ? "Recent result: correct." : reveal.forfeit ? "Recent result: timed out." : "Recent result: missed.",
+    ].filter(Boolean).join("\n");
+  }
+
+  return state.phase === "lounge"
+    ? "Visible board: none. This is a lounge conversation."
+    : "Visible board: empty. The room is between challenges.";
+}
+
+function recentDialogueForPlayer(history: ChatMessage[], state: QuizState): string {
+  const rows = history
+    .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim().length > 0)
+    .slice(-8)
+    .map((m) => {
+      const speaker = m.role === "user"
+        ? (state.character?.name ?? "Player")
+        : facultyDisplayNameForState(state, m.faculty);
+      return `${speaker}: ${clipped(m.content.trim(), 180)}`;
+    });
+  return rows.length ? ["Recent dialogue:", ...rows].join("\n") : "Recent dialogue: none yet.";
+}
+
+function playerIntentDirective(intent: PlayerChatIntent): string {
+  if (intent === "hint") {
+    return "The player is asking the room for a clue about the live board. Do not answer the challenge; ask for help or name what feels confusing.";
+  }
+  if (intent === "report") {
+    return "The player is reacting to the result or class report. Let them sound proud, annoyed, curious, or reflective based on the context.";
+  }
+  if (intent === "lounge") {
+    return "The player is joining the lounge conversation as a student who overheard the faculty. Comment or ask something social and specific.";
+  }
+  return "The player is keeping the class moving between challenges. Continue the conversation naturally or ask the teacher/class what comes next without sounding like a UI command.";
+}
+
+function sanitizePlayerLine(text: string, playerName: string): string {
+  let line = text.trim().replace(/^["'\s]+|["'\s]+$/g, "");
+  const prefix = new RegExp(`^(${playerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|player|you)\\s*:\\s*`, "i");
+  line = line.replace(prefix, "").trim();
+  if (line.length > 220) line = line.slice(0, 219).trimEnd() + "…";
+  return line;
+}
+
+async function generatePlayerLine(args: {
+  apiKey: string;
+  state: QuizState;
+  faculty: string;
+  intent: PlayerChatIntent;
+  history: ChatMessage[];
+}): Promise<string> {
+  const character = args.state.character;
+  if (!character) throw new Error("Create a character before using AI Chat.");
+  const playbook = PLAYBOOKS.find((p) => p.id === character.playbookId);
+  const stats = character.stats;
+  const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
+  const facultyName = facultyDisplayNameForState(args.state, args.faculty);
+  const roomLine = args.faculty === "lounge"
+    ? "Current location: teachers' lounge."
+    : `Current class: ${facultyName}.`;
+  const userPrompt = [
+    `You are writing the next chat bubble for the player's avatar, ${character.name}.`,
+    "This is a room scene with teachers and classmates, not a user talking to a chatbot.",
+    roomLine,
+    playbook ? `Playbook: ${playbook.name}.` : `Playbook id: ${character.playbookId}.`,
+    `Personality: ${character.personality}`,
+    character.flavorQuote ? `Voice sample: "${character.flavorQuote}"` : "",
+    character.arcAnswer ? `Private arc answer: "${character.arcAnswer}"` : "",
+    `Stats: HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}.`,
+    classmateContextForPlayer(args.state, args.faculty),
+    "",
+    playerVisibleBoardContext(args.state, args.intent),
+    "",
+    recentDialogueForPlayer(args.history, args.state),
+    "",
+    `Turn intent: ${args.intent}. ${playerIntentDirective(args.intent)}`,
+    "",
+    "Write exactly one natural spoken line for the player avatar, 8-24 words.",
+    "Speak as the student, not as narrator. No speaker label. No quotation marks.",
+    "Do not mention phase names, schedulers, tools, UI buttons, or that a model generated this.",
+    "Do not say 'what does the report say' unless the visible context is literally a report and that is the most natural thing to ask.",
+  ].filter(Boolean).join("\n");
+
+  const r = await openRouterFetch({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.apiKey}`,
+      "HTTP-Referer": REFERER,
+      "X-Title": TITLE,
+    },
+    body: JSON.stringify({
+      model: STUDENT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `You are ${character.name}, a Ruby High student avatar. Write only their next line in their voice.`,
+        },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 80,
+      temperature: 0.9,
+    }),
+  });
+  if (!r.ok) await throwOpenRouterError(r, "player-line");
+  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const text = body.choices?.[0]?.message?.content ?? "";
+  const line = sanitizePlayerLine(text, character.name);
+  if (!line) throw new Error("Player avatar did not produce a line.");
+  return line;
+}
+
 export interface ChatRouteContext {
   method: string;
   pathname: string;
@@ -1377,6 +1558,40 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/player-line`) {
+    const cred = requireAuth(ctx, auth);
+    if (!cred) {
+      ctx.error(ctx.res, "Not authenticated. Sign in with OpenRouter first.", 401);
+      return true;
+    }
+    const { token, apiKey } = cred;
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as
+      | { faculty?: string; context?: { intent?: unknown } }
+      | null;
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const state = ruby.getOrCreate(sessionId);
+    const intent = cleanPlayerChatIntent(body?.context?.intent) ?? playerIntentForPhase(state);
+    try {
+      const line = await generatePlayerLine({
+        apiKey,
+        state,
+        faculty,
+        intent,
+        history: chat.history({ sessionToken: token, faculty }),
+      });
+      ctx.json(ctx.res, { ok: true, line, intent });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+    }
+    return true;
+  }
+
   // Fire a teacher-driven turn (no user message). The client calls this when
   // a state event happens — the student enters a classroom, answers a question,
   // etc. The server constructs the appropriate system directive and runs the
@@ -1696,7 +1911,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
-      | { studentId?: string; situation?: string; note?: string; faculty?: string; playerText?: string }
+      | { studentId?: string; situation?: string; note?: string; faculty?: string; playerText?: string; recordPlayerText?: boolean }
       | null;
     const student = STUDENTS[String(body?.studentId ?? "")];
     if (!student) {
@@ -1737,6 +1952,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       }
     }
     const playerText = body?.playerText?.trim() || undefined;
+    if (playerText && faculty && body?.recordPlayerText) {
+      chat.appendPlayerMessage({ sessionToken: token, faculty }, playerText);
+    }
     if (playerText && faculty) {
       chat.appendEvent(
         { sessionToken: token, faculty },

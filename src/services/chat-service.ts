@@ -200,6 +200,14 @@ export class ChatService extends Service {
     this.appendEvent(key, { kind: "note", text: note });
   }
 
+  appendPlayerMessage(key: ChatHistoryKey, text: string, at = Date.now()): void {
+    const content = text.trim();
+    if (!content) return;
+    const history = this.ensure(key);
+    history.push({ role: "user", content, faculty: key.faculty, at });
+    this.trim(key);
+  }
+
   events_for_test(key: ChatHistoryKey): RoomEvent[] {
     return this.events.get(this.keyOf(key)) ?? [];
   }

@@ -153,6 +153,113 @@ describe("auth callback redirect sanitization", () => {
 });
 
 describe("chat event context", () => {
+  it("generates Chat button player lines from the character voice and visible room context", async () => {
+    const token = "route-player-line-token";
+    const record = {
+      userId: "route-player-line-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Player Line",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.createCharacter(stateKey, {
+      name: "Mina",
+      playbookId: "outsider",
+      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+      arcAnswer: "I want to notice what everyone else keeps stepping around.",
+      flavorQuote: "the answer is hiding in the part nobody wants to read",
+      personality: "Quietly intense, observant, and allergic to obvious answers.",
+    });
+    ruby.pickAndPose(stateKey, { faculty: "ruby" });
+    chat.appendPlayerMessage({ sessionToken: token, faculty: "ruby" }, "Ruby, I think the board is trying to trick us.");
+
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "Mika, am I supposed to trust the wording or the pattern here?" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/player-line"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          context: { intent: "hint" },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).line).toBe("Mika, am I supposed to trust the wording or the pattern here?");
+    expect(capturedChatRequest).not.toBeNull();
+    const promptText = JSON.stringify(capturedChatRequest.body.messages);
+    expect(promptText).toContain("You are writing the next chat bubble for the player's avatar, Mina");
+    expect(promptText).toContain("Quietly intense, observant");
+    expect(promptText).toContain("Recent dialogue");
+    expect(promptText).toContain("Ruby, I think the board is trying to trick us.");
+    expect(promptText).toContain("Hidden from the player right now: the correct answer.");
+    expect(promptText).not.toContain("Correct choice:");
+  });
+
+  it("can persist Chat button player lines when a student is the only responder", async () => {
+    const token = "route-player-line-student-record-token";
+    const record = {
+      userId: "route-player-line-student-record-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Player Student Record",
+    };
+    auth.injectSessionForTest(token, record);
+    ruby.createCharacter(auth.stateKeyForRecord(record), {
+      name: "Mina",
+      playbookId: "outsider",
+      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+      arcAnswer: "I want to notice what everyone else keeps stepping around.",
+      personality: "Quietly intense, observant, and allergic to obvious answers.",
+    });
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "nah mina that wording is definitely suspicious" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/student-chime"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          studentId: "sami",
+          situation: "player-chat",
+          playerText: "Does this wording feel too neat to anyone else?",
+          recordPlayerText: true,
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(chat.history({ sessionToken: token, faculty: "ruby" }).some((m) => (
+      m.role === "user" && m.content === "Does this wording feel too neat to anyone else?"
+    ))).toBe(true);
+  });
+
   it("threads the resolved card snapshot into answer-graded teacher turns", async () => {
     const token = "route-event-token";
     const record = {

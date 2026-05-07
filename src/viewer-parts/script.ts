@@ -356,6 +356,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   let lastYearbookLen = null;
   let lastShownFaculty = null;
   let agentBusy = false;       // true while a teacher-driven SSE turn is running
+  let manualChatBusy = false;  // true while the bottom Chat action is composing/sending
+  let lastChatButtonAt = 0;
   let agentBusySeq = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
@@ -554,6 +556,31 @@ const VIEWER_SCRIPT_SUFFIX = `
   function playerChatLine(intent) {
     return intent === "lounge" ? playerLoungeLine() : playerClassLine(intent);
   }
+  function playerChatFallbackLine(intent) {
+    if (intent === "hint") return "Can someone give me the first clue without saying it outright?";
+    if (intent === "report") return "Okay, I need a second with that one. What did everyone notice?";
+    if (intent === "lounge") return "Wait, what did you mean by that?";
+    return "I'm ready. What's the room looking at next?";
+  }
+  async function generatePlayerChatLine(intent) {
+    if (!aiEnabled) return playerChatLine(intent);
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/chat/player-line", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          faculty: lastTelemetry && lastTelemetry.faculty,
+          context: { intent: playerChatIntentForServer(intent) },
+        }),
+      });
+      if (!r.ok) throw new Error("player-line " + r.status);
+      const data = await r.json();
+      const line = data && data.line ? String(data.line).trim() : "";
+      return line || playerChatFallbackLine(intent);
+    } catch (err) {
+      return playerChatFallbackLine(intent);
+    }
+  }
   function playerChatIntentForServer(intent) {
     if (intent === "hint") return "hint";
     if (intent === "report") return "report";
@@ -589,31 +616,40 @@ const VIEWER_SCRIPT_SUFFIX = `
     return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line and keep the room moving.";
   }
   async function runPlayerChatTurn(intent, extraContext) {
-    const playerLine = playerChatLine(intent);
-    appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
-    const responder = pickChatResponder();
-    const context = Object.assign({}, extraContext || {}, {
-      grade: lastTelemetry && lastTelemetry.current_grade,
-      intent: playerChatIntentForServer(intent),
-      playerLine,
-    });
-    if (aiEnabled && responder.kind === "student") {
-      fireStudentChime({
-        situation: intent === "hint" ? "player-asked-hint" : "player-chat",
-        note: playerChatNote(intent, playerLine),
-        playerText: playerLine,
+    if (manualChatBusy || agentBusy) return;
+    manualChatBusy = true;
+    if (els.nextBtn) els.nextBtn.disabled = true;
+    try {
+      const playerLine = await generatePlayerChatLine(intent);
+      appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
+      const responder = pickChatResponder();
+      const context = Object.assign({}, extraContext || {}, {
         grade: lastTelemetry && lastTelemetry.current_grade,
-        faculty: lastTelemetry && lastTelemetry.faculty,
-        delayMs: 500,
-        studentId: responder.student.id,
-        bypassCooldown: true,
+        intent: playerChatIntentForServer(intent),
+        playerLine,
       });
-      if (intent !== "class") return;
-    }
-    if (aiEnabled) {
-      await runAgentTurn("manual", context, { force: true });
-    } else {
-      appendSystem(intent === "hint" ? "Answer the board to continue. Enable AI for teacher hints." : "Enable AI for teacher replies.");
+      if (aiEnabled && responder.kind === "student") {
+        await fireStudentChime({
+          situation: intent === "hint" ? "player-asked-hint" : "player-chat",
+          note: playerChatNote(intent, playerLine),
+          playerText: playerLine,
+          grade: lastTelemetry && lastTelemetry.current_grade,
+          faculty: lastTelemetry && lastTelemetry.faculty,
+          delayMs: 500,
+          studentId: responder.student.id,
+          bypassCooldown: true,
+          recordPlayerText: intent !== "class",
+        });
+        if (intent !== "class") return;
+      }
+      if (aiEnabled) {
+        await runAgentTurn("manual", context, { force: true });
+      } else {
+        appendSystem(intent === "hint" ? "Answer the board to continue. Enable AI for teacher hints." : "Enable AI for teacher replies.");
+      }
+    } finally {
+      manualChatBusy = false;
+      if (els.nextBtn && !agentBusy) els.nextBtn.disabled = false;
     }
   }
   function syncPlayerMessageHeaders() {
@@ -1145,7 +1181,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.boardPrompt.replaceChildren(report);
     els.boardReveal.hidden = true;
     els.boardReveal.replaceChildren();
-    els.nextBtn.disabled = false;
+    els.nextBtn.disabled = manualChatBusy || agentBusy;
     els.nextBtn.textContent = nextQuestionButtonLabel();
     els.teacherFigure.hidden = true;
   }
@@ -2021,6 +2057,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     closeRails();
   }
   async function pickNext() {
+    if (manualChatBusy || agentBusy) return;
+    const now = Date.now();
+    if (now - lastChatButtonAt < 900) return;
+    lastChatButtonAt = now;
     els.nextBtn.disabled = true;
     try {
       const phase = telemetryPhase(lastTelemetry);
@@ -2080,7 +2120,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
       await runPlayerChatTurn("class");
     } finally {
-      els.nextBtn.disabled = false;
+      els.nextBtn.disabled = manualChatBusy || agentBusy;
     }
   }
   async function pickAnswer(choice, btn) {
@@ -4346,8 +4386,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastChimeAt = now;
     return true;
   }
-  async function fireStudentChime({ situation, note, grade, faculty, delayMs, studentId, bypassCooldown, playerText }) {
-    if (!bypassCooldown && !studentChimeAllowed()) return;
+  async function fireStudentChime({ situation, note, grade, faculty, delayMs, studentId, bypassCooldown, playerText, recordPlayerText }) {
+    if (!bypassCooldown && !studentChimeAllowed()) return false;
     const chimeSeq = chatViewSeq;
     function chimeStillCurrent() {
       return chimeSeq === chatViewSeq && (!faculty || (lastTelemetry && lastTelemetry.faculty === faculty));
@@ -4358,40 +4398,39 @@ const VIEWER_SCRIPT_SUFFIX = `
     const inRoom = studentsForGrade(grade);
     const explicit = studentId ? inRoom.find((s) => s.id === studentId) : null;
     const who = explicit || pickRandom(inRoom);
-    if (!who) return;
+    if (!who) return false;
+    const wait = delayMs ?? (700 + Math.random() * 800);
+    await new Promise((resolve) => setTimeout(resolve, wait));
     if (!aiEnabled) {
       const fallback = situation === "answer-correct"
         ? pickRandom(STUDENT_LINES_RIGHT)
         : situation === "answer-wrong"
           ? pickRandom(STUDENT_LINES_WRONG)
           : pickRandom(STUDENT_LINES_GREET);
-      setTimeout(() => {
-        if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
-      }, delayMs ?? 700);
-      return;
+      if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
+      return true;
     }
-    const wait = delayMs ?? (700 + Math.random() * 800);
-    setTimeout(async () => {
-      try {
-        const r = await apiFetch("/api/apps/ruby-high/chat/student-chime", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ studentId: who.id, situation, note, faculty, playerText }),
-        });
-        if (!r.ok) throw new Error("student " + r.status);
-        const data = await r.json();
-        const line = (data && data.line) || pickRandom(STUDENT_LINES_GREET);
-        if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: line, color: who.color, studentId: who.id });
-      } catch (err) {
-        // Fallback to canned line if the API call fails.
-        const fallback = situation === "answer-correct"
-          ? pickRandom(STUDENT_LINES_RIGHT)
-          : situation === "answer-wrong"
-            ? pickRandom(STUDENT_LINES_WRONG)
-            : pickRandom(STUDENT_LINES_GREET);
-        if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
-      }
-    }, wait);
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/chat/student-chime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId: who.id, situation, note, faculty, playerText, recordPlayerText }),
+      });
+      if (!r.ok) throw new Error("student " + r.status);
+      const data = await r.json();
+      const line = (data && data.line) || pickRandom(STUDENT_LINES_GREET);
+      if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: line, color: who.color, studentId: who.id });
+      return true;
+    } catch (err) {
+      // Fallback to canned line if the API call fails.
+      const fallback = situation === "answer-correct"
+        ? pickRandom(STUDENT_LINES_RIGHT)
+        : situation === "answer-wrong"
+          ? pickRandom(STUDENT_LINES_WRONG)
+          : pickRandom(STUDENT_LINES_GREET);
+      if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
+      return false;
+    }
   }
   function scheduleStudentChime(wasCorrect, grade) {
     fireStudentChime({
@@ -4751,6 +4790,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
+      if (els.nextBtn && !manualChatBusy) els.nextBtn.disabled = false;
       els.chatInput.disabled = !aiEnabled;
       els.chatSend.disabled = !aiEnabled;
       els.chatInput.focus();
@@ -4798,6 +4838,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (chatStreamStillCurrent(streamGuard)) appendSystem("teacher offline · " + (err && err.message ? err.message : "error"));
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
+      if (els.nextBtn && !manualChatBusy) els.nextBtn.disabled = false;
     }
   }
 
