@@ -245,6 +245,24 @@ const VIEWER_SCRIPT_SUFFIX = `
   const STUDENT_LINES_RIGHT = ["nice","yo same","easy","ok smart kid","first try??","atta way","lock in","bro really did that","fr"];
   const STUDENT_LINES_WRONG = ["ouch","i picked the same","tricky","happens","hated that one","next time fr","ngl me too"];
   const STUDENT_LINES_GREET = ["yo","hey","what's up","let's go","first one easy plz","ready"];
+  const PLAYER_LOUNGE_LINES = {
+    "overachiever": ["I brought notes if anyone wants the actual version.", "So what did I miss while everyone was pretending this was downtime?", "Be honest. Which class is secretly the final boss today?"],
+    "slacker": ["I am only here for the chair, but continue.", "So this is where the side quests happen?", "If anyone asks, I was definitely studying."],
+    "heart": ["Everyone okay in here?", "I can tell this room has lore.", "Do teachers need pep talks too, or is that against policy?"],
+    "outsider": ["This room explains a lot about this school.", "I am still learning what counts as normal here.", "Is the lounge always this mysterious?"],
+    "class-clown": ["I promise I am not here to steal snacks.", "This feels like premium gossip territory.", "Should I knock, or is lurking part of the curriculum?"],
+    "lifer": ["I knew the lounge had better information than the hallway.", "Okay, what did I miss?", "I have heard three versions of that story already."],
+    default: ["So what is happening in here?", "Can I sit in for a minute?", "I am listening.", "What did I miss?"],
+  };
+  const PLAYER_CLASS_LINES = {
+    "overachiever": ["I think I have the shape of it, but I want to check the logic.", "Can someone pressure-test my answer?", "I am keeping notes, so give me the useful version."],
+    "slacker": ["I might know this, which is inconvenient.", "Can someone give me the less official version?", "I am listening, probably."],
+    "heart": ["Can we talk it through for a second?", "What is everyone thinking here?", "I want the hint that helps the whole table."],
+    "outsider": ["I am still figuring out how this room thinks.", "What am I missing about the setup?", "Can someone translate the school logic here?"],
+    "class-clown": ["I need a hint before I start guessing with confidence.", "Someone stop me before I make this worse.", "What is the non-embarrassing way to approach this?"],
+    "lifer": ["I have heard this one before, but not from this angle.", "What is the read in this room?", "Okay, who has the useful version?"],
+    default: ["Can we talk this through?", "What am I missing?", "Can someone give me a nudge?", "What is the read here?"],
+  };
   const pickRandom = (a) => a[Math.floor(Math.random() * a.length)];
   // Pick the 2 students currently in the active room (driven by the server's
   // (grade, room) cohort pairing). Falls back to a deterministic subset when
@@ -465,6 +483,73 @@ const VIEWER_SCRIPT_SUFFIX = `
   function playerMessageIdentitySig() {
     const ch = lastTelemetry && lastTelemetry.character;
     return playerDisplayName() + ":" + (ch && ch.portraitDataUrl ? ch.portraitDataUrl.length : 0);
+  }
+  function playerLoungeLine() {
+    const ch = lastTelemetry && lastTelemetry.character;
+    const lines = (ch && PLAYER_LOUNGE_LINES[ch.playbookId]) || PLAYER_LOUNGE_LINES.default;
+    return pickRandom(lines);
+  }
+  function playerClassLine(intent) {
+    if (intent === "hint") {
+      return pickRandom(["Can I get a hint without the answer?", "What should I notice first?", "Give me a nudge, not the solution.", "What is the clean way into this?"]);
+    }
+    if (intent === "report") {
+      return pickRandom(["So what does the report say?", "How did that class actually go?", "What should I fix before the next one?", "Give me the honest version of that class report."]);
+    }
+    const ch = lastTelemetry && lastTelemetry.character;
+    const lines = (ch && PLAYER_CLASS_LINES[ch.playbookId]) || PLAYER_CLASS_LINES.default;
+    return pickRandom(lines);
+  }
+  function playerChatLine(intent) {
+    return intent === "lounge" ? playerLoungeLine() : playerClassLine(intent);
+  }
+  function pickChatResponder() {
+    const students = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
+    if (students.length > 0 && Math.random() < 0.5) {
+      return { kind: "student", student: pickRandom(students) };
+    }
+    return { kind: "teacher" };
+  }
+  function playerChatNote(intent, playerLine) {
+    const current = lastTelemetry && lastTelemetry.current;
+    if (intent === "hint" && current) {
+      return "The player said: " + playerLine + " Respond in 1 short in-character line with a helpful hint for the current board question, but do not reveal the answer or exact choice.";
+    }
+    if (intent === "report") {
+      return "The player said: " + playerLine + " Respond in 1 short in-character line about the class report or recent class.";
+    }
+    if (intent === "lounge") {
+      return "The player said: " + playerLine + " Respond in 1 short in-character line as part of the lounge conversation.";
+    }
+    return "The player said: " + playerLine + " Respond in 1 short in-character line and keep the room moving.";
+  }
+  async function runPlayerChatTurn(intent, extraContext) {
+    const playerLine = playerChatLine(intent);
+    appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
+    const responder = pickChatResponder();
+    const context = Object.assign({}, extraContext || {}, {
+      grade: lastTelemetry && lastTelemetry.current_grade,
+      intent: intent === "hint" ? "hint" : "player-chat",
+      playerLine,
+    });
+    if (responder.kind === "student") {
+      fireStudentChime({
+        situation: intent === "hint" ? "player-asked-hint" : "player-chat",
+        note: playerChatNote(intent, playerLine),
+        playerText: playerLine,
+        grade: lastTelemetry && lastTelemetry.current_grade,
+        faculty: lastTelemetry && lastTelemetry.faculty,
+        delayMs: 500,
+        studentId: responder.student.id,
+        bypassCooldown: true,
+      });
+      return;
+    }
+    if (aiEnabled) {
+      await runAgentTurn("manual", context, { force: true });
+    } else {
+      appendSystem(intent === "hint" ? "Answer the board to continue. Enable AI for teacher hints." : "Enable AI for teacher replies.");
+    }
   }
   function syncPlayerMessageHeaders() {
     if (!els.stream) return;
@@ -1833,23 +1918,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       const liveQuestion = !!(lastTelemetry && lastTelemetry.current && lastTelemetry.active_round && !lastTelemetry.active_round.resolved);
       if (liveQuestion) {
-        if (aiEnabled) {
-          await runAgentTurn("manual", {
-            grade: lastTelemetry.current_grade,
-            intent: "hint",
-            questionId: lastTelemetry.current && lastTelemetry.current.id,
-          }, { force: true });
-        } else {
-          appendSystem("Answer the board to continue. Enable AI for hints.");
-        }
+        await runPlayerChatTurn("hint", { questionId: lastTelemetry.current && lastTelemetry.current.id });
         return;
       }
       if (lastTelemetry && lastTelemetry.faculty === LOUNGE_ID) {
-        if (aiEnabled) {
-          await runAgentTurn("manual", { grade: lastTelemetry.current_grade }, { force: true });
-        } else {
-          appendSystem("Enable AI to hear the lounge conversation continue.");
-        }
+        await runPlayerChatTurn("lounge");
         return;
       }
       if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -1863,12 +1936,12 @@ const VIEWER_SCRIPT_SUFFIX = `
         return;
       }
       if (currentRevealCompletedClass(lastTelemetry)) {
+        await runPlayerChatTurn("report");
         await command({ type: "clear" });
         lockedFor = null;
         return;
       }
-      await command({ type: "pick" });
-      lockedFor = null;
+      await runPlayerChatTurn("class");
     } finally {
       els.nextBtn.disabled = false;
     }
@@ -4162,7 +4235,11 @@ const VIEWER_SCRIPT_SUFFIX = `
         if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: line, color: who.color, studentId: who.id });
       } catch (err) {
         // Fallback to canned line if the API call fails.
-        const fallback = situation === "answer-correct" ? pickRandom(STUDENT_LINES_RIGHT) : pickRandom(STUDENT_LINES_WRONG);
+        const fallback = situation === "answer-correct"
+          ? pickRandom(STUDENT_LINES_RIGHT)
+          : situation === "answer-wrong"
+            ? pickRandom(STUDENT_LINES_WRONG)
+            : pickRandom(STUDENT_LINES_GREET);
         if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
       }
     }, wait);

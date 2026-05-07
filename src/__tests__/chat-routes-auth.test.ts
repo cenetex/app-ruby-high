@@ -273,6 +273,101 @@ describe("chat event context", () => {
     expect(res.body).toContain("stale-answer");
   });
 
+  it("threads lounge Chat button player lines into the next faculty turn", async () => {
+    const token = "route-lounge-player-line-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-lounge-player-line-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Lounge Player",
+    });
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("Pull up a chair.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "lounge",
+          trigger: "manual",
+          context: {
+            playerLine: "Can I sit in for a minute?",
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    const messages = capturedChatRequest.body.messages as Array<{ role?: string; content?: string }>;
+    expect(messages.some((m) => m.role === "user" && m.content === "Can I sit in for a minute?")).toBe(true);
+    const promptText = JSON.stringify(messages);
+    expect(promptText).toContain("The student just spoke in the lounge");
+  });
+
+  it("threads classroom Chat button player lines into the teacher turn", async () => {
+    const token = "route-class-player-line-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-class-player-line-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Class Player",
+    });
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("Let's work it from the first clue.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          trigger: "manual",
+          context: {
+            playerLine: "Can someone pressure-test my answer?",
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    const messages = capturedChatRequest.body.messages as Array<{ role?: string; content?: string }>;
+    expect(messages.some((m) => m.role === "user" && m.content === "Can someone pressure-test my answer?")).toBe(true);
+    const promptText = JSON.stringify(messages);
+    expect(promptText).toContain("Can someone pressure-test my answer?");
+    expect(promptText).toContain("Reply directly in character");
+  });
+
   it("describes answer-graded timeouts without inventing a player pick", async () => {
     const token = "route-timeout-token";
     auth.injectSessionForTest(token, {

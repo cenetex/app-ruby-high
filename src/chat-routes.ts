@@ -162,6 +162,7 @@ function classReportOwnsBoard(bank: { todayClass?: { status?: string } }): boole
 type AnswerGradedContext = {
   intent?: string | null;
   grade?: string;
+  playerLine?: string | null;
   questionId?: string | null;
   prompt?: string | null;
   type?: string | null;
@@ -1410,6 +1411,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const order = trigger === "lounge-enter"
         ? TEACHERS
         : [pickNextLoungeSpeaker(chat, token)];
+      const playerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
       const loungeSystem =
         "LOUNGE CONTEXT: You're hanging out in the Ruby High teachers' lounge with the other faculty (Ruby, Sally Science, Professor Edward). This is downtime — just conversation, no blackboard, no tools. Chat in 1-2 short sentences in your voice — riff on a student you saw, ask a colleague's opinion, share a small observation. Address colleagues by name when natural. The student is lurking and may chime in.";
 
@@ -1434,6 +1436,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           const turnDirective =
             trigger === "lounge-enter" && speaker === "ruby"
               ? "The student just walked in. You go first — open a quick chat thread with Sally and Edward. They'll each chime in after."
+              : playerLine
+              ? "The student just spoke in the lounge. Reply to them directly in character in 1-2 short sentences, then keep the faculty-room scene moving."
               : undefined;
           for await (const ev of chat.send({
             apiKey,
@@ -1442,6 +1446,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             faculty: "lounge",
             speakerFacultyId: speaker,
             bucketKey: "lounge",
+            userMessage: playerLine,
             disableTools: true,
             extraSystemContext: loungeSystem,
             systemEventNote: turnDirective,
@@ -1473,6 +1478,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const bank = ruby.questionBankStatus(sessionId, faculty);
     const classReportControlsBoard = classReportOwnsBoard(bank);
     const schedulerControlsBoard = !classReportControlsBoard && schedulerOwnsBoard(bank);
+    const playerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
     let directive = "";
     let disableToolsForTurn = schedulerControlsBoard || classReportControlsBoard;
     let extraSystemContext: string | undefined;
@@ -1543,9 +1549,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       }
     } else if (trigger === "manual") {
       const intent = body?.context?.intent;
+      const state = ruby.getOrCreate(sessionId);
+      const playerName = state.character?.name ?? "The player";
       if (intent === "hint") {
         disableToolsForTurn = true;
-        directive = "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
+        directive = playerLine
+          ? `${playerName} just said: "${clipped(playerLine, 140)}" Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.`
+          : "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
+      } else if (playerLine) {
+        directive = classReportControlsBoard
+          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
+          : schedulerControlsBoard
+          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
+          : `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
       } else {
         directive = classReportControlsBoard
           ? `The player pressed Chat while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
@@ -1564,6 +1580,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         sessionToken: token,
         agentSessionId: getSessionId(runtime, ctx.cookieHeader),
         faculty,
+        userMessage: playerLine,
         disableTools: disableToolsForTurn,
         extraSystemContext,
         systemEventNote: directive,
@@ -1689,6 +1706,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
       }
     }
+    const playerText = body?.playerText?.trim() || undefined;
+    if (playerText && faculty) {
+      chat.appendEvent(
+        { sessionToken: token, faculty },
+        {
+          kind: "note",
+          text: `${playerName ?? "The player"} said: "${clipped(playerText, 180)}"`,
+        },
+      );
+    }
     try {
       const line = await generateStudentLine({
         apiKey,
@@ -1699,7 +1726,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         playerName,
         classmateNames,
         teacherSaid,
-        playerText: body?.playerText?.trim() || undefined,
+        playerText,
       });
       // Stamp the chime into the active teacher's room awareness so the
       // next teacher turn's RECENT EVENTS synopsis includes it. Without
