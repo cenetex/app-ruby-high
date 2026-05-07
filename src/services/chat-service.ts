@@ -455,10 +455,11 @@ export class ChatService extends Service {
     }
     // 3. Board. Keep the board visible to the teacher even when tools are
     // disabled so narration-only turns can still explain the live question.
-    const ctx = describeBoardForModel(state);
+    const bankStatus = this.ruby!.questionBankStatus(agentSessionId, state.faculty);
+    const ctx = describeBoardForModel(state, bankStatus);
     messages.push({ role: "system", content: `Active board context for this turn:\n${ctx}` });
     if (!disableTools) {
-      messages.push({ role: "system", content: describeQuestionBankForModel(this.ruby!.questionBankStatus(agentSessionId, state.faculty)) });
+      messages.push({ role: "system", content: describeQuestionBankForModel(bankStatus) });
     }
     // 4. RECENT EVENTS synopsis — events newer than this speaker's last
     //    assistant turn. Floor at 0 so the very first turn includes the
@@ -975,7 +976,28 @@ function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
 }
 
-function describeBoardForModel(state: QuizState): string {
+function formatBoardPercent(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value)}%` : "unknown";
+}
+
+function describeClassReportBoardForModel(status: QuestionBankStatus): string | null {
+  const today = status.todayClass;
+  if (today?.status !== "complete") return null;
+  const completed = status.completedClasses ?? 0;
+  const required = status.requiredClasses ?? 0;
+  return [
+    "BOARD STATUS: CLASS_REPORT.",
+    `The chalkboard is showing today's ${status.displayName} class report card, not a live question.`,
+    `Today's class is complete: ${today.questionCount}/${today.totalQuestions} questions.`,
+    today.letterGrade ? `Final grade shown: ${today.letterGrade}.` : "",
+    typeof today.score === "number" ? `Today score shown: ${formatBoardPercent(today.score)}.` : "",
+    status.courseGrade ? `Course grade shown: ${status.courseGrade}.` : "",
+    required > 0 ? `Course progress shown: ${completed}/${required} completed classes.` : "",
+    "Practice is open after this report; a fresh board should appear only when the engine or allowed tool flow advances.",
+  ].filter(Boolean).join("\n");
+}
+
+function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus | null): string {
   const scoreLine = `${state.score.correct}/${state.score.total} answers · ${state.score.points ?? 0} score`;
   const header = [
     `Active faculty: ${state.faculty}.`,
@@ -1000,6 +1022,14 @@ function describeBoardForModel(state: QuizState): string {
     ].join("\n");
   }
   if (!state.current) {
+    const classReport = bankStatus ? describeClassReportBoardForModel(bankStatus) : null;
+    if (classReport) {
+      return [
+        ...header,
+        classReport,
+      ].join("\n");
+    }
+
     const reveal = state.lastReveal;
     if (reveal?.questionPrompt) {
       const opts = reveal.questionOptions;

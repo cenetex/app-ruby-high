@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
-import { RubyHighService } from "./services/ruby-high-service.js";
+import { RubyHighService, type QuestionBankStatus } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseTeacherGrades } from "./grading.js";
@@ -168,7 +168,7 @@ function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; 
   const readyLine = bank.remaining > 0
     ? `${bank.remaining} scheduled card${bank.remaining === 1 ? "" : "s"} ready`
     : "no scheduled cards ready";
-  return `The Ruby High scheduler owns the blackboard while ${classLine} and ${readyLine}. Do not call tools or post/replace/clear questions.`;
+  return `The Ruby High scheduler owns the blackboard while ${classLine} and ${readyLine}. Do not call tools or post/replace/clear questions. Do not say tool names like pick_from_bank; speak only as the teacher.`;
 }
 
 function classReportOwnsBoard(bank: { todayClass?: { status?: string } }): boolean {
@@ -992,7 +992,31 @@ function classmateContextForPlayer(state: QuizState, facultyId: string): string 
   return names.length ? `Classmates in the room: ${names.join(", ")}.` : "";
 }
 
-function playerVisibleBoardContext(state: QuizState, intent: PlayerChatIntent): string {
+function formatPromptPercent(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value)}%` : "unknown";
+}
+
+function playerClassReportContext(bankStatus?: QuestionBankStatus | null): string | null {
+  const today = bankStatus?.todayClass;
+  if (!bankStatus || today?.status !== "complete") return null;
+  const completed = bankStatus.completedClasses ?? 0;
+  const required = bankStatus.requiredClasses ?? 0;
+  return [
+    `Visible board: class report card for ${bankStatus.displayName}.`,
+    `Today's class is complete: ${today.questionCount}/${today.totalQuestions} questions.`,
+    today.letterGrade ? `Final grade shown: ${today.letterGrade}.` : "",
+    typeof today.score === "number" ? `Today score shown: ${formatPromptPercent(today.score)}.` : "",
+    bankStatus.courseGrade ? `Course grade shown: ${bankStatus.courseGrade}.` : "",
+    required > 0 ? `Course progress shown: ${completed}/${required} completed classes.` : "",
+    "The report card says practice is open; there is no live challenge on the board yet.",
+  ].filter(Boolean).join("\n");
+}
+
+function playerVisibleBoardContext(
+  state: QuizState,
+  intent: PlayerChatIntent,
+  bankStatus?: QuestionBankStatus | null,
+): string {
   const reveal = state.lastReveal;
   if (intent === "report" && reveal) {
     const answer = reveal.forfeit
@@ -1031,6 +1055,9 @@ function playerVisibleBoardContext(state: QuizState, intent: PlayerChatIntent): 
       "Hidden from the player right now: the correct answer.",
     ].join("\n");
   }
+
+  const classReport = playerClassReportContext(bankStatus);
+  if (classReport) return classReport;
 
   if (reveal) {
     return [
@@ -1085,6 +1112,7 @@ async function generatePlayerLine(args: {
   faculty: string;
   intent: PlayerChatIntent;
   history: ChatMessage[];
+  bankStatus?: QuestionBankStatus | null;
 }): Promise<string> {
   const character = args.state.character;
   if (!character) throw new Error("Create a character before using AI Chat.");
@@ -1106,7 +1134,7 @@ async function generatePlayerLine(args: {
     `Stats: HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}.`,
     classmateContextForPlayer(args.state, args.faculty),
     "",
-    playerVisibleBoardContext(args.state, args.intent),
+    playerVisibleBoardContext(args.state, args.intent, args.bankStatus),
     "",
     recentDialogueForPlayer(args.history, args.state),
     "",
@@ -1577,6 +1605,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
     const state = ruby.getOrCreate(sessionId);
     const intent = cleanPlayerChatIntent(body?.context?.intent) ?? playerIntentForPhase(state);
+    const bankStatus = faculty === "lounge" ? null : ruby.questionBankStatus(sessionId, faculty);
     try {
       const line = await generatePlayerLine({
         apiKey,
@@ -1584,6 +1613,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         faculty,
         intent,
         history: chat.history({ sessionToken: token, faculty }),
+        bankStatus,
       });
       ctx.json(ctx.res, { ok: true, line, intent });
     } catch (err) {
@@ -1714,10 +1744,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // were a fresh instruction.
     const bank = ruby.questionBankStatus(sessionId, faculty);
     const classReportControlsBoard = classReportOwnsBoard(bank);
-    const schedulerControlsBoard = !classReportControlsBoard && schedulerOwnsBoard(bank);
+    const manualAdvanceIntent = trigger === "manual" && contextIntent === "advance";
+    const classReportBlocksBoard = classReportControlsBoard && !manualAdvanceIntent;
+    const schedulerControlsBoard = !classReportBlocksBoard && schedulerOwnsBoard(bank);
     const playerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
     let directive = "";
-    let disableToolsForTurn = schedulerControlsBoard || classReportControlsBoard;
+    let disableToolsForTurn = schedulerControlsBoard || classReportBlocksBoard;
     let extraSystemContext: string | undefined;
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
@@ -1729,7 +1761,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           text: `${playerName} just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}.`,
         },
       );
-      directive = classReportControlsBoard
+      directive = classReportBlocksBoard
         ? `Greet ${playerName} in ONE short sentence and acknowledge that today's class report is on the blackboard${bank.todayClass?.letterGrade ? ` with a ${bank.todayClass.letterGrade}` : ""}. Do not call tools or put another question on the board.`
         : schedulerControlsBoard
         ? `Greet ${playerName} in ONE short sentence. Do not mention UI controls. ${schedulerBoundaryInstruction(bank)}`
@@ -1769,7 +1801,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       } else if (graduationReady(state)) {
         disableToolsForTurn = true;
         directive = `${playerName} has completed the year's requirements and is ready for the graduation ceremony. Congratulate them in one or two short sentences and remind them to choose a ceremony reward on their School Career card. Do not call tools or put another question on the board.`;
-      } else if (classReportControlsBoard) {
+      } else if (classReportBlocksBoard) {
         disableToolsForTurn = true;
         const classGrade = bank.todayClass?.letterGrade ? ` The class report shows ${bank.todayClass.letterGrade}.` : "";
         directive = `React in ONE short sentence to the round that just resolved: ${resolved.pickedLine}.${classGrade} The class report is on the blackboard now; do not call tools or put another question on the board.`;
@@ -1795,7 +1827,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           : "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
       } else if (playerLine) {
         if (intent === "report") disableToolsForTurn = true;
-        directive = intent === "report" || classReportControlsBoard
+        directive = intent === "report" || classReportBlocksBoard
           ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
           : intent === "advance" && schedulerControlsBoard
           ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
@@ -1806,7 +1838,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           : `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
       } else {
         if (intent === "report") disableToolsForTurn = true;
-        directive = intent === "report" || classReportControlsBoard
+        directive = intent === "report" || classReportBlocksBoard
           ? `The player pressed Chat while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
           : schedulerControlsBoard
           ? `The player pressed Chat to move the room forward. Follow up on the last exchange, explain the current or recent board if useful, or keep the scene moving. ${schedulerBoundaryInstruction(bank)}`
@@ -1839,7 +1871,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // board-control behavior. If it narrates a transition but forgets the
       // tool call, keep the board state matched by posting a scheduled card
       // when available or asking it once for a custom practice challenge.
-      const manualAdvanceNeedsFreshQuestion = trigger === "manual" && contextIntent === "advance" && !classReportControlsBoard;
+      const manualAdvanceNeedsFreshQuestion = trigger === "manual" && contextIntent === "advance" && !classReportBlocksBoard;
       const needsFreshQuestion = manualAdvanceNeedsFreshQuestion
         || (!disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded"));
       if (needsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {

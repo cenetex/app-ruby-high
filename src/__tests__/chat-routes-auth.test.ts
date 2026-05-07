@@ -260,6 +260,66 @@ describe("chat event context", () => {
     ))).toBe(true);
   });
 
+  it("shows the same completed class report board to the player avatar prompt", async () => {
+    const token = "route-player-line-report-board-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-player-line-report-board-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Player Report Board",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    for (let i = 0; i < 3; i += 1) {
+      const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });
+      const wrong = posed.current!.correct === "A" ? "B" : "A";
+      ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      ruby.clearBoard(sessionId);
+    }
+
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "Okay, that F is loud. Can we practice the weak spot now?" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/player-line"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "sally-science",
+          context: { intent: "advance" },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).line).toBe("Okay, that F is loud. Can we practice the weak spot now?");
+    const promptText = JSON.stringify(capturedChatRequest.body.messages);
+    expect(promptText).toContain("Visible board: class report card for Sally Science.");
+    expect(promptText).toContain("Today's class is complete: 3/3 questions.");
+    expect(promptText).toContain("Final grade shown: F.");
+    expect(promptText).toContain("The report card says practice is open");
+    expect(promptText).not.toContain("Visible board: empty");
+  });
+
   it("threads the resolved card snapshot into answer-graded teacher turns", async () => {
     const token = "route-event-token";
     const record = {
@@ -534,6 +594,79 @@ describe("chat event context", () => {
     const after = ruby.getOrCreate(sessionId);
     expect(after.current).not.toBeNull();
     expect(after.activeRound?.resolved).toBe(false);
+  });
+
+  it("manual advance Chat moves a completed class report into a practice board", async () => {
+    const token = "route-class-report-advance-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-class-report-advance-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Class Report Advance",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+
+    for (let i = 0; i < 3; i += 1) {
+      const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });
+      const wrong = posed.current!.correct === "A" ? "B" : "A";
+      ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      ruby.clearBoard(sessionId);
+    }
+    expect(ruby.courseProgress(sessionId, "sally-science").today.status).toBe("complete");
+    expect(ruby.getOrCreate(sessionId).current).toBeNull();
+
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("Practice is open; let's take one more cleanly.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "sally-science",
+          trigger: "manual",
+          context: {
+            intent: "advance",
+            playerLine: "Okay, practice then. What are we doing next?",
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    const promptText = JSON.stringify(capturedChatRequest.body.messages);
+    expect(promptText).toContain("BOARD STATUS: CLASS_REPORT.");
+    expect(promptText).toContain("The chalkboard is showing today's Sally Science class report card");
+    expect(promptText).not.toContain("BOARD STATUS: EMPTY.");
+    expect(promptText).toContain("scheduler will put the next card on the board");
+    expect(promptText).toContain("Do not say tool names like pick_from_bank");
+    expect(res.body).toContain("fallback: auto-posed next question");
+    const after = ruby.getOrCreate(sessionId);
+    expect(after.current).not.toBeNull();
+    expect(after.activeRound?.resolved).toBe(false);
+    expect(after.activeRound?.classSession?.mode).toBe("practice");
   });
 
   it("manual hint Chat turns never change the current board", async () => {
