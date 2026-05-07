@@ -87,6 +87,49 @@ class ControlledPutDdbClient implements DynamoDBDocumentClientLike {
   }
 }
 
+class RetryBatchDdbClient implements DynamoDBDocumentClientLike {
+  private items = new Map<string, Record<string, unknown>>();
+  public readonly sent: unknown[] = [];
+  public attempts = 0;
+
+  async send(command: unknown): Promise<unknown> {
+    this.sent.push(command);
+    if (!(command instanceof BatchWriteCommand)) {
+      throw new Error(`RetryBatchDdbClient: unhandled command ${command?.constructor?.name}`);
+    }
+    const req = command.input.RequestItems ?? {};
+    const table = Object.keys(req)[0]!;
+    const ops = (req[table] ?? []) as Array<{ PutRequest?: { Item?: Record<string, unknown> } }>;
+    this.attempts++;
+    if (this.attempts === 1) {
+      for (const op of ops.slice(1)) {
+        if (op.PutRequest?.Item) this.items.set(String(op.PutRequest.Item.pk), op.PutRequest.Item);
+      }
+      return { UnprocessedItems: { [table]: ops.slice(0, 1) } };
+    }
+    for (const op of ops) {
+      if (op.PutRequest?.Item) this.items.set(String(op.PutRequest.Item.pk), op.PutRequest.Item);
+    }
+    return {};
+  }
+
+  snapshot(): Map<string, Record<string, unknown>> {
+    return new Map(this.items);
+  }
+}
+
+class AlwaysUnprocessedBatchDdbClient implements DynamoDBDocumentClientLike {
+  public readonly sent: unknown[] = [];
+
+  async send(command: unknown): Promise<unknown> {
+    this.sent.push(command);
+    if (!(command instanceof BatchWriteCommand)) {
+      throw new Error(`AlwaysUnprocessedBatchDdbClient: unhandled command ${command?.constructor?.name}`);
+    }
+    return { UnprocessedItems: command.input.RequestItems };
+  }
+}
+
 function blankState(sessionId: string, updatedAt = 1): QuizState {
   return {
     sessionId,
@@ -273,6 +316,40 @@ describe("DynamoStateStore", () => {
     expect(batches.length).toBe(3);
     // All 60 ended up in the table.
     expect(fake.snapshot().size).toBe(60);
+  });
+
+  it("save() retries BatchWrite UnprocessedItems and writes only the leftovers", async () => {
+    const retrying = new RetryBatchDdbClient();
+    const retryStore = new DynamoStateStore({
+      tableName: "ruby-high-test",
+      client: retrying,
+      ttlSeconds: 60,
+      batchWriteBaseDelayMs: 0,
+      batchWriteMaxRetries: 2,
+    });
+    await retryStore.save([
+      blankState("rh:retry:1"),
+      blankState("rh:retry:2"),
+      blankState("rh:retry:3"),
+    ]);
+    const batches = retrying.sent.filter((c) => c instanceof BatchWriteCommand);
+    expect(batches.length).toBe(2);
+    const secondReq = (batches[1] as BatchWriteCommand).input.RequestItems?.["ruby-high-test"] ?? [];
+    expect(secondReq).toHaveLength(1);
+    expect(retrying.snapshot().size).toBe(3);
+  });
+
+  it("save() throws when BatchWrite leaves items unprocessed after retries", async () => {
+    const blocked = new AlwaysUnprocessedBatchDdbClient();
+    const retryStore = new DynamoStateStore({
+      tableName: "ruby-high-test",
+      client: blocked,
+      ttlSeconds: 60,
+      batchWriteBaseDelayMs: 0,
+      batchWriteMaxRetries: 1,
+    });
+    await expect(retryStore.save([blankState("rh:retry:stuck")])).rejects.toThrow(/unprocessed BatchWrite/i);
+    expect(blocked.sent.filter((c) => c instanceof BatchWriteCommand)).toHaveLength(2);
   });
 
   it("save() with an empty iterable is a no-op", async () => {

@@ -16,9 +16,8 @@
  *    the others see; the import bails instead of grinding through 50
  *    futile calls and burning the user's quota.
  *
- * UNWIRED — no callers in the live system. The pack-store routes
- * (PR C) will invoke generateBankFromCards as part of the .apkg
- * import flow.
+ * The pack-store import route invokes generateBankFromCards as part of
+ * the .apkg import flow.
  */
 
 import type { BankedQuestion, Choice, Difficulty } from "../../types.js";

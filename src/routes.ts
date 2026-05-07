@@ -712,6 +712,43 @@ export async function collectLaunchDiagnostics(
   return diagnostics;
 }
 
+async function sendPersistedCommandState(
+  ctx: RouteContext,
+  args: {
+    ruby: RubyHighService;
+    sessionId: string;
+    state: QuizState;
+    runtime: IAgentRuntime | null;
+    faculty: FacultyService | null;
+    cookieHeader?: string | null;
+    command: string | undefined;
+    message: string;
+  },
+): Promise<true> {
+  try {
+    await args.ruby.flushSession(args.sessionId);
+  } catch (err) {
+    log.error("command.persist-failed", err, { command: args.command ?? "?" });
+    ctx.error(
+      ctx.res,
+      "State changed in memory but could not be persisted. It may be lost on restart; try again shortly.",
+      503,
+    );
+    return true;
+  }
+  ctx.json(ctx.res, {
+    success: true,
+    message: args.message,
+    session: buildSessionState({
+      runtime: args.runtime,
+      state: args.state,
+      faculty: args.faculty,
+      cookieHeader: args.cookieHeader,
+    }),
+  });
+  return true;
+}
+
 export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   const runtime = getRuntime(ctx.runtime);
 
@@ -852,12 +889,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
             wasCorrect: state.lastReveal.wasCorrect,
           });
         }
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: state.lastReveal?.wasCorrect ? "Correct" : "Marked",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "pick") {
@@ -867,65 +908,89 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           difficulty: body?.difficulty as Difficulty | undefined,
           mode: body?.mode,
         });
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Picked",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "play-bonus" || type === "play-daily") {
         // Renamed from play-daily; old clients still send the legacy
         // name during the rolling window.
         const state = ruby.playBonus(stateKey);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Today's bonus question is on the board.",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "set-faculty") {
         if (!body?.faculty) throw new Error("Missing faculty id");
         const state = ruby.setFaculty(stateKey, body.faculty);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: `Now teaching: ${state.faculty}`,
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "clear") {
         const state = ruby.clearBoard(stateKey);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Cleared",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "reset") {
         const state = ruby.resetSession(stateKey);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Session reset",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "force-resolve") {
         const state = ruby.forceResolveRound(stateKey);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Round resolved",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "roll-advantage") {
@@ -941,12 +1006,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
             : result.outcome === "mixed"
               ? `Mixed (${result.total}) — eliminated ${result.eliminated.join(" & ")}.`
               : `Miss (${result.total}) — nothing's crossed out, but you're no worse off.`;
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message,
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "complete-graduation") {
@@ -955,14 +1024,18 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           throw new Error("Pick a graduation reward.");
         }
         const state = ruby.completeGraduation(stateKey, reward);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: state.character && (state.character.yearbook ?? []).length >= 4
             ? "Graduated"
             : "Advanced",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "create-character") {
@@ -986,56 +1059,76 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           portraitDataUrl: cb.portraitDataUrl,
           mentorAccepted: !!cb.mentorAccepted,
         });
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Character created",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "clear-character") {
         const state = ruby.clearCharacter(stateKey);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Character cleared",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "set-portrait") {
         const url = String((body as { portraitDataUrl?: string }).portraitDataUrl ?? "");
         if (!url.startsWith("data:image/")) throw new Error("portraitDataUrl must be a data URL");
         const state = ruby.setPortrait(stateKey, url);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Portrait updated",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "select-grade") {
         const grade = String((body as { grade?: string })?.grade ?? "") as Grade;
         if (!GRADES.includes(grade)) throw new Error(`Grade must be one of ${GRADES.join(", ")}`);
         const state = ruby.selectGrade(stateKey, grade);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: `Grade set to ${grade}`,
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       if (type === "mark-intro-seen") {
         const state = ruby.markIntroSeen(stateKey);
-        ctx.json(ctx.res, {
-          success: true,
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
           message: "Intro acknowledged",
-          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
-        return true;
       }
 
       const state = ruby.getOrCreate(stateKey);

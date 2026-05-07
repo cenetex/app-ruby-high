@@ -17,7 +17,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (PKCE, your own key, no card). The API key lives in your browser's localStorage; the server never holds it.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (PKCE, your own key, no card). The API key lives in your browser's localStorage; the server never holds it. Game state, auth sessions, and imported packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
 
 ### Dev endpoints
 
@@ -68,7 +68,7 @@ No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with
 npm test
 ```
 
-18 test files covering the rarity/bonus progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, pack routes, and the content-pack registry.
+The suite covers the rarity/bonus progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, pack routes, and the content-pack registry.
 
 ## Deploy
 

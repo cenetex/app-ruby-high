@@ -363,7 +363,7 @@ export class RubyHighService extends Service {
    *  store debounces saveSession; we drain it here so the awaited promise
    *  doesn't wait the full debounce window for a fire-and-forget caller. */
   async flushSession(sessionId: string): Promise<void> {
-    const promise = this.persistSession(sessionId);
+    const promise = this.persistSession(sessionId, { surfaceErrors: true });
     if (typeof this.store.flush === "function") await this.store.flush();
     await promise;
   }
@@ -562,16 +562,21 @@ export class RubyHighService extends Service {
    *  it falls back to rewriting the full snapshot (the file has no other
    *  representation). Either way, only one session's worth of work is in
    *  the caller's mental model. */
-  private persistSession(sessionId: string): Promise<void> {
+  private persistSession(sessionId: string, opts?: { surfaceErrors?: boolean }): Promise<void> {
     const state = this.sessions.get(sessionId);
     if (!state) return Promise.resolve();
-    // Swallow + log persistence errors. Callers fire-and-forget with
-    // `void this.persistSession(id)` so any throw becomes an unhandled
-    // promise rejection — which Node 22 treats as fatal and crashes the
-    // server. The classic offender is DynamoDB's 400KB per-item cap,
-    // which a single AI-generated portrait dataURL can blow on its own.
-    // The state is still good in memory; the next mutation will retry.
-    return this.store.saveSession(state).catch((err) => {
+    const save = this.store.saveSession(state);
+    // Background callers fire-and-forget with `void this.persistSession(id)`;
+    // keep those paths non-fatal. Awaited HTTP paths pass surfaceErrors so
+    // the route can return a storage failure instead of pretending the
+    // mutation durably landed.
+    if (opts?.surfaceErrors) {
+      return save.catch((err) => {
+        log.error("ruby-high.persist-failed", err, { sessionId });
+        throw err;
+      });
+    }
+    return save.catch((err) => {
       log.error("ruby-high.persist-failed", err, { sessionId });
     });
   }
@@ -589,6 +594,7 @@ export class RubyHighService extends Service {
       touchedAt: Date.now(),
     }).catch((err) => {
       log.error("ruby-high.persist-pack-failed", err, { sessionId, packId: pack.id });
+      throw err;
     });
   }
 

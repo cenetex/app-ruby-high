@@ -4,9 +4,8 @@
  * knows how to play. The generated pack has ONE faculty (the deck
  * becomes a single classroom) — multi-deck import is a follow-up.
  *
- * UNWIRED. The pack-store routes (PR C) call buildAnkiPack; nothing in
- * the live system does today. Tests mock OpenRouter and verify the
- * end-to-end deck → pack assembly.
+ * The pack-store import route calls buildAnkiPack after parseApkg().
+ * Tests mock OpenRouter and verify the end-to-end deck → pack assembly.
  */
 
 import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "../types.js";

@@ -9,10 +9,9 @@
  * with no native build. wasm SQLite is heavy (~700 KB) but only loads
  * the first time someone imports a deck — the loader is lazy + cached.
  *
- * This module is INTENTIONALLY UNWIRED — no callers in the live system
- * yet. It's utility code that the pack-store routes (PR C) will invoke.
- * Tests cover input validation + a programmatically-built .apkg fixture
- * to verify the round-trip end-to-end.
+ * The pack-store import route uses this parser before turning cards into
+ * multiple-choice questions. Tests cover input validation plus a
+ * programmatically-built .apkg fixture to verify the round-trip end-to-end.
  */
 
 import JSZip from "jszip";

@@ -51,6 +51,10 @@ export interface DynamoStateStoreOptions {
    *  PutItem with the latest payload. Defaults to RUBY_HIGH_DYNAMO_DEBOUNCE_MS
    *  env var or 25ms. Set to 0 to disable (every call writes immediately). */
   debounceMs?: number;
+  /** Max retries for BatchWriteCommand UnprocessedItems. Defaults to 5. */
+  batchWriteMaxRetries?: number;
+  /** Initial retry delay for BatchWriteCommand UnprocessedItems. Defaults to 50ms. */
+  batchWriteBaseDelayMs?: number;
 }
 
 /** Minimal interface so tests can mock the SDK without depending on the
@@ -60,6 +64,11 @@ export interface DynamoDBDocumentClientLike {
 }
 
 const DEFAULT_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
+const DEFAULT_BATCH_WRITE_MAX_RETRIES = 5;
+const DEFAULT_BATCH_WRITE_BASE_DELAY_MS = 50;
+
+type BatchPutRequest = { PutRequest: { Item: Record<string, unknown> } };
+type BatchWriteRequestItems = Record<string, BatchPutRequest[]>;
 
 interface PendingSessionWrite {
   pk: string;
@@ -82,6 +91,8 @@ export class DynamoStateStore implements StateStoreLike {
   // mutate state and call saveSession; we keep the most recent item and
   // share one promise across all coalesced callers.
   private readonly debounceMs: number;
+  private readonly batchWriteMaxRetries: number;
+  private readonly batchWriteBaseDelayMs: number;
   private readonly pendingSessionWrites = new Map<string, PendingSessionWrite>();
   private readonly sessionWriteChains = new Map<string, Promise<void>>();
 
@@ -91,6 +102,8 @@ export class DynamoStateStore implements StateStoreLike {
     this.region = opts.region ?? process.env.AWS_REGION ?? "us-east-1";
     this.ttlSeconds = opts.ttlSeconds ?? DEFAULT_TTL_SECONDS;
     this.debounceMs = opts.debounceMs ?? readDebounceMsFromEnv();
+    this.batchWriteMaxRetries = Math.max(0, Math.floor(opts.batchWriteMaxRetries ?? DEFAULT_BATCH_WRITE_MAX_RETRIES));
+    this.batchWriteBaseDelayMs = Math.max(0, Math.floor(opts.batchWriteBaseDelayMs ?? DEFAULT_BATCH_WRITE_BASE_DELAY_MS));
     if (opts.client) {
       this.client = opts.client;
     } else {
@@ -304,16 +317,30 @@ export class DynamoStateStore implements StateStoreLike {
     const CHUNK = 25;
     for (let i = 0; i < items.length; i += CHUNK) {
       const chunk = items.slice(i, i + CHUNK);
-      await this.client.send(new BatchWriteCommand({
-        RequestItems: {
-          [this.tableName]: chunk.map((state) => ({
-            PutRequest: { Item: this.toItem(state) },
-          })),
-        },
-      }));
-      // Note: BatchWriteCommand can return UnprocessedItems on throttle.
-      // For current scale we accept it; production-grade retry is a future
-      // PR if it ever bites.
+      await this.batchWriteAll({
+        [this.tableName]: chunk.map((state) => ({
+          PutRequest: { Item: this.toItem(state) },
+        })),
+      });
+    }
+  }
+
+  private async batchWriteAll(initial: BatchWriteRequestItems): Promise<void> {
+    let requestItems = initial;
+    for (let attempt = 0; ; attempt++) {
+      const result = (await this.client.send(new BatchWriteCommand({
+        RequestItems: requestItems,
+      }))) as { UnprocessedItems?: BatchWriteRequestItems };
+      const unprocessed = nonEmptyRequestItems(result.UnprocessedItems);
+      if (!unprocessed) return;
+      const remaining = countBatchWriteRequests(unprocessed);
+      if (attempt >= this.batchWriteMaxRetries) {
+        throw new Error(
+          `DynamoStateStore.save: ${remaining} unprocessed BatchWrite item(s) after ${attempt + 1} attempt(s)`,
+        );
+      }
+      await sleep(batchWriteBackoffMs(attempt, this.batchWriteBaseDelayMs));
+      requestItems = unprocessed;
     }
   }
 
@@ -348,3 +375,31 @@ function readDebounceMsFromEnv(): number {
 }
 
 const DEFAULT_DEBOUNCE_MS = 25;
+
+function nonEmptyRequestItems(items: BatchWriteRequestItems | undefined): BatchWriteRequestItems | null {
+  if (!items) return null;
+  const out: BatchWriteRequestItems = {};
+  for (const [table, requests] of Object.entries(items)) {
+    if (requests.length > 0) out[table] = requests;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function countBatchWriteRequests(items: BatchWriteRequestItems): number {
+  let n = 0;
+  for (const requests of Object.values(items)) n += requests.length;
+  return n;
+}
+
+function batchWriteBackoffMs(attempt: number, baseDelayMs: number): number {
+  if (baseDelayMs <= 0) return 0;
+  const capped = Math.min(attempt, 6);
+  const exponential = baseDelayMs * (2 ** capped);
+  const jitter = Math.floor(Math.random() * baseDelayMs);
+  return exponential + jitter;
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -851,6 +851,7 @@ function reject429(ctx: ChatRouteContext, retryAfterSeconds: number): void {
 
 const CHAT_PREFIX = "/api/apps/ruby-high/chat";
 const AUTH_PREFIX = "/api/apps/ruby-high/auth";
+const DEFAULT_AUTH_REDIRECT = "/api/apps/ruby-high/viewer";
 
 function getRuntime(value: unknown): IAgentRuntime | null {
   if (!value || typeof value !== "object") return null;
@@ -928,6 +929,20 @@ function redirect(res: unknown, location: string): void {
   r.statusCode = 302;
   r.setHeader("Location", location);
   r.end();
+}
+
+function safeAuthRedirect(raw: string | null | undefined): string {
+  if (!raw) return DEFAULT_AUTH_REDIRECT;
+  const trimmed = raw.trim();
+  if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//") || /[\r\n]/.test(trimmed)) {
+    return DEFAULT_AUTH_REDIRECT;
+  }
+  try {
+    const parsed = new URL(trimmed, "https://ruby-high.local");
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return DEFAULT_AUTH_REDIRECT;
+  }
 }
 
 /** Render the OAuth-callback HTML shim that lands the API key in the
@@ -1053,13 +1068,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     try {
       const { token, apiKey, record } = await auth.completePkce(state, code, auth.parseSessionToken(ctx.cookieHeader));
       setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
-      const back = ctx.url?.searchParams.get("redirect") ?? "/api/apps/ruby-high/viewer";
+      const back = safeAuthRedirect(ctx.url?.searchParams.get("redirect"));
       // Hand the API key back to the browser via a tiny HTML shim. We write
       // it to localStorage (not a cookie, not a URL fragment) so it never
       // leaves the client and survives reloads. localStorage events fan out
       // across same-origin tabs, so the original SPA tab notices and flips
-      // to authed without a poll. If we have an opener we close ourselves;
-      // otherwise we redirect to the viewer.
+      // to authed without a poll. Redirect targets are sanitized to
+      // root-relative same-origin paths before they hit the inline shim.
       writeAuthCallbackHtml(ctx.res, { apiKey, label: record.label ?? null, redirectTo: back });
     } catch (err) {
       ctx.error(ctx.res, `Auth failed: ${err instanceof Error ? err.message : String(err)}`, 400);
@@ -1728,6 +1743,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       });
       const url = await maybeUploadPortrait(dataUrl, "diploma");
       ch.diplomaImageDataUrl = url;
+      await ruby.flushSession(sessionId);
       ctx.json(ctx.res, {
         ok: true,
         diplomaImageDataUrl: url,

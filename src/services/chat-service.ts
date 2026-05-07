@@ -41,8 +41,9 @@ export interface ChatHistoryKey {
 /**
  * A room-event is the architectural counterpart to a ChatMessage.
  *
- *  - ChatMessage = persistent dialogue (user / assistant / tool). Goes into
- *    `histories`. Round-trips to OpenRouter as role-shaped messages.
+ *  - ChatMessage = in-process dialogue (user / assistant / tool). Goes into
+ *    `histories`. Round-trips to OpenRouter as role-shaped messages, but is
+ *    not part of the durable state store.
  *
  *  - RoomEvent = volatile awareness (who chimed in, what answer just
  *    resolved, who entered the room). Goes into `events`. Surfaces to
@@ -127,7 +128,7 @@ export interface SendOpts {
 
 /**
  * ChatService is the bridge from the viewer to OpenRouter.
- *  - Owns per-(cookie, faculty) chat history (in memory).
+ *  - Owns per-(cookie, faculty) chat history (in memory only).
  *  - Builds the system prompt + tool list per teacher.
  *  - Streams the OpenRouter response, dispatches tool calls into RubyHighService,
  *    feeds tool results back, and yields events for the SSE consumer.
