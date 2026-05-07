@@ -106,6 +106,42 @@ const VIEWER_SCRIPT_SUFFIX = `
     return { grades, met, total: grades.length };
   }
 
+  // Build the chalkboard's class-grade row — three pills (Homeroom /
+  // Science / Literature) showing the player's letter standing in each
+  // class for the active grade. Rendered into the empty-board state so
+  // the player can see where they stand without opening the School Career
+  // sheet. CLASS_GATE_META and makeClassGradeChip are defined further
+  // down (function declarations are hoisted within the IIFE).
+  function buildBoardClassGrades() {
+    const t = lastTelemetry;
+    if (!t || !t.character || !t.current_grade) return null;
+    const summary = classGradeSummary();
+    const wrap = document.createElement("div");
+    wrap.className = "board-class-grades";
+    const heading = document.createElement("div");
+    heading.className = "board-class-grades-title";
+    heading.textContent = (GRADE_LABELS[t.current_grade] || ("Grade " + t.current_grade)) + " · " + summary.met + "/" + summary.total + " classes passed";
+    wrap.appendChild(heading);
+    const row = document.createElement("div");
+    row.className = "board-class-grades-row";
+    for (const g of summary.grades) {
+      const meta = CLASS_GATE_META.find((m) => m.facultyId === g.facultyId)
+        || { facultyId: g.facultyId, label: g.facultyId, icon: "□" };
+      const p = g.progress || {};
+      const completed = Number(p.completedClasses || 0);
+      const required = Number(p.requiredClasses || 0);
+      const met = required > 0 && completed >= required && letterGradePasses(g.grade);
+      row.appendChild(makeClassGradeChip({
+        label: meta.label,
+        icon: meta.icon,
+        grade: g.grade || "—",
+        met,
+      }));
+    }
+    wrap.appendChild(row);
+    return wrap;
+  }
+
   // ── auth credential (client-owned) ───────────────────────────────────────
   // The OpenRouter API key lives ONLY in localStorage. The OAuth callback
   // tab writes it; same-origin storage events fan it out to other tabs;
@@ -931,7 +967,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
-        els.blackboardEmptyText.textContent = "Requirements complete. Open your School Career card for the graduation ceremony.";
+        els.blackboardEmptyText.textContent = "Requirements complete. Pick a level-up reward to seal the year.";
       } else {
         // Surface the "what you need" hint here too so the empty board
         // is informative instead of "the teacher will be with you in a
@@ -945,6 +981,28 @@ const VIEWER_SCRIPT_SUFFIX = `
             ? "Continue today's class when the teacher writes the next board."
             : "Start today's graded class when the teacher writes the next board.";
         els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
+      }
+      // Below the lead text: a sleeker, on-board status block. Either the
+      // graduation-ceremony picker (when the year's gates are met) or the
+      // class-grade chip row (otherwise) — so the player can act on the
+      // year from the chalkboard itself instead of opening the sheet.
+      let extras = els.blackboardEmpty.querySelector(".blackboard-empty-extras");
+      if (!extras) {
+        extras = document.createElement("div");
+        extras.className = "blackboard-empty-extras";
+        els.blackboardEmpty.appendChild(extras);
+      }
+      extras.innerHTML = "";
+      const t = lastTelemetry;
+      const inLounge = !!(faculty && faculty.id === LOUNGE_ID);
+      if (authed && t && t.character && !inLounge) {
+        if (t.graduation_ready) {
+          const ceremony = buildGraduationCeremony(t.character, t.current_grade);
+          if (ceremony) extras.appendChild(ceremony);
+        } else if (t.current_grade) {
+          const grades = buildBoardClassGrades();
+          if (grades) extras.appendChild(grades);
+        }
       }
       return;
     }
@@ -1829,6 +1887,32 @@ const VIEWER_SCRIPT_SUFFIX = `
     return card;
   }
 
+  // Lifted out of appendProgression so the same chip + metadata are reusable
+  // by the on-board class-grade row that renders when the chalkboard is empty.
+  const CLASS_GATE_META = [
+    { facultyId: "ruby", label: "Homeroom", icon: "⌂" },
+    { facultyId: "sally-science", label: "Science", icon: "⚗" },
+    { facultyId: "professor-edward", label: "Literature", icon: "✎" },
+  ];
+  function makeClassGradeChip(spec) {
+    const grade = spec.grade || "F";
+    const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
+    const chip = document.createElement("span");
+    chip.className = "class-grade-chip" + (met ? " is-met" : "");
+    chip.title = grade === "—"
+      ? spec.label + ": no class grade yet"
+      : spec.label + ": " + grade + (met ? " complete" : " needs C and daily classes");
+    chip.setAttribute("aria-label", chip.title);
+    const icon = document.createElement("span");
+    icon.className = "class-grade-icon";
+    icon.textContent = spec.icon;
+    const letter = document.createElement("span");
+    letter.className = "class-grade-letter";
+    letter.textContent = grade;
+    chip.appendChild(icon);
+    chip.appendChild(letter);
+    return chip;
+  }
   function appendProgression(parent, progression) {
     if (!progression || !Array.isArray(progression.rungs)) return;
     const ROW_GRADE_LABELS = {
@@ -1837,30 +1921,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       "11": "Junior",
       "12": "Senior",
     };
-    const CLASS_GATE_META = [
-      { facultyId: "ruby", label: "Homeroom", icon: "⌂" },
-      { facultyId: "sally-science", label: "Science", icon: "⚗" },
-      { facultyId: "professor-edward", label: "Literature", icon: "✎" },
-    ];
-    const makeGradeChip = (spec) => {
-      const grade = spec.grade || "F";
-      const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
-      const chip = document.createElement("span");
-      chip.className = "class-grade-chip" + (met ? " is-met" : "");
-      chip.title = grade === "—"
-        ? spec.label + ": no class grade yet"
-        : spec.label + ": " + grade + (met ? " complete" : " needs C and daily classes");
-      chip.setAttribute("aria-label", chip.title);
-      const icon = document.createElement("span");
-      icon.className = "class-grade-icon";
-      icon.textContent = spec.icon;
-      const letter = document.createElement("span");
-      letter.className = "class-grade-letter";
-      letter.textContent = grade;
-      chip.appendChild(icon);
-      chip.appendChild(letter);
-      return chip;
-    };
+    const makeGradeChip = makeClassGradeChip;
     const makeGateRing = (spec) => {
       const have = Number(spec.have || 0);
       const need = Number(spec.need || 0);

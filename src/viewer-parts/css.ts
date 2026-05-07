@@ -673,6 +673,39 @@ export const VIEWER_CSS = `
     color: var(--text-soft);
     font-size: 14px;
   }
+  /* Block under the empty-board lead text. Hosts either the on-board
+   * graduation-ceremony picker (3 reward buttons) or the class-grade
+   * chip row, depending on whether the year's gates are met. Centered
+   * with a max-width so the buttons don't sprawl on a wide chalkboard. */
+  .blackboard-empty-extras {
+    margin: 14px auto 0;
+    max-width: 540px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .blackboard-empty-extras:empty { display: none; }
+  .blackboard-empty-extras .graduation-ceremony { width: 100%; }
+  .board-class-grades {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .board-class-grades-title {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .board-class-grades-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
   .board-frame-host {
     padding: 0 calc(var(--safe-right) + 10px) 0 calc(var(--safe-left) + 10px);
     position: relative;
