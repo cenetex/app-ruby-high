@@ -355,6 +355,7 @@ export interface RoomBoardSnapshot {
 // the card on `recordGrades` and `completeGraduation`; the schema lives
 // here so older state can hydrate safely.
 export type MashAxis = "crush" | "job" | "lives" | "pet" | "money" | "lucky";
+export type MashTickReason = "best-responder" | "applauder" | "rub" | "pep-talk";
 
 export interface MashCell {
   /** Clamped to [-3, +3]. */
@@ -386,6 +387,40 @@ export interface MashCard {
   cells: Record<string, MashCell>;
   /** Resolved axes, keyed by axis. Each axis is set once per character. */
   resolved: Partial<Record<MashAxis, MashResolution>>;
+}
+
+// ── Durable School Events ─────────────────────────────────────────────────
+//
+// Chat history is dialogue. School events are the engine-owned facts that
+// actually changed in the school world. Keep these compact because they are
+// persisted on the session and echoed to the viewer/model as recent context.
+export type SchoolEvent =
+  | RelationshipTickSchoolEvent
+  | MashAxisResolvedSchoolEvent;
+
+interface BaseSchoolEvent {
+  id: string;
+  at: number;
+  faculty?: string;
+  grade?: Grade | null;
+}
+
+export interface RelationshipTickSchoolEvent extends BaseSchoolEvent {
+  kind: "relationship.ticked";
+  questionId: string;
+  studentId: string;
+  delta: -1 | 0 | 1;
+  reason: MashTickReason;
+  affinity: number;
+  circled: boolean;
+  scratched: boolean;
+}
+
+export interface MashAxisResolvedSchoolEvent extends BaseSchoolEvent {
+  kind: "mash.axis-resolved";
+  axis: MashAxis;
+  studentId: string;
+  value: string;
 }
 
 export interface QuizState {
@@ -436,6 +471,10 @@ export interface QuizState {
   /** The player's character sheet. Created once (on first run) and
    *  immutable thereafter (graduation flow archives it to a yearbook). */
   character: PlayerCharacter | null;
+  /** Engine-owned facts that changed in the school world. This is the durable
+   *  counterpart to volatile chat room events; AI can react to these but must
+   *  not invent or mutate them. */
+  schoolEvents: SchoolEvent[];
   /** Per-grade NPC student rosters. Keyed by grade so progress persists when
    *  the player switches grades and comes back. */
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;

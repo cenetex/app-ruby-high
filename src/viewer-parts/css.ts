@@ -1468,6 +1468,21 @@ export const VIEWER_CSS = `
     color: #ffe08a;
     font-family: "SF Mono", "Menlo", monospace;
   }
+  .mash-tick-chip {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    font-family: "SF Mono", "Menlo", monospace;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-soft);
+  }
+  .mash-tick-chip.up { background: rgba(82,198,115,0.2); color: #b6f5b9; }
+  .mash-tick-chip.down { background: rgba(210,42,42,0.2); color: #ffb1b1; }
+  .mash-tick-chip.steady { background: rgba(58,163,224,0.18); color: #b8e4ff; }
 
   /* ── unified CCG-style character card ─────────────────────────────────── */
   .ccg-card {
@@ -3507,6 +3522,16 @@ export const VIEWER_CSS = `
   .mash-tile.is-scratched {
     text-decoration: line-through;
     opacity: 0.35;
+  }
+  .mash-recent {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text-soft);
   }
   .mash-resolved {
     list-style: none;

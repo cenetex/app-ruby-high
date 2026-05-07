@@ -12,7 +12,7 @@
  * `applyAffinityTick` after every essay grading, and `resolveAxisForGrade`
  * after every grade-up.
  */
-import type { Grade, MashAxis, MashCard, MashCell, MashResolution } from "../types.js";
+import type { Grade, MashAxis, MashCard, MashCell, MashResolution, MashTickReason } from "../types.js";
 
 /** The six fortune axes. Six classmates, six axes — one resolves per
  *  grade-up, plus a couple deterministic ones at Senior. */
@@ -199,7 +199,7 @@ export interface AffinityInputs {
 export interface AffinityTick {
   studentId: string;
   delta: -1 | 0 | 1;
-  reason: "best-responder" | "applauder" | "rub" | "pep-talk";
+  reason: MashTickReason;
 }
 
 /** Compute up to two ticks for one essay. Pure: returns the deltas to
