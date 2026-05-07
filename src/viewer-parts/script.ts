@@ -118,6 +118,27 @@ const VIEWER_SCRIPT_SUFFIX = `
       .map((f) => f.id);
     return ids.length > 0 ? ids : TEACHING_FACULTY_IDS;
   }
+  // Whether the scheduler has a card the next-question button could post.
+  // The button hides when this returns false so the player can't trigger
+  // the "No scheduled question is due" error path. AI mode keeps the
+  // lesson moving via auto-fired manual turns; offline mode shows the
+  // empty-board hint instead.
+  function nextQuestionAvailable() {
+    if (!lastTelemetry) return true;
+    const progress = lastTelemetry.active_course_progress;
+    if (!progress) return true;
+    return Number(progress.ready || 0) > 0;
+  }
+  // The next-button has non-pick states that should always show even
+  // when the bank is empty: graduation handoff and the "View grade"
+  // shortcut after a class completion. Group them in one helper so
+  // the hide-on-empty-bank guard doesn't accidentally hide them.
+  function nextButtonStateBypassesPick() {
+    if (!lastTelemetry) return false;
+    if (lastTelemetry.graduation_ready) return true;
+    if (currentRevealCompletedClass(lastTelemetry)) return true;
+    return false;
+  }
   function classGradeSummary() {
     const grades = teachingFacultyIdsForSummary().map((fid) => ({
       facultyId: fid,
@@ -349,6 +370,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   // don't retry within the same context until something changes.
   let autoPickInFlight = false;
   let autoPickLastKey = null;
+  // One-shot hint when the bank runs dry and AI is off — saves the player
+  // from staring at an empty chalkboard with no signal that the system is
+  // working as intended. Reset on context change.
+  let emptyBoardHintShown = false;
   // Reset the guards above whenever the player walks into a new context
   // (faculty change, lounge entry, grade selection). Without this, the
   // dedupe key from a prior visit silently blocks channel-enter on revisit:
@@ -358,6 +383,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastRevealId = null;
     lastAnswerGradedTriggerId = null;
     autoPickLastKey = null;
+    emptyBoardHintShown = false;
   }
 
   // True when the player is sitting in a teaching room with an empty
@@ -385,6 +411,22 @@ const VIEWER_SCRIPT_SUFFIX = `
       || "";
     const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey;
     if (key === autoPickLastKey) return;
+    // Bank state: the deterministic scheduler can only post when ready > 0.
+    // When ready === 0 the auto-pick would throw "No scheduled question is due"
+    // and surface as an error chip. Route around that error:
+    //   - AI on  → fire a manual chat turn so the teacher can pose_question.
+    //   - AI off → sit on the empty board and surface the offline hint once.
+    const ready = (t.active_course_progress && Number(t.active_course_progress.ready)) || 0;
+    if (ready <= 0) {
+      autoPickLastKey = key;
+      if (aiEnabled) {
+        runAgentTurn("manual", { grade: t.current_grade }, { force: true });
+      } else if (!emptyBoardHintShown) {
+        appendSystem("No scheduled question is ready. Connect AI to continue with custom questions, or come back tomorrow.");
+        emptyBoardHintShown = true;
+      }
+      return;
+    }
     autoPickLastKey = key;
     autoPickInFlight = true;
     try { await command({ type: "pick" }); }
@@ -1351,6 +1393,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.nextBtn.disabled = false;
     els.nextBtn.textContent = nextQuestionButtonLabel();
     if (isNewQuestion) els.nextBtn.style.display = "none";
+    // Hide the next-question / Practice button when the scheduler has no
+    // cards to post AND we're not at the graduation handoff. Without this
+    // the button appears but a click would surface "No scheduled question
+    // is due..." as an error chip. The graduation_ready button stays
+    // visible because that's a ceremony handoff, not a scheduler pick.
+    if (!nextQuestionAvailable() && !nextButtonStateBypassesPick()) {
+      els.nextBtn.style.display = "none";
+    }
     els.blackboardFoot.hidden = !authed;
 
     // Opinion-mode bookkeeping resets on new question.
@@ -1388,8 +1438,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.boardReveal.appendChild(expl);
     }
     els.nextBtn.textContent = nextQuestionButtonLabel();
-    els.nextBtn.style.display = "";
-    els.nextBtn.focus();
+    if (nextQuestionAvailable() || nextButtonStateBypassesPick()) {
+      els.nextBtn.style.display = "";
+      els.nextBtn.focus();
+    }
   }
 
   function applyRevealToBlackboard(reveal) {
@@ -1466,8 +1518,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       renderMarkdownInto(expl, reveal.explanation);
       els.boardReveal.appendChild(expl);
     }
-    els.nextBtn.style.display = "";
-    els.nextBtn.focus();
+    if (nextQuestionAvailable() || nextButtonStateBypassesPick()) {
+      els.nextBtn.style.display = "";
+      els.nextBtn.focus();
+    }
   }
 
   function maybeRunAnswerGraded(t, delayMs) {
