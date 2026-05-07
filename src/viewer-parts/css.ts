@@ -656,6 +656,9 @@ export const VIEWER_CSS = `
   .blackboard-panel[data-mode="between-rounds"] .blackboard-foot {
     display: none !important;
   }
+  .blackboard-panel[data-mode="between-rounds"][data-question-type="class-report"] .blackboard-foot {
+    display: flex !important;
+  }
   .blackboard-panel[data-mode="in-lounge"] .answers-host,
   .blackboard-panel[data-mode="in-lounge"] .typed-answer-host,
   .blackboard-panel[data-mode="in-lounge"] .advantage-bar,
@@ -702,10 +705,8 @@ export const VIEWER_CSS = `
     color: var(--text-soft);
     font-size: 14px;
   }
-  /* Block under the empty-board lead text. Hosts either the on-board
-   * graduation-ceremony picker (3 reward buttons) or the class-grade
-   * chip row, depending on whether the year's gates are met. Centered
-   * with a max-width so the buttons don't sprawl on a wide chalkboard. */
+  /* Block under the empty-board lead text. Hosts the class-grade chip row;
+   * graduation now renders inside the chalkboard frame itself. */
   .blackboard-empty-extras {
     margin: 14px auto 0;
     max-width: 540px;
@@ -715,7 +716,6 @@ export const VIEWER_CSS = `
     gap: 12px;
   }
   .blackboard-empty-extras:empty { display: none; }
-  .blackboard-empty-extras .graduation-ceremony { width: 100%; }
   .board-class-grades {
     display: flex;
     flex-direction: column;
@@ -734,6 +734,33 @@ export const VIEWER_CSS = `
     flex-wrap: wrap;
     gap: 8px;
     justify-content: center;
+  }
+  .board-class-grades .class-grade-chip {
+    min-width: 48px;
+    height: 30px;
+    padding: 0 9px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    color: var(--text-soft);
+    font: 900 12px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .board-class-grades .class-grade-chip.is-met {
+    background: rgba(76,181,85,0.20);
+    border-color: rgba(76,181,85,0.45);
+    color: #b9f2bd;
+  }
+  .board-class-grades .class-grade-icon {
+    font-size: 13px;
+    line-height: 1;
+  }
+  .board-class-grades .class-grade-letter {
+    font-size: 12px;
+    letter-spacing: 0;
   }
   .board-frame-host {
     padding: 0 calc(var(--safe-right) + 10px) 0 calc(var(--safe-left) + 10px);
@@ -2297,6 +2324,189 @@ export const VIEWER_CSS = `
   .graduation-choice:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+  .blackboard-panel[data-question-type="graduation"] .board {
+    min-height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .blackboard-panel[data-question-type="graduation"] .board .prompt {
+    width: 100%;
+  }
+  .board .graduation-ceremony.is-on-board {
+    margin: 0 auto;
+    max-width: 680px;
+    padding: 18px;
+    text-align: center;
+    border-color: rgba(255,255,255,0.24);
+    background: rgba(9, 38, 23, 0.28);
+    color: var(--ink);
+    box-shadow: inset 0 0 24px rgba(0,0,0,0.12);
+  }
+  .board .graduation-ceremony.is-on-board .graduation-title {
+    color: var(--ink);
+    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
+    font-size: 30px;
+    line-height: 1.08;
+  }
+  .board .graduation-ceremony.is-on-board .graduation-note {
+    color: var(--ink-soft);
+    font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
+    font-size: 18px;
+    line-height: 1.25;
+    margin: 8px auto 0;
+    max-width: 560px;
+  }
+  .board .graduation-ceremony.is-on-board .graduation-status {
+    color: #ffe08c;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-size: 11px;
+    margin-top: 8px;
+  }
+  .board .graduation-ceremony.is-on-board .graduation-choice-row {
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .board .graduation-ceremony.is-on-board .graduation-choice {
+    border-radius: 8px;
+    min-height: 46px;
+    padding: 8px 11px;
+    border-color: rgba(255,255,255,0.24);
+    background: rgba(255,255,255,0.10);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    align-items: center;
+    text-align: center;
+  }
+  .board .graduation-ceremony.is-on-board .graduation-choice .main {
+    font-size: 12px;
+  }
+  .board .graduation-ceremony.is-on-board .graduation-choice .sub {
+    color: var(--ink-soft);
+    font-size: 10px;
+  }
+  .blackboard-panel[data-question-type="class-report"] .board {
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .blackboard-panel[data-question-type="class-report"] .board .prompt {
+    width: 100%;
+  }
+  .board .class-report-card {
+    margin: 0 auto;
+    width: min(100%, 700px);
+    display: grid;
+    gap: 12px;
+    padding: 18px;
+    border: 2px solid rgba(255,255,255,0.24);
+    border-radius: 8px;
+    background: rgba(5, 31, 20, 0.30);
+    color: var(--ink);
+    box-shadow: inset 0 0 22px rgba(0,0,0,0.12);
+  }
+  .board .class-report-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .board .class-report-heading {
+    min-width: 0;
+  }
+  .board .class-report-title {
+    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
+    font-size: 30px;
+    line-height: 1.05;
+  }
+  .board .class-report-subtitle,
+  .board .class-report-note {
+    color: var(--ink-soft);
+    font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
+    font-size: 18px;
+    line-height: 1.25;
+  }
+  .board .class-report-subtitle {
+    margin-top: 4px;
+  }
+  .board .class-report-letter {
+    width: 76px;
+    height: 76px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border: 3px solid rgba(255,255,255,0.34);
+    background: rgba(255,255,255,0.12);
+    color: #fff0a6;
+    font: 900 34px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.22);
+  }
+  .board .class-report-card.needs-work .class-report-letter {
+    color: #ffd2d2;
+    border-color: rgba(255,177,177,0.40);
+  }
+  .board .class-report-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .board .class-report-metric {
+    min-width: 0;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.08);
+    padding: 9px 10px;
+    display: grid;
+    gap: 2px;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .board .class-report-metric .k,
+  .board .class-report-metric .d {
+    color: var(--ink-soft);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .board .class-report-metric .v {
+    color: var(--ink);
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1.05;
+  }
+  .board .board-class-grades.is-report {
+    align-items: flex-start;
+    margin-top: 2px;
+  }
+  .board .board-class-grades.is-report .board-class-grades-title {
+    color: var(--ink-soft);
+  }
+  @media (max-width: 620px) {
+    .board .class-report-card {
+      padding: 14px;
+    }
+    .board .class-report-title {
+      font-size: 25px;
+    }
+    .board .class-report-subtitle,
+    .board .class-report-note {
+      font-size: 16px;
+    }
+    .board .class-report-letter {
+      width: 62px;
+      height: 62px;
+      font-size: 28px;
+    }
+    .board .class-report-metrics {
+      grid-template-columns: 1fr;
+    }
   }
 
     /* ── card deck (Character + School Career + Paper Cards) ────────────── */

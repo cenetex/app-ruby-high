@@ -101,14 +101,25 @@ const VIEWER_SCRIPT_SUFFIX = `
     return done + "/" + required + " classes · " + grade;
   }
   function nextQuestionButtonLabel() {
-    if (lastTelemetry && lastTelemetry.graduation_ready) return "Graduation ceremony →";
+    if (currentRevealCompletedClass(lastTelemetry) && lastTelemetry && lastTelemetry.graduation_ready) return "View ceremony →";
+    if (currentRevealCompletedClass(lastTelemetry)) return "View grade →";
+    if (lastTelemetry && lastTelemetry.graduation_ready) return "Ceremony on board";
     const progress = lastTelemetry && lastTelemetry.active_course_progress;
     if (progress && progress.today && progress.today.status === "complete") return "Practice →";
     if (progress && progress.today && progress.today.status === "active") return "Continue class →";
     return "Start class →";
   }
+  function teachingFacultyIdsForSummary() {
+    const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
+    const ids = roster
+      .filter((f) => f && f.id !== LOUNGE_ID && (
+        f.courseGrade || f.todayClass || f.completedClasses !== undefined || f.requiredClasses !== undefined
+      ))
+      .map((f) => f.id);
+    return ids.length > 0 ? ids : TEACHING_FACULTY_IDS;
+  }
   function classGradeSummary() {
-    const grades = TEACHING_FACULTY_IDS.map((fid) => ({
+    const grades = teachingFacultyIdsForSummary().map((fid) => ({
       facultyId: fid,
       grade: classGradeForFaculty(fid),
       progress: courseProgressForFaculty(fid),
@@ -120,6 +131,22 @@ const VIEWER_SCRIPT_SUFFIX = `
       return required > 0 && completed >= required && letterGradePasses(g.grade);
     }).length;
     return { grades, met, total: grades.length };
+  }
+  function activeCourseIsComplete(t) {
+    const today = t && t.active_course_progress && t.active_course_progress.today;
+    return !!(today && today.status === "complete");
+  }
+  function currentRevealMatches(t) {
+    return !!(t && t.current && t.lastReveal && t.lastReveal.questionId === t.current.id);
+  }
+  function currentRevealCompletedClass(t) {
+    if (!currentRevealMatches(t)) return false;
+    const cp = t.lastReveal && t.lastReveal.classProgress;
+    return !!(cp && cp.mode === "class" && cp.completed);
+  }
+  function formatClassScore(score) {
+    const n = Number(score);
+    return Number.isFinite(n) ? Math.round(n) + "%" : "—";
   }
 
   // Build the chalkboard's class-grade row — three pills (Homeroom /
@@ -142,7 +169,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     row.className = "board-class-grades-row";
     for (const g of summary.grades) {
       const meta = CLASS_GATE_META.find((m) => m.facultyId === g.facultyId)
-        || { facultyId: g.facultyId, label: g.facultyId, icon: "□" };
+        || { facultyId: g.facultyId, label: (g.progress && g.progress.displayName) || g.facultyId, icon: "□" };
       const p = g.progress || {};
       const completed = Number(p.completedClasses || 0);
       const required = Number(p.requiredClasses || 0);
@@ -776,6 +803,160 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardPanel.dataset.opinion = String(!!isOpinion);
     els.blackboardPanel.dataset.typedAnswer = String(!!isTypedAnswer);
   }
+  function showBlackboardCeremony(faculty, currentGrade) {
+    const t = lastTelemetry;
+    const ceremony = t && t.character ? buildGraduationCeremony(t.character, currentGrade, { surface: "board" }) : null;
+    if (!ceremony) {
+      showBlackboardEmpty(true);
+      return;
+    }
+    els.blackboardPanel.classList.remove("is-empty", "is-long-prompt", "is-essay-prompt");
+    els.blackboardEmpty.hidden = true;
+    els.blackboardMeta.hidden = false;
+    els.boardFrameHost.hidden = false;
+    els.answersHost.hidden = true;
+    els.typedAnswerHost.hidden = true;
+    els.blackboardFoot.hidden = true;
+    els.blackboardPanel.dataset.opinion = "false";
+    els.blackboardPanel.dataset.typedAnswer = "false";
+    els.blackboardPanel.dataset.questionType = "graduation";
+    activeQuestionId = null;
+
+    els.blackboardMeta.replaceChildren();
+    if (faculty) {
+      const f = document.createElement("span");
+      f.className = "pill faculty";
+      f.textContent = faculty.displayName || "Teacher";
+      els.blackboardMeta.appendChild(f);
+    }
+    const g = document.createElement("span");
+    g.className = "pill difficulty hard";
+    g.textContent = (currentGrade && GRADE_LABELS[currentGrade]) || "Ceremony";
+    els.blackboardMeta.appendChild(g);
+    const mode = document.createElement("span");
+    mode.className = "pill subject";
+    mode.textContent = "graduation";
+    els.blackboardMeta.appendChild(mode);
+
+    els.boardPrompt.replaceChildren(ceremony);
+    els.boardReveal.hidden = true;
+    els.boardReveal.replaceChildren();
+    // Keep the reward choices clear of the corner portrait; the teacher can
+    // react in chat, but the ceremony itself owns the board.
+    els.teacherFigure.hidden = true;
+  }
+  function buildClassReportCard(faculty, currentGrade) {
+    const progress = lastTelemetry && lastTelemetry.active_course_progress;
+    const today = progress && progress.today;
+    if (!progress || !today || today.status !== "complete") return null;
+    const gradeLabel = currentGrade ? (GRADE_LABELS[currentGrade] || ("Grade " + currentGrade)) : "Ruby High";
+    const teacherName = (faculty && faculty.displayName) || progress.displayName || "Class";
+    const letter = today.letterGrade || progress.grade || "—";
+    const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
+    const completed = Number(progress.completedClasses || 0);
+    const required = Number(progress.requiredClasses || 0);
+    const wrap = document.createElement("section");
+    wrap.className = "class-report-card" + (passedToday ? " is-passed" : " needs-work");
+
+    const top = document.createElement("div");
+    top.className = "class-report-top";
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "class-report-heading";
+    const title = document.createElement("div");
+    title.className = "class-report-title";
+    title.textContent = "Class complete";
+    const subtitle = document.createElement("div");
+    subtitle.className = "class-report-subtitle";
+    subtitle.textContent = teacherName + " · " + gradeLabel;
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(subtitle);
+    const badge = document.createElement("div");
+    badge.className = "class-report-letter";
+    badge.textContent = letter;
+    top.appendChild(titleWrap);
+    top.appendChild(badge);
+    wrap.appendChild(top);
+
+    const note = document.createElement("div");
+    note.className = "class-report-note";
+    note.textContent = passedToday
+      ? "Credit earned. Practice is open when you want another board."
+      : "Class logged. C or better is needed for graduation credit, so practice is open.";
+    wrap.appendChild(note);
+
+    const metrics = document.createElement("div");
+    metrics.className = "class-report-metrics";
+    const addMetric = (label, value, detail) => {
+      const item = document.createElement("div");
+      item.className = "class-report-metric";
+      const k = document.createElement("span");
+      k.className = "k";
+      k.textContent = label;
+      const v = document.createElement("span");
+      v.className = "v";
+      v.textContent = value;
+      const d = document.createElement("span");
+      d.className = "d";
+      d.textContent = detail;
+      item.appendChild(k);
+      item.appendChild(v);
+      item.appendChild(d);
+      metrics.appendChild(item);
+    };
+    addMetric("today", Number(today.questionCount || 0) + "/" + Number(today.totalQuestions || 3), "questions");
+    addMetric("score", formatClassScore(today.score), "average");
+    addMetric("course", progress.grade || "—", completed + "/" + required + " classes");
+    wrap.appendChild(metrics);
+
+    const yearGrades = buildBoardClassGrades();
+    if (yearGrades) {
+      yearGrades.classList.add("is-report");
+      wrap.appendChild(yearGrades);
+    }
+    return wrap;
+  }
+  function showBlackboardClassReport(faculty, currentGrade) {
+    const report = buildClassReportCard(faculty, currentGrade);
+    if (!report) {
+      showBlackboardEmpty(true);
+      return;
+    }
+    els.blackboardPanel.classList.remove("is-empty", "is-long-prompt", "is-essay-prompt");
+    els.blackboardEmpty.hidden = true;
+    els.blackboardMeta.hidden = false;
+    els.boardFrameHost.hidden = false;
+    els.answersHost.hidden = true;
+    els.typedAnswerHost.hidden = true;
+    els.blackboardFoot.hidden = !authed;
+    els.blackboardPanel.dataset.opinion = "false";
+    els.blackboardPanel.dataset.typedAnswer = "false";
+    els.blackboardPanel.dataset.questionType = "class-report";
+    activeQuestionId = null;
+
+    els.blackboardMeta.replaceChildren();
+    if (faculty) {
+      const f = document.createElement("span");
+      f.className = "pill faculty";
+      f.textContent = faculty.displayName || "Teacher";
+      els.blackboardMeta.appendChild(f);
+    }
+    const g = document.createElement("span");
+    g.className = "pill difficulty medium";
+    g.textContent = (currentGrade && GRADE_LABELS[currentGrade]) || "Class";
+    els.blackboardMeta.appendChild(g);
+    const mode = document.createElement("span");
+    mode.className = "pill class-mode";
+    mode.textContent = "REPORT CARD";
+    els.blackboardMeta.appendChild(mode);
+
+    els.boardPrompt.replaceChildren(report);
+    els.boardReveal.hidden = true;
+    els.boardReveal.replaceChildren();
+    els.nextBtn.disabled = false;
+    els.nextBtn.textContent = nextQuestionButtonLabel();
+    els.nextBtn.style.display = "";
+    els.teacherFigure.hidden = true;
+  }
 
   // ── top-bar arc indicator (live progress through the 4-year arc) ────────
   // Shape: "Junior · streak 2/3 · 2/3 classes". Hidden until a character
@@ -1015,6 +1196,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     renderTeacherFigure(faculty);
     els.blackboardPanel.dataset.faculty = faculty ? faculty.id : "";
     if (!question) {
+      if (authed && lastTelemetry && lastTelemetry.character && lastTelemetry.graduation_ready) {
+        showBlackboardCeremony(faculty, currentGrade);
+        return;
+      }
+      if (authed && lastTelemetry && lastTelemetry.character && activeCourseIsComplete(lastTelemetry)) {
+        showBlackboardClassReport(faculty, currentGrade);
+        return;
+      }
       showBlackboardEmpty(true);
       els.blackboardPanel.classList.remove("is-long-prompt", "is-essay-prompt");
       activeQuestionId = null;
@@ -1042,10 +1231,8 @@ const VIEWER_SCRIPT_SUFFIX = `
             : "Start today's graded class when the teacher writes the next board.";
         els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
       }
-      // Below the lead text: a sleeker, on-board status block. Either the
-      // graduation-ceremony picker (when the year's gates are met) or the
-      // class-grade chip row (otherwise) — so the player can act on the
-      // year from the chalkboard itself instead of opening the sheet.
+      // Below the lead text: a sleeker on-board class-grade chip row, so the
+      // player can read class standing without opening the sheet.
       let extras = els.blackboardEmpty.querySelector(".blackboard-empty-extras");
       if (!extras) {
         extras = document.createElement("div");
@@ -1056,10 +1243,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const t = lastTelemetry;
       const inLounge = !!(faculty && faculty.id === LOUNGE_ID);
       if (authed && t && t.character && !inLounge) {
-        if (t.graduation_ready) {
-          const ceremony = buildGraduationCeremony(t.character, t.current_grade);
-          if (ceremony) extras.appendChild(ceremony);
-        } else if (t.current_grade) {
+        if (t.current_grade) {
           const grades = buildBoardClassGrades();
           if (grades) extras.appendChild(grades);
         }
@@ -1611,7 +1795,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.nextBtn.disabled = true;
     try {
       if (lastTelemetry && lastTelemetry.graduation_ready) {
-        openSheet();
+        if (currentRevealMatches(lastTelemetry)) {
+          await command({ type: "clear" });
+          lockedFor = null;
+          return;
+        }
+        const firstChoice = els.blackboardPanel.querySelector(".graduation-choice");
+        if (firstChoice && typeof firstChoice.focus === "function") firstChoice.focus();
+        return;
+      }
+      if (currentRevealCompletedClass(lastTelemetry)) {
+        await command({ type: "clear" });
+        lockedFor = null;
         return;
       }
       await command({ type: "pick" });
@@ -2662,7 +2857,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (graduatedFor(c)) return "You graduated. Keep playing if you want; the arc is done.";
     const t = lastTelemetry || {};
     if (t.graduation_ready || c.pendingGraduation) {
-      return "Requirements complete — attend the ceremony and choose your level-up reward.";
+      return "Requirements complete — the graduation ceremony is on the blackboard.";
     }
     const grade = String(t.current_grade ?? "9");
     const streakReq = STREAK_REQUIRED[grade] || 1;
@@ -2734,13 +2929,14 @@ const VIEWER_SCRIPT_SUFFIX = `
   function fmtRewardStat(stat, value) {
     return stat.toUpperCase() + " " + fmtStat(value) + " → " + fmtStat(Math.min(3, value + 1));
   }
-  function buildGraduationCeremony(c, grade) {
+  function buildGraduationCeremony(c, grade, opts) {
       const ready = (lastTelemetry && lastTelemetry.graduation_ready) || c.pendingGraduation;
       if (!ready) return null;
+      const onBoard = !!(opts && opts.surface === "board");
       const next = nextGradeAfterClient(grade);
       const targetLabel = next ? (GRADE_LABELS[next] || ("Grade " + next)) : "graduate";
       const wrap = document.createElement("div");
-      wrap.className = "graduation-ceremony";
+      wrap.className = "graduation-ceremony" + (onBoard ? " is-on-board" : "");
 
       const title = document.createElement("div");
       title.className = "graduation-title";
@@ -2749,7 +2945,11 @@ const VIEWER_SCRIPT_SUFFIX = `
 
       const note = document.createElement("div");
       note.className = "graduation-note";
-      note.textContent = "Three rewards drawn from the wider set — pick one to seal the yearbook.";
+      note.textContent = onBoard
+        ? next
+          ? "Pick one reward to seal the yearbook. The next school year opens after the ceremony."
+          : "Pick one reward to seal the diploma and close the four-year arc."
+        : "Three rewards drawn from the wider set — pick one to seal the yearbook.";
       wrap.appendChild(note);
 
       const status = document.createElement("div");
@@ -2826,6 +3026,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
 
       const seed = (c.pendingGraduation && c.pendingGraduation.readyAt)
+        || (ready && ready.readyAt)
         || hashCeremonySeed((c.name || "") + ":" + grade);
       const picked = seededShuffle(pool, seed).slice(0, 3);
       picked.forEach(({ label, detail, reward }) => addChoice(label, detail, reward));
@@ -3116,16 +3317,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       }));
     }
 
-      const ceremony = !graduated ? buildGraduationCeremony(c, grade) : null;
-      if (ceremony) {
-        body.appendChild(ceremony);
-      }
-
-      const hint = buildNextStepHint(c);
-      if (hint && !ceremony) {
-        const ns = document.createElement("div");
-        ns.className = "ccg-next-step";
-        ns.textContent = hint;
+    const hint = buildNextStepHint(c);
+    if (hint) {
+      const ns = document.createElement("div");
+      ns.className = "ccg-next-step";
+      ns.textContent = hint;
       body.appendChild(ns);
     }
 

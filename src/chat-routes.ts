@@ -153,6 +153,10 @@ function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; 
   return `The Ruby High scheduler owns the blackboard while ${classLine} and ${readyLine}. Do not call tools or post/replace/clear questions.`;
 }
 
+function classReportOwnsBoard(bank: { todayClass?: { status?: string } }): boolean {
+  return bank.todayClass?.status === "complete";
+}
+
 type AnswerGradedContext = {
   grade?: string;
   questionId?: string | null;
@@ -1431,9 +1435,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // appended to history and then re-read every subsequent turn as if it
     // were a fresh instruction.
     const bank = ruby.questionBankStatus(sessionId, faculty);
-    const schedulerControlsBoard = schedulerOwnsBoard(bank);
+    const classReportControlsBoard = classReportOwnsBoard(bank);
+    const schedulerControlsBoard = !classReportControlsBoard && schedulerOwnsBoard(bank);
     let directive = "";
-    let disableToolsForTurn = schedulerControlsBoard;
+    let disableToolsForTurn = schedulerControlsBoard || classReportControlsBoard;
     let extraSystemContext: string | undefined;
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
@@ -1445,7 +1450,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           text: `${playerName} just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}.`,
         },
       );
-      directive = schedulerControlsBoard
+      directive = classReportControlsBoard
+        ? `Greet ${playerName} in ONE short sentence and acknowledge that today's class report is on the blackboard${bank.todayClass?.letterGrade ? ` with a ${bank.todayClass.letterGrade}` : ""}. Do not call tools or put another question on the board.`
+        : schedulerControlsBoard
         ? `Greet ${playerName} in ONE short sentence. Do not mention UI controls. ${schedulerBoundaryInstruction(bank)}`
         : `Greet ${playerName} in ONE short sentence. Do not mention a "Next question" button or tell the player to press a UI control. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
     } else if (trigger === "answer-graded") {
@@ -1477,6 +1484,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       } else if (graduationReady(state)) {
         disableToolsForTurn = true;
         directive = `${playerName} has completed the year's requirements and is ready for the graduation ceremony. Congratulate them in one or two short sentences and remind them to choose a ceremony reward on their School Career card. Do not call tools or put another question on the board.`;
+      } else if (classReportControlsBoard) {
+        disableToolsForTurn = true;
+        const classGrade = bank.todayClass?.letterGrade ? ` The class report shows ${bank.todayClass.letterGrade}.` : "";
+        directive = `React in ONE short sentence to the round that just resolved: ${resolved.pickedLine}.${classGrade} The class report is on the blackboard now; do not call tools or put another question on the board.`;
       } else {
         const pickedLine = resolved.pickedLine;
         // The scheduler may have already auto-posted the next question by
@@ -1489,7 +1500,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "manual") {
-      directive = schedulerControlsBoard
+      directive = classReportControlsBoard
+        ? `The student is talking while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
+        : schedulerControlsBoard
         ? `The student is asking you to take a turn. Follow up on the last exchange, explain the current or recent board if useful, or chat about the class. ${schedulerBoundaryInstruction(bank)}`
         : `The student is asking you to take a turn. Either follow up on the last exchange, or put a fresh question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
     }
