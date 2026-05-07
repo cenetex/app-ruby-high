@@ -163,6 +163,7 @@ type AnswerGradedContext = {
   options?: Record<string, string> | null;
   picked?: string | null;
   correct?: string | null;
+  forfeit?: boolean;
   pickedAnswer?: string | null;
   correctAnswer?: string | null;
   answerText?: string | null;
@@ -227,25 +228,30 @@ function buildResolvedAnswerBriefing(args: {
   const difficulty = cleanText(c?.difficulty) ?? q?.difficulty ?? reveal?.questionDifficulty;
   const picked = cleanText(c?.picked)?.toUpperCase() ?? reveal?.picked;
   const correct = cleanText(c?.correct)?.toUpperCase() ?? reveal?.correct ?? q?.correct ?? "?";
+  const forfeit = c?.forfeit === true || reveal?.forfeit === true;
   const wasCorrect = typeof c?.wasCorrect === "boolean"
     ? c.wasCorrect
     : (typeof reveal?.wasCorrect === "boolean" ? reveal.wasCorrect : picked === correct);
   const answerText = cleanText(c?.answerText) ?? reveal?.answerText;
   const expectedAnswer = cleanText(c?.expectedAnswer) ?? reveal?.expectedAnswer ?? q?.expectedAnswer;
-  const pickedAnswer = cleanText(c?.pickedAnswer) ?? answerText ?? choiceAnswer(options, picked);
+  const pickedAnswer = forfeit ? undefined : cleanText(c?.pickedAnswer) ?? answerText ?? choiceAnswer(options, picked);
   const correctAnswer = cleanText(c?.correctAnswer) ?? expectedAnswer ?? choiceAnswer(options, correct);
   const explanation = cleanText(c?.explanation) ?? reveal?.explanation ?? q?.explanation;
   const judgeScore = Number(c?.answerJudge?.score ?? reveal?.answerJudge?.score);
   const judgeMode = cleanText(c?.answerJudge?.mode) ?? reveal?.answerJudge?.mode;
   const resultText = wasCorrect ? "correct" : "wrong";
-  const playerDisplay = pickedAnswer ?? picked ?? "an answer";
+  const playerDisplay = forfeit ? "no answer before time expired" : pickedAnswer ?? picked ?? "an answer";
   const correctDisplay = correctAnswer ?? correct ?? "?";
-  const pickedLine = wasCorrect
+  const pickedLine = forfeit
+    ? `Time expired before ${playerName} answered; the correct answer was ${correctDisplay}.`
+    : wasCorrect
     ? `${playerName} answered ${playerDisplay}; that was correct.`
     : `${playerName} answered ${playerDisplay}; the correct answer was ${correctDisplay}.`;
   const eventParts = [
     prompt ? `Round resolved for "${clipped(prompt, 180)}".` : "Round resolved.",
-    `${playerName} answered ${playerDisplay} — ${resultText}.`,
+    forfeit
+      ? `${playerName} did not answer before time expired.`
+      : `${playerName} answered ${playerDisplay} — ${resultText}.`,
     correctDisplay ? `Correct answer: ${correctDisplay}.` : "",
   ].filter(Boolean);
   const contextLines = [
@@ -263,9 +269,9 @@ function buildResolvedAnswerBriefing(args: {
       if (options[key]) contextLines.push(`  ${key}) ${options[key]}`);
     }
   }
-  contextLines.push(`Player answer: ${playerDisplay}`);
+  contextLines.push(forfeit ? "Player answer: no answer (timeout)" : `Player answer: ${playerDisplay}`);
   contextLines.push(`Correct answer: ${correctDisplay}`);
-  contextLines.push(`Result: ${resultText}`);
+  contextLines.push(`Result: ${forfeit ? "timeout" : resultText}`);
   if (Number.isFinite(judgeScore)) {
     contextLines.push(`Typed-answer judge: ${Math.round(judgeScore * 100)}%${judgeMode ? ` (${judgeMode})` : ""}`);
   }
@@ -1967,6 +1973,7 @@ export function noteGradedAnswer(args: {
     context: {
       picked: args.picked,
       correct: args.correct,
+      forfeit: false,
       wasCorrect: args.wasCorrect,
     },
   });

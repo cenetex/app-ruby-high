@@ -1433,7 +1433,7 @@ export class RubyHighService extends Service {
     round.firstCorrect = corrects[0]?.id ?? null;
 
     // Player scoring. Forfeits (timer expired with no pick) count toward
-    // total but don't fake a letter — history records null picked.
+    // total but don't fake a picked letter in answer history.
     const picked = round.player.picked ?? null;
     const rawCorrect = !forfeit && picked != null && picked === q.correct;
     let affinitySave: { facultyId: string } | null = null;
@@ -1511,6 +1511,7 @@ export class RubyHighService extends Service {
       picked: (picked ?? "A") as Choice, // UI-only; audit lives in history
       correct: (q.correct ?? "A") as Choice,
       wasCorrect,
+      forfeit,
       explanation: q.explanation ?? null,
       encouragement: affinitySave
         ? "Class affinity kicked in — second chance counted."

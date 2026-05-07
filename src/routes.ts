@@ -235,7 +235,7 @@ interface SessionTelemetry extends Record<string, unknown> {
       pick: string | null;       // exposed only after their delay elapses
       isCorrect: boolean | null; // null until reveal
     }>;
-    player: { picked: string | null; answerText: string | null; answeredAt: number | null; isLocked: boolean };
+    player: { picked: string | null; answerText: string | null; answeredAt: number | null; isLocked: boolean; timedOut: boolean };
     resolved: boolean;
     firstCorrect: string | null;
     /** Opinion-mode data (empty for MC). */
@@ -364,10 +364,11 @@ function deriveActiveRound(state: QuizState) {
       };
     }),
     player: {
-      picked: !isOpinion && reveal ? round.player.picked : null,
+      picked: !isOpinion && reveal && !state.lastReveal?.forfeit ? round.player.picked : null,
       answerText: reveal ? round.player.answerText ?? null : null,
       answeredAt: round.player.answeredAt,
-      isLocked: round.player.answeredAt != null,
+      isLocked: round.player.answeredAt != null || (!isOpinion && reveal && !!state.lastReveal?.forfeit),
+      timedOut: !isOpinion && reveal && !!state.lastReveal?.forfeit,
     },
     resolved: round.resolved,
     firstCorrect: !isOpinion && reveal ? round.firstCorrect : null,

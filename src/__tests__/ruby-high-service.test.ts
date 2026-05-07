@@ -306,6 +306,28 @@ describe("RubyHighService Phase 1", () => {
     expect(s.lastReveal?.wasCorrect).toBe(false);
   });
 
+  it("marks expired unanswered rounds as timeouts, not player picks", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:timeout-forfeit";
+    ruby.pickAndPose(sid, { faculty: "ruby" });
+    let s = ruby.getOrCreate(sid);
+    const correct = s.current!.correct!;
+    s.activeRound!.expiresAt = Date.now() - 1;
+
+    s = ruby.getOrCreate(sid);
+
+    expect(s.activeRound?.resolved).toBe(true);
+    expect(s.activeRound?.player.picked).toBeNull();
+    expect(s.activeRound?.player.answeredAt).toBeNull();
+    expect(s.lastReveal).toMatchObject({
+      correct,
+      wasCorrect: false,
+      forfeit: true,
+      encouragement: "Time's up. Take a breath.",
+    });
+    expect(s.history).toHaveLength(0);
+  });
+
   it("setFaculty accepts active faculty and rejects unknown ids", async () => {
     const { ruby } = await makeServices();
     const sid = "test:4";

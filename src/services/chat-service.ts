@@ -919,7 +919,9 @@ function describeBoardForModel(state: QuizState): string {
         ...header,
         "BOARD STATUS: RECENTLY_RESOLVED.",
         "No live question is on the board now, but the last resolved card is still relevant for this turn.",
-        `The player answered ${reveal.answerText ?? reveal.picked} and was ${reveal.wasCorrect ? "correct" : "wrong"}.`,
+        reveal.forfeit
+          ? "The player did not answer before the timer expired."
+          : `The player answered ${reveal.answerText ?? reveal.picked} and was ${reveal.wasCorrect ? "correct" : "wrong"}.`,
         `Resolved question (${reveal.questionDifficulty ?? "?"} · ${reveal.questionSubject ?? "?"}):`,
         `  ${reveal.questionPrompt}`,
         ...answerLines,
@@ -954,7 +956,9 @@ function describeBoardForModel(state: QuizState): string {
   const statusLines = resolvedThisQ && state.lastReveal
     ? [
         "BOARD STATUS: RESOLVED.",
-        `The player answered ${state.lastReveal.picked} and was ${state.lastReveal.wasCorrect ? "correct" : "wrong; correct was " + state.lastReveal.correct}.`,
+        state.lastReveal.forfeit
+          ? `The timer expired before the player answered; correct was ${state.lastReveal.correct}.`
+          : `The player answered ${state.lastReveal.picked} and was ${state.lastReveal.wasCorrect ? "correct" : "wrong; correct was " + state.lastReveal.correct}.`,
         "The question scheduler will auto-post the next question when the board clears; you'll be fired again at that point.",
       ]
     : [

@@ -840,6 +840,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       name: playerDisplayName(),
       faceUrl: null,
       isLocked: round.player.isLocked,
+      isTimedOut: !!round.player.timedOut,
       pick: round.player.picked, // null until reveal
       isCorrect: round.resolved && round.player.picked && t.current ? round.player.picked === t.lastReveal?.correct : null,
       isFirstCorrect: round.firstCorrect === "player",
@@ -853,6 +854,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         name: s ? s.shortName || s.name : n.studentId,
         faceUrl: null,
         isLocked: n.isLocked,
+        isTimedOut: false,
         pick: n.pick,
         isCorrect: n.isCorrect,
         isFirstCorrect: round.firstCorrect === n.studentId,
@@ -885,7 +887,13 @@ const VIEWER_SCRIPT_SUFFIX = `
       nameEl.textContent = c.name;
       card.appendChild(nameEl);
       if (c.isLocked) {
-        if (round.resolved && c.pick) {
+        if (round.resolved && c.isTimedOut) {
+          const lt = document.createElement("span");
+          lt.className = "pick-letter";
+          lt.textContent = "⏱";
+          lt.title = "Timed out";
+          card.appendChild(lt);
+        } else if (round.resolved && c.pick) {
           const lt = document.createElement("span");
           lt.className = "pick-letter";
           lt.textContent = c.pick;
@@ -1206,7 +1214,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.answers.forEach((btn) => {
       btn.disabled = true;
       if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
-      if (btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
+      if (!reveal.forfeit && btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
     });
     els.typedAnswerInput.disabled = true;
     els.typedSubmitBtn.disabled = true;
@@ -1221,7 +1229,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.boardReveal.replaceChildren();
     const verdict = document.createElement("span");
     verdict.className = "reveal-verdict";
-    verdict.textContent = isTypedReveal
+    verdict.textContent = reveal.forfeit
+      ? "⏱ Time's up — answer was " + (isTypedReveal ? (reveal.expectedAnswer || reveal.correct) : reveal.correct)
+      : isTypedReveal
       ? (reveal.wasCorrect ? "✓ Correct" : "✗ Not quite")
       : reveal.affinitySave
       ? "✓ Class affinity saved " + reveal.picked + " — answer was " + reveal.correct
@@ -1233,7 +1243,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const answerBlock = document.createElement("div");
       answerBlock.className = "typed-reveal";
       const you = document.createElement("div");
-      you.textContent = "You: " + (reveal.answerText || "—");
+      you.textContent = reveal.forfeit ? "You: no answer" : "You: " + (reveal.answerText || "—");
       answerBlock.appendChild(you);
       if (reveal.expectedAnswer) {
         const expected = document.createElement("div");
@@ -1305,11 +1315,12 @@ const VIEWER_SCRIPT_SUFFIX = `
         subject: (q && q.subject) || reveal.questionSubject || null,
         difficulty: (q && q.difficulty) || reveal.questionDifficulty || null,
         options,
-        picked: reveal.picked,
+        forfeit: !!reveal.forfeit,
+        picked: reveal.forfeit ? null : reveal.picked,
         correct: reveal.correct,
-        pickedAnswer: reveal.answerText || optionAnswer(reveal.picked),
+        pickedAnswer: reveal.forfeit ? null : (reveal.answerText || optionAnswer(reveal.picked)),
         correctAnswer: reveal.expectedAnswer || optionAnswer(reveal.correct),
-        answerText: reveal.answerText || null,
+        answerText: reveal.forfeit ? null : (reveal.answerText || null),
         expectedAnswer: reveal.expectedAnswer || null,
         answerJudge: reveal.answerJudge || null,
         explanation: reveal.explanation || null,
@@ -1327,10 +1338,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     badge.className = "badge-mini " + (reveal.wasCorrect ? "ok" : "bad");
     const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
     badge.textContent = isTypedReveal
-      ? (reveal.wasCorrect ? "✓ typed" : "✗ typed")
+      ? (reveal.forfeit ? "⏱ timeout" : reveal.wasCorrect ? "✓ typed" : "✗ typed")
+      : reveal.forfeit ? "⏱ timeout"
       : reveal.wasCorrect ? "✓ " + reveal.picked : "✗ " + reveal.picked + " · " + reveal.correct;
     body.appendChild(badge);
-    body.appendChild(document.createTextNode("Q" + questionCounter + " — " + (reveal.wasCorrect ? "correct" : "missed")));
+    body.appendChild(document.createTextNode("Q" + questionCounter + " — " + (reveal.forfeit ? "timed out" : reveal.wasCorrect ? "correct" : "missed")));
     if (reveal.playerRoll) {
       const r = reveal.playerRoll;
       const chip = document.createElement("span");

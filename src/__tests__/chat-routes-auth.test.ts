@@ -214,4 +214,55 @@ describe("chat event context", () => {
     expect(promptText).toContain("Mitochondria generate ATP");
     expect(promptText).toContain("Use this snapshot for the reaction");
   });
+
+  it("describes answer-graded timeouts without inventing a player pick", async () => {
+    const token = "route-timeout-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-timeout-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    });
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("Clock got them.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "sally-science",
+          trigger: "answer-graded",
+          context: {
+            prompt: "Which organelle is known as the powerhouse of the cell?",
+            options: { A: "Nucleus", B: "Mitochondria", C: "Ribosome", D: "Chloroplast" },
+            picked: null,
+            correct: "B",
+            correctAnswer: "B) Mitochondria",
+            forfeit: true,
+            wasCorrect: false,
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    const promptText = JSON.stringify(capturedChatRequest.body.messages);
+    expect(promptText).toContain("Player answer: no answer (timeout)");
+    expect(promptText).toContain("Time expired before");
+    expect(promptText).not.toContain("answered A");
+    expect(promptText).not.toContain("Player answer: A");
+  });
 });

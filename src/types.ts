@@ -277,6 +277,10 @@ export interface LastReveal {
   picked: Choice;
   correct: Choice;
   wasCorrect: boolean;
+  /** True when the timer expired before the player submitted an answer.
+   *  `picked` remains populated for older UI contracts, but should not be
+   *  presented as a player choice when this flag is set. */
+  forfeit?: boolean;
   explanation: string | null;
   encouragement: string | null;
   answerText?: string;
