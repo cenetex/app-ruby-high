@@ -1498,8 +1498,16 @@ export class RubyHighService extends Service {
       this.applyCohortDaily(state, correctAns, dailyKey());
     }
 
+    const questionSnapshot = {
+      questionPrompt: q.prompt,
+      questionType: q.type ?? "multiple-choice" as QuestionType,
+      ...(q.options ? { questionOptions: q.options } : {}),
+      ...(q.subject ? { questionSubject: q.subject } : {}),
+      ...(q.difficulty ? { questionDifficulty: q.difficulty } : {}),
+    };
     state.lastReveal = {
       questionId: q.id,
+      ...questionSnapshot,
       picked: (picked ?? "A") as Choice, // UI-only; audit lives in history
       correct: (q.correct ?? "A") as Choice,
       wasCorrect,
@@ -2218,8 +2226,15 @@ export class RubyHighService extends Service {
         // since opinion mode has no correct letter to leak.
         this.applyCohortDaily(state, "A", dailyKey());
       }
+      const questionSnapshot = {
+        questionPrompt: q.prompt,
+        questionType: q.type ?? "opinion" as QuestionType,
+        ...(q.subject ? { questionSubject: q.subject } : {}),
+        ...(q.difficulty ? { questionDifficulty: q.difficulty } : {}),
+      };
       state.lastReveal = {
         questionId: q.id,
+        ...questionSnapshot,
         picked: "A" as Choice,
         correct: "A" as Choice,
         wasCorrect: passed,

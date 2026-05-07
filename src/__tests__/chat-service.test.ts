@@ -710,6 +710,50 @@ describe("ChatService.send — message composition", () => {
     expect(systemBlob).toContain("auto-post the next question");
   });
 
+  it("keeps the resolved card snapshot when the board has already cleared", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "Got it.", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    const state = ruby.getOrCreate("session:cleared-reveal");
+    state.current = null;
+    state.activeRound = null;
+    state.lastReveal = {
+      questionId: "cell-q1",
+      questionPrompt: "Which organelle is known as the powerhouse of the cell?",
+      questionType: "multiple-choice",
+      questionOptions: {
+        A: "Nucleus",
+        B: "Mitochondria",
+        C: "Ribosome",
+        D: "Chloroplast",
+      },
+      questionSubject: "biology",
+      questionDifficulty: "easy",
+      picked: "B",
+      correct: "B",
+      wasCorrect: true,
+      explanation: "Mitochondria generate ATP.",
+      encouragement: "Nice.",
+    };
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-cleared-reveal",
+      agentSessionId: "session:cleared-reveal",
+      faculty: "sally-science",
+      systemEventNote: "React to the answer.",
+      disableTools: true,
+    })) { /* consume */ }
+
+    const systemBlob = captured!.body.messages
+      .filter((m: any) => m.role === "system")
+      .map((m: any) => String(m.content))
+      .join("\n");
+    expect(systemBlob).toContain("BOARD STATUS: RECENTLY_RESOLVED");
+    expect(systemBlob).toContain("Which organelle is known as the powerhouse of the cell?");
+    expect(systemBlob).toContain("B) Mitochondria");
+    expect(systemBlob).toContain("Mitochondria generate ATP");
+  });
+
   it("serializes completed tool calls for viewer history replay", () => {
     const history = publicChatHistory([
       {

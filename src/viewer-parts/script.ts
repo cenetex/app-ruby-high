@@ -1289,10 +1289,30 @@ const VIEWER_SCRIPT_SUFFIX = `
       // If the player switches rooms before the delayed reaction fires,
       // don't let an old answer wake the wrong teacher.
       if (!lastTelemetry || lastTelemetry.faculty !== t.faculty) return;
+      const q = t.current && t.current.id === reveal.questionId ? t.current : null;
+      const type = (q && q.type) || reveal.questionType || (reveal.expectedAnswer != null ? "typed-answer" : "multiple-choice");
+      const options = type === "multiple-choice" && q && q.options ? q.options : (reveal.questionOptions || null);
+      const optionAnswer = (letter) => {
+        if (!letter || !options) return null;
+        const text = options[letter];
+        return text ? letter + ") " + text : letter;
+      };
       runAgentTurn("answer-graded", {
         grade: t.current_grade,
+        questionId: reveal.questionId,
+        prompt: (q && q.prompt) || reveal.questionPrompt || null,
+        type,
+        subject: (q && q.subject) || reveal.questionSubject || null,
+        difficulty: (q && q.difficulty) || reveal.questionDifficulty || null,
+        options,
         picked: reveal.picked,
         correct: reveal.correct,
+        pickedAnswer: reveal.answerText || optionAnswer(reveal.picked),
+        correctAnswer: reveal.expectedAnswer || optionAnswer(reveal.correct),
+        answerText: reveal.answerText || null,
+        expectedAnswer: reveal.expectedAnswer || null,
+        answerJudge: reveal.answerJudge || null,
+        explanation: reveal.explanation || null,
         wasCorrect: reveal.wasCorrect,
       }, { force: true });
     }, Math.max(0, delayMs || 0));

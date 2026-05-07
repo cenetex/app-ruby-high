@@ -5,7 +5,7 @@ import { RubyHighService } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseTeacherGrades } from "./grading.js";
-import { GRADE_LABELS, type CharacterStats, type Grade } from "./types.js";
+import { GRADE_LABELS, type CharacterStats, type Grade, type Question, type QuizState } from "./types.js";
 import { resolveFacultyIdForSession, roomForFacultyForSession } from "./content/registry.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
@@ -151,6 +151,131 @@ function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; 
     ? `${bank.remaining} scheduled card${bank.remaining === 1 ? "" : "s"} ready`
     : "no scheduled cards ready";
   return `The Ruby High scheduler owns the blackboard while ${classLine} and ${readyLine}. Do not call tools or post/replace/clear questions.`;
+}
+
+type AnswerGradedContext = {
+  grade?: string;
+  questionId?: string | null;
+  prompt?: string | null;
+  type?: string | null;
+  subject?: string | null;
+  difficulty?: string | null;
+  options?: Record<string, string> | null;
+  picked?: string | null;
+  correct?: string | null;
+  pickedAnswer?: string | null;
+  correctAnswer?: string | null;
+  answerText?: string | null;
+  expectedAnswer?: string | null;
+  answerJudge?: { mode?: string; score?: number } | null;
+  explanation?: string | null;
+  wasCorrect?: boolean;
+};
+
+function cleanText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function cleanOptions(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of ["A", "B", "C", "D"]) {
+    const text = cleanText(raw[key]);
+    if (text) out[key] = text;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function clipped(text: string, max = 220): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function choiceAnswer(options: Record<string, string> | undefined, choice: string | undefined): string | undefined {
+  if (!choice) return undefined;
+  const label = choice.trim().toUpperCase();
+  const option = options?.[label];
+  return option ? `${label}) ${option}` : label;
+}
+
+function questionOptionsFrom(stateQuestion: Question | null | undefined, reveal: QuizState["lastReveal"], context: AnswerGradedContext | undefined): Record<string, string> | undefined {
+  return cleanOptions(context?.options)
+    ?? cleanOptions(stateQuestion?.options)
+    ?? cleanOptions(reveal?.questionOptions);
+}
+
+function buildResolvedAnswerBriefing(args: {
+  state: QuizState;
+  context?: AnswerGradedContext;
+  playerName: string;
+}): {
+  correctChoice: string;
+  pickedLine: string;
+  eventText: string;
+  extraSystemContext: string;
+} {
+  const { state, context: c, playerName } = args;
+  const q = state.current;
+  const reveal = state.lastReveal;
+  const options = questionOptionsFrom(q, reveal, c);
+  const questionId = cleanText(c?.questionId) ?? q?.id ?? reveal?.questionId ?? "unknown";
+  const prompt = cleanText(c?.prompt) ?? q?.prompt ?? reveal?.questionPrompt;
+  const type = cleanText(c?.type) ?? q?.type ?? reveal?.questionType ?? (reveal?.expectedAnswer || c?.expectedAnswer ? "typed-answer" : "multiple-choice");
+  const subject = cleanText(c?.subject) ?? q?.subject ?? reveal?.questionSubject;
+  const difficulty = cleanText(c?.difficulty) ?? q?.difficulty ?? reveal?.questionDifficulty;
+  const picked = cleanText(c?.picked)?.toUpperCase() ?? reveal?.picked;
+  const correct = cleanText(c?.correct)?.toUpperCase() ?? reveal?.correct ?? q?.correct ?? "?";
+  const wasCorrect = typeof c?.wasCorrect === "boolean"
+    ? c.wasCorrect
+    : (typeof reveal?.wasCorrect === "boolean" ? reveal.wasCorrect : picked === correct);
+  const answerText = cleanText(c?.answerText) ?? reveal?.answerText;
+  const expectedAnswer = cleanText(c?.expectedAnswer) ?? reveal?.expectedAnswer ?? q?.expectedAnswer;
+  const pickedAnswer = cleanText(c?.pickedAnswer) ?? answerText ?? choiceAnswer(options, picked);
+  const correctAnswer = cleanText(c?.correctAnswer) ?? expectedAnswer ?? choiceAnswer(options, correct);
+  const explanation = cleanText(c?.explanation) ?? reveal?.explanation ?? q?.explanation;
+  const judgeScore = Number(c?.answerJudge?.score ?? reveal?.answerJudge?.score);
+  const judgeMode = cleanText(c?.answerJudge?.mode) ?? reveal?.answerJudge?.mode;
+  const resultText = wasCorrect ? "correct" : "wrong";
+  const playerDisplay = pickedAnswer ?? picked ?? "an answer";
+  const correctDisplay = correctAnswer ?? correct ?? "?";
+  const pickedLine = wasCorrect
+    ? `${playerName} answered ${playerDisplay}; that was correct.`
+    : `${playerName} answered ${playerDisplay}; the correct answer was ${correctDisplay}.`;
+  const eventParts = [
+    prompt ? `Round resolved for "${clipped(prompt, 180)}".` : "Round resolved.",
+    `${playerName} answered ${playerDisplay} — ${resultText}.`,
+    correctDisplay ? `Correct answer: ${correctDisplay}.` : "",
+  ].filter(Boolean);
+  const contextLines = [
+    "RESOLVED CARD SNAPSHOT for this answer-graded reaction.",
+    "Use this snapshot for the reaction even if the active board context is empty, cleared, or already showing a different card.",
+    `Question ID: ${questionId}`,
+    prompt ? `Question: ${prompt}` : "",
+    `Question type: ${type}`,
+    subject ? `Subject: ${subject}` : "",
+    difficulty ? `Difficulty: ${difficulty}` : "",
+  ];
+  if (options) {
+    contextLines.push("Answer choices:");
+    for (const key of ["A", "B", "C", "D"]) {
+      if (options[key]) contextLines.push(`  ${key}) ${options[key]}`);
+    }
+  }
+  contextLines.push(`Player answer: ${playerDisplay}`);
+  contextLines.push(`Correct answer: ${correctDisplay}`);
+  contextLines.push(`Result: ${resultText}`);
+  if (Number.isFinite(judgeScore)) {
+    contextLines.push(`Typed-answer judge: ${Math.round(judgeScore * 100)}%${judgeMode ? ` (${judgeMode})` : ""}`);
+  }
+  if (explanation) contextLines.push(`Explanation shown on board: ${explanation}`);
+  return {
+    correctChoice: correct,
+    pickedLine,
+    eventText: eventParts.join(" "),
+    extraSystemContext: contextLines.filter(Boolean).join("\n"),
+  };
 }
 
 function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string {
@@ -1209,7 +1334,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
-      | { faculty?: string; trigger?: string; context?: { grade?: string } }
+      | { faculty?: string; trigger?: string; context?: AnswerGradedContext }
       | null;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
@@ -1303,6 +1428,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const schedulerControlsBoard = schedulerOwnsBoard(bank);
     let directive = "";
     let disableToolsForTurn = schedulerControlsBoard;
+    let extraSystemContext: string | undefined;
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
@@ -1317,18 +1443,17 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         ? `Greet ${playerName} in ONE short sentence. Do not mention UI controls. ${schedulerBoundaryInstruction(bank)}`
         : `Greet ${playerName} in ONE short sentence. Do not mention a "Next question" button or tell the player to press a UI control. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
     } else if (trigger === "answer-graded") {
-      const c = body?.context as { picked?: string; correct?: string; wasCorrect?: boolean } | undefined;
+      const c = body?.context;
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
       const round = state.activeRound;
-      const correctAns = c?.correct ?? state.current?.correct ?? "?";
+      const resolved = buildResolvedAnswerBriefing({ state, context: c, playerName });
+      const correctAns = resolved.correctChoice;
+      extraSystemContext = resolved.extraSystemContext;
       // Build the round summary as a structured event line. Synopsised
       // exactly once into the model's RECENT EVENTS block — never
       // re-quoted in subsequent directives.
-      const parts: string[] = [`Round resolved (correct: ${correctAns}).`];
-      if (c?.picked) {
-        parts.push(`${playerName} picked ${c.picked} — ${c.wasCorrect ? "right" : "wrong"}.`);
-      }
+      const parts: string[] = [resolved.eventText];
       if (round && Array.isArray(round.npcs)) {
         for (const n of round.npcs) {
           const nm = STUDENTS[n.studentId]?.name ?? n.studentId;
@@ -1347,9 +1472,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         disableToolsForTurn = true;
         directive = `${playerName} has completed the year's requirements and is ready for the graduation ceremony. Congratulate them in one or two short sentences and remind them to choose a ceremony reward on their School Career card. Do not call tools or put another question on the board.`;
       } else {
-        const pickedLine = c?.picked
-          ? `${playerName} answered ${c.picked}; ${c.wasCorrect ? "that was correct" : `the correct answer was ${correctAns}`}.`
-          : `The round resolved; the correct answer was ${correctAns}.`;
+        const pickedLine = resolved.pickedLine;
         // The scheduler may have already auto-posted the next question by
         // the time we compose. The teacher should react to the round that
         // just resolved (described in RECENT EVENTS), not to whatever new
@@ -1375,6 +1498,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         agentSessionId: getSessionId(runtime, ctx.cookieHeader),
         faculty,
         disableTools: disableToolsForTurn,
+        extraSystemContext,
         systemEventNote: directive,
       })) {
         if (ev.type === "tool") {
@@ -1833,9 +1957,19 @@ export function noteGradedAnswer(args: {
   if (!auth || !chat || !ruby) return;
   const token = auth.parseSessionToken(args.cookieHeader);
   if (!token || !auth.resolve(token)) return;
-  const faculty = canonicalFacultyForRoute(ruby, getSessionId(getRuntime(args.runtime), args.cookieHeader), args.faculty);
-  const note = args.wasCorrect
-    ? `The board was answered: the player picked ${args.picked} — correct. Do not ask for this answer again.`
-    : `The board was answered: the player picked ${args.picked}, but the correct answer was ${args.correct}. Do not ask for this answer again.`;
+  const sessionId = getSessionId(getRuntime(args.runtime), args.cookieHeader);
+  const faculty = canonicalFacultyForRoute(ruby, sessionId, args.faculty);
+  const state = ruby.getOrCreate(sessionId);
+  const playerName = state.character?.name ?? "the player";
+  const resolved = buildResolvedAnswerBriefing({
+    state,
+    playerName,
+    context: {
+      picked: args.picked,
+      correct: args.correct,
+      wasCorrect: args.wasCorrect,
+    },
+  });
+  const note = `${resolved.eventText} Do not ask for this answer again.`;
   chat.noteAnswer({ sessionToken: token, faculty }, note);
 }

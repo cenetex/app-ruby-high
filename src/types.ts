@@ -266,6 +266,14 @@ export interface CardMemory {
 
 export interface LastReveal {
   questionId: string;
+  /** Snapshot of the resolved card. Kept so teacher reactions still know
+   *  what just happened if the scheduler clears or replaces state.current
+   *  before the answer-graded chat turn starts. */
+  questionPrompt?: string;
+  questionType?: QuestionType;
+  questionOptions?: Record<Choice, string>;
+  questionSubject?: string;
+  questionDifficulty?: Difficulty;
   picked: Choice;
   correct: Choice;
   wasCorrect: boolean;

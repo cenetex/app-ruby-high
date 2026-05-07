@@ -901,6 +901,31 @@ function describeBoardForModel(state: QuizState): string {
     ].join("\n");
   }
   if (!state.current) {
+    const reveal = state.lastReveal;
+    if (reveal?.questionPrompt) {
+      const opts = reveal.questionOptions;
+      const answerLines = opts
+        ? [
+            `  A) ${opts.A ?? ""}`,
+            `  B) ${opts.B ?? ""}`,
+            `  C) ${opts.C ?? ""}`,
+            `  D) ${opts.D ?? ""}`,
+            `Correct answer: ${reveal.correct}) ${opts[reveal.correct] ?? ""}.`,
+          ]
+        : [
+            reveal.expectedAnswer ? `Expected answer: ${reveal.expectedAnswer}` : `Correct answer: ${reveal.correct}.`,
+          ];
+      return [
+        ...header,
+        "BOARD STATUS: RECENTLY_RESOLVED.",
+        "No live question is on the board now, but the last resolved card is still relevant for this turn.",
+        `The player answered ${reveal.answerText ?? reveal.picked} and was ${reveal.wasCorrect ? "correct" : "wrong"}.`,
+        `Resolved question (${reveal.questionDifficulty ?? "?"} · ${reveal.questionSubject ?? "?"}):`,
+        `  ${reveal.questionPrompt}`,
+        ...answerLines,
+        reveal.explanation ? `Explanation: ${reveal.explanation}` : "",
+      ].filter(Boolean).join("\n");
+    }
     return [
       ...header,
       "BOARD STATUS: EMPTY.",
@@ -917,7 +942,7 @@ function describeBoardForModel(state: QuizState): string {
       q.rubric ? `Rubric: ${q.rubric}` : "",
     ].filter(Boolean).join("\n");
   }
-  const opts = q.options ?? { A: "", B: "", C: "", D: "" };
+  const opts = q.options ?? state.lastReveal?.questionOptions ?? { A: "", B: "", C: "", D: "" };
   // Only describe the reveal when it belongs to the question currently on
   // the board. After a resolve, a fresh question can land before this is
   // re-read — in that case .current is the new question and lastReveal
@@ -936,16 +961,26 @@ function describeBoardForModel(state: QuizState): string {
         "BOARD STATUS: WAITING_FOR_STUDENT_ANSWER.",
         "The player has not answered this board yet. Do not reveal the correct answer. Wait for the answer-graded event before calling another tool.",
       ];
+  const answerLines = q.type === "typed-answer" || q.type === "image-occlusion"
+    ? resolvedThisQ && state.lastReveal
+      ? [
+          state.lastReveal.answerText ? `Player typed: ${state.lastReveal.answerText}` : "",
+          state.lastReveal.expectedAnswer ? `Expected answer: ${state.lastReveal.expectedAnswer}` : "",
+        ].filter(Boolean)
+      : ["Expected answer: hidden until reveal."]
+    : [
+        `  A) ${opts.A}`,
+        `  B) ${opts.B}`,
+        `  C) ${opts.C}`,
+        `  D) ${opts.D}`,
+        `Correct answer: ${q.correct ?? "?"}.`,
+      ];
   return [
     ...header,
     ...statusLines,
     `Current question on the blackboard (${q.difficulty ?? "?"} · ${q.subject ?? "?"}):`,
     `  ${q.prompt}`,
-    `  A) ${opts.A}`,
-    `  B) ${opts.B}`,
-    `  C) ${opts.C}`,
-    `  D) ${opts.D}`,
-    `Correct answer: ${q.correct ?? "?"}.`,
+    ...answerLines,
   ].join("\n");
 }
 
