@@ -1,6 +1,6 @@
 # Ruby High
 
-> A school where the teachers grade you in their own voice. Chase rare questions, bank grades, and keep the yearbook.
+> A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
 <!-- promo-asset: hero-classroom — wide screenshot of the viewer with Ruby's chalkboard, the room rail, and the character card visible -->
 
@@ -34,29 +34,29 @@ Ruby High stacks all four. A 2–3 sentence essay graded by Professor Edward on 
 
 ## 1.2 What a day looks like
 
-> *The school bell rings at 17:00 UTC. One teacher is on the floor. They post one question. That question is the day.*
+> *The school bell rings at 17:00 UTC. One teacher is on the floor. They run today's graded class.*
 
-You open the app on Tuesday afternoon. Professor Edward is at the chalkboard — Tuesdays are his bonus day. He posts an opinion question: a passage to discuss, three sentences asked of you. You're a Junior this year, so Sami and Mika are your two classmates in the literature room. You write your response. They write theirs. Edward reads all three and grades them in his voice — a 0–10 score, one sentence of comment, a single named "best response."
+You open the app on Tuesday afternoon. Professor Edward is at the chalkboard — Tuesdays are his class day. He posts a short graded class. On an opinion day, that means a passage to discuss and three sentences asked of you. You're a Junior this year, so Sami and Mika are your two classmates in the literature room. You write your response. They write theirs. Edward reads all three and grades them in his voice — a 0–10 score, one sentence of comment, a single named "best response."
 
 Your streak ticks. Indra graduated last week while you were still here — you can see her name has moved up the cohort rail. The grade lives on your report card under Edward's name.
 
-Tomorrow is Wednesday. Wednesday's bonus belongs to Ruby. The bell rings at the same time.
+Tomorrow is Wednesday. Wednesday's class belongs to Ruby. The bell rings at the same time.
 
 <!-- promo-asset: question-walkthrough-clip — short looping mp4 of a real round resolving end to end -->
 
 ## 1.3 The three pillars
 
-> *The Legendary Day is the cadence. The Cohort is the company. The Yearbook is the artifact. Each pillar is load-bearing.*
+> *The Daily Class is the cadence. The Cohort is the company. The Yearbook is the artifact. Each pillar is load-bearing.*
 
-### The Legendary Day — cadence
+### The Daily Class — cadence
 
-Every day at 17:00 UTC the school refreshes its once-per-day forced-Legendary bonus. Regular play is open-ended — every question rolls common / rare / legendary, and passing enough Legendary days in your year advances you. Graduate after Senior. Streak resets when a Legendary-day target is missed.
+Every day at 17:00 UTC the school refreshes a once-per-day graded class for the scheduled faculty. A daily class is three questions. Passing the class at C or better can tick the school-day streak; clearing enough streak days and enough class credits advances the year. Graduate after Senior.
 
-The daily cadence is not a side mode. It is the arc's clock. Scarcity now lives in the Legendary target and the once-per-day bonus, while regular questions stay playable whenever the student shows up.
+The daily cadence is not a side mode. It is the arc's clock. Scarcity lives in the once-per-day graded class, while practice questions stay playable whenever the student shows up.
 
 ### The Cohort — company
 
-Six AI classmates run their own four-year arcs alongside you. They roll their own Legendary-day progress on their own dice. Indra might graduate while you are still a Sophomore. Mika might fall behind. Coming back to the app means coming back to *people*, not to a save file.
+Six AI classmates run their own four-year arcs alongside you. They roll their own daily-class progress on their own dice. Indra might graduate while you are still a Sophomore. Mika might fall behind. Coming back to the app means coming back to *people*, not to a save file.
 
 This is the second-session hook. The streak is what brings you back; the cohort is what makes coming back feel like coming back to a place.
 
@@ -126,7 +126,7 @@ Each character has:
 
 - **Identity** — a name, a playbook, a sticker portrait, a personality blurb, an arc-answer to the playbook's hook question, and a flavor quote.
 - **Stats** — HEAD (recall), HEART (empathy), HUSTLE (speed), HONOR (integrity). Range −1 to +3. Each playbook starts with one +2, one +1, one 0, one −1.
-- **State** — current Legendary-day streak, last bonus-played date, per-faculty card-mastery memory.
+- **State** — current daily-class streak, last class-played date, per-faculty card-mastery memory.
 - **Yearbook** — completed years archived. Sealed at graduation.
 
 Character creation is **LLM-rolled**. The system picks a playbook at random, assigns the +2/+1/0/−1 distribution, and writes the name, personality, arc-answer, and flavor quote in voice. The player accepts or re-rolls. There is no build screen.
@@ -148,7 +148,7 @@ Stats, hook, and accent color are wired and active. The playbook moves render on
 
 <!-- promo-asset: playbook-cards — six trading-card-style sticker portraits, one per playbook, with stat array + hook + move on each -->
 
-### 1.6.4 The dice — bonus only, no XP
+### 1.6.4 The dice — review quality, no XP
 
 When a question resolves, the server rolls 2d6 + your relevant stat:
 
@@ -177,32 +177,32 @@ Every question has per-character mastery memory with one of four phases:
 | **review** | answered correctly two in a row; on a review schedule |
 | **mastered** | answered correctly enough times in a row to be retired from the queue |
 
-Each round's hit/mixed/miss outcome rates the card and pushes it through the phases or knocks it back. Each teaching room earns a **letter grade** (A through F) derived from how many of its cards are in the review/mastered phases vs. learning. The letter grade is what gates year advancement (§1.6.6) — XP counts no longer drive the gate.
+Each round's hit/mixed/miss outcome rates the card and pushes it through the phases or knocks it back. This memory drives scheduling and practice: shaky cards come back, stable cards move out, and imported Anki decks land in the same review queue.
 
-This is the layer that makes "answering a question" feel like banking a card, and "coming back tomorrow" feel like clearing a queue. It is also what makes Anki ingest (§1.6.10) a one-pipe import: external SRS decks land natively.
+Daily class grades are tracked separately from card memory: each completed class records a score and letter grade, and those class records gate year advancement (§1.6.6). Card mastery is the layer that makes "answering a question" feel like banking a card, and "coming back tomorrow" feel like clearing a queue. It is also what makes Anki ingest (§1.6.10) a one-pipe import: external SRS decks land natively.
 
 ### 1.6.6 The year gates
 
 To advance out of a year, two gates must both hold:
 
-| Year | Streak in a row | Per-room letter grade |
+| Year | Streak in a row | Daily classes per room |
 |---|:---:|:---:|
-| Freshman | 1 | C or better in each teaching room |
-| Sophomore | 2 | C or better in each teaching room |
-| Junior | 3 | C or better in each teaching room |
-| Senior | 4 → graduate | C or better in each teaching room |
+| Freshman | 1 | 1 completed class, C or better average |
+| Sophomore | 2 | 2 completed classes, C or better average |
+| Junior | 3 | 3 completed classes, C or better average |
+| Senior | 4 → graduate | 4 completed classes, C or better average |
 
-Per-room letter grade is derived from card mastery (§1.6.5). All three teaching rooms — Homeroom (Ruby), Science (Sally), Library (Edward) — must be passing at the same time. A streak alone is not enough; ducking a room means you do not advance, no matter how many Mondays you've strung together. (A legacy XP-count fallback maps an old run with sufficient subject-XP to a "C" so existing characters don't get stuck — see Gaps for cleanup.)
+Per-room letter grade is derived from completed daily classes. All three teaching rooms — Homeroom (Ruby), Science (Sally), Library (Edward) — must be passing at the same time. A streak alone is not enough; ducking a room means you do not advance, no matter how many Mondays you've strung together.
 
-### 1.6.7 The Legendary Day
+### 1.6.7 The Daily Class
 
-Every day at 17:00 UTC the daily-bonus window opens for the day's faculty. The first bonus question of the window is **forced Legendary** — a guaranteed-Legendary opportunity, once per day per character. After the bonus is played, regular play continues with rarity-rolled questions for the rest of the day.
+Every day at 17:00 UTC the daily-class window opens for the day's faculty. The graded class is three questions. Once that class is complete, regular practice remains open for the rest of the day.
 
-**Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The bonus runs every day; the rotation continues across the weekend.
+**Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The class rotation runs every day; the rotation continues across the weekend.
 
-**Bell.** 17:00 UTC. Before the bell, the day-key still resolves to yesterday's bonus window.
+**Bell.** 17:00 UTC. Before the bell, the day-key still resolves to yesterday's class window.
 
-**Discoverability.** The always-on Next Question flow is the primary surface. The daily bonus remains available as a guaranteed Legendary route, but no longer appears as a separate chrome banner.
+**Discoverability.** The always-on Next Question flow is the primary surface. There is no separate daily banner; the room itself tells the player whether today's graded class is available, active, complete, or in practice.
 
 ### 1.6.8 Opinion mode — the moat
 
@@ -212,11 +212,11 @@ Opinion mode is the artifact other AI products do not produce. ChatGPT will give
 
 ### 1.6.9 The Cohort
 
-Six NPCs, each running an independent four-year arc. On every Legendary-day tick, every still-in-school NPC rolls 2d6 + HEAD against the day's progress check. Pass ticks their streak; miss resets it. They graduate on Senior streak. They can outpace the player or fall behind.
+Six NPCs, each running an independent four-year arc. On every daily-class streak tick, every still-in-school NPC rolls 2d6 + HEAD against the day's progress check. Pass ticks their streak; miss resets it. They graduate on Senior streak. They can outpace the player or fall behind.
 
 NPCs gate on streak alone — no per-room gate. They feel hungrier than the player, which is what makes the rivalry tense.
 
-The seating chart today is keyed by *player* grade. Coupling NPC drift to seat occupancy is a partial; see Part 3 (3.2).
+The seating chart is keyed by *player* grade and filtered by NPC cohort drift. When Indra graduates ahead, her current-year seat empties; when Mika falls behind, her current-year seat empties too.
 
 <!-- promo-asset: cohort-rail — vertical rail of the six classmates with grade pips and streak chips, one or two ahead of the player, one or two behind -->
 
@@ -236,8 +236,8 @@ Senior completion also writes a `GraduationReward` — one of stat / advantage /
 
 | Component | File | Job |
 |---|---|---|
-| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, rarity/bonus progression, card mastery, the cohort, graduation. |
-| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks for the daily bonus and for free-play. |
+| `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, daily-class progression, card mastery, the cohort, graduation. |
+| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks daily-class and practice questions. |
 | `ChatService` | `src/services/chat-service.ts` | OpenRouter SSE per-teacher. Owns chat history, dispatches tools into the game state. |
 | `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions; the API key never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. Maintains a per-user record so a player's character persists across sessions. |
 | Content registry | `src/content/registry.ts` (+ `src/content/anki/`, `src/content/packs/`) | Active content pack resolver, global and per-session. Serves the built-in `ruby-high-original` plus private imported Anki packs; `.apkg` import parses subdecks/tags into classes, generates distractors, and can either generate per-class teachers or reuse a built-in teacher template. |
@@ -290,13 +290,13 @@ This is gated on the faculty-voice evaluation harness (§3.1). Without an automa
 
 ## 2.3 The Faculty Cup — weekly invitational essay tournament
 
-A bracket. ELO. A spectator viewer. Top essayists from the week's Legendary days invited; the teachers grade head-to-head matchups. The yearbook records cup wins as a separate decoration.
+A bracket. ELO. A spectator viewer. Top essayists from the week's daily classes invited; the teachers grade head-to-head matchups. The yearbook records cup wins as a separate decoration.
 
 The weekly tournament is the social object that scales beyond a single player's yearbook page — a leaderboard with taste, not points.
 
 ## 2.4 Multiplayer co-op
 
-Same daily bonus window, two students, one shared lounge. The cohort already runs as parallel arcs; co-op is the version where the parallel arc on the seat next to you is another human.
+Same daily class window, two students, one shared lounge. The cohort already runs as parallel arcs; co-op is the version where the parallel arc on the seat next to you is another human.
 
 ## 2.5 Community-authored faculty packs
 
@@ -326,7 +326,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 | Drift | Doc said | Code says | Resolution |
 |---|---|---|---|
-| **XP gates** | Year advancement requires per-class XP minimum (Freshman 2, Sophomore 5, Junior 10, Senior 16). | XP is dead code. `requiredSubjectXpForGrade` has a "legacy" comment. Real gate is `letterGradePasses` in each teaching room — A/B/C derived from card mastery. The XP value is a *fallback* that maps to "C" so old runs aren't stuck. | This doc reflects the new gate. The legacy fallback should be deleted once existing characters drain. |
+| **XP / rarity gates** | Year advancement requires per-class XP minimums and rarity-rolled Legendary targets. | Rarity and XP helpers are compatibility shims for older persisted rounds. New progression is daily classes: completed class count + average letter grade + streak. | This doc reflects the daily-class gate. The compatibility helpers can be deleted once old persisted states no longer need them. |
 | **Conditions / Strings** | Schema declares both; "currently never written"; aspirational. | Both fields **removed from the schema** in PR #63. | Removed from this doc. They are not future work in the current design. |
 | **Event log canonical list** | The retention dashboard depends on `sign_in`, `character_created`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`. | Now emits all eight (in dot-style: `auth.signed-in`, `character.created`, `question.posed`, `answer.picked`, `essay.submitted`, `essay.graded`, `player.grade-advanced` ≈ `grade_completed`, `session.ended`), plus `bonus.posed`, `pack.*`, and the failure events. Existing dot-style names retained — renaming for cosmetic underscore-style consistency would break any downstream sink. Captured in `event-log.test.ts` so a quiet rename is impossible. |
 | **AWS App Runner production** | Cited as the production target. | Production is on **Fly.io**. App Runner workflow is retained as a manual fallback only. | This doc and main's README now say Fly. |
@@ -342,14 +342,13 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 | **Faculty-voice evaluation harness** | A `npm run eval:voice` that scores generated questions and grades against hand-curated reference Q/A pairs per teacher. Required before §2.2 (faculty expansion) and §2.5 (community packs). | Medium (3–4 days for v0). |
 | **Curated content beyond ruby-high-original** | The built-in pack ships with 15 questions per teacher, and users can privately import Anki decks from the pack store. No curated first-party SAT/MCAT/AP/community packs have been ingested and reviewed yet. | Medium (per pack: 1 day to ingest + curate). |
 | **Retention dashboard** | Three numbers: D1 retention, questions per session, grade-completion rate. Logs emit to stdout; the layer above (a sink + queries + a small JSON endpoint) is missing. | Small (1 day on top of P0 in §3.4). |
-| **Legacy XP fallback removal** | `requiredSubjectXpForGrade`, the `subjectXp` field, the `XP_FOR_RARITY` table, and the gate's "C" fallback can be deleted once existing live characters have advanced past it. The `progression.legacy-xp-fallback` event now fires (debounced per session+grade) every time the fallback rescues the gate; this PR is gated on that event reaching zero in production for N consecutive days. | Trivial once the event drops to zero. |
+| **Legacy rarity/XP compatibility removal** | `Rarity`, `XP_FOR_RARITY`, `xpForRarity`, `rollRarity`, and legacy round fields can be deleted once older persisted states no longer need to hydrate through them. | Trivial once state compatibility is no longer required. |
 
 ### Partial — shipped but incomplete
 
 | Gap | What's there | What's missing |
 |---|---|---|
 | **Mentor mode mechanical effect** | `inheritedFrom` field captured on the new character; rendered on card. | No code reads `inheritedFrom` during round resolution. The inherited move is lore, not mechanics. |
-| **Cohort-coupled seating** | `INITIAL_STUDENT_LAYOUT` is keyed by player grade, so room composition changes with year. | The render does not filter NPCs by their *cohort drift*. When Indra graduates ahead, her seat should empty; when Mika falls behind, her seat should empty. Both still appear today. Render-time filter, not a re-architecture. |
 | **Playbook moves** | All six moves named, described, rendered on character card, and passed to teacher context as flavor. | None of the six change round resolution. |
 | **Rate-limiter endpoint coverage** | Four buckets cover the LLM-backed chat surface, portrait/diploma generation, Anki import, and (newly) the `/command` game-state mutation surface. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
 
@@ -366,6 +365,8 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 > *Sequencing across the missing and partial buckets. Each step is sized to a small PR.*
 
+**Stabilization rule.** No new teachers, tournaments, multiplayer, public pack marketplace, or additional playbook-move surface until the daily-class loop, first-session path, yearbook artifact, and basic metrics feel seamless.
+
 ### P0 — unblocks tuning (**event names done; dashboard layer next**)
 
 1. **Build the retention dashboard.** All eight canonical events now emit (see §3.1). Next: ship logs to a queryable sink (CloudWatch on App Runner is free; Fly piping to a small ClickHouse / SQLite-on-Litestream is cheap), add three saved queries — D1 retention, questions/session, grade-completion rate — and a small `/admin/metrics` JSON route gated to a single token. Three numbers in JSON is enough to start tuning.
@@ -377,23 +378,22 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 ### P2 — small mechanical wins
 
-4. **Cohort seating filter.** One render-time filter in the layout helper: only seat NPCs whose `cohort.grade === player.grade`. Makes Indra's graduation visible as an empty seat. ~30-line PR; high felt-impact.
-5. **Wire one mentor move mechanically.** Pick the cheapest end-to-end move — likely Overachiever's "retake one missed question per year" or Slacker's "swap HEAD → HUSTLE on a fail." Concrete, testable, finishes the §1.6.10 partial.
+4. **Wire one mentor move mechanically.** Pick the cheapest end-to-end move — likely Overachiever's "retake one missed question per year" or Slacker's "swap HEAD → HUSTLE on a fail." Concrete, testable, finishes the §1.6.10 partial.
 
 ### P3 — content & evaluation (the moat)
 
-6. **Ingest one real Anki deck** through the existing pipeline into a teacher pack with the LLM-derived class name + persona. Proves the pipeline works on real data and gives the audit a concrete example.
-7. **Faculty-voice eval harness.** Automate the "is this in voice?" check before community faculty become possible. Cheapest version: 20–30 hand-graded reference Q/A pairs per teacher + an LLM-judge prompt, run as `npm run eval:voice`.
+5. **Ingest one real Anki deck** through the existing pipeline into a teacher pack with the LLM-derived class name + persona. Proves the pipeline works on real data and gives the audit a concrete example.
+6. **Faculty-voice eval harness.** Automate the "is this in voice?" check before community faculty become possible. Cheapest version: 20–30 hand-graded reference Q/A pairs per teacher + an LLM-judge prompt, run as `npm run eval:voice`.
 
 ### Defer
 
-- Remaining playbook moves wired in — handle one (P2 step 5) before the rest.
-- Multiplayer co-op, Faculty Cup tournament — premature without retention numbers.
+- Remaining playbook moves wired in — handle one (P2 step 4) before the rest.
+- Faculty expansion, multiplayer co-op, Faculty Cup tournament, and public community packs — premature until the stabilization rule above is satisfied.
 - Public yearbook default policy — answer falls out of P1 step 2 once share-cards exist; design decision then, not now.
 
 ### Sequencing call
 
-Do **P0 → P1.2 → P1.3 → P2.4** in order. Four small PRs that together close every shipped-but-unfinished social gap, give us measurement, and produce the social artifact the product was designed around.
+Do **P0 → P1.2 → P1.3 → P2.4** in order. Four small PRs that together close the shipped-but-unfinished social gaps, give us measurement, and produce the social artifact the product was designed around.
 
 ---
 

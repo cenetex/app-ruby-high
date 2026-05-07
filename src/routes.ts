@@ -274,7 +274,7 @@ interface SessionTelemetry extends Record<string, unknown> {
    *  available. The viewer's character-creation flow checks this and
    *  shows an "inherit / fresh" choice. */
   mentor_offer: PlayerCharacter["inheritedFrom"] | null;
-  /** Today's bonus status — drives the empty-state copy and the bonus CTA
+  /** Today's daily-class status — drives the empty-state copy and the legacy daily CTA
    *  visibility. */
   daily: {
     available: boolean;
@@ -441,9 +441,18 @@ function deriveRoomCohort(roster: NpcStudentState[], state: QuizState): Record<s
     if (room.teaches) out[room.id] = [];
   }
   for (const npc of roster) {
+    if (!npcIsSeatedWithPlayer(state, npc.id)) continue;
     if (npc.currentRoom && out[npc.currentRoom]) out[npc.currentRoom]!.push(npc.id);
   }
   return out;
+}
+
+function npcIsSeatedWithPlayer(state: QuizState, studentId: string): boolean {
+  const grade = state.currentGrade;
+  if (!grade) return true;
+  const arc = state.npcCohort?.find((n) => n.id === studentId);
+  if (!arc) return true;
+  return !arc.graduated && arc.grade === grade;
 }
 
 function buildFacultyRoster(
@@ -1006,7 +1015,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           faculty,
           cookieHeader: ctx.cookieHeader,
           command: type,
-          message: "Today's bonus question is on the board.",
+          message: "Today's class question is on the board.",
         });
       }
 

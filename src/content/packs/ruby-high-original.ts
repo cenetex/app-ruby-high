@@ -38,7 +38,7 @@ const FACULTY_META: Array<Omit<PackFaculty, "questions" | "systemPrompt" | "defa
     id: "ruby",
     displayName: "Ruby",
     shortName: "Ruby",
-    subjects: ["onboarding", "general-knowledge", "ratimics-lore", "agent-culture"],
+    subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"],
     bio: "Host of Ruby High. Greets students, picks the right teacher for the subject, runs the quiz floor.",
     accent: "#d22a2a",
   },
@@ -66,7 +66,7 @@ const ROOMS_META: PackRoom[] = [
     name: "Homeroom",
     channelName: "homeroom",
     teacherId: "ruby",
-    description: "Ruby's homeroom. General knowledge, ratimics lore, the meta of the school.",
+    description: "Ruby's homeroom. General knowledge, AI literacy, and the meta of the school.",
     teaches: true,
   },
   {

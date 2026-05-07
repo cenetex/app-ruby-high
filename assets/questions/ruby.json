@@ -14,12 +14,12 @@
     },
     {
       "id": "ruby-002",
-      "subject": "ratimics-lore",
+      "subject": "ai-literacy",
       "difficulty": "easy",
-      "prompt": "Which RATiMICS avatar is described as 'a catboy who lives on the internet'?",
-      "options": { "A": "Ruby", "B": "Kyro", "C": "Sally", "D": "Edward" },
+      "prompt": "In an AI app, what does it usually mean when a model can use a tool?",
+      "options": { "A": "It stores more training data", "B": "It can call an external function or API", "C": "It becomes deterministic", "D": "It no longer needs prompts" },
       "correct": "B",
-      "explanation": "Kyro is the primary deployed AI persona on aws-swarm."
+      "explanation": "Tool use lets the model ask software to do bounded work, like search, fetch data, or update a record."
     },
     {
       "id": "ruby-003",
@@ -50,12 +50,12 @@
     },
     {
       "id": "ruby-006",
-      "subject": "ratimics-lore",
+      "subject": "ai-literacy",
       "difficulty": "medium",
-      "prompt": "What's the name of the agent-to-agent bridge meant to connect every RATiMICS project?",
-      "options": { "A": "Hyperscape", "B": "Raticross", "C": "Cosyworld", "D": "Solana Swarm" },
+      "prompt": "Why do AI apps often store embeddings in a vector database?",
+      "options": { "A": "To encrypt prompts automatically", "B": "To search items by semantic similarity", "C": "To make responses stream faster", "D": "To remove the need for evaluation" },
       "correct": "B",
-      "explanation": "Raticross is the protocol + adapters for cross-app agent communication."
+      "explanation": "Embeddings turn text or media into vectors; vector search finds nearby meanings rather than exact keyword matches."
     },
     {
       "id": "ruby-007",
@@ -86,12 +86,12 @@
     },
     {
       "id": "ruby-010",
-      "subject": "ratimics-lore",
+      "subject": "agent-culture",
       "difficulty": "hard",
-      "prompt": "What event marks the end of a tournament round in the Ruby High design?",
-      "options": { "A": "ROOM_LEFT", "B": "RUN_ENDED", "C": "ENTITY_KILLED", "D": "MATCH_OVER" },
-      "correct": "B",
-      "explanation": "RUN_ENDED is the eliza event hooked for round finalization in the Ruby High design doc."
+      "prompt": "What is the safest default for an AI agent before it takes an irreversible action?",
+      "options": { "A": "Ask for confirmation", "B": "Retry until it works", "C": "Hide the tool output", "D": "Increase temperature" },
+      "correct": "A",
+      "explanation": "Irreversible actions need a human confirmation step unless the user has already granted a narrow, explicit permission."
     },
     {
       "id": "ruby-011",
@@ -131,12 +131,12 @@
     },
     {
       "id": "ruby-015",
-      "subject": "ratimics-lore",
+      "subject": "ai-literacy",
       "difficulty": "hard",
-      "prompt": "Which $RATI value-prop is the WHITEPAPER built around?",
-      "options": { "A": "Meme coin governance", "B": "NFT minting fees", "C": "Unit of account for agent labor", "D": "DEX liquidity rebates" },
-      "correct": "C",
-      "explanation": "$RATI is positioned as the future unit of account for autonomous agent labor markets."
+      "prompt": "What does an evaluation set help reveal about an AI feature?",
+      "options": { "A": "Whether the feature works on examples held back from prompt tuning", "B": "Whether the model has the largest context window", "C": "Whether the UI color palette is accessible", "D": "Whether API latency is always zero" },
+      "correct": "A",
+      "explanation": "A held-out evaluation set catches regressions and overfitting: the system has to work on cases it was not tuned against."
     }
   ]
 }

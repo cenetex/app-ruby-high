@@ -518,8 +518,8 @@ export const VIEWER_CSS = `
   }
   /* Pack-store button — sits next to the arc chip in the top bar. Opens
    * the pack-overlay where the user can switch curricula or import an
-   * Anki deck. Always visible (no character needed) so the user can
-   * preview / import packs before rolling. */
+   * Anki deck. It stays hidden during first-run setup so today's class
+   * remains the only obvious path. */
   .pack-btn {
     appearance: none;
     background: var(--bg-elev);
@@ -535,6 +535,7 @@ export const VIEWER_CSS = `
     flex: 0 0 auto;
   }
   .pack-btn:hover { color: var(--text); background: var(--bg-elev-2); }
+  .pack-btn[hidden] { display: none; }
   .pack-btn svg { width: 18px; height: 18px; }
   /* Pack list inside the pack-store overlay. Each row is a pack the
    * user can switch to; the active one is highlighted. */

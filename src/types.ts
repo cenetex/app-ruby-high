@@ -68,7 +68,7 @@ export function rollRarity(rng: () => number = Math.random): Rarity {
   return "common";
 }
 
-/** Legacy per-grade Legendary target. New streaks tick on the first passed
+/** Legacy per-grade daily target. New streaks tick on the first passed
  *  question of the school day. */
 export function legendariesPerDayFor(grade: Grade): number {
   switch (grade) {
@@ -488,7 +488,7 @@ export const RUBY_FACULTY: FacultyMember = {
   id: "ruby",
   displayName: "Ruby",
   shortName: "Ruby",
-  subjects: ["onboarding", "general-knowledge", "ratimics-lore", "agent-culture"],
+  subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"],
   bio: "Host of Ruby High. Greets students, picks the right teacher for the subject, runs the quiz floor.",
   available: true,
   accent: "#d22a2a",
@@ -550,7 +550,7 @@ export const ROOMS: Room[] = [
     name: "Homeroom",
     channelName: "homeroom",
     teacherId: "ruby",
-    description: "Ruby's homeroom. General knowledge, ratimics lore, the meta of the school.",
+    description: "Ruby's homeroom. General knowledge, AI literacy, and the meta of the school.",
     teaches: true,
   },
   {
@@ -719,16 +719,16 @@ export interface PlayerCharacter {
   createdAt: number;
 }
 
-// ── Daily-key / bonus mechanic ─────────────────────────────────────────────
+// ── Daily-key / class mechanic ─────────────────────────────────────────────
 //
-// The daily key is the cadence primitive for the once-per-day bonus and
-// streak math. The 17:00 UTC bell decides which bonus window "today" means.
+// The daily key is the cadence primitive for the once-per-day class and
+// streak math. The 17:00 UTC bell decides which class window "today" means.
 
 /** The school-bell cutoff: 17:00 UTC. Before that, "today" is yesterday's
- *  date for bonus/streak purposes. After, "today" advances. */
+ *  date for class/streak purposes. After, "today" advances. */
 export const DAILY_BELL_HOUR_UTC = 17;
 
-/** YYYY-MM-DD key for the bonus/streak window on a given moment. Anchors all streak +
+/** YYYY-MM-DD key for the class/streak window on a given moment. Anchors all streak +
  *  rotation arithmetic. The same date string everywhere — no timezone
  *  drift between server and client.
  *
@@ -740,7 +740,7 @@ export function dailyKey(now: Date = new Date(Date.now())): string {
   const adjusted = new Date(now.getTime());
   if (adjusted.getUTCHours() < DAILY_BELL_HOUR_UTC) {
     // Before 17:00 UTC — the bell hasn't rung yet, so we're still on
-    // yesterday's bonus window.
+    // yesterday's class window.
     adjusted.setUTCDate(adjusted.getUTCDate() - 1);
   }
   const y = adjusted.getUTCFullYear();
@@ -772,7 +772,7 @@ export function dailyIndex(key: string): number {
   return Math.max(0, Math.floor((ms - DAILY_EPOCH) / (24 * 60 * 60 * 1000)));
 }
 
-/** Day-of-week (0=Sun..6=Sat) for a daily key. Drives bonus faculty rotation. */
+/** Day-of-week (0=Sun..6=Sat) for a daily key. Drives daily faculty rotation. */
 export function dayOfWeekForKey(key: string): number {
   const [yStr, mStr, dStr] = key.split("-");
   const y = Number(yStr), m = Number(mStr), d = Number(dStr);
@@ -780,10 +780,10 @@ export function dayOfWeekForKey(key: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-/** Bonus faculty rotation — runs every day of the week. The 5-teacher cycle
+/** Daily faculty rotation — runs every day of the week. The 5-teacher cycle
  *  (Sally / Edward / Ruby / Sally / Edward) extends across Sat/Sun by
  *  continuing the rotation: Sat → Ruby, Sun → Sally. Always returns a
- *  faculty id; the bonus is available 7 days a week. */
+ *  faculty id; the daily class is available 7 days a week. */
 export function facultyForDay(key: string): string {
   const dow = dayOfWeekForKey(key);
   switch (dow) {
