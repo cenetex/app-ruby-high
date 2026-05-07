@@ -929,7 +929,7 @@ function describeRelationshipStateForTeacher(state: QuizState): string[] {
       return `  - ${studentNameFor(id)}: affinity ${formatSigned(cell!.affinity)} (${status})`;
     });
   if (cellLines.length > 0) {
-    lines.push("MASH relationship state for this room (engine-owned facts; react to them, do not change them):");
+    lines.push("Social relationship state for this room (engine-owned facts; react to them, do not change them):");
     lines.push(...cellLines);
   }
 
@@ -1084,8 +1084,8 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     ? status.todayClass.status === "complete"
       ? `Today's graded class is complete${status.todayClass.letterGrade ? `: ${status.todayClass.letterGrade}` : ""}. Further boards are practice.`
       : status.todayClass.status === "active"
-        ? `Today's graded class is in progress: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}.`
-        : `Today's graded class is available: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}.`
+        ? `Today's graded class is in progress: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}; practice cards ${status.todayClass.practiceCount ?? 0}, social cards ${status.todayClass.socialCount ?? 0}.`
+        : `Today's graded class is available: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}; practice and social cards may appear before class cards.`
     : "Today's class status is unavailable.";
   const standing = status.courseGrade
     ? `Course standing: ${status.courseGrade} (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} classes complete).`

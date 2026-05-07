@@ -348,6 +348,7 @@ function deriveActiveRound(state: QuizState) {
     stat: round.stat ?? state.current?.stat,
     isBonus: !!round.isBonus,
     classSession: round.classSession,
+    cardRole: round.cardRole ?? (round.classSession?.mode === "class" ? "class" : isOpinion ? "social" : "practice"),
     startedAt: round.startedAt,
     durationMs: round.durationMs,
     expiresAt: round.expiresAt,

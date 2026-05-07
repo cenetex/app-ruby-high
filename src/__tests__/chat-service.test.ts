@@ -373,7 +373,7 @@ describe("ChatService.send — message composition", () => {
     expect(systemBlob).toContain("Round resolved");
   });
 
-  it("includes durable MASH relationship facts in teacher room context", async () => {
+  it("includes durable Social relationship facts in teacher room context", async () => {
     mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
     const { ruby, chat } = await makeServices();
     const sid = "session:relationship-context";
@@ -413,7 +413,7 @@ describe("ChatService.send — message composition", () => {
 
     const messages: any[] = captured!.body.messages;
     const systemBlob = messages.filter((m: any) => m.role === "system").map((m: any) => String(m.content)).join("\n");
-    expect(systemBlob).toContain("MASH relationship state");
+    expect(systemBlob).toContain("Social relationship state");
     expect(systemBlob).toContain("Sami");
     expect(systemBlob).toContain("relationship +1 to +2");
     expect(systemBlob).toContain("applauded");

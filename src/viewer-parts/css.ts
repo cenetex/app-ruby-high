@@ -1230,6 +1230,21 @@ export const VIEWER_CSS = `
     padding: 10px;
     min-width: 0;
   }
+  .blackboard-panel[data-faculty="ruby"] .board-frame {
+    background: linear-gradient(180deg, color-mix(in oklab, #d22a2a 82%, #fff), #941b1b);
+  }
+  .blackboard-panel[data-faculty="sally-science"] .board-frame {
+    background: linear-gradient(180deg, color-mix(in oklab, #3aa3e0 78%, #fff), #1e5f86);
+  }
+  .blackboard-panel[data-faculty="professor-edward"] .board-frame {
+    background: linear-gradient(180deg, color-mix(in oklab, #8a63d2 78%, #fff), #4e357e);
+  }
+  .blackboard-panel[data-card-role="class"] .board-frame {
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.18) inset, 0 10px 26px rgba(0,0,0,0.24);
+  }
+  .blackboard-panel[data-card-role="social"] .board-frame {
+    box-shadow: 0 0 0 2px rgba(240,180,65,0.42) inset, 0 10px 26px rgba(0,0,0,0.24);
+  }
   .board {
     background:
       radial-gradient(circle at 18% 22%, rgba(255,255,255,0.04), transparent 40%),
@@ -3463,7 +3478,7 @@ export const VIEWER_CSS = `
     .stream { padding: 18px 24px; }
   }
 
-  /* ── MASH Card (dating-sim layer) ────────────────────────────────────── */
+  /* ── Social card (relationship layer) ────────────────────────────────── */
   .mash-grid-wrap {
     margin-top: 14px;
     padding: 10px 12px;

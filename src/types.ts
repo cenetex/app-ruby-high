@@ -146,6 +146,8 @@ export function nextGradeAfter(grade: Grade): Grade | null {
 
 export type QuestionType = "multiple-choice" | "typed-answer" | "image-occlusion" | "opinion";
 
+export type DeckCardRole = "practice" | "class" | "social";
+
 export interface QuestionMediaAsset {
   name: string;
   mimeType: string;
@@ -308,6 +310,7 @@ export interface LastReveal {
    *  practice rounds still review cards but do not affect advancement. */
   classProgress?: {
     mode: "class" | "practice";
+    cardRole?: DeckCardRole;
     facultyId: string;
     grade?: Grade;
     date?: string;
@@ -961,6 +964,9 @@ export interface ActiveRound {
     index?: number;
     total?: number;
   };
+  /** Server-owned daily deck role. The viewer may label this, but client
+   *  decisions still derive from phase + server state. */
+  cardRole?: DeckCardRole;
   /** Legacy card rarity. Kept only so older persisted rounds can hydrate. */
   rarity?: Rarity;
   /** Stat this round rolls against. Mirrors state.current.stat. */
@@ -987,6 +993,8 @@ export interface DailyClassRecord {
   facultyId: string;
   date: string;
   status: "active" | "complete";
+  practiceCount?: number;
+  socialCount?: number;
   questionCount: number;
   correctCount: number;
   scoreTotal: number;

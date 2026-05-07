@@ -38,6 +38,7 @@ import {
   type CharacterStats,
   type Choice,
   type DailyClassRecord,
+  type DeckCardRole,
   type Difficulty,
   type FacultyMember,
   type Grade,
@@ -152,6 +153,8 @@ export interface QuestionBankStatus {
     status: "available" | "active" | "complete";
     questionCount: number;
     totalQuestions: number;
+    practiceCount?: number;
+    socialCount?: number;
     letterGrade?: string;
     score?: number;
   };
@@ -177,6 +180,8 @@ export interface CourseProgress {
     status: "available" | "active" | "complete";
     questionCount: number;
     totalQuestions: number;
+    practiceCount?: number;
+    socialCount?: number;
     letterGrade?: string;
     score?: number;
   };
@@ -199,6 +204,7 @@ interface CourseStanding {
 
 interface DailyClassUpdate {
   mode: "class" | "practice";
+  cardRole?: DeckCardRole;
   facultyId: string;
   grade?: Grade;
   date?: string;
@@ -233,6 +239,8 @@ const SRS_EASY_INTERVALS_MS = [
   14 * SRS_ONE_DAY_MS,
 ];
 const CLASS_QUESTIONS_PER_DAY = 3;
+const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [2, 4, 6] as const;
+const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 1;
 
 function cardMemoryKey(courseId: string, questionId: string): string {
   return `${courseId}::${questionId}`;
@@ -902,6 +910,95 @@ export class RubyHighService extends Service {
     return ch.dailyClasses?.[classRecordKey(grade, facultyId, date)] ?? null;
   }
 
+  private ensureDailyClassRecord(
+    state: QuizState,
+    facultyId: string,
+    date = dailyKey(),
+    now = Date.now(),
+  ): DailyClassRecord | null {
+    const ch = state.character;
+    const grade = state.currentGrade;
+    if (!ch || !grade) return null;
+    ch.dailyClasses = ch.dailyClasses ?? {};
+    const key = classRecordKey(grade, facultyId, date);
+    const record = ch.dailyClasses[key] ?? {
+      grade,
+      facultyId,
+      date,
+      status: "active" as const,
+      questionCount: 0,
+      correctCount: 0,
+      scoreTotal: 0,
+      scoreMax: 0,
+      updatedAt: now,
+    };
+    ch.dailyClasses[key] = record;
+    return record;
+  }
+
+  private rubyHomeroomDeckApplies(
+    state: QuizState,
+    facultyId: string,
+    requestedMode?: "class" | "practice",
+  ): boolean {
+    return facultyId === RUBY_FACULTY.id
+      && !requestedMode
+      && !!state.character
+      && !!state.currentGrade
+      && facultyId !== LOUNGE_FACULTY.id;
+  }
+
+  private rubyHomeroomDeckRole(record: DailyClassRecord | null): DeckCardRole {
+    if (record?.status === "complete" || (record?.questionCount ?? 0) >= CLASS_QUESTIONS_PER_DAY) {
+      return "practice";
+    }
+    const classCount = record?.questionCount ?? 0;
+    const practiceCount = record?.practiceCount ?? 0;
+    const socialCount = record?.socialCount ?? 0;
+    if (classCount >= 1 && socialCount < RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY) {
+      return "social";
+    }
+    const requiredPractice = RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS[classCount] ?? Number.POSITIVE_INFINITY;
+    if (practiceCount < requiredPractice) return "practice";
+    return "class";
+  }
+
+  private peekCardRoleForPose(
+    state: QuizState,
+    facultyId: string,
+    requestedMode?: "class" | "practice",
+    questionType: QuestionType = "multiple-choice",
+  ): DeckCardRole {
+    if (requestedMode === "practice") return questionType === "opinion" ? "social" : "practice";
+    if (questionType === "opinion") return "social";
+    if (!state.character || !state.currentGrade || facultyId === LOUNGE_FACULTY.id) return "practice";
+    const record = this.dailyClassRecord(state, facultyId);
+    if (record?.status === "complete") return "practice";
+    if (this.rubyHomeroomDeckApplies(state, facultyId, requestedMode)) {
+      return this.rubyHomeroomDeckRole(record);
+    }
+    return "class";
+  }
+
+  private reserveCardRoleForPose(
+    state: QuizState,
+    facultyId: string,
+    requestedMode?: "class" | "practice",
+    questionType: QuestionType = "multiple-choice",
+  ): DeckCardRole {
+    const cardRole = this.peekCardRoleForPose(state, facultyId, requestedMode, questionType);
+    if (!this.rubyHomeroomDeckApplies(state, facultyId, requestedMode)) return cardRole;
+    if (cardRole !== "practice" && cardRole !== "social") return cardRole;
+    const now = Date.now();
+    const record = this.ensureDailyClassRecord(state, facultyId, dailyKey(), now);
+    if (record && record.status !== "complete") {
+      if (cardRole === "social") record.socialCount = (record.socialCount ?? 0) + 1;
+      else record.practiceCount = (record.practiceCount ?? 0) + 1;
+      record.updatedAt = now;
+    }
+    return cardRole;
+  }
+
   private courseStandingForState(state: QuizState, facultyId: string): CourseStanding {
     const ch = state.character;
     const grade = state.currentGrade;
@@ -914,6 +1011,8 @@ export class RubyHighService extends Service {
           status: "complete",
           questionCount: todayRecord.questionCount,
           totalQuestions: CLASS_QUESTIONS_PER_DAY,
+          practiceCount: todayRecord.practiceCount ?? 0,
+          socialCount: todayRecord.socialCount ?? 0,
           letterGrade: todayRecord.letterGrade,
           score: classAverage(todayRecord),
         }
@@ -923,6 +1022,8 @@ export class RubyHighService extends Service {
             status: "active",
             questionCount: todayRecord.questionCount,
             totalQuestions: CLASS_QUESTIONS_PER_DAY,
+            practiceCount: todayRecord.practiceCount ?? 0,
+            socialCount: todayRecord.socialCount ?? 0,
           }
         : {
             mode: "class",
@@ -960,10 +1061,14 @@ export class RubyHighService extends Service {
     state: QuizState,
     facultyId: string,
     requestedMode?: "class" | "practice",
+    cardRole?: DeckCardRole,
   ): NonNullable<ActiveRound["classSession"]> {
     const ch = state.character;
     const grade = state.currentGrade;
     const date = dailyKey();
+    if (cardRole && cardRole !== "class") {
+      return { mode: "practice", facultyId, grade: grade ?? undefined, date };
+    }
     if (requestedMode === "practice" || !ch || !grade || facultyId === LOUNGE_FACULTY.id) {
       return { mode: "practice", facultyId, grade: grade ?? undefined, date };
     }
@@ -990,25 +1095,18 @@ export class RubyHighService extends Service {
     const round = state.activeRound;
     const session = round?.classSession;
     if (!session || session.mode !== "class" || !session.grade || !session.date || !state.character) {
-      return { mode: "practice", facultyId: state.faculty, grade: state.currentGrade ?? undefined };
+      return {
+        mode: "practice",
+        cardRole: round?.cardRole ?? (round?.type === "opinion" ? "social" : "practice"),
+        facultyId: state.faculty,
+        grade: state.currentGrade ?? undefined,
+      };
     }
-    const ch = state.character;
-    ch.dailyClasses = ch.dailyClasses ?? {};
-    const key = classRecordKey(session.grade, session.facultyId, session.date);
-    const record = ch.dailyClasses[key] ?? {
-      grade: session.grade,
-      facultyId: session.facultyId,
-      date: session.date,
-      status: "active" as const,
-      questionCount: 0,
-      correctCount: 0,
-      scoreTotal: 0,
-      scoreMax: 0,
-      updatedAt: now,
-    };
+    const record = this.ensureDailyClassRecord(state, session.facultyId, session.date, now)!;
     if (record.status === "complete") {
       return {
         mode: "practice",
+        cardRole: round?.cardRole ?? "practice",
         facultyId: session.facultyId,
         grade: session.grade,
         date: session.date,
@@ -1041,9 +1139,9 @@ export class RubyHighService extends Service {
         total: record.questionCount,
       });
     }
-    ch.dailyClasses[key] = record;
     return {
       mode: "class",
+      cardRole: "class",
       facultyId: session.facultyId,
       grade: session.grade,
       date: session.date,
@@ -1993,6 +2091,7 @@ export class RubyHighService extends Service {
     // the question stat, and HUSTLE only controls timing.
     state.activeRound = this.openRound(state, question);
     state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode);
+    state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : "practice";
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -2040,8 +2139,10 @@ export class RubyHighService extends Service {
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
     if (!state.askedQuestionIds.includes(question.id)) state.askedQuestionIds.push(question.id);
+    const cardRole = this.reserveCardRoleForPose(state, question.faculty ?? state.faculty, mode, type);
     state.activeRound = this.openRound(state, question);
-    state.activeRound.classSession = this.classSessionForPose(state, question.faculty ?? state.faculty, mode);
+    state.activeRound.classSession = this.classSessionForPose(state, question.faculty ?? state.faculty, mode, cardRole);
+    state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : cardRole;
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -2170,8 +2271,10 @@ export class RubyHighService extends Service {
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
+    const cardRole = this.reserveCardRoleForPose(state, facultyId, input.mode, "opinion");
     state.activeRound = this.openRound(state, question);
-    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode);
+    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode, cardRole);
+    state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : cardRole;
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -2337,6 +2440,20 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  private poseRubyHomeroomSocialCard(sessionId: string, state: QuizState, facultyId: string): QuizState {
+    const date = dailyKey();
+    const grade = state.currentGrade ?? DEFAULT_GRADE;
+    const record = this.dailyClassRecord(state, facultyId, date);
+    const socialIndex = (record?.socialCount ?? 0) + 1;
+    return this.poseOpinion(sessionId, {
+      faculty: facultyId,
+      subject: "social",
+      questionId: `social_${facultyId}_${grade}_${date}_${socialIndex}`,
+      prompt: "Social card: When a classmate gives an answer confidently, what is one sign you should trust it, and one sign you should check it?",
+      rubric: "A strong response names one concrete trust signal and one concrete reason to verify, then explains the difference in the player's own words.",
+    });
+  }
+
   pickAndPose(sessionId: string, filter: PickAndPoseInput = {}): QuizState {
     if (!this.faculty) {
       throw new Error("FacultyService is not bound. Call setFacultyService() first.");
@@ -2344,6 +2461,10 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     this.assertBoardMutationAllowed(state, "post");
     const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
+    const nextCardRole = this.peekCardRoleForPose(state, facultyId, filter.mode);
+    if (nextCardRole === "social") {
+      return this.poseRubyHomeroomSocialCard(sessionId, state, facultyId);
+    }
     const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
     let difficulty = filter.difficulty;
     const allowedDifficulties = !filter.difficulty && state.currentGrade && !importedReviewCourse
@@ -2619,6 +2740,7 @@ export class RubyHighService extends Service {
     }
 
     const classSession = round?.classSession;
+    const cardRole = round?.cardRole;
     const question: Question = { ...mc, type: "multiple-choice", canGenerateMc: false };
     question.stat = statForQuestion(question);
     state.current = question;
@@ -2626,6 +2748,7 @@ export class RubyHighService extends Service {
     state.faculty = question.faculty ?? state.faculty;
     state.activeRound = this.openRound(state, question);
     state.activeRound.classSession = classSession ?? this.classSessionForPose(state, question.faculty ?? state.faculty, "practice");
+    state.activeRound.cardRole = cardRole ?? (state.activeRound.classSession.mode === "class" ? "class" : "practice");
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.mc-generated", {

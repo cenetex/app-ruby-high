@@ -1576,19 +1576,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       if (intent === "hint") {
         disableToolsForTurn = true;
         directive = playerLine
-          ? `${playerName} just said: "${clipped(playerLine, 140)}" Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.`
+          ? `${playerName} just said: "${clipped(playerLine, 260)}" Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.`
           : "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
       } else if (playerLine) {
         if (intent === "report") disableToolsForTurn = true;
         directive = intent === "report" || classReportControlsBoard
-          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
+          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
           : intent === "advance" && schedulerControlsBoard
-          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
+          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
           : intent === "advance"
-          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character in ONE short sentence, then put a fresh challenge on the board. ${requiredNextBoardInstruction(bank, "Call pick_from_bank exactly once to put the next scheduled question on the board.")}`
+          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character in ONE short sentence, then put a fresh challenge on the board. ${requiredNextBoardInstruction(bank, "Call pick_from_bank exactly once to put the next scheduled question on the board.")}`
           : schedulerControlsBoard
-          ? `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
-          : `${playerName} just said: "${clipped(playerLine, 140)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
+          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
+          : `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
       } else {
         if (intent === "report") disableToolsForTurn = true;
         directive = intent === "report" || classReportControlsBoard

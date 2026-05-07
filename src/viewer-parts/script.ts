@@ -253,24 +253,6 @@ const VIEWER_SCRIPT_SUFFIX = `
   const STUDENT_LINES_RIGHT = ["nice","yo same","easy","ok smart kid","first try??","atta way","lock in","bro really did that","fr"];
   const STUDENT_LINES_WRONG = ["ouch","i picked the same","tricky","happens","hated that one","next time fr","ngl me too"];
   const STUDENT_LINES_GREET = ["yo","hey","what's up","let's go","first one easy plz","ready"];
-  const PLAYER_LOUNGE_LINES = {
-    "overachiever": ["I brought notes if anyone wants the actual version.", "So what did I miss while everyone was pretending this was downtime?", "Be honest. Which class is secretly the final boss today?"],
-    "slacker": ["I am only here for the chair, but continue.", "So this is where the side quests happen?", "If anyone asks, I was definitely studying."],
-    "heart": ["Everyone okay in here?", "I can tell this room has lore.", "Do teachers need pep talks too, or is that against policy?"],
-    "outsider": ["This room explains a lot about this school.", "I am still learning what counts as normal here.", "Is the lounge always this mysterious?"],
-    "class-clown": ["I promise I am not here to steal snacks.", "This feels like premium gossip territory.", "Should I knock, or is lurking part of the curriculum?"],
-    "lifer": ["I knew the lounge had better information than the hallway.", "Okay, what did I miss?", "I have heard three versions of that story already."],
-    default: ["So what is happening in here?", "Can I sit in for a minute?", "I am listening.", "What did I miss?"],
-  };
-  const PLAYER_CLASS_LINES = {
-    "overachiever": ["I think I have the shape of it, but I want to check the logic.", "Can someone pressure-test my answer?", "I am keeping notes, so give me the useful version."],
-    "slacker": ["I might know this, which is inconvenient.", "Can someone give me the less official version?", "I am listening, probably."],
-    "heart": ["Can we talk it through for a second?", "What is everyone thinking here?", "I want the hint that helps the whole table."],
-    "outsider": ["I am still figuring out how this room thinks.", "What am I missing about the setup?", "Can someone translate the school logic here?"],
-    "class-clown": ["I need a hint before I start guessing with confidence.", "Someone stop me before I make this worse.", "What is the non-embarrassing way to approach this?"],
-    "lifer": ["I have heard this one before, but not from this angle.", "What is the read in this room?", "Okay, who has the useful version?"],
-    default: ["Can we talk this through?", "What am I missing?", "Can someone give me a nudge?", "What is the read here?"],
-  };
   const pickRandom = (a) => a[Math.floor(Math.random() * a.length)];
   function studentNameById(id) {
     const s = STUDENTS.find((entry) => entry.id === id);
@@ -496,21 +478,78 @@ const VIEWER_SCRIPT_SUFFIX = `
     const ch = lastTelemetry && lastTelemetry.character;
     return playerDisplayName() + ":" + (ch && ch.portraitDataUrl ? ch.portraitDataUrl.length : 0);
   }
+  function clipPlayerContext(text, max) {
+    const raw = String(text || "").replace(/\\s+/g, " ").trim();
+    if (!raw) return "";
+    const limit = max || 150;
+    return raw.length > limit ? raw.slice(0, limit - 1) + "…" : raw;
+  }
+  function facultyDisplayName(facultyId) {
+    const fid = facultyId || (lastTelemetry && lastTelemetry.faculty);
+    const fac = (lastTelemetry && lastTelemetry.faculty_roster || []).find((f) => f.id === fid);
+    return fac ? fac.displayName : (fid || "class").replace(/-/g, " ");
+  }
+  function revealAnswerText(reveal, choice) {
+    if (!reveal || !choice) return "";
+    const options = reveal.questionOptions || ((lastTelemetry && lastTelemetry.current && lastTelemetry.current.options) || null);
+    const value = options && options[choice];
+    return value ? choice + ") " + value : String(choice);
+  }
+  function latestConversationLine() {
+    if (!els.stream) return "";
+    const nodes = Array.from(els.stream.querySelectorAll(".msg.teacher .body, .msg.student .body"));
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const node = nodes[i];
+      const text = node && (node.dataset.markdownRaw || node.textContent || "");
+      const clipped = clipPlayerContext(text, 120);
+      if (clipped) return clipped;
+    }
+    return "";
+  }
   function playerLoungeLine() {
-    const ch = lastTelemetry && lastTelemetry.character;
-    const lines = (ch && PLAYER_LOUNGE_LINES[ch.playbookId]) || PLAYER_LOUNGE_LINES.default;
-    return pickRandom(lines);
+    const recent = latestConversationLine();
+    if (recent) return "I heard that: " + recent + " What should I understand about it?";
+    return "What are you all noticing about classes today?";
   }
   function playerClassLine(intent) {
+    const t = lastTelemetry || {};
+    const current = t.current || null;
+    const reveal = t.lastReveal || null;
+    const facultyName = facultyDisplayName(t.faculty);
     if (intent === "hint") {
-      return pickRandom(["Can I get a hint without the answer?", "What should I notice first?", "Give me a nudge, not the solution.", "What is the clean way into this?"]);
+      const prompt = current ? clipPlayerContext(current.prompt, 150) : "";
+      if (prompt) return "I'm looking at this board: " + prompt + " What clue should I use first without getting the answer?";
+      return "What clue should I use first without getting the answer?";
     }
     if (intent === "report") {
-      return pickRandom(["So what does the report say?", "How did that class actually go?", "What should I fix before the next one?", "Give me the honest version of that class report."]);
+      if (reveal) {
+        const prompt = clipPlayerContext(reveal.questionPrompt || (current && current.prompt) || "", 110);
+        const result = reveal.forfeit
+          ? "I timed out"
+          : reveal.wasCorrect
+            ? "I got it right"
+            : "I missed it";
+        const answer = reveal.answerText
+          ? clipPlayerContext(reveal.answerText, 70)
+          : revealAnswerText(reveal, reveal.picked);
+        const correct = reveal.expectedAnswer
+          ? clipPlayerContext(reveal.expectedAnswer, 70)
+          : revealAnswerText(reveal, reveal.correct);
+        const answerLine = answer && !reveal.forfeit ? " My answer was " + answer + "." : "";
+        const correctLine = correct ? " The correct answer was " + correct + "." : "";
+        return result + (prompt ? " on " + prompt : "") + "." + answerLine + correctLine + " What should I take from that?";
+      }
+      const progress = t.active_course_progress && t.active_course_progress.today;
+      if (progress && progress.status === "complete") {
+        return "I'm looking at the " + facultyName + " class report" + (progress.letterGrade ? " with a " + progress.letterGrade : "") + ". What should I work on next?";
+      }
+      return "What does the latest class result say I should work on next?";
     }
-    const ch = lastTelemetry && lastTelemetry.character;
-    const lines = (ch && PLAYER_CLASS_LINES[ch.playbookId]) || PLAYER_CLASS_LINES.default;
-    return pickRandom(lines);
+    const progress = t.active_course_progress && t.active_course_progress.today;
+    if (progress && progress.status === "active") {
+      return "I'm ready for the next " + facultyName + " card. We are at class " + Number(progress.questionCount || 0) + "/" + Number(progress.totalQuestions || 3) + ".";
+    }
+    return "I'm ready for the next " + facultyName + " card.";
   }
   function playerChatLine(intent) {
     return intent === "lounge" ? playerLoungeLine() : playerClassLine(intent);
@@ -531,16 +570,23 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function playerChatNote(intent, playerLine) {
     const current = lastTelemetry && lastTelemetry.current;
+    const reveal = lastTelemetry && lastTelemetry.lastReveal;
+    const contextBits = [];
+    if (current && current.prompt) contextBits.push("board: " + clipPlayerContext(current.prompt, 140));
+    if (reveal && reveal.questionPrompt) {
+      contextBits.push("recent result: " + (reveal.wasCorrect ? "correct" : reveal.forfeit ? "timeout" : "missed") + " on " + clipPlayerContext(reveal.questionPrompt, 100));
+    }
+    const contextLine = contextBits.length ? " Context: " + contextBits.join(" | ") + "." : "";
     if (intent === "hint" && current) {
-      return "The player said: " + playerLine + " Respond in 1 short in-character line with a helpful hint for the current board question, but do not reveal the answer or exact choice.";
+      return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line with a helpful hint for the current board question, but do not reveal the answer or exact choice.";
     }
     if (intent === "report") {
-      return "The player said: " + playerLine + " Respond in 1 short in-character line about the class report or recent class.";
+      return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line about the class report or recent class.";
     }
     if (intent === "lounge") {
-      return "The player said: " + playerLine + " Respond in 1 short in-character line as part of the lounge conversation.";
+      return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line as part of the lounge conversation.";
     }
-    return "The player said: " + playerLine + " Respond in 1 short in-character line and keep the room moving.";
+    return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line and keep the room moving.";
   }
   async function runPlayerChatTurn(intent, extraContext) {
     const playerLine = playerChatLine(intent);
@@ -936,6 +982,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardPanel.dataset.opinion = "false";
     els.blackboardPanel.dataset.typedAnswer = "false";
     els.blackboardPanel.dataset.questionType = "";
+    els.blackboardPanel.dataset.cardRole = "";
     if (reset) {
       els.boardPrompt.textContent = "";
       els.boardReveal.hidden = true;
@@ -976,6 +1023,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardPanel.dataset.opinion = "false";
     els.blackboardPanel.dataset.typedAnswer = "false";
     els.blackboardPanel.dataset.questionType = "graduation";
+    els.blackboardPanel.dataset.cardRole = "";
     activeQuestionId = null;
 
     els.blackboardMeta.replaceChildren();
@@ -1075,6 +1123,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardPanel.dataset.opinion = "false";
     els.blackboardPanel.dataset.typedAnswer = "false";
     els.blackboardPanel.dataset.questionType = "class-report";
+    els.blackboardPanel.dataset.cardRole = "report";
     activeQuestionId = null;
 
     els.blackboardMeta.replaceChildren();
@@ -1403,7 +1452,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const isOpinion = (lastTelemetry && lastTelemetry.is_opinion) || question.type === "opinion";
     const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
     const isFreeformAnswer = isTypedAnswer || isOpinion;
+    const ar = lastTelemetry && lastTelemetry.active_round;
+    const cardRole = (ar && ar.cardRole) || (isOpinion ? "social" : (ar && ar.classSession && ar.classSession.mode === "class" ? "class" : "practice"));
     els.blackboardPanel.dataset.questionType = question.type || "multiple-choice";
+    els.blackboardPanel.dataset.cardRole = cardRole || "";
     const promptText = String(question.prompt || "");
     const promptLines = promptText.split(/\\n/).length;
     const longPrompt = promptText.length > 120 || promptLines > 2;
@@ -1419,7 +1471,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     if (question.subject) { const s = document.createElement("span"); s.className = "pill subject"; s.textContent = question.subject; els.blackboardMeta.appendChild(s); }
     if (question.difficulty) { const d = document.createElement("span"); d.className = "pill difficulty " + question.difficulty; d.textContent = question.difficulty; els.blackboardMeta.appendChild(d); }
-    const ar = lastTelemetry && lastTelemetry.active_round;
     const stat = (ar && ar.stat) || (question && question.stat);
     const statPill = document.createElement("span");
     statPill.className = "pill stat " + (stat || "head");
@@ -1434,7 +1485,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (ar && ar.classSession) {
       const cls = document.createElement("span");
       cls.className = "pill class-mode";
-      cls.textContent = ar.classSession.mode === "class"
+      cls.textContent = cardRole === "social"
+        ? "SOCIAL"
+        : ar.classSession.mode === "class"
         ? "CLASS " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
         : "PRACTICE";
       els.blackboardMeta.appendChild(cls);
@@ -1671,7 +1724,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (event.reason === "pep-talk") return name + " steady";
     const delta = Number(event.delta || 0);
     const sign = delta > 0 ? "+" + delta : String(delta);
-    return "MASH " + sign + " " + name;
+    return "Social " + sign + " " + name;
   }
 
   function appendMashTickChips(body, reveal) {
@@ -1680,8 +1733,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       const chip = document.createElement("span");
       chip.className = "mash-tick-chip " + (event.delta > 0 ? "up" : event.delta < 0 ? "down" : "steady");
       chip.textContent = mashTickLabel(event);
-      if (event.circled) chip.title = studentNameById(event.studentId) + " is circled on your MASH card.";
-      else if (event.scratched) chip.title = studentNameById(event.studentId) + " is scratched on your MASH card.";
+      if (event.circled) chip.title = studentNameById(event.studentId) + " is circled on your Social card.";
+      else if (event.scratched) chip.title = studentNameById(event.studentId) + " is scratched on your Social card.";
       body.appendChild(chip);
     });
   }
@@ -3382,7 +3435,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const body = card.querySelector(".ccg-body");
       if (body) body.appendChild(archive);
     }
-    // MASH Card lives on the School Career side now — it's live state that
+    // Social Card lives on the School Career side now — it's live state that
     // ticks over the arc, so it belongs with the dynamic card, not the
     // stable identity card.
     card.classList.add("is-character-card");
@@ -3390,7 +3443,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     return card;
   }
 
-  // ── MASH Card grid (dating-sim layer) ───────────────────────────────────
+  // ── Social card grid (relationship layer) ───────────────────────────────
   // Six classmates × six fortune axes resolve over 4 years. Cells tick
   // up/down per essay; circle at +2; scratch at -3. Resolved axes become
   // superlatives on the diploma. This is the player-facing slice — a
@@ -3403,7 +3456,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const heading = document.createElement("div");
     heading.className = "mash-grid-heading";
-    heading.textContent = graduated ? "MASH Card · sealed" : "MASH Card";
+    heading.textContent = graduated ? "Social Card · sealed" : "Social Card";
     wrap.appendChild(heading);
 
     const grid = document.createElement("div");

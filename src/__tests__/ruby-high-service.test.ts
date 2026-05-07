@@ -7,6 +7,7 @@ import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { dailyKey } from "../types.js";
 
 let tmpDir: string;
 let storePath: string;
@@ -861,6 +862,44 @@ describe("RubyHighService Phase 1", () => {
     activeRuby = rubyB;
 
     expect(facultyB.bank("ruby")!.questions.some((q) => q.id === state.current?.id)).toBe(true);
+  });
+
+  it("paces Ruby homeroom as a daily Social deck instead of three class cards up front", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:ruby-social-deck";
+    ruby.selectGrade(sid, "10");
+    const state = ruby.getOrCreate(sid);
+    state.character = {
+      name: "Test",
+      playbookId: "heart",
+      stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+      arcAnswer: "—",
+      personality: "—",
+      yearbook: [],
+      createdAt: Date.now(),
+    };
+
+    const roles: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const posed = ruby.pickAndPose(sid, { faculty: "ruby" });
+      roles.push(posed.activeRound?.cardRole ?? "missing");
+      if (posed.activeRound?.type === "opinion") {
+        ruby.recordOpinion(sid, "player", "I trust specific evidence and check claims that skip the source.");
+        ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "Specific and grounded." }], "player");
+      } else {
+        ruby.submitAnswer(sid, posed.current!.correct!);
+      }
+      if (i < 9) ruby.clearBoard(sid);
+    }
+
+    expect(roles).toEqual(["practice", "practice", "class", "social", "practice", "practice", "class", "practice", "practice", "class"]);
+    const record = ruby.getOrCreate(sid).character!.dailyClasses![`10:ruby:${dailyKey()}`]!;
+    expect(record).toMatchObject({
+      status: "complete",
+      questionCount: 3,
+      practiceCount: 6,
+      socialCount: 1,
+    });
   });
 
   it("resetSession wipes everything for that sessionId", async () => {
