@@ -131,10 +131,12 @@ function nextBoardInstruction(bank: { mode?: string; remaining: number; grade?: 
 }
 
 function schedulerOwnsBoard(bank: { remaining: number; todayClass?: { status?: string } }): boolean {
-  // During scheduled class flow, the deterministic scheduler is the only board
-  // writer. AI regains the old custom-question tools only after today's class
-  // is complete AND no scheduled card is ready.
-  return bank.remaining > 0 || bank.todayClass?.status !== "complete";
+  // The deterministic scheduler can only own the board when it actually
+  // has cards to post. When the bank runs dry — mid-class or in practice
+  // — AI takes over via pose_question so the lesson keeps moving instead
+  // of dead-ending in a "No scheduled question is due" error from the
+  // viewer's auto-pick.
+  return bank.remaining > 0;
 }
 
 function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; todayClass?: { status?: string; questionCount?: number; totalQuestions?: number } }): string {
