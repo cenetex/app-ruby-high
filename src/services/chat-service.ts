@@ -877,25 +877,50 @@ function describeRoomForTeacher(state: QuizState): string {
 
 function describeBoardForModel(state: QuizState): string {
   const scoreLine = `${state.score.correct}/${state.score.total} answers · ${state.score.points ?? 0} score`;
+  const header = [
+    `Active faculty: ${state.faculty}.`,
+    `Score this session: ${scoreLine}.`,
+  ];
+  // Senior arc complete — ceremony done, diploma issued. The chalkboard
+  // renders a graduated state with no question.
+  if (state.character && Array.isArray(state.character.yearbook) && state.character.yearbook.length >= 4) {
+    return [
+      ...header,
+      "BOARD STATUS: ARC_COMPLETE.",
+      "The player has graduated; Senior is sealed and the diploma is on the chalkboard. There are no more questions this run.",
+    ].join("\n");
+  }
+  // Year cleared, ceremony pending. The chalkboard renders a ceremony
+  // panel and the player is selecting a reward on their School Career card.
+  if (state.character?.pendingGraduation) {
+    return [
+      ...header,
+      "BOARD STATUS: GRADUATION_CEREMONY.",
+      "The player cleared the year's gates and is selecting a ceremony reward on their School Career card. The chalkboard is showing the ceremony, not a question.",
+    ].join("\n");
+  }
   if (!state.current) {
-    return `No question on the board. Faculty: ${state.faculty}. Score this session: ${scoreLine}.`;
+    return [
+      ...header,
+      "BOARD STATUS: EMPTY.",
+      "No question is on the board. The question scheduler auto-posts the next one when appropriate; you'll be fired again once the player engages with it.",
+    ].join("\n");
   }
   const q = state.current;
   if (q.type === "opinion") {
     return [
-      `Active faculty: ${state.faculty}.`,
-      `Score this session: ${scoreLine}.`,
-      `OPINION question on the board:`,
-      `  ${q.prompt}`,
-      q.rubric ? `  rubric: ${q.rubric}` : "",
-      "(The student is writing a free-form response. The system will call you back to grade.)",
+      ...header,
+      "BOARD STATUS: OPINION_PENDING.",
+      "An OPINION question is on the board. The player is writing a free-form response; the system will call you back to grade.",
+      `Question: ${q.prompt}`,
+      q.rubric ? `Rubric: ${q.rubric}` : "",
     ].filter(Boolean).join("\n");
   }
   const opts = q.options ?? { A: "", B: "", C: "", D: "" };
-  // Only mention the reveal when it belongs to the question CURRENTLY on the
-  // board — otherwise a new question + an old reveal would race-render and
-  // confuse the model into thinking questions repeat. When the active round
-  // is resolved we tell the teacher to react instead of nagging for a pick.
+  // Only describe the reveal when it belongs to the question currently on
+  // the board. After a resolve, a fresh question can land before this is
+  // re-read — in that case .current is the new question and lastReveal
+  // points at the previous one; the WAITING branch is correct.
   const round = state.activeRound;
   const resolvedThisQ =
     !!round && round.questionId === q.id && round.resolved &&
@@ -903,16 +928,15 @@ function describeBoardForModel(state: QuizState): string {
   const statusLines = resolvedThisQ && state.lastReveal
     ? [
         "BOARD STATUS: RESOLVED.",
-        `The player already answered ${state.lastReveal.picked} and was ${state.lastReveal.wasCorrect ? "correct" : "wrong; correct was " + state.lastReveal.correct}.`,
-        "Do not ask for an answer to this board again. React to the result, then call pick_from_bank or pose_question to put the next question on the board.",
+        `The player answered ${state.lastReveal.picked} and was ${state.lastReveal.wasCorrect ? "correct" : "wrong; correct was " + state.lastReveal.correct}.`,
+        "The question scheduler will auto-post the next question when the board clears; you'll be fired again at that point.",
       ]
     : [
         "BOARD STATUS: WAITING_FOR_STUDENT_ANSWER.",
         "The player has not answered this board yet. Do not reveal the correct answer. Wait for the answer-graded event before calling another tool.",
       ];
   return [
-    `Active faculty: ${state.faculty}.`,
-    `Score this session: ${scoreLine}.`,
+    ...header,
     ...statusLines,
     `Current question on the blackboard (${q.difficulty ?? "?"} · ${q.subject ?? "?"}):`,
     `  ${q.prompt}`,

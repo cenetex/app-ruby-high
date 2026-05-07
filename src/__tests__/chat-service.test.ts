@@ -703,8 +703,11 @@ describe("ChatService.send — message composition", () => {
       .map((m: any) => String(m.content))
       .join("\n");
     expect(systemBlob).toContain("BOARD STATUS: RESOLVED");
-    expect(systemBlob).toContain("already answered D");
-    expect(systemBlob).toContain("Do not ask for an answer to this board again");
+    // Resolved branch describes what happened (positive state) and points
+    // at the scheduler's next-question handoff rather than telling the
+    // model what NOT to do.
+    expect(systemBlob).toContain("answered D");
+    expect(systemBlob).toContain("auto-post the next question");
   });
 
   it("serializes completed tool calls for viewer history replay", () => {
