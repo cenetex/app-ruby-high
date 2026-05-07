@@ -235,7 +235,8 @@ export async function handlePackRoutes(
         maxCards,
         teacherId,
       });
-      if (pack.faculty[0]!.questions.length === 0) {
+      const importedQuestionCount = pack.faculty.reduce((sum, f) => sum + f.questions.length, 0);
+      if (importedQuestionCount === 0) {
         ctx.error(ctx.res, "Distractor generation produced no usable questions. Check that your OpenRouter key has credit, then try again.", 502);
         return true;
       }
@@ -245,7 +246,7 @@ export async function handlePackRoutes(
       await deps.ruby.flushSession(sessionId);
       log.event("pack.import-anki.done", {
         sessionId, packId: pack.id, deckName: deck.name,
-        cardsImported: pack.faculty[0]!.questions.length, skipped, teacherId,
+        cardsImported: importedQuestionCount, classCount: pack.faculty.length, skipped, teacherId,
       });
       ctx.json(ctx.res, {
         ok: true,

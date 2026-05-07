@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildAnkiPack } from "../content/anki/pack.js";
+import { buildAnkiPack, planAnkiCourses } from "../content/anki/pack.js";
 import type { AnkiDeck } from "../content/anki/parse.js";
 
 // End-to-end: AnkiDeck → ContentPack via buildAnkiPack. Mocks
@@ -47,9 +47,9 @@ afterEach(() => { vi.restoreAllMocks(); });
 const sampleDeck: AnkiDeck = {
   name: "AP Biology — Cells",
   cards: [
-    { front: "Powerhouse of the cell?", back: "Mitochondrion", deckName: "AP Biology", noteId: "n1" },
-    { front: "DNA → RNA process?", back: "Transcription", deckName: "AP Biology", noteId: "n2" },
-    { front: "Site of protein synthesis?", back: "Ribosome", deckName: "AP Biology", noteId: "n3" },
+    { front: "Powerhouse of the cell?", back: "Mitochondrion", deckName: "AP Biology", tags: [], noteId: "n1" },
+    { front: "DNA → RNA process?", back: "Transcription", deckName: "AP Biology", tags: [], noteId: "n2" },
+    { front: "Site of protein synthesis?", back: "Ribosome", deckName: "AP Biology", tags: [], noteId: "n3" },
   ],
 };
 
@@ -120,7 +120,7 @@ describe("buildAnkiPack — happy path", () => {
     const big: AnkiDeck = {
       name: "Big Deck",
       cards: Array.from({ length: 200 }, (_, i) => ({
-        front: `Q${i}`, back: `A${i}`, deckName: "Big Deck", noteId: String(i),
+        front: `Q${i}`, back: `A${i}`, deckName: "Big Deck", tags: [], noteId: String(i),
       })),
     };
     await buildAnkiPack(big, { apiKey: "k", idSuffix: "x", maxCards: 10 });
@@ -150,6 +150,59 @@ describe("buildAnkiPack — happy path", () => {
     });
     expect(personaCalls).toBe(0);
     expect(calls).toBe(3);
+  });
+});
+
+describe("buildAnkiPack — automatic class planning", () => {
+  it("splits Anki subdecks into separate classes with separate faculty ids", async () => {
+    mockOpenRouter(["WrongA", "WrongB", "WrongC"]);
+    const deck: AnkiDeck = {
+      name: "AP Biology",
+      cards: [
+        { front: "What surrounds a cell?", back: "Membrane", deckName: "AP Biology::Cells", tags: [], noteId: "c1" },
+        { front: "What makes ATP?", back: "Mitochondrion", deckName: "AP Biology::Cells", tags: [], noteId: "c2" },
+        { front: "DNA unit?", back: "Nucleotide", deckName: "AP Biology::Genetics", tags: [], noteId: "g1" },
+        { front: "Mendel tracked what?", back: "Traits", deckName: "AP Biology::Genetics", tags: [], noteId: "g2" },
+      ],
+    };
+
+    const plan = planAnkiCourses(deck, deck.cards);
+    expect(plan.map((p) => p.title)).toEqual(["Cells", "Genetics"]);
+
+    const { pack, skipped } = await buildAnkiPack(deck, {
+      apiKey: "k",
+      idSuffix: "split1",
+      teacherId: "sally-science",
+    });
+    expect(skipped).toBe(0);
+    expect(pack.faculty).toHaveLength(2);
+    expect(pack.courses?.map((c) => c.title)).toEqual(["Cells", "Genetics"]);
+    expect(pack.rooms.map((r) => r.channelName)).toEqual(["cells", "genetics"]);
+    expect(new Set(pack.faculty.map((f) => f.id)).size).toBe(2);
+    for (const fac of pack.faculty) {
+      expect(fac.displayName).toBe("Sally Science");
+      expect(fac.assetTeacherId).toBe("sally-science");
+      expect(fac.questions).toHaveLength(2);
+      for (const q of fac.questions) expect(q.faculty).toBe(fac.id);
+    }
+    expect(calls).toBe(4);
+    expect(personaCalls).toBe(0);
+  });
+
+  it("uses strong tags as class boundaries when the deck is flat", async () => {
+    const deck: AnkiDeck = {
+      name: "Spanish 101",
+      cards: [
+        { front: "hablar", back: "to speak", deckName: "Spanish 101", tags: ["verbs"], noteId: "v1" },
+        { front: "comer", back: "to eat", deckName: "Spanish 101", tags: ["verbs"], noteId: "v2" },
+        { front: "la mesa", back: "table", deckName: "Spanish 101", tags: ["nouns"], noteId: "n1" },
+        { front: "el libro", back: "book", deckName: "Spanish 101", tags: ["nouns"], noteId: "n2" },
+      ],
+    };
+
+    const plan = planAnkiCourses(deck, deck.cards);
+    expect(plan.map((p) => p.title)).toEqual(["Verbs", "Nouns"]);
+    expect(plan.map((p) => p.cards.length)).toEqual([2, 2]);
   });
 });
 

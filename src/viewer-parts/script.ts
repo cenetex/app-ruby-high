@@ -3550,6 +3550,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packStatusEl = $("pack-import-status");
   const packBtn = $("pack-btn");
   const BUILTIN_IMPORT_TEACHERS = [
+    { id: "", name: "Auto: classes + teachers" },
     { id: "ruby", name: "Ruby" },
     { id: "sally-science", name: "Sally Science" },
     { id: "professor-edward", name: "Professor Edward" },
@@ -3604,7 +3605,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function renderPackTeacherOptions() {
     if (!packTeacherSelect) return;
-    const previous = packTeacherSelect.value || "ruby";
+    const previous = packTeacherSelect.value || "";
     packTeacherSelect.innerHTML = "";
     for (const teacher of BUILTIN_IMPORT_TEACHERS) {
       const opt = document.createElement("option");
@@ -3612,7 +3613,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       opt.textContent = teacher.name;
       packTeacherSelect.appendChild(opt);
     }
-    packTeacherSelect.value = BUILTIN_IMPORT_TEACHERS.some((t) => t.id === previous) ? previous : "ruby";
+    packTeacherSelect.value = BUILTIN_IMPORT_TEACHERS.some((t) => t.id === previous) ? previous : "";
   }
   async function switchPack(packId) {
     packStatusEl.textContent = "Switching…";
@@ -3657,11 +3658,13 @@ const VIEWER_SCRIPT_SUFFIX = `
       // key from X-Openrouter-Key (it pays for the distractor LLM calls).
       // Plain fetch() would skip the header and the import would 400 with
       // "OpenRouter API key required."
-      const teacherId = packTeacherSelect && packTeacherSelect.value ? packTeacherSelect.value : "ruby";
+      const teacherId = packTeacherSelect && packTeacherSelect.value ? packTeacherSelect.value : "";
+      const body = { filename: file.name, data: b64, maxCards: 50 };
+      if (teacherId) body.teacherId = teacherId;
       const r = await apiFetch("/api/apps/ruby-high/packs/import-anki", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, data: b64, maxCards: 50, teacherId }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ error: r.status }));

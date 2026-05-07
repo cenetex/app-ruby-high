@@ -1,8 +1,8 @@
 /**
  * Anki .apkg parser. The .apkg file format is a ZIP archive containing
  * a SQLite database (collection.anki2 or collection.anki21) plus media
- * files. This module extracts the cards as plain {front, back, deckName}
- * triples; turning them into multiple-choice questions is a separate
+ * files. This module extracts the cards as plain front/back records
+ * with deck names and note tags; turning them into multiple-choice questions is a separate
  * step (see distractors.ts) that needs an LLM.
  *
  * Pure-JS dependencies (jszip + sql.js) so this works in Node + browser
@@ -29,6 +29,9 @@ export interface AnkiCard {
   /** Deck name from the .apkg, e.g. "AP Biology::Cells". Used as the
    *  ContentPack subject so the channels rail can group questions. */
   deckName: string;
+  /** Normalized Anki note tags. Tags are a fallback grouping signal when
+   *  the deck does not use meaningful subdecks. */
+  tags: string[];
   /** Note id from Anki — used as a stable identifier for the resulting
    *  question so re-imports don't shuffle ids. */
   noteId: string;
@@ -122,7 +125,7 @@ async function readDeckFromSqlite(dbBytes: Uint8Array): Promise<AnkiDeck> {
     const decks = readDeckCatalog(db);
     const cards: AnkiCard[] = [];
     const rows = db.exec(
-      `SELECT n.id AS noteId, n.flds AS flds, c.did AS did
+      `SELECT n.id AS noteId, n.flds AS flds, n.tags AS tags, c.did AS did
        FROM cards c JOIN notes n ON c.nid = n.id
        ORDER BY c.id`,
     );
@@ -134,13 +137,15 @@ async function readDeckFromSqlite(dbBytes: Uint8Array): Promise<AnkiDeck> {
     for (const row of rows[0]!.values) {
       const noteId = String(row[0]);
       const flds = String(row[1] ?? "");
-      const did = String(row[2] ?? "");
+      const tags = parseTags(String(row[2] ?? ""));
+      const did = String(row[3] ?? "");
       const [front, back] = splitFields(flds);
       if (!front || !back) continue; // skip malformed cards
       cards.push({
         front: stripHtml(front),
         back: stripHtml(back),
         deckName: decks.get(did) ?? "default",
+        tags,
         noteId,
       });
     }
@@ -171,6 +176,19 @@ function stripHtml(s: string): string {
     .trim();
 }
 
+function parseTags(raw: string): string[] {
+  if (!raw.trim()) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tag of raw.trim().split(/\s+/)) {
+    const normalized = tag.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
 function readDeckCatalog(db: SqlJsDatabase): Map<string, string> {
   const out = new Map<string, string>();
   // `col` has a single row; `decks` is a JSON map keyed by deck id.
@@ -191,6 +209,9 @@ function readDeckCatalog(db: SqlJsDatabase): Map<string, string> {
 }
 
 function pickDeckName(decks: Map<string, string>): string | null {
+  const commonRoot = commonDeckRoot(Array.from(decks.values()));
+  if (commonRoot) return commonRoot;
+
   // Prefer the shortest non-default deck name (avoids the long
   // "Default::Subdeck::Subsubdeck" path strings Anki produces); fall
   // back to whatever's there.
@@ -200,4 +221,15 @@ function pickDeckName(decks: Map<string, string>): string | null {
     if (!chosen || name.length < chosen.length) chosen = name;
   }
   return chosen ?? decks.values().next().value ?? null;
+}
+
+function commonDeckRoot(names: string[]): string | null {
+  const meaningful = names
+    .filter((name) => name && name !== "Default")
+    .map((name) => name.split("::").map((part) => part.trim()).filter(Boolean))
+    .filter((parts) => parts.length > 1);
+  if (meaningful.length < 2) return null;
+  const root = meaningful[0]?.[0];
+  if (!root) return null;
+  return meaningful.every((parts) => parts[0] === root) ? root : null;
 }

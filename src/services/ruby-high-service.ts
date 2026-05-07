@@ -10,14 +10,13 @@ import {
   LOUNGE_FACULTY,
   OPINION_ROUND_DURATION_MS,
   RUBY_FACULTY,
-  ROOMS,
-  TEACHING_ROOMS,
   difficultiesForGrade,
   difficultyForGrade,
   initialNpcRoster,
   npcsInRoom,
   classifyTotal,
   dailyKey,
+  dailyIndex,
   facultyForDay,
   initialNpcCohort,
   letterGradePasses,
@@ -803,6 +802,20 @@ export class RubyHighService extends Service {
     return pack.id.startsWith("anki:") && pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0);
   }
 
+  private dailyFacultyForState(state: QuizState, key: string): string {
+    const scheduled = facultyForDay(key);
+    const resolved = resolveFacultyIdForSession(state, scheduled);
+    if (resolved) return resolved;
+
+    const pack = packForSession(state);
+    const courseFacultyIds = coursesForPack(pack)
+      .map((c) => c.facultyId)
+      .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0));
+    if (courseFacultyIds.length === 0) return scheduled;
+    const idx = ((dailyIndex(key) % courseFacultyIds.length) + courseFacultyIds.length) % courseFacultyIds.length;
+    return courseFacultyIds[idx]!;
+  }
+
   private dailyClassRecord(state: QuizState, facultyId: string, date = dailyKey()): DailyClassRecord | null {
     const ch = state.character;
     const grade = state.currentGrade;
@@ -1418,9 +1431,13 @@ export class RubyHighService extends Service {
     let classesMet = 0;
     let classCount = 0;
     const classGrades: Record<string, string> = {};
-    for (const room of TEACHING_ROOMS) {
-      const teacherId = ROOMS.find((r) => r.id === room)?.teacherId;
-      if (!teacherId) continue;
+    const pack = packForSession(state);
+    const teacherIds = Array.from(new Set(
+      coursesForPack(pack)
+        .map((course) => course.facultyId)
+        .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0)),
+    ));
+    for (const teacherId of teacherIds) {
       classCount++;
       const course = this.courseStandingForState(state, teacherId);
       classGrades[teacherId] = course.letterGrade ?? "—";
@@ -1479,7 +1496,7 @@ export class RubyHighService extends Service {
 
     const advance = nextGradeAfter(grade);
     const targetGrade = advance ?? grade;
-    const normalizedReward = this.normalizeGraduationReward(ch, reward, targetGrade);
+    const normalizedReward = this.normalizeGraduationReward(state, ch, reward, targetGrade);
 
     // Resolve any MASH axis whose grade just completed (and the Senior
     // bonus axes at grade 12). The full superlative list snapshots onto
@@ -1545,7 +1562,7 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  private normalizeGraduationReward(ch: PlayerCharacter, reward: GraduationReward, targetGrade: Grade): GraduationReward {
+  private normalizeGraduationReward(state: QuizState, ch: PlayerCharacter, reward: GraduationReward, targetGrade: Grade): GraduationReward {
     if (reward.kind === "stat") {
       if (!["head", "heart", "hustle", "honor"].includes(reward.stat)) {
         throw new Error("Pick a valid stat.");
@@ -1557,9 +1574,12 @@ export class RubyHighService extends Service {
     }
     if (reward.kind === "advantage") return reward;
     if (reward.kind === "affinity") {
-      const facultyIds = new Set(TEACHING_ROOMS
-        .map((room) => ROOMS.find((r) => r.id === room)?.teacherId)
-        .filter((id): id is string => typeof id === "string"));
+      const pack = packForSession(state);
+      const facultyIds = new Set(
+        coursesForPack(pack)
+          .map((course) => course.facultyId)
+          .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId)),
+      );
       if (!facultyIds.has(reward.facultyId)) throw new Error("Pick a valid class affinity.");
       return { kind: "affinity", facultyId: reward.facultyId };
     }
@@ -2126,7 +2146,7 @@ export class RubyHighService extends Service {
   } {
     const state = this.getOrCreate(sessionId);
     const key = dailyKey(now);
-    const fac = facultyForDay(key);
+    const fac = this.dailyFacultyForState(state, key);
     if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
     if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
     if (state.character.lastBonusDate === key) {

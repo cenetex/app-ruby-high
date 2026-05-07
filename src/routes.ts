@@ -16,6 +16,7 @@ import {
   CHOICES,
   GRADES,
   TEACHING_ROOMS,
+  dailyIndex,
   dailyKey,
   facultyForDay,
   type CharacterStats,
@@ -42,6 +43,7 @@ import {
   coursesForSession,
   facultyForSession,
   packForSession,
+  resolveFacultyIdForSession,
   roomsForSession,
   roomsWithLoungeForSession,
 } from "./content/registry.js";
@@ -401,13 +403,26 @@ function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
   dailyKey: string;
 } {
   const key = dailyKey(now);
-  const fac = facultyForDay(key);
+  const fac = dailyFacultyForState(state, key);
   if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
   if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
   if (state.character.lastBonusDate === key) {
     return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
   }
   return { available: true, facultyId: fac, dailyKey: key };
+}
+
+function dailyFacultyForState(state: QuizState, key: string): string {
+  const scheduled = facultyForDay(key);
+  const resolved = resolveFacultyIdForSession(state, scheduled);
+  if (resolved) return resolved;
+  const pack = packForSession(state);
+  const courses = coursesForSession(state)
+    .map((course) => course.facultyId)
+    .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0));
+  if (courses.length === 0) return scheduled;
+  const idx = ((dailyIndex(key) % courses.length) + courses.length) % courses.length;
+  return courses[idx]!;
 }
 
 function deriveRoomCohort(roster: NpcStudentState[], state: QuizState): Record<string, string[]> {

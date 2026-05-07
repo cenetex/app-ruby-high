@@ -17,6 +17,7 @@ function makeCards(n: number): AnkiCard[] {
     front: `Q${i + 1}: front`,
     back: `A${i + 1}`,
     deckName: "Test",
+    tags: [],
     noteId: String(i + 1),
   }));
 }

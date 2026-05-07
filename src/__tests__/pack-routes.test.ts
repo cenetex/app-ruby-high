@@ -332,14 +332,14 @@ async function buildApkgFixture(deckName: string, cards: Array<{ front: string; 
   const SQL = await initSqlJs();
   const db = new SQL.Database();
   db.run(`CREATE TABLE col (id INTEGER PRIMARY KEY, decks TEXT, conf TEXT, models TEXT, dconf TEXT, tags TEXT)`);
-  db.run(`CREATE TABLE notes (id INTEGER PRIMARY KEY, flds TEXT, sfld TEXT)`);
+  db.run(`CREATE TABLE notes (id INTEGER PRIMARY KEY, tags TEXT, flds TEXT, sfld TEXT)`);
   db.run(`CREATE TABLE cards (id INTEGER PRIMARY KEY, nid INTEGER, did INTEGER)`);
   db.run(`INSERT INTO col (id, decks, conf, models, dconf, tags) VALUES (1, ?, '{}', '{}', '{}', '{}')`,
     [JSON.stringify({ "1": { name: deckName } })]);
   const FS = String.fromCharCode(0x1f);
   let nid = 1;
   for (const c of cards) {
-    db.run(`INSERT INTO notes (id, flds, sfld) VALUES (?, ?, ?)`, [nid, `${c.front}${FS}${c.back}`, c.front]);
+    db.run(`INSERT INTO notes (id, tags, flds, sfld) VALUES (?, '', ?, ?)`, [nid, `${c.front}${FS}${c.back}`, c.front]);
     db.run(`INSERT INTO cards (id, nid, did) VALUES (?, ?, ?)`, [nid, nid, 1]);
     nid++;
   }

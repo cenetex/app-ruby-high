@@ -95,6 +95,39 @@ function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"):
   };
 }
 
+function fakeGeneratedAnkiPack(id = "anki:generated-vocab", questionId = "generated-vocab-q1"): ContentPack {
+  const pack = fakeAnkiPackWithSally(id, questionId);
+  pack.faculty[0] = {
+    ...pack.faculty[0]!,
+    id: "generated-vocab-course",
+    displayName: "Dr. Vocab",
+    shortName: "Vocab",
+    systemPrompt: "You are Dr. Vocab teaching an imported deck.",
+    questions: [{
+      ...pack.faculty[0]!.questions[0]!,
+      id: questionId,
+      faculty: "generated-vocab-course",
+    }],
+  };
+  delete pack.faculty[0]!.assetTeacherId;
+  pack.courses![0] = {
+    id: "generated-vocab-course",
+    title: "Generated Vocab",
+    facultyId: "generated-vocab-course",
+    roomId: "generated-vocab-room",
+    subjects: ["vocab"],
+  };
+  pack.rooms[0] = {
+    id: "generated-vocab-room",
+    name: "Generated Vocab",
+    channelName: "generated-vocab",
+    teacherId: "generated-vocab-course",
+    description: "Generated imported vocabulary deck",
+    teaches: true,
+  };
+  return pack;
+}
+
 function fakeLeveledPack(id = "pack:level-test"): ContentPack {
   return {
     id,
@@ -290,6 +323,22 @@ describe("RubyHighService Phase 1", () => {
     expect(bank.facultyId).toBe("vocab-test-course");
     expect(bank.mode).toBe("srs");
     expect(bank.total).toBe(1);
+  });
+
+  it("routes daily bonus to a generated imported course when no built-in teacher template matches", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-generated-daily";
+    const pack = fakeGeneratedAnkiPack();
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid);
+
+    const day = new Date("2026-05-04T18:00:00Z");
+    expect(ruby.dailyStatus(sid, day).facultyId).toBe("generated-vocab-course");
+
+    const posed = ruby.playBonus(sid, day);
+    expect(posed.faculty).toBe("generated-vocab-course");
+    expect(posed.current?.id).toBe("generated-vocab-q1");
   });
 
   it("draws bank questions at the current year level or lower", async () => {

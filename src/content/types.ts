@@ -6,7 +6,7 @@
  * generated packs) all materialize as ContentPack instances.
  *
  * A pack owns:
- *   - 1-3 courses (what is being taught)
+ *   - a small set of courses (what is being taught)
  *   - matching faculty instances (who teaches each course + bank inline)
  *   - matching rooms (the channels rail)
  *
@@ -33,7 +33,7 @@ export interface ContentPack {
   /** Semver of the pack contents. Bumping a pack version invalidates any
    *  cached question state for it on the client. */
   version: string;
-  /** 1-3 faculty members. Each has its own chat persona + question bank. */
+  /** Faculty members. Each has its own chat persona + question bank. */
   faculty: PackFaculty[];
   /** Course layer: separates "what is being taught" from reusable teacher
    *  templates such as Ruby/Sally/Edward. Optional for legacy persisted packs;

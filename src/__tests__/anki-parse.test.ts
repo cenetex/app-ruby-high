@@ -61,7 +61,22 @@ describe("parseApkg — end-to-end with a programmatic fixture", () => {
     // Deck name is propagated to each card.
     for (const c of deck.cards) {
       expect(c.deckName).toBe("Capitals 101");
+      expect(c.tags).toEqual([]);
     }
+  });
+
+  it("preserves subdeck names + note tags and names the deck by common root", async () => {
+    const fixture = await buildApkgFixture({
+      deckName: "Biology",
+      cards: [
+        { front: "Cell boundary?", back: "Membrane", deckName: "Biology::Cells", tags: ["cells", "unit-1"] },
+        { front: "DNA unit?", back: "Nucleotide", deckName: "Biology::Genetics", tags: ["genetics", "unit-1"] },
+      ],
+    });
+    const deck = await parseApkg(fixture);
+    expect(deck.name).toBe("Biology");
+    expect(deck.cards.map((c) => c.deckName)).toEqual(["Biology::Cells", "Biology::Genetics"]);
+    expect(deck.cards.map((c) => c.tags)).toEqual([["cells", "unit-1"], ["genetics", "unit-1"]]);
   });
 
   it("strips minimal HTML markup from card content", async () => {
@@ -111,7 +126,7 @@ describe("parseApkg — end-to-end with a programmatic fixture", () => {
 
 interface FixtureOpts {
   deckName: string;
-  cards: Array<{ front: string; back: string }>;
+  cards: Array<{ front: string; back: string; deckName?: string; tags?: string[] }>;
   malformedFlds?: string[];
 }
 
@@ -137,16 +152,19 @@ async function buildApkgFixture(opts: FixtureOpts): Promise<Uint8Array> {
     reps INTEGER, lapses INTEGER, "left" INTEGER, odue INTEGER, odid INTEGER,
     flags INTEGER, data TEXT
   )`);
-  // Single deck with id 1, named whatever the test asked for.
-  const decksJson = JSON.stringify({ "1": { name: opts.deckName } });
+  const deckNames = Array.from(new Set([opts.deckName, ...opts.cards.map((c) => c.deckName ?? opts.deckName)]));
+  const deckIdByName = new Map(deckNames.map((name, index) => [name, String(index + 1)]));
+  const decksJson = JSON.stringify(Object.fromEntries(deckNames.map((name, index) => [String(index + 1), { name }])));
   db.run(`INSERT INTO col (id, decks, conf, models, dconf, tags) VALUES (1, ?, '{}', '{}', '{}', '{}')`, [decksJson]);
   // Insert real cards.
   let nid = 1;
   const FS = String.fromCharCode(0x1f);
   for (const c of opts.cards) {
     const flds = `${c.front}${FS}${c.back}`;
-    db.run(`INSERT INTO notes (id, flds, sfld) VALUES (?, ?, ?)`, [nid, flds, c.front]);
-    db.run(`INSERT INTO cards (id, nid, did) VALUES (?, ?, ?)`, [nid, nid, 1]);
+    const tags = c.tags && c.tags.length > 0 ? ` ${c.tags.join(" ")} ` : "";
+    const did = deckIdByName.get(c.deckName ?? opts.deckName) ?? "1";
+    db.run(`INSERT INTO notes (id, tags, flds, sfld) VALUES (?, ?, ?, ?)`, [nid, tags, flds, c.front]);
+    db.run(`INSERT INTO cards (id, nid, did) VALUES (?, ?, ?)`, [nid, nid, did]);
     nid++;
   }
   // Inject malformed rows if requested (for the skip-malformed test).
