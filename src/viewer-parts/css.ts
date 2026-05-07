@@ -72,7 +72,11 @@ export const VIEWER_CSS = `
     -webkit-font-smoothing: antialiased;
     text-size-adjust: 100%;
   }
-  body { touch-action: manipulation; }
+  /* touch-action 'manipulation' allows pinch-zoom on iOS Safari;
+     'pan-x pan-y' keeps scroll/swipe but explicitly blocks pinch-zoom
+     and double-tap zoom on Android Chrome / Samsung Internet.
+     Belt-and-suspenders with the JS gesture preventers in viewer script. */
+  body { touch-action: pan-x pan-y; }
   button, textarea, select, input { font: inherit; color: inherit; }
   button { cursor: pointer; touch-action: manipulation; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -474,14 +478,20 @@ export const VIEWER_CSS = `
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    margin-right: calc(var(--safe-right));
     background: var(--bg-elev);
     border-radius: 999px;
     font-size: 12px;
     font-weight: 700;
     color: var(--text);
-    flex: 0 0 auto;
+    /* Shrink-fit so a long "Sophomore 3800 score" never pushes the
+       hamburger or chalkboard labels off-screen. Truncate with ellipsis
+       rather than clip when the available room runs out. */
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 50%;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .arc-indicator .arc-year { color: var(--accent); }
   .arc-indicator .arc-sep { color: var(--text-mute); font-weight: 400; }
@@ -924,6 +934,12 @@ export const VIEWER_CSS = `
     grid-template-columns: 36px 1fr;
     column-gap: 10px;
     row-gap: 2px;
+    /* Without min-width:0 the .msg's intrinsic min-content (driven by the
+       longest unbreakable token in .body — em-dashes, role tags, italics
+       runs) propagates up through .stream and clips chat at the right
+       viewport edge on narrow phones. */
+    min-width: 0;
+    max-width: 100%;
     animation: msg-in 0.18s ease-out;
   }
   @keyframes msg-in {
@@ -962,6 +978,7 @@ export const VIEWER_CSS = `
     align-items: baseline;
     gap: 6px;
     flex-wrap: wrap;
+    min-width: 0;
   }
   .msg .head .name {
     font-weight: 700;
@@ -992,7 +1009,13 @@ export const VIEWER_CSS = `
     font-size: 15px;
     white-space: pre-wrap;
     word-wrap: break-word;
+    /* overflow-wrap 'anywhere' is the standard but is unsupported on
+       older WebKit; 'break-word' ships everywhere. Keep both. */
     overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    min-width: 0;
+    max-width: 100%;
   }
   .markdown {
     white-space: normal;
@@ -2745,9 +2768,16 @@ export const VIEWER_CSS = `
   /* ── result chips in the chat (running session record) ────────────────── */
   .msg.result {
     grid-template-columns: 1fr;
+    min-width: 0;
   }
   .msg.result .body {
+    /* Right-aligned compact chip showing badge + Q# + roll + score. With
+       enough modifiers (e.g. ✗ A·B  Q12 — missed  🎲 6+5−1 HONOR=10  +55
+       score) the row can grow past the viewport on narrow phones. Allow
+       wrap to a second row, cap max-width, and right-align via the grid. */
     display: inline-flex;
+    flex-wrap: wrap;
+    justify-self: end;
     align-self: flex-start;
     align-items: center;
     gap: 8px;
@@ -2757,6 +2787,8 @@ export const VIEWER_CSS = `
     border-radius: 999px;
     font-size: 12px;
     color: var(--text-soft);
+    max-width: 100%;
+    min-width: 0;
   }
   .msg.result .body .badge-mini {
     font-weight: 800;
