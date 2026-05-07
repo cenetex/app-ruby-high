@@ -431,17 +431,19 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function maybeAutoStartClass(t) {
     if (autoPickInFlight) return;
     if (!shouldAutoStartClass(t)) return;
-    const todayKey = (t.daily && t.daily.dailyKey)
-      || (t.active_course_progress && t.active_course_progress.today && t.active_course_progress.today.dailyKey)
-      || "";
-    const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey;
+    const progress = t.active_course_progress || {};
+    const today = progress.today || {};
+    const ready = Number(progress.ready || 0);
+    const questionCount = Number(today.questionCount || 0);
+    const todayKey = (t.daily && t.daily.dailyKey) || today.dailyKey || "";
+    const phaseToken = t.phaseToken == null ? "legacy" : t.phaseToken;
+    const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey + "|" + phaseToken + "|" + questionCount + "|" + ready;
     if (key === autoPickLastKey) return;
     // Bank state: the deterministic scheduler can only post when ready > 0.
     // When ready === 0 the auto-pick would throw "No scheduled question is due"
     // and surface as an error chip. Route around that error:
     //   - AI on  → fire a manual chat turn so the teacher can pose_question.
     //   - AI off → sit on the empty board and surface the offline hint once.
-    const ready = (t.active_course_progress && Number(t.active_course_progress.ready)) || 0;
     if (ready <= 0) {
       autoPickLastKey = key;
       if (aiEnabled) {
@@ -1739,6 +1741,18 @@ const VIEWER_SCRIPT_SUFFIX = `
         wasCorrect: reveal.wasCorrect,
       }, { force: true });
     }, Math.max(0, delayMs || 0));
+  }
+
+  async function clearResolvedBoardAfterTeacherTurn(trigger, streamGuard) {
+    if (trigger !== "answer-graded") return;
+    if (!chatStreamStillCurrent(streamGuard)) return;
+    const t = lastTelemetry;
+    if (!t || t.faculty === LOUNGE_ID) return;
+    if (t.graduation_ready || (t.character && t.character.pendingGraduation) || (t.character && graduatedFor(t.character))) return;
+    if (!currentRevealMatches(t)) return;
+    if (currentRevealCompletedClass(t)) return;
+    await command({ type: "clear" });
+    lockedFor = null;
   }
 
   function recentRelationshipEvents() {
@@ -4838,6 +4852,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (chatStreamStillCurrent(streamGuard)) appendSystem("teacher offline · " + (err && err.message ? err.message : "error"));
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
+      await clearResolvedBoardAfterTeacherTurn(trigger, streamGuard);
       if (els.nextBtn && !manualChatBusy) els.nextBtn.disabled = false;
     }
   }
