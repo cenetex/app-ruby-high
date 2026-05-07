@@ -1333,11 +1333,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         directive = `${playerName} has completed the year's requirements and is ready for the graduation ceremony. Congratulate them in one or two short sentences and remind them to choose a ceremony reward on their School Career card. Do not call tools or put another question on the board.`;
       } else {
         const pickedLine = c?.picked
-          ? `${playerName} already answered ${c.picked}; ${c.wasCorrect ? "that was correct" : `the correct answer was ${correctAns}`}.`
-          : `The round is already resolved; the correct answer was ${correctAns}.`;
+          ? `${playerName} answered ${c.picked}; ${c.wasCorrect ? "that was correct" : `the correct answer was ${correctAns}`}.`
+          : `The round resolved; the correct answer was ${correctAns}.`;
+        // The scheduler may have already auto-posted the next question by
+        // the time we compose. The teacher should react to the round that
+        // just resolved (described in RECENT EVENTS), not to whatever new
+        // question the BOARD context shows. Both cases below say so
+        // explicitly so the model isn't reconciling two boards.
         directive = schedulerControlsBoard
-          ? `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." ${schedulerBoundaryInstruction(bank)}`
-          : `The board is already answered. ${pickedLine} Do NOT ask anyone to answer this same board again. React in ONE short sentence — name whoever did something interesting. Speak to the room, not to "the student." ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
+          ? `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). The scheduler handles the next question on its own; if a new question already shows on the board, ignore it for this turn — you'll be fired again when the player engages with it. ${schedulerBoundaryInstruction(bank)}`
+          : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "manual") {
       directive = schedulerControlsBoard
