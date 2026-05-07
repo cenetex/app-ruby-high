@@ -101,13 +101,20 @@ const VIEWER_SCRIPT_SUFFIX = `
     return done + "/" + required + " classes · " + grade;
   }
   function nextQuestionButtonLabel() {
-    if (currentRevealCompletedClass(lastTelemetry) && lastTelemetry && lastTelemetry.graduation_ready) return "View ceremony →";
-    if (currentRevealCompletedClass(lastTelemetry)) return "View grade →";
-    if (lastTelemetry && lastTelemetry.graduation_ready) return "Ceremony on board";
-    const progress = lastTelemetry && lastTelemetry.active_course_progress;
-    if (progress && progress.today && progress.today.status === "complete") return "Practice →";
-    if (progress && progress.today && progress.today.status === "active") return "Continue class →";
-    return "Start class →";
+    return "Chat";
+  }
+  function updateChatAction(mode) {
+    if (!els.nextBtn) return;
+    const available = !!authed && mode !== "needs-auth" && mode !== "needs-character" && mode !== "checking-auth";
+    els.nextBtn.hidden = !available;
+    els.nextBtn.textContent = nextQuestionButtonLabel();
+    const live = !!(lastTelemetry && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && lastTelemetry.current);
+    const report = !!(lastTelemetry && activeCourseIsComplete(lastTelemetry) && !lastTelemetry.current);
+    els.nextBtn.title = live
+      ? "Ask for a hint"
+      : report
+        ? "Discuss the class report"
+        : "Advance the room";
   }
   function teachingFacultyIdsForSummary() {
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
@@ -117,27 +124,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       ))
       .map((f) => f.id);
     return ids.length > 0 ? ids : TEACHING_FACULTY_IDS;
-  }
-  // Whether the scheduler has a card the next-question button could post.
-  // The button hides when this returns false so the player can't trigger
-  // the "No scheduled question is due" error path. AI mode keeps the
-  // lesson moving via auto-fired manual turns; offline mode shows the
-  // empty-board hint instead.
-  function nextQuestionAvailable() {
-    if (!lastTelemetry) return true;
-    const progress = lastTelemetry.active_course_progress;
-    if (!progress) return true;
-    return Number(progress.ready || 0) > 0;
-  }
-  // The next-button has non-pick states that should always show even
-  // when the bank is empty: graduation handoff and the "View grade"
-  // shortcut after a class completion. Group them in one helper so
-  // the hide-on-empty-bank guard doesn't accidentally hide them.
-  function nextButtonStateBypassesPick() {
-    if (!lastTelemetry) return false;
-    if (lastTelemetry.graduation_ready) return true;
-    if (currentRevealCompletedClass(lastTelemetry)) return true;
-    return false;
   }
   function classGradeSummary() {
     const grades = teachingFacultyIdsForSummary().map((fid) => ({
@@ -347,7 +333,6 @@ const VIEWER_SCRIPT_SUFFIX = `
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // OpenRouter key + Ruby High session present
   let lockedFor = null;
-  let streamingMsgEl = null;
   let renderedHistorySig = null;
   let activeQuestionId = null; // currently displayed question id on the blackboard
   let questionCounter = 0;     // session-local question count for "Question N" label
@@ -362,6 +347,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   let agentBusySeq = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
+  let chatStreamSeq = 0;       // bumps on each teacher/user SSE stream; older streams stop painting
   // Auto-start guard: when the player lands in a teaching room with an
   // empty board (no current question, no live round), kick off the next
   // class question without waiting for the AI to call pose_question via a
@@ -527,7 +513,6 @@ const VIEWER_SCRIPT_SUFFIX = `
   function clearStream() {
     chatViewSeq++;
     els.stream.innerHTML = "";
-    streamingMsgEl = null;
     renderedHistorySig = null;
   }
   function resetBlackboard() {
@@ -925,31 +910,24 @@ const VIEWER_SCRIPT_SUFFIX = `
     const wrap = document.createElement("section");
     wrap.className = "class-report-card" + (passedToday ? " is-passed" : " needs-work");
 
-    const top = document.createElement("div");
-    top.className = "class-report-top";
+    const gradeBlock = document.createElement("div");
+    gradeBlock.className = "class-report-grade-block";
     const titleWrap = document.createElement("div");
     titleWrap.className = "class-report-heading";
     const title = document.createElement("div");
     title.className = "class-report-title";
-    title.textContent = "Class complete";
+    title.textContent = "Final grade";
     const subtitle = document.createElement("div");
     subtitle.className = "class-report-subtitle";
-    subtitle.textContent = teacherName + " · " + gradeLabel;
+    subtitle.textContent = passedToday ? "credit earned" : "practice open";
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
     const badge = document.createElement("div");
     badge.className = "class-report-letter";
     badge.textContent = letter;
-    top.appendChild(titleWrap);
-    top.appendChild(badge);
-    wrap.appendChild(top);
-
-    const note = document.createElement("div");
-    note.className = "class-report-note";
-    note.textContent = passedToday
-      ? "Credit earned. Practice is open when you want another board."
-      : "Class logged. C or better is needed for graduation credit, so practice is open.";
-    wrap.appendChild(note);
+    gradeBlock.appendChild(badge);
+    gradeBlock.appendChild(titleWrap);
+    wrap.appendChild(gradeBlock);
 
     const metrics = document.createElement("div");
     metrics.className = "class-report-metrics";
@@ -973,13 +951,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     addMetric("today", Number(today.questionCount || 0) + "/" + Number(today.totalQuestions || 3), "questions");
     addMetric("score", formatClassScore(today.score), "average");
     addMetric("course", progress.grade || "—", completed + "/" + required + " classes");
+    addMetric("class", teacherName, gradeLabel);
     wrap.appendChild(metrics);
-
-    const yearGrades = buildBoardClassGrades();
-    if (yearGrades) {
-      yearGrades.classList.add("is-report");
-      wrap.appendChild(yearGrades);
-    }
     return wrap;
   }
   function showBlackboardClassReport(faculty, currentGrade) {
@@ -1021,7 +994,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.boardReveal.replaceChildren();
     els.nextBtn.disabled = false;
     els.nextBtn.textContent = nextQuestionButtonLabel();
-    els.nextBtn.style.display = "";
     els.teacherFigure.hidden = true;
   }
 
@@ -1326,6 +1298,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const isOpinion = (lastTelemetry && lastTelemetry.is_opinion) || question.type === "opinion";
     const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
+    const isFreeformAnswer = isTypedAnswer || isOpinion;
     els.blackboardPanel.dataset.questionType = question.type || "multiple-choice";
     const promptText = String(question.prompt || "");
     const promptLines = promptText.split(/\\n/).length;
@@ -1333,7 +1306,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const essayPrompt = promptText.length > 220 || promptLines > 4;
     els.blackboardPanel.classList.toggle("is-long-prompt", longPrompt);
     els.blackboardPanel.classList.toggle("is-essay-prompt", essayPrompt);
-    showBlackboardLoaded(isOpinion, isTypedAnswer);
+    showBlackboardLoaded(isOpinion, isFreeformAnswer);
 
     // Meta pills
     els.blackboardMeta.innerHTML = "";
@@ -1389,7 +1362,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
     const round = lastTelemetry && lastTelemetry.active_round;
     const playerLocked = !!(round && round.player && round.player.isLocked);
-    const typedDisabled = role === "agent" || !isTypedAnswer || playerLocked || !!(round && round.resolved);
+    const typedDisabled = role === "agent" || !isFreeformAnswer || playerLocked || !!(round && round.resolved) || (isOpinion && opinionSubmitted);
+    els.typedAnswerInput.placeholder = isOpinion ? "Type your response" : "Type the answer";
+    els.typedSubmitBtn.textContent = isOpinion ? "Send" : "Check";
     els.typedAnswerInput.disabled = typedDisabled;
     els.typedSubmitBtn.disabled = typedDisabled;
     els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
@@ -1407,25 +1382,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       answersGrid.classList.toggle("is-very-long", maxLen > 72 || hasLineBreakAnswer);
     }
 
-    // Footer — Next button shown only when the player is signed in and only
-    // after a reveal (applyRevealToBlackboard clears the inline display:none).
-    // The hide is gated on isNewQuestion: in offline / AI-off mode the
-    // teacher never queues the next question, so the player sits on a
-    // revealed round indefinitely. Re-setting display="none" on every
-    // polling render would erase the visible Next button between the
-    // first reveal-paint and the player's click. Only hide on a fresh
-    // question.
+    // The bottom Chat action is always available during play. It advances an
+    // empty/revealed board and asks for a hint while a challenge is live.
     els.nextBtn.disabled = false;
     els.nextBtn.textContent = nextQuestionButtonLabel();
-    if (isNewQuestion) els.nextBtn.style.display = "none";
-    // Hide the next-question / Practice button when the scheduler has no
-    // cards to post AND we're not at the graduation handoff. Without this
-    // the button appears but a click would surface "No scheduled question
-    // is due..." as an error chip. The graduation_ready button stays
-    // visible because that's a ceremony handoff, not a scheduler pick.
-    if (!nextQuestionAvailable() && !nextButtonStateBypassesPick()) {
-      els.nextBtn.style.display = "none";
-    }
     els.blackboardFoot.hidden = !authed;
 
     // Opinion-mode bookkeeping resets on new question.
@@ -1463,10 +1423,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.boardReveal.appendChild(expl);
     }
     els.nextBtn.textContent = nextQuestionButtonLabel();
-    if (nextQuestionAvailable() || nextButtonStateBypassesPick()) {
-      els.nextBtn.style.display = "";
-      els.nextBtn.focus();
-    }
+    els.nextBtn.focus();
   }
 
   function applyRevealToBlackboard(reveal) {
@@ -1543,10 +1500,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       renderMarkdownInto(expl, reveal.explanation);
       els.boardReveal.appendChild(expl);
     }
-    if (nextQuestionAvailable() || nextButtonStateBypassesPick()) {
-      els.nextBtn.style.display = "";
-      els.nextBtn.focus();
-    }
+    els.nextBtn.focus();
   }
 
   function maybeRunAnswerGraded(t, delayMs) {
@@ -1562,6 +1516,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       // If the player switches rooms before the delayed reaction fires,
       // don't let an old answer wake the wrong teacher.
       if (!lastTelemetry || lastTelemetry.faculty !== t.faculty) return;
+      const liveReveal = lastTelemetry && lastTelemetry.lastReveal;
+      if (!liveReveal || liveReveal.questionId !== reveal.questionId || liveReveal.picked !== reveal.picked || liveReveal.correct !== reveal.correct) return;
       const q = t.current && t.current.id === reveal.questionId ? t.current : null;
       const type = (q && q.type) || reveal.questionType || (reveal.expectedAnswer != null ? "typed-answer" : "multiple-choice");
       const options = type === "multiple-choice" && q && q.options ? q.options : (reveal.questionOptions || null);
@@ -1875,6 +1831,27 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function pickNext() {
     els.nextBtn.disabled = true;
     try {
+      const liveQuestion = !!(lastTelemetry && lastTelemetry.current && lastTelemetry.active_round && !lastTelemetry.active_round.resolved);
+      if (liveQuestion) {
+        if (aiEnabled) {
+          await runAgentTurn("manual", {
+            grade: lastTelemetry.current_grade,
+            intent: "hint",
+            questionId: lastTelemetry.current && lastTelemetry.current.id,
+          }, { force: true });
+        } else {
+          appendSystem("Answer the board to continue. Enable AI for hints.");
+        }
+        return;
+      }
+      if (lastTelemetry && lastTelemetry.faculty === LOUNGE_ID) {
+        if (aiEnabled) {
+          await runAgentTurn("manual", { grade: lastTelemetry.current_grade }, { force: true });
+        } else {
+          appendSystem("Enable AI to hear the lounge conversation continue.");
+        }
+        return;
+      }
       if (lastTelemetry && lastTelemetry.graduation_ready) {
         if (currentRevealMatches(lastTelemetry)) {
           await command({ type: "clear" });
@@ -1914,22 +1891,41 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (event) event.preventDefault();
     if (typedSubmitting || !els.typedAnswerInput || els.typedSubmitBtn.disabled) return;
     const answerText = els.typedAnswerInput.value || "";
+    if (!answerText.trim()) return;
+    const inOpinion = !!(lastTelemetry && lastTelemetry.is_opinion && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && !opinionSubmitted);
     typedSubmitting = true;
     els.typedSubmitBtn.disabled = true;
     els.typedAnswerInput.disabled = true;
     try {
-      const data = await command({ type: "answer-text", answerText, role });
-      lockedFor = data && data.session && data.session.telemetry && data.session.telemetry.current
-        ? data.session.telemetry.current.id : null;
-      if (data && data.session && data.session.telemetry) {
-        maybeRunAnswerGraded(data.session.telemetry, 0);
+      if (inOpinion) {
+        if (!aiEnabled) {
+          appendSystem("Enable AI to submit freeform challenge responses.");
+          return;
+        }
+        opinionSubmitted = true;
+        appendMsg({ kind: "you", name: playerDisplayName(), body: answerText, color: "var(--accent)" });
+        els.typedAnswerInput.value = "";
+        const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
+        const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: answerText }),
+        });
+        await consumeSseStream(r, { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq });
+      } else {
+        const data = await command({ type: "answer-text", answerText, role });
+        lockedFor = data && data.session && data.session.telemetry && data.session.telemetry.current
+          ? data.session.telemetry.current.id : null;
+        if (data && data.session && data.session.telemetry) {
+          maybeRunAnswerGraded(data.session.telemetry, 0);
+        }
       }
     } finally {
       typedSubmitting = false;
       const round = lastTelemetry && lastTelemetry.active_round;
       const locked = !!(round && round.player && round.player.isLocked);
-      els.typedAnswerInput.disabled = locked || role === "agent";
-      els.typedSubmitBtn.disabled = locked || role === "agent";
+      els.typedAnswerInput.disabled = locked || role === "agent" || (inOpinion && opinionSubmitted);
+      els.typedSubmitBtn.disabled = locked || role === "agent" || (inOpinion && opinionSubmitted);
     }
   }
 
@@ -2032,10 +2028,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     // CONTENT — they no longer fight over visibility.
     els.blackboardPanel.dataset.mode = mode;
     els.shell.dataset.mode = mode;
-    // Composer: only enabled when the player is in a state that can chat.
-    const canChat = aiEnabled && (mode === "between-rounds" || mode === "round-live" || mode === "round-revealed" || mode === "in-lounge");
-    els.chatForm.hidden = !canChat;
-    if (canChat) { els.chatInput.disabled = false; els.chatSend.disabled = false; }
+    updateChatAction(mode);
+    els.chatForm.hidden = true;
+    els.chatInput.disabled = true;
+    els.chatSend.disabled = true;
     // Race strip + answers + advantage + footer-filter all hide via CSS now.
     // We still null out the race-row contents on mode exit so the next
     // round-live paint doesn't double-render stale cards.
@@ -2096,7 +2092,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     // Header
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
-    els.channelTitle.textContent = fac ? channelNameFor(fac) : "general";
+    els.channelTitle.textContent = fac ? channelNameFor(fac) : "lounge";
     const courseProgress = t.active_course_progress;
     const courseStatus = courseProgress
       ? courseStatusText(courseProgress)
@@ -4269,6 +4265,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.checking.hidden = authed !== null;
     if (authed === null) {
       els.chatForm.hidden = true;
+      if (els.nextBtn) els.nextBtn.hidden = true;
       els.checking.hidden = false;
       els.youState.textContent = "checking…";
       els.footerAction.hidden = true;
@@ -4278,9 +4275,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.youState.textContent = aiEnabled ? "AI enabled" : "offline mode";
       els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
       els.footerAction.hidden = false;
-      els.chatForm.hidden = !aiEnabled;
-      els.chatInput.disabled = !aiEnabled;
-      els.chatSend.disabled = !aiEnabled;
+      els.chatForm.hidden = true;
+      els.chatInput.disabled = true;
+      els.chatSend.disabled = true;
     } else {
       // Unauthed means even guest-session creation failed; the fallback
       // sign-in overlay is the only thing the user can see.
@@ -4289,10 +4286,12 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.chatForm.hidden = true;
       els.chatInput.disabled = true;
       els.chatSend.disabled = true;
+      if (els.nextBtn) els.nextBtn.hidden = true;
     }
     // Re-render the blackboard so its visibility flips with auth state.
     if (lastTelemetry) {
       const fac = (lastTelemetry.faculty_roster || []).find((f) => f.id === lastTelemetry.faculty);
+      updateChatAction(deriveViewMode(lastTelemetry));
       renderBlackboard(lastTelemetry.current || null, fac || null, lastTelemetry.current_grade);
       renderRaceStrip(lastTelemetry);
     }
@@ -4325,7 +4324,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (sig === renderedHistorySig) return;
       renderedHistorySig = sig;
       els.stream.innerHTML = "";
-      streamingMsgEl = null;
       const fac = (lastTelemetry && lastTelemetry.faculty_roster || []).find((f) => f.id === facultyId);
       const teacherName = fac ? fac.displayName : facultyId;
       const teacherAccent = fac ? fac.accent : "#d22a2a";
@@ -4379,6 +4377,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function chatStreamStillCurrent(opts) {
     if (!opts) return true;
     if (opts.viewSeq !== chatViewSeq) return false;
+    if (opts.streamSeq != null && opts.streamSeq !== chatStreamSeq) return false;
     if (!opts.facultyId || !lastTelemetry) return true;
     return lastTelemetry.faculty === opts.facultyId;
   }
@@ -4388,11 +4387,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (chatStreamStillCurrent(opts)) appendSystem("chat error · " + (err.error || response.status));
       return;
     }
-    streamingMsgEl = null;
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
     // Default speaker = current channel's teacher; overridden by speaker events.
     let speaker = teacherInfo(lastTelemetry && lastTelemetry.faculty);
+    let streamMsgEl = null;
     let buf = "";
     // Hard ceiling: if the server hangs or the connection drops without a
     // proper close, the loop below would await reader.read() forever and
@@ -4419,17 +4418,19 @@ const VIEWER_SCRIPT_SUFFIX = `
         let parsed;
         try { parsed = JSON.parse(data); } catch { continue; }
         const currentStream = chatStreamStillCurrent(opts);
+        if (!currentStream) {
+          try { reader.cancel(); } catch { /* ignore */ }
+          return;
+        }
         if (event === "speaker") {
-          if (!currentStream) continue;
           speaker = teacherInfo(parsed.facultyId);
-          streamingMsgEl = null; // force a new bubble for the new speaker
+          streamMsgEl = null; // force a new bubble for the new speaker
         } else if (event === "delta") {
-          if (!currentStream) continue;
-          if (!streamingMsgEl) {
-            streamingMsgEl = appendMsg({ kind: "teacher", name: speaker.name, body: "", color: speaker.accent, facultyId: speaker.facultyId });
+          if (!streamMsgEl) {
+            streamMsgEl = appendMsg({ kind: "teacher", name: speaker.name, body: "", color: speaker.accent, facultyId: speaker.facultyId });
           }
-          streamingMsgEl.dataset.markdownRaw = (streamingMsgEl.dataset.markdownRaw || "") + (parsed.text || "");
-          renderMarkdownInto(streamingMsgEl, streamingMsgEl.dataset.markdownRaw);
+          streamMsgEl.dataset.markdownRaw = (streamMsgEl.dataset.markdownRaw || "") + (parsed.text || "");
+          renderMarkdownInto(streamMsgEl, streamMsgEl.dataset.markdownRaw);
           scrollIfPinned();
         } else if (event === "tool") {
           // Flavor-string the tool call instead of raw args — args for
@@ -4445,14 +4446,12 @@ const VIEWER_SCRIPT_SUFFIX = `
           // big comment above; this whole script.ts body is wrapped
           // in an outer template literal at compose time and any
           // backtick here closes it prematurely.
-          if (!currentStream) continue;
           appendTool(toolSummary(parsed, teacherName));
           fetchSession();
-          streamingMsgEl = null;
+          streamMsgEl = null;
         } else if (event === "error") {
-          if (!currentStream) continue;
           appendSystem("error · " + (parsed.message || "unknown"));
-          streamingMsgEl = null;
+          streamMsgEl = null;
         }
       }
     }
@@ -4474,7 +4473,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const inOpinion = !!(lastTelemetry && lastTelemetry.is_opinion && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && !opinionSubmitted);
 
     appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
-    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty };
+    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq };
 
     // @-mention: if the player named an in-room classmate, that student
     // chimes in directly. Each mention bypasses the 5s cooldown and a
@@ -4561,12 +4560,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastAgentTrigger = triggerKey;
     agentBusy = true;
     const busySeq = ++agentBusySeq;
-    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty };
+    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq };
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ faculty: targetFaculty, trigger, context: context || {} }),
+        body: JSON.stringify({ faculty: targetFaculty, trigger, context: context || {}, clientTurnSeq: streamGuard.streamSeq }),
       });
       await consumeSseStream(r, streamGuard);
     } catch (err) {
@@ -4662,15 +4661,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     const expired = (t.active_round.remainingMs ?? 1) <= 0;
     if (!allIn && !expired) return;
     opinionGradeFired = true;
+    const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || null;
+    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq };
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ force: true }),
       });
-      await consumeSseStream(r);
+      await consumeSseStream(r, streamGuard);
     } catch (err) {
-      appendSystem("grading failed · " + (err && err.message ? err.message : "error"));
+      if (chatStreamStillCurrent(streamGuard)) appendSystem("grading failed · " + (err && err.message ? err.message : "error"));
     }
   }
 

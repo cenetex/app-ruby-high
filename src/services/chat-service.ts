@@ -124,6 +124,8 @@ export interface SendOpts {
   extraSystemContext?: string;
   model?: string;
   maxTokens?: number;
+  /** Optional turn guard. When true, generated text is not persisted and tools are not run. */
+  isStale?: () => boolean;
 }
 
 /**
@@ -237,6 +239,13 @@ export class ChatService extends Service {
       yield { type: "done", finishReason: "no-input" };
       return;
     }
+    const isStaleTurn = () => {
+      try {
+        return !!opts.isStale?.();
+      } catch {
+        return false;
+      }
+    };
 
     // Keep enough room for recovery flows: e.g. pick_from_bank fails because
     // a filter is dry, then the teacher writes a custom question. Once a tool
@@ -291,6 +300,12 @@ export class ChatService extends Service {
         return;
       }
 
+      if (isStaleTurn()) {
+        yield { type: "done", finishReason: "stale-turn" };
+        return;
+      }
+
+      const historyLenBeforeAssistant = history.length;
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: assistantText,
@@ -314,6 +329,11 @@ export class ChatService extends Service {
       let staleRoomTurn = false;
       const toolEvents: ChatStreamEvent[] = [];
       for (const call of assistantToolCalls) {
+        if (isStaleTurn()) {
+          history.splice(historyLenBeforeAssistant);
+          yield { type: "done", finishReason: "stale-turn" };
+          return;
+        }
         const liveState = this.ruby.getOrCreate(opts.agentSessionId);
         const liveFaculty = resolveFacultyIdForSession(liveState, liveState.faculty) ?? liveState.faculty;
         const turnStillOwnsRoom = liveFaculty === activeFaculty;
@@ -364,6 +384,11 @@ export class ChatService extends Service {
           boardToolSucceeded = true;
           boardPostAcceptedThisBatch = true;
         }
+      }
+      if (isStaleTurn()) {
+        history.splice(historyLenBeforeAssistant);
+        yield { type: "done", finishReason: "stale-turn" };
+        return;
       }
       this.trim(key);
       for (const ev of toolEvents) yield ev;
@@ -844,17 +869,17 @@ function lastAssistantAtForSpeaker(history: ChatMessage[], speakerId: string): n
   return 0;
 }
 
-/** Group-chat framing for the teacher: who's in the room. The player and
+/** Room-scene framing for the teacher: who's in the room. The player and
  *  the seated NPCs (the classmates whose dice rolled alongside the player
  *  on the last question) get named. Tells the teacher: "you're running a
- *  class, not tutoring." Without this the model defaults to 1:1 framing
+ *  class scene, not tutoring." Without this the model defaults to 1:1 framing
  *  and either ignores the NPCs or invents new ones. */
 function describeRoomForTeacher(state: QuizState): string {
   if (!state.character) return "";
   const c = state.character;
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
   const lines: string[] = [];
-  lines.push(`You are running a class — group chat, not 1:1 tutoring.`);
+  lines.push(`You are running a room scene with avatars — not a 1:1 chatbot or tutoring chat.`);
   // Classmate roster (the seated NPCs in the active classroom).
   const room = roomForFacultyForSession(state, state.faculty);
   if (room && room.teaches && state.currentGrade) {

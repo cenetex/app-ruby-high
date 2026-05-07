@@ -59,6 +59,7 @@ export const VIEWER_CSS = `
     --safe-right: env(safe-area-inset-right, 0px);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
   html, body {
     margin: 0;
     padding: 0;
@@ -657,9 +658,6 @@ export const VIEWER_CSS = `
   .blackboard-panel[data-mode="between-rounds"] .blackboard-foot {
     display: none !important;
   }
-  .blackboard-panel[data-mode="between-rounds"][data-question-type="class-report"] .blackboard-foot {
-    display: flex !important;
-  }
   .blackboard-panel[data-mode="in-lounge"] .answers-host,
   .blackboard-panel[data-mode="in-lounge"] .typed-answer-host,
   .blackboard-panel[data-mode="in-lounge"] .advantage-bar,
@@ -686,9 +684,8 @@ export const VIEWER_CSS = `
   .blackboard-panel[data-mode="checking-auth"] .blackboard-foot {
     display: none !important;
   }
-  /* Opinion rounds: hide the A/B/C/D grid (player + NPCs answer in chat). */
+  /* Freeform rounds use the board-owned typed-answer form, not global chat. */
   .blackboard-panel[data-opinion="true"] .answers-host,
-  .blackboard-panel[data-opinion="true"] .typed-answer-host,
   .blackboard-panel[data-typed-answer="true"] .answers-host,
   .blackboard-panel[data-typed-answer="false"] .typed-answer-host {
     display: none !important;
@@ -1004,25 +1001,11 @@ export const VIEWER_CSS = `
   }
 
   .blackboard-foot {
-    display: flex;
+    display: none;
     align-items: center;
     gap: 8px;
     padding: 0 calc(var(--safe-right) + 12px) 10px calc(var(--safe-left) + 12px);
   }
-  .blackboard-foot .next-btn {
-    appearance: none;
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    font-weight: 800;
-    border-radius: 999px;
-    padding: 11px 18px;
-    font-size: 14px;
-    box-shadow: var(--shadow);
-    margin-left: auto;
-  }
-  .blackboard-foot .next-btn:disabled { opacity: 0.5; }
-
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {
     grid-row: 3;
@@ -2389,61 +2372,69 @@ export const VIEWER_CSS = `
     font-size: 10px;
   }
   .blackboard-panel[data-question-type="class-report"] .board {
-    min-height: 240px;
+    min-height: 210px;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
   }
   .blackboard-panel[data-question-type="class-report"] .board .prompt {
     width: 100%;
+    white-space: normal;
   }
   .board .class-report-card {
     margin: 0 auto;
     width: min(100%, 700px);
     display: grid;
-    gap: 12px;
-    padding: 18px;
+    grid-template-columns: minmax(132px, 0.82fr) minmax(0, 1.18fr);
+    align-items: center;
+    gap: 18px;
+    padding: clamp(12px, 2.6vw, 20px);
     border: 2px solid rgba(255,255,255,0.24);
     border-radius: 8px;
     background: rgba(5, 31, 20, 0.30);
     color: var(--ink);
     box-shadow: inset 0 0 22px rgba(0,0,0,0.12);
+    max-height: 100%;
+    overflow: hidden;
   }
-  .board .class-report-top {
-    display: flex;
+  .board .class-report-grade-block {
+    min-width: 0;
+    display: grid;
+    justify-items: center;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    gap: 8px;
   }
   .board .class-report-heading {
     min-width: 0;
+    text-align: center;
   }
   .board .class-report-title {
     font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
-    font-size: 30px;
+    font-size: clamp(18px, 3.2vw, 30px);
     line-height: 1.05;
+    white-space: nowrap;
   }
-  .board .class-report-subtitle,
-  .board .class-report-note {
+  .board .class-report-subtitle {
     color: var(--ink-soft);
     font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
-    font-size: 18px;
-    line-height: 1.25;
+    font-size: clamp(13px, 2.1vw, 18px);
+    line-height: 1.16;
   }
   .board .class-report-subtitle {
     margin-top: 4px;
+    text-transform: lowercase;
   }
   .board .class-report-letter {
-    width: 76px;
-    height: 76px;
+    width: clamp(96px, 18vw, 148px);
+    height: clamp(96px, 18vw, 148px);
     border-radius: 999px;
     display: grid;
     place-items: center;
-    flex: 0 0 auto;
-    border: 3px solid rgba(255,255,255,0.34);
+    border: clamp(3px, 0.7vw, 5px) solid rgba(255,255,255,0.34);
     background: rgba(255,255,255,0.12);
     color: #fff0a6;
-    font: 900 34px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font: 900 clamp(48px, 10vw, 86px)/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
     box-shadow: 0 8px 18px rgba(0,0,0,0.22);
   }
   .board .class-report-card.needs-work .class-report-letter {
@@ -2452,23 +2443,26 @@ export const VIEWER_CSS = `
   }
   .board .class-report-metrics {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    min-width: 0;
   }
   .board .class-report-metric {
     min-width: 0;
     border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.18);
     background: rgba(255,255,255,0.08);
-    padding: 9px 10px;
+    padding: 7px 9px;
     display: grid;
-    gap: 2px;
+    grid-template-columns: minmax(56px, 0.42fr) minmax(0, 0.58fr);
+    column-gap: 10px;
+    align-items: baseline;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
   }
   .board .class-report-metric .k,
   .board .class-report-metric .d {
     color: var(--ink-soft);
-    font-size: 10px;
+    font-size: clamp(9px, 1.45vw, 10px);
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -2476,37 +2470,47 @@ export const VIEWER_CSS = `
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .board .class-report-metric .k {
+    grid-column: 1;
+  }
+  .board .class-report-metric .d {
+    grid-column: 1 / -1;
+    margin-top: 1px;
+  }
   .board .class-report-metric .v {
     color: var(--ink);
-    font-size: 22px;
+    font-size: clamp(15px, 2.2vw, 21px);
     font-weight: 900;
     line-height: 1.05;
-  }
-  .board .board-class-grades.is-report {
-    align-items: flex-start;
-    margin-top: 2px;
-  }
-  .board .board-class-grades.is-report .board-class-grades-title {
-    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
   }
   @media (max-width: 620px) {
+    .blackboard-panel[data-question-type="class-report"] .board {
+      min-height: 170px;
+      padding: 10px;
+    }
     .board .class-report-card {
-      padding: 14px;
+      grid-template-columns: minmax(78px, 0.72fr) minmax(0, 1.28fr);
+      gap: 10px;
+      padding: 10px;
     }
-    .board .class-report-title {
-      font-size: 25px;
-    }
-    .board .class-report-subtitle,
-    .board .class-report-note {
-      font-size: 16px;
+    .board .class-report-grade-block {
+      gap: 5px;
     }
     .board .class-report-letter {
-      width: 62px;
-      height: 62px;
-      font-size: 28px;
+      width: clamp(76px, 22vw, 96px);
+      height: clamp(76px, 22vw, 96px);
+      font-size: clamp(40px, 12vw, 54px);
     }
-    .board .class-report-metrics {
-      grid-template-columns: 1fr;
+    .board .class-report-metric {
+      padding: 5px 7px;
+      column-gap: 7px;
+    }
+    .board .class-report-metric .d {
+      display: none;
     }
   }
 
@@ -3167,6 +3171,23 @@ export const VIEWER_CSS = `
     padding: 10px calc(var(--safe-right) + 12px) calc(var(--safe-bot) + 10px) calc(var(--safe-left) + 12px);
     z-index: 9;
   }
+  .chat-action-btn {
+    appearance: none;
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid color-mix(in srgb, var(--accent) 54%, rgba(255,255,255,0.18));
+    border-radius: 16px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #ffffff 8%), var(--accent));
+    color: #fff;
+    font-weight: 900;
+    font-size: 16px;
+    letter-spacing: 0;
+    box-shadow: var(--shadow);
+  }
+  .chat-action-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+  }
   .composer-form {
     display: flex;
     gap: 8px;
@@ -3353,14 +3374,6 @@ export const VIEWER_CSS = `
     .race-strip::-webkit-scrollbar { display: none; }
     .race-row { flex-wrap: nowrap; }
     .race-card { flex: 0 0 auto; }
-    .blackboard-foot {
-      padding: 0 calc(var(--safe-right) + 8px) 8px calc(var(--safe-left) + 8px);
-    }
-    .blackboard-foot .next-btn {
-      width: 100%;
-      margin-left: 0;
-      padding: 10px 14px;
-    }
     .stream {
       padding: 10px calc(var(--safe-right) + 10px) 12px calc(var(--safe-left) + 10px);
       scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 18px);
@@ -3379,6 +3392,10 @@ export const VIEWER_CSS = `
     }
     .composer-zone {
       padding: 8px calc(var(--safe-right) + 8px) calc(var(--safe-bot) + 8px) calc(var(--safe-left) + 8px);
+    }
+    .chat-action-btn {
+      min-height: 46px;
+      border-radius: 14px;
     }
     .composer-form {
       border-radius: 16px;

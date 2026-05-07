@@ -59,7 +59,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </svg>
       </button>
       <div class="channel-name">
-        <div class="top"><span class="hash">#</span><span id="channel-title">general</span></div>
+        <div class="top"><span class="hash">#</span><span id="channel-title">lounge</span></div>
         <div class="sub" id="channel-sub">loading…</div>
       </div>
       <div class="arc-indicator" id="arc-indicator" hidden>
@@ -126,14 +126,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="race-row" id="race-row"></span>
       </div>
       <div class="blackboard-foot" id="blackboard-foot" hidden>
-        <button class="next-btn" id="next-btn" type="button">Next question →</button>
       </div>
     </section>
 
     <section class="stream" id="stream"></section>
 
     <section class="composer-zone" id="composer-zone">
-      <form class="composer-form" id="chat-form" hidden>
+      <button class="chat-action-btn" id="next-btn" type="button" hidden>Chat</button>
+      <form class="composer-form" id="chat-form" hidden aria-hidden="true">
         <textarea id="chat-input" rows="1" placeholder="Message — the teacher and class can hear you" disabled></textarea>
         <button type="submit" class="send-btn" id="chat-send" disabled aria-label="Send">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">

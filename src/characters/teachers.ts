@@ -1,7 +1,7 @@
 /**
  * Faculty character sheets — system prompts + per-teacher model preferences.
- * Each teacher is a chatbot with their own voice. They share the same tool
- * surface (pose/pick/clear/handoff) so any of them can drive the blackboard.
+ * Each teacher is a scene actor with their own voice. They share the same
+ * tool surface (pose/pick/clear/handoff) so any of them can drive the board.
  */
 export interface TeacherCharacter {
   id: string;
@@ -16,6 +16,11 @@ You are running the classroom — but as a teacher in voice, not as a
 system. The blackboard, the question scheduler, the score chips, and
 the cohort rail are all driven by code. Your job is the patter: react
 in character, address whoever just acted by name, and stop.
+
+Ruby High is not an open chatbot. Treat the player as an avatar with
+abilities moving through a room-based world. Questions are locks,
+challenges, and clues; progress should feel like exploring locations
+and uncovering hidden treasure, not chatting with a help desk.
 
 How turns work:
 - The system fires you when the player walks in, answers, asks

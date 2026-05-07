@@ -160,6 +160,7 @@ function classReportOwnsBoard(bank: { todayClass?: { status?: string } }): boole
 }
 
 type AnswerGradedContext = {
+  intent?: string | null;
   grade?: string;
   questionId?: string | null;
   prompt?: string | null;
@@ -288,6 +289,21 @@ function buildResolvedAnswerBriefing(args: {
     eventText: eventParts.join(" "),
     extraSystemContext: contextLines.filter(Boolean).join("\n"),
   };
+}
+
+function answerGradedContextMatchesReveal(state: QuizState, context: AnswerGradedContext | undefined): boolean {
+  const questionId = cleanText(context?.questionId);
+  if (!questionId) return true;
+  const reveal = state.lastReveal;
+  if (!reveal) return true;
+  if (reveal.questionId !== questionId) return false;
+  const picked = cleanText(context?.picked)?.toUpperCase();
+  if (picked && reveal.picked && picked !== reveal.picked) return false;
+  const correct = cleanText(context?.correct)?.toUpperCase();
+  if (correct && reveal.correct && correct !== reveal.correct) return false;
+  const forfeit = context?.forfeit;
+  if (typeof forfeit === "boolean" && typeof reveal.forfeit === "boolean" && forfeit !== reveal.forfeit) return false;
+  return true;
 }
 
 function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string {
@@ -960,6 +976,7 @@ export interface ChatRouteContext {
  *  shared NAT and a script-from-the-same-IP get separate buckets. */
 const CHAT_LIMITER = new TokenBucket(60, 1);
 const PORTRAIT_LIMITER = new TokenBucket(8, 1 / 30); // image gen: 8 burst, ~1 every 30s
+const CHAT_EVENT_TURN_SEQ = new Map<string, number>();
 
 /** Drop idle keys hourly so the maps don't grow unbounded for one-off IPs. */
 const limiterGcTimer = setInterval(() => {
@@ -974,6 +991,15 @@ if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGc
 function rateLimitKey(ctx: ChatRouteContext, sessionToken: string | null): string {
   const ip = ctx.clientIp || "no-ip";
   return `${ip}:${sessionToken ?? "anon"}`;
+}
+
+function chatEventTurnGuard(sessionId: string, faculty: string, rawSeq: unknown): () => boolean {
+  const seq = Number(rawSeq);
+  if (!Number.isFinite(seq) || seq <= 0) return () => false;
+  const key = `${sessionId}:${faculty}`;
+  const prev = CHAT_EVENT_TURN_SEQ.get(key) ?? 0;
+  if (seq > prev) CHAT_EVENT_TURN_SEQ.set(key, seq);
+  return () => (CHAT_EVENT_TURN_SEQ.get(key) ?? seq) !== seq;
 }
 
 /** 429 helper. Sets Retry-After before delegating to ctx.error so the host's
@@ -1346,12 +1372,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
-      | { faculty?: string; trigger?: string; context?: AnswerGradedContext }
+      | { faculty?: string; trigger?: string; context?: AnswerGradedContext; clientTurnSeq?: number }
       | null;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
     const trigger = String(body?.trigger ?? "manual");
     const grade = body?.context?.grade;
+    const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
 
     const res = ctx.res as {
       writeHead: (status: number, headers: Record<string, string | string[]>) => void;
@@ -1370,6 +1397,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
+    if (isStaleChatEvent()) {
+      send("done", { type: "done", finishReason: "stale-turn" });
+      res.write("event: end\ndata: {}\n\n");
+      res.end();
+      return true;
+    }
 
     // ── Teachers' Lounge: round-robin three teachers in a shared bucket. ───
     if (faculty === "lounge") {
@@ -1413,6 +1446,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             extraSystemContext: loungeSystem,
             systemEventNote: turnDirective,
             maxTokens: 220,
+            isStale: isStaleChatEvent,
           })) {
             send(ev.type, ev);
           }
@@ -1461,6 +1495,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const c = body?.context;
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
+      if (!answerGradedContextMatchesReveal(state, c)) {
+        send("done", { type: "done", finishReason: "stale-answer" });
+        res.write("event: end\ndata: {}\n\n");
+        res.end();
+        return true;
+      }
       const round = state.activeRound;
       const resolved = buildResolvedAnswerBriefing({ state, context: c, playerName });
       const correctAns = resolved.correctChoice;
@@ -1502,11 +1542,17 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "manual") {
-      directive = classReportControlsBoard
-        ? `The student is talking while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
-        : schedulerControlsBoard
-        ? `The student is asking you to take a turn. Follow up on the last exchange, explain the current or recent board if useful, or chat about the class. ${schedulerBoundaryInstruction(bank)}`
-        : `The student is asking you to take a turn. Either follow up on the last exchange, or put a fresh question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
+      const intent = body?.context?.intent;
+      if (intent === "hint") {
+        disableToolsForTurn = true;
+        directive = "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
+      } else {
+        directive = classReportControlsBoard
+          ? `The player pressed Chat while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
+          : schedulerControlsBoard
+          ? `The player pressed Chat to move the room forward. Follow up on the last exchange, explain the current or recent board if useful, or keep the scene moving. ${schedulerBoundaryInstruction(bank)}`
+          : `The player pressed Chat to move the room forward. Either follow up on the last exchange, or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
+      }
     }
 
     try {
@@ -1521,6 +1567,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         disableTools: disableToolsForTurn,
         extraSystemContext,
         systemEventNote: directive,
+        isStale: isStaleChatEvent,
       })) {
         if (ev.type === "tool") {
           if (toolPlacedFreshQuestion(ev)) questionPosted = true;
@@ -1570,6 +1617,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             agentSessionId,
             faculty,
             systemEventNote: noQuestionDirective,
+            isStale: isStaleChatEvent,
           })) {
             send(ev.type, ev);
           }

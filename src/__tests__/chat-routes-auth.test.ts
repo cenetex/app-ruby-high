@@ -215,6 +215,64 @@ describe("chat event context", () => {
     expect(promptText).toContain("Use this snapshot for the reaction");
   });
 
+  it("drops answer-graded teacher turns when the live reveal has moved on", async () => {
+    const token = "route-stale-answer-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-stale-answer-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Stale Answer",
+    });
+    const state = ruby.getOrCreate(auth.stateKeyForToken(token));
+    state.faculty = "sally-science";
+    state.lastReveal = {
+      questionId: "current-q",
+      picked: "A",
+      correct: "A",
+      wasCorrect: true,
+      forfeit: false,
+      explanation: null,
+      encouragement: null,
+    };
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("This should not run.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "sally-science",
+          trigger: "answer-graded",
+          context: {
+            questionId: "old-q",
+            picked: "B",
+            correct: "B",
+            wasCorrect: true,
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).toBeNull();
+    expect(res.body).toContain("stale-answer");
+  });
+
   it("describes answer-graded timeouts without inventing a player pick", async () => {
     const token = "route-timeout-token";
     auth.injectSessionForTest(token, {
