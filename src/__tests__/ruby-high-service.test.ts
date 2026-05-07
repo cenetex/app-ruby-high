@@ -736,6 +736,32 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("does not seat classmates who have drifted out of the player's grade", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:cohort-drift-seating";
+    const state = attachTestCharacter(ruby, sid);
+    state.npcCohort = [
+      {
+        id: "lyra",
+        grade: "10",
+        streak: { grade: "10", count: 0 },
+        completedGrades: ["9"],
+        graduated: false,
+      },
+      {
+        id: "mika",
+        grade: "12",
+        streak: { grade: "12", count: 4 },
+        completedGrades: ["9", "10", "11", "12"],
+        graduated: true,
+      },
+    ];
+
+    const posed = ruby.pickAndPose(sid, { faculty: "ruby" });
+
+    expect(posed.activeRound?.npcs.map((n) => n.studentId)).toEqual([]);
+  });
+
   it("generates imported-card MC distractors only when explicitly requested", async () => {
     const { ruby } = await makeServices();
     const sid = "test:anki-source-jit-mc";

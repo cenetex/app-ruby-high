@@ -1890,6 +1890,14 @@ export class RubyHighService extends Service {
     }
   }
 
+  private npcIsSeatedWithPlayer(state: QuizState, studentId: string): boolean {
+    const grade = state.currentGrade;
+    if (!grade) return true;
+    const arc = state.npcCohort?.find((n) => n.id === studentId);
+    if (!arc) return true;
+    return !arc.graduated && arc.grade === grade;
+  }
+
   /** Ensure an NPC roster exists for the given grade. The seating chart
    *  is static for the year (the per-question redistribution that used to
    *  drive student migration was part of the legacy free-play loop). */
@@ -2052,7 +2060,8 @@ export class RubyHighService extends Service {
     if (room && room.teaches && state.currentGrade && !isTypedAnswer) {
       const teachingRoom = room.id as TeachingRoomId;
       const roster = this.ensureRoster(state, state.currentGrade);
-      const inRoom = npcsInRoom(roster, teachingRoom);
+      const inRoom = npcsInRoom(roster, teachingRoom)
+        .filter((npc) => this.npcIsSeatedWithPlayer(state, npc.id));
       entries = inRoom.map((npc) => {
         if (isOpinion) {
           // Opinion round — accuracy doesn't apply, only commit timing matters.
@@ -2367,9 +2376,9 @@ export class RubyHighService extends Service {
     };
   }
 
-  /** Daily-bonus status. This is a once-per-day warm-up question. The
+  /** Daily-class status. This is the once-per-day graded class entry point. The
    *  faculty-of-the-day rotation still works the same way (deterministic by
-   *  date), so the bonus nudges the player toward different rooms over the week. */
+   *  date), so the class flow nudges the player toward different rooms over the week. */
   dailyStatus(sessionId: string, now: Date = new Date()): {
     available: boolean;
     reason?: "completed" | "no-grade" | "no-character";
@@ -2387,7 +2396,7 @@ export class RubyHighService extends Service {
     return { available: true, facultyId: fac, dailyKey: key };
   }
 
-  /** Pose today's daily bonus. Throws if the bonus has already been used today. */
+  /** Pose today's daily class question. Throws if today's class entry has already been used. */
   playBonus(sessionId: string, now: Date = new Date()): QuizState {
     if (!this.faculty) {
       throw new Error("FacultyService is not bound. Call setFacultyService() first.");
@@ -2395,7 +2404,7 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     const status = this.dailyStatus(sessionId, now);
     if (!status.available) {
-      throw new Error(`Daily bonus not available: ${status.reason ?? "unknown"}`);
+      throw new Error(`Daily class not available: ${status.reason ?? "unknown"}`);
     }
     const facultyId = status.facultyId;
     if (state.faculty !== facultyId) {
@@ -2408,9 +2417,9 @@ export class RubyHighService extends Service {
         : undefined,
     });
     if (!q) {
-      throw new Error(`No scheduled review card is due for ${facultyId}; cannot pose today's bonus.`);
+      throw new Error(`No scheduled review card is due for ${facultyId}; cannot pose today's class question.`);
     }
-    // Daily bonus guarantees a school-day question; class grades come from
+    // Daily class guarantees a school-day question; class grades come from
     // the same card mastery path as regular room questions.
     const next = this.poseBankedQuestion(sessionId, state, q);
     if (next.activeRound) {

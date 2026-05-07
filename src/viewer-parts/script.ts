@@ -298,6 +298,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     arcStreak: $("arc-streak"),
     arcXp: $("arc-xp"),
     arcScore: $("arc-score"),
+    packBtn: $("pack-btn"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -402,6 +403,30 @@ const VIEWER_SCRIPT_SUFFIX = `
     const today = t.active_course_progress && t.active_course_progress.today;
     if (today && today.status === "complete") return false;
     return true;
+  }
+  function hasCompletedAnyClass(t) {
+    if (!t || !t.character) return false;
+    const character = t.character;
+    if (Array.isArray(character.yearbook) && character.yearbook.length > 0) return true;
+    const dailyRecords = Object.values(character.dailyClasses || {});
+    if (dailyRecords.some((record) => record && record.status === "complete")) return true;
+    const roster = Array.isArray(t.faculty_roster) ? t.faculty_roster : [];
+    return roster.some((f) =>
+      Number(f.completedClasses || 0) > 0
+      || !!(f.todayClass && f.todayClass.status === "complete")
+    );
+  }
+  function secondarySurfacesUnlocked(t) {
+    if (!t || !t.character) return false;
+    if (graduatedFor(t.character)) return true;
+    if (t.character.pendingGraduation || t.graduation_ready) return true;
+    return hasCompletedAnyClass(t);
+  }
+  function packStoreUnlocked(t) {
+    if (!t || !t.character) return false;
+    const activePackId = t.active_pack && t.active_pack.id;
+    if (activePackId && activePackId !== "ruby-high-original") return true;
+    return secondarySurfacesUnlocked(t);
   }
   async function maybeAutoStartClass(t) {
     if (autoPickInFlight) return;
@@ -1254,7 +1279,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!authed) {
         els.blackboardEmptyText.textContent = "Starting Ruby High…";
       } else if (!lastTelemetry?.character) {
-        els.blackboardEmptyText.textContent = "Roll a character — your name will appear in the seating chart.";
+        els.blackboardEmptyText.textContent = "Roll your character to start today's class.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -1326,7 +1351,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (ar && ar.isBonus) {
       const bonus = document.createElement("span");
       bonus.className = "pill bonus";
-      bonus.textContent = "★ BONUS";
+      bonus.textContent = "★ DAILY";
       els.blackboardMeta.appendChild(bonus);
     }
     if (ar && ar.classSession) {
@@ -1618,11 +1643,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     const t = lastTelemetry || {};
     const grade = t.current_grade;
     const roster = t.faculty_roster || [];
+    const unlocked = secondarySurfacesUnlocked(t);
     const sig = (grade ?? "?") + "::" + roster.map((f) =>
       f.id + ":" + f.available + ":" + f.questionCount + ":" + (f.courseGrade || "")
         + ":" + (f.completedClasses ?? "") + "/" + (f.requiredClasses ?? "")
         + ":" + ((f.todayClass && f.todayClass.status) || "")
-    ).join("|") + "::" + t.faculty;
+    ).join("|") + "::" + t.faculty + "::" + (!!t.character ? "1" : "0") + "::" + (unlocked ? "1" : "0");
     if (sig === lastRosterSig) return;
     lastRosterSig = sig;
 
@@ -1704,9 +1730,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.channelsList.appendChild(row);
     });
 
-    // The Teachers' Lounge — same channel UX as a classroom but no teacher
-    // thumbnail (it's the all-three-teachers room).
-    {
+    // The Teachers' Lounge and class roster stay out of the first-session
+    // path until the player has completed at least one daily class.
+    if (unlocked) {
       const row = document.createElement("button");
       const isActive = t.faculty === LOUNGE_ID;
       row.className = "channel-row" + (isActive ? " is-active" : "");
@@ -1733,6 +1759,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     // Class roster — show every student in the year with their current cohort
     // grade. Click any of them to open their profile card.
+    if (!unlocked) return;
     const studentsTitle = document.createElement("div");
     studentsTitle.className = "channel-section-title";
     studentsTitle.textContent = "Class — grade";
@@ -2023,6 +2050,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       loadHistory(t.faculty);
     }
     applyViewMode(deriveViewMode(t));
+    if (els.packBtn) els.packBtn.hidden = !packStoreUnlocked(t);
 
     setAccent(t.facultyAccent);
     rebuildServersRail();
@@ -3943,7 +3971,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packImportBtn = $("pack-import-btn");
   const packCloseBtn = $("pack-close-btn");
   const packStatusEl = $("pack-import-status");
-  const packBtn = $("pack-btn");
+  const packBtn = els.packBtn;
   const BUILTIN_IMPORT_TEACHERS = [
     { id: "", name: "Auto: classes + teachers" },
     { id: "ruby", name: "Ruby" },

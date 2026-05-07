@@ -65,13 +65,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="arc-indicator" id="arc-indicator" hidden>
         <span class="arc-year" id="arc-year">—</span>
         <span class="arc-sep">·</span>
-        <span class="arc-streak" id="arc-streak" title="Legendary-day streak this year">streak —</span>
+        <span class="arc-streak" id="arc-streak" title="Daily-class streak this year">streak —</span>
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Class standing">— classes</span>
         <span class="arc-sep">·</span>
         <span class="arc-score" id="arc-score" title="Session score">0 score</span>
       </div>
-      <button class="pack-btn" id="pack-btn" type="button" title="Content packs" aria-label="Content packs">
+      <button class="pack-btn" id="pack-btn" type="button" title="Content packs" aria-label="Content packs" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>
         </svg>
@@ -89,7 +89,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
-        <div id="blackboard-empty-text">The teacher will write a question on the board in a moment.</div>
+        <div id="blackboard-empty-text">Starting Ruby High…</div>
       </div>
 
       <div class="blackboard-meta" id="blackboard-meta" hidden></div>
