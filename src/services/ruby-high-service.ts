@@ -51,6 +51,7 @@ import {
   type Phase,
   type PlayerCharacter,
   type Question,
+  type QuestionMediaAsset,
   type QuestionType,
   type QuizState,
   type RoomBoardSnapshot,
@@ -86,7 +87,9 @@ import {
   roomForFacultyForSession,
   setActivePack,
 } from "../content/registry.js";
-import type { ContentPack } from "../content/types.js";
+import type { ContentPack, PackSourceCard } from "../content/types.js";
+import { cardToMcQuestion, type DistractorOpts } from "../content/anki/distractors.js";
+import type { AnkiCard } from "../content/anki/parse.js";
 
 export interface PoseInput {
   prompt: string;
@@ -202,6 +205,12 @@ interface DailyClassUpdate {
   passedClass?: boolean;
 }
 
+interface TypedAnswerJudgeResult {
+  correct: boolean;
+  mode: "exact" | "alias" | "fuzzy";
+  score: number;
+}
+
 const SRS_AGAIN_MS = 5 * 60 * 1000;
 const SRS_HARD_MS = 30 * 60 * 1000;
 const SRS_ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -255,6 +264,50 @@ function carriedStreakCountForPass(state: QuizState, now: number): number {
 function scoreMultiplierForPass(state: QuizState, passed: boolean, now: number): number {
   if (!passed) return 1;
   return streakScoreMultiplier(carriedStreakCountForPass(state, now));
+}
+
+function normalizeAnswerForJudge(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&nbsp;/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function answerWords(value: string): string[] {
+  return normalizeAnswerForJudge(value).split(" ").filter(Boolean);
+}
+
+function wordOverlapScore(submitted: string, expected: string): number {
+  const expectedWords = answerWords(expected);
+  if (expectedWords.length === 0) return 0;
+  const submittedWords = new Set(answerWords(submitted));
+  if (submittedWords.size === 0) return 0;
+  let matched = 0;
+  for (const word of expectedWords) {
+    if (submittedWords.has(word)) matched += 1;
+  }
+  return matched / expectedWords.length;
+}
+
+function judgeTypedAnswer(submitted: string, acceptedAnswers: string[]): TypedAnswerJudgeResult {
+  const normalizedSubmitted = normalizeAnswerForJudge(submitted);
+  const candidates = acceptedAnswers
+    .map((answer) => answer.trim())
+    .filter((answer) => answer.length > 0);
+  if (!normalizedSubmitted || candidates.length === 0) {
+    return { correct: false, mode: "fuzzy", score: 0 };
+  }
+  for (let i = 0; i < candidates.length; i++) {
+    if (normalizedSubmitted === normalizeAnswerForJudge(candidates[i]!)) {
+      return { correct: true, mode: i === 0 ? "exact" : "alias", score: 1 };
+    }
+  }
+  const score = Math.max(...candidates.map((answer) => wordOverlapScore(submitted, answer)));
+  return { correct: score >= 0.8, mode: "fuzzy", score: Math.round(score * 100) / 100 };
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -775,7 +828,10 @@ export class RubyHighService extends Service {
     const faculty = pack.faculty.find((f) => f.id === facultyId);
     if (!faculty) return [];
     const bankSubjects = Array.from(new Set(
-      faculty.questions
+      [
+        ...faculty.questions,
+        ...(faculty.sourceCards ?? []),
+      ]
         .map((q) => q.subject)
         .filter((subject): subject is string => typeof subject === "string" && subject.trim().length > 0),
     ));
@@ -799,7 +855,9 @@ export class RubyHighService extends Service {
 
   private isImportedReviewCourse(state: QuizState, facultyId: string): boolean {
     const pack = packForSession(state);
-    return pack.id.startsWith("anki:") && pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0);
+    return pack.id.startsWith("anki:") && pack.faculty.some((f) =>
+      f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+    );
   }
 
   private dailyFacultyForState(state: QuizState, key: string): string {
@@ -810,7 +868,9 @@ export class RubyHighService extends Service {
     const pack = packForSession(state);
     const courseFacultyIds = coursesForPack(pack)
       .map((c) => c.facultyId)
-      .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0));
+      .filter((facultyId) => pack.faculty.some((f) =>
+        f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+      ));
     if (courseFacultyIds.length === 0) return scheduled;
     const idx = ((dailyIndex(key) % courseFacultyIds.length) + courseFacultyIds.length) % courseFacultyIds.length;
     return courseFacultyIds[idx]!;
@@ -981,8 +1041,99 @@ export class RubyHighService extends Service {
     return this.ensureCardMemory(state)[cardMemoryKey(courseId, questionId)] ?? null;
   }
 
+  private mediaForQuestion(card: PackSourceCard): QuestionMediaAsset[] | undefined {
+    const media = (card.media ?? [])
+      .filter((asset) =>
+        typeof asset.name === "string" &&
+        typeof asset.mimeType === "string" &&
+        asset.mimeType.startsWith("image/") &&
+        typeof asset.dataUrl === "string" &&
+        asset.dataUrl.startsWith("data:image/"),
+      )
+      .map((asset) => ({ name: asset.name, mimeType: asset.mimeType, dataUrl: asset.dataUrl }));
+    return media.length > 0 ? media : undefined;
+  }
+
+  private questionForSourceCard(card: PackSourceCard): BankedQuestion {
+    const expectedAnswer = card.back.trim();
+    const acceptedAnswers = card.acceptedAnswers.length > 0 ? card.acceptedAnswers : [expectedAnswer];
+    const question: BankedQuestion = {
+      id: card.id,
+      prompt: card.front.trim() || "What is hidden on this card?",
+      type: card.kind === "image-occlusion" ? "image-occlusion" : "typed-answer",
+      expectedAnswer,
+      acceptedAnswers,
+      sourceCardId: card.id,
+      canGenerateMc: true,
+      media: this.mediaForQuestion(card),
+      subject: card.subject,
+      difficulty: card.difficulty,
+      faculty: card.faculty,
+      correct: "A",
+    };
+    question.stat = statForQuestion(question);
+    return question;
+  }
+
+  private sourceCardsForFaculty(state: QuizState, facultyId: string): PackSourceCard[] {
+    return packForSession(state).faculty.find((f) => f.id === facultyId)?.sourceCards ?? [];
+  }
+
+  private sourceCardForQuestion(state: QuizState, q: Question): PackSourceCard | null {
+    const facultyId = this.resolveQuestionFaculty(state, q.faculty);
+    const sourceId = q.sourceCardId ?? q.id;
+    return this.sourceCardsForFaculty(state, facultyId).find((card) => card.id === sourceId) ?? null;
+  }
+
+  private cachedMcQuestionForSource(state: QuizState, source: PackSourceCard): BankedQuestion | null {
+    const faculty = packForSession(state).faculty.find((f) => f.id === source.faculty);
+    return faculty?.questions.find((q) =>
+      (q.sourceCardId === source.id || q.id === source.id) &&
+      (q.type ?? "multiple-choice") === "multiple-choice" &&
+      !!q.options &&
+      !!q.correct
+    ) ?? null;
+  }
+
+  private sourceCardToAnkiCard(card: PackSourceCard): AnkiCard {
+    return {
+      noteId: card.id.startsWith("anki-") ? card.id.slice("anki-".length) : card.id,
+      front: card.front,
+      back: card.back,
+      deckName: card.deckName,
+      tags: card.tags,
+      frontHtml: card.frontHtml,
+      backHtml: card.backHtml,
+      media: card.media,
+    };
+  }
+
+  private normalizeGeneratedMcQuestion(source: PackSourceCard, q: BankedQuestion): BankedQuestion {
+    if (!q.options || !q.correct) {
+      throw new Error("Distractor generation did not return a playable multiple-choice question.");
+    }
+    return {
+      ...q,
+      id: source.id,
+      type: "multiple-choice",
+      sourceCardId: source.id,
+      canGenerateMc: false,
+      subject: source.subject,
+      difficulty: source.difficulty,
+      faculty: source.faculty,
+    };
+  }
+
   private courseQuestionsFor(state: QuizState, facultyId: string): BankedQuestion[] {
-    return packForSession(state).faculty.find((f) => f.id === facultyId)?.questions ?? [];
+    const faculty = packForSession(state).faculty.find((f) => f.id === facultyId);
+    if (!faculty) return [];
+    const bankedQuestions = faculty.sourceCards?.length
+      ? faculty.questions.filter((q) => !q.sourceCardId)
+      : faculty.questions;
+    return [
+      ...(faculty.sourceCards ?? []).map((card) => this.questionForSourceCard(card)),
+      ...bankedQuestions,
+    ];
   }
 
   private eligibleCourseQuestions(
@@ -1014,7 +1165,7 @@ export class RubyHighService extends Service {
     let mutated = false;
     const asked = new Set(state.askedQuestionIds);
     for (const faculty of pack.faculty) {
-      for (const q of faculty.questions) {
+      for (const q of this.courseQuestionsFor(state, faculty.id)) {
         const key = cardMemoryKey(faculty.id, q.id);
         if (memory[key]) continue;
         const records = (historyByQuestion.get(q.id) ?? []).sort((a, b) => a.at - b.at);
@@ -1250,6 +1401,15 @@ export class RubyHighService extends Service {
       round.resolvedAt = Date.now();
       return;
     }
+    const isTypedQuestion = q.type === "typed-answer" || q.type === "image-occlusion";
+    const answerText = round.player.answerText?.trim() ?? "";
+    const acceptedAnswers = q.acceptedAnswers ?? (q.expectedAnswer ? [q.expectedAnswer] : []);
+    const typedJudge = isTypedQuestion && round.player.answeredAt != null
+      ? judgeTypedAnswer(answerText, acceptedAnswers)
+      : null;
+    if (typedJudge) {
+      round.player.picked = typedJudge.correct ? "A" : "B";
+    }
     // Force-pin any unanswered NPCs to their planned commit time. This keeps
     // the race honest when the player commits early — an NPC whose delay
     // would have fired at T=7s is recorded as T=7s, not at the timer expiry.
@@ -1295,6 +1455,7 @@ export class RubyHighService extends Service {
         correct: (q.correct ?? "A") as Choice,
         wasCorrect,
         at: round.player.answeredAt ?? round.expiresAt,
+        ...(isTypedQuestion ? { answerText, expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] } : {}),
       };
       state.history.push(record);
     }
@@ -1351,6 +1512,13 @@ export class RubyHighService extends Service {
       classProgress,
       playerRoll,
       affinitySave,
+      ...(isTypedQuestion ? {
+        answerText,
+        expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] ?? null,
+        answerJudge: typedJudge
+          ? { mode: typedJudge.mode, score: typedJudge.score }
+          : { mode: "fuzzy" as const, score: 0 },
+      } : {}),
     };
     round.resolved = true;
     round.resolvedAt = Date.now();
@@ -1435,7 +1603,9 @@ export class RubyHighService extends Service {
     const teacherIds = Array.from(new Set(
       coursesForPack(pack)
         .map((course) => course.facultyId)
-        .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0)),
+        .filter((facultyId) => pack.faculty.some((f) =>
+          f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+        )),
     ));
     for (const teacherId of teacherIds) {
       classCount++;
@@ -1578,7 +1748,9 @@ export class RubyHighService extends Service {
       const facultyIds = new Set(
         coursesForPack(pack)
           .map((course) => course.facultyId)
-          .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId)),
+          .filter((facultyId) => pack.faculty.some((f) =>
+            f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+          )),
       );
       if (!facultyIds.has(reward.facultyId)) throw new Error("Pick a valid class affinity.");
       return { kind: "affinity", facultyId: reward.facultyId };
@@ -1775,6 +1947,60 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  private poseBankedQuestion(
+    sessionId: string,
+    state: QuizState,
+    q: BankedQuestion,
+    mode?: "class" | "practice",
+  ): QuizState {
+    this.assertBoardMutationAllowed(state, "post");
+    if (state.character?.pendingGraduation) {
+      throw new Error("Graduation ceremony is ready — choose a level-up reward before starting another question.");
+    }
+    const type: QuestionType = q.type ?? "multiple-choice";
+    const question: Question = { ...q, type };
+    if (type === "multiple-choice") {
+      if (!question.options || !question.correct) {
+        throw new Error(`Question ${q.id} is missing multiple-choice options.`);
+      }
+      for (const c of CHOICES) {
+        const v = question.options[c];
+        if (typeof v !== "string" || v.trim().length === 0) {
+          throw new Error(`Question ${q.id} option ${c} is missing or empty.`);
+        }
+      }
+    } else if (type === "typed-answer" || type === "image-occlusion") {
+      const answers = question.acceptedAnswers?.filter((answer) => answer.trim().length > 0) ?? [];
+      if (!question.expectedAnswer && answers.length === 0) {
+        throw new Error(`Question ${q.id} is missing its expected answer.`);
+      }
+      question.acceptedAnswers = answers.length > 0 ? answers : [question.expectedAnswer ?? ""];
+      question.expectedAnswer = question.expectedAnswer ?? question.acceptedAnswers[0]!;
+      question.correct = "A";
+      question.canGenerateMc = q.canGenerateMc !== false;
+    }
+    question.stat = statForQuestion(question);
+    state.current = question;
+    state.subject = question.subject ?? state.subject;
+    state.faculty = question.faculty ?? state.faculty;
+    if (!state.askedQuestionIds.includes(question.id)) state.askedQuestionIds.push(question.id);
+    state.activeRound = this.openRound(state, question);
+    state.activeRound.classSession = this.classSessionForPose(state, question.faculty ?? state.faculty, mode);
+    this.transition(state, { kind: "pose-question" });
+    state.updatedAt = Date.now();
+    log.event("question.posed", {
+      sessionId,
+      faculty: question.faculty,
+      questionId: question.id,
+      type,
+      rarity: question.rarity,
+      subject: question.subject,
+      sourceCardId: question.sourceCardId,
+    });
+    void this.persistSession(sessionId);
+    return state;
+  }
+
   private maybePromoteAuthoredQuestion(state: QuizState, question: Question, shouldPersist: boolean): void {
     if (!shouldPersist) return;
     const pack = packForSession(state);
@@ -1810,10 +2036,11 @@ export class RubyHighService extends Service {
   private openRound(state: QuizState, question: Question): ActiveRound {
     const startedAt = Date.now();
     const isOpinion = question.type === "opinion";
+    const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
     const room = roomForFacultyForSession(state, state.faculty);
     let entries: NpcRoundEntry[] = [];
-    if (room && room.teaches && state.currentGrade) {
+    if (room && room.teaches && state.currentGrade && !isTypedAnswer) {
       const teachingRoom = room.id as TeachingRoomId;
       const roster = this.ensureRoster(state, state.currentGrade);
       const inRoom = npcsInRoom(roster, teachingRoom);
@@ -2058,18 +2285,7 @@ export class RubyHighService extends Service {
           : `No scheduled question is due for {faculty=${facultyId}, subject=${filter.subject ?? "any"}, difficulty=${difficulty ?? "any"}}.`,
       );
     }
-    return this.pose(sessionId, {
-      prompt: q.prompt,
-      options: q.options as Record<Choice, string>,
-      correct: q.correct as Choice,
-      explanation: q.explanation,
-      subject: q.subject,
-      stat: q.stat,
-      difficulty: q.difficulty,
-      faculty: q.faculty,
-      questionId: q.id,
-      mode: filter.mode,
-    });
+    return this.poseBankedQuestion(sessionId, state, q, filter.mode);
   }
 
   questionBankStatus(sessionId: string, facultyId?: string): QuestionBankStatus {
@@ -2180,23 +2396,15 @@ export class RubyHighService extends Service {
     }
     // Daily bonus guarantees a school-day question; class grades come from
     // the same card mastery path as regular room questions.
-    const next = this.pose(sessionId, {
-      prompt: q.prompt,
-      options: q.options as Record<Choice, string>,
-      correct: q.correct as Choice,
-      explanation: q.explanation,
-      subject: q.subject,
-      stat: q.stat,
-      difficulty: q.difficulty,
-      faculty: q.faculty,
-      questionId: q.id,
-    });
+    const next = this.poseBankedQuestion(sessionId, state, q);
     if (next.activeRound) {
       next.activeRound.isBonus = true;
     }
     if (state.character) {
       state.character.lastBonusDate = status.dailyKey;
     }
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
     log.event("bonus.posed", {
       sessionId, faculty: facultyId, dailyKey: status.dailyKey, questionId: q.id,
     });
@@ -2213,6 +2421,9 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     const q = state.current;
     if (!q) throw new Error("No question is currently on the board.");
+    if ((q.type ?? "multiple-choice") !== "multiple-choice") {
+      throw new Error("This question needs a typed answer.");
+    }
     if (!CHOICES.includes(picked)) throw new Error(`Pick must be one of ${CHOICES.join(", ")}`);
 
     // If we don't have an active round (e.g. legacy state, or a manually
@@ -2246,6 +2457,103 @@ export class RubyHighService extends Service {
     // planned commit time (startedAt + delayMs), preserving the honest race.
     if (!round.resolved) this.resolveRound(state, false);
     state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  submitTextAnswer(sessionId: string, answerText: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const q = state.current;
+    if (!q) throw new Error("No question is currently on the board.");
+    if (q.type !== "typed-answer" && q.type !== "image-occlusion") {
+      throw new Error("This question needs a multiple-choice pick.");
+    }
+    const trimmed = answerText.trim();
+    if (!trimmed) throw new Error("Type an answer before submitting.");
+    const bounded = trimmed.length > 4096 ? `${trimmed.slice(0, 4096)}...` : trimmed;
+
+    if (!state.activeRound || state.activeRound.questionId !== q.id) {
+      state.activeRound = this.openRound(state, q);
+    }
+    const round = state.activeRound;
+    if (round.resolved) return state;
+    if (round.player.answeredAt != null) {
+      this.tickRound(state);
+      return state;
+    }
+    const judge = judgeTypedAnswer(bounded, q.acceptedAnswers ?? (q.expectedAnswer ? [q.expectedAnswer] : []));
+    round.player.answerText = bounded;
+    round.player.picked = judge.correct ? "A" : "B";
+    round.player.answeredAt = Date.now();
+    log.event("answer.typed", {
+      sessionId,
+      faculty: state.faculty,
+      questionId: q.id,
+      wasCorrect: judge.correct,
+      judgeMode: judge.mode,
+      judgeScore: judge.score,
+    });
+    this.tickRound(state);
+    if (!round.resolved) this.resolveRound(state, false);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  async generateCurrentMcQuestion(sessionId: string, apiKey?: string | null): Promise<QuizState> {
+    const state = this.getOrCreate(sessionId);
+    const current = state.current;
+    if (!current) throw new Error("No question is currently on the board.");
+    if (current.type !== "typed-answer" && current.type !== "image-occlusion") {
+      throw new Error("The current question is already multiple choice.");
+    }
+    const round = state.activeRound;
+    if (round?.resolved) throw new Error("This round is already resolved.");
+    if (round?.player.answeredAt != null) {
+      throw new Error("You already submitted an answer for this card.");
+    }
+    const source = this.sourceCardForQuestion(state, current);
+    if (!source) throw new Error("Could not find the imported source card for this question.");
+
+    let mc = this.cachedMcQuestionForSource(state, source);
+    const wasCached = !!mc;
+    if (!mc) {
+      const key = apiKey?.trim();
+      if (!key) {
+        throw new Error("OpenRouter API key required to generate multiple-choice distractors.");
+      }
+      const opts: DistractorOpts = {
+        apiKey: key,
+        facultyId: source.faculty,
+        subject: source.subject,
+        difficulty: source.difficulty,
+        maxRetriesPerCard: 1,
+      };
+      const generated = await cardToMcQuestion(this.sourceCardToAnkiCard(source), opts);
+      if (!generated) throw new Error("Could not generate multiple-choice distractors for this card.");
+      mc = this.normalizeGeneratedMcQuestion(source, generated);
+      const updated = appendQuestionToPackBank(packForSession(state).id, source.faculty, mc);
+      if (!updated) throw new Error("Could not cache generated multiple-choice question in this pack.");
+      await this.persistImportedPack(sessionId, updated);
+    }
+
+    const classSession = round?.classSession;
+    const question: Question = { ...mc, type: "multiple-choice", canGenerateMc: false };
+    question.stat = statForQuestion(question);
+    state.current = question;
+    state.subject = question.subject ?? state.subject;
+    state.faculty = question.faculty ?? state.faculty;
+    state.activeRound = this.openRound(state, question);
+    state.activeRound.classSession = classSession ?? this.classSessionForPose(state, question.faculty ?? state.faculty, "practice");
+    this.transition(state, { kind: "pose-question" });
+    state.updatedAt = Date.now();
+    log.event("question.mc-generated", {
+      sessionId,
+      faculty: question.faculty,
+      questionId: question.id,
+      sourceCardId: source.id,
+      cached: wasCached,
+    });
     void this.persistSession(sessionId);
     return state;
   }

@@ -6,7 +6,7 @@
  *                                (auth required).
  *   POST /packs/import-anki    — upload an Anki .apkg (base64 in JSON
  *                                body), server parses + generates
- *                                distractors, registers as the
+ *                                source cards, registers as the
  *                                IMPORTING SESSION'S pack, activates
  *                                it. Auth required.
  *
@@ -18,9 +18,8 @@
  * that session sees them in /packs and can activate them. Built-in
  * packs (the original) are visible to everyone.
  *
- * Rate limit: import is gated by a slow bucket (8 burst, 1 per 30s) —
- * distractor generation is multi-LLM-call and a runaway script could
- * melt an OpenRouter quota fast. Body cap of 16 MB prevents
+ * Rate limit: import is gated by a slow bucket (8 burst, 1 per 30s).
+ * Body cap of 16 MB prevents
  * 1 GB JSON DoS attempts.
  */
 
@@ -91,7 +90,9 @@ function rateLimitKey(ctx: PackRouteContext, token: string | null): string {
 }
 
 function packSummary(pack: ContentPack) {
-  const questionCount = pack.faculty.reduce((s, f) => s + f.questions.length, 0);
+  const countFacultyCards = (f: ContentPack["faculty"][number]) =>
+    (f.sourceCards?.length ?? 0) + f.questions.filter((q) => !q.sourceCardId).length;
+  const questionCount = pack.faculty.reduce((s, f) => s + countFacultyCards(f), 0);
   return {
     id: pack.id,
     name: pack.name,
@@ -106,7 +107,7 @@ function packSummary(pack: ContentPack) {
       shortName: f.shortName,
       ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
       subjects: f.subjects,
-      questionCount: f.questions.length,
+      questionCount: countFacultyCards(f),
     })),
   };
 }
@@ -167,16 +168,10 @@ export async function handlePackRoutes(
     return true;
   }
 
-  // POST /packs/import-anki — base64 .apkg → distractors → register +
+  // POST /packs/import-anki — base64 .apkg → source cards → register +
   // set as THIS session's active pack.
   if (ctx.method === "POST" && sub === "/import-anki") {
-    // Distractor generation calls OpenRouter on the user's behalf —
-    // they need to send their key as a header (same pattern as chat).
     const apiKey = (ctx.apiKeyHeader ?? "").trim();
-    if (!apiKey) {
-      ctx.error(ctx.res, "OpenRouter API key required (send as Authorization or x-api-key header).", 400);
-      return true;
-    }
     const rlKey = rateLimitKey(ctx, token);
     if (!IMPORT_LIMITER.take(rlKey)) {
       const retryAfter = IMPORT_LIMITER.retryAfterSeconds(rlKey);
@@ -230,14 +225,14 @@ export async function handlePackRoutes(
         return true;
       }
       const { pack, skipped } = await buildAnkiPack(deck, {
-        apiKey,
+        ...(apiKey ? { apiKey } : {}),
         packName,
         maxCards,
         teacherId,
       });
-      const importedQuestionCount = pack.faculty.reduce((sum, f) => sum + f.questions.length, 0);
+      const importedQuestionCount = pack.faculty.reduce((sum, f) => sum + f.questions.length + (f.sourceCards?.length ?? 0), 0);
       if (importedQuestionCount === 0) {
-        ctx.error(ctx.res, "Distractor generation produced no usable questions. Check that your OpenRouter key has credit, then try again.", 502);
+        ctx.error(ctx.res, "Deck produced no usable study cards.", 502);
         return true;
       }
       registerPack(pack, sessionId);

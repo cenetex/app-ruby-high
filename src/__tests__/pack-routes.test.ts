@@ -20,14 +20,13 @@ import type { ContentPack } from "../content/types.js";
 
 // Pack-routes integration tests. Auth is exercised; the .apkg import
 // flow uses a programmatic fixture so the round-trip is real (parser +
-// distractor generator + pack registration). OpenRouter is mocked.
+// source-card pack registration). Import itself does not call OpenRouter.
 
 let tmpDir: string;
 let storePath: string;
 let auth: AuthService;
 let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
-let captured: { url: string; body: any } | null = null;
 
 function makeCtx(opts: { method: string; path: string; cookie?: string | null; apiKey?: string | null; body?: any }): PackRouteContext {
   lastResponse = null;
@@ -76,7 +75,6 @@ beforeEach(async () => {
   auth = await AuthService.start({} as never, store);
   ruby = new RubyHighService({} as never, store);
   await ruby["hydrate"]();
-  captured = null;
 });
 
 afterEach(async () => {
@@ -210,18 +208,20 @@ describe("/packs/import-anki — body validation", () => {
     expect(lastResponse?.status).toBe(400);
   });
 
-  it("rejects missing OpenRouter key with 400", async () => {
+  it("imports without an OpenRouter key", async () => {
     signInUser("alice");
+    const apkgBytes = await buildApkgFixture("No Key Deck", [
+      { front: "Q1", back: "A1" },
+    ]);
     const ctx = makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/packs/import-anki",
       cookie: "rh_session=alice",
-      // no apiKey header
-      body: { filename: "x.apkg", data: "AAAA" },
+      body: { filename: "x.apkg", data: Buffer.from(apkgBytes).toString("base64") },
     });
     await handlePackRoutes(ctx, makeDeps());
-    expect(lastResponse?.status).toBe(400);
-    expect(String(lastResponse?.body.error)).toMatch(/OpenRouter API key/i);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.pack.question_count).toBe(1);
   });
 
   it("rejects unknown teacher ids with 400", async () => {
@@ -240,18 +240,9 @@ describe("/packs/import-anki — body validation", () => {
 });
 
 describe("/packs/import-anki — end-to-end", () => {
-  it("parses a real .apkg + generates distractors + registers the pack to the importing session", async () => {
+  it("parses a real .apkg + registers typed source cards to the importing session", async () => {
     signInUser("alice");
-    // Mock OpenRouter to always return a valid 3-distractor JSON response.
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (...args: any[]) => {
-      const init = args[1];
-      captured = { url: typeof args[0] === "string" ? args[0] : (args[0] as URL).toString(), body: init?.body ? JSON.parse(init.body) : null };
-      const respBody = JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(["WrongA", "WrongB", "WrongC"]) } }],
-      });
-      return new Response(respBody, { status: 200 });
-    });
-
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     // Build a real .apkg fixture (3 cards) using the same libs the parser uses.
     const apkgBytes = await buildApkgFixture("Test Deck", [
       { front: "Q1", back: "A1" },
@@ -291,10 +282,7 @@ describe("/packs/import-anki — end-to-end", () => {
     const visibleAfterRestart = availablePacksForSession("rh:user:test-alice").map((p) => p.id);
     expect(visibleAfterRestart).toContain(pack.id);
     expect(packForSession(rubyAfterRestart.getOrCreate("rh:user:test-alice")).id).toBe(pack.id);
-    // OpenRouter was called once per card.
-    // (The mock captured the LAST call; we rely on the question count
-    // assertion to verify per-card calls happened.)
-    expect(captured?.url).toContain("openrouter.ai");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

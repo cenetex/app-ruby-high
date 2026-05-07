@@ -2,15 +2,16 @@
  * Anki .apkg parser. The .apkg file format is a ZIP archive containing
  * a SQLite database (collection.anki2 or collection.anki21) plus media
  * files. This module extracts the cards as plain front/back records
- * with deck names and note tags; turning them into multiple-choice questions is a separate
- * step (see distractors.ts) that needs an LLM.
+ * with deck names, note tags, and lightweight image media. The import path
+ * keeps these as typed-answer source cards; optional multiple-choice
+ * distractors are generated later for one card at a time.
  *
  * Pure-JS dependencies (jszip + sql.js) so this works in Node + browser
  * with no native build. wasm SQLite is heavy (~700 KB) but only loads
  * the first time someone imports a deck — the loader is lazy + cached.
  *
  * The pack-store import route uses this parser before turning cards into
- * multiple-choice questions. Tests cover input validation plus a
+ * imported source cards. Tests cover input validation plus a
  * programmatically-built .apkg fixture to verify the round-trip end-to-end.
  */
 
@@ -32,6 +33,10 @@ export interface AnkiCard {
   /** Normalized Anki note tags. Tags are a fallback grouping signal when
    *  the deck does not use meaningful subdecks. */
   tags: string[];
+  /** Raw field HTML before tag stripping. Used for media/image cards. */
+  frontHtml?: string;
+  backHtml?: string;
+  media?: AnkiMediaAsset[];
   /** Note id from Anki — used as a stable identifier for the resulting
    *  question so re-imports don't shuffle ids. */
   noteId: string;
@@ -41,6 +46,12 @@ export interface AnkiDeck {
   /** Top-level deck name — the import dialog's "Pack name" suggestion. */
   name: string;
   cards: AnkiCard[];
+}
+
+export interface AnkiMediaAsset {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
 }
 
 let sqlJsCache: Promise<unknown> | null = null;
@@ -100,7 +111,8 @@ export async function parseApkg(bytes: Uint8Array): Promise<AnkiDeck> {
       "No collection.anki2 / .anki21 found in the archive — is this really an Anki .apkg file?",
     );
   }
-  return readDeckFromSqlite(dbBytes);
+  const media = await readMediaAssets(zip);
+  return readDeckFromSqlite(dbBytes, media);
 }
 
 /** Convenience: read .apkg from disk. Used by tests and CLI helpers. */
@@ -115,7 +127,7 @@ interface SqlJsDatabase {
 }
 interface SqlJsModule { Database: new (data: Uint8Array) => SqlJsDatabase }
 
-async function readDeckFromSqlite(dbBytes: Uint8Array): Promise<AnkiDeck> {
+async function readDeckFromSqlite(dbBytes: Uint8Array, media: Map<string, AnkiMediaAsset>): Promise<AnkiDeck> {
   const SQL = (await loadSqlJs()) as SqlJsModule;
   const db = new SQL.Database(dbBytes);
   try {
@@ -141,11 +153,18 @@ async function readDeckFromSqlite(dbBytes: Uint8Array): Promise<AnkiDeck> {
       const did = String(row[3] ?? "");
       const [front, back] = splitFields(flds);
       if (!front || !back) continue; // skip malformed cards
+      const mediaRefs = Array.from(new Set([
+        ...extractMediaRefs(front),
+        ...extractMediaRefs(back),
+      ]));
       cards.push({
         front: stripHtml(front),
         back: stripHtml(back),
         deckName: decks.get(did) ?? "default",
         tags,
+        frontHtml: front,
+        backHtml: back,
+        media: mediaRefs.map((name) => media.get(name)).filter((asset): asset is AnkiMediaAsset => Boolean(asset)),
         noteId,
       });
     }
@@ -155,6 +174,61 @@ async function readDeckFromSqlite(dbBytes: Uint8Array): Promise<AnkiDeck> {
   }
 }
 
+async function readMediaAssets(zip: JSZip): Promise<Map<string, AnkiMediaAsset>> {
+  const out = new Map<string, AnkiMediaAsset>();
+  const mediaEntry = zip.file("media");
+  if (!mediaEntry) return out;
+  let catalog: Record<string, string>;
+  try {
+    catalog = JSON.parse(await mediaEntry.async("string")) as Record<string, string>;
+  } catch {
+    return out;
+  }
+  const maxAssetBytes = 512 * 1024;
+  const maxTotalBytes = 2 * 1024 * 1024;
+  let total = 0;
+  for (const [entryName, fileName] of Object.entries(catalog)) {
+    const entry = zip.file(entryName);
+    if (!entry || !isImageFile(fileName)) continue;
+    const bytes = await entry.async("uint8array");
+    if (bytes.length > maxAssetBytes || total + bytes.length > maxTotalBytes) continue;
+    total += bytes.length;
+    const mimeType = mimeForImage(fileName);
+    out.set(fileName, {
+      name: fileName,
+      mimeType,
+      dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+    });
+  }
+  return out;
+}
+
+function extractMediaRefs(html: string): string[] {
+  const refs: string[] = [];
+  html.replace(/<img\b[^>]*\bsrc=["']?([^"'>\s]+)["']?[^>]*>/gi, (_match, src) => {
+    try {
+      refs.push(decodeURIComponent(String(src)));
+    } catch {
+      refs.push(String(src));
+    }
+    return "";
+  });
+  return refs;
+}
+
+function isImageFile(name: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+}
+
+function mimeForImage(name: string): string {
+  if (/\.png$/i.test(name)) return "image/png";
+  if (/\.jpe?g$/i.test(name)) return "image/jpeg";
+  if (/\.gif$/i.test(name)) return "image/gif";
+  if (/\.webp$/i.test(name)) return "image/webp";
+  if (/\.svg$/i.test(name)) return "image/svg+xml";
+  return "application/octet-stream";
+}
+
 /** Anki field separator is the ASCII unit-separator char (0x1f). */
 function splitFields(flds: string): string[] {
   return flds.split(String.fromCharCode(0x1f));
@@ -162,7 +236,8 @@ function splitFields(flds: string): string[] {
 
 /** Best-effort HTML strip — Anki cards often have minimal markup
  *  (`<br>`, entities). Anything more elaborate (LaTeX, MathJax, audio
- *  refs) goes through unchanged; the LLM gets to read it. */
+ *  refs) stays in the raw HTML fields for media detection while the
+ *  playable prompt gets readable text. */
 function stripHtml(s: string): string {
   return s
     .replace(/<br\s*\/?>/gi, "\n")

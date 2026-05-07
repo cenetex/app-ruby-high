@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildAnkiPack, planAnkiCourses } from "../content/anki/pack.js";
 import type { AnkiDeck } from "../content/anki/parse.js";
 
-// End-to-end: AnkiDeck → ContentPack via buildAnkiPack. Mocks
-// OpenRouter (the only network dependency); verifies the pack shape
-// the rest of the system reads.
+// End-to-end: AnkiDeck → ContentPack via buildAnkiPack. Import is local:
+// cards become typed-answer source cards, and MC distractors are generated
+// later only when the viewer's explicit MC action asks for them.
 
 let calls = 0;
 let personaCalls = 0;
@@ -54,7 +54,7 @@ const sampleDeck: AnkiDeck = {
 };
 
 describe("buildAnkiPack — happy path", () => {
-  it("produces a ContentPack with one faculty whose questions match the deck", async () => {
+  it("produces a ContentPack with one faculty whose source cards match the deck", async () => {
     mockOpenRouter(["Lysosome", "Nucleus", "Vacuole"]);
     const { pack, skipped } = await buildAnkiPack(sampleDeck, {
       apiKey: "sk-test",
@@ -63,18 +63,18 @@ describe("buildAnkiPack — happy path", () => {
     expect(skipped).toBe(0);
     expect(pack.faculty).toHaveLength(1);
     const fac = pack.faculty[0]!;
-    expect(fac.questions).toHaveLength(3);
-    // Each question carries the canonical fields downstream consumers rely on.
-    for (const q of fac.questions) {
-      expect(q.id).toMatch(/^anki-/);
-      expect(["A", "B", "C", "D"]).toContain(q.correct);
-      const options = q.options!;
-      expect(options.A).toBeTruthy();
-      expect(options.B).toBeTruthy();
-      expect(options.C).toBeTruthy();
-      expect(options.D).toBeTruthy();
-      expect(q.faculty).toBe(fac.id);
+    expect(fac.questions).toHaveLength(0);
+    expect(fac.sourceCards).toHaveLength(3);
+    // Each source card carries the canonical fields downstream consumers rely on.
+    for (const card of fac.sourceCards ?? []) {
+      expect(card.id).toMatch(/^anki-/);
+      expect(card.kind).toBe("basic");
+      expect(card.front).toBeTruthy();
+      expect(card.back).toBeTruthy();
+      expect(card.acceptedAnswers.length).toBeGreaterThan(0);
+      expect(card.faculty).toBe(fac.id);
     }
+    expect(calls).toBe(0);
   });
 
   it("derives a stable + unique pack id from the deck name + suffix", async () => {
@@ -88,16 +88,16 @@ describe("buildAnkiPack — happy path", () => {
     expect(r2.pack.id).toContain("def456");
   });
 
-  it("matches faculty.id between the bank questions and the room teacherId", async () => {
+  it("matches faculty.id between the source cards and the room teacherId", async () => {
     mockOpenRouter(["A", "B", "C"]);
     const { pack } = await buildAnkiPack(sampleDeck, { apiKey: "k", idSuffix: "x" });
     const facId = pack.faculty[0]!.id;
     expect(pack.rooms).toHaveLength(1);
     expect(pack.rooms[0]!.teacherId).toBe(facId);
     expect(pack.rooms[0]!.teaches).toBe(true);
-    // Every question is stamped with the same faculty id.
-    for (const q of pack.faculty[0]!.questions) {
-      expect(q.faculty).toBe(facId);
+    // Every source card is stamped with the same faculty id.
+    for (const card of pack.faculty[0]!.sourceCards ?? []) {
+      expect(card.faculty).toBe(facId);
     }
   });
 
@@ -115,7 +115,7 @@ describe("buildAnkiPack — happy path", () => {
     expect(a.pack.faculty[0]!.accent).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
-  it("respects maxCards cap (cost/quota guard)", async () => {
+  it("respects maxCards cap without calling OpenRouter", async () => {
     mockOpenRouter(["A", "B", "C"]);
     const big: AnkiDeck = {
       name: "Big Deck",
@@ -123,8 +123,9 @@ describe("buildAnkiPack — happy path", () => {
         front: `Q${i}`, back: `A${i}`, deckName: "Big Deck", tags: [], noteId: String(i),
       })),
     };
-    await buildAnkiPack(big, { apiKey: "k", idSuffix: "x", maxCards: 10 });
-    expect(calls).toBe(10);
+    const { pack } = await buildAnkiPack(big, { apiKey: "k", idSuffix: "x", maxCards: 10 });
+    expect(pack.faculty[0]!.sourceCards).toHaveLength(10);
+    expect(calls).toBe(0);
   });
 
   it("can assign an imported deck to an existing teacher", async () => {
@@ -149,7 +150,7 @@ describe("buildAnkiPack — happy path", () => {
       subjects: ["ap-biology-cells"],
     });
     expect(personaCalls).toBe(0);
-    expect(calls).toBe(3);
+    expect(calls).toBe(0);
   });
 });
 
@@ -182,10 +183,11 @@ describe("buildAnkiPack — automatic class planning", () => {
     for (const fac of pack.faculty) {
       expect(fac.displayName).toBe("Sally Science");
       expect(fac.assetTeacherId).toBe("sally-science");
-      expect(fac.questions).toHaveLength(2);
-      for (const q of fac.questions) expect(q.faculty).toBe(fac.id);
+      expect(fac.questions).toHaveLength(0);
+      expect(fac.sourceCards).toHaveLength(2);
+      for (const card of fac.sourceCards ?? []) expect(card.faculty).toBe(fac.id);
     }
-    expect(calls).toBe(4);
+    expect(calls).toBe(0);
     expect(personaCalls).toBe(0);
   });
 
@@ -224,6 +226,7 @@ describe("buildAnkiPack — pack shape compatibility", () => {
     expect(fac.accent).toMatch(/^#/);
     expect(fac.systemPrompt).toBeTruthy();
     expect(fac.defaultModel).toBeTruthy();
+    expect(fac.sourceCards?.length).toBeGreaterThan(0);
     expect(course?.id).toBe(fac.id);
     expect(course?.facultyId).toBe(fac.id);
     expect(course?.roomId).toBe(pack.rooms[0]?.id);

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
@@ -20,6 +20,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   if (activeRuby) await activeRuby.flush();
   await rm(tmpDir, { recursive: true, force: true });
 });
@@ -90,6 +91,55 @@ function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"):
       channelName: "vocab",
       teacherId: "vocab-test-course",
       description: "Imported vocabulary deck",
+      teaches: true,
+    }],
+  };
+}
+
+function fakeAnkiSourcePack(id = "anki:vocab-source", cardId = "anki-vocab-card-1"): ContentPack {
+  return {
+    id,
+    name: "VOCAB Source",
+    description: "Imported vocabulary source-card deck",
+    version: "1.0.0",
+    faculty: [{
+      id: "vocab-source-course",
+      displayName: "Sally Science",
+      shortName: "Sally",
+      assetTeacherId: "sally-science",
+      subjects: ["vocab"],
+      bio: "Sally teaching imported source cards.",
+      accent: "#3aa3e0",
+      systemPrompt: "You are Sally Science teaching imported source cards.",
+      defaultModel: "anthropic/claude-haiku-4.5",
+      questions: [],
+      sourceCards: [{
+        id: cardId,
+        kind: "basic",
+        front: "What does ephemeral mean?",
+        back: "short-lived",
+        acceptedAnswers: ["short-lived", "brief"],
+        deckName: "VOCAB Source",
+        tags: ["vocab"],
+        subject: "vocab",
+        difficulty: "medium",
+        faculty: "vocab-source-course",
+      }],
+    }],
+    courses: [{
+      id: "vocab-source-course",
+      title: "VOCAB Source",
+      facultyId: "vocab-source-course",
+      roomId: "vocab-source-room",
+      teacherTemplateId: "sally-science",
+      subjects: ["vocab"],
+    }],
+    rooms: [{
+      id: "vocab-source-room",
+      name: "VOCAB Source",
+      channelName: "vocab-source",
+      teacherId: "vocab-source-course",
+      description: "Imported vocabulary source-card deck",
       teaches: true,
     }],
   };
@@ -626,6 +676,78 @@ describe("RubyHighService Phase 1", () => {
     expect(bank.grade).toBe("A");
     expect(bank.completedClasses).toBe(1);
     expect(bank.masteredCount).toBe(1);
+  });
+
+  it("poses imported source cards as typed-answer questions and grades exact text", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-source-typed-answer";
+    const pack = fakeAnkiSourcePack();
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid);
+
+    let state = ruby.pickAndPose(sid, { faculty: "vocab-source-course" });
+    expect(state.current).toMatchObject({
+      id: "anki-vocab-card-1",
+      type: "typed-answer",
+      prompt: "What does ephemeral mean?",
+      expectedAnswer: "short-lived",
+      canGenerateMc: true,
+    });
+    expect(state.current?.options).toBeUndefined();
+    expect(state.activeRound?.type).toBe("typed-answer");
+    expect(state.activeRound?.npcs).toEqual([]);
+
+    state = ruby.submitTextAnswer(sid, "short-lived");
+    expect(state.lastReveal).toMatchObject({
+      questionId: "anki-vocab-card-1",
+      wasCorrect: true,
+      answerText: "short-lived",
+      expectedAnswer: "short-lived",
+      answerJudge: { mode: "exact", score: 1 },
+    });
+    expect(state.history.at(-1)).toMatchObject({
+      questionId: "anki-vocab-card-1",
+      answerText: "short-lived",
+      expectedAnswer: "short-lived",
+      wasCorrect: true,
+    });
+  });
+
+  it("generates imported-card MC distractors only when explicitly requested", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-source-jit-mc";
+    const pack = fakeAnkiSourcePack("anki:vocab-source-jit");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(["ancient", "loud", "careful"]) } }],
+      }), { status: 200 }),
+    );
+
+    let state = ruby.pickAndPose(sid, { faculty: "vocab-source-course" });
+    expect(state.current?.type).toBe("typed-answer");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    state = await ruby.generateCurrentMcQuestion(sid, "sk-test");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.current).toMatchObject({
+      id: "anki-vocab-card-1",
+      type: "multiple-choice",
+      sourceCardId: "anki-vocab-card-1",
+      canGenerateMc: false,
+      faculty: "vocab-source-course",
+    });
+    expect(state.current?.options).toBeTruthy();
+    expect(state.current?.correct).toBeTruthy();
+    expect(pack.faculty[0]!.questions).toHaveLength(1);
+    expect(pack.faculty[0]!.questions[0]).toMatchObject({
+      id: "anki-vocab-card-1",
+      type: "multiple-choice",
+      sourceCardId: "anki-vocab-card-1",
+    });
   });
 
   it("keeps custom questions in the imported course when a teacher template id appears in tool args", async () => {

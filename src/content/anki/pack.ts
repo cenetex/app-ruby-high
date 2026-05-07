@@ -1,24 +1,23 @@
 /**
- * Anki deck → ContentPack. Wires the parser + the LLM distractor
- * generator into a single ContentPack the rest of the system already
- * knows how to play. The generated pack can contain multiple classes:
+ * Anki deck → ContentPack. Wires the parser into a single ContentPack
+ * the rest of the system already knows how to play. Imports keep raw
+ * source cards so typed-answer play is free; multiple-choice distractors
+ * are generated later only when the player asks for them. The generated
+ * pack can contain multiple classes:
  * subdecks split first, strong note tags split next, and flat decks stay
  * as one classroom.
  *
  * The pack-store import route calls buildAnkiPack after parseApkg().
- * Tests mock OpenRouter and verify the end-to-end deck → pack assembly.
+ * Tests verify the end-to-end deck → pack assembly.
  */
 
-import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "../types.js";
-import { generateBankFromCards, type DistractorOpts } from "./distractors.js";
+import type { ContentPack, PackCourse, PackFaculty, PackRoom, PackSourceCard } from "../types.js";
 import type { AnkiDeck, AnkiCard } from "./parse.js";
-import { generateAnkiPersona, type PersonaResult } from "./persona.js";
-import { log } from "../../services/logger.js";
 import { TEACHERS, type TeacherCharacter } from "../../characters/teachers.js";
-import { classifyQuestionStat } from "../../question-stats.js";
 
 export interface BuildAnkiPackOpts {
-  apiKey: string;
+  /** Legacy no-op; JIT MC generation reads the current browser key later. */
+  apiKey?: string;
   /** Override the auto-derived pack id (default: `anki:<slug>-<suffix>`). */
   packId?: string;
   /** Override the auto-derived pack name. Defaults to the deck name. */
@@ -31,11 +30,11 @@ export interface BuildAnkiPackOpts {
    *  multiple Anki packs in the channels rail don't all read as the
    *  same blue. */
   accent?: string;
-  /** Cap on cards processed (cost cap for the LLM call). Default 100. */
+  /** Cap on imported source cards. Default 100. */
   maxCards?: number;
-  /** Forwarded to the distractor generator. */
+  /** Legacy no-op; distractors are generated JIT from the viewer. */
   concurrency?: number;
-  /** Forwarded — fires once per card so the import UI can show progress. */
+  /** Legacy no-op; import is local after the .apkg is parsed. */
   onProgress?: (done: number, total: number) => void;
   /** Suffix appended to the auto-derived pack id to disambiguate
    *  re-imports of the same deck name. Tests pass a fixed value;
@@ -45,7 +44,7 @@ export interface BuildAnkiPackOpts {
 
 export interface BuildAnkiPackResult {
   pack: ContentPack;
-  /** Cards we couldn't generate distractors for. */
+  /** Source cards skipped during import. JIT distractors are generated later. */
   skipped: number;
 }
 
@@ -73,72 +72,29 @@ export async function buildAnkiPack(
   const faculty: PackFaculty[] = [];
   const courses: PackCourse[] = [];
   const rooms: PackRoom[] = [];
-  let skipped = 0;
-  let progressBase = 0;
 
   for (const plan of plans) {
     const courseSlug = uniqueSlug(slug(plan.title) || baseSlug, usedCourseSlugs);
     const facultyId = plans.length === 1
       ? `${baseSlug}-${suffix}`
       : `${baseSlug}-${courseSlug}-${suffix}`;
-    const subjectSeed = slug(plan.title) || "anki";
-    const personaPromise = selectedTeacher || (opts.facultyName && plans.length === 1)
-      ? Promise.resolve(null as PersonaResult | null)
-      : generateAnkiPersona({
-          apiKey: opts.apiKey,
-          deckName: plan.title === deck.name ? deck.name : `${deck.name} / ${plan.title}`,
-          sampleCards: pickSampleCards(plan.cards),
-        }).catch((err) => {
-          log.error("anki.persona-failed", err, { deckName: deck.name, courseTitle: plan.title });
-          return null as PersonaResult | null;
-        });
-    const progressStart = progressBase;
-    const distractorOpts: DistractorOpts = {
-      apiKey: opts.apiKey,
-      facultyId,
-      // Subject pill on the chalkboard. If persona generation succeeds
-      // below, we re-stamp this to the persona's better class slug.
-      subject: subjectSeed,
-      difficulty: "medium",
-      concurrency: opts.concurrency,
-      onProgress: opts.onProgress
-        ? (done) => opts.onProgress?.(progressStart + done, cards.length)
-        : undefined,
-    };
-    const [persona, bank] = await Promise.all([
-      personaPromise,
-      generateBankFromCards(plan.cards, distractorOpts),
-    ]);
-    progressBase += plan.cards.length;
-    skipped += bank.skipped;
-    if (bank.questions.length === 0) continue;
-
-    const className = persona?.className || (plans.length === 1 ? opts.facultyName : undefined) || plan.title;
+    const subjectPill = slug(plan.title) || "anki";
+    const className = (plans.length === 1 ? opts.facultyName : undefined) || plan.title;
     const teacherDisplay = selectedTeacher
       ? selectedTeacher.displayName
-      : persona
-        ? (persona.teacherTitle ? `${persona.teacherTitle} ${persona.teacherName}` : persona.teacherName)
-        : (opts.facultyName && plans.length === 1 ? opts.facultyName : `${plan.title} Tutor`);
-    const subjectPill = slug(persona?.className || plan.title) || "anki";
-    if (subjectPill !== subjectSeed) {
-      for (const q of bank.questions) {
-        q.subject = subjectPill;
-        q.stat = classifyQuestionStat({
-          prompt: q.prompt,
-          subject: q.subject,
-          explanation: q.explanation,
-          correctAnswer: q.correct && q.options ? q.options[q.correct] : undefined,
-        });
-      }
-    }
-
+      : (opts.facultyName && plans.length === 1 ? opts.facultyName : `${plan.title} Tutor`);
     const accent = opts.accent ?? (selectedTeacher ? teacherAccent(selectedTeacher.id) : hashedAccent(`${deck.name}:${plan.key}`));
+    const sourceCards: PackSourceCard[] = plan.cards.map((card) => sourceCardFromAnki(card, {
+      facultyId,
+      subject: subjectPill,
+      difficulty: "medium",
+    }));
     const room: PackRoom = {
       id: `${facultyId}-room`,
       name: className,
       channelName: courseSlug,
       teacherId: facultyId,
-      description: persona?.signature ? `“${persona.signature}”` : `Anki: ${deck.name} / ${plan.title}.`,
+      description: `Anki: ${deck.name} / ${plan.title}.`,
       teaches: true,
     };
     const course: PackCourse = {
@@ -157,20 +113,21 @@ export async function buildAnkiPack(
       subjects: [subjectPill],
       bio: selectedTeacher
         ? `${selectedTeacher.displayName} teaching "${plan.title}" from Anki deck "${deck.name}".`
-        : persona?.bio || `Anki-imported class from "${deck.name}": ${plan.title}.`,
+        : `Anki-imported class from "${deck.name}": ${plan.title}.`,
       accent,
       systemPrompt: selectedTeacher
         ? importedModulePrompt(selectedTeacher, deck.name, plan.title)
-        : persona?.systemPrompt || anchoredTeacherPrompt(plan.title, deck.name),
+        : anchoredTeacherPrompt(plan.title, deck.name),
       defaultModel: selectedTeacher?.defaultModel ?? "anthropic/claude-haiku-4.5",
-      questions: bank.questions,
+      questions: [],
+      sourceCards,
     };
     faculty.push(member);
     courses.push(course);
     rooms.push(room);
   }
 
-  const questionCount = faculty.reduce((s, f) => s + f.questions.length, 0);
+  const questionCount = faculty.reduce((s, f) => s + (f.sourceCards?.length ?? 0) + f.questions.length, 0);
   const pack: ContentPack = {
     id: opts.packId ?? `anki:${baseSlug}-${suffix}`,
     name: opts.packName ?? deck.name,
@@ -180,7 +137,7 @@ export async function buildAnkiPack(
     courses,
     rooms,
   };
-  return { pack, skipped };
+  return { pack, skipped: 0 };
 }
 
 export function planAnkiCourses(deck: AnkiDeck, cards: AnkiCard[]): AnkiCoursePlan[] {
@@ -198,6 +155,47 @@ export function planAnkiCourses(deck: AnkiDeck, cards: AnkiCard[]): AnkiCoursePl
     if (planned.length > 1) return planned;
   }
   return [{ key: "deck", title: deck.name || "Imported Deck", source: "deck", cards }];
+}
+
+function sourceCardFromAnki(
+  card: AnkiCard,
+  opts: { facultyId: string; subject: string; difficulty: "medium" },
+): PackSourceCard {
+  const acceptedAnswers = acceptedAnswersFor(card.back);
+  const hasImage = (card.media?.length ?? 0) > 0 || /<img\b/i.test(card.frontHtml ?? "") || /<img\b/i.test(card.backHtml ?? "");
+  const hasOcclusionHint = [...(card.tags ?? []), card.deckName, card.frontHtml ?? "", card.backHtml ?? ""]
+    .some((value) => /image[-_\s]?occlusion|occlusion/i.test(value));
+  return {
+    id: `anki-${card.noteId}`,
+    kind: hasImage && hasOcclusionHint ? "image-occlusion" : "basic",
+    front: card.front || (hasImage ? "Identify the hidden part of the image." : "Untitled Anki prompt"),
+    back: card.back,
+    ...(card.frontHtml ? { frontHtml: card.frontHtml } : {}),
+    ...(card.backHtml ? { backHtml: card.backHtml } : {}),
+    acceptedAnswers,
+    deckName: card.deckName,
+    tags: card.tags ?? [],
+    subject: opts.subject,
+    difficulty: opts.difficulty,
+    faculty: opts.facultyId,
+    ...(card.media && card.media.length > 0 ? { media: card.media } : {}),
+  };
+}
+
+function acceptedAnswersFor(back: string): string[] {
+  const raw = stripAnswerMarkup(back);
+  const parts = raw
+    .split(/\s*(?:\||;|\/|,|\bor\b)\s*/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && part.length <= 120);
+  return Array.from(new Set([raw, ...parts]));
+}
+
+function stripAnswerMarkup(value: string): string {
+  return value
+    .replace(/\[[^\]]+\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 interface RawCourseGroup {
@@ -391,24 +389,8 @@ function uniqueSlug(base: string, used: Map<string, number>): string {
 
 function describeImport(deckName: string, classCount: number, questionCount: number): string {
   const classes = classCount === 1 ? "1 class" : `${classCount} classes`;
-  const questions = questionCount === 1 ? "1 question" : `${questionCount} questions`;
-  return `Imported from Anki: ${deckName}. ${questions} across ${classes}.`;
-}
-
-/** Pick a representative slice of the deck for the persona LLM. The
- *  goal is "give the model a feel for the material" — so we sample
- *  evenly across the deck rather than taking the first N (Anki decks
- *  often start with table-of-contents-style cards that don't represent
- *  the body). */
-function pickSampleCards(cards: AnkiCard[]): AnkiCard[] {
-  if (cards.length <= 6) return cards.slice();
-  const out: AnkiCard[] = [];
-  const stride = cards.length / 6;
-  for (let i = 0; i < 6; i++) {
-    const idx = Math.min(cards.length - 1, Math.floor(i * stride));
-    out.push(cards[idx]!);
-  }
-  return out;
+  const cards = questionCount === 1 ? "1 card" : `${questionCount} cards`;
+  return `Imported from Anki: ${deckName}. ${cards} across ${classes}.`;
 }
 
 function slug(s: string): string {

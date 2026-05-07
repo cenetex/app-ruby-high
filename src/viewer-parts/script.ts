@@ -267,6 +267,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     boardReveal: $("board-reveal"),
     answersHost: $("answers-host"),
     answers: Array.from(document.querySelectorAll(".answer")),
+    typedAnswerHost: $("typed-answer-host"),
+    typedAnswerForm: $("typed-answer-form"),
+    typedAnswerInput: $("typed-answer-input"),
+    typedSubmitBtn: $("typed-submit-btn"),
+    generateMcBtn: $("generate-mc-btn"),
     advantageBar: $("advantage-bar"),
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
@@ -361,6 +366,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   let opinionSubmitted = false; // player's text has been recorded for current round
   let opinionGradeFired = false; // grading has been triggered for current round
+  let typedSubmitting = false;
+  let generatingMc = false;
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
   let sheetOverlayOpen = false;
@@ -439,7 +446,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function command(payload) {
     const seq = ++commandSeq;
     try {
-      const r = await fetch(commandUrl, {
+      const r = await apiFetch(commandUrl, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -741,14 +748,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardMeta.hidden = true;
     els.boardFrameHost.hidden = true;
     els.answersHost.hidden = true;
+    els.typedAnswerHost.hidden = true;
     els.blackboardFoot.hidden = true;
+    els.blackboardPanel.dataset.opinion = "false";
+    els.blackboardPanel.dataset.typedAnswer = "false";
+    els.blackboardPanel.dataset.questionType = "";
     if (reset) {
       els.boardPrompt.textContent = "";
       els.boardReveal.hidden = true;
       els.boardReveal.textContent = "";
     }
   }
-  function showBlackboardLoaded(isOpinion) {
+  function showBlackboardLoaded(isOpinion, isTypedAnswer) {
     // Visibility of the blackboard pieces (panel, answers host, footer) is
     // governed by applyViewMode via data-mode CSS rules. This function
     // just paints the live state: clear the empty placeholder, mark
@@ -761,7 +772,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     // showBlackboardEmpty sets the answers-host hidden attribute; clear it
     // here so the data-mode CSS rules can take over for round-live.
     els.answersHost.hidden = false;
+    els.typedAnswerHost.hidden = false;
     els.blackboardPanel.dataset.opinion = String(!!isOpinion);
+    els.blackboardPanel.dataset.typedAnswer = String(!!isTypedAnswer);
   }
 
   // ── top-bar arc indicator (live progress through the 4-year arc) ────────
@@ -959,6 +972,29 @@ const VIEWER_SCRIPT_SUFFIX = `
   // teacher-picked questions; the /chat/play-bonus endpoint stays available
   // server-side if we ever want a separate daily warm-up affordance.
 
+  function renderQuestionPrompt(question) {
+    els.boardPrompt.replaceChildren();
+    const media = (question && Array.isArray(question.media)) ? question.media : [];
+    const images = media.filter((asset) =>
+      asset && typeof asset.dataUrl === "string" && asset.dataUrl.indexOf("data:image/") === 0
+    );
+    if (images.length > 0) {
+      const wrap = document.createElement("div");
+      wrap.className = "anki-media-grid";
+      images.slice(0, 3).forEach((asset) => {
+        const img = document.createElement("img");
+        img.src = asset.dataUrl;
+        img.alt = asset.name || "Anki card image";
+        wrap.appendChild(img);
+      });
+      els.boardPrompt.appendChild(wrap);
+    }
+    const text = document.createElement("div");
+    text.className = "prompt-text";
+    renderMarkdownInto(text, (question && question.prompt) || "");
+    els.boardPrompt.appendChild(text);
+  }
+
   function renderBlackboard(question, faculty, currentGrade) {
     if (faculty && faculty.id === LOUNGE_ID) {
       // Lounge mode: hide blackboard, show lounge stage with all three figures.
@@ -1030,13 +1066,15 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
 
     const isOpinion = (lastTelemetry && lastTelemetry.is_opinion) || question.type === "opinion";
+    const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
+    els.blackboardPanel.dataset.questionType = question.type || "multiple-choice";
     const promptText = String(question.prompt || "");
     const promptLines = promptText.split(/\\n/).length;
     const longPrompt = promptText.length > 120 || promptLines > 2;
     const essayPrompt = promptText.length > 220 || promptLines > 4;
     els.blackboardPanel.classList.toggle("is-long-prompt", longPrompt);
     els.blackboardPanel.classList.toggle("is-essay-prompt", essayPrompt);
-    showBlackboardLoaded(isOpinion);
+    showBlackboardLoaded(isOpinion, isTypedAnswer);
 
     // Meta pills
     els.blackboardMeta.innerHTML = "";
@@ -1068,10 +1106,11 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     // Prompt — always wipe + rewrite on new question (chalkboard re-erasing).
     if (isNewQuestion) {
-      renderMarkdownInto(els.boardPrompt, question.prompt || "");
+      renderQuestionPrompt(question);
       els.boardReveal.hidden = true;
       els.boardReveal.textContent = "";
       els.boardReveal.classList.remove("correct", "wrong");
+      if (els.typedAnswerInput) els.typedAnswerInput.value = "";
     }
 
     // Answer buttons
@@ -1089,6 +1128,16 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
       btn.disabled = role === "agent";
     });
+    const round = lastTelemetry && lastTelemetry.active_round;
+    const playerLocked = !!(round && round.player && round.player.isLocked);
+    const typedDisabled = role === "agent" || !isTypedAnswer || playerLocked || !!(round && round.resolved);
+    els.typedAnswerInput.disabled = typedDisabled;
+    els.typedSubmitBtn.disabled = typedDisabled;
+    els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
+    els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
+    els.generateMcBtn.title = aiEnabled
+      ? "Generate multiple-choice distractors for this card"
+      : "Enable AI to generate multiple-choice distractors";
     // Long-answer mode flips the grid to single-column on narrow
     // viewports (handled in CSS). Threshold tuned so a 4-line
     // explanation-style answer triggers it but a regular MC option
@@ -1153,11 +1202,15 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function applyRevealToBlackboard(reveal) {
     if (!reveal) return;
+    const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
     els.answers.forEach((btn) => {
       btn.disabled = true;
       if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
       if (btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
     });
+    els.typedAnswerInput.disabled = true;
+    els.typedSubmitBtn.disabled = true;
+    els.generateMcBtn.disabled = true;
     // The wrong-answer "hide A/B/C/D for chat space" rule lives in
     // showBlackboardLoaded so it survives re-renders driven by the
     // telemetry poll. Don't duplicate it here.
@@ -1168,12 +1221,33 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.boardReveal.replaceChildren();
     const verdict = document.createElement("span");
     verdict.className = "reveal-verdict";
-    verdict.textContent = reveal.affinitySave
+    verdict.textContent = isTypedReveal
+      ? (reveal.wasCorrect ? "✓ Correct" : "✗ Not quite")
+      : reveal.affinitySave
       ? "✓ Class affinity saved " + reveal.picked + " — answer was " + reveal.correct
       : reveal.wasCorrect
       ? "✓ Correct (" + reveal.picked + ")"
       : "✗ You picked " + reveal.picked + " — answer was " + reveal.correct;
     els.boardReveal.appendChild(verdict);
+    if (isTypedReveal) {
+      const answerBlock = document.createElement("div");
+      answerBlock.className = "typed-reveal";
+      const you = document.createElement("div");
+      you.textContent = "You: " + (reveal.answerText || "—");
+      answerBlock.appendChild(you);
+      if (reveal.expectedAnswer) {
+        const expected = document.createElement("div");
+        expected.textContent = "Answer: " + reveal.expectedAnswer;
+        answerBlock.appendChild(expected);
+      }
+      if (reveal.answerJudge && Number.isFinite(Number(reveal.answerJudge.score))) {
+        const judge = document.createElement("div");
+        judge.className = "typed-judge";
+        judge.textContent = Math.round(Number(reveal.answerJudge.score) * 100) + "% word match";
+        answerBlock.appendChild(judge);
+      }
+      els.boardReveal.appendChild(answerBlock);
+    }
     if (reveal.playerRoll) {
       const r = reveal.playerRoll;
       const fmt = (n) => (n >= 0 ? "+" : "") + n;
@@ -1231,7 +1305,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     body.className = "body";
     const badge = document.createElement("span");
     badge.className = "badge-mini " + (reveal.wasCorrect ? "ok" : "bad");
-    badge.textContent = reveal.wasCorrect ? "✓ " + reveal.picked : "✗ " + reveal.picked + " · " + reveal.correct;
+    const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
+    badge.textContent = isTypedReveal
+      ? (reveal.wasCorrect ? "✓ typed" : "✗ typed")
+      : reveal.wasCorrect ? "✓ " + reveal.picked : "✗ " + reveal.picked + " · " + reveal.correct;
     body.appendChild(badge);
     body.appendChild(document.createTextNode("Q" + questionCounter + " — " + (reveal.wasCorrect ? "correct" : "missed")));
     if (reveal.playerRoll) {
@@ -1523,6 +1600,42 @@ const VIEWER_SCRIPT_SUFFIX = `
     // The command response contains the resolved round. render() normally
     // schedules the teacher reaction; this direct call is the fallback that
     // keeps clicked answers from waiting for a later chat message.
+  }
+
+  async function submitTypedAnswer(event) {
+    if (event) event.preventDefault();
+    if (typedSubmitting || !els.typedAnswerInput || els.typedSubmitBtn.disabled) return;
+    const answerText = els.typedAnswerInput.value || "";
+    typedSubmitting = true;
+    els.typedSubmitBtn.disabled = true;
+    els.typedAnswerInput.disabled = true;
+    try {
+      const data = await command({ type: "answer-text", answerText, role });
+      lockedFor = data && data.session && data.session.telemetry && data.session.telemetry.current
+        ? data.session.telemetry.current.id : null;
+      if (data && data.session && data.session.telemetry) {
+        maybeRunAnswerGraded(data.session.telemetry, 0);
+      }
+    } finally {
+      typedSubmitting = false;
+      const round = lastTelemetry && lastTelemetry.active_round;
+      const locked = !!(round && round.player && round.player.isLocked);
+      els.typedAnswerInput.disabled = locked || role === "agent";
+      els.typedSubmitBtn.disabled = locked || role === "agent";
+    }
+  }
+
+  async function generateMultipleChoice() {
+    if (generatingMc || !els.generateMcBtn || els.generateMcBtn.disabled) return;
+    generatingMc = true;
+    els.generateMcBtn.disabled = true;
+    els.generateMcBtn.textContent = "MC...";
+    try {
+      await command({ type: "generate-mc" });
+    } finally {
+      generatingMc = false;
+      els.generateMcBtn.textContent = "MC";
+    }
   }
 
   // ── advantage roll ──────────────────────────────────────────────────────
@@ -4255,6 +4368,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   els.answers.forEach((btn) => {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
+  els.typedAnswerForm.addEventListener("submit", submitTypedAnswer);
+  els.generateMcBtn.addEventListener("click", generateMultipleChoice);
   els.nextBtn.addEventListener("click", pickNext);
   els.hamburger.addEventListener("click", toggleRails);
   els.scrim.addEventListener("click", closeRails);

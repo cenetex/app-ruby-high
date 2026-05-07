@@ -144,7 +144,13 @@ export function nextGradeAfter(grade: Grade): Grade | null {
   return GRADES[idx + 1] ?? null;
 }
 
-export type QuestionType = "multiple-choice" | "opinion";
+export type QuestionType = "multiple-choice" | "typed-answer" | "image-occlusion" | "opinion";
+
+export interface QuestionMediaAsset {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
 
 /**
  * Authoritative session phase. The single source of truth that replaces
@@ -192,6 +198,13 @@ export interface Question {
   /** Multiple-choice fields — required when type === "multiple-choice". */
   options?: Record<Choice, string>;
   correct?: Choice;
+  /** Typed-answer / image-occlusion fields. expectedAnswer is intentionally
+   *  omitted from public telemetry until reveal. */
+  expectedAnswer?: string;
+  acceptedAnswers?: string[];
+  sourceCardId?: string;
+  canGenerateMc?: boolean;
+  media?: QuestionMediaAsset[];
   /** Opinion fields — describes what a strong response looks like, fed to
    *  both the responding LLMs and the grading teacher. */
   rubric?: string;
@@ -225,6 +238,8 @@ export interface AnswerRecord {
   correct: Choice;
   wasCorrect: boolean;
   at: number;
+  answerText?: string;
+  expectedAnswer?: string;
 }
 
 export type CardReviewRating = "again" | "hard" | "good" | "easy";
@@ -256,6 +271,12 @@ export interface LastReveal {
   wasCorrect: boolean;
   explanation: string | null;
   encouragement: string | null;
+  answerText?: string;
+  expectedAnswer?: string;
+  answerJudge?: {
+    mode: "exact" | "alias" | "fuzzy";
+    score: number;
+  };
   /** Successful answers can earn extra hidden class-mastery credit from the
    *  streak carried into the day: 2x after two days, 3x after three days,
    *  and the 5x Friday Bonus after four days. */
@@ -857,7 +878,7 @@ export interface ActiveRound {
   durationMs: number;        // hard timer; round force-resolves at this point
   expiresAt: number;
   npcs: NpcRoundEntry[];
-  player: { picked: Choice | null; answeredAt: number | null };
+  player: { picked: Choice | null; answerText?: string | null; answeredAt: number | null };
   resolved: boolean;
   resolvedAt: number | null;
   /** Speed-bonus award: id of whoever locked correctly first. "player" or studentId. */

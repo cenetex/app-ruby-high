@@ -165,10 +165,14 @@ interface SessionTelemetry extends Record<string, unknown> {
   current: {
     id: string;
     prompt: string;
+    type: "multiple-choice" | "typed-answer" | "image-occlusion" | "opinion";
     options: Record<Choice, string>;
     subject: string | null;
     stat: keyof CharacterStats | null;
     difficulty: Difficulty | null;
+    sourceCardId: string | null;
+    canGenerateMc: boolean;
+    media: Array<{ name: string; mimeType: string; dataUrl: string }>;
   } | null;
   lastReveal: QuizState["lastReveal"];
   faculty_roster: FacultyTelemetry[];
@@ -202,7 +206,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   npc_roster: NpcStudentState[];
   /** The live race-to-answer state for the active question, if any. */
   active_round: {
-    type: "multiple-choice" | "opinion";
+    type: "multiple-choice" | "typed-answer" | "image-occlusion" | "opinion";
     questionId: string;
     /** Legacy rarity, present only for older persisted rounds. */
     rarity?: "common" | "rare" | "legendary";
@@ -231,7 +235,7 @@ interface SessionTelemetry extends Record<string, unknown> {
       pick: string | null;       // exposed only after their delay elapses
       isCorrect: boolean | null; // null until reveal
     }>;
-    player: { picked: string | null; answeredAt: number | null; isLocked: boolean };
+    player: { picked: string | null; answerText: string | null; answeredAt: number | null; isLocked: boolean };
     resolved: boolean;
     firstCorrect: string | null;
     /** Opinion-mode data (empty for MC). */
@@ -361,6 +365,7 @@ function deriveActiveRound(state: QuizState) {
     }),
     player: {
       picked: !isOpinion && reveal ? round.player.picked : null,
+      answerText: reveal ? round.player.answerText ?? null : null,
       answeredAt: round.player.answeredAt,
       isLocked: round.player.answeredAt != null,
     },
@@ -419,7 +424,9 @@ function dailyFacultyForState(state: QuizState, key: string): string {
   const pack = packForSession(state);
   const courses = coursesForSession(state)
     .map((course) => course.facultyId)
-    .filter((facultyId) => pack.faculty.some((f) => f.id === facultyId && f.questions.length > 0));
+    .filter((facultyId) => pack.faculty.some((f) =>
+      f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+    ));
   if (courses.length === 0) return scheduled;
   const idx = ((dailyIndex(key) % courses.length) + courses.length) % courses.length;
   return courses[idx]!;
@@ -445,10 +452,16 @@ function buildFacultyRoster(
   sessionId: string,
 ): FacultyTelemetry[] {
   const pack = packForSession(state);
+  const countFacultyCards = (f: typeof pack.faculty[number]) =>
+    (f.sourceCards?.length ?? 0) + f.questions.filter((q) => !q.sourceCardId).length;
   return facultyForSession(state).map((f) => {
     const bank = faculty?.bank(f.id, pack);
     const progress = ruby?.courseProgress(sessionId, f.id) ?? null;
-    const subjects = bank ? Array.from(new Set(bank.questions.map((q) => q.subject))).sort() : f.subjects;
+    const subjects = Array.from(new Set([
+      ...(bank ? bank.questions.map((q) => q.subject) : []),
+      ...(f.sourceCards ?? []).map((card) => card.subject),
+      ...f.subjects,
+    ].filter(Boolean))).sort();
     return {
       id: f.id,
       displayName: f.displayName,
@@ -457,7 +470,7 @@ function buildFacultyRoster(
       available: true,
       accent: f.accent,
       ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
-      questionCount: bank?.questions.length ?? 0,
+      questionCount: countFacultyCards(f),
       ...(progress?.grade ? { courseGrade: progress.grade } : {}),
       ...(progress ? {
         completedClasses: progress.completedClasses,
@@ -503,10 +516,14 @@ function buildSessionState(args: {
       ? {
           id: state.current.id,
           prompt: state.current.prompt,
+          type: state.current.type ?? "multiple-choice",
           options: (state.current.options ?? { A: "", B: "", C: "", D: "" }) as Record<Choice, string>,
           subject: state.current.subject ?? null,
           stat: state.current.stat ?? null,
           difficulty: state.current.difficulty ?? null,
+          sourceCardId: state.current.sourceCardId ?? null,
+          canGenerateMc: !!state.current.canGenerateMc,
+          media: state.current.media ?? [],
         }
       : null,
     lastReveal: state.lastReveal,
@@ -528,7 +545,8 @@ function buildSessionState(args: {
       name: p.name,
       description: p.description,
       faculty_count: p.faculty.length,
-      question_count: p.faculty.reduce((s, f) => s + f.questions.length, 0),
+      question_count: p.faculty.reduce((s, f) =>
+        s + (f.sourceCards?.length ?? 0) + f.questions.filter((q) => !q.sourceCardId).length, 0),
     })),
     rooms: roomsWithLoungeForSession(state),
     npc_roster: state.currentGrade ? (state.npcRosters[state.currentGrade] ?? []) : [],
@@ -878,6 +896,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       | {
           type?: string;
           picked?: string;
+          answerText?: string;
           role?: string;
           prompt?: string;
           faculty?: string;
@@ -913,6 +932,45 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           cookieHeader: ctx.cookieHeader,
           command: type,
           message: state.lastReveal?.wasCorrect ? "Correct" : "Marked",
+        });
+      }
+
+      if (type === "answer-text") {
+        const answerText = String(body?.answerText ?? "");
+        const state = ruby.submitTextAnswer(stateKey, answerText);
+        if (state.lastReveal) {
+          noteGradedAnswer({
+            runtime,
+            cookieHeader: ctx.cookieHeader,
+            faculty: state.faculty,
+            picked: state.lastReveal.picked,
+            correct: state.lastReveal.correct,
+            wasCorrect: state.lastReveal.wasCorrect,
+          });
+        }
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
+          message: state.lastReveal?.wasCorrect ? "Correct" : "Marked",
+        });
+      }
+
+      if (type === "generate-mc") {
+        const state = await ruby.generateCurrentMcQuestion(stateKey, ctx.apiKeyHeader);
+        return await sendPersistedCommandState(ctx, {
+          ruby,
+          sessionId: stateKey,
+          state,
+          runtime,
+          faculty,
+          cookieHeader: ctx.cookieHeader,
+          command: type,
+          message: "Multiple choice generated",
         });
       }
 
@@ -1156,7 +1214,8 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error("command.failed", err, { command: typeof body?.type === "string" ? body.type : "?" });
-      ctx.error(ctx.res, message, 400);
+      const status = /persist|save|dynamodb|storage|unavailable/i.test(message) ? 503 : 400;
+      ctx.error(ctx.res, message, status);
       return true;
     }
   }

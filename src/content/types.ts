@@ -22,7 +22,7 @@
  * cache in localStorage, or generate at runtime (Anki adapter).
  */
 
-import type { BankedQuestion } from "../types.js";
+import type { BankedQuestion, Difficulty } from "../types.js";
 
 export interface ContentPack {
   /** Stable identifier — used as a key in the pack registry / per-player
@@ -87,6 +87,10 @@ export interface PackFaculty {
   /** Inline question bank. Matches the existing BankedQuestion shape so
    *  pickQuestion / pickDaily logic doesn't change. */
   questions: BankedQuestion[];
+  /** Raw imported source cards. Anki imports keep these cheap by default:
+   *  the player can type answers immediately, and MC distractors are
+   *  generated/cached later only when explicitly requested. */
+  sourceCards?: PackSourceCard[];
 }
 
 export interface PackRoom {
@@ -99,4 +103,28 @@ export interface PackRoom {
   description: string;
   /** Whether questions can be drawn here. False for the lounge. */
   teaches: boolean;
+}
+
+export interface PackMediaAsset {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
+
+export interface PackSourceCard {
+  id: string;
+  kind: "basic" | "image-occlusion";
+  front: string;
+  back: string;
+  /** Raw field HTML retained from Anki for media/image detection. The viewer
+   *  still receives sanitized structured media, not this HTML. */
+  frontHtml?: string;
+  backHtml?: string;
+  acceptedAnswers: string[];
+  deckName: string;
+  tags: string[];
+  subject: string;
+  difficulty: Difficulty;
+  faculty: string;
+  media?: PackMediaAsset[];
 }

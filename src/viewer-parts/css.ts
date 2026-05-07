@@ -644,17 +644,20 @@ export const VIEWER_CSS = `
    *   needs-auth / needs-character / checking-auth — pre-game; hide quiz chrome
    */
   .blackboard-panel[data-mode="round-revealed"] .answers-host,
+  .blackboard-panel[data-mode="round-revealed"] .typed-answer-host,
   .blackboard-panel[data-mode="round-revealed"] .advantage-bar,
   .blackboard-panel[data-mode="round-revealed"] .race-strip {
     display: none !important;
   }
   .blackboard-panel[data-mode="between-rounds"] .answers-host,
+  .blackboard-panel[data-mode="between-rounds"] .typed-answer-host,
   .blackboard-panel[data-mode="between-rounds"] .advantage-bar,
   .blackboard-panel[data-mode="between-rounds"] .race-strip,
   .blackboard-panel[data-mode="between-rounds"] .blackboard-foot {
     display: none !important;
   }
   .blackboard-panel[data-mode="in-lounge"] .answers-host,
+  .blackboard-panel[data-mode="in-lounge"] .typed-answer-host,
   .blackboard-panel[data-mode="in-lounge"] .advantage-bar,
   .blackboard-panel[data-mode="in-lounge"] .race-strip,
   .blackboard-panel[data-mode="in-lounge"] .blackboard-foot,
@@ -663,21 +666,27 @@ export const VIEWER_CSS = `
     display: none !important;
   }
   .blackboard-panel[data-mode="needs-auth"] .answers-host,
+  .blackboard-panel[data-mode="needs-auth"] .typed-answer-host,
   .blackboard-panel[data-mode="needs-auth"] .advantage-bar,
   .blackboard-panel[data-mode="needs-auth"] .race-strip,
   .blackboard-panel[data-mode="needs-auth"] .blackboard-foot,
   .blackboard-panel[data-mode="needs-character"] .answers-host,
+  .blackboard-panel[data-mode="needs-character"] .typed-answer-host,
   .blackboard-panel[data-mode="needs-character"] .advantage-bar,
   .blackboard-panel[data-mode="needs-character"] .race-strip,
   .blackboard-panel[data-mode="needs-character"] .blackboard-foot,
   .blackboard-panel[data-mode="checking-auth"] .answers-host,
+  .blackboard-panel[data-mode="checking-auth"] .typed-answer-host,
   .blackboard-panel[data-mode="checking-auth"] .advantage-bar,
   .blackboard-panel[data-mode="checking-auth"] .race-strip,
   .blackboard-panel[data-mode="checking-auth"] .blackboard-foot {
     display: none !important;
   }
   /* Opinion rounds: hide the A/B/C/D grid (player + NPCs answer in chat). */
-  .blackboard-panel[data-opinion="true"] .answers-host {
+  .blackboard-panel[data-opinion="true"] .answers-host,
+  .blackboard-panel[data-opinion="true"] .typed-answer-host,
+  .blackboard-panel[data-typed-answer="true"] .answers-host,
+  .blackboard-panel[data-typed-answer="false"] .typed-answer-host {
     display: none !important;
   }
   .blackboard-meta {
@@ -804,6 +813,67 @@ export const VIEWER_CSS = `
     flex: 0 1 auto;
     min-height: 0;
     min-width: 0;
+  }
+  .typed-answer-host {
+    padding: 10px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  .typed-answer-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .typed-answer-input {
+    min-width: 0;
+    height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    color: var(--text);
+    padding: 0 12px;
+    font: 600 14px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    outline: none;
+  }
+  .typed-answer-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .typed-submit-btn,
+  .typed-mc-btn {
+    appearance: none;
+    height: 44px;
+    border: none;
+    border-radius: 10px;
+    padding: 0 14px;
+    font: 800 12px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .typed-submit-btn {
+    background: var(--accent);
+    color: #fff;
+  }
+  .typed-mc-btn {
+    background: var(--bg-elev-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+  }
+  .typed-submit-btn:disabled,
+  .typed-mc-btn:disabled,
+  .typed-answer-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  @media (max-width: 520px) {
+    .typed-answer-form {
+      grid-template-columns: 1fr auto;
+    }
+    .typed-answer-input {
+      grid-column: 1 / -1;
+    }
   }
   .race-strip {
     display: flex;
@@ -1187,6 +1257,27 @@ export const VIEWER_CSS = `
     overflow-wrap: anywhere;
     hyphens: auto;
   }
+  .board .prompt-text {
+    min-width: 0;
+  }
+  .anki-media-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 10px;
+  }
+  .anki-media-grid img {
+    max-width: min(100%, 360px);
+    max-height: 220px;
+    object-fit: contain;
+    background: rgba(255,255,255,0.92);
+    border: 2px solid rgba(255,255,255,0.55);
+    border-radius: 6px;
+    padding: 4px;
+  }
+  .blackboard-panel[data-question-type="image-occlusion"] .anki-media-grid img {
+    filter: grayscale(1) contrast(1.18);
+  }
   .board .prompt.markdown,
   .board .reveal .reveal-explanation.markdown {
     white-space: normal;
@@ -1211,6 +1302,16 @@ export const VIEWER_CSS = `
     font-size: 14px;
     color: var(--ink-soft);
     opacity: 0.85;
+  }
+  .board .reveal .typed-reveal {
+    margin-top: 6px;
+    display: grid;
+    gap: 2px;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+  .board .reveal .typed-judge {
+    opacity: 0.8;
   }
   /* The roll chip already has 6px left margin; inside .reveal it inherits
      the hit/mixed/miss color so the dice land beside the verdict legibly. */

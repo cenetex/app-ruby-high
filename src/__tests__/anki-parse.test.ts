@@ -92,6 +92,29 @@ describe("parseApkg — end-to-end with a programmatic fixture", () => {
     expect(deck.cards[0]?.back).toContain("Markup\nlanguage");
   });
 
+  it("preserves image media references for image-occlusion style cards", async () => {
+    const fixture = await buildApkgFixture({
+      deckName: "Image Occlusion",
+      cards: [
+        {
+          front: '<img src="occlusion.png">Identify the hidden label',
+          back: "left ventricle",
+          tags: ["image-occlusion"],
+        },
+      ],
+      media: [{ entry: "0", name: "occlusion.png", bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]) }],
+    });
+    const deck = await parseApkg(fixture);
+    expect(deck.cards[0]?.front).toBe("Identify the hidden label");
+    expect(deck.cards[0]?.frontHtml).toContain("occlusion.png");
+    expect(deck.cards[0]?.media).toHaveLength(1);
+    expect(deck.cards[0]?.media?.[0]).toMatchObject({
+      name: "occlusion.png",
+      mimeType: "image/png",
+    });
+    expect(deck.cards[0]?.media?.[0]?.dataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+
   it("skips malformed cards (missing front or back) without throwing", async () => {
     // Anki notes are field-separator delimited; if a card has only one
     // field the back is empty — we drop it silently rather than ship a
@@ -128,6 +151,7 @@ interface FixtureOpts {
   deckName: string;
   cards: Array<{ front: string; back: string; deckName?: string; tags?: string[] }>;
   malformedFlds?: string[];
+  media?: Array<{ entry: string; name: string; bytes: Uint8Array }>;
 }
 
 async function buildApkgFixture(opts: FixtureOpts): Promise<Uint8Array> {
@@ -178,5 +202,11 @@ async function buildApkgFixture(opts: FixtureOpts): Promise<Uint8Array> {
   // Wrap as .apkg (ZIP with collection.anki21).
   const zip = new JSZip();
   zip.file("collection.anki21", dbBytes);
+  if (opts.media && opts.media.length > 0) {
+    zip.file("media", JSON.stringify(Object.fromEntries(opts.media.map((asset) => [asset.entry, asset.name]))));
+    for (const asset of opts.media) {
+      zip.file(asset.entry, asset.bytes);
+    }
+  }
   return new Uint8Array(await zip.generateAsync({ type: "uint8array" }));
 }

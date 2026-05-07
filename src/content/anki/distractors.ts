@@ -1,11 +1,12 @@
 /**
- * Anki front/back → multiple-choice question. Calls OpenRouter with a
- * tight prompt to generate three plausible wrong answers, then assembles
- * a BankedQuestion the rest of the system already knows how to play.
+ * Anki front/back → multiple-choice question. Called only by the explicit
+ * "MC" action in the viewer, not by import. It asks OpenRouter for three
+ * plausible wrong answers, then assembles a BankedQuestion the rest of the
+ * system already knows how to play.
  *
- * Cost shape: ~$0.001 per card with claude-haiku-4.5. A 50-card deck
- * runs ~$0.05. Concurrency cap (default 4) keeps the import fast
- * without bursting the user's quota.
+ * Cost shape: per-card only. Large decks stay cheap to try because this
+ * module is invoked one source card at a time unless a caller explicitly
+ * chooses the batch helper.
  *
  * Failure modes:
  *  - Single-card LLM error → retry once, then skip. Caller sees a
@@ -16,8 +17,8 @@
  *    the others see; the import bails instead of grinding through 50
  *    futile calls and burning the user's quota.
  *
- * The pack-store import route invokes generateBankFromCards as part of
- * the .apkg import flow.
+ * The pack-store import route no longer invokes this. The viewer command
+ * route calls cardToMcQuestion for the active source card and caches it.
  */
 
 import type { BankedQuestion, Choice, Difficulty } from "../../types.js";
@@ -105,7 +106,7 @@ export async function generateBankFromCards(
   return { questions: out, skipped };
 }
 
-async function cardToMcQuestion(
+export async function cardToMcQuestion(
   card: AnkiCard,
   opts: DistractorOpts,
 ): Promise<BankedQuestion | null> {
