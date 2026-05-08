@@ -441,6 +441,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   let lastRosterSig = "";
   let lastRevealId = null;
   let lastAnswerGradedTriggerId = null;
+  let lastIdleTriggerId = null;
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // OpenRouter key + Ruby High session present
   let lockedFor = null;
@@ -499,6 +500,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastRevealId = null;
     lastSocialSummaryId = null;
     lastAnswerGradedTriggerId = null;
+    lastIdleTriggerId = null;
     autoPickLastKey = null;
     emptyBoardHintShown = false;
   }
@@ -1400,13 +1402,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.raceRow.innerHTML = "";
       return;
     }
-    // Timer label (uses server-derived remainingMs as the source of truth).
-    const remainingS = Math.max(0, Math.ceil(round.remainingMs / 1000));
-    els.timerLabel.textContent = round.resolved
-      ? "done"
-      : remainingS + "s";
-    els.timerPill.classList.toggle("is-warn", !round.resolved && remainingS <= 10 && remainingS > 5);
-    els.timerPill.classList.toggle("is-danger", !round.resolved && remainingS <= 5);
+    // Timer: show "done" after resolve; hide the countdown while live since
+    // the idle-trigger (not a forfeit clock) drives pacing now.
+    els.timerLabel.textContent = round.resolved ? "done" : "";
+    els.timerPill.classList.toggle("is-warn", false);
+    els.timerPill.classList.toggle("is-danger", false);
     els.timerPill.classList.toggle("is-locked", !!round.resolved);
 
     // Per-participant cards (player + NPCs).
@@ -1924,8 +1924,21 @@ const VIEWER_SCRIPT_SUFFIX = `
     }, Math.max(0, delayMs || 0));
   }
 
+  function maybeRunRoomIdle(t) {
+    const round = t && t.active_round;
+    if (!round || round.resolved || !round.idleTriggered) return;
+    const triggerId = round.questionId;
+    if (triggerId === lastIdleTriggerId) return;
+    if (!aiEnabled || t.faculty === LOUNGE_ID) return;
+    const ceremonyReady = !!(t.graduation_ready || (t.character && t.character.pendingGraduation));
+    const arcFinished = t.character && graduatedFor(t.character);
+    if (arcFinished || ceremonyReady) return;
+    lastIdleTriggerId = triggerId;
+    runAgentTurn("room-idle", { grade: t.current_grade, questionId: round.questionId }, { force: true });
+  }
+
   async function clearResolvedBoardAfterTeacherTurn(trigger, streamGuard) {
-    if (trigger !== "answer-graded") return;
+    if (trigger !== "answer-graded" && trigger !== "room-idle") return;
     if (!chatStreamStillCurrent(streamGuard)) return;
     const t = lastTelemetry;
     if (!t || t.faculty === LOUNGE_ID) return;
@@ -2705,9 +2718,12 @@ const VIEWER_SCRIPT_SUFFIX = `
         // suppresses pile-ons.
         scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade, 4500);
       }
+    } else if (t.active_round && !t.active_round.resolved && t.active_round.idleTriggered) {
+      maybeRunRoomIdle(t);
     } else if (!t.current && lastRevealId) {
       lastRevealId = null;
       lastAnswerGradedTriggerId = null;
+      lastIdleTriggerId = null;
     }
 
     // Empty-stream welcome (only if no chat yet). New sessions are born

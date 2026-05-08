@@ -1936,6 +1936,23 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           ? `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). The scheduler handles the next question on its own; if a new question already shows on the board, ignore it for this turn — you'll be fired again when the player engages with it. ${schedulerBoundaryInstruction(bank)}`
           : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
+    } else if (trigger === "room-idle") {
+      const state = ruby.getOrCreate(sessionId);
+      const playerName = state.character?.name ?? "the student";
+      // Force-resolve the open round before the teacher speaks so the board
+      // context reads RECENTLY_RESOLVED (forfeit) rather than WAITING. The
+      // teacher then reacts and posts the next question just like answer-graded.
+      ruby.forceAdvanceRound(sessionId);
+      const resolvedState = ruby.getOrCreate(sessionId);
+      const resolved = buildResolvedAnswerBriefing({ state: resolvedState, playerName });
+      extraSystemContext = resolved.extraSystemContext;
+      chat.appendEvent(
+        { sessionToken: token, faculty },
+        { kind: "answer-resolved", text: `Nobody answered in time. ${resolved.eventText}` },
+      );
+      directive = classReportBlocksBoard
+        ? `Nobody answered the question in time. React briefly as yourself — call on someone by name, make it a moment — then acknowledge the class report on the board. Do not call tools.`
+        : `Nobody answered the question in time. This is your DM moment: call on a student by name, make it a beat, then put the next question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank for the next question.")}`;
     } else if (trigger === "manual") {
       const intent = contextIntent;
       const state = ruby.getOrCreate(sessionId);
@@ -1993,7 +2010,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // when available or asking it once for a custom practice challenge.
       const manualAdvanceNeedsFreshQuestion = trigger === "manual" && contextIntent === "advance" && !classReportBlocksBoard;
       const needsFreshQuestion = manualAdvanceNeedsFreshQuestion
-        || (!disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded"));
+        || (!disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded" || trigger === "room-idle"));
       if (needsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         const latestBank = ruby.questionBankStatus(agentSessionId, faculty);
