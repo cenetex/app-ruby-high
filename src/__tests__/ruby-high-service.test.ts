@@ -307,25 +307,22 @@ describe("RubyHighService Phase 1", () => {
     expect(s.lastReveal?.wasCorrect).toBe(false);
   });
 
-  it("marks expired unanswered rounds as timeouts, not player picks", async () => {
+  it("marks expired unanswered rounds as idleTriggered, not hard-forfeited", async () => {
     const { ruby } = await makeServices();
     const sid = "test:timeout-forfeit";
     ruby.pickAndPose(sid, { faculty: "ruby" });
     let s = ruby.getOrCreate(sid);
-    const correct = s.current!.correct!;
     s.activeRound!.expiresAt = Date.now() - 1;
 
     s = ruby.getOrCreate(sid);
 
-    expect(s.activeRound?.resolved).toBe(true);
+    // Clock expired: tickRound sets idleTriggered so the AI teacher can
+    // intervene instead of hard-forfeiting immediately.
+    expect(s.activeRound?.resolved).toBeFalsy();
+    expect(s.activeRound?.idleTriggered).toBe(true);
     expect(s.activeRound?.player.picked).toBeNull();
-    expect(s.activeRound?.player.answeredAt).toBeNull();
-    expect(s.lastReveal).toMatchObject({
-      correct,
-      wasCorrect: false,
-      forfeit: true,
-      encouragement: "Time's up. Take a breath.",
-    });
+    // No hard forfeit — lastReveal is untouched
+    expect(s.lastReveal).toBeNull();
     expect(s.history).toHaveLength(0);
   });
 

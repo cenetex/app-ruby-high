@@ -4621,6 +4621,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packImportBtn = $("pack-import-btn");
   const packCloseBtn = $("pack-close-btn");
   const packStatusEl = $("pack-import-status");
+  const packPdfFile = $("pack-pdf-file");
+  const packPdfTeacherSelect = $("pack-pdf-teacher-select");
+  const packPdfImportBtn = $("pack-pdf-import-btn");
+  const packPdfStatusEl = $("pack-pdf-status");
   const packBtn = els.packBtn;
   const BUILTIN_IMPORT_TEACHERS = [
     { id: "", name: "Auto: classes + teachers" },
@@ -4677,16 +4681,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
   }
   function renderPackTeacherOptions() {
-    if (!packTeacherSelect) return;
-    const previous = packTeacherSelect.value || "";
-    packTeacherSelect.innerHTML = "";
-    for (const teacher of BUILTIN_IMPORT_TEACHERS) {
-      const opt = document.createElement("option");
-      opt.value = teacher.id;
-      opt.textContent = teacher.name;
-      packTeacherSelect.appendChild(opt);
+    for (const sel of [packTeacherSelect, packPdfTeacherSelect]) {
+      if (!sel) continue;
+      const previous = sel.value || "";
+      sel.innerHTML = "";
+      for (const teacher of BUILTIN_IMPORT_TEACHERS) {
+        const opt = document.createElement("option");
+        opt.value = teacher.id;
+        opt.textContent = teacher.name;
+        sel.appendChild(opt);
+      }
+      sel.value = BUILTIN_IMPORT_TEACHERS.some((t) => t.id === previous) ? previous : "";
     }
-    packTeacherSelect.value = BUILTIN_IMPORT_TEACHERS.some((t) => t.id === previous) ? previous : "";
   }
   async function switchPack(packId) {
     packStatusEl.textContent = "Switching…";
@@ -4753,6 +4759,45 @@ const VIEWER_SCRIPT_SUFFIX = `
       packStatusEl.classList.add("is-invalid");
       packImportBtn.disabled = false;
       packFileInput.disabled = false;
+    }
+  });
+  packPdfFile.addEventListener("change", () => {
+    const file = packPdfFile.files && packPdfFile.files[0];
+    packPdfImportBtn.disabled = !file;
+    if (file) packPdfStatusEl.textContent = file.name + " — " + Math.round(file.size / 1024) + " KB";
+  });
+  packPdfImportBtn.addEventListener("click", async () => {
+    const file = packPdfFile.files && packPdfFile.files[0];
+    if (!file) return;
+    packPdfImportBtn.disabled = true;
+    packPdfFile.disabled = true;
+    packPdfStatusEl.textContent = "Reading file…";
+    packPdfStatusEl.classList.remove("is-invalid");
+    try {
+      const buf = await file.arrayBuffer();
+      const b64 = bytesToBase64(new Uint8Array(buf));
+      packPdfStatusEl.textContent = "AI reading PDF and generating cards (~$0.05, ~30s)…";
+      const teacherId = packPdfTeacherSelect && packPdfTeacherSelect.value ? packPdfTeacherSelect.value : "";
+      const body: Record<string, unknown> = { filename: file.name, data: b64, maxCards: 50 };
+      if (teacherId) body.teacherId = teacherId;
+      const r = await apiFetch("/api/apps/ruby-high/packs/import-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: r.status }));
+        throw new Error(err.error || "import " + r.status);
+      }
+      const data = await r.json();
+      const generated = data.generated || 0;
+      packPdfStatusEl.textContent = "Generated " + generated + " study cards. Reloading…";
+      setTimeout(() => window.location.reload(), 600);
+    } catch (err) {
+      packPdfStatusEl.textContent = "Import failed · " + (err && err.message ? err.message : "error");
+      packPdfStatusEl.classList.add("is-invalid");
+      packPdfImportBtn.disabled = false;
+      packPdfFile.disabled = false;
     }
   });
   packCloseBtn.addEventListener("click", closePackStore);
