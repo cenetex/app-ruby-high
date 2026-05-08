@@ -1252,7 +1252,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     title.textContent = "Teacher " + teacherName;
     const subtitle = document.createElement("div");
     subtitle.className = "class-report-subtitle";
-    subtitle.textContent = gradeLabel + " · " + (passedToday ? "credit earned" : "practice open");
+    subtitle.textContent = passedToday ? "credit earned" : "practice open";
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
     gradeBlock.appendChild(badge);
@@ -1278,7 +1278,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       item.appendChild(d);
       metrics.appendChild(item);
     };
-    addMetric("today", questionsLeftText(today), "questions");
     addMetric("score", formatClassScore(today.score), "average");
     addMetric("classes", classesLeftText(completed, required), "to ceremony");
     wrap.appendChild(metrics);
@@ -1305,12 +1304,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       body.textContent = "Extra review, no change to today's grade.";
     } else {
       title.textContent = "Daily class complete";
-      body.textContent = aiEnabled
-        ? "The teacher can talk through the report."
-        : "Next graded class opens tomorrow.";
     }
     copy.appendChild(title);
-    copy.appendChild(body);
+    if (body.textContent) copy.appendChild(body);
     wrap.appendChild(copy);
     return wrap;
   }

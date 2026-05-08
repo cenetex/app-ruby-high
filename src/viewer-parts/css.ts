@@ -2717,6 +2717,25 @@ export const VIEWER_CSS = `
       text-align: right;
     }
   }
+  @media (max-width: 440px) {
+    .board .class-report-card {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .board .class-report-grade-block {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+    }
+    .board .class-report-heading {
+      text-align: left;
+    }
+    .board .class-report-metrics {
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+    }
+  }
 
     /* ── card deck (Character + School Career + Paper Cards) ────────────── */
   /* Three card types live in the read-only sheet:
