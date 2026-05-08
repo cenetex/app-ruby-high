@@ -138,6 +138,8 @@ export interface QuestionBankStatus {
   total: number;
   asked: number;
   remaining: number;
+  canPick: boolean;
+  nextCardRole?: DeckCardRole;
   grade?: string;
   readyCount?: number;
   masteredCount?: number;
@@ -171,6 +173,8 @@ export interface CourseProgress {
   displayName: string;
   total: number;
   ready: number;
+  canPick: boolean;
+  nextCardRole?: DeckCardRole;
   grade?: string;
   completedClasses: number;
   requiredClasses: number;
@@ -200,6 +204,14 @@ interface CourseStanding {
   letterGrade?: string;
   passed: boolean;
   today: CourseProgress["today"];
+}
+
+interface ScheduledPickPlan {
+  facultyId: string;
+  cardRole: DeckCardRole;
+  importedReviewCourse: boolean;
+  difficulty?: Difficulty;
+  question?: BankedQuestion;
 }
 
 interface DailyClassUpdate {
@@ -2454,17 +2466,9 @@ export class RubyHighService extends Service {
     });
   }
 
-  pickAndPose(sessionId: string, filter: PickAndPoseInput = {}): QuizState {
-    if (!this.faculty) {
-      throw new Error("FacultyService is not bound. Call setFacultyService() first.");
-    }
-    const state = this.getOrCreate(sessionId);
-    this.assertBoardMutationAllowed(state, "post");
+  private scheduledPickPlanForState(state: QuizState, filter: PickAndPoseInput = {}): ScheduledPickPlan {
     const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
-    const nextCardRole = this.peekCardRoleForPose(state, facultyId, filter.mode);
-    if (nextCardRole === "social") {
-      return this.poseRubyHomeroomSocialCard(sessionId, state, facultyId);
-    }
+    const cardRole = this.peekCardRoleForPose(state, facultyId, filter.mode);
     const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
     let difficulty = filter.difficulty;
     const allowedDifficulties = !filter.difficulty && state.currentGrade && !importedReviewCourse
@@ -2475,19 +2479,34 @@ export class RubyHighService extends Service {
       // proxy: prefer this year's level but allow prior-year material.
       difficulty = difficultyForGrade(state.currentGrade);
     }
-    const q = this.pickReviewQuestion(state, facultyId, {
-      subject: filter.subject,
-      difficulty,
-      allowedDifficulties,
-    });
-    if (!q) {
+    const question = cardRole === "social"
+      ? undefined
+      : this.pickReviewQuestion(state, facultyId, {
+          subject: filter.subject,
+          difficulty,
+          allowedDifficulties,
+        }) ?? undefined;
+    return { facultyId, cardRole, importedReviewCourse, difficulty, question };
+  }
+
+  pickAndPose(sessionId: string, filter: PickAndPoseInput = {}): QuizState {
+    if (!this.faculty) {
+      throw new Error("FacultyService is not bound. Call setFacultyService() first.");
+    }
+    const state = this.getOrCreate(sessionId);
+    this.assertBoardMutationAllowed(state, "post");
+    const plan = this.scheduledPickPlanForState(state, filter);
+    if (plan.cardRole === "social") {
+      return this.poseRubyHomeroomSocialCard(sessionId, state, plan.facultyId);
+    }
+    if (!plan.question) {
       throw new Error(
-        importedReviewCourse
-          ? `No scheduled deck card is due for ${facultyId} right now.`
-          : `No scheduled question is due for {faculty=${facultyId}, subject=${filter.subject ?? "any"}, difficulty=${difficulty ?? "any"}}.`,
+        plan.importedReviewCourse
+          ? `No scheduled deck card is due for ${plan.facultyId} right now.`
+          : `No scheduled question is due for {faculty=${plan.facultyId}, subject=${filter.subject ?? "any"}, difficulty=${plan.difficulty ?? "any"}}.`,
       );
     }
-    return this.poseBankedQuestion(sessionId, state, q, filter.mode);
+    return this.poseBankedQuestion(sessionId, state, plan.question, filter.mode);
   }
 
   questionBankStatus(sessionId: string, facultyId?: string): QuestionBankStatus {
@@ -2504,6 +2523,8 @@ export class RubyHighService extends Service {
     const questions = this.eligibleCourseQuestions(state, fid, { allowedDifficulties });
     const counts = this.cardCounts(state, fid, questions);
     const standing = this.courseStandingForState(state, fid);
+    const pickPlan = this.scheduledPickPlanForState(state, { faculty: fid });
+    const canPick = pickPlan.cardRole === "social" || !!pickPlan.question;
     return {
       mode: imported ? "srs" : "bank",
       facultyId: fid,
@@ -2511,6 +2532,8 @@ export class RubyHighService extends Service {
       total: questions.length,
       asked: counts.asked,
       remaining: counts.ready,
+      canPick,
+      nextCardRole: pickPlan.cardRole,
       grade: standing.letterGrade,
       courseGrade: standing.letterGrade,
       completedClasses: standing.completed,
@@ -2536,6 +2559,8 @@ export class RubyHighService extends Service {
       displayName: status.displayName,
       total: status.total,
       ready: status.readyCount ?? status.remaining,
+      canPick: status.canPick,
+      nextCardRole: status.nextCardRole,
       grade: status.grade,
       completedClasses: status.completedClasses ?? 0,
       requiredClasses: status.requiredClasses ?? 0,
