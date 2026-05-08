@@ -29,6 +29,8 @@ import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import { parseApkg } from "./content/anki/parse.js";
 import { buildAnkiPack } from "./content/anki/pack.js";
+import { extractPdfText } from "./content/pdf/extract.js";
+import { buildPdfPack } from "./content/pdf/pack.js";
 import { TEACHERS } from "./characters/teachers.js";
 import {
   availablePacksForSession,
@@ -251,6 +253,84 @@ export async function handlePackRoutes(
       });
     } catch (err) {
       log.error("pack.import-anki.failed", err, { sessionId, filename });
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
+    }
+    return true;
+  }
+
+  // POST /packs/import-pdf — base64 PDF bytes → AI-generated study cards → private pack.
+  if (ctx.method === "POST" && sub === "/import-pdf") {
+    const apiKey = (ctx.apiKeyHeader ?? "").trim();
+    if (!apiKey) {
+      ctx.error(ctx.res, "OpenRouter API key required for PDF import (AI generates the study cards).", 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!IMPORT_LIMITER.take(rlKey)) {
+      ctx.error(ctx.res, `Too many imports — wait ${IMPORT_LIMITER.retryAfterSeconds(rlKey)}s and try again.`, 429);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as {
+      filename?: unknown;
+      data?: unknown;
+      maxCards?: unknown;
+      packName?: unknown;
+      teacherId?: unknown;
+    } | null;
+    const filename = typeof body?.filename === "string" ? body.filename : "document.pdf";
+    const dataB64 = typeof body?.data === "string" ? body.data : "";
+    if (!dataB64) {
+      ctx.error(ctx.res, "data (base64-encoded PDF) required", 400);
+      return true;
+    }
+    if (dataB64.length > MAX_IMPORT_BODY_BYTES) {
+      ctx.error(ctx.res, `PDF too large — base64 payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
+      return true;
+    }
+    const maxCards = typeof body?.maxCards === "number" ? body.maxCards : 50;
+    const packName = typeof body?.packName === "string" ? body.packName : undefined;
+    const teacherId = typeof body?.teacherId === "string" ? body.teacherId : undefined;
+    if (teacherId && !TEACHERS[teacherId]) {
+      ctx.error(ctx.res, `Unknown teacher id: ${teacherId}`, 400);
+      return true;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ToBytes(dataB64);
+    } catch {
+      ctx.error(ctx.res, "data must be valid base64", 400);
+      return true;
+    }
+    if (bytes.length > MAX_IMPORT_BODY_BYTES) {
+      ctx.error(ctx.res, `PDF too large — decoded payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
+      return true;
+    }
+    try {
+      log.event("pack.import-pdf.start", { sessionId, filename, sizeKb: Math.round(bytes.length / 1024) });
+      const extract = await extractPdfText(bytes);
+      if (extract.pages.length === 0 || extract.pages.every((p) => p.trim().length < 20)) {
+        ctx.error(ctx.res, "Could not extract readable text from this PDF.", 400);
+        return true;
+      }
+      const { pack, generated } = await buildPdfPack(extract, {
+        apiKey,
+        packName,
+        maxCards,
+        teacherId,
+        filename,
+      });
+      if (generated === 0) {
+        ctx.error(ctx.res, "AI could not generate study cards from this PDF. Try a different document.", 502);
+        return true;
+      }
+      registerPack(pack, sessionId);
+      await deps.ruby.persistImportedPack(sessionId, pack);
+      deps.ruby.setActivePackForSession(sessionId, pack.id);
+      await deps.ruby.flushSession(sessionId);
+      log.event("pack.import-pdf.done", { sessionId, packId: pack.id, filename, generated, teacherId });
+      ctx.json(ctx.res, { ok: true, pack: packSummary(pack), generated });
+    } catch (err) {
+      log.error("pack.import-pdf.failed", err, { sessionId, filename });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
     }
     return true;

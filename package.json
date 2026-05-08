@@ -41,12 +41,14 @@
     "@aws-sdk/lib-dynamodb": "^3.1041.0",
     "@elizaos/core": "2.0.0-alpha.535",
     "jszip": "^3.10.1",
+    "pdf-parse": "^1.1.1",
     "sql.js": "^1.14.1"
   },
   "peerDependencies": {
     "@elizaos/core": "2.0.0-alpha.535"
   },
   "devDependencies": {
+    "@types/pdf-parse": "^1.1.4",
     "@types/sql.js": "^1.4.11",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",

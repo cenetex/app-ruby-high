@@ -14,6 +14,10 @@
 import type { ContentPack, PackCourse, PackFaculty, PackRoom, PackSourceCard } from "../types.js";
 import type { AnkiDeck, AnkiCard } from "./parse.js";
 import { TEACHERS, type TeacherCharacter } from "../../characters/teachers.js";
+import {
+  slug, shortenName, defaultIdSuffix, hashedAccent, teacherAccent,
+  importedModulePrompt, anchoredTeacherPrompt, hslToHex,
+} from "../pack-utils.js";
 
 export interface BuildAnkiPackOpts {
   /** Legacy no-op; JIT MC generation reads the current browser key later. */
@@ -117,7 +121,7 @@ export async function buildAnkiPack(
       accent,
       systemPrompt: selectedTeacher
         ? importedModulePrompt(selectedTeacher, deck.name, plan.title)
-        : anchoredTeacherPrompt(plan.title, deck.name),
+        : anchoredTeacherPrompt(plan.title),
       defaultModel: selectedTeacher?.defaultModel ?? "anthropic/claude-haiku-4.5",
       questions: [],
       sourceCards,
@@ -393,77 +397,3 @@ function describeImport(deckName: string, classCount: number, questionCount: num
   return `Imported from Anki: ${deckName}. ${cards} across ${classes}.`;
 }
 
-function slug(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "deck";
-}
-
-function shortenName(name: string): string {
-  // Take the first comma/colon/dash-separated chunk; cap at 16 chars.
-  const head = name.split(/[,:\-–—]/)[0]?.trim() ?? name;
-  return head.length > 16 ? head.slice(0, 14) + "…" : head;
-}
-
-function defaultIdSuffix(): string {
-  // 6-char base36 timestamp+random tail. Collision-resistant within a
-  // session without dragging in a UUID dep. Two imports in the same
-  // millisecond still differ via Math.random.
-  const t = Date.now().toString(36).slice(-4);
-  const r = Math.floor(Math.random() * 36 * 36).toString(36).padStart(2, "0");
-  return `${t}${r}`;
-}
-
-function hashedAccent(s: string): string {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  const hue = h % 360;
-  return hslToHex(hue, 60, 52);
-}
-
-function teacherAccent(id: string): string {
-  switch (id) {
-    case "ruby": return "#d22a2a";
-    case "sally-science": return "#3aa3e0";
-    case "professor-edward": return "#7a4f2a";
-    default: return hashedAccent(id);
-  }
-}
-
-function importedModulePrompt(teacher: TeacherCharacter, deckName: string, className: string): string {
-  return [
-    teacher.systemPrompt,
-    "",
-    `Imported Anki module: "${deckName}" / "${className}". This class is assigned to your classroom for this user.`,
-    "Teach it in your normal voice. Treat the class topic as in-range for this module, even if it would normally belong to another teacher.",
-    "Use pick_from_bank for due deck cards when available. The deck uses spaced review, so cards are never exhausted; when no deck card is due, do not keep trying filters. Write one custom question with pose_question or talk briefly with the class.",
-  ].join("\n");
-}
-
-function hslToHex(h: number, s: number, l: number): string {
-  const sN = s / 100, lN = l / 100;
-  const c = (1 - Math.abs(2 * lN - 1)) * sN;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = lN - c / 2;
-  let r = 0, g = 0, b = 0;
-  if (h < 60)        { r = c; g = x; }
-  else if (h < 120)  { r = x; g = c; }
-  else if (h < 180)  { g = c; b = x; }
-  else if (h < 240)  { g = x; b = c; }
-  else if (h < 300)  { r = x; b = c; }
-  else               { r = c; b = x; }
-  const to = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
-  return `#${to(r)}${to(g)}${to(b)}`;
-}
-
-function anchoredTeacherPrompt(className: string, deckName: string): string {
-  return [
-    `You are the teacher for an Anki class called "${className}", imported from the deck "${deckName}". You run a small classroom drilling this material.`,
-    `Your job: pose questions from the bank, react crisply to the student's answers, and keep the class moving.`,
-    `Stay in voice as a focused, encouraging tutor specific to the deck topic. No fake biographical detail —`,
-    `the class title is what defines you. If the topic is biology you sound like a bio teacher; if it's law you sound like a law professor.`,
-    `Tools: pick_from_bank for the next question. clear_board between rounds. Keep replies tight (1-2 sentences).`,
-  ].join(" ");
-}

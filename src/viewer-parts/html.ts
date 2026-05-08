@@ -185,9 +185,22 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </label>
     <input type="file" id="pack-anki-file" accept=".apkg,application/octet-stream" />
     <div id="pack-import-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
-    <div class="sheet-actions">
+    <div class="sheet-actions" style="margin-bottom: 0;">
       <button type="button" class="secondary" id="pack-close-btn">Close</button>
       <button type="button" id="pack-import-btn" disabled>Import deck</button>
+    </div>
+    <hr style="border: 0; border-top: 1px solid var(--line); margin: 16px 0;" />
+    <h3 style="margin: 0 0 8px; font-size: 14px;">Import a PDF</h3>
+    <p class="sub" style="margin: 0 0 10px;">Pick a .pdf file. The AI reads it and generates typed-answer study cards. Requires your OpenRouter key.</p>
+    <label class="pack-import-field" for="pack-pdf-teacher-select">
+      <span>Teacher</span>
+      <select id="pack-pdf-teacher-select"></select>
+    </label>
+    <input type="file" id="pack-pdf-file" accept=".pdf,application/pdf" />
+    <div id="pack-pdf-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
+    <div class="sheet-actions">
+      <span></span>
+      <button type="button" id="pack-pdf-import-btn" disabled>Import PDF</button>
     </div>
   </div>
 </div>
