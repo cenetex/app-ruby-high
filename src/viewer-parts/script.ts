@@ -1233,9 +1233,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const progress = lastTelemetry && lastTelemetry.active_course_progress;
     const today = progress && progress.today;
     if (!progress || !today || today.status !== "complete") return null;
-    const gradeLabel = currentGrade ? (GRADE_LABELS[currentGrade] || ("Grade " + currentGrade)) : "Ruby High";
     const teacherName = teacherShortName(faculty, progress.displayName);
-    const letter = today.letterGrade || progress.grade || "—";
+    // Cumulative course grade — matches the channels-rail pill so board
+    // and menu always show the same letter.
+    const letter = progress.grade || today.letterGrade || "—";
     const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
     const completed = Number(progress.completedClasses || 0);
     const required = Number(progress.requiredClasses || 0);
