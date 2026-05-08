@@ -932,8 +932,12 @@ export interface ActiveRound {
   /** Branches the round mechanic. Defaults to multiple-choice. */
   type: QuestionType;
   startedAt: number;        // ms epoch
-  durationMs: number;        // hard timer; round force-resolves at this point
+  durationMs: number;        // idle window; AI teacher fires at this point instead of hard-forfeiting
   expiresAt: number;
+  /** Set when the clock passes expiresAt and no student has answered.
+   *  The AI teacher fires to engage the room; the round stays open until
+   *  the teacher explicitly advances it via forceAdvanceRound(). */
+  idleTriggered?: boolean;
   npcs: NpcRoundEntry[];
   player: { picked: Choice | null; answerText?: string | null; answeredAt: number | null };
   resolved: boolean;

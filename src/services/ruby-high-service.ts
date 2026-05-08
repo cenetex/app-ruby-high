@@ -1510,9 +1510,14 @@ export class RubyHighService extends Service {
     }
     const allNpcsLocked = round.npcs.every((n) => n.answeredAt != null);
     const playerLocked = round.player.answeredAt != null;
-    const expired = now >= round.expiresAt;
-    if ((allNpcsLocked && playerLocked) || expired) {
-      this.resolveRound(state, expired && !playerLocked);
+    if (allNpcsLocked && playerLocked) {
+      this.resolveRound(state, false);
+      mutated = true;
+    } else if (!playerLocked && now >= round.expiresAt && !round.idleTriggered) {
+      // Nobody answered within the idle window. Flag the round so the AI
+      // teacher fires to engage the room; the round itself stays open until
+      // the teacher calls forceAdvanceRound().
+      round.idleTriggered = true;
       mutated = true;
     }
     if (mutated) state.updatedAt = now;
@@ -1664,6 +1669,17 @@ export class RubyHighService extends Service {
     // resolveRound is a private helper that operates on `state` directly;
     // there's no sessionId param, so pull it off the state.
     void this.persistSession(state.sessionId);
+  }
+
+  /** Called by the room-idle chat route after the AI teacher has engaged
+   *  the room. Resolves the open round as a forfeit (no student answered)
+   *  so the teacher can then post the next question. Safe to call on an
+   *  already-resolved round. */
+  forceAdvanceRound(sessionId: string): void {
+    const state = this.getOrCreate(sessionId);
+    const round = state.activeRound;
+    if (!round || round.resolved) return;
+    this.resolveRound(state, round.player.answeredAt == null);
   }
 
   /** Apply grade progression after a question resolves.

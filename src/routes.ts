@@ -249,6 +249,9 @@ interface SessionTelemetry extends Record<string, unknown> {
     }>;
     player: { picked: string | null; answerText: string | null; answeredAt: number | null; isLocked: boolean; timedOut: boolean };
     resolved: boolean;
+    /** True when the idle window passed with no student answer and the AI
+     *  teacher has been flagged to engage the room. */
+    idleTriggered: boolean;
     firstCorrect: string | null;
     /** Opinion-mode data (empty for MC). */
     opinionResponses: Array<{ responder: string; text: string; submittedAt: number }>;
@@ -387,6 +390,7 @@ function deriveActiveRound(state: QuizState) {
       timedOut: !isOpinion && reveal && !!state.lastReveal?.forfeit,
     },
     resolved: round.resolved,
+    idleTriggered: !!round.idleTriggered,
     firstCorrect: !isOpinion && reveal ? round.firstCorrect : null,
     opinionResponses: round.opinionResponses,
     opinionGrades: round.opinionGrades,
