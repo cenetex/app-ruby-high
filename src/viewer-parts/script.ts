@@ -1281,7 +1281,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       metrics.appendChild(item);
     };
     addMetric("score", formatClassScore(today.score), "average");
-    addMetric("classes", classesLeftText(completed, required), "to ceremony");
+    const classesLeft = Math.max(0, required - completed);
+    addMetric("classes", classesLeft + " left", "to ceremony");
     wrap.appendChild(metrics);
     return wrap;
   }
