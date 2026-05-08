@@ -1083,6 +1083,11 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
   // re-read — in that case .current is the new question and lastReveal
   // points at the previous one; the WAITING branch is correct.
   const round = state.activeRound;
+  // A round may have expired on the clock but not yet been resolved by the
+  // server tick. Treat clock-expired rounds as timed out so the AI doesn't
+  // tell students to keep waiting.
+  const clockExpired = !!round && round.questionId === q.id && !round.resolved &&
+    !!round.expiresAt && Date.now() >= round.expiresAt;
   const resolvedThisQ =
     !!round && round.questionId === q.id && round.resolved &&
     !!state.lastReveal && state.lastReveal.questionId === q.id;
@@ -1093,6 +1098,11 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
           ? `The timer expired before the player answered; correct was ${state.lastReveal.correct}.`
           : `The player answered ${state.lastReveal.picked} and was ${state.lastReveal.wasCorrect ? "correct" : "wrong; correct was " + state.lastReveal.correct}.`,
         "The question scheduler will auto-post the next question when the board clears; you'll be fired again at that point.",
+      ]
+    : clockExpired
+    ? [
+        "BOARD STATUS: TIMED_OUT.",
+        "The timer has expired. No student answered in time. The round is being resolved server-side.",
       ]
     : [
         "BOARD STATUS: WAITING_FOR_STUDENT_ANSWER.",
