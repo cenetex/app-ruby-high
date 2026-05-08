@@ -737,7 +737,17 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ error: "request " + r.status }));
-        appendSystem("error · " + (err.error || r.status));
+        const msg = String(err.error || r.status);
+        // The bank-empty error fires from auto-pick races (telemetry said
+        // ready>0 but the server's already drawn the last card). It's not
+        // an actionable error for the player — they just need to nudge
+        // the room forward. Swallow the chip; the empty board's "Tap
+        // Chat to start" hint already tells them what to do.
+        if (/no scheduled (question|deck card) is due/i.test(msg)) {
+          autoPickLastKey = null;
+          return null;
+        }
+        appendSystem("error · " + msg);
         return null;
       }
       const data = await r.json();
@@ -1473,11 +1483,13 @@ const VIEWER_SCRIPT_SUFFIX = `
         // the room's status, the hint is the actionable detail.
         const hint = lastTelemetry && lastTelemetry.character ? buildNextStepHint(lastTelemetry.character) : "";
         const progress = lastTelemetry && lastTelemetry.active_course_progress;
-        const lead = progress && progress.today && progress.today.status === "complete"
+        const todayDone = progress && progress.today && progress.today.status === "complete";
+        const todayActive = progress && progress.today && progress.today.status === "active";
+        const lead = todayDone
           ? "Today's graded class is complete. Practice is open."
-          : progress && progress.today && progress.today.status === "active"
-            ? "Continue today's class when the teacher writes the next board."
-            : "Start today's graded class when the teacher writes the next board.";
+          : todayActive
+            ? "Continue today's class — tap Chat to start."
+            : "Start today's graded class — tap Chat to start.";
         els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
       }
       // Below the lead text: a sleeker on-board class-grade chip row, so the
