@@ -2827,6 +2827,19 @@ export const VIEWER_CSS = `
     box-shadow: 0 0 10px rgba(240,180,65,0.26);
     opacity: 1;
   }
+  /* Bonus-only streak lane: the bonus pill replaces the diamonds AND the
+   * count, so size it up to carry the lane on its own. */
+  .career-streak-track.is-bonus-only {
+    flex: 1;
+    justify-content: flex-start;
+  }
+  .career-streak-track.is-bonus-only .career-multiplier.is-live {
+    height: 26px;
+    padding: 0 12px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    box-shadow: 0 0 14px rgba(240,180,65,0.42);
+  }
   .career-diamond {
     width: 18px;
     height: 18px;

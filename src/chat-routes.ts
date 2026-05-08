@@ -18,6 +18,8 @@ import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSes
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
+import { statForQuestion } from "./question-stats.js";
+import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createHash } from "node:crypto";
 
@@ -480,6 +482,65 @@ async function generateOpinionResponse(args: {
 
 /** Have the teacher grade all opinion responses in one call. Returns
  *  parsed { grades, bestResponder, narrativeText }. */
+/** Offline (no-OpenRouter) opinion grading. Without an LLM we can't read
+ *  the essay, so we resolve the round on dice instead — the player rolls
+ *  2d6 + the question's stat, and the outcome maps to a score. NPCs use
+ *  their own pre-rolled outcomes from when the round was opened. The
+ *  point is to keep the player from getting trapped on a Social card
+ *  when AI is off, and to keep stat investments meaningful. */
+function buildOfflineOpinionVerdict(args: {
+  state: QuizState;
+}): import("./grading.js").ParsedTeacherGrades {
+  const round = args.state.activeRound;
+  const q = args.state.current;
+  const character = args.state.character;
+  if (!round || !q || round.type !== "opinion") {
+    return { grades: [], bestResponder: null, narrativeText: "Class moves on." };
+  }
+  const playerName = character?.name ?? "the player";
+  // Prefer the stat already stamped on the round (set when openRound ran)
+  // so offline grading rolls against the same modifier the NPCs did.
+  const stat = round.stat ?? statForQuestion(q);
+  const playerStatMod = character?.stats?.[stat] ?? 0;
+  const playerDice = roll2d6();
+  const playerTotal = playerDice.total + playerStatMod;
+  const playerOutcome = classifyTotal(playerTotal);
+
+  const scoreFor = (outcome: RoundOutcome): number =>
+    outcome === "hit" ? 8.5 : outcome === "mixed" ? 7 : 4;
+  const playerComment = (outcome: RoundOutcome): string =>
+    outcome === "hit" ? `${playerName} brought ${stat.toUpperCase()} to it.`
+    : outcome === "mixed" ? `${playerName} just barely landed it on ${stat.toUpperCase()}.`
+    : `${playerName} swung at it but came up short on ${stat.toUpperCase()}.`;
+
+  const grades: Array<{ responder: string; score: number; comment: string }> = [
+    { responder: "player", score: scoreFor(playerOutcome), comment: playerComment(playerOutcome) },
+  ];
+  for (const entry of round.npcs) {
+    const name = STUDENTS[entry.studentId]?.name ?? entry.studentId;
+    const outcome = entry.outcome;
+    grades.push({
+      responder: entry.studentId,
+      score: scoreFor(outcome),
+      comment: outcome === "hit"
+        ? `${name} found a sharp angle on it.`
+        : outcome === "mixed"
+        ? `${name} got partway there.`
+        : `${name} couldn't get traction on it.`,
+    });
+  }
+  const ranked = [...grades].sort((a, b) => b.score - a.score);
+  const top = ranked[0];
+  const bestResponder = top && top.score >= 7 ? top.responder : null;
+  const playerGrade = grades.find((g) => g.responder === "player")!;
+  const playerPassed = playerGrade.score >= 7;
+  const diceLine = `${playerDice.dice[0]}+${playerDice.dice[1]}${playerStatMod >= 0 ? "+" : ""}${playerStatMod} ${stat.toUpperCase()} = ${playerTotal}`;
+  const narrativeText = playerPassed
+    ? `${playerName} rolled ${diceLine} — that's a ${playerOutcome}. Class moves on.`
+    : `${playerName} rolled ${diceLine} — a ${playerOutcome}. Take another swing tomorrow.`;
+  return { grades, bestResponder, narrativeText };
+}
+
 async function gradeOpinionResponses(args: {
   apiKey: string;
   facultyId: string;
@@ -2081,14 +2142,18 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
   // Player submits their written response to an opinion question. If all
   // responses are in (player + both NPCs), this also runs the grading turn
-  // and streams the teacher's verdict as SSE.
+  // and streams the teacher's verdict as SSE. Works in offline (non-AI)
+  // mode too — without an apiKey we use a deterministic auto-grade so the
+  // player isn't trapped on a Social card with no way forward.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/opinion-submit`) {
-    const cred = requireAuth(ctx, auth);
-    if (!cred) {
+    const sessionToken = auth.parseSessionToken(ctx.cookieHeader);
+    const sessionRecord = sessionToken ? auth.resolve(sessionToken) : null;
+    if (!sessionToken || !sessionRecord) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    const apiKey = readApiKey(ctx);
+    const token = sessionToken;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -2122,8 +2187,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
     // Force-grade path: the round timer expired or all NPCs are in but the
     // player never spoke. Fill missing responders with placeholders so the
-    // teacher can grade what's there.
-    if (force) {
+    // teacher can grade what's there. In offline mode we always force-fill
+    // so the round can resolve without an LLM-driven NPC turn.
+    const offline = !apiKey;
+    if (force || offline) {
       const state = ruby.getOrCreate(sessionId);
       const round = state.activeRound;
       if (round && round.type === "opinion" && !round.resolved) {
@@ -2133,7 +2200,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
         for (const npc of round.npcs) {
           if (!present.has(npc.studentId)) {
-            ruby.recordOpinion(sessionId, npc.studentId, "(no response — couldn't get it down in time)");
+            const placeholder = offline
+              ? "(thinking it over silently)"
+              : "(no response — couldn't get it down in time)";
+            ruby.recordOpinion(sessionId, npc.studentId, placeholder);
           }
         }
       }
@@ -2160,14 +2230,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       }));
       const facultyId = state.faculty;
       send("speaker", { facultyId });
-      const { grades, bestResponder, narrativeText } = await gradeOpinionResponses({
-        apiKey,
-        facultyId,
-        question: state.current.prompt,
-        rubric: state.current.rubric,
-        responses,
-        playerName: "the player",
-      });
+      const { grades, bestResponder, narrativeText } = apiKey
+        ? await gradeOpinionResponses({
+            apiKey,
+            facultyId,
+            question: state.current.prompt,
+            rubric: state.current.rubric,
+            responses,
+            playerName: "the player",
+          })
+        : buildOfflineOpinionVerdict({ state });
       // Stream the narrative as deltas (chunked by sentence so the typewriter
       // effect lands).
       const chunks = narrativeText.match(/[^.!?]+[.!?]+\s*|.+$/g) ?? [narrativeText];

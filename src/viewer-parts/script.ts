@@ -840,7 +840,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     wrap.appendChild(head);
     wrap.appendChild(bodyEl);
     els.stream.appendChild(wrap);
-    scrollIfPinned();
+    // The player should always see their own words land — force the scroll
+    // even if they were peeking up the log when they hit Send. Other roles
+    // only scroll if the user is already pinned.
+    scrollIfPinned(kind === "you");
     return bodyEl;
   }
   function appendSystem(text) {
@@ -1122,7 +1125,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     titleWrap.className = "class-report-heading";
     const title = document.createElement("div");
     title.className = "class-report-title";
-    title.textContent = "Final grade";
+    title.textContent = "Current grade";
     const subtitle = document.createElement("div");
     subtitle.className = "class-report-subtitle";
     subtitle.textContent = passedToday ? "credit earned" : "practice open";
@@ -1792,6 +1795,31 @@ const VIEWER_SCRIPT_SUFFIX = `
     const sign = delta > 0 ? "+" + delta : String(delta);
     return "Social " + sign + " " + name;
   }
+  // Story-style version of a relationship tick. Used in the Social card
+  // recent-activity list so the player sees what happened, not "+1/-2"
+  // numerics that are meaningless out of context.
+  function mashTickStory(event) {
+    const name = studentNameById(event.studentId);
+    const tail = event.scratched ? " (scratched off)"
+      : event.circled ? " (circled)"
+      : "";
+    switch (event.reason) {
+      case "best-responder":
+        return "The teacher singled out " + name + "'s essay; you took notice." + tail;
+      case "applauder":
+        return name + " caught your eye while you nailed it." + tail;
+      case "pep-talk":
+        return name + " talked you back from a stumble." + tail;
+      case "rub":
+        return name + " made the miss sting." + tail;
+      default: {
+        const delta = Number(event.delta || 0);
+        if (delta > 0) return "You and " + name + " grew a little closer." + tail;
+        if (delta < 0) return "You and " + name + " drifted a step apart." + tail;
+        return "Things stayed even with " + name + "." + tail;
+      }
+    }
+  }
 
   function appendMashTickChips(body, reveal) {
     const events = relationshipEventsForQuestion(reveal && reveal.questionId);
@@ -2178,18 +2206,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.typedAnswerInput.disabled = true;
     try {
       if (inOpinion) {
-        if (!aiEnabled) {
-          appendSystem("Enable AI to submit freeform challenge responses.");
-          return;
-        }
         opinionSubmitted = true;
         appendMsg({ kind: "you", name: playerDisplayName(), body: answerText, color: "var(--accent)" });
         els.typedAnswerInput.value = "";
         const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
+        // In offline mode submit with force=true so the server fills any
+        // missing NPC slots and resolves the round; without that flag a
+        // non-AI session would just sit on "waiting" forever (NPCs never
+        // chime in without the LLM turn).
         const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: answerText }),
+          body: JSON.stringify(aiEnabled ? { text: answerText } : { text: answerText, force: true }),
         });
         await consumeSseStream(r, { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq });
       } else {
@@ -2406,15 +2434,21 @@ const VIEWER_SCRIPT_SUFFIX = `
           appendResultChip(t.lastReveal);
         }
         showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
-        scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade);
-        // Teacher reacts + queues next question. Small delay so the
-        // congrats toast lands first and the chat doesn't feel stacked.
+        // Teacher reacts + queues next question. Fire immediately so the
+        // teacher's response starts streaming first; the student chime
+        // (scheduled below) lands later as a follow-up reaction, not as
+        // the only voice in the room while the teacher is still loading.
         // force=true: bypass the agentBusy guard. If a prior turn's SSE
         // stream stuck (network drop, server hang), agentBusy stays true
         // and answer-graded gets silently dropped — leaving the player
         // staring at a revealed answer with no next question. The teacher
         // reaction is the thing that unsticks the flow; never gate it.
-        maybeRunAnswerGraded(t, 600);
+        maybeRunAnswerGraded(t, 0);
+        // Student chime lands AFTER the teacher's response window so the
+        // room doesn't feel like the students are doing all the talking
+        // before the teacher catches up. Long delay; the cooldown still
+        // suppresses pile-ons.
+        scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade, 4500);
       }
     } else if (!t.current && lastRevealId) {
       lastRevealId = null;
@@ -3038,8 +3072,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     streak.appendChild(streakLabel);
     const streakTrack = document.createElement("span");
     streakTrack.className = "career-streak-track";
-    const diamonds = document.createElement("span");
-    diamonds.className = "career-diamonds";
     // Streak track: cap visible diamonds at STREAK_TRACK_VISIBLE_CAP (3) so
     // the day-4 / Friday tier is a surprise reveal, not a spoiled preview.
     // The underlying gameplay still uses spec.streakReq for advancement.
@@ -3051,34 +3083,35 @@ const VIEWER_SCRIPT_SUFFIX = `
       ? Math.max(0, currentStreak - 1)
       : currentStreak;
     const streakFilled = Math.max(0, Math.min(streakCap, currentStreak));
-    for (let i = 0; i < streakCap; i++) {
-      const diamond = document.createElement("span");
-      diamond.className = "career-diamond" + (i < streakFilled ? " is-filled" : "");
-      diamond.setAttribute("aria-label", i < streakFilled ? "Streak day complete" : "Streak day needed");
-      diamonds.appendChild(diamond);
-    }
-    // Single live-only bonus chip. We used to render three preview chips
-    // (×2, ×3, Fri ×5) so the player could see the ladder; that telegraphed
-    // the Friday Bonus and made it a chore instead of a surprise. Now we
-    // only render the chip the player has actually unlocked, and only once
-    // they've earned at least the 2× tier.
-    const boosts = document.createElement("span");
-    boosts.className = "career-multipliers";
     const liveMult = streakScoreMultiplier(scoreStreak);
-    if (liveMult >= 2) {
+    const bonusActive = liveMult >= 2;
+    // Once the bonus tier kicks in, the diamonds + count are redundant —
+    // the bonus pill IS the live state. Show only the pill so the lane
+    // reads as one strong signal, not three competing ones.
+    if (bonusActive) {
+      streakTrack.classList.add("is-bonus-only");
       const chip = document.createElement("span");
       chip.className = "career-multiplier is-live is-bonus";
       chip.textContent = "×" + liveMult + " Bonus!";
       chip.setAttribute("aria-label", "×" + liveMult + " score bonus active");
-      boosts.appendChild(chip);
+      streakTrack.appendChild(chip);
+      streak.appendChild(streakTrack);
+    } else {
+      const diamonds = document.createElement("span");
+      diamonds.className = "career-diamonds";
+      for (let i = 0; i < streakCap; i++) {
+        const diamond = document.createElement("span");
+        diamond.className = "career-diamond" + (i < streakFilled ? " is-filled" : "");
+        diamond.setAttribute("aria-label", i < streakFilled ? "Streak day complete" : "Streak day needed");
+        diamonds.appendChild(diamond);
+      }
+      streakTrack.appendChild(diamonds);
+      streak.appendChild(streakTrack);
+      const streakCount = document.createElement("span");
+      streakCount.className = "career-token-count";
+      streakCount.textContent = streakFilled + "/" + streakCap;
+      streak.appendChild(streakCount);
     }
-    streakTrack.appendChild(diamonds);
-    streakTrack.appendChild(boosts);
-    streak.appendChild(streakTrack);
-    const streakCount = document.createElement("span");
-    streakCount.className = "career-token-count";
-    streakCount.textContent = streakFilled + "/" + streakCap + (liveMult > 1 ? " · ×" + liveMult : "");
-    streak.appendChild(streakCount);
     wrap.appendChild(streak);
 
     const advantage = document.createElement("div");
@@ -3101,7 +3134,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     advantage.appendChild(dice);
     const advantageCount = document.createElement("span");
     advantageCount.className = "career-token-count";
-    advantageCount.textContent = remaining + "/" + dieCap;
+    // "0/4" reads as a defeat. When the dice are spent, say "Spent" instead.
+    advantageCount.textContent = dieCap === 0
+      ? "—"
+      : remaining === 0
+        ? "Spent"
+        : remaining + "/" + dieCap;
     advantage.appendChild(advantageCount);
     wrap.appendChild(advantage);
 
@@ -3575,7 +3613,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       recent.className = "mash-recent";
       recentTicks.forEach((event) => {
         const li = document.createElement("li");
-        li.textContent = mashTickLabel(event) + " -> " + (event.affinity >= 0 ? "+" : "") + event.affinity;
+        li.textContent = mashTickStory(event);
         recent.appendChild(li);
       });
       wrap.appendChild(recent);
@@ -4462,7 +4500,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       return false;
     }
   }
-  function scheduleStudentChime(wasCorrect, grade) {
+  function scheduleStudentChime(wasCorrect, grade, delayMs) {
     fireStudentChime({
       situation: wasCorrect ? "answer-correct" : "answer-wrong",
       note: wasCorrect
@@ -4470,6 +4508,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         : "Player just got the question wrong.",
       grade,
       faculty: lastTelemetry && lastTelemetry.faculty,
+      delayMs,
     });
   }
 
@@ -4824,15 +4863,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.chatInput.disabled = !aiEnabled;
       els.chatSend.disabled = !aiEnabled;
       els.chatInput.focus();
-      if (chatStreamStillCurrent(streamGuard) && Math.random() < 0.4) {
-        fireStudentChime({
-          situation: "teacher-replied-to-player",
-          note: "Teacher just replied to the player. Riff briefly.",
-          grade: lastTelemetry && lastTelemetry.current_grade,
-          faculty: lastTelemetry && lastTelemetry.faculty,
-          delayMs: 1200 + Math.random() * 1500,
-        });
-      }
     }
   }
 
