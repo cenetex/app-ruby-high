@@ -490,12 +490,19 @@ async function generateOpinionResponse(args: {
  *  when AI is off, and to keep stat investments meaningful. */
 function buildOfflineOpinionVerdict(args: {
   state: QuizState;
-}): import("./grading.js").ParsedTeacherGrades {
+}): import("./grading.js").ParsedTeacherGrades & {
+  playerRoll: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome };
+} {
   const round = args.state.activeRound;
   const q = args.state.current;
   const character = args.state.character;
   if (!round || !q || round.type !== "opinion") {
-    return { grades: [], bestResponder: null, narrativeText: "Class moves on." };
+    return {
+      grades: [],
+      bestResponder: null,
+      narrativeText: "Class moves on.",
+      playerRoll: { stat: "head", dice: [1, 1], total: 2, outcome: "miss" },
+    };
   }
   const playerName = character?.name ?? "the player";
   // Prefer the stat already stamped on the round (set when openRound ran)
@@ -538,7 +545,12 @@ function buildOfflineOpinionVerdict(args: {
   const narrativeText = playerPassed
     ? `${playerName} rolled ${diceLine} — that's a ${playerOutcome}. Class moves on.`
     : `${playerName} rolled ${diceLine} — a ${playerOutcome}. Take another swing tomorrow.`;
-  return { grades, bestResponder, narrativeText };
+  return {
+    grades,
+    bestResponder,
+    narrativeText,
+    playerRoll: { stat, dice: playerDice.dice, total: playerTotal, outcome: playerOutcome },
+  };
 }
 
 async function gradeOpinionResponses(args: {
@@ -2230,16 +2242,31 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       }));
       const facultyId = state.faculty;
       send("speaker", { facultyId });
-      const { grades, bestResponder, narrativeText } = apiKey
-        ? await gradeOpinionResponses({
-            apiKey,
-            facultyId,
-            question: state.current.prompt,
-            rubric: state.current.rubric,
-            responses,
-            playerName: "the player",
-          })
-        : buildOfflineOpinionVerdict({ state });
+      let offlinePlayerRoll: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome } | null = null;
+      let grades: import("./grading.js").ParsedGrade[];
+      let bestResponder: string | null;
+      let narrativeText: string;
+      if (apiKey) {
+        const verdict = await gradeOpinionResponses({
+          apiKey,
+          facultyId,
+          question: state.current.prompt,
+          rubric: state.current.rubric,
+          responses,
+          playerName: "the player",
+        });
+        grades = verdict.grades;
+        bestResponder = verdict.bestResponder;
+        narrativeText = verdict.narrativeText;
+      } else {
+        const verdict = buildOfflineOpinionVerdict({ state });
+        grades = verdict.grades;
+        bestResponder = verdict.bestResponder;
+        narrativeText = verdict.narrativeText;
+        // Offline path rolls 2d6 + stat — stash that roll so the reveal
+        // can paint the existing 🎲 chip the same way MC + typed reveals do.
+        offlinePlayerRoll = verdict.playerRoll;
+      }
       // Stream the narrative as deltas (chunked by sentence so the typewriter
       // effect lands).
       const chunks = narrativeText.match(/[^.!?]+[.!?]+\s*|.+$/g) ?? [narrativeText];
@@ -2249,6 +2276,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       }
       // Finalize.
       ruby.recordGrades(sessionId, grades, bestResponder);
+      if (offlinePlayerRoll) {
+        // recordGrades doesn't know about the offline dice; attach the
+        // roll to the freshly-set lastReveal so the reveal renders the
+        // dice chip alongside the verdict.
+        const finalState = ruby.getOrCreate(sessionId);
+        if (finalState.lastReveal) {
+          finalState.lastReveal.playerRoll = offlinePlayerRoll;
+        }
+      }
       send("opinion-graded", {
         grades,
         bestResponder,

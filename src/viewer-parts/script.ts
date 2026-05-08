@@ -1636,6 +1636,19 @@ const VIEWER_SCRIPT_SUFFIX = `
       renderMarkdownInto(expl, playerGrade.comment);
       els.boardReveal.appendChild(expl);
     }
+    // Show the 2d6+stat chip if the round was resolved by dice (offline
+    // grading). Same chip the MC + typed-answer reveals use, so the
+    // player gets the familiar dice-notifier moment for opinion cards too.
+    const reveal = lastTelemetry && lastTelemetry.lastReveal;
+    if (reveal && reveal.playerRoll) {
+      const r = reveal.playerRoll;
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      const mod = r.total - (r.dice[0] + r.dice[1]);
+      const chip = document.createElement("span");
+      chip.className = "roll-chip " + r.outcome;
+      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
+      els.boardReveal.appendChild(chip);
+    }
     els.nextBtn.textContent = nextQuestionButtonLabel();
     els.nextBtn.focus();
   }
