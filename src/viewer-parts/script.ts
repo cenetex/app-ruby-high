@@ -1282,7 +1282,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
     addMetric("score", formatClassScore(today.score), "average");
     const classesLeft = Math.max(0, required - completed);
-    addMetric("classes", classesLeft + " left", "to ceremony");
+    const classStars = required > 0
+      ? "★".repeat(completed) + "☆".repeat(classesLeft)
+      : classesLeft + " left";
+    addMetric("classes", classStars, "to ceremony");
     wrap.appendChild(metrics);
     return wrap;
   }
