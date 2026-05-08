@@ -77,6 +77,15 @@ const VIEWER_SCRIPT_SUFFIX = `
   function letterGradePasses(grade) {
     return /^[ABC]/.test(String(grade || ""));
   }
+  function letterGradeForScore(score) {
+    const n = Number(score);
+    if (!Number.isFinite(n)) return "—";
+    if (n >= 90) return "A";
+    if (n >= 80) return "B";
+    if (n >= 70) return "C";
+    if (n >= 60) return "D";
+    return "F";
+  }
   function streakScoreMultiplier(count) {
     const n = Math.max(0, Math.floor(Number(count || 0)));
     if (n >= 4) return 5;
@@ -128,7 +137,29 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     return done + "/" + required + " classes · " + grade;
   }
-  function nextQuestionButtonLabel() {
+  function postClassState(t) {
+    const progress = t && t.active_course_progress;
+    const report = !!(t && activeCourseIsComplete(t) && !t.current && !t.graduation_ready);
+    const nextRole = (progress && progress.nextCardRole) || "";
+    const canPick = scheduledCanPick(t);
+    return {
+      report,
+      nextRole,
+      canPick,
+      socialReady: report && canPick && nextRole === "social",
+      practiceReady: report && canPick && nextRole !== "social",
+    };
+  }
+  function nextQuestionButtonLabel(t) {
+    t = t || lastTelemetry;
+    if (t && t.graduation_ready && !t.current) return "Ceremony";
+    const round = t && t.active_round;
+    const cur = t && t.current;
+    if (round && !round.resolved && cur) return "Chat";
+    if (cur && (currentRevealMatches(t) || t.status === "revealed")) return "Continue";
+    const postClass = postClassState(t);
+    if (postClass.socialReady) return "Start Social Card";
+    if (postClass.report) return "Practice";
     return "Chat";
   }
   function updateChatAction(mode) {
@@ -145,13 +176,21 @@ const VIEWER_SCRIPT_SUFFIX = `
       && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion")
     );
     els.nextBtn.hidden = !available || inFreeformRound;
-    els.nextBtn.textContent = nextQuestionButtonLabel();
+    els.nextBtn.textContent = nextQuestionButtonLabel(t);
     const live = !!(round && !round.resolved && cur);
-    const report = !!(t && activeCourseIsComplete(t) && !cur);
+    const postClass = postClassState(t);
     els.nextBtn.title = live
       ? "Ask for a hint"
-      : report
-        ? "Discuss the class report"
+      : cur && currentRevealCompletedClass(t)
+        ? "Show the class report"
+        : cur
+        ? "Continue"
+      : postClass.socialReady
+        ? "Start the next social card"
+        : postClass.report
+        ? "Start practice"
+        : t && t.graduation_ready && !cur
+        ? "Open the graduation ceremony"
         : "Advance the room";
   }
   function teachingFacultyIdsForSummary() {
@@ -176,6 +215,28 @@ const VIEWER_SCRIPT_SUFFIX = `
       return required > 0 && completed >= required && letterGradePasses(g.grade);
     }).length;
     return { grades, met, total: grades.length };
+  }
+  function finalGradeSummary() {
+    const rows = teachingFacultyIdsForSummary().map((fid) => {
+      const progress = courseProgressForFaculty(fid) || {};
+      const score = Number(progress.averageScore);
+      return {
+        facultyId: fid,
+        score: Number.isFinite(score) ? score : null,
+        grade: progress.courseGrade || progress.grade || classGradeForFaculty(fid),
+      };
+    });
+    const scored = rows.filter((row) => row.score != null);
+    const averageScore = scored.length > 0
+      ? Math.round(scored.reduce((sum, row) => sum + row.score, 0) / scored.length)
+      : null;
+    return {
+      rows,
+      scored: scored.length,
+      total: rows.length,
+      averageScore,
+      letter: averageScore == null ? "—" : letterGradeForScore(averageScore),
+    };
   }
   function activeCourseIsComplete(t) {
     const today = t && t.active_course_progress && t.active_course_progress.today;
@@ -398,6 +459,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   let lastChatButtonAt = 0;
   let agentBusySeq = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
+  let lastSocialSummaryId = null;
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
   let chatStreamSeq = 0;       // bumps on each teacher/user SSE stream; older streams stop painting
   // Auto-start guard: when the player lands in a teaching room with an
@@ -435,6 +497,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function resetAgentGuards() {
     lastAgentTrigger = null;
     lastRevealId = null;
+    lastSocialSummaryId = null;
     lastAnswerGradedTriggerId = null;
     autoPickLastKey = null;
     emptyBoardHintShown = false;
@@ -761,6 +824,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     chatViewSeq++;
     els.stream.innerHTML = "";
     renderedHistorySig = null;
+    lastSocialSummaryId = null;
   }
   function resetBlackboard() {
     activeQuestionId = null;
@@ -1089,6 +1153,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.answersHost.hidden = true;
     els.typedAnswerHost.hidden = true;
     els.blackboardFoot.hidden = true;
+    els.blackboardFoot.replaceChildren();
     els.blackboardPanel.dataset.opinion = "false";
     els.blackboardPanel.dataset.typedAnswer = "false";
     els.blackboardPanel.dataset.questionType = "";
@@ -1113,6 +1178,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     // here so the data-mode CSS rules can take over for round-live.
     els.answersHost.hidden = false;
     els.typedAnswerHost.hidden = false;
+    els.blackboardFoot.hidden = true;
+    els.blackboardFoot.replaceChildren();
     els.blackboardPanel.dataset.opinion = String(!!isOpinion);
     els.blackboardPanel.dataset.typedAnswer = String(!!isTypedAnswer);
   }
@@ -1130,6 +1197,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.answersHost.hidden = true;
     els.typedAnswerHost.hidden = true;
     els.blackboardFoot.hidden = true;
+    els.blackboardFoot.replaceChildren();
     els.blackboardPanel.dataset.opinion = "false";
     els.blackboardPanel.dataset.typedAnswer = "false";
     els.blackboardPanel.dataset.questionType = "graduation";
@@ -1216,6 +1284,36 @@ const VIEWER_SCRIPT_SUFFIX = `
     wrap.appendChild(metrics);
     return wrap;
   }
+  function buildClassReportNextStep() {
+    const state = postClassState(lastTelemetry);
+    const wrap = document.createElement("div");
+    wrap.className = "class-report-next" + (state.socialReady ? " is-social" : state.practiceReady ? " is-practice" : "");
+    const mark = document.createElement("span");
+    mark.className = "class-report-next-mark";
+    wrap.appendChild(mark);
+    const copy = document.createElement("div");
+    copy.className = "class-report-next-copy";
+    const title = document.createElement("div");
+    title.className = "class-report-next-title";
+    const body = document.createElement("div");
+    body.className = "class-report-next-body";
+    if (state.socialReady) {
+      title.textContent = "Social card ready";
+      body.textContent = "One homeroom question before the next class.";
+    } else if (state.practiceReady) {
+      title.textContent = "Practice open";
+      body.textContent = "Extra review, no change to today's grade.";
+    } else {
+      title.textContent = "Daily class complete";
+      body.textContent = aiEnabled
+        ? "The teacher can talk through the report."
+        : "Next graded class opens tomorrow.";
+    }
+    copy.appendChild(title);
+    copy.appendChild(body);
+    wrap.appendChild(copy);
+    return wrap;
+  }
   function showBlackboardClassReport(faculty, currentGrade) {
     const report = buildClassReportCard(faculty, currentGrade);
     if (!report) {
@@ -1252,10 +1350,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardMeta.appendChild(mode);
 
     els.boardPrompt.replaceChildren(report);
+    els.blackboardFoot.replaceChildren(buildClassReportNextStep());
     els.boardReveal.hidden = true;
     els.boardReveal.replaceChildren();
     els.nextBtn.disabled = manualChatBusy || agentBusy;
-    els.nextBtn.textContent = nextQuestionButtonLabel();
+    els.nextBtn.textContent = nextQuestionButtonLabel(lastTelemetry);
     els.teacherFigure.hidden = true;
   }
 
@@ -1854,6 +1953,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       .filter((event) => event.questionId === questionId)
       .slice(-3);
   }
+  function studentColorById(id) {
+    const s = STUDENTS.find((entry) => entry.id === id);
+    return s ? s.color : "#888";
+  }
 
   function mashTickLabel(event) {
     const name = studentNameById(event.studentId);
@@ -1898,6 +2001,72 @@ const VIEWER_SCRIPT_SUFFIX = `
       else if (event.scratched) chip.title = studentNameById(event.studentId) + " is scratched on your Social card.";
       body.appendChild(chip);
     });
+  }
+  function revealCardRole(t, reveal) {
+    const round = t && t.active_round;
+    return (round && round.cardRole)
+      || (reveal && reveal.classProgress && reveal.classProgress.cardRole)
+      || "";
+  }
+  function appendSocialSummary(reveal, t) {
+    if (!reveal || revealCardRole(t || lastTelemetry, reveal) !== "social") return;
+    const events = relationshipEventsForQuestion(reveal.questionId);
+    if (events.length === 0) return;
+    if (lastSocialSummaryId === reveal.questionId) return;
+    lastSocialSummaryId = reveal.questionId;
+
+    const wrap = document.createElement("div");
+    wrap.className = "msg social-summary";
+    const avatar = document.createElement("div");
+    avatar.className = "avatar social-summary-avatar";
+    avatar.textContent = "S";
+    const head = document.createElement("div");
+    head.className = "head";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = "Social card";
+    head.appendChild(name);
+    const tag = document.createElement("span");
+    tag.className = "role-tag social";
+    tag.textContent = "MASH";
+    head.appendChild(tag);
+    const stamp = document.createElement("span");
+    stamp.className = "stamp";
+    stamp.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    head.appendChild(stamp);
+
+    const body = document.createElement("div");
+    body.className = "body";
+    const title = document.createElement("div");
+    title.className = "social-summary-title";
+    title.textContent = "Social shift";
+    body.appendChild(title);
+    const list = document.createElement("div");
+    list.className = "social-summary-list";
+    events.forEach((event) => {
+      const row = document.createElement("div");
+      row.className = "social-summary-row " + (event.delta > 0 ? "is-up" : event.delta < 0 ? "is-down" : "is-steady");
+      const dot = document.createElement("span");
+      dot.className = "social-summary-dot";
+      dot.style.background = studentColorById(event.studentId);
+      row.appendChild(dot);
+      const story = document.createElement("span");
+      story.className = "social-summary-story";
+      story.textContent = mashTickStory(event);
+      row.appendChild(story);
+      const delta = document.createElement("span");
+      delta.className = "social-summary-delta";
+      const n = Number(event.delta || 0);
+      delta.textContent = n > 0 ? "+" + n : String(n);
+      row.appendChild(delta);
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+    wrap.appendChild(avatar);
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    els.stream.appendChild(wrap);
+    scrollIfPinned();
   }
 
   function appendResultChip(reveal) {
@@ -2249,11 +2418,20 @@ const VIEWER_SCRIPT_SUFFIX = `
         return;
       }
       if (phase === "revealed") {
-        await runPlayerChatTurn("report");
         if (currentRevealCompletedClass(lastTelemetry)) {
           await command({ type: "clear" });
           lockedFor = null;
+          await runPlayerChatTurn("report");
+          return;
         }
+        await runPlayerChatTurn("report");
+        return;
+      }
+      const postClass = postClassState(lastTelemetry);
+      if (postClass.report && postClass.canPick) {
+        const data = await command({ type: "pick" });
+        if (data && data.noQuestionDue) await runPlayerChatTurn("class");
+        lockedFor = null;
         return;
       }
       await runPlayerChatTurn("class");
@@ -2509,6 +2687,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         lastRevealId = revealId;
         if (t.is_opinion) {
           applyOpinionRevealToBlackboard(t.active_round);
+          appendSocialSummary(t.lastReveal, t);
         } else {
           applyRevealToBlackboard(t.lastReveal);
           appendResultChip(t.lastReveal);
@@ -3411,30 +3590,79 @@ const VIEWER_SCRIPT_SUFFIX = `
       const onBoard = !!(opts && opts.surface === "board");
       const next = nextGradeAfterClient(grade);
       const targetLabel = next ? (GRADE_LABELS[next] || ("Grade " + next)) : "graduate";
-      const wrap = document.createElement("div");
-      wrap.className = "graduation-ceremony" + (onBoard ? " is-on-board" : "");
-
-      const title = document.createElement("div");
-      title.className = "graduation-title";
-      title.textContent = next ? "Advance to " + targetLabel : "Graduation Ceremony";
-      wrap.appendChild(title);
-
-      const note = document.createElement("div");
-      note.className = "graduation-note";
-      note.textContent = onBoard
-        ? next
-          ? "Pick one reward to seal the yearbook. The next school year opens after the ceremony."
-          : "Pick one reward to seal the diploma and close the four-year arc."
-        : "Three rewards drawn from the wider set — pick one to seal the yearbook.";
-      wrap.appendChild(note);
-
+      const finalGrade = finalGradeSummary();
+      const wrap = document.createElement(onBoard ? "section" : "div");
+      wrap.className = onBoard
+        ? "class-report-card graduation-report-card is-passed"
+        : "graduation-ceremony";
       const status = document.createElement("div");
       status.className = "graduation-status";
-      wrap.appendChild(status);
+      let row;
 
-      const row = document.createElement("div");
-      row.className = "graduation-choice-row";
-      wrap.appendChild(row);
+      if (onBoard) {
+        const gradeLabel = grade ? (GRADE_LABELS[grade] || ("Grade " + grade)) : "Ruby High";
+        const gradeBlock = document.createElement("div");
+        gradeBlock.className = "class-report-grade-block";
+        const badge = document.createElement("div");
+        badge.className = "class-report-letter";
+        badge.textContent = finalGrade.letter;
+        const titleWrap = document.createElement("div");
+        titleWrap.className = "class-report-heading";
+        const title = document.createElement("div");
+        title.className = "class-report-title";
+        title.textContent = next ? targetLabel : "Diploma";
+        const subtitle = document.createElement("div");
+        subtitle.className = "class-report-subtitle";
+        subtitle.textContent = gradeLabel + " final grade";
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(subtitle);
+        gradeBlock.appendChild(badge);
+        gradeBlock.appendChild(titleWrap);
+        wrap.appendChild(gradeBlock);
+
+        const metrics = document.createElement("div");
+        metrics.className = "class-report-metrics";
+        const addMetric = (label, value, detail) => {
+          const item = document.createElement("div");
+          item.className = "class-report-metric";
+          const k = document.createElement("span");
+          k.className = "k";
+          k.textContent = label;
+          const v = document.createElement("span");
+          v.className = "v";
+          v.textContent = value;
+          const d = document.createElement("span");
+          d.className = "d";
+          d.textContent = detail;
+          item.appendChild(k);
+          item.appendChild(v);
+          item.appendChild(d);
+          metrics.appendChild(item);
+        };
+        addMetric("final", finalGrade.averageScore == null ? "—" : formatClassScore(finalGrade.averageScore), "three-class average");
+        addMetric("done", finalGrade.scored + "/" + finalGrade.total, "classes averaged");
+        addMetric("next", next ? "Next year" : "Diploma", "ceremony");
+        wrap.appendChild(metrics);
+        row = document.createElement("div");
+        row.className = "graduation-choice-row";
+        wrap.appendChild(row);
+        wrap.appendChild(status);
+      } else {
+        const title = document.createElement("div");
+        title.className = "graduation-title";
+        title.textContent = next ? "Advance to " + targetLabel : "Graduation Ceremony";
+        wrap.appendChild(title);
+
+        const note = document.createElement("div");
+        note.className = "graduation-note";
+        note.textContent = "Three rewards drawn from the wider set — pick one to seal the yearbook.";
+        wrap.appendChild(note);
+
+        wrap.appendChild(status);
+        row = document.createElement("div");
+        row.className = "graduation-choice-row";
+        wrap.appendChild(row);
+      }
 
       const allButtons = [];
       const setBusy = (btn, text) => {

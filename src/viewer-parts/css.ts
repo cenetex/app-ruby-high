@@ -1002,6 +1002,55 @@ export const VIEWER_CSS = `
     gap: 8px;
     padding: 0 calc(var(--safe-right) + 12px) 10px calc(var(--safe-left) + 12px);
   }
+  .blackboard-panel[data-question-type="class-report"] .blackboard-foot:not([hidden]) {
+    display: flex !important;
+  }
+  .class-report-next {
+    width: min(100%, 640px);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px;
+    background: rgba(5, 31, 20, 0.26);
+    color: var(--ink);
+    font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.10);
+    min-width: 0;
+  }
+  .class-report-next-mark {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.58);
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.12);
+  }
+  .class-report-next.is-social .class-report-next-mark { background: #b8e4ff; }
+  .class-report-next.is-practice .class-report-next-mark { background: #fff0a6; }
+  .class-report-next-copy {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+  .class-report-next-title {
+    font-size: clamp(14px, 2vw, 18px);
+    line-height: 1;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .class-report-next-body {
+    font-size: clamp(11px, 1.5vw, 13px);
+    line-height: 1.12;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {
     grid-row: 3;
@@ -1085,6 +1134,7 @@ export const VIEWER_CSS = `
   .msg .head .role-tag.bot { background: #5865f2; color: #fff; }
   .msg .head .role-tag.student { background: #3aa3e0; color: #fff; }
   .msg .head .role-tag.you { background: var(--accent); color: #fff; }
+  .msg .head .role-tag.social { background: rgba(184,228,255,0.18); color: #b8e4ff; }
   .msg .head .stamp {
     font-size: 10px;
     color: var(--text-mute);
@@ -1235,7 +1285,12 @@ export const VIEWER_CSS = `
   .blackboard-panel[data-faculty="professor-edward"] .board-frame {
     background: linear-gradient(180deg, color-mix(in oklab, #8a63d2 78%, #fff), #4e357e);
   }
+  .blackboard-panel[data-card-role="practice"] .board-frame {
+    background: linear-gradient(180deg, #7a6250, #4b3b31);
+    box-shadow: 0 0 0 2px rgba(255,240,166,0.20) inset, 0 10px 26px rgba(0,0,0,0.24);
+  }
   .blackboard-panel[data-card-role="class"] .board-frame {
+    background: linear-gradient(180deg, color-mix(in oklab, #d22a2a 82%, #fff), #941b1b);
     box-shadow: 0 0 0 2px rgba(255,255,255,0.18) inset, 0 10px 26px rgba(0,0,0,0.24);
   }
   .blackboard-panel[data-card-role="social"] .board-frame {
@@ -1494,6 +1549,59 @@ export const VIEWER_CSS = `
   .mash-tick-chip.up { background: rgba(82,198,115,0.2); color: #b6f5b9; }
   .mash-tick-chip.down { background: rgba(210,42,42,0.2); color: #ffb1b1; }
   .mash-tick-chip.steady { background: rgba(58,163,224,0.18); color: #b8e4ff; }
+  .msg.social-summary .social-summary-avatar {
+    background: rgba(184,228,255,0.18);
+    border: 1px solid rgba(184,228,255,0.42);
+    color: #b8e4ff;
+    font-weight: 900;
+    font-family: "SF Mono", "Menlo", monospace;
+  }
+  .social-summary-title {
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-bottom: 5px;
+  }
+  .social-summary-list {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+  .social-summary-row {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 7px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    min-width: 0;
+  }
+  .social-summary-row.is-up { border-color: rgba(82,198,115,0.22); }
+  .social-summary-row.is-down { border-color: rgba(210,42,42,0.24); }
+  .social-summary-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
+  }
+  .social-summary-story {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .social-summary-delta {
+    font-size: 11px;
+    font-weight: 900;
+    font-family: "SF Mono", "Menlo", monospace;
+    color: var(--text-soft);
+  }
+  .social-summary-row.is-up .social-summary-delta { color: #b6f5b9; }
+  .social-summary-row.is-down .social-summary-delta { color: #ffb1b1; }
 
   /* ── unified CCG-style character card ─────────────────────────────────── */
   .ccg-card {
@@ -2336,13 +2444,65 @@ export const VIEWER_CSS = `
     cursor: not-allowed;
   }
   .blackboard-panel[data-question-type="graduation"] .board {
-    min-height: 250px;
+    min-height: 220px;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
   }
   .blackboard-panel[data-question-type="graduation"] .board .prompt {
     width: 100%;
+  }
+  .board .graduation-report-card {
+    grid-template-columns: minmax(104px, 0.72fr) minmax(0, 1.28fr);
+    gap: 10px 14px;
+    max-height: none;
+    overflow: visible;
+  }
+  .board .graduation-report-card .graduation-choice-row,
+  .board .graduation-report-card .graduation-status {
+    grid-column: 1 / -1;
+  }
+  .board .graduation-report-card .graduation-choice-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 0;
+  }
+  .board .graduation-report-card .graduation-choice {
+    border-radius: 8px;
+    min-height: 42px;
+    padding: 7px 8px;
+    border-color: rgba(255,255,255,0.24);
+    background: rgba(255,255,255,0.10);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    align-items: center;
+    text-align: center;
+    width: 100%;
+    min-width: 0;
+  }
+  .board .graduation-report-card .graduation-choice .main {
+    font-size: clamp(10px, 1.6vw, 12px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .board .graduation-report-card .graduation-choice .sub {
+    color: var(--ink-soft);
+    font-size: clamp(8px, 1.3vw, 10px);
+  }
+  .board .graduation-report-card .graduation-status {
+    color: #ffe08c;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-size: 10px;
+    min-height: 12px;
+    margin-top: -3px;
+    text-align: center;
+  }
+  .board .graduation-report-card .class-report-metric .v {
+    font-size: clamp(13px, 1.8vw, 18px);
   }
   .board .graduation-ceremony.is-on-board {
     margin: 0 auto;
@@ -2538,6 +2698,23 @@ export const VIEWER_CSS = `
     }
     .board .class-report-metric .d {
       display: none;
+    }
+    .board .graduation-report-card .class-report-metric {
+      grid-template-columns: minmax(42px, 0.30fr) minmax(0, 0.70fr);
+    }
+    .board .graduation-report-card .graduation-choice-row {
+      grid-template-columns: 1fr;
+      gap: 5px;
+    }
+    .board .graduation-report-card .graduation-choice {
+      min-height: 34px;
+      flex-direction: row;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .board .graduation-report-card .graduation-choice .sub {
+      margin-top: 0;
+      text-align: right;
     }
   }
 
