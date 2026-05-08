@@ -253,6 +253,49 @@ function buildResolvedAnswerBriefing(args: {
   const questionId = cleanText(c?.questionId) ?? q?.id ?? reveal?.questionId ?? "unknown";
   const prompt = cleanText(c?.prompt) ?? q?.prompt ?? reveal?.questionPrompt;
   const type = cleanText(c?.type) ?? q?.type ?? reveal?.questionType ?? (reveal?.expectedAnswer || c?.expectedAnswer ? "typed-answer" : "multiple-choice");
+
+  // Opinion rounds carry no picked letter / correct letter — the teacher's
+  // briefing has to come from activeRound.opinionResponses + opinionGrades
+  // instead. Without this branch the teacher reacts to a bogus "picked A —
+  // answer was A" line and never sees what the player actually wrote.
+  if (type === "opinion") {
+    const round = state.activeRound;
+    const playerResp = round?.type === "opinion"
+      ? round.opinionResponses.find((r) => r.responder === "player")
+      : undefined;
+    const playerGrade = round?.type === "opinion"
+      ? round.opinionGrades.find((g) => g.responder === "player")
+      : undefined;
+    const essayText = playerResp?.text?.trim() || "(no response)";
+    const score = typeof playerGrade?.score === "number" ? playerGrade.score : null;
+    const passed = typeof reveal?.wasCorrect === "boolean" ? reveal.wasCorrect : (score != null && score >= 7);
+    const verdict = passed ? "passed" : "needs another swing";
+    const scoreLine = score != null ? ` graded ${score.toFixed(1)}/10` : "";
+    const commentLine = playerGrade?.comment ? ` — your note was: "${clipped(playerGrade.comment, 160)}"` : "";
+    const pickedLine = `${playerName} wrote: "${clipped(essayText, 220)}"${scoreLine}${commentLine}.`;
+    const eventText = [
+      prompt ? `Opinion round resolved for "${clipped(prompt, 180)}".` : "Opinion round resolved.",
+      pickedLine,
+      `Verdict: ${verdict}.`,
+    ].join(" ");
+    const contextLines = [
+      "RESOLVED OPINION SNAPSHOT for this answer-graded reaction.",
+      "Use this snapshot for the reaction even if the active board context is empty, cleared, or already showing a different card.",
+      `Question ID: ${questionId}`,
+      prompt ? `Question: ${prompt}` : "",
+      `Question type: opinion`,
+      `${playerName}'s answer: ${essayText}`,
+      score != null ? `Grade you assigned: ${score.toFixed(1)}/10` : "",
+      playerGrade?.comment ? `Your grading comment: ${playerGrade.comment}` : "",
+      `Verdict: ${verdict} (≥7/10 passes).`,
+    ].filter(Boolean);
+    return {
+      correctChoice: "A",
+      pickedLine,
+      eventText,
+      extraSystemContext: contextLines.join("\n"),
+    };
+  }
   const subject = cleanText(c?.subject) ?? q?.subject ?? reveal?.questionSubject;
   const difficulty = cleanText(c?.difficulty) ?? q?.difficulty ?? reveal?.questionDifficulty;
   const picked = cleanText(c?.picked)?.toUpperCase() ?? reveal?.picked;

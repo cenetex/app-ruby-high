@@ -112,10 +112,20 @@ const VIEWER_SCRIPT_SUFFIX = `
   function updateChatAction(mode) {
     if (!els.nextBtn) return;
     const available = !!authed && mode !== "needs-auth" && mode !== "needs-character" && mode !== "checking-auth";
-    els.nextBtn.hidden = !available;
+    // When the player is in an active typed/opinion round, the typed-answer
+    // host has its own SEND button — hide the bottom Chat action so the
+    // player sees one button, not two side-by-side.
+    const t = lastTelemetry;
+    const round = t && t.active_round;
+    const cur = t && t.current;
+    const inFreeformRound = !!(
+      round && !round.resolved && cur
+      && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion")
+    );
+    els.nextBtn.hidden = !available || inFreeformRound;
     els.nextBtn.textContent = nextQuestionButtonLabel();
-    const live = !!(lastTelemetry && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && lastTelemetry.current);
-    const report = !!(lastTelemetry && activeCourseIsComplete(lastTelemetry) && !lastTelemetry.current);
+    const live = !!(round && !round.resolved && cur);
+    const report = !!(t && activeCourseIsComplete(t) && !cur);
     els.nextBtn.title = live
       ? "Ask for a hint"
       : report
