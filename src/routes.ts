@@ -974,6 +974,10 @@ async function sendPersistedCommandState(
   return true;
 }
 
+function isNoScheduledQuestionDue(message: string): boolean {
+  return /no scheduled (question|deck card) is due/i.test(message);
+}
+
 export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   const runtime = getRuntime(ctx.runtime);
 
@@ -1415,6 +1419,19 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (type === "pick" && isNoScheduledQuestionDue(message)) {
+        const state = ruby.getOrCreate(stateKey);
+        const status = ruby.questionBankStatus(stateKey, typeof body?.faculty === "string" ? body.faculty : state.faculty);
+        ctx.json(ctx.res, {
+          success: true,
+          noQuestionDue: true,
+          message: status.mode === "srs"
+            ? "No scheduled deck card is ready right now."
+            : "No scheduled question is ready right now.",
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
+        });
+        return true;
+      }
       log.error("command.failed", err, { command: typeof body?.type === "string" ? body.type : "?" });
       const status = /persist|save|dynamodb|storage|unavailable/i.test(message) ? 503 : 400;
       ctx.error(ctx.res, message, status);

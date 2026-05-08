@@ -391,6 +391,15 @@ const VIEWER_SCRIPT_SUFFIX = `
   // from staring at an empty chalkboard with no signal that the system is
   // working as intended. Reset on context change.
   let emptyBoardHintShown = false;
+  function scheduledReadyCount(t) {
+    const progress = t && t.active_course_progress;
+    return Number(progress && progress.ready || 0);
+  }
+  function showNoScheduledQuestionReadyHint() {
+    if (emptyBoardHintShown) return;
+    appendSystem("No scheduled question is ready. Connect AI to continue with custom questions, or come back tomorrow.");
+    emptyBoardHintShown = true;
+  }
   // Reset the guards above whenever the player walks into a new context
   // (faculty change, lounge entry, grade selection). Without this, the
   // dedupe key from a prior visit silently blocks channel-enter on revisit:
@@ -449,7 +458,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!shouldAutoStartClass(t)) return;
     const progress = t.active_course_progress || {};
     const today = progress.today || {};
-    const ready = Number(progress.ready || 0);
+    const ready = scheduledReadyCount(t);
     const questionCount = Number(today.questionCount || 0);
     const todayKey = (t.daily && t.daily.dailyKey) || today.dailyKey || "";
     const phaseToken = t.phaseToken == null ? "legacy" : t.phaseToken;
@@ -464,15 +473,20 @@ const VIEWER_SCRIPT_SUFFIX = `
       autoPickLastKey = key;
       if (aiEnabled) {
         runAgentTurn("manual", { grade: t.current_grade }, { force: true });
-      } else if (!emptyBoardHintShown) {
-        appendSystem("No scheduled question is ready. Connect AI to continue with custom questions, or come back tomorrow.");
-        emptyBoardHintShown = true;
+      } else {
+        showNoScheduledQuestionReadyHint();
       }
       return;
     }
     autoPickLastKey = key;
     autoPickInFlight = true;
-    try { await command({ type: "pick" }); }
+    try {
+      const data = await command({ type: "pick" });
+      if (data && data.noQuestionDue) {
+        if (aiEnabled) runAgentTurn("manual", { grade: t.current_grade }, { force: true });
+        else showNoScheduledQuestionReadyHint();
+      }
+    }
     catch { /* errors already surface via appendSystem in command() */ }
     finally { autoPickInFlight = false; }
   }
@@ -2171,7 +2185,12 @@ const VIEWER_SCRIPT_SUFFIX = `
           lockedFor = null;
           return;
         }
-        await command({ type: "pick" });
+        if (scheduledReadyCount(lastTelemetry) <= 0) {
+          showNoScheduledQuestionReadyHint();
+          return;
+        }
+        const data = await command({ type: "pick" });
+        if (data && data.noQuestionDue) showNoScheduledQuestionReadyHint();
         lockedFor = null;
         return;
       }
