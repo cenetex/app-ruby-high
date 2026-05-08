@@ -129,6 +129,22 @@ function singleQuestionPack(): ContentPack {
   };
 }
 
+function rubyHomeroomSocialPack(): ContentPack {
+  const pack = singleQuestionPack();
+  pack.id = "route-test-homeroom-social-pack";
+  pack.faculty[0]!.questions = Array.from({ length: 3 }, (_, i) => ({
+    id: `route-test-ruby-q${i + 1}`,
+    prompt: `Ruby homeroom card ${i + 1}?`,
+    options: { A: "yes", B: "no", C: "maybe", D: "later" },
+    correct: "A",
+    explanation: "Test card.",
+    subject: "homeroom",
+    difficulty: "easy",
+    faculty: "ruby",
+  }));
+  return pack;
+}
+
 describe("command route persistence and scheduler misses", () => {
   it("returns a storage error instead of a false success when flushSession fails", async () => {
     await getActivePack();
@@ -175,5 +191,52 @@ describe("command route persistence and scheduler misses", () => {
       message: "No scheduled question is ready right now.",
     });
     expect(harness.response?.body.session.telemetry.current).toBeNull();
+  });
+
+  it("offline pick still advances generated Ruby social cards when no bank card is ready", async () => {
+    setActivePack(rubyHomeroomSocialPack());
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new MemorySessionStore());
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+
+    const sid = "rh:anonymous";
+    ruby.createCharacter(sid, {
+      name: "Ari",
+      playbookId: "overachiever",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      arcAnswer: "I want the transcript to look impossible.",
+      personality: "intense but kind",
+    });
+
+    const pickedIds = new Set<string>();
+    for (let i = 0; i < 3; i += 1) {
+      const posed = ruby.pickAndPose(sid, { faculty: "ruby" });
+      expect(posed.current?.id).toMatch(/^route-test-ruby-q[1-3]$/);
+      pickedIds.add(posed.current!.id);
+      ruby.submitAnswer(sid, "A");
+      ruby.clearBoard(sid);
+    }
+    expect(pickedIds).toEqual(new Set(["route-test-ruby-q1", "route-test-ruby-q2", "route-test-ruby-q3"]));
+    const progress = ruby.courseProgress(sid, "ruby");
+    expect(progress.ready).toBe(0);
+    expect(progress.canPick).toBe(true);
+    expect(progress.nextCardRole).toBe("social");
+
+    const harness = makeCommandCtx(ruby, { type: "pick" }, faculty);
+    const handled = await handleAppRoutes(harness.ctx);
+
+    expect(handled).toBe(true);
+    expect(harness.response?.status).toBe(200);
+    expect(harness.response?.body.success).toBe(true);
+    expect(harness.response?.body.noQuestionDue).toBeUndefined();
+    expect(harness.response?.body.session.telemetry.current).toMatchObject({
+      type: "opinion",
+    });
+    expect(harness.response?.body.session.telemetry.current.id).toContain("social_ruby");
+    expect(harness.response?.body.session.telemetry.active_round).toMatchObject({
+      type: "opinion",
+      cardRole: "social",
+    });
   });
 });

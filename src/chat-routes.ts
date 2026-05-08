@@ -132,32 +132,34 @@ function toolPlacedFreshQuestion(ev: ChatStreamEvent): boolean {
   return !!(ev.state?.current && ev.state.activeRound && !ev.state.activeRound.resolved);
 }
 
-function nextBoardInstruction(bank: { mode?: string; remaining: number; grade?: string }, banked: string): string {
-  if (bank.remaining > 0) return banked;
+function scheduledPickAvailable(bank: { remaining: number; canPick?: boolean }): boolean {
+  return typeof bank.canPick === "boolean" ? bank.canPick : bank.remaining > 0;
+}
+
+function nextBoardInstruction(bank: { mode?: string; remaining: number; canPick?: boolean; grade?: string }, banked: string): string {
+  if (scheduledPickAvailable(bank)) return banked;
   if (bank.mode === "srs") {
     return "No scheduled deck card is available right now. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once for a custom challenge, or talk briefly about progress.";
   }
   return "No scheduled Ruby High card is available right now. Do NOT call pick_from_bank or try alternate filters. If the class needs a fresh board, call pose_question exactly once and write a custom question.";
 }
 
-function requiredNextBoardInstruction(bank: { mode?: string; remaining: number }, banked: string): string {
-  if (bank.remaining > 0) return banked;
+function requiredNextBoardInstruction(bank: { mode?: string; remaining: number; canPick?: boolean }, banked: string): string {
+  if (scheduledPickAvailable(bank)) return banked;
   if (bank.mode === "srs") {
     return "No scheduled deck card is available right now. Do NOT call pick_from_bank or try alternate filters. Call pose_question exactly once for a custom practice challenge.";
   }
   return "No scheduled Ruby High card is available right now. Do NOT call pick_from_bank or try alternate filters. Call pose_question exactly once and write a custom question.";
 }
 
-function schedulerOwnsBoard(bank: { remaining: number; todayClass?: { status?: string } }): boolean {
+function schedulerOwnsBoard(bank: { remaining: number; canPick?: boolean; todayClass?: { status?: string } }): boolean {
   // The deterministic scheduler can only own the board when it actually
-  // has cards to post. When the bank runs dry — mid-class or in practice
-  // — AI takes over via pose_question so the lesson keeps moving instead
-  // of dead-ending in a "No scheduled question is due" error from the
-  // viewer's auto-pick.
-  return bank.remaining > 0;
+  // has something to post. That includes Ruby's generated homeroom social
+  // card, which is not counted in the bank's ready-card total.
+  return scheduledPickAvailable(bank);
 }
 
-function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; todayClass?: { status?: string; questionCount?: number; totalQuestions?: number } }): string {
+function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; canPick?: boolean; nextCardRole?: string; todayClass?: { status?: string; questionCount?: number; totalQuestions?: number } }): string {
   if (!schedulerOwnsBoard(bank)) {
     return nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh scheduled card, or pose_question for a custom practice challenge.");
   }
@@ -169,6 +171,8 @@ function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; 
       : "today's graded class is available";
   const readyLine = bank.remaining > 0
     ? `${bank.remaining} scheduled card${bank.remaining === 1 ? "" : "s"} ready`
+    : bank.nextCardRole === "social"
+      ? "a Ruby High social card ready"
     : "no scheduled cards ready";
   return `The Ruby High scheduler owns the blackboard while ${classLine} and ${readyLine}. Do not call tools or post/replace/clear questions. Do not say tool names like pick_from_bank; speak only as the teacher.`;
 }
@@ -1994,7 +1998,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         const latestBank = ruby.questionBankStatus(agentSessionId, faculty);
         let fallbackPosted = false;
-        if (latestBank.remaining > 0) {
+        if (scheduledPickAvailable(latestBank)) {
           try {
             const state = ruby.pickAndPose(agentSessionId, { faculty });
             send("tool", {

@@ -338,34 +338,30 @@ export const VIEWER_CSS = `
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 5px;
-    min-width: 68px;
-    color: #f0b441;
+    gap: 6px;
+    min-width: 54px;
+    color: var(--text-mute);
     line-height: 1;
     opacity: 0.9;
   }
-  .channel-row .roster-grade-diamonds {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 1px;
-  }
-  .channel-row .roster-grade-diamond {
+  .channel-row .roster-grade-dot {
     width: 9px;
-    text-align: center;
-    font-size: 11px;
-    font-weight: 900;
-    text-shadow: 0 0 8px rgba(240,180,65,0.24);
+    height: 9px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.08),
+      0 0 10px rgba(255,255,255,0.10);
   }
   .channel-row .roster-grade-label {
-    color: var(--text-mute);
+    color: inherit;
     font-size: 9px;
     font-weight: 900;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
   .channel-row .roster-grade.is-graduated {
-    color: rgba(240,180,65,0.7);
+    color: rgba(240,180,65,0.76);
   }
   .channels-footer {
     padding: 12px 14px calc(var(--safe-bot) + 12px);
@@ -2414,12 +2410,12 @@ export const VIEWER_CSS = `
   }
   .board .class-report-card {
     margin: 0 auto;
-    width: min(100%, 700px);
+    width: min(100%, 640px);
     display: grid;
-    grid-template-columns: minmax(132px, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: minmax(104px, 0.72fr) minmax(0, 1.28fr);
     align-items: center;
-    gap: 18px;
-    padding: clamp(12px, 2.6vw, 20px);
+    gap: 14px;
+    padding: clamp(10px, 2.2vw, 16px);
     border: 2px solid rgba(255,255,255,0.24);
     border-radius: 8px;
     background: rgba(5, 31, 20, 0.30);
@@ -2433,7 +2429,7 @@ export const VIEWER_CSS = `
     display: grid;
     justify-items: center;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
   .board .class-report-heading {
     min-width: 0;
@@ -2441,30 +2437,31 @@ export const VIEWER_CSS = `
   }
   .board .class-report-title {
     font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
-    font-size: clamp(18px, 3.2vw, 30px);
+    font-size: clamp(18px, 3vw, 27px);
     line-height: 1.05;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
   .board .class-report-subtitle {
     color: var(--ink-soft);
     font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
-    font-size: clamp(13px, 2.1vw, 18px);
-    line-height: 1.16;
-  }
-  .board .class-report-subtitle {
+    font-size: clamp(12px, 1.9vw, 16px);
+    line-height: 1.14;
     margin-top: 4px;
     text-transform: lowercase;
   }
   .board .class-report-letter {
-    width: clamp(96px, 18vw, 148px);
-    height: clamp(96px, 18vw, 148px);
+    width: clamp(72px, 13vw, 108px);
+    height: clamp(72px, 13vw, 108px);
     border-radius: 999px;
     display: grid;
     place-items: center;
-    border: clamp(3px, 0.7vw, 5px) solid rgba(255,255,255,0.34);
+    border: clamp(2px, 0.55vw, 4px) solid rgba(255,255,255,0.34);
     background: rgba(255,255,255,0.12);
     color: #fff0a6;
-    font: 900 clamp(48px, 10vw, 86px)/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font: 900 clamp(38px, 7.4vw, 64px)/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
     box-shadow: 0 8px 18px rgba(0,0,0,0.22);
   }
   .board .class-report-card.needs-work .class-report-letter {
@@ -2474,7 +2471,7 @@ export const VIEWER_CSS = `
   .board .class-report-metrics {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 5px;
     min-width: 0;
   }
   .board .class-report-metric {
@@ -2482,17 +2479,17 @@ export const VIEWER_CSS = `
     border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.18);
     background: rgba(255,255,255,0.08);
-    padding: 7px 9px;
+    padding: 6px 8px;
     display: grid;
-    grid-template-columns: minmax(56px, 0.42fr) minmax(0, 0.58fr);
-    column-gap: 10px;
+    grid-template-columns: minmax(56px, 0.38fr) minmax(0, 0.62fr);
+    column-gap: 9px;
     align-items: baseline;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
   }
   .board .class-report-metric .k,
   .board .class-report-metric .d {
     color: var(--ink-soft);
-    font-size: clamp(9px, 1.45vw, 10px);
+    font-size: clamp(9px, 1.35vw, 10px);
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -2509,7 +2506,7 @@ export const VIEWER_CSS = `
   }
   .board .class-report-metric .v {
     color: var(--ink);
-    font-size: clamp(15px, 2.2vw, 21px);
+    font-size: clamp(14px, 2vw, 18px);
     font-weight: 900;
     line-height: 1.05;
     white-space: nowrap;
@@ -2523,17 +2520,17 @@ export const VIEWER_CSS = `
       padding: 10px;
     }
     .board .class-report-card {
-      grid-template-columns: minmax(78px, 0.72fr) minmax(0, 1.28fr);
-      gap: 10px;
-      padding: 10px;
+      grid-template-columns: minmax(74px, 0.68fr) minmax(0, 1.32fr);
+      gap: 8px;
+      padding: 9px;
     }
     .board .class-report-grade-block {
-      gap: 5px;
+      gap: 4px;
     }
     .board .class-report-letter {
-      width: clamp(76px, 22vw, 96px);
-      height: clamp(76px, 22vw, 96px);
-      font-size: clamp(40px, 12vw, 54px);
+      width: clamp(64px, 19vw, 82px);
+      height: clamp(64px, 19vw, 82px);
+      font-size: clamp(34px, 10vw, 46px);
     }
     .board .class-report-metric {
       padding: 5px 7px;

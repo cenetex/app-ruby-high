@@ -88,6 +88,28 @@ const VIEWER_SCRIPT_SUFFIX = `
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     return roster.find((f) => f.id === fid) || null;
   }
+  function teacherShortName(faculty, fallback) {
+    return (faculty && (faculty.shortName || faculty.displayName)) || fallback || "Teacher";
+  }
+  function questionsLeftInClass(today) {
+    const total = Number(today && today.totalQuestions || 3);
+    const done = Number(today && today.questionCount || 0);
+    return Math.max(0, total - done);
+  }
+  function questionsLeftText(today) {
+    const left = questionsLeftInClass(today);
+    if (left <= 0) return "daily class complete";
+    return left + " " + (left === 1 ? "question" : "questions") + " left";
+  }
+  function questionsLeftSentence(today) {
+    const left = questionsLeftInClass(today);
+    if (left <= 0) return "Daily class complete";
+    return (left === 1 ? "There is " : "There are ") + questionsLeftText(today);
+  }
+  function classesLeftText(done, required) {
+    const left = Math.max(0, Number(required || 0) - Number(done || 0));
+    return left + " " + (left === 1 ? "class" : "classes") + " left";
+  }
   function classGradeForFaculty(fid) {
     const progress = courseProgressForFaculty(fid);
     return (progress && progress.courseGrade) || "—";
@@ -99,10 +121,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const required = Number(progress.requiredClasses || 0);
     const today = progress.today || {};
     if (today.status === "complete") {
-      return "class complete today" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + grade;
+      return "daily class complete" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + grade;
     }
     if (today.status === "active") {
-      return "class " + Number(today.questionCount || 0) + "/" + Number(today.totalQuestions || 3) + " · " + grade;
+      return questionsLeftText(today) + " · " + grade;
     }
     return done + "/" + required + " classes · " + grade;
   }
@@ -395,6 +417,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     const progress = t && t.active_course_progress;
     return Number(progress && progress.ready || 0);
   }
+  function scheduledCanPick(t) {
+    const progress = t && t.active_course_progress;
+    if (!progress) return scheduledReadyCount(t) > 0;
+    if (typeof progress.canPick === "boolean") return progress.canPick;
+    return scheduledReadyCount(t) > 0;
+  }
   function showNoScheduledQuestionReadyHint() {
     if (emptyBoardHintShown) return;
     appendSystem("No scheduled question is ready. Connect AI to continue with custom questions, or come back tomorrow.");
@@ -459,17 +487,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     const progress = t.active_course_progress || {};
     const today = progress.today || {};
     const ready = scheduledReadyCount(t);
+    const canPick = scheduledCanPick(t);
     const questionCount = Number(today.questionCount || 0);
     const todayKey = (t.daily && t.daily.dailyKey) || today.dailyKey || "";
     const phaseToken = t.phaseToken == null ? "legacy" : t.phaseToken;
-    const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey + "|" + phaseToken + "|" + questionCount + "|" + ready;
+    const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey + "|" + phaseToken + "|" + questionCount + "|" + ready + "|" + canPick + "|" + (progress.nextCardRole || "");
     if (key === autoPickLastKey) return;
-    // Bank state: the deterministic scheduler can only post when ready > 0.
-    // When ready === 0 the auto-pick would throw "No scheduled question is due"
-    // and surface as an error chip. Route around that error:
+    // Scheduler state: the deterministic path can post banked cards and
+    // generated Ruby social cards. When it cannot post, auto-pick would only
+    // hit the service's "No scheduled question is due" guard.
     //   - AI on  → fire a manual chat turn so the teacher can pose_question.
     //   - AI off → sit on the empty board and surface the offline hint once.
-    if (ready <= 0) {
+    if (!canPick) {
       autoPickLastKey = key;
       if (aiEnabled) {
         runAgentTurn("manual", { grade: t.current_grade }, { force: true });
@@ -581,7 +610,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     const progress = t.active_course_progress && t.active_course_progress.today;
     if (progress && progress.status === "active") {
-      return "I'm ready for the next " + facultyName + " card. We are at class " + Number(progress.questionCount || 0) + "/" + Number(progress.totalQuestions || 3) + ".";
+      return "I'm ready for the next " + facultyName + " card. " + questionsLeftSentence(progress) + " in today's class.";
     }
     return "I'm ready for the next " + facultyName + " card.";
   }
@@ -1135,7 +1164,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const today = progress && progress.today;
     if (!progress || !today || today.status !== "complete") return null;
     const gradeLabel = currentGrade ? (GRADE_LABELS[currentGrade] || ("Grade " + currentGrade)) : "Ruby High";
-    const teacherName = (faculty && faculty.displayName) || progress.displayName || "Class";
+    const teacherName = teacherShortName(faculty, progress.displayName);
     const letter = today.letterGrade || progress.grade || "—";
     const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
     const completed = Number(progress.completedClasses || 0);
@@ -1145,19 +1174,19 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const gradeBlock = document.createElement("div");
     gradeBlock.className = "class-report-grade-block";
+    const badge = document.createElement("div");
+    badge.className = "class-report-letter";
+    badge.textContent = letter;
     const titleWrap = document.createElement("div");
     titleWrap.className = "class-report-heading";
     const title = document.createElement("div");
     title.className = "class-report-title";
-    title.textContent = "Current grade";
+    title.textContent = "Teacher " + teacherName;
     const subtitle = document.createElement("div");
     subtitle.className = "class-report-subtitle";
-    subtitle.textContent = passedToday ? "credit earned" : "practice open";
+    subtitle.textContent = gradeLabel + " · " + (passedToday ? "credit earned" : "practice open");
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
-    const badge = document.createElement("div");
-    badge.className = "class-report-letter";
-    badge.textContent = letter;
     gradeBlock.appendChild(badge);
     gradeBlock.appendChild(titleWrap);
     wrap.appendChild(gradeBlock);
@@ -1181,10 +1210,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       item.appendChild(d);
       metrics.appendChild(item);
     };
-    addMetric("today", Number(today.questionCount || 0) + "/" + Number(today.totalQuestions || 3), "questions");
+    addMetric("today", questionsLeftText(today), "questions");
     addMetric("score", formatClassScore(today.score), "average");
-    addMetric("course", progress.grade || "—", completed + "/" + required + " classes");
-    addMetric("class", teacherName, gradeLabel);
+    addMetric("classes", classesLeftText(completed, required), "to ceremony");
     wrap.appendChild(metrics);
     return wrap;
   }
@@ -2045,15 +2073,28 @@ const VIEWER_SCRIPT_SUFFIX = `
     studentsTitle.className = "channel-section-title";
     studentsTitle.textContent = "Class — grade";
     els.channelsList.appendChild(studentsTitle);
-    const npcRoster = t.npc_roster || [];
-    npcRoster.forEach((npc) => {
+    const npcRoster = (t.npc_roster || [])
+      .map((npc) => {
+        const s = STUDENTS.find((x) => x.id === npc.id);
+        if (!s || !shouldShowStudentId(npc.id)) return null;
+        const arc = Array.isArray(t.npc_cohort) ? t.npc_cohort.find((n) => n.id === npc.id) : null;
+        const rosterGrade = arc && !arc.graduated ? arc.grade : npc.grade;
+        const gradeIdx = GRADE_ORDER.indexOf(String(rosterGrade));
+        return {
+          npc,
+          s,
+          arc,
+          rosterGrade,
+          sortGrade: arc && arc.graduated ? GRADE_ORDER.length : (gradeIdx >= 0 ? gradeIdx : GRADE_ORDER.length + 1),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.sortGrade !== b.sortGrade) return a.sortGrade - b.sortGrade;
+        return String(a.s.name).localeCompare(String(b.s.name));
+      });
+    npcRoster.forEach(({ npc, s, arc, rosterGrade }) => {
       if (!shouldShowStudentId(npc.id)) return;
-      const s = STUDENTS.find((x) => x.id === npc.id);
-      if (!s) return;
-      const arc = Array.isArray(t.npc_cohort) ? t.npc_cohort.find((n) => n.id === npc.id) : null;
-      const rosterGrade = arc && !arc.graduated ? arc.grade : npc.grade;
-      const gradeIdx = GRADE_ORDER.indexOf(String(rosterGrade));
-      const diamondCount = arc && arc.graduated ? GRADE_ORDER.length : Math.max(1, gradeIdx + 1);
       const gradeTitle = arc && arc.graduated
         ? "Graduated"
         : (GRADE_LABELS[rosterGrade] || ("Grade " + rosterGrade));
@@ -2078,18 +2119,13 @@ const VIEWER_SCRIPT_SUFFIX = `
       gradeMark.className = "roster-grade" + (arc && arc.graduated ? " is-graduated" : "");
       gradeMark.title = gradeTitle;
       gradeMark.setAttribute("aria-label", gradeTitle);
-      const diamondWrap = document.createElement("span");
-      diamondWrap.className = "roster-grade-diamonds";
-      for (let i = 0; i < diamondCount; i++) {
-        const diamond = document.createElement("span");
-        diamond.className = "roster-grade-diamond";
-        diamond.textContent = "◆";
-        diamondWrap.appendChild(diamond);
-      }
+      const gradeDot = document.createElement("span");
+      gradeDot.className = "roster-grade-dot";
+      gradeDot.style.background = s.color;
       const gradeLabel = document.createElement("span");
       gradeLabel.className = "roster-grade-label";
       gradeLabel.textContent = arc && arc.graduated ? "Grad" : (GRADE_SHORT_LABELS[rosterGrade] || String(rosterGrade));
-      gradeMark.appendChild(diamondWrap);
+      gradeMark.appendChild(gradeDot);
       gradeMark.appendChild(gradeLabel);
       row.appendChild(gradeMark);
       row.addEventListener("click", () => openStudentProfile(npc, s));
@@ -2185,7 +2221,7 @@ const VIEWER_SCRIPT_SUFFIX = `
           lockedFor = null;
           return;
         }
-        if (scheduledReadyCount(lastTelemetry) <= 0) {
+        if (!scheduledCanPick(lastTelemetry)) {
           showNoScheduledQuestionReadyHint();
           return;
         }

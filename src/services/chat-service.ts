@@ -277,7 +277,7 @@ export class ChatService extends Service {
       const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
       const toolDefs = opts.disableTools || boardIsWaitingForStudent(liveStateBeforeCall)
         ? []
-        : buildToolDefs({ includePickFromBank: bankStatus.remaining > 0 });
+        : buildToolDefs({ includePickFromBank: scheduledPickAvailable(bankStatus) });
 
       const stream = streamOpenRouter({
         apiKey: opts.apiKey,
@@ -719,6 +719,10 @@ function boardIsWaitingForStudent(state: QuizState): boolean {
   return !!state.current && !!state.activeRound && !state.activeRound.resolved;
 }
 
+function scheduledPickAvailable(status: QuestionBankStatus): boolean {
+  return typeof status.canPick === "boolean" ? status.canPick : status.remaining > 0;
+}
+
 function parseToolArgs(call: ToolCall): { args: Record<string, unknown>; error?: string } {
   try {
     return { args: call.function.arguments ? JSON.parse(call.function.arguments) : {} };
@@ -1132,7 +1136,7 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     const mastered = status.masteredCount ?? 0;
     const shaky = status.shakyCount ?? 0;
     const learning = status.learningCount ?? 0;
-    if (status.remaining <= 0) {
+    if (!scheduledPickAvailable(status)) {
       return [
         `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
         `Scheduler detail: no deck card is due right now (${mastered}/${status.total} learned, ${shaky} shaky, ${learning} learning).`,
@@ -1160,12 +1164,19 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     .slice(0, 6)
     .map(([subject, count]) => `${subject}:${count}`)
     .join(", ");
-  if (status.remaining <= 0) {
+  if (!scheduledPickAvailable(status)) {
     return [
       `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
       `Scheduler detail: no Ruby High card is available right now (${status.masteredCount ?? 0}/${status.total} mastered, ${status.shakyCount ?? 0} shaky, ${status.learningCount ?? 0} learning).`,
       "pick_from_bank is not available this turn. Do not say the bank is exhausted, dry, depleted, or used up.",
       "If the class needs a board, call pose_question exactly once and author a custom question; it will join the reusable Ruby High bank.",
+    ].join("\n");
+  }
+  if (status.remaining <= 0 && status.nextCardRole === "social") {
+    return [
+      `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+      "Scheduler detail: Ruby High has a generated homeroom social card ready.",
+      "Use pick_from_bank for the next board; it will post the scheduled social card.",
     ].join("\n");
   }
   return [
