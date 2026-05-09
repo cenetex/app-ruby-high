@@ -2371,6 +2371,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       openSheet();
       return;
     }
+    // When the round clock expired but the room-idle DM turn hasn't resolved
+    // the board yet, suppress extra chat turns — the teacher is already on it.
+    if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) return;
     if (manualChatBusy || agentBusy) return;
     const now = Date.now();
     if (now - lastChatButtonAt < 900) return;
@@ -5171,6 +5174,9 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function sendChatMessage(text) {
     if (!aiEnabled || !text.trim()) return;
     if (agentBusy) return;
+    // While the room-idle DM turn is in progress (clock expired, round not
+    // yet resolved), hold player chat so it doesn't race the teacher.
+    if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) return;
     agentBusy = true;
     const busySeq = ++agentBusySeq;
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
