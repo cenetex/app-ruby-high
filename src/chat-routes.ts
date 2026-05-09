@@ -1976,6 +1976,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "room-idle") {
+      // The scheduler may own the board (scheduled cards available), which
+      // normally disables tools — but room-idle MUST be able to call
+      // pick_from_bank to post the next question. Override the flag here.
+      disableToolsForTurn = false;
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the student";
       // Force-resolve the open round before the teacher speaks so the board
