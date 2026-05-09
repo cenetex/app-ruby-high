@@ -4786,7 +4786,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const b64 = bytesToBase64(new Uint8Array(buf));
       packPdfStatusEl.textContent = "AI reading PDF and generating cards (~$0.05, ~30s)…";
       const teacherId = packPdfTeacherSelect && packPdfTeacherSelect.value ? packPdfTeacherSelect.value : "";
-      const body: Record<string, unknown> = { filename: file.name, data: b64, maxCards: 50 };
+      const body = { filename: file.name, data: b64, maxCards: 50 };
       if (teacherId) body.teacherId = teacherId;
       const r = await apiFetch("/api/apps/ruby-high/packs/import-pdf", {
         method: "POST",
