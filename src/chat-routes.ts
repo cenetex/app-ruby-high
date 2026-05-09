@@ -2274,8 +2274,45 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const text = (body?.text ?? "").trim();
     const force = !!body?.force;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    let mutated = false;
     if (text) {
       ruby.recordOpinion(sessionId, "player", text);
+      mutated = true;
+    }
+
+    // Force-grade path: the round timer expired or all NPCs are in but the
+    // player never spoke. Fill missing responders with placeholders so the
+    // teacher can grade what's there. In offline mode we always force-fill
+    // so the round can resolve without an LLM-driven NPC turn.
+    const offline = !apiKey;
+    if (force || offline) {
+      const state = ruby.getOrCreate(sessionId);
+      const round = state.activeRound;
+      if (round && round.type === "opinion" && !round.resolved) {
+        const present = new Set(round.opinionResponses.map((r) => r.responder));
+        if (!present.has("player")) {
+          ruby.recordOpinion(sessionId, "player", "(no response — ran out the clock)");
+          mutated = true;
+        }
+        for (const npc of round.npcs) {
+          if (!present.has(npc.studentId)) {
+            const placeholder = offline
+              ? "(thinking it over silently)"
+              : "(no response — couldn't get it down in time)";
+            ruby.recordOpinion(sessionId, npc.studentId, placeholder);
+            mutated = true;
+          }
+        }
+      }
+    }
+    if (mutated) {
+      try {
+        await ruby.flushSession(sessionId);
+      } catch (err) {
+        log.error("opinion.persist-failed", err, { sessionId });
+        ctx.error(ctx.res, "Opinion response could not be persisted. Please retry.", 503);
+        return true;
+      }
     }
 
     const res = ctx.res as {
@@ -2295,30 +2332,6 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
-
-    // Force-grade path: the round timer expired or all NPCs are in but the
-    // player never spoke. Fill missing responders with placeholders so the
-    // teacher can grade what's there. In offline mode we always force-fill
-    // so the round can resolve without an LLM-driven NPC turn.
-    const offline = !apiKey;
-    if (force || offline) {
-      const state = ruby.getOrCreate(sessionId);
-      const round = state.activeRound;
-      if (round && round.type === "opinion" && !round.resolved) {
-        const present = new Set(round.opinionResponses.map((r) => r.responder));
-        if (!present.has("player")) {
-          ruby.recordOpinion(sessionId, "player", "(no response — ran out the clock)");
-        }
-        for (const npc of round.npcs) {
-          if (!present.has(npc.studentId)) {
-            const placeholder = offline
-              ? "(thinking it over silently)"
-              : "(no response — couldn't get it down in time)";
-            ruby.recordOpinion(sessionId, npc.studentId, placeholder);
-          }
-        }
-      }
-    }
 
     if (!ruby.isOpinionRoundReadyToGrade(sessionId)) {
       send("waiting", { ok: true });
@@ -2342,29 +2355,38 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const facultyId = state.faculty;
       send("speaker", { facultyId });
       let offlinePlayerRoll: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome } | null = null;
-      let grades: import("./grading.js").ParsedGrade[];
-      let bestResponder: string | null;
-      let narrativeText: string;
-      if (apiKey) {
-        const verdict = await gradeOpinionResponses({
-          apiKey,
-          facultyId,
-          question: state.current.prompt,
-          rubric: state.current.rubric,
-          responses,
-          playerName: "the player",
-        });
-        grades = verdict.grades;
-        bestResponder = verdict.bestResponder;
-        narrativeText = verdict.narrativeText;
-      } else {
+      let grades: import("./grading.js").ParsedGrade[] = [];
+      let bestResponder: string | null = null;
+      let narrativeText = "";
+      const useOfflineVerdict = () => {
         const verdict = buildOfflineOpinionVerdict({ state });
         grades = verdict.grades;
         bestResponder = verdict.bestResponder;
         narrativeText = verdict.narrativeText;
-        // Offline path rolls 2d6 + stat — stash that roll so the reveal
-        // can paint the existing 🎲 chip the same way MC + typed reveals do.
         offlinePlayerRoll = verdict.playerRoll;
+      };
+      if (apiKey) {
+        try {
+          const verdict = await gradeOpinionResponses({
+            apiKey,
+            facultyId,
+            question: state.current.prompt,
+            rubric: state.current.rubric,
+            responses,
+            playerName: "the player",
+          });
+          if (!verdict.grades.some((g) => g.responder === "player")) {
+            throw new Error("Teacher grading omitted the player grade.");
+          }
+          grades = verdict.grades;
+          bestResponder = verdict.bestResponder;
+          narrativeText = verdict.narrativeText;
+        } catch (err) {
+          log.error("opinion.grade-ai-failed", err, { sessionId, facultyId, questionId: state.current.id });
+          useOfflineVerdict();
+        }
+      } else {
+        useOfflineVerdict();
       }
       // Stream the narrative as deltas (chunked by sentence so the typewriter
       // effect lands).
@@ -2384,6 +2406,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           finalState.lastReveal.playerRoll = offlinePlayerRoll;
         }
       }
+      await ruby.flushSession(sessionId);
       send("opinion-graded", {
         grades,
         bestResponder,
@@ -2492,7 +2515,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         bestSubjectFacultyId: highestScoringFaculty(ch.subjectScores),
       });
       const url = await maybeUploadPortrait(dataUrl, "diploma");
-      ch.diplomaImageDataUrl = url;
+      ruby.setDiplomaImage(sessionId, url);
       await ruby.flushSession(sessionId);
       ctx.json(ctx.res, {
         ok: true,

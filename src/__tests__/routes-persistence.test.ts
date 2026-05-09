@@ -25,6 +25,7 @@ class FailingSessionStore implements StateStoreLike {
   async saveAuthUser(_user: AuthUserRecord): Promise<void> {}
   async saveAuthSession(_session: AuthSessionRecord): Promise<void> {}
   async savePack(_record: StoredContentPackRecord): Promise<void> {}
+  async deletePack(_ownerSessionId: string, _packId: string): Promise<void> {}
   async deleteAuthSession(_token: string): Promise<void> {}
   async save(_states: Iterable<QuizState>): Promise<void> {}
   describe(): string { return "failing-test-store"; }
@@ -39,6 +40,7 @@ class MemorySessionStore implements StateStoreLike {
   async saveAuthUser(_user: AuthUserRecord): Promise<void> {}
   async saveAuthSession(_session: AuthSessionRecord): Promise<void> {}
   async savePack(_record: StoredContentPackRecord): Promise<void> {}
+  async deletePack(_ownerSessionId: string, _packId: string): Promise<void> {}
   async deleteAuthSession(_token: string): Promise<void> {}
   async save(states: Iterable<QuizState>): Promise<void> {
     this.sessions = new Map(Array.from(states).map((s) => [s.sessionId, s]));

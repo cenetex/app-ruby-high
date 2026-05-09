@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
-import { registerPack, resetActivePack } from "../content/registry.js";
+import { MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { dailyKey } from "../types.js";
 
@@ -96,6 +96,31 @@ function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"):
     }],
   };
 }
+
+describe("imported pack persistence", () => {
+  it("prunes persisted imported packs to the same per-owner cap as the registry", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:packs";
+    const now = vi.spyOn(Date, "now");
+
+    for (let i = 0; i < MAX_PACKS_PER_OWNER + 2; i++) {
+      const touchedAt = 10_000 + i;
+      const pack = fakeAnkiPackWithSally(`anki:lru-${i}`, `lru-q-${i}`);
+      now.mockReturnValue(touchedAt);
+      registerPack(pack, sid, touchedAt);
+      await ruby.persistImportedPack(sid, pack);
+    }
+
+    const persisted = (await new StateStore(storePath).loadPacks())
+      .filter((record) => record.ownerSessionId === sid)
+      .map((record) => record.pack.id)
+      .sort();
+    expect(persisted).toHaveLength(MAX_PACKS_PER_OWNER);
+    expect(persisted).not.toContain("anki:lru-0");
+    expect(persisted).not.toContain("anki:lru-1");
+    expect(persisted).toContain(`anki:lru-${MAX_PACKS_PER_OWNER + 1}`);
+  });
+});
 
 function fakeAnkiSourcePack(id = "anki:vocab-source", cardId = "anki-vocab-card-1"): ContentPack {
   return {
@@ -332,6 +357,29 @@ describe("RubyHighService Phase 1", () => {
     expect(ruby.setFaculty(sid, "sally-science").faculty).toBe("sally-science");
     expect(ruby.setFaculty(sid, "professor-edward").faculty).toBe("professor-edward");
     expect(() => ruby.setFaculty(sid, "no-such-teacher")).toThrow(/Unknown faculty/);
+  });
+
+  it("validates stored character image references on every write path", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:image-ref-guard";
+    ruby.createCharacter(sid, {
+      name: "Test",
+      playbookId: "overachiever",
+      stats: { head: 1, heart: 0, hustle: 0, honor: 0 },
+      arcAnswer: "keeps receipts",
+      personality: "careful",
+      portraitDataUrl: "https://cdn.example.test/portrait.png",
+    });
+
+    expect(ruby.getOrCreate(sid).character?.portraitDataUrl).toBe("https://cdn.example.test/portrait.png");
+    expect(() => ruby.setPortrait(sid, "not-an-image")).toThrow(/portraitDataUrl must be an image data URL/i);
+    expect(() => ruby.setPortrait(sid, `data:image/png;base64,${"a".repeat(280_000)}`)).toThrow(/portraitDataUrl too large/i);
+
+    const state = ruby.setPortrait(sid, "/api/apps/ruby-high/assets/portrait/test.png");
+    expect(state.character?.portraitDataUrl).toBe("/api/apps/ruby-high/assets/portrait/test.png");
+    expect(() => ruby.setDiplomaImage(sid, `data:image/png;base64,${"a".repeat(280_000)}`)).toThrow(/diplomaImageDataUrl too large/i);
+    expect(ruby.setDiplomaImage(sid, "https://cdn.example.test/diploma.png").character?.diplomaImageDataUrl)
+      .toBe("https://cdn.example.test/diploma.png");
   });
 
   it("persists session state across a 'restart'", async () => {
@@ -794,6 +842,38 @@ describe("RubyHighService Phase 1", () => {
       type: "multiple-choice",
       sourceCardId: "anki-vocab-card-1",
     });
+  });
+
+  it("does not overwrite the board if MC generation finishes after the source card changed", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:anki-source-jit-mc-stale";
+    const pack = fakeAnkiSourcePack("anki:vocab-source-jit-stale");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid);
+    ruby.pickAndPose(sid, { faculty: "vocab-source-course" });
+
+    let release: ((value: Response) => void) | null = null;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => { release = resolve; }),
+    );
+
+    const generating = ruby.generateCurrentMcQuestion(sid, "sk-test");
+    expect(release).toBeTypeOf("function");
+    ruby.submitTextAnswer(sid, "short-lived");
+    release!(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(["ancient", "loud", "careful"]) } }],
+    }), { status: 200 }));
+
+    await expect(generating).rejects.toThrow(/source card changed/i);
+    const after = ruby.getOrCreate(sid);
+    expect(after.current).toMatchObject({
+      id: "anki-vocab-card-1",
+      type: "typed-answer",
+      canGenerateMc: true,
+    });
+    expect(after.activeRound?.resolved).toBe(true);
+    expect(after.lastReveal?.answerText).toBe("short-lived");
   });
 
   it("keeps custom questions in the imported course when a teacher template id appears in tool args", async () => {

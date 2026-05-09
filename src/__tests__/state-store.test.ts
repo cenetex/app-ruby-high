@@ -138,6 +138,10 @@ describe("StateStore", () => {
     await fresh.save([blankState("b")]);
     const stillThere = await new StateStore(storePath).loadPacks();
     expect(stillThere.map((p) => p.pack.id)).toEqual(["anki:cells"]);
+
+    await fresh.deletePack("rh:user:test", "anki:cells");
+    const deleted = await new StateStore(storePath).loadPacks();
+    expect(deleted).toHaveLength(0);
   });
 
   it("load returns an empty map when the file doesn't exist", async () => {

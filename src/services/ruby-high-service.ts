@@ -84,6 +84,7 @@ import {
   facultyByIdForSession,
   facultyForSession,
   isPackLoaded,
+  MAX_PACKS_PER_OWNER,
   ORIGINAL_PACK_ID,
   packForSession,
   registerPack,
@@ -253,6 +254,7 @@ const SRS_EASY_INTERVALS_MS = [
 const CLASS_QUESTIONS_PER_DAY = 3;
 const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [2, 4, 6] as const;
 const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 1;
+const MAX_STORED_IMAGE_REF_LENGTH = 280_000;
 
 function cardMemoryKey(courseId: string, questionId: string): string {
   return `${courseId}::${questionId}`;
@@ -399,6 +401,29 @@ function awardSessionScore(
 function classAverage(record: DailyClassRecord): number | undefined {
   if (record.questionCount <= 0) return undefined;
   return Math.round(record.scoreTotal / record.questionCount);
+}
+
+function normalizeStoredImageRef(
+  value: string | undefined | null,
+  fieldName: "portraitDataUrl" | "diplomaImageDataUrl",
+): string | undefined {
+  if (value == null) return undefined;
+  const text = value.trim();
+  if (!text) return undefined;
+  if (text.length > MAX_STORED_IMAGE_REF_LENGTH) {
+    throw new Error(
+      `${fieldName} too large (${text.length} bytes; cap is ${MAX_STORED_IMAGE_REF_LENGTH}). Store the image externally before saving.`,
+    );
+  }
+  if (text.startsWith("data:image/")) return text;
+  if (text.startsWith("/api/apps/ruby-high/assets/")) return text;
+  try {
+    const url = new URL(text);
+    if (url.protocol === "http:" || url.protocol === "https:") return text;
+  } catch {
+    // Fall through to the explicit error below.
+  }
+  throw new Error(`${fieldName} must be an image data URL, http(s) URL, or Ruby High asset URL.`);
 }
 
 export class RubyHighService extends Service {
@@ -664,15 +689,29 @@ export class RubyHighService extends Service {
     return this.store.save(this.sessions.values());
   }
 
-  persistImportedPack(sessionId: string, pack: ContentPack): Promise<void> {
-    return this.store.savePack({
-      pack,
-      ownerSessionId: sessionId,
-      touchedAt: Date.now(),
-    }).catch((err) => {
+  async persistImportedPack(sessionId: string, pack: ContentPack): Promise<void> {
+    try {
+      await this.store.savePack({
+        pack,
+        ownerSessionId: sessionId,
+        touchedAt: Date.now(),
+      });
+      await this.prunePersistedImportedPacks(sessionId);
+    } catch (err) {
       log.error("ruby-high.persist-pack-failed", err, { sessionId, packId: pack.id });
       throw err;
-    });
+    }
+  }
+
+  private async prunePersistedImportedPacks(sessionId: string): Promise<void> {
+    const owned = (await this.store.loadPacks())
+      .filter((record) => record.ownerSessionId === sessionId)
+      .sort((a, b) => a.touchedAt - b.touchedAt || a.pack.id.localeCompare(b.pack.id));
+    const excess = owned.length - MAX_PACKS_PER_OWNER;
+    if (excess <= 0) return;
+    await Promise.all(
+      owned.slice(0, excess).map((record) => this.store.deletePack(record.ownerSessionId, record.pack.id)),
+    );
   }
 
   private trackBackgroundWrite(promise: Promise<void>): void {
@@ -1810,11 +1849,15 @@ export class RubyHighService extends Service {
     const status = this.gradeCompletionStatus(state);
     if (!status || !status.ready || status.grade !== pending.grade) {
       ch.pendingGraduation = null;
+      state.updatedAt = Date.now();
+      void this.persistSession(sessionId);
       throw new Error("Graduation requirements are not complete.");
     }
     const grade = pending.grade;
     if (ch.yearbook?.some((y) => y.grade === grade) || state.completedGrades.includes(grade)) {
       ch.pendingGraduation = null;
+      state.updatedAt = Date.now();
+      void this.persistSession(sessionId);
       return state;
     }
 
@@ -2757,6 +2800,15 @@ export class RubyHighService extends Service {
     }
     const source = this.sourceCardForQuestion(state, current);
     if (!source) throw new Error("Could not find the imported source card for this question.");
+    const expected = {
+      questionId: current.id,
+      questionType: current.type,
+      faculty: state.faculty,
+      activePackId: state.activePackId,
+      phaseToken: state.phaseToken,
+      roundStartedAt: round?.startedAt ?? null,
+    };
+    const sourcePackId = packForSession(state).id;
 
     let mc = this.cachedMcQuestionForSource(state, source);
     const wasCached = !!mc;
@@ -2775,9 +2827,26 @@ export class RubyHighService extends Service {
       const generated = await cardToMcQuestion(this.sourceCardToAnkiCard(source), opts);
       if (!generated) throw new Error("Could not generate multiple-choice distractors for this card.");
       mc = this.normalizeGeneratedMcQuestion(source, generated);
-      const updated = appendQuestionToPackBank(packForSession(state).id, source.faculty, mc);
+      const updated = appendQuestionToPackBank(sourcePackId, source.faculty, mc);
       if (!updated) throw new Error("Could not cache generated multiple-choice question in this pack.");
       await this.persistImportedPack(sessionId, updated);
+    }
+
+    const latest = this.getOrCreate(sessionId);
+    const latestRound = latest.activeRound;
+    const sourceCardStillActive =
+      latest.current?.id === expected.questionId &&
+      latest.current?.type === expected.questionType &&
+      latest.faculty === expected.faculty &&
+      latest.activePackId === expected.activePackId &&
+      latest.phaseToken === expected.phaseToken &&
+      latestRound?.questionId === expected.questionId &&
+      !latestRound.resolved &&
+      !latestRound.idleTriggered &&
+      latestRound.player.answeredAt == null &&
+      (latestRound.startedAt ?? null) === expected.roundStartedAt;
+    if (!sourceCardStillActive) {
+      throw new Error("The source card changed while multiple choice was generating. Try again on the current card.");
     }
 
     const classSession = round?.classSession;
@@ -2823,15 +2892,8 @@ export class RubyHighService extends Service {
     if (state.character) throw new Error("Character already exists for this session.");
     const name = input.name.trim();
     if (!name) throw new Error("Name is required.");
-    // Portrait size guard. DynamoDB items are capped at 400KB and the
-    // character record carries a chunk of other state — keep the
-    // portrait alone under ~280KB so the rest of the record always
-    // fits. The client downscales AI portraits before sending; this
-    // is the server-side safety net for callers that don't.
-    if (input.portraitDataUrl && input.portraitDataUrl.length > 280_000) {
-      throw new Error(`portraitDataUrl too large (${input.portraitDataUrl.length} bytes; cap is 280000). Downscale before submitting.`);
-    }
     const flavorQuote = input.flavorQuote?.trim();
+    const portraitDataUrl = normalizeStoredImageRef(input.portraitDataUrl, "portraitDataUrl");
     // If the player accepted the mentor offer from a graduated previous
     // character, snapshot the mentor info onto the new character. Either
     // way, clear the offer — it's a one-time consume.
@@ -2857,7 +2919,7 @@ export class RubyHighService extends Service {
       arcAnswer: input.arcAnswer.trim(),
       ...(flavorQuote ? { flavorQuote } : {}),
       personality: input.personality.trim(),
-      portraitDataUrl: input.portraitDataUrl,
+      ...(portraitDataUrl ? { portraitDataUrl } : {}),
       yearbook: [],
       ...(inheritedFrom ? { inheritedFrom } : {}),
       mashCard,
@@ -2876,7 +2938,20 @@ export class RubyHighService extends Service {
   setPortrait(sessionId: string, portraitDataUrl: string): QuizState {
     const state = this.getOrCreate(sessionId);
     if (!state.character) throw new Error("No character to attach portrait to.");
-    state.character.portraitDataUrl = portraitDataUrl;
+    const stored = normalizeStoredImageRef(portraitDataUrl, "portraitDataUrl");
+    if (!stored) throw new Error("portraitDataUrl is required.");
+    state.character.portraitDataUrl = stored;
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  setDiplomaImage(sessionId: string, diplomaImageDataUrl: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (!state.character) throw new Error("No character to attach diploma to.");
+    const stored = normalizeStoredImageRef(diplomaImageDataUrl, "diplomaImageDataUrl");
+    if (!stored) throw new Error("diplomaImageDataUrl is required.");
+    state.character.diplomaImageDataUrl = stored;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;

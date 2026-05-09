@@ -42,7 +42,7 @@ export function ankiPackId(slug: string): string {
 /** Per-owner soft cap on registered packs. When an owner exceeds this,
  *  their oldest pack evicts. Built-in packs (owner=null) are PINNED and
  *  never count toward the cap or get evicted. */
-const MAX_PACKS_PER_OWNER = 16;
+export const MAX_PACKS_PER_OWNER = 16;
 
 interface RegisteredPack {
   pack: ContentPack;
@@ -134,6 +134,9 @@ export function appendQuestionToPackBank(
     faculty.questions.push(question);
   }
   record.touchedAt = touchedAt;
+  packs.delete(packId);
+  packs.set(packId, record);
+  if (record.ownerSessionId !== null) evictExcess(record.ownerSessionId);
   if (loadedPack?.id === packId) loadedPack = record.pack;
   return record.pack;
 }

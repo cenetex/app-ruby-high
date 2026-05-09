@@ -300,6 +300,13 @@ export class DynamoStateStore implements StateStoreLike {
     }));
   }
 
+  async deletePack(ownerSessionId: string, packId: string): Promise<void> {
+    await this.client.send(new DeleteCommand({
+      TableName: this.tableName,
+      Key: { pk: this.packPk(ownerSessionId, packId) },
+    }));
+  }
+
   async deleteAuthSession(token: string): Promise<void> {
     await this.client.send(new DeleteCommand({
       TableName: this.tableName,

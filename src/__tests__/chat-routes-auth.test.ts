@@ -387,6 +387,56 @@ describe("chat event context", () => {
     expect(promptText).toContain("Use this snapshot for the reaction");
   });
 
+  it("resolves forced opinion grading with the deterministic fallback when the AI grader fails", async () => {
+    const token = "route-opinion-grader-fallback-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-opinion-grader-fallback-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Opinion Fallback",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.poseOpinion(sessionId, {
+      prompt: "When a classmate answers confidently, what should you trust and what should you check?",
+      faculty: "ruby",
+    });
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response("grader down", { status: 500, statusText: "Bad Gateway" });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/opinion-submit"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: { force: true },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: opinion-graded");
+    expect(res.body).not.toContain("event: error");
+    const state = ruby.getOrCreate(sessionId);
+    expect(state.activeRound?.resolved).toBe(true);
+    expect(state.lastReveal).toMatchObject({
+      questionId: state.current?.id,
+      questionType: "opinion",
+    });
+    expect(state.activeRound?.opinionResponses.some((r) => r.responder === "player")).toBe(true);
+    expect(state.activeRound?.opinionGrades.some((g) => g.responder === "player")).toBe(true);
+  });
+
   it("drops answer-graded teacher turns when the live reveal has moved on", async () => {
     const token = "route-stale-answer-token";
     auth.injectSessionForTest(token, {

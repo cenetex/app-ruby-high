@@ -585,6 +585,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     finally { autoPickInFlight = false; }
   }
   let opinionSubmitted = false; // player's text has been recorded for current round
+  let opinionSubmittedQuestionId = null;
   let opinionGradeFired = false; // grading has been triggered for current round
   let typedSubmitting = false;
   let generatingMc = false;
@@ -601,6 +602,21 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!fullName) return "You";
     const first = String(fullName).trim().split(/\\s+/)[0];
     return first || "You";
+  }
+  function playerOpinionRecorded(round) {
+    return !!(
+      round
+      && round.type === "opinion"
+      && (round.opinionResponses || []).some((r) => r.responder === "player")
+    );
+  }
+  function markOpinionSubmitted(questionId) {
+    opinionSubmitted = true;
+    opinionSubmittedQuestionId = questionId || null;
+  }
+  function clearOpinionSubmitted() {
+    opinionSubmitted = false;
+    opinionSubmittedQuestionId = null;
   }
   function playerMessageIdentitySig() {
     const ch = lastTelemetry && lastTelemetry.character;
@@ -1663,6 +1679,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     const isOpinion = (lastTelemetry && lastTelemetry.is_opinion) || question.type === "opinion";
     const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
     const isFreeformAnswer = isTypedAnswer || isOpinion;
+    if (isNewQuestion) {
+      clearOpinionSubmitted();
+      opinionGradeFired = false;
+      renderedOpinionIds.clear();
+      gradedResponderIds.clear();
+    }
     const ar = lastTelemetry && lastTelemetry.active_round;
     const cardRole = (ar && ar.cardRole) || (isOpinion ? "social" : (ar && ar.classSession && ar.classSession.mode === "class" ? "class" : "practice"));
     els.blackboardPanel.dataset.questionType = question.type || "multiple-choice";
@@ -1730,7 +1752,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
     const round = lastTelemetry && lastTelemetry.active_round;
     const playerLocked = !!(round && round.player && round.player.isLocked);
-    const typedDisabled = role === "agent" || !isFreeformAnswer || playerLocked || !!(round && round.resolved) || (isOpinion && opinionSubmitted);
+    const serverPlayerOpinionRecorded = isOpinion && playerOpinionRecorded(round);
+    if (serverPlayerOpinionRecorded) markOpinionSubmitted(question.id);
+    const localOpinionSubmitted = !!(isOpinion && opinionSubmitted && opinionSubmittedQuestionId === question.id);
+    const typedDisabled = role === "agent"
+      || !isFreeformAnswer
+      || !!(round && round.resolved)
+      || (isOpinion ? (serverPlayerOpinionRecorded || localOpinionSubmitted) : playerLocked);
     els.typedAnswerInput.placeholder = isOpinion ? "Type your response" : "Type the answer";
     els.typedSubmitBtn.textContent = isOpinion ? "Send" : "Check";
     els.typedAnswerInput.disabled = typedDisabled;
@@ -1756,13 +1784,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.nextBtn.textContent = nextQuestionButtonLabel();
     els.blackboardFoot.hidden = !authed;
 
-    // Opinion-mode bookkeeping resets on new question.
-    if (isNewQuestion && isOpinion) {
-      opinionSubmitted = false;
-      opinionGradeFired = false;
-      renderedOpinionIds.clear();
-      gradedResponderIds.clear();
-    }
   }
 
   function applyOpinionRevealToBlackboard(round) {
@@ -2473,13 +2494,22 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (typedSubmitting || !els.typedAnswerInput || els.typedSubmitBtn.disabled) return;
     const answerText = els.typedAnswerInput.value || "";
     if (!answerText.trim()) return;
-    const inOpinion = !!(lastTelemetry && lastTelemetry.is_opinion && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && !opinionSubmitted);
+    const opinionQuestionId = lastTelemetry && lastTelemetry.current ? lastTelemetry.current.id : null;
+    const roundAtSubmit = lastTelemetry && lastTelemetry.active_round;
+    const inOpinion = !!(
+      lastTelemetry
+      && lastTelemetry.is_opinion
+      && roundAtSubmit
+      && !roundAtSubmit.resolved
+      && !playerOpinionRecorded(roundAtSubmit)
+      && !(opinionSubmitted && opinionSubmittedQuestionId === opinionQuestionId)
+    );
     typedSubmitting = true;
     els.typedSubmitBtn.disabled = true;
     els.typedAnswerInput.disabled = true;
     try {
       if (inOpinion) {
-        opinionSubmitted = true;
+        markOpinionSubmitted(opinionQuestionId);
         appendMsg({ kind: "you", name: playerDisplayName(), body: answerText, color: "var(--accent)" });
         els.typedAnswerInput.value = "";
         const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
@@ -2501,12 +2531,19 @@ const VIEWER_SCRIPT_SUFFIX = `
           maybeRunAnswerGraded(data.session.telemetry, 0);
         }
       }
+    } catch (err) {
+      if (inOpinion) clearOpinionSubmitted();
+      appendSystem("submit failed · " + (err && err.message ? err.message : "error"));
     } finally {
       typedSubmitting = false;
       const round = lastTelemetry && lastTelemetry.active_round;
       const locked = !!(round && round.player && round.player.isLocked);
-      els.typedAnswerInput.disabled = locked || role === "agent" || (inOpinion && opinionSubmitted);
-      els.typedSubmitBtn.disabled = locked || role === "agent" || (inOpinion && opinionSubmitted);
+      const opinionLocked = !!(
+        inOpinion
+        && (playerOpinionRecorded(round) || (opinionSubmitted && opinionSubmittedQuestionId === opinionQuestionId))
+      );
+      els.typedAnswerInput.disabled = role === "agent" || (inOpinion ? opinionLocked : locked);
+      els.typedSubmitBtn.disabled = role === "agent" || (inOpinion ? opinionLocked : locked);
     }
   }
 
@@ -5162,6 +5199,10 @@ const VIEWER_SCRIPT_SUFFIX = `
           streamMsgEl = null;
         } else if (event === "error") {
           appendSystem("error · " + (parsed.message || "unknown"));
+          fetchSession();
+          streamMsgEl = null;
+        } else if (event === "waiting" || event === "opinion-graded") {
+          fetchSession();
           streamMsgEl = null;
         }
       }
@@ -5184,7 +5225,16 @@ const VIEWER_SCRIPT_SUFFIX = `
     // If an opinion question is active and the player hasn't submitted their
     // response yet, route this chat message to /chat/opinion-submit instead
     // of the regular agent loop.
-    const inOpinion = !!(lastTelemetry && lastTelemetry.is_opinion && lastTelemetry.active_round && !lastTelemetry.active_round.resolved && !opinionSubmitted);
+    const opinionQuestionId = lastTelemetry && lastTelemetry.current ? lastTelemetry.current.id : null;
+    const roundAtSubmit = lastTelemetry && lastTelemetry.active_round;
+    const inOpinion = !!(
+      lastTelemetry
+      && lastTelemetry.is_opinion
+      && roundAtSubmit
+      && !roundAtSubmit.resolved
+      && !playerOpinionRecorded(roundAtSubmit)
+      && !(opinionSubmitted && opinionSubmittedQuestionId === opinionQuestionId)
+    );
 
     appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
     const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq };
@@ -5221,7 +5271,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       let r;
       if (inOpinion) {
-        opinionSubmitted = true;
+        markOpinionSubmitted(opinionQuestionId);
         r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -5236,6 +5286,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
       await consumeSseStream(r, streamGuard);
     } catch (err) {
+      if (inOpinion) clearOpinionSubmitted();
       if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
@@ -5385,6 +5436,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       await consumeSseStream(r, streamGuard);
     } catch (err) {
+      opinionGradeFired = false;
       if (chatStreamStillCurrent(streamGuard)) appendSystem("grading failed · " + (err && err.message ? err.message : "error"));
     }
   }

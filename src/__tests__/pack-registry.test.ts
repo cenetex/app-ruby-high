@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ORIGINAL_PACK_ID,
   ankiPackId,
+  appendQuestionToPackBank,
   availablePacksForSession,
   getActivePack,
   getPackByIdForSession,
+  MAX_PACKS_PER_OWNER,
   packForSession,
   registerPack,
   resetActivePack,
@@ -121,6 +123,29 @@ describe("registerPack — LRU eviction per owner", () => {
     expect(availablePacksForSession("session:bob")).toContainEqual(
       expect.objectContaining({ id: "anki:bob-keep" }),
     );
+  });
+
+  it("treats appended bank questions as an LRU touch", async () => {
+    await getActivePack();
+    for (let i = 0; i < MAX_PACKS_PER_OWNER; i++) {
+      registerPack(fakePack(`anki:alice-${i}`), "session:alice", 1_000 + i);
+    }
+    appendQuestionToPackBank("anki:alice-0", "anki:alice-0-teacher", {
+      id: "touch-q",
+      prompt: "Touched?",
+      options: { A: "yes", B: "no", C: "maybe", D: "later" },
+      correct: "A",
+      faculty: "anki:alice-0-teacher",
+      subject: "x",
+      difficulty: "easy",
+    }, 2_000);
+
+    registerPack(fakePack("anki:alice-new"), "session:alice", 2_001);
+
+    const aliceIds = availablePacksForSession("session:alice").map((p) => p.id);
+    expect(aliceIds).toContain("anki:alice-0");
+    expect(aliceIds).not.toContain("anki:alice-1");
+    expect(aliceIds).toContain("anki:alice-new");
   });
 });
 

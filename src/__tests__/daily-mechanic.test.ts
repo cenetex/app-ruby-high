@@ -602,6 +602,51 @@ describe("Streak + grade advancement", () => {
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
   });
 
+  it("persists clearing a stale ceremony when requirements are no longer met", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:stale-graduation-requirements-persist";
+    const state = attachCharacter(ruby, sid, "9", false);
+    state.character!.pendingGraduation = {
+      grade: "9",
+      readyAt: Date.now(),
+      summary: { correct: 1, total: 1 },
+    };
+    await ruby.flush();
+
+    expect(() => ruby.completeGraduation(sid, { kind: "advantage" })).toThrow(/requirements are not complete/i);
+    await ruby.flush();
+
+    const fresh = new RubyHighService({} as never, new StateStore(storePath));
+    await fresh["hydrate"]();
+    fresh.setFacultyService(await FacultyService.start({} as never));
+    activeRuby = fresh;
+    expect(fresh.getOrCreate(sid).character!.pendingGraduation).toBeNull();
+  });
+
+  it("persists clearing a duplicate ceremony for an already-completed grade", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:duplicate-graduation-clear-persist";
+    const state = attachCharacter(ruby, sid, "9");
+    state.character!.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    state.character!.pendingGraduation = {
+      grade: "9",
+      readyAt: Date.now(),
+      summary: { correct: 1, total: 1 },
+    };
+    state.completedGrades = ["9"];
+    await ruby.flush();
+
+    const after = ruby.completeGraduation(sid, { kind: "advantage" });
+    expect(after.character!.pendingGraduation).toBeNull();
+    await ruby.flush();
+
+    const fresh = new RubyHighService({} as never, new StateStore(storePath));
+    await fresh["hydrate"]();
+    fresh.setFacultyService(await FacultyService.start({} as never));
+    activeRuby = fresh;
+    expect(fresh.getOrCreate(sid).character!.pendingGraduation).toBeNull();
+  });
+
   it("records durable MASH axis resolution events at graduation", async () => {
     const { ruby } = await makeServices();
     const sid = "test:mash-axis-school-event";

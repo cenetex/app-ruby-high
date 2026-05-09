@@ -428,6 +428,10 @@ describe("DynamoStateStore", () => {
     const loadedSessions = await store.load();
     expect(loadedSessions.has("rh:user:state")).toBe(true);
     expect(loadedSessions.has("pack:rh%3Auser%3Atest:anki%3Acells")).toBe(false);
+
+    await store.deletePack("rh:user:test", "anki:cells");
+    expect(fake.snapshot().has("pack:rh%3Auser%3Atest:anki%3Acells")).toBe(false);
+    expect(await store.loadPacks()).toEqual([]);
   });
 
   it("deletes auth sessions by opaque token", async () => {

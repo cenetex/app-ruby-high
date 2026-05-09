@@ -1370,7 +1370,6 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
       if (type === "set-portrait") {
         const url = String((body as { portraitDataUrl?: string }).portraitDataUrl ?? "");
-        if (!url.startsWith("data:image/")) throw new Error("portraitDataUrl must be a data URL");
         const state = ruby.setPortrait(stateKey, url);
         return await sendPersistedCommandState(ctx, {
           ruby,

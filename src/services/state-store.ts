@@ -59,6 +59,7 @@ export interface StateStoreLike {
   saveAuthUser(user: AuthUserRecord): Promise<void>;
   saveAuthSession(session: AuthSessionRecord): Promise<void>;
   savePack(record: StoredContentPackRecord): Promise<void>;
+  deletePack(ownerSessionId: string, packId: string): Promise<void>;
   deleteAuthSession(token: string): Promise<void>;
   save(states: Iterable<QuizState>): Promise<void>;
   describe(): string;
@@ -255,6 +256,12 @@ export class StateStore implements StateStoreLike {
 
   savePack(record: StoredContentPackRecord): Promise<void> {
     this.importedPacks.set(packRecordKey(record.ownerSessionId, record.pack.id), record);
+    return this.scheduleWrite();
+  }
+
+  deletePack(ownerSessionId: string, packId: string): Promise<void> {
+    if (!this.importedPacks.has(packRecordKey(ownerSessionId, packId))) return Promise.resolve();
+    this.importedPacks.delete(packRecordKey(ownerSessionId, packId));
     return this.scheduleWrite();
   }
 

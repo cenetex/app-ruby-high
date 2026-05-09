@@ -574,6 +574,7 @@ export class ChatService extends Service {
             faculty: args.faculty ? String(args.faculty) : undefined,
             persistToBank: true,
           });
+          await ruby.flushSession(agentSessionId);
           return { args, payload: { ok: true, message: "Question posted." }, state };
         }
         case "pick_from_bank": {
@@ -582,6 +583,7 @@ export class ChatService extends Service {
             subject: args.subject ? String(args.subject) : undefined,
             difficulty: args.difficulty as Difficulty | undefined,
           });
+          await ruby.flushSession(agentSessionId);
           const q = state.current;
           // Minimal payload. The "no tools on iteration 2" guard makes
           // it impossible for the model to re-pick from this position,
@@ -604,6 +606,7 @@ export class ChatService extends Service {
             subject: args.subject ? String(args.subject) : undefined,
             faculty: args.faculty ? String(args.faculty) : undefined,
           });
+          await ruby.flushSession(agentSessionId);
           return {
             args,
             payload: { ok: true, message: `Opinion question on the board: ${state.current?.prompt ?? ""}` },
@@ -612,11 +615,13 @@ export class ChatService extends Service {
         }
         case "clear_board": {
           const state = ruby.clearBoard(agentSessionId);
+          await ruby.flushSession(agentSessionId);
           return { args, payload: { ok: true, message: "Cleared." }, state };
         }
         case "handoff_faculty": {
           const facultyId = String(args.faculty ?? "");
           const state = ruby.setFaculty(agentSessionId, facultyId);
+          await ruby.flushSession(agentSessionId);
           return { args, payload: { ok: true, message: `Handed off to ${state.faculty}.` }, state };
         }
         default:

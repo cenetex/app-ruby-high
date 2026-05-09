@@ -6,9 +6,17 @@ import { ChatService } from "../services/chat-service.js";
 import { publicChatHistory } from "../chat-routes.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
-import { StateStore } from "../services/state-store.js";
+import {
+  StateStore,
+  type AuthSessionRecord,
+  type AuthStoreSnapshot,
+  type AuthUserRecord,
+  type StateStoreLike,
+  type StoredContentPackRecord,
+} from "../services/state-store.js";
 import { registerPack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import type { QuizState } from "../types.js";
 
 // Smoke tests for the chat layer. The OpenRouter call is mocked so we
 // can assert on the messages that would be sent to the LLM (system
@@ -130,6 +138,40 @@ function fakeImportedPack(): ContentPack {
       teaches: true,
     }],
   };
+}
+
+class FailingSaveSessionStore implements StateStoreLike {
+  async load(): Promise<Map<string, QuizState>> {
+    return new Map();
+  }
+
+  async loadAuth(): Promise<AuthStoreSnapshot> {
+    return { users: [], sessions: [] };
+  }
+
+  async loadPacks(): Promise<StoredContentPackRecord[]> {
+    return [];
+  }
+
+  async saveSession(_state: QuizState): Promise<void> {
+    throw new Error("DynamoDB unavailable");
+  }
+
+  async saveAuthUser(_user: AuthUserRecord): Promise<void> {}
+
+  async saveAuthSession(_session: AuthSessionRecord): Promise<void> {}
+
+  async savePack(_record: StoredContentPackRecord): Promise<void> {}
+
+  async deletePack(_ownerSessionId: string, _packId: string): Promise<void> {}
+
+  async deleteAuthSession(_token: string): Promise<void> {}
+
+  async save(_states: Iterable<QuizState>): Promise<void> {}
+
+  describe(): string {
+    return "failing-save-session-store";
+  }
 }
 
 beforeEach(async () => {
@@ -265,6 +307,52 @@ describe("ChatService.send — message composition", () => {
     expect(tool.state.faculty).toBe("cells-chat-test-teacher");
     expect(tool.state.current.faculty).toBe("cells-chat-test-teacher");
     expect(tool.state.current.subject).toBe("cells");
+  });
+
+  it("returns a tool error when a board-changing tool cannot be persisted", async () => {
+    const sse = buildSseChunk([
+      {
+        toolCalls: [{
+          index: 0,
+          id: "call_pose_persist_failure",
+          function: {
+            name: "pose_question",
+            arguments: JSON.stringify({
+              prompt: "Which write path must succeed before acknowledging a tool?",
+              options: { A: "Session save", B: "Console log", C: "Timer", D: "Cache hint" },
+              correct: "A",
+            }),
+          },
+        }],
+      },
+      { finish: "tool_calls" },
+    ]);
+    mockOpenRouter(sse);
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new FailingSaveSessionStore());
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+    const chat = await ChatService.start({} as never);
+    chat.setRubyHighService(ruby);
+    activeRuby = ruby;
+
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-persist-fail",
+      agentSessionId: "session:persist-fail",
+      faculty: "ruby",
+      userMessage: "post one",
+    })) {
+      events.push(ev);
+      if (ev.type === "tool") break;
+    }
+
+    const tool = events.find((e) => e.type === "tool");
+    expect(tool).toMatchObject({
+      tool: "pose_question",
+      result: { ok: false, error: "DynamoDB unavailable" },
+    });
   });
 
   it("frames the teacher as running a group chat — names player + classmates", async () => {
