@@ -95,7 +95,8 @@ async function generateQA(apiKey: string, chunk: string): Promise<QAPair[]> {
         (item as QAPair).q.trim().length > 0 &&
         (item as QAPair).a.trim().length > 0,
     );
-  } catch {
+  } catch (err) {
+    console.warn("[pdf-pack] Failed to parse AI response as QA JSON:", err instanceof Error ? err.message : String(err), "raw:", raw.slice(0, 200));
     return [];
   }
 }
@@ -136,14 +137,17 @@ export async function buildPdfPack(
   const chunks = chunkPages(extract.pages, maxChunks);
   const sourceCards: PackSourceCard[] = [];
 
-  for (const chunk of chunks) {
+  for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
     if (sourceCards.length >= cap) break;
     try {
-      const pairs = await generateQA(opts.apiKey, chunk);
-      for (const pair of pairs) {
+      const pairs = await generateQA(opts.apiKey, chunks[chunkIdx]);
+      for (let pairIdx = 0; pairIdx < pairs.length; pairIdx++) {
         if (sourceCards.length >= cap) break;
+        const pair = pairs[pairIdx];
         sourceCards.push({
-          id: `pdf-${facultyId}-${sourceCards.length}`,
+          // ID is stable for (chunk position, pair position) so re-importing
+          // the same PDF with the same chunk size produces the same IDs.
+          id: `pdf-${facultyId}-${chunkIdx}-${pairIdx}`,
           kind: "basic",
           front: pair.q.trim(),
           back: pair.a.trim(),
@@ -155,8 +159,8 @@ export async function buildPdfPack(
           faculty: facultyId,
         });
       }
-    } catch {
-      // Skip failed chunks; continue with others.
+    } catch (err) {
+      console.warn("[pdf-pack] Chunk QA generation failed, skipping chunk:", err instanceof Error ? err.message : String(err));
     }
   }
 

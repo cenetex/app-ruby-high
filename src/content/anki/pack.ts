@@ -16,7 +16,7 @@ import type { AnkiDeck, AnkiCard } from "./parse.js";
 import { TEACHERS, type TeacherCharacter } from "../../characters/teachers.js";
 import {
   slug, shortenName, defaultIdSuffix, hashedAccent, teacherAccent,
-  importedModulePrompt, anchoredTeacherPrompt, hslToHex,
+  importedModulePrompt, anchoredTeacherPrompt,
 } from "../pack-utils.js";
 
 export interface BuildAnkiPackOpts {

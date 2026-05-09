@@ -41,6 +41,10 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfExtract> {
           const text = tc.items.map((i) => i.str).join(" ").trim();
           if (text.length > 20) pageTexts.push(text);
           return text;
+        })
+        .catch((err: unknown) => {
+          console.warn("[pdf-extract] Page render failed, skipping page:", err instanceof Error ? err.message : String(err));
+          return "";
         });
     },
   });
