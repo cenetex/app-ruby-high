@@ -899,6 +899,57 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("forceAdvanceRound resolves an idle-triggered open round as a forfeit", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:force-advance-forfeit";
+    ruby.pickAndPose(sid, { faculty: "ruby" });
+    const before = ruby.getOrCreate(sid);
+    expect(before.activeRound).not.toBeNull();
+    expect(before.activeRound?.resolved).toBeFalsy();
+
+    ruby.forceAdvanceRound(sid);
+    const after = ruby.getOrCreate(sid);
+    expect(after.activeRound?.resolved).toBe(true);
+    expect(after.lastReveal?.forfeit).toBe(true);
+  });
+
+  it("forceAdvanceRound is idempotent: calling twice on an already-resolved round is a no-op", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:force-advance-idempotent";
+    ruby.pickAndPose(sid, { faculty: "ruby" });
+    ruby.forceAdvanceRound(sid);
+    const afterFirst = ruby.getOrCreate(sid);
+    const firstReveal = afterFirst.lastReveal;
+
+    ruby.forceAdvanceRound(sid);
+    const afterSecond = ruby.getOrCreate(sid);
+    expect(afterSecond.lastReveal).toStrictEqual(firstReveal);
+  });
+
+  it("forceAdvanceRound on a no-round session does nothing", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:force-advance-no-round";
+    const before = ruby.getOrCreate(sid);
+    expect(before.activeRound).toBeNull();
+    expect(() => ruby.forceAdvanceRound(sid)).not.toThrow();
+    const after = ruby.getOrCreate(sid);
+    expect(after.lastReveal).toBeNull();
+  });
+
+  it("forceAdvanceRound marks forfeit=false when the player answered before the advance", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:force-advance-answered";
+    ruby.pickAndPose(sid, { faculty: "ruby" });
+    const state = ruby.getOrCreate(sid);
+    // Simulate player answering — set answeredAt without resolving the round
+    state.activeRound!.player.answeredAt = Date.now();
+    state.activeRound!.player.picked = state.current!.correct as "A" | "B" | "C" | "D";
+    ruby.forceAdvanceRound(sid);
+    const after = ruby.getOrCreate(sid);
+    expect(after.activeRound?.resolved).toBe(true);
+    expect(after.lastReveal?.forfeit).toBeFalsy();
+  });
+
   it("resetSession wipes everything for that sessionId", async () => {
     const { ruby } = await makeServices();
     const sid = "test:6";

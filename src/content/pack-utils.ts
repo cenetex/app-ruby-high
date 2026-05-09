@@ -24,7 +24,7 @@ export function defaultIdSuffix(): string {
   return `${t}${r}`;
 }
 
-export function hslToHex(h: number, s: number, l: number): string {
+function hslToHex(h: number, s: number, l: number): string {
   const sN = s / 100, lN = l / 100;
   const c = (1 - Math.abs(2 * lN - 1)) * sN;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));

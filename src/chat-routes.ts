@@ -1353,10 +1353,38 @@ function chatEventTurnGuard(sessionId: string, faculty: string, rawSeq: unknown)
   return () => (CHAT_EVENT_TURN_SEQ.get(key) ?? seq) !== seq;
 }
 
+/** Minimum Node.js-like response surface used by the auth/redirect helpers.
+ * ctx.res is typed as unknown at the ChatRouteContext boundary; these helpers
+ * cast to this interface once rather than repeating an inline structural type. */
+interface NodeLikeResponse {
+  statusCode: number;
+  getHeader?(name: string): unknown;
+  setHeader(name: string, value: string | string[]): void;
+  end(body?: string): void;
+}
+
+/** Whether the AI teacher may NOT call tools this turn.
+ * Priority order:
+ *  1. Class report always blocks tools (post-class board is read-only).
+ *  2. room-idle always gets tools — it must call pick_from_bank even when
+ *     the scheduler owns the board.
+ *  3. Scheduler ownership blocks tools for every other trigger.
+ * Callers may still set disableToolsForTurn=true afterwards for
+ * graduation / hint / report overrides that are computed mid-branch. */
+function shouldDisableTools(opts: {
+  trigger: string;
+  schedulerControlsBoard: boolean;
+  classReportBlocksBoard: boolean;
+}): boolean {
+  if (opts.classReportBlocksBoard) return true;
+  if (opts.trigger === "room-idle") return false;
+  return opts.schedulerControlsBoard;
+}
+
 /** 429 helper. Sets Retry-After before delegating to ctx.error so the host's
  *  error renderer doesn't have to know about rate-limit semantics. */
 function reject429(ctx: ChatRouteContext, retryAfterSeconds: number): void {
-  const r = ctx.res as { setHeader?: (n: string, v: string) => void };
+  const r = ctx.res as Partial<NodeLikeResponse>;
   if (typeof r.setHeader === "function") {
     r.setHeader("Retry-After", String(Math.max(1, retryAfterSeconds)));
   }
@@ -1431,7 +1459,7 @@ function getService<T>(runtime: IAgentRuntime | null, type: string): T | null {
 }
 
 function setCookieHeader(res: unknown, value: string): void {
-  const r = res as { setHeader: (name: string, value: string | string[]) => void; getHeader?: (name: string) => unknown };
+  const r = res as NodeLikeResponse;
   const existing = r.getHeader?.("Set-Cookie");
   if (Array.isArray(existing)) r.setHeader("Set-Cookie", [...existing, value]);
   else if (typeof existing === "string") r.setHeader("Set-Cookie", [existing, value]);
@@ -1439,7 +1467,7 @@ function setCookieHeader(res: unknown, value: string): void {
 }
 
 function redirect(res: unknown, location: string): void {
-  const r = res as { setHeader: (n: string, v: string) => void; statusCode: number; end: (b?: string) => void };
+  const r = res as NodeLikeResponse;
   r.statusCode = 302;
   r.setHeader("Location", location);
   r.end();
@@ -1514,7 +1542,7 @@ function writeAuthCallbackHtml(
 </script>
 </body>
 </html>`;
-  const r = res as { setHeader: (n: string, v: string) => void; statusCode: number; end: (b?: string) => void };
+  const r = res as NodeLikeResponse;
   r.statusCode = 200;
   r.setHeader("Content-Type", "text/html; charset=utf-8");
   r.setHeader("Cache-Control", "no-store");
@@ -1550,7 +1578,7 @@ function writeAuthDeclinedHtml(res: unknown, redirectTo: string): void {
 </script>
 </body>
 </html>`;
-  const r = res as { setHeader: (n: string, v: string) => void; statusCode: number; end: (b?: string) => void };
+  const r = res as NodeLikeResponse;
   r.statusCode = 200;
   r.setHeader("Content-Type", "text/html; charset=utf-8");
   r.setHeader("Cache-Control", "no-store");
@@ -1908,7 +1936,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const schedulerControlsBoard = !classReportBlocksBoard && schedulerOwnsBoard(bank);
     const playerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
     let directive = "";
-    let disableToolsForTurn = schedulerControlsBoard || classReportBlocksBoard;
+    let disableToolsForTurn = shouldDisableTools({ trigger, schedulerControlsBoard, classReportBlocksBoard });
     let extraSystemContext: string | undefined;
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
@@ -1976,15 +2004,22 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
       }
     } else if (trigger === "room-idle") {
-      // The scheduler may own the board (scheduled cards available), which
-      // normally disables tools — but room-idle MUST be able to call
-      // pick_from_bank to post the next question. Override the flag here.
-      disableToolsForTurn = false;
+      // disableToolsForTurn is already correct: shouldDisableTools() lets
+      // room-idle override the scheduler's block while still respecting the
+      // class report block. No manual override needed here.
       const state = ruby.getOrCreate(sessionId);
+      // Guard against concurrent or duplicate room-idle requests for the same round.
+      if (!state.activeRound || state.activeRound.resolved || !state.activeRound.idleTriggered) {
+        send("done", { type: "done", finishReason: "stale-idle" });
+        res.write("event: end\ndata: {}\n\n");
+        res.end();
+        return true;
+      }
       const playerName = state.character?.name ?? "the student";
-      // Force-resolve the open round before the teacher speaks so the board
-      // context reads RECENTLY_RESOLVED (forfeit) rather than WAITING. The
-      // teacher then reacts and posts the next question just like answer-graded.
+      // forceAdvanceRound must come before buildResolvedAnswerBriefing because
+      // the briefing reads state.lastReveal, which is only populated after the
+      // round resolves. The ordering is intentional: the teacher's directive
+      // describes a just-forfeited round, not an open one.
       ruby.forceAdvanceRound(sessionId);
       const resolvedState = ruby.getOrCreate(sessionId);
       const resolved = buildResolvedAnswerBriefing({ state: resolvedState, playerName });
