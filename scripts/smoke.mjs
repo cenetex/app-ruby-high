@@ -50,6 +50,8 @@
 const baseArg = process.argv[2] || process.env.SMOKE_BASE || "http://127.0.0.1:8080";
 const base = baseArg.replace(/\/+$/, "");
 const TIMEOUT_MS = 20_000;
+const READY_TIMEOUT_MS = Number(process.env.SMOKE_READY_TIMEOUT_MS || 90_000);
+const READY_POLL_MS = Number(process.env.SMOKE_READY_POLL_MS || 2_000);
 
 let failed = 0;
 let smokeCookie = "";
@@ -84,6 +86,14 @@ async function readJson(r) {
   return r.json().catch(() => null);
 }
 
+async function readText(r) {
+  return r.text().catch(() => "");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function postJson(path, body, cookie = smokeCookie) {
   return fetchWithTimeout(`${base}${path}`, {
     method: "POST",
@@ -110,6 +120,38 @@ function extractFunctionBody(src, name) {
     }
   }
   return "";
+}
+
+async function waitForAppReady() {
+  const name = "readiness";
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  let attempts = 0;
+  let last = "";
+
+  while (Date.now() <= deadline) {
+    attempts++;
+    try {
+      const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/auth/me`);
+      const text = await readText(r.clone());
+      if (r.status === 200) {
+        const body = await readJson(r);
+        if (body && typeof body.authed === "boolean" && typeof body.session === "boolean" && typeof body.ai === "boolean") {
+          return ok(name, `app routes ready after ${attempts} ${attempts === 1 ? "try" : "tries"}`);
+        }
+        last = `status 200 with unexpected body: ${text.slice(0, 200)}`;
+      } else {
+        last = `status ${r.status}: ${text.slice(0, 200)}`;
+        if (r.status !== 503 || !/Ruby High is starting/i.test(text)) {
+          return fail(name, last);
+        }
+      }
+    } catch (e) {
+      last = e?.message || String(e);
+    }
+    await sleep(READY_POLL_MS);
+  }
+
+  fail(name, `timed out after ${Math.round(READY_TIMEOUT_MS / 1000)}s; last response: ${last || "none"}`);
 }
 
 async function check1Health() {
@@ -320,6 +362,12 @@ async function check7AuthGate() {
 console.log(`smoke target: ${base}\n`);
 
 await check1Health();
+await waitForAppReady();
+if (failed > 0) {
+  console.log();
+  console.error(`✗ ${failed} smoke check${failed === 1 ? "" : "s"} failed`);
+  process.exit(1);
+}
 await check2ViewerRenders();
 await check3AuthStart();
 await check4AuthMe();
