@@ -2575,9 +2575,8 @@ export const VIEWER_CSS = `
     margin: 0 auto;
     width: min(100%, 640px);
     display: grid;
-    grid-template-columns: minmax(104px, 0.72fr) minmax(0, 1.28fr);
-    align-items: center;
-    gap: 14px;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: clamp(8px, 1.8vw, 12px);
     padding: clamp(10px, 2.2vw, 16px);
     border: 2px solid rgba(255,255,255,0.24);
     border-radius: 8px;
@@ -2585,18 +2584,19 @@ export const VIEWER_CSS = `
     color: var(--ink);
     box-shadow: inset 0 0 22px rgba(0,0,0,0.12);
     max-height: 100%;
-    overflow: hidden;
+    overflow: visible;
   }
-  .board .class-report-grade-block {
+  .board .class-report-main {
     min-width: 0;
     display: grid;
-    justify-items: center;
+    grid-template-columns: auto minmax(0, 1fr) minmax(78px, 0.42fr);
     align-items: center;
-    gap: 6px;
+    gap: clamp(10px, 2.4vw, 18px);
   }
   .board .class-report-heading {
     min-width: 0;
-    text-align: center;
+    text-align: left;
+    align-self: center;
   }
   .board .class-report-title {
     font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
@@ -2614,6 +2614,32 @@ export const VIEWER_CSS = `
     line-height: 1.14;
     margin-top: 4px;
     text-transform: lowercase;
+  }
+  .board .class-report-teacher-art {
+    position: relative;
+    justify-self: end;
+    align-self: end;
+    width: clamp(76px, 15vw, 118px);
+    height: clamp(76px, 16vw, 122px);
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0.95;
+  }
+  .board .class-report-teacher-art::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(26,77,45,0.55), rgba(26,77,45,0) 42%),
+      linear-gradient(0deg, rgba(26,77,45,0.72), rgba(26,77,45,0) 34%);
+    pointer-events: none;
+  }
+  .board .class-report-teacher-art img {
+    width: 100%;
+    height: 114%;
+    object-fit: contain;
+    object-position: center bottom;
+    mix-blend-mode: multiply;
+    filter: saturate(1.05) contrast(1.06);
   }
   .board .class-report-letter {
     width: clamp(72px, 13vw, 108px);
@@ -2633,8 +2659,8 @@ export const VIEWER_CSS = `
   }
   .board .class-report-metrics {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 5px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
     min-width: 0;
   }
   .board .class-report-metric {
@@ -2644,7 +2670,7 @@ export const VIEWER_CSS = `
     background: rgba(255,255,255,0.08);
     padding: 6px 8px;
     display: grid;
-    grid-template-columns: minmax(56px, 0.38fr) minmax(0, 0.62fr);
+    grid-template-columns: minmax(54px, 0.38fr) minmax(0, 0.62fr);
     column-gap: 9px;
     align-items: baseline;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
@@ -2673,9 +2699,32 @@ export const VIEWER_CSS = `
     font-weight: 900;
     line-height: 1.05;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
     text-align: right;
+  }
+  .board .class-report-star-meter {
+    display: inline-flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: clamp(2px, 0.65vw, 5px);
+    width: 100%;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .board .class-report-star-meter.is-count {
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+  }
+  .board .class-report-star {
+    flex: 0 1 auto;
+    min-width: 0;
+    color: rgba(255,255,255,0.42);
+    font-size: clamp(13px, 2vw, 20px);
+    line-height: 1;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.16);
+  }
+  .board .class-report-star.is-filled {
+    color: #fff6d1;
   }
   @media (max-width: 620px) {
     .blackboard-panel[data-question-type="class-report"] .board {
@@ -2683,17 +2732,21 @@ export const VIEWER_CSS = `
       padding: 10px;
     }
     .board .class-report-card {
-      grid-template-columns: minmax(74px, 0.68fr) minmax(0, 1.32fr);
       gap: 8px;
       padding: 9px;
     }
-    .board .class-report-grade-block {
-      gap: 4px;
+    .board .class-report-main {
+      grid-template-columns: auto minmax(0, 1fr) minmax(58px, 0.32fr);
+      gap: 8px;
     }
     .board .class-report-letter {
       width: clamp(64px, 19vw, 82px);
       height: clamp(64px, 19vw, 82px);
       font-size: clamp(34px, 10vw, 46px);
+    }
+    .board .class-report-teacher-art {
+      width: clamp(58px, 15vw, 76px);
+      height: clamp(62px, 17vw, 82px);
     }
     .board .class-report-metric {
       padding: 5px 7px;
@@ -2722,14 +2775,14 @@ export const VIEWER_CSS = `
   }
   @media (max-width: 440px) {
     .board .class-report-card {
-      grid-template-columns: 1fr;
       gap: 6px;
     }
-    .board .class-report-grade-block {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
+    .board .class-report-main {
+      grid-template-columns: auto minmax(0, 1fr);
       gap: 10px;
+    }
+    .board .class-report-teacher-art {
+      display: none;
     }
     .board .class-report-heading {
       text-align: left;

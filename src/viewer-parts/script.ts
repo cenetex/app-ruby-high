@@ -1259,8 +1259,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     const wrap = document.createElement("section");
     wrap.className = "class-report-card" + (passedToday ? " is-passed" : " needs-work");
 
-    const gradeBlock = document.createElement("div");
-    gradeBlock.className = "class-report-grade-block";
+    const main = document.createElement("div");
+    main.className = "class-report-main";
     const badge = document.createElement("div");
     badge.className = "class-report-letter";
     badge.textContent = letter;
@@ -1274,9 +1274,24 @@ const VIEWER_SCRIPT_SUFFIX = `
     subtitle.textContent = passedToday ? "credit earned" : "practice open";
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
-    gradeBlock.appendChild(badge);
-    gradeBlock.appendChild(titleWrap);
-    wrap.appendChild(gradeBlock);
+    main.appendChild(badge);
+    main.appendChild(titleWrap);
+
+    const artAssetId = faculty && (faculty.assetTeacherId || knownTeacherAssetId(faculty));
+    if (artAssetId) {
+      const art = document.createElement("div");
+      art.className = "class-report-teacher-art";
+      const img = document.createElement("img");
+      img.alt = "";
+      img.decoding = "async";
+      img.loading = "lazy";
+      img.src = teacherAssetUrl(artAssetId, "");
+      img.onerror = () => art.remove();
+      art.appendChild(img);
+      main.appendChild(art);
+    }
+
+    wrap.appendChild(main);
 
     const metrics = document.createElement("div");
     metrics.className = "class-report-metrics";
@@ -1288,7 +1303,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       k.textContent = label;
       const v = document.createElement("span");
       v.className = "v";
-      v.textContent = value;
+      if (value instanceof Node) v.appendChild(value);
+      else v.textContent = value;
       const d = document.createElement("span");
       d.className = "d";
       d.textContent = detail;
@@ -1299,10 +1315,21 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
     addMetric("score", formatClassScore(today.score), "average");
     const classesLeft = Math.max(0, required - completed);
-    const classStars = required > 0
-      ? "★".repeat(completed) + "☆".repeat(classesLeft)
-      : classesLeft + " left";
-    addMetric("classes", classStars, "to ceremony");
+    const classProgress = document.createElement("span");
+    classProgress.className = "class-report-star-meter";
+    if (required > 0 && required <= 5) {
+      classProgress.setAttribute("aria-label", completed + " of " + required + " classes complete");
+      for (let i = 0; i < required; i++) {
+        const star = document.createElement("span");
+        star.className = "class-report-star" + (i < completed ? " is-filled" : "");
+        star.textContent = "★";
+        classProgress.appendChild(star);
+      }
+    } else {
+      classProgress.classList.add("is-count");
+      classProgress.textContent = required > 0 ? completed + "/" + required : classesLeft + " left";
+    }
+    addMetric("classes", classProgress, "to ceremony");
     wrap.appendChild(metrics);
     return wrap;
   }
