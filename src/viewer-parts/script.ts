@@ -1233,9 +1233,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const progress = lastTelemetry && lastTelemetry.active_course_progress;
     const today = progress && progress.today;
     if (!progress || !today || today.status !== "complete") return null;
-    const gradeLabel = currentGrade ? (GRADE_LABELS[currentGrade] || ("Grade " + currentGrade)) : "Ruby High";
     const teacherName = teacherShortName(faculty, progress.displayName);
-    const letter = today.letterGrade || progress.grade || "—";
+    // Cumulative course grade — matches the channels-rail pill so board
+    // and menu always show the same letter.
+    const letter = progress.grade || today.letterGrade || "—";
     const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
     const completed = Number(progress.completedClasses || 0);
     const required = Number(progress.requiredClasses || 0);
@@ -1406,11 +1407,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.raceRow.innerHTML = "";
       return;
     }
-    // Timer: show "done" after resolve; hide the countdown while live since
-    // the idle-trigger (not a forfeit clock) drives pacing now.
-    els.timerLabel.textContent = round.resolved ? "done" : "";
-    els.timerPill.classList.toggle("is-warn", false);
-    els.timerPill.classList.toggle("is-danger", false);
+    // Timer label (uses server-derived remainingMs as the source of truth).
+    const remainingS = Math.max(0, Math.ceil((round.remainingMs ?? 0) / 1000));
+    els.timerLabel.textContent = round.resolved ? "done" : remainingS + "s";
+    els.timerPill.classList.toggle("is-warn", !round.resolved && remainingS <= 10 && remainingS > 5);
+    els.timerPill.classList.toggle("is-danger", !round.resolved && remainingS <= 5);
     els.timerPill.classList.toggle("is-locked", !!round.resolved);
 
     // Per-participant cards (player + NPCs).
@@ -2037,12 +2038,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     head.className = "head";
     const name = document.createElement("span");
     name.className = "name";
-    name.textContent = "Social card";
+    name.textContent = "Social Shift";
     head.appendChild(name);
-    const tag = document.createElement("span");
-    tag.className = "role-tag social";
-    tag.textContent = "MASH";
-    head.appendChild(tag);
     const stamp = document.createElement("span");
     stamp.className = "stamp";
     stamp.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -2050,10 +2047,6 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const body = document.createElement("div");
     body.className = "body";
-    const title = document.createElement("div");
-    title.className = "social-summary-title";
-    title.textContent = "Social shift";
-    body.appendChild(title);
     const list = document.createElement("div");
     list.className = "social-summary-list";
     events.forEach((event) => {
@@ -2372,6 +2365,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     closeRails();
   }
   async function pickNext() {
+    // Graduation ceremony is always accessible — bypass the agentBusy guard so
+    // the Ceremony button works even while a teacher SSE turn is in flight.
+    if (lastTelemetry && lastTelemetry.graduation_ready && !lastTelemetry.current) {
+      openSheet();
+      return;
+    }
     if (manualChatBusy || agentBusy) return;
     const now = Date.now();
     if (now - lastChatButtonAt < 900) return;
@@ -4049,12 +4048,18 @@ const VIEWER_SCRIPT_SUFFIX = `
       }));
     }
 
-    const hint = buildNextStepHint(c);
-    if (hint) {
-      const ns = document.createElement("div");
-      ns.className = "ccg-next-step";
-      ns.textContent = hint;
-      body.appendChild(ns);
+    const ceremonyReady = !!(t.graduation_ready || c.pendingGraduation);
+    if (ceremonyReady) {
+      const ceremony = buildGraduationCeremony(c, grade, {});
+      if (ceremony) body.appendChild(ceremony);
+    } else {
+      const hint = buildNextStepHint(c);
+      if (hint) {
+        const ns = document.createElement("div");
+        ns.className = "ccg-next-step";
+        ns.textContent = hint;
+        body.appendChild(ns);
+      }
     }
 
     appendProgression(body, buildProgressionForCharacter(c));

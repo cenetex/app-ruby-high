@@ -48,7 +48,6 @@
     "@elizaos/core": "2.0.0-alpha.535"
   },
   "devDependencies": {
-    "@types/pdf-parse": "^1.1.4",
     "@types/sql.js": "^1.4.11",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",

@@ -1313,6 +1313,17 @@ export const VIEWER_CSS = `
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
+  /* When the teacher portrait is visible, push board text away from the figure.
+   * Figure is position:absolute inside .board-frame-host; board is inside .board-frame.
+   * Default: 64px wide + 8px right offset + 10px gap = 82px right padding.
+   * @720px: 92px + 12px + 10px = 114px. @1100px: 110px + 16px + 10px = 136px. */
+  .board-frame-host:has(.teacher-figure:not([hidden])) .board { padding-right: 82px; }
+  @media (min-width: 720px) {
+    .board-frame-host:has(.teacher-figure:not([hidden])) .board { padding-right: 114px; }
+  }
+  @media (min-width: 1100px) {
+    .board-frame-host:has(.teacher-figure:not([hidden])) .board { padding-right: 136px; }
+  }
   .blackboard-panel[data-faculty="ruby"] .board {
     font-family: "RubyHighCaveat", "Caveat", "Patrick Hand", "Segoe Print", cursive;
     font-size: 26px;
@@ -1555,14 +1566,6 @@ export const VIEWER_CSS = `
     color: #b8e4ff;
     font-weight: 900;
     font-family: "SF Mono", "Menlo", monospace;
-  }
-  .social-summary-title {
-    font-weight: 900;
-    font-size: 13px;
-    letter-spacing: 0;
-    text-transform: uppercase;
-    color: var(--text-soft);
-    margin-bottom: 5px;
   }
   .social-summary-list {
     display: grid;

@@ -1521,6 +1521,42 @@ function writeAuthCallbackHtml(
   r.end(html);
 }
 
+/** Render a friendly "you declined" page that auto-redirects back to the app
+ *  instead of showing a raw JSON error when the user cancels the OAuth flow. */
+function writeAuthDeclinedHtml(res: unknown, redirectTo: string): void {
+  const safeRedirect = JSON.stringify(redirectTo);
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ruby High</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #0d1018; color: #f1f1f1; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+  main { text-align: center; padding: 24px; max-width: 420px; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  p { font-size: 14px; color: #b8b8c8; margin: 4px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sign-in cancelled.</h1>
+  <p>Heading back to the school…</p>
+</main>
+<script>
+(function () {
+  try { window.location.replace(${safeRedirect}); } catch (e) {}
+})();
+</script>
+</body>
+</html>`;
+  const r = res as { setHeader: (n: string, v: string) => void; statusCode: number; end: (b?: string) => void };
+  r.statusCode = 200;
+  r.setHeader("Content-Type", "text/html; charset=utf-8");
+  r.setHeader("Cache-Control", "no-store");
+  r.end(html);
+}
+
 function defaultCallbackBuilder(ctx: ChatRouteContext): (path: string) => string {
   if (ctx.callbackUrlBuilder) return ctx.callbackUrlBuilder;
   return (path: string) => {
@@ -1576,7 +1612,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const code = ctx.url?.searchParams.get("code") ?? "";
     const state = ctx.url?.searchParams.get("state") ?? "";
     if (!code || !state) {
-      ctx.error(ctx.res, "Missing 'code' or 'state' in callback.", 400);
+      // User declined the OAuth flow (or arrived without valid params).
+      // Redirect back to the app rather than surfacing a raw JSON error.
+      const back = safeAuthRedirect(ctx.url?.searchParams.get("redirect"));
+      writeAuthDeclinedHtml(ctx.res, back);
       return true;
     }
     try {
