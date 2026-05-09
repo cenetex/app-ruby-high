@@ -2038,12 +2038,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     head.className = "head";
     const name = document.createElement("span");
     name.className = "name";
-    name.textContent = "Social card";
+    name.textContent = "Social Shift";
     head.appendChild(name);
-    const tag = document.createElement("span");
-    tag.className = "role-tag social";
-    tag.textContent = "MASH";
-    head.appendChild(tag);
     const stamp = document.createElement("span");
     stamp.className = "stamp";
     stamp.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -2051,10 +2047,6 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const body = document.createElement("div");
     body.className = "body";
-    const title = document.createElement("div");
-    title.className = "social-summary-title";
-    title.textContent = "Social shift";
-    body.appendChild(title);
     const list = document.createElement("div");
     list.className = "social-summary-list";
     events.forEach((event) => {

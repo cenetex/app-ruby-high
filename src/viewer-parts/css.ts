@@ -1567,14 +1567,6 @@ export const VIEWER_CSS = `
     font-weight: 900;
     font-family: "SF Mono", "Menlo", monospace;
   }
-  .social-summary-title {
-    font-weight: 900;
-    font-size: 13px;
-    letter-spacing: 0;
-    text-transform: uppercase;
-    color: var(--text-soft);
-    margin-bottom: 5px;
-  }
   .social-summary-list {
     display: grid;
     gap: 5px;
