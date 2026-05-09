@@ -1407,11 +1407,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.raceRow.innerHTML = "";
       return;
     }
-    // Timer: show "done" after resolve; hide the countdown while live since
-    // the idle-trigger (not a forfeit clock) drives pacing now.
-    els.timerLabel.textContent = round.resolved ? "done" : "";
-    els.timerPill.classList.toggle("is-warn", false);
-    els.timerPill.classList.toggle("is-danger", false);
+    // Timer label (uses server-derived remainingMs as the source of truth).
+    const remainingS = Math.max(0, Math.ceil((round.remainingMs ?? 0) / 1000));
+    els.timerLabel.textContent = round.resolved ? "done" : remainingS + "s";
+    els.timerPill.classList.toggle("is-warn", !round.resolved && remainingS <= 10 && remainingS > 5);
+    els.timerPill.classList.toggle("is-danger", !round.resolved && remainingS <= 5);
     els.timerPill.classList.toggle("is-locked", !!round.resolved);
 
     // Per-participant cards (player + NPCs).
@@ -2373,6 +2373,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     closeRails();
   }
   async function pickNext() {
+    // Graduation ceremony is always accessible — bypass the agentBusy guard so
+    // the Ceremony button works even while a teacher SSE turn is in flight.
+    if (lastTelemetry && lastTelemetry.graduation_ready && !lastTelemetry.current) {
+      openSheet();
+      return;
+    }
     if (manualChatBusy || agentBusy) return;
     const now = Date.now();
     if (now - lastChatButtonAt < 900) return;
@@ -4050,12 +4056,18 @@ const VIEWER_SCRIPT_SUFFIX = `
       }));
     }
 
-    const hint = buildNextStepHint(c);
-    if (hint) {
-      const ns = document.createElement("div");
-      ns.className = "ccg-next-step";
-      ns.textContent = hint;
-      body.appendChild(ns);
+    const ceremonyReady = !!(t.graduation_ready || c.pendingGraduation);
+    if (ceremonyReady) {
+      const ceremony = buildGraduationCeremony(c, grade, {});
+      if (ceremony) body.appendChild(ceremony);
+    } else {
+      const hint = buildNextStepHint(c);
+      if (hint) {
+        const ns = document.createElement("div");
+        ns.className = "ccg-next-step";
+        ns.textContent = hint;
+        body.appendChild(ns);
+      }
     }
 
     appendProgression(body, buildProgressionForCharacter(c));
