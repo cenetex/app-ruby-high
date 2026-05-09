@@ -142,7 +142,7 @@ describe("buildAnkiPack — happy path", () => {
     expect(fac.assetTeacherId).toBe("sally-science");
     expect(fac.accent).toBe("#3aa3e0");
     expect(fac.systemPrompt).toContain("You are Sally Science");
-    expect(fac.systemPrompt).toContain('Imported Anki module: "AP Biology — Cells"');
+    expect(fac.systemPrompt).toContain('This session you are teaching "AP Biology — Cells"');
     expect(pack.courses?.[0]).toMatchObject({
       id: fac.id,
       facultyId: fac.id,
