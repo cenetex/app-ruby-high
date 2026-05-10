@@ -24,6 +24,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/assets ./assets
 COPY scripts/server.mjs ./scripts/server.mjs
+COPY scripts/http-limits.mjs ./scripts/http-limits.mjs
 COPY elizaos.plugin.json ./
 RUN mkdir -p /data
 EXPOSE 8080
