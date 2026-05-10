@@ -30,6 +30,16 @@ describe("production startup guardrails", () => {
     expect(flyConfig).toContain('path = "/health"');
   });
 
+  it("packages every runtime script imported by the production server", () => {
+    expect(dockerfile).toContain("COPY scripts/server.mjs ./scripts/server.mjs");
+    const relativeScriptImports = [...serverEntry.matchAll(/from "\.\/([^"]+\.mjs)"/g)]
+      .map((match) => match[1]);
+    expect(relativeScriptImports).toContain("http-limits.mjs");
+    for (const file of relativeScriptImports) {
+      expect(dockerfile).toContain(`COPY scripts/${file} ./scripts/${file}`);
+    }
+  });
+
   it("keeps host JSON body caps aligned for all large import routes", () => {
     expect(httpLimits).toContain('"/api/apps/ruby-high/packs/import-anki"');
     expect(httpLimits).toContain('"/api/apps/ruby-high/packs/import-pdf"');
