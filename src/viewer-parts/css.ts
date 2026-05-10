@@ -2659,7 +2659,7 @@ export const VIEWER_CSS = `
   }
   .board .class-report-metrics {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.9fr) minmax(0, 1.14fr);
     gap: 8px;
     min-width: 0;
   }
@@ -2751,6 +2751,7 @@ export const VIEWER_CSS = `
     .board .class-report-metric {
       padding: 5px 7px;
       column-gap: 7px;
+      grid-template-columns: minmax(44px, 0.36fr) minmax(0, 0.64fr);
     }
     .board .class-report-metric .d {
       display: none;
@@ -2788,7 +2789,7 @@ export const VIEWER_CSS = `
       text-align: left;
     }
     .board .class-report-metrics {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 5px;
     }
   }

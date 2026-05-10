@@ -1250,9 +1250,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     const today = progress && progress.today;
     if (!progress || !today || today.status !== "complete") return null;
     const teacherName = teacherShortName(faculty, progress.displayName);
-    // Cumulative course grade — matches the channels-rail pill so board
-    // and menu always show the same letter.
-    const letter = progress.grade || today.letterGrade || "—";
+    const classLetter = today.letterGrade || letterGradeForScore(today.score);
+    const courseLetter = progress.grade || "—";
     const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
     const completed = Number(progress.completedClasses || 0);
     const required = Number(progress.requiredClasses || 0);
@@ -1263,7 +1262,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     main.className = "class-report-main";
     const badge = document.createElement("div");
     badge.className = "class-report-letter";
-    badge.textContent = letter;
+    badge.textContent = classLetter;
     const titleWrap = document.createElement("div");
     titleWrap.className = "class-report-heading";
     const title = document.createElement("div");
@@ -1271,7 +1270,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     title.textContent = "Teacher " + teacherName;
     const subtitle = document.createElement("div");
     subtitle.className = "class-report-subtitle";
-    subtitle.textContent = passedToday ? "credit earned" : "practice open";
+    subtitle.textContent = passedToday ? "daily credit earned" : "practice open";
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
     main.appendChild(badge);
@@ -1314,6 +1313,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       metrics.appendChild(item);
     };
     addMetric("score", formatClassScore(today.score), "average");
+    addMetric("course", courseLetter, "standing");
     const classesLeft = Math.max(0, required - completed);
     const classProgress = document.createElement("span");
     classProgress.className = "class-report-star-meter";
