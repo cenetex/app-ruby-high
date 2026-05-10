@@ -208,6 +208,20 @@ describe("/packs/import-anki — body validation", () => {
     expect(lastResponse?.status).toBe(400);
   });
 
+  it("rejects malformed base64 with 400 before parsing the deck", async () => {
+    signInUser("alice");
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/import-anki",
+      cookie: "rh_session=alice",
+      apiKey: "sk-test",
+      body: { filename: "bad.apkg", data: "!!!!" },
+    });
+    await handlePackRoutes(ctx, makeDeps());
+    expect(lastResponse?.status).toBe(400);
+    expect(String(lastResponse?.body.error)).toMatch(/valid base64/i);
+  });
+
   it("imports without an OpenRouter key", async () => {
     signInUser("alice");
     const apkgBytes = await buildApkgFixture("No Key Deck", [

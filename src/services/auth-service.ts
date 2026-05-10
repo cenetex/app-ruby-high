@@ -245,7 +245,13 @@ export class AuthService extends Service {
     for (const p of parts) {
       const i = p.indexOf("=");
       if (i < 0) continue;
-      if (p.slice(0, i) === SESSION_COOKIE) return decodeURIComponent(p.slice(i + 1));
+      if (p.slice(0, i) === SESSION_COOKIE) {
+        try {
+          return decodeURIComponent(p.slice(i + 1));
+        } catch {
+          return null;
+        }
+      }
     }
     return null;
   }

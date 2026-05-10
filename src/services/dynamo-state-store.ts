@@ -66,6 +66,7 @@ export interface DynamoDBDocumentClientLike {
 const DEFAULT_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
 const DEFAULT_BATCH_WRITE_MAX_RETRIES = 5;
 const DEFAULT_BATCH_WRITE_BASE_DELAY_MS = 50;
+const SCAN_CACHE_MS = 1_000;
 
 type BatchPutRequest = { PutRequest: { Item: Record<string, unknown> } };
 type BatchWriteRequestItems = Record<string, BatchPutRequest[]>;
@@ -95,6 +96,7 @@ export class DynamoStateStore implements StateStoreLike {
   private readonly batchWriteBaseDelayMs: number;
   private readonly pendingSessionWrites = new Map<string, PendingSessionWrite>();
   private readonly sessionWriteChains = new Map<string, Promise<void>>();
+  private scanCache: { at: number; promise: Promise<Array<Record<string, unknown>>> } | null = null;
 
   constructor(opts: DynamoStateStoreOptions) {
     if (!opts.tableName) throw new Error("DynamoStateStore: tableName is required");
@@ -179,6 +181,19 @@ export class DynamoStateStore implements StateStoreLike {
   }
 
   private async scanAll(): Promise<Array<Record<string, unknown>>> {
+    const now = Date.now();
+    if (this.scanCache && now - this.scanCache.at <= SCAN_CACHE_MS) {
+      return this.scanCache.promise;
+    }
+    const promise = this.scanAllUncached().catch((err) => {
+      if (this.scanCache?.promise === promise) this.scanCache = null;
+      throw err;
+    });
+    this.scanCache = { at: now, promise };
+    return promise;
+  }
+
+  private async scanAllUncached(): Promise<Array<Record<string, unknown>>> {
     const items: Array<Record<string, unknown>> = [];
     let lastEvaluatedKey: Record<string, unknown> | undefined;
     do {
@@ -196,7 +211,12 @@ export class DynamoStateStore implements StateStoreLike {
     return items;
   }
 
+  private invalidateScanCache(): void {
+    this.scanCache = null;
+  }
+
   async saveSession(state: QuizState): Promise<void> {
+    this.invalidateScanCache();
     const item = this.toItem(state);
     const pk = state.sessionId;
     if (this.debounceMs <= 0) {
@@ -262,6 +282,7 @@ export class DynamoStateStore implements StateStoreLike {
   }
 
   async saveAuthUser(user: AuthUserRecord): Promise<void> {
+    this.invalidateScanCache();
     await this.client.send(new PutCommand({
       TableName: this.tableName,
       Item: {
@@ -273,6 +294,7 @@ export class DynamoStateStore implements StateStoreLike {
   }
 
   async saveAuthSession(session: AuthSessionRecord): Promise<void> {
+    this.invalidateScanCache();
     const item: Record<string, unknown> = {
       pk: `auth:session:${session.token}`,
       authSession: session,
@@ -286,6 +308,7 @@ export class DynamoStateStore implements StateStoreLike {
   }
 
   async savePack(record: StoredContentPackRecord): Promise<void> {
+    this.invalidateScanCache();
     const item: Record<string, unknown> = {
       pk: this.packPk(record.ownerSessionId, record.pack.id),
       contentPack: record,
@@ -301,6 +324,7 @@ export class DynamoStateStore implements StateStoreLike {
   }
 
   async deletePack(ownerSessionId: string, packId: string): Promise<void> {
+    this.invalidateScanCache();
     await this.client.send(new DeleteCommand({
       TableName: this.tableName,
       Key: { pk: this.packPk(ownerSessionId, packId) },
@@ -308,6 +332,7 @@ export class DynamoStateStore implements StateStoreLike {
   }
 
   async deleteAuthSession(token: string): Promise<void> {
+    this.invalidateScanCache();
     await this.client.send(new DeleteCommand({
       TableName: this.tableName,
       Key: { pk: `auth:session:${token}` },
@@ -316,6 +341,7 @@ export class DynamoStateStore implements StateStoreLike {
 
   /** Bulk write — used by tests / migrations. Chunks at 25 (BatchWrite cap). */
   async save(states: Iterable<QuizState>): Promise<void> {
+    this.invalidateScanCache();
     const items = Array.from(states);
     if (this.pendingSessionWrites.size > 0 || this.sessionWriteChains.size > 0) {
       await this.flush();

@@ -5520,16 +5520,17 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   async function fetchSession() {
-    // Snapshot the command seq at request start. If a command lands while
-    // we're waiting on the network, our GET's response is from BEFORE the
-    // command's mutation — discard rather than overwrite the fresh state
-    // the command response already rendered.
+    // Snapshot command counters at request start. If a command starts or
+    // settles while this GET is in flight, the GET may represent pre-command
+    // state; discard rather than overwrite the command response already
+    // rendered.
     const seqAtStart = commandSeq;
+    const settledAtStart = lastSettledCommandSeq;
     try {
       const r = await fetch(sessionUrl, { credentials: "same-origin" });
       if (!r.ok) throw new Error("session " + r.status);
       const s = await r.json();
-      if (lastSettledCommandSeq > seqAtStart) return;
+      if (commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart) return;
       render(s);
     } catch {
       if (!lastTelemetry && els.blackboardEmptyText) {

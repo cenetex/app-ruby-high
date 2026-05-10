@@ -341,7 +341,16 @@ export async function handlePackRoutes(
 
 function base64ToBytes(b64: string): Uint8Array {
   // Strip data: prefix if present (data:application/octet-stream;base64,...).
-  const cleaned = b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64;
-  const buf = Buffer.from(cleaned, "base64");
+  const cleaned = (b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64).replace(/\s+/g, "");
+  if (!cleaned) throw new Error("empty base64 payload");
+  if (/[^A-Za-z0-9+/=]/.test(cleaned)) throw new Error("invalid base64 characters");
+  const unpadded = cleaned.replace(/=+$/, "");
+  if (cleaned.length - unpadded.length > 2 || cleaned.slice(0, unpadded.length).includes("=")) {
+    throw new Error("invalid base64 padding");
+  }
+  const remainder = unpadded.length % 4;
+  if (remainder === 1) throw new Error("invalid base64 length");
+  const normalized = unpadded + (remainder === 0 ? "" : "=".repeat(4 - remainder));
+  const buf = Buffer.from(normalized, "base64");
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }

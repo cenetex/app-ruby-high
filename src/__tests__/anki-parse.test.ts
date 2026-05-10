@@ -30,6 +30,18 @@ describe("parseApkg — input validation", () => {
     const bytes = new Uint8Array(await zip.generateAsync({ type: "uint8array" }));
     await expect(parseApkg(bytes)).rejects.toThrow(/legacy support|anki21b|zstd/i);
   });
+
+  it("rejects oversized compressed collection entries before SQLite loads them", async () => {
+    const zip = new JSZip();
+    zip.file("collection.anki21", new Uint8Array(17 * 1024 * 1024));
+    const bytes = new Uint8Array(await zip.generateAsync({
+      type: "uint8array",
+      compression: "DEFLATE",
+      compressionOptions: { level: 9 },
+    }));
+
+    await expect(parseApkg(bytes)).rejects.toThrow(/too large after decompression/i);
+  });
 });
 
 describe("parseApkg — end-to-end with a programmatic fixture", () => {

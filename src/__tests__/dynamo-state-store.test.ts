@@ -434,6 +434,31 @@ describe("DynamoStateStore", () => {
     expect(await store.loadPacks()).toEqual([]);
   });
 
+  it("shares close-together table scans across hydrate calls", async () => {
+    await store.saveSession(blankState("rh:user:state"));
+    await store.saveAuthUser({
+      userId: "usr_1",
+      provider: "openrouter",
+      providerUserHash: "hash-1",
+      createdAt: 100,
+      lastLoginAt: 200,
+    });
+    await store.savePack({
+      pack: fakePack("anki:cells"),
+      ownerSessionId: "rh:user:test",
+      touchedAt: 123,
+    });
+    fake.sent.length = 0;
+
+    await Promise.all([
+      store.loadAuth(),
+      store.loadPacks(),
+      store.load(),
+    ]);
+
+    expect(fake.sent.filter((c) => c instanceof ScanCommand)).toHaveLength(1);
+  });
+
   it("deletes auth sessions by opaque token", async () => {
     await store.saveAuthSession({
       token: "token-1",

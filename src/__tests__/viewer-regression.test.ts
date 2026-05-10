@@ -64,6 +64,14 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("opts.streamSeq !== chatStreamSeq");
   });
 
+  it("drops session polls that overlap command requests", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(script).toContain("const seqAtStart = commandSeq");
+    expect(script).toContain("const settledAtStart = lastSettledCommandSeq");
+    expect(script).toContain("commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart");
+  });
+
   it("builds the class report with teacher art and a real star meter", () => {
     const script = inlineScript(renderedViewer());
 

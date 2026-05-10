@@ -131,6 +131,13 @@ describe("AuthService.gcSessions", () => {
     expect(auth.stateKeyForToken(first.token)).toBe(`rh:user:${first.record.userId}`);
   });
 
+  it("treats malformed session cookie encoding as signed out", async () => {
+    const auth = await freshAuth();
+
+    expect(auth.parseSessionToken("rh_session=%")).toBeNull();
+    expect(auth.stateKeyForCookie("rh_session=%")).toBe("rh:anonymous");
+  });
+
   it("upgrades a guest session to OpenRouter without moving the character bucket", async () => {
     const auth = await freshAuth();
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {

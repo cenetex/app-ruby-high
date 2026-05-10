@@ -55,6 +55,11 @@ export interface AnkiMediaAsset {
 }
 
 let sqlJsCache: Promise<unknown> | null = null;
+const MAX_COLLECTION_BYTES = 16 * 1024 * 1024;
+const MAX_MEDIA_CATALOG_BYTES = 256 * 1024;
+const MAX_MEDIA_ASSET_BYTES = 512 * 1024;
+const MAX_MEDIA_TOTAL_BYTES = 2 * 1024 * 1024;
+const MAX_MEDIA_CATALOG_ENTRIES = 1_000;
 
 async function loadSqlJs() {
   if (!sqlJsCache) {
@@ -95,7 +100,14 @@ export async function parseApkg(bytes: Uint8Array): Promise<AnkiDeck> {
   for (const name of dbCandidates) {
     const entry = zip.file(name);
     if (entry) {
+      const declaredSize = declaredUncompressedSize(entry);
+      if (declaredSize != null && declaredSize > MAX_COLLECTION_BYTES) {
+        throw new Error(`Anki collection is too large after decompression (${Math.round(declaredSize / 1024 / 1024)} MB).`);
+      }
       dbBytes = await entry.async("uint8array");
+      if (dbBytes.length > MAX_COLLECTION_BYTES) {
+        throw new Error(`Anki collection is too large after decompression (${Math.round(dbBytes.length / 1024 / 1024)} MB).`);
+      }
       break;
     }
   }
@@ -178,20 +190,30 @@ async function readMediaAssets(zip: JSZip): Promise<Map<string, AnkiMediaAsset>>
   const out = new Map<string, AnkiMediaAsset>();
   const mediaEntry = zip.file("media");
   if (!mediaEntry) return out;
+  const catalogSize = declaredUncompressedSize(mediaEntry);
+  if (catalogSize != null && catalogSize > MAX_MEDIA_CATALOG_BYTES) return out;
   let catalog: Record<string, string>;
   try {
-    catalog = JSON.parse(await mediaEntry.async("string")) as Record<string, string>;
+    const rawCatalog = await mediaEntry.async("string");
+    if (rawCatalog.length > MAX_MEDIA_CATALOG_BYTES) return out;
+    catalog = JSON.parse(rawCatalog) as Record<string, string>;
   } catch {
     return out;
   }
-  const maxAssetBytes = 512 * 1024;
-  const maxTotalBytes = 2 * 1024 * 1024;
   let total = 0;
-  for (const [entryName, fileName] of Object.entries(catalog)) {
+  for (const [entryName, fileName] of Object.entries(catalog).slice(0, MAX_MEDIA_CATALOG_ENTRIES)) {
     const entry = zip.file(entryName);
     if (!entry || !isImageFile(fileName)) continue;
+    const declaredSize = declaredUncompressedSize(entry);
+    if (
+      declaredSize == null ||
+      declaredSize > MAX_MEDIA_ASSET_BYTES ||
+      total + declaredSize > MAX_MEDIA_TOTAL_BYTES
+    ) {
+      continue;
+    }
     const bytes = await entry.async("uint8array");
-    if (bytes.length > maxAssetBytes || total + bytes.length > maxTotalBytes) continue;
+    if (bytes.length > MAX_MEDIA_ASSET_BYTES || total + bytes.length > MAX_MEDIA_TOTAL_BYTES) continue;
     total += bytes.length;
     const mimeType = mimeForImage(fileName);
     out.set(fileName, {
@@ -201,6 +223,12 @@ async function readMediaAssets(zip: JSZip): Promise<Map<string, AnkiMediaAsset>>
     });
   }
   return out;
+}
+
+function declaredUncompressedSize(entry: unknown): number | null {
+  const data = (entry as { _data?: { uncompressedSize?: unknown } })._data;
+  const size = data?.uncompressedSize;
+  return typeof size === "number" && Number.isFinite(size) && size >= 0 ? size : null;
 }
 
 function extractMediaRefs(html: string): string[] {
