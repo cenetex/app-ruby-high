@@ -333,6 +333,41 @@ export const VIEWER_CSS = `
     padding: 3px 6px;
     line-height: 1;
   }
+  .room-student-stack {
+    margin-left: 8px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    min-width: 20px;
+  }
+  .room-student-chip {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    display: inline-grid;
+    place-items: center;
+    overflow: hidden;
+    background: color-mix(in oklab, var(--student-accent, #888) 22%, #202331);
+    border: 2px solid var(--student-accent, #888);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.16);
+  }
+  .room-student-chip + .room-student-chip {
+    margin-left: -7px;
+  }
+  .room-student-chip img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+  }
+  .room-student-chip.is-fallback img {
+    display: none;
+  }
   .channel-row .roster-grade {
     margin-left: auto;
     display: inline-flex;
@@ -362,6 +397,135 @@ export const VIEWER_CSS = `
   }
   .channel-row .roster-grade.is-graduated {
     color: rgba(240,180,65,0.76);
+  }
+  .student-cohort-group {
+    padding: 2px 0 6px;
+  }
+  .student-cohort-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 10px 4px;
+    color: var(--text-mute);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .student-cohort-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-soft);
+    letter-spacing: 0;
+    font-size: 10px;
+  }
+  .channel-row.student-row {
+    min-height: 52px;
+    padding: 7px 10px 7px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .channel-row.student-row .student-thumb {
+    width: 32px;
+    height: 32px;
+    border-color: var(--student-accent, rgba(255,255,255,0.12));
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--student-accent, #888) 20%, transparent);
+  }
+  .student-row-meta {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .student-row-name {
+    color: var(--text-soft);
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.12;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .student-row-detail {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .student-row-subtitle {
+    color: var(--text-mute);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.15;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .student-year-meter {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .student-year-segment {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.16);
+  }
+  .student-year-segment.is-filled {
+    background: rgba(240,180,65,0.88);
+    border-color: rgba(240,180,65,0.92);
+    box-shadow: 0 0 8px rgba(240,180,65,0.22);
+  }
+  .student-social-mark {
+    margin-left: auto;
+    flex: 0 0 auto;
+    min-width: 31px;
+    height: 23px;
+    padding: 0 7px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,0.09);
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+  .student-social-mark.is-neutral {
+    background: rgba(255,255,255,0.04);
+    color: var(--text-mute);
+  }
+  .student-social-mark.is-warm,
+  .student-social-mark.is-circled {
+    background: rgba(82,198,115,0.14);
+    border-color: rgba(82,198,115,0.26);
+    color: #b6f5b9;
+  }
+  .student-social-mark.is-cool,
+  .student-social-mark.is-scratched {
+    background: rgba(210,42,42,0.15);
+    border-color: rgba(210,42,42,0.28);
+    color: #ffb1b1;
+  }
+  .student-social-mark.is-circled {
+    box-shadow: inset 0 0 0 1px rgba(182,245,185,0.28);
+  }
+  .student-social-mark.is-scratched {
+    text-decoration: line-through;
   }
   .channels-footer {
     padding: 12px 14px calc(var(--safe-bot) + 12px);

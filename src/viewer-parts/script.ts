@@ -2171,6 +2171,123 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   // ── channels rail ─────────────────────────────────────────────────────────
+  function studentArcFor(id, t) {
+    const cohort = t && Array.isArray(t.npc_cohort) ? t.npc_cohort : [];
+    return cohort.find((n) => n.id === id) || null;
+  }
+  function studentSocialCellFor(id, t) {
+    const cells = t && t.character && t.character.mashCard && t.character.mashCard.cells;
+    return cells ? cells[id] || null : null;
+  }
+  function studentRailSignature(t) {
+    const roster = Array.isArray(t && t.npc_roster) ? t.npc_roster : [];
+    const cohort = Array.isArray(t && t.npc_cohort) ? t.npc_cohort : [];
+    const cells = t && t.character && t.character.mashCard && t.character.mashCard.cells;
+    const rosterSig = roster.map((n) => n.id + ":" + (n.currentRoom || "")).join(",");
+    const cohortSig = cohort.map((n) =>
+      n.id + ":" + n.grade + ":" + (n.graduated ? "1" : "0") + ":" + ((n.streak && n.streak.count) || 0)
+    ).join(",");
+    const socialSig = STUDENTS.map((s) => {
+      const cell = cells && cells[s.id];
+      return s.id + ":" + (cell ? [cell.affinity || 0, cell.circled ? 1 : 0, cell.scratched ? 1 : 0].join("/") : "");
+    }).join(",");
+    return rosterSig + "::" + cohortSig + "::" + socialSig + "::hidden=" + (hiddenNpcStudentId() || "");
+  }
+  function studentCohortKey(entry) {
+    if (entry.arc && entry.arc.graduated) return "graduated";
+    return String(entry.rosterGrade || "");
+  }
+  function studentCohortSortValue(key) {
+    if (key === "graduated") return GRADE_ORDER.length + 1;
+    const idx = GRADE_ORDER.indexOf(String(key));
+    return idx >= 0 ? idx : GRADE_ORDER.length;
+  }
+  function studentCohortLabel(key) {
+    if (key === "graduated") return "Alumni";
+    const label = GRADE_LABELS[key] || ("Grade " + key);
+    return label + " class";
+  }
+  function studentRelativeStanding(entry, currentGrade) {
+    if (entry.arc && entry.arc.graduated) return "alumni";
+    if (!currentGrade || !entry.rosterGrade) return "";
+    const currentIdx = GRADE_ORDER.indexOf(String(currentGrade));
+    const studentIdx = GRADE_ORDER.indexOf(String(entry.rosterGrade));
+    if (studentIdx < 0 || currentIdx < 0) return "";
+    if (studentIdx > currentIdx) return "ahead of you";
+    if (studentIdx < currentIdx) return "behind you";
+    return entry.npc.currentRoom ? "#" + roomLabelFor(entry.npc.currentRoom) : "in your year";
+  }
+  function studentArcSubtitle(entry, currentGrade) {
+    const bits = [];
+    const standing = studentRelativeStanding(entry, currentGrade);
+    if (standing) bits.push(standing);
+    if (entry.arc && entry.arc.graduated) {
+      bits.push(entry.arc.completedGrades.length + " years");
+    }
+    return bits.join(" · ");
+  }
+  function studentArcProgress(entry) {
+    if (!entry.arc || entry.arc.graduated || !entry.arc.streak) return null;
+    const total = STREAK_REQUIRED[entry.rosterGrade] || 1;
+    const value = Math.max(0, Math.min(Number(entry.arc.streak.count || 0), total));
+    return { value, total };
+  }
+  function studentArcProgressLabel(progress) {
+    if (!progress) return "";
+    return "Year progress " + progress.value + " of " + progress.total;
+  }
+  function buildStudentArcMeter(entry) {
+    const progress = studentArcProgress(entry);
+    if (!progress) return null;
+    const meter = document.createElement("span");
+    meter.className = "student-year-meter";
+    const label = studentArcProgressLabel(progress);
+    meter.title = label;
+    meter.setAttribute("aria-label", label);
+    for (let i = 0; i < progress.total; i += 1) {
+      const segment = document.createElement("span");
+      segment.className = "student-year-segment" + (i < progress.value ? " is-filled" : "");
+      meter.appendChild(segment);
+    }
+    return meter;
+  }
+  function buildStudentFaceChip(studentId, className) {
+    const s = STUDENTS.find((x) => x.id === studentId);
+    const chip = document.createElement("span");
+    chip.className = className || "student-face-chip";
+    chip.style.setProperty("--student-accent", s ? s.color : "#888");
+    chip.title = s ? s.name : studentId;
+    chip.setAttribute("aria-label", chip.title);
+    const img = document.createElement("img");
+    img.src = apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
+    img.alt = "";
+    img.onerror = () => {
+      chip.classList.add("is-fallback");
+      chip.textContent = s ? s.name.slice(0, 1) : "?";
+    };
+    chip.appendChild(img);
+    return chip;
+  }
+  function studentSocialTitle(cell) {
+    if (!cell) return "No Social Card yet";
+    const affinity = Number(cell.affinity || 0);
+    const signed = affinity > 0 ? "+" + affinity : String(affinity);
+    if (cell.scratched) return "Social Card: " + signed + " affinity, scratched";
+    if (cell.circled) return "Social Card: " + signed + " affinity, circled";
+    return "Social Card: " + signed + " affinity";
+  }
+  function buildStudentSocialMark(cell) {
+    if (!cell) return null;
+    const affinity = Number(cell.affinity || 0);
+    if (affinity === 0 && !cell.circled && !cell.scratched) return null;
+    const mark = document.createElement("span");
+    mark.className = "student-social-mark"
+      + (cell.scratched ? " is-scratched" : cell.circled ? " is-circled" : affinity > 0 ? " is-warm" : affinity < 0 ? " is-cool" : " is-neutral");
+    mark.title = studentSocialTitle(cell);
+    mark.setAttribute("aria-label", mark.title);
+    mark.textContent = affinity > 0 ? "+" + affinity : String(affinity);
+    return mark;
+  }
   function rebuildChannelsRail() {
     const t = lastTelemetry || {};
     const grade = t.current_grade;
@@ -2180,7 +2297,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       f.id + ":" + f.available + ":" + f.questionCount + ":" + (f.courseGrade || "")
         + ":" + (f.completedClasses ?? "") + "/" + (f.requiredClasses ?? "")
         + ":" + ((f.todayClass && f.todayClass.status) || "")
-    ).join("|") + "::" + t.faculty + "::" + (!!t.character ? "1" : "0") + "::" + (unlocked ? "1" : "0");
+    ).join("|") + "::" + t.faculty + "::" + (!!t.character ? "1" : "0") + "::" + (unlocked ? "1" : "0")
+      + "::students=" + studentRailSignature(t);
     if (sig === lastRosterSig) return;
     lastRosterSig = sig;
 
@@ -2235,6 +2353,23 @@ const VIEWER_SCRIPT_SUFFIX = `
       name.style.flex = "1 1 auto";
       name.textContent = room.channelName;
       row.appendChild(name);
+      const cohortIds = (cohort[room.id] || []).filter((sid) => shouldShowStudentId(sid));
+      if (cohortIds.length > 0) {
+        const students = document.createElement("span");
+        students.className = "room-student-stack";
+        const studentNames = cohortIds
+          .map((sid) => {
+            const s = STUDENTS.find((x) => x.id === sid);
+            return s ? s.name : sid;
+          })
+          .join(", ");
+        students.title = "Students here: " + studentNames;
+        students.setAttribute("aria-label", students.title);
+        cohortIds.forEach((sid) => {
+          students.appendChild(buildStudentFaceChip(sid, "room-student-chip"));
+        });
+        row.appendChild(students);
+      }
       if (fac && fac.courseGrade) {
         const courseMark = document.createElement("span");
         courseMark.className = "course-status-pill";
@@ -2243,20 +2378,6 @@ const VIEWER_SCRIPT_SUFFIX = `
         courseMark.title = done + "/" + required + " classes";
         courseMark.textContent = fac.courseGrade;
         row.appendChild(courseMark);
-      }
-      const cohortIds = (cohort[room.id] || []).filter((sid) => shouldShowStudentId(sid));
-      if (cohortIds.length > 0) {
-        const dots = document.createElement("span");
-        dots.style.display = "inline-flex";
-        dots.style.gap = "3px";
-        cohortIds.forEach((sid) => {
-          const s = STUDENTS.find((x) => x.id === sid);
-          const d = document.createElement("span");
-          d.style.cssText = "width:8px;height:8px;border-radius:999px;background:" + (s ? s.color : "#888");
-          d.title = s ? s.name : sid;
-          dots.appendChild(d);
-        });
-        row.appendChild(dots);
       }
       row.addEventListener("click", () => fac && setFaculty(fac.id));
       els.channelsList.appendChild(row);
@@ -2289,18 +2410,19 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.channelsList.appendChild(row);
     }
 
-    // Class roster — show every student in the year with their current cohort
-    // grade. Click any of them to open their profile card.
+    // Students — group the cohort by the year they are actually living in,
+    // then use the row body for room/arc/social-card state instead of
+    // repeating the same grade chip six times.
     if (!unlocked) return;
     const studentsTitle = document.createElement("div");
     studentsTitle.className = "channel-section-title";
-    studentsTitle.textContent = "Class — grade";
+    studentsTitle.textContent = "Students";
     els.channelsList.appendChild(studentsTitle);
     const npcRoster = (t.npc_roster || [])
       .map((npc) => {
         const s = STUDENTS.find((x) => x.id === npc.id);
         if (!s || !shouldShowStudentId(npc.id)) return null;
-        const arc = Array.isArray(t.npc_cohort) ? t.npc_cohort.find((n) => n.id === npc.id) : null;
+        const arc = studentArcFor(npc.id, t);
         const rosterGrade = arc && !arc.graduated ? arc.grade : npc.grade;
         const gradeIdx = GRADE_ORDER.indexOf(String(rosterGrade));
         return {
@@ -2308,6 +2430,7 @@ const VIEWER_SCRIPT_SUFFIX = `
           s,
           arc,
           rosterGrade,
+          socialCell: studentSocialCellFor(npc.id, t),
           sortGrade: arc && arc.graduated ? GRADE_ORDER.length : (gradeIdx >= 0 ? gradeIdx : GRADE_ORDER.length + 1),
         };
       })
@@ -2316,44 +2439,79 @@ const VIEWER_SCRIPT_SUFFIX = `
         if (a.sortGrade !== b.sortGrade) return a.sortGrade - b.sortGrade;
         return String(a.s.name).localeCompare(String(b.s.name));
       });
-    npcRoster.forEach(({ npc, s, arc, rosterGrade }) => {
-      if (!shouldShowStudentId(npc.id)) return;
-      const gradeTitle = arc && arc.graduated
-        ? "Graduated"
-        : (GRADE_LABELS[rosterGrade] || ("Grade " + rosterGrade));
-      const row = document.createElement("button");
-      row.className = "channel-row";
-      row.type = "button";
-      row.style.cssText = "background:transparent;font-weight:600;font-size:14px;";
-      const thumb = document.createElement("span");
-      thumb.className = "teacher-thumb";
-      thumb.style.background = "#222";
-      const img = document.createElement("img");
-      img.src = apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-face.png";
-      img.alt = "";
-      img.onerror = () => { thumb.style.background = s.color; thumb.removeChild(img); };
-      thumb.appendChild(img);
-      row.appendChild(thumb);
-      const name = document.createElement("span");
-      name.style.flex = "1 1 auto";
-      name.textContent = s.name;
-      row.appendChild(name);
-      const gradeMark = document.createElement("span");
-      gradeMark.className = "roster-grade" + (arc && arc.graduated ? " is-graduated" : "");
-      gradeMark.title = gradeTitle;
-      gradeMark.setAttribute("aria-label", gradeTitle);
-      const gradeDot = document.createElement("span");
-      gradeDot.className = "roster-grade-dot";
-      gradeDot.style.background = s.color;
-      const gradeLabel = document.createElement("span");
-      gradeLabel.className = "roster-grade-label";
-      gradeLabel.textContent = arc && arc.graduated ? "Grad" : (GRADE_SHORT_LABELS[rosterGrade] || String(rosterGrade));
-      gradeMark.appendChild(gradeDot);
-      gradeMark.appendChild(gradeLabel);
-      row.appendChild(gradeMark);
-      row.addEventListener("click", () => openStudentProfile(npc, s));
-      els.channelsList.appendChild(row);
+    const groups = new Map();
+    npcRoster.forEach((entry) => {
+      const key = studentCohortKey(entry);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(entry);
     });
+    Array.from(groups.entries())
+      .sort((a, b) => studentCohortSortValue(a[0]) - studentCohortSortValue(b[0]))
+      .forEach(([key, entries]) => {
+        const group = document.createElement("div");
+        group.className = "student-cohort-group";
+
+        const header = document.createElement("div");
+        header.className = "student-cohort-header";
+        const headerLabel = document.createElement("span");
+        headerLabel.textContent = studentCohortLabel(key);
+        const count = document.createElement("span");
+        count.className = "student-cohort-count";
+        count.textContent = String(entries.length);
+        header.appendChild(headerLabel);
+        header.appendChild(count);
+        group.appendChild(header);
+
+        entries.forEach((entry) => {
+          const { npc, s, arc, rosterGrade, socialCell } = entry;
+          const gradeTitle = arc && arc.graduated
+            ? "Graduated"
+            : (GRADE_LABELS[rosterGrade] || ("Grade " + rosterGrade));
+          const row = document.createElement("button");
+          row.className = "channel-row student-row";
+          row.type = "button";
+          const progress = studentArcProgress(entry);
+          row.setAttribute("aria-label", s.name + ", " + gradeTitle + (progress ? ", " + studentArcProgressLabel(progress) : ""));
+
+          const thumb = document.createElement("span");
+          thumb.className = "teacher-thumb student-thumb";
+          thumb.style.setProperty("--student-accent", s.color);
+          thumb.style.background = "#222";
+          const img = document.createElement("img");
+          img.src = apiBase + "/assets/students/" + encodeURIComponent(npc.id) + "-face.png";
+          img.alt = "";
+          img.onerror = () => { thumb.style.background = s.color; thumb.removeChild(img); };
+          thumb.appendChild(img);
+          row.appendChild(thumb);
+
+          const meta = document.createElement("span");
+          meta.className = "student-row-meta";
+          const name = document.createElement("span");
+          name.className = "student-row-name";
+          name.textContent = s.name;
+          meta.appendChild(name);
+          const detail = document.createElement("span");
+          detail.className = "student-row-detail";
+          const subtitleText = studentArcSubtitle(entry, grade);
+          if (subtitleText) {
+            const sub = document.createElement("span");
+            sub.className = "student-row-subtitle";
+            sub.textContent = subtitleText;
+            detail.appendChild(sub);
+          }
+          const meter = buildStudentArcMeter(entry);
+          if (meter) detail.appendChild(meter);
+          if (detail.children.length > 0) meta.appendChild(detail);
+          row.appendChild(meta);
+
+          const social = buildStudentSocialMark(socialCell);
+          if (social) row.appendChild(social);
+          row.addEventListener("click", () => openStudentProfile(npc, s));
+          group.appendChild(row);
+        });
+
+        els.channelsList.appendChild(group);
+      });
   }
   function channelNameFor(f) {
     if (!f) return "channel";
