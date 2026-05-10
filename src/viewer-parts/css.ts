@@ -2665,6 +2665,7 @@ export const VIEWER_CSS = `
   }
   .board .class-report-metric {
     min-width: 0;
+    overflow: visible;
     border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.18);
     background: rgba(255,255,255,0.08);
@@ -2707,8 +2708,9 @@ export const VIEWER_CSS = `
     justify-content: flex-end;
     align-items: center;
     gap: clamp(2px, 0.65vw, 5px);
-    width: 100%;
-    min-width: 0;
+    width: max-content;
+    min-width: max-content;
+    max-width: none;
     white-space: nowrap;
   }
   .board .class-report-star-meter.is-count {
@@ -2716,8 +2718,7 @@ export const VIEWER_CSS = `
     font-variant-numeric: tabular-nums;
   }
   .board .class-report-star {
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
     color: rgba(255,255,255,0.42);
     font-size: clamp(13px, 2vw, 20px);
     line-height: 1;

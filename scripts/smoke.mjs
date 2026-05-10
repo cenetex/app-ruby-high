@@ -36,6 +36,11 @@
  *      (server returning 401 was the WORKING behavior; 200 or 5xx would
  *      have signalled the gate broke).
  *
+ *   8. Guest offline opinion flow: advance until Ruby's Social card appears,
+ *      submit a typed opinion, and verify the SSE resolves with grading.
+ *      Catches: player-submitted opinion rounds that stay stuck on "waiting"
+ *      until the browser-side timeout fallback kicks in.
+ *
  * Usage:
  *   node scripts/smoke.mjs                                # against http://127.0.0.1:8080
  *   node scripts/smoke.mjs https://ruby-high.fly.dev      # against prod
@@ -359,6 +364,64 @@ async function check7AuthGate() {
   }
 }
 
+async function check8OfflineOpinionFlow() {
+  const name = "offline opinion flow";
+  if (!smokeCookie) return fail(name, "no guest cookie from auth/guest");
+  const sessionPath = "/api/apps/ruby-high/session/smoke";
+  const commandPath = `${sessionPath}/command`;
+  try {
+    let currentQuestion = null;
+    let lastBody = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const before = await fetchWithTimeout(`${base}${sessionPath}`, { headers: { Cookie: smokeCookie } });
+      if (before.status !== 200) return fail(name, `session GET expected 200, got ${before.status}`);
+      lastBody = await readJson(before);
+      if (lastBody?.telemetry?.current) {
+        const clear = await postJson(commandPath, { type: "clear" });
+        if (clear.status !== 200) return fail(name, `clear expected 200, got ${clear.status}: ${(await readText(clear)).slice(0, 200)}`);
+      }
+
+      const pick = await postJson(commandPath, { type: "pick" });
+      if (pick.status !== 200) return fail(name, `pick expected 200, got ${pick.status}: ${(await readText(pick)).slice(0, 200)}`);
+      const picked = await readJson(pick);
+      if (picked?.noQuestionDue) return fail(name, `no scheduled question due before Social card appeared: ${JSON.stringify(picked).slice(0, 240)}`);
+      currentQuestion = picked?.session?.telemetry?.current;
+      if (!currentQuestion) return fail(name, `pick did not produce a question: ${JSON.stringify(picked).slice(0, 240)}`);
+      if (currentQuestion.type === "opinion") break;
+
+      const answer = await postJson(commandPath, { type: "answer", picked: "A" });
+      if (answer.status !== 200) return fail(name, `answer expected 200, got ${answer.status}: ${(await readText(answer)).slice(0, 200)}`);
+      const answered = await readJson(answer);
+      if (!answered?.session?.telemetry?.active_round?.resolved) {
+        return fail(name, `answer did not resolve ${currentQuestion.id}: ${JSON.stringify(answered).slice(0, 240)}`);
+      }
+      currentQuestion = null;
+    }
+
+    if (!currentQuestion || currentQuestion.type !== "opinion") {
+      return fail(name, `Ruby Social opinion card did not appear within 8 draws; last session: ${JSON.stringify(lastBody).slice(0, 240)}`);
+    }
+
+    const opinion = await postJson("/api/apps/ruby-high/chat/opinion-submit", {
+      text: "I trust a confident answer when it names evidence, and I check it when the source is missing.",
+    });
+    const stream = await readText(opinion);
+    if (opinion.status !== 200) return fail(name, `opinion-submit expected 200, got ${opinion.status}: ${stream.slice(0, 240)}`);
+    if (!stream.includes("event: opinion-graded")) return fail(name, `opinion SSE did not grade: ${stream.slice(0, 300)}`);
+    if (stream.includes("event: waiting")) return fail(name, `opinion SSE returned waiting instead of resolving: ${stream.slice(0, 300)}`);
+    if (stream.includes("event: error")) return fail(name, `opinion SSE errored: ${stream.slice(0, 300)}`);
+
+    const after = await fetchWithTimeout(`${base}${sessionPath}`, { headers: { Cookie: smokeCookie } });
+    const afterBody = await readJson(after);
+    if (!afterBody?.telemetry?.active_round?.resolved || afterBody.telemetry.active_round.type !== "opinion") {
+      return fail(name, `opinion round not resolved in telemetry: ${JSON.stringify(afterBody).slice(0, 260)}`);
+    }
+    ok(name, `submitted and graded ${currentQuestion.id}`);
+  } catch (e) {
+    fail(name, e?.message || String(e));
+  }
+}
+
 console.log(`smoke target: ${base}\n`);
 
 await check1Health();
@@ -374,6 +437,7 @@ await check4AuthMe();
 await check5GuestSession();
 await check6OfflinePlayFlow();
 await check7AuthGate();
+await check8OfflineOpinionFlow();
 
 console.log();
 if (failed > 0) {
