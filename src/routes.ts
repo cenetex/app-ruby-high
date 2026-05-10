@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import type {
   IAgentRuntime,
   PluginAppBridgeLaunchContext,
@@ -141,6 +142,8 @@ export interface RouteContext {
    *  304 Not Modified when the client's cached ETag matches. Optional — if
    *  absent, assets always serve the full body (correct, just not cached). */
   ifNoneMatch?: string | null;
+  /** Raw Accept-Encoding request header. Used to compress large viewer HTML. */
+  acceptEncoding?: string | string[] | null;
 }
 
 interface FacultyTelemetry extends FacultyMember {
@@ -558,7 +561,19 @@ function buildSessionState(args: {
   };
 }
 
-function sendHtmlResponse(res: unknown, html: string): void {
+function headerIncludes(value: string | string[] | null | undefined, token: string): boolean {
+  const needle = token.toLowerCase();
+  const raw = Array.isArray(value) ? value.join(",") : (value ?? "");
+  return raw
+    .split(",")
+    .some((part) => part.trim().toLowerCase().split(";", 1)[0] === needle);
+}
+
+function sendHtmlResponse(
+  res: unknown,
+  html: string,
+  acceptEncoding?: string | string[] | null,
+): void {
   const response = res as {
     end: (body?: string | Buffer) => void;
     setHeader: (name: string, value: string) => void;
@@ -569,6 +584,7 @@ function sendHtmlResponse(res: unknown, html: string): void {
   response.statusCode = 200;
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.setHeader("Vary", "Accept-Encoding");
   response.removeHeader?.("X-Frame-Options");
   const existingCsp = response.getHeader?.("Content-Security-Policy");
   const normalized =
@@ -583,6 +599,11 @@ function sendHtmlResponse(res: unknown, html: string): void {
       ? `${normalized}; ${VIEWER_FRAME_ANCESTORS_DIRECTIVE}`
       : VIEWER_FRAME_ANCESTORS_DIRECTIVE;
   response.setHeader("Content-Security-Policy", nextCsp);
+  if (headerIncludes(acceptEncoding, "gzip")) {
+    response.setHeader("Content-Encoding", "gzip");
+    response.end(gzipSync(Buffer.from(html, "utf8"), { level: 6 }));
+    return;
+  }
   response.end(html);
 }
 
@@ -985,6 +1006,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         apiBase: APP_ROUTE_PREFIX,
         role,
       }),
+      ctx.acceptEncoding,
     );
     return true;
   }

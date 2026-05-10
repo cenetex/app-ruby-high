@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { gunzipSync } from "node:zlib";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { renderViewerHtml } from "../viewer.js";
 
@@ -28,10 +29,18 @@ function makeResponse() {
     get text() {
       return Buffer.isBuffer(body) ? body.toString("utf8") : (body ?? "");
     },
+    get raw() {
+      return body;
+    },
   };
 }
 
-function makeCtx(pathname: string, response: ReturnType<typeof makeResponse>, method = "GET"): RouteContext {
+function makeCtx(
+  pathname: string,
+  response: ReturnType<typeof makeResponse>,
+  method = "GET",
+  acceptEncoding?: string,
+): RouteContext {
   return {
     method,
     pathname,
@@ -47,6 +56,7 @@ function makeCtx(pathname: string, response: ReturnType<typeof makeResponse>, me
       response.res.statusCode = status;
       response.res.end(JSON.stringify(data));
     },
+    acceptEncoding,
     readJsonBody: async () => ({}),
   };
 }
@@ -79,6 +89,21 @@ describe("PWA surface", () => {
     expect(manifest.scope).toBe("/api/apps/ruby-high/");
     expect(manifest.display).toBe("standalone");
     expect(manifest.icons[0].src).toBe("/api/apps/ruby-high/assets/ruby.png");
+  });
+
+  it("gzips the viewer shell when the browser accepts gzip", async () => {
+    const response = makeResponse();
+    const handled = await handleAppRoutes(makeCtx("/api/apps/ruby-high/viewer", response, "GET", "gzip, br"));
+
+    expect(handled).toBe(true);
+    expect(response.res.statusCode).toBe(200);
+    expect(response.headers.get("content-encoding")).toBe("gzip");
+    expect(response.headers.get("vary")).toBe("Accept-Encoding");
+    expect(Buffer.isBuffer(response.raw)).toBe(true);
+
+    const text = gunzipSync(response.raw as Buffer).toString("utf8");
+    expect(text).toContain("<title>Ruby High");
+    expect(text).toContain("/api/apps/ruby-high/auth/guest");
   });
 
   it("serves a scoped service worker that leaves stateful APIs network-only", async () => {
