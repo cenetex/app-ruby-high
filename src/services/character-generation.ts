@@ -4,43 +4,37 @@ import { PLAYBOOKS } from "../characters/playbooks.js";
 import type { CharacterStats } from "../types.js";
 import { log } from "./logger.js";
 import {
-  REFERER,
+  openRouterJson,
   STUDENT_MODEL,
-  TITLE,
-  openRouterFetch,
-  throwOpenRouterError,
 } from "./openrouter-client.js";
 
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
 const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
 const PORTRAIT_TIMEOUT_MS = 60_000;
 
+interface PortraitResponse {
+  choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
+}
+
+interface CharacterResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+}
+
 async function fetchPortraitOnce(args: {
   apiKey: string;
   prompt: string;
 }): Promise<string> {
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
+  const body = await openRouterJson<PortraitResponse>({
+    apiKey: args.apiKey,
+    label: "portrait",
+    timeoutMs: PORTRAIT_TIMEOUT_MS,
+    body: {
       model: PORTRAIT_MODEL,
       modalities: ["image", "text"],
       messages: [{ role: "user", content: args.prompt }],
       max_tokens: PORTRAIT_MAX_TOKENS,
-    }),
-  }, PORTRAIT_TIMEOUT_MS);
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`OpenRouter ${r.status}: ${(text || r.statusText).slice(0, 240)}`);
-  }
-  const body = await r.json() as {
-    choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
-  };
+    },
+  });
   const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (!url) throw new Error("OpenRouter returned no image (likely a content-filter trip; try a different name/personality).");
   return url;
@@ -258,15 +252,10 @@ export async function rollRandomCharacter(args: {
     "    Third person. Same scale as those — kid stuff, not life themes.",
   ].join("\n");
 
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
+  const body = await openRouterJson<CharacterResponse>({
+    apiKey: args.apiKey,
+    label: "character",
+    body: {
       model: STUDENT_MODEL,
       messages: [
         { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
@@ -274,10 +263,8 @@ export async function rollRandomCharacter(args: {
       ],
       max_tokens: 480,
       temperature: 1.1,
-    }),
+    },
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
-  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   let parsed: { name?: unknown; arcAnswer?: unknown; flavorQuote?: unknown; personality?: unknown };

@@ -28,7 +28,7 @@
     "dev": "npm run build && node scripts/dev-server.mjs",
     "dev:server": "node scripts/dev-server.mjs",
     "start": "node scripts/server.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && node scripts/check-viewer-script.mjs",
     "test": "vitest",
     "smoke": "node scripts/smoke.mjs",
     "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",

@@ -24,8 +24,7 @@
 import type { BankedQuestion, Choice, Difficulty } from "../../types.js";
 import { classifyQuestionStat } from "../../question-stats.js";
 import type { AnkiCard } from "./parse.js";
-
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+import { OpenRouterHttpError, openRouterJson, STUDENT_MODEL, type OpenRouterChatCompletion } from "../../services/openrouter-client.js";
 
 export interface DistractorOpts {
   apiKey: string;
@@ -157,7 +156,7 @@ async function callOpenRouterForDistractors(
   card: AnkiCard,
   opts: DistractorOpts,
 ): Promise<string[]> {
-  const model = opts.model ?? "anthropic/claude-haiku-4.5";
+  const model = opts.model ?? STUDENT_MODEL;
   const userPrompt = [
     `Topic: ${opts.subject || card.deckName || "general knowledge"}.`,
     `Question: ${card.front}`,
@@ -166,32 +165,28 @@ async function callOpenRouterForDistractors(
     `Return ONLY a JSON array of 3 strings. No prose, no markdown fences. Example: ["wrong1","wrong2","wrong3"]`,
   ].join("\n");
 
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.apiKey}`,
-      "HTTP-Referer": "https://ruby-high.local",
-      "X-Title": "Ruby High Anki Import",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: "You generate plausible distractors for multiple-choice questions. Always respond with ONLY a JSON array of 3 strings." },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: 200,
-      temperature: 0.6,
-    }),
-  });
-  if (!r.ok) {
-    const detail = await r.text().catch(() => "");
-    if (r.status === 401 || r.status === 403) {
-      throw new FatalAuthError(`OpenRouter ${r.status}: ${detail || r.statusText}`);
+  let body: OpenRouterChatCompletion;
+  try {
+    body = await openRouterJson<OpenRouterChatCompletion>({
+      apiKey: opts.apiKey,
+      label: "anki-distractors",
+      title: "Ruby High Anki Import",
+      body: {
+        model,
+        messages: [
+          { role: "system", content: "You generate plausible distractors for multiple-choice questions. Always respond with ONLY a JSON array of 3 strings." },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 200,
+        temperature: 0.6,
+      },
+    });
+  } catch (err) {
+    if (err instanceof OpenRouterHttpError && (err.status === 401 || err.status === 403)) {
+      throw new FatalAuthError(err.message);
     }
-    throw new Error(`OpenRouter ${r.status}: ${detail || r.statusText}`);
+    throw err;
   }
-  const body = (await r.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   // Strip code fences if the model added any despite instructions.
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();

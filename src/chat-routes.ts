@@ -10,11 +10,9 @@ import {
   tryGetService as getService,
 } from "./services/session-identity.js";
 import {
-  REFERER,
   STUDENT_MODEL,
-  TITLE,
-  openRouterFetch,
-  throwOpenRouterError,
+  openRouterJson,
+  type OpenRouterChatCompletion,
 } from "./services/openrouter-client.js";
 import {
   highestScoringFaculty,
@@ -494,15 +492,10 @@ async function generateOpinionResponse(args: {
     question: args.question,
     rubric: args.rubric,
   });
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
+  const body = await openRouterJson<OpenRouterChatCompletion>({
+    apiKey: args.apiKey,
+    label: "chat",
+    body: {
       model: STUDENT_MODEL,
       messages: [
         { role: "system", content: args.student.systemPrompt },
@@ -510,10 +503,8 @@ async function generateOpinionResponse(args: {
       ],
       max_tokens: 220,
       temperature: 0.9,
-    }),
+    },
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
-  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   return text.replace(/^["'\s]+|["'\s]+$/g, "");
 }
@@ -618,15 +609,10 @@ async function gradeOpinionResponses(args: {
     "After the grade lines, write 2-3 short sentences in your voice as the teacher delivering the verdict to the class. Reference at least one student by name. Plain and direct, in your voice.",
   ].filter(Boolean).join("\n");
 
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
+  const body = await openRouterJson<OpenRouterChatCompletion>({
+    apiKey: args.apiKey,
+    label: "chat",
+    body: {
       model: teacher.defaultModel,
       messages: [
         { role: "system", content: teacher.systemPrompt },
@@ -634,10 +620,8 @@ async function gradeOpinionResponses(args: {
       ],
       max_tokens: 700,
       temperature: 0.6,
-    }),
+    },
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
-  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   return parseTeacherGrades(text);
 }
@@ -696,15 +680,10 @@ async function generateStudentLine(args: {
     "React in one short line — like a text in a group chat. Lowercase, 12 words max. Address whoever just acted by name when natural. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
   ].filter(Boolean).join("\n");
 
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
+  const body = await openRouterJson<OpenRouterChatCompletion>({
+    apiKey: args.apiKey,
+    label: "chat",
+    body: {
       model: STUDENT_MODEL,
       messages: [
         { role: "system", content: args.student.systemPrompt },
@@ -712,10 +691,8 @@ async function generateStudentLine(args: {
       ],
       max_tokens: 80,
       temperature: 0.95,
-    }),
+    },
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
-  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content?.trim() ?? "";
   // Strip wrapping quotes if model added them.
   return text.replace(/^["'\s]+|["'\s]+$/g, "");
@@ -901,15 +878,10 @@ async function generatePlayerLine(args: {
     "Do not say 'what does the report say' unless the visible context is literally a report and that is the most natural thing to ask.",
   ].filter(Boolean).join("\n");
 
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
+  const body = await openRouterJson<OpenRouterChatCompletion>({
+    apiKey: args.apiKey,
+    label: "player-line",
+    body: {
       model: STUDENT_MODEL,
       messages: [
         {
@@ -920,10 +892,8 @@ async function generatePlayerLine(args: {
       ],
       max_tokens: 80,
       temperature: 0.9,
-    }),
+    },
   });
-  if (!r.ok) await throwOpenRouterError(r, "player-line");
-  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content ?? "";
   const line = sanitizePlayerLine(text, character.name);
   if (!line) throw new Error("Player avatar did not produce a line.");
@@ -962,13 +932,16 @@ export interface ChatRouteContext {
  *  shared NAT and a script-from-the-same-IP get separate buckets. */
 const CHAT_LIMITER = new TokenBucket(60, 1);
 const PORTRAIT_LIMITER = new TokenBucket(8, 1 / 30); // image gen: 8 burst, ~1 every 30s
-const CHAT_EVENT_TURN_SEQ = new Map<string, number>();
+const CHAT_EVENT_TURN_TTL_MS = 2 * 60 * 60 * 1000;
+const CHAT_EVENT_TURN_MAX_KEYS = 5_000;
+const CHAT_EVENT_TURN_SEQ = new Map<string, { seq: number; lastSeen: number }>();
 
 /** Drop idle keys hourly so the maps don't grow unbounded for one-off IPs. */
 const limiterGcTimer = setInterval(() => {
   const now = Date.now();
   CHAT_LIMITER.gc(now);
   PORTRAIT_LIMITER.gc(now);
+  gcChatEventTurnSeq(now);
 }, 60 * 60 * 1000);
 if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGcTimer) {
   (limiterGcTimer as { unref: () => void }).unref();
@@ -983,9 +956,28 @@ function chatEventTurnGuard(sessionId: string, faculty: string, rawSeq: unknown)
   const seq = Number(rawSeq);
   if (!Number.isFinite(seq) || seq <= 0) return () => false;
   const key = `${sessionId}:${faculty}`;
-  const prev = CHAT_EVENT_TURN_SEQ.get(key) ?? 0;
-  if (seq > prev) CHAT_EVENT_TURN_SEQ.set(key, seq);
-  return () => (CHAT_EVENT_TURN_SEQ.get(key) ?? seq) !== seq;
+  const now = Date.now();
+  const entry = CHAT_EVENT_TURN_SEQ.get(key);
+  const prev = entry?.seq ?? 0;
+  if (seq > prev) {
+    CHAT_EVENT_TURN_SEQ.set(key, { seq, lastSeen: now });
+    gcChatEventTurnSeq(now);
+  } else if (entry) {
+    entry.lastSeen = now;
+  }
+  return () => (CHAT_EVENT_TURN_SEQ.get(key)?.seq ?? seq) !== seq;
+}
+
+function gcChatEventTurnSeq(now: number = Date.now()): void {
+  for (const [key, entry] of CHAT_EVENT_TURN_SEQ) {
+    if (now - entry.lastSeen > CHAT_EVENT_TURN_TTL_MS) CHAT_EVENT_TURN_SEQ.delete(key);
+  }
+  if (CHAT_EVENT_TURN_SEQ.size <= CHAT_EVENT_TURN_MAX_KEYS) return;
+  const overflow = CHAT_EVENT_TURN_SEQ.size - CHAT_EVENT_TURN_MAX_KEYS;
+  const oldest = Array.from(CHAT_EVENT_TURN_SEQ.entries())
+    .sort((a, b) => a[1].lastSeen - b[1].lastSeen)
+    .slice(0, overflow);
+  for (const [key] of oldest) CHAT_EVENT_TURN_SEQ.delete(key);
 }
 
 /** Minimum Node.js-like response surface used by the auth/redirect helpers.
@@ -996,6 +988,39 @@ interface NodeLikeResponse {
   getHeader?(name: string): unknown;
   setHeader(name: string, value: string | string[]): void;
   end(body?: string): void;
+}
+
+interface SseResponse {
+  writeHead(status: number, headers: Record<string, string | string[]>): void;
+  write(chunk: string): boolean | void;
+  end(): void;
+  flushHeaders?: () => void;
+}
+
+interface SseStream {
+  send(event: string, data: unknown): void;
+  end(): void;
+}
+
+function openSse(response: unknown): SseStream {
+  const res = response as SseResponse;
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders?.();
+  return {
+    send(event: string, data: unknown): void {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    },
+    end(): void {
+      res.write("event: end\ndata: {}\n\n");
+      res.end();
+    },
+  };
 }
 
 /** Whether the AI teacher may NOT call tools this turn.
@@ -1344,24 +1369,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
 
-    const res = ctx.res as {
-      writeHead: (status: number, headers: Record<string, string | string[]>) => void;
-      write: (chunk: string) => boolean | void;
-      end: () => void;
-      flushHeaders?: () => void;
-    };
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-store",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    res.flushHeaders?.();
-
-    const send = (event: string, data: unknown) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
+    const { send, end } = openSse(ctx.res);
 
     try {
       const bank = ruby.questionBankStatus(getSessionId(runtime, ctx.cookieHeader), faculty);
@@ -1379,8 +1387,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     } catch (err) {
       send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
-      res.write("event: end\ndata: {}\n\n");
-      res.end();
+      end();
     }
     return true;
   }
@@ -1447,27 +1454,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const contextIntent = cleanPlayerChatIntent(body?.context?.intent);
     const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
 
-    const res = ctx.res as {
-      writeHead: (status: number, headers: Record<string, string | string[]>) => void;
-      write: (chunk: string) => boolean | void;
-      end: () => void;
-      flushHeaders?: () => void;
-    };
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-store",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    res.flushHeaders?.();
-    const send = (event: string, data: unknown) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
+    const { send, end } = openSse(ctx.res);
     if (isStaleChatEvent()) {
       send("done", { type: "done", finishReason: "stale-turn" });
-      res.write("event: end\ndata: {}\n\n");
-      res.end();
+      end();
       return true;
     }
 
@@ -1525,8 +1515,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       } catch (err) {
         send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
-        res.write("event: end\ndata: {}\n\n");
-        res.end();
+        end();
       }
       return true;
     }
@@ -1571,8 +1560,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const playerName = state.character?.name ?? "the player";
       if (!answerGradedContextMatchesReveal(state, c)) {
         send("done", { type: "done", finishReason: "stale-answer" });
-        res.write("event: end\ndata: {}\n\n");
-        res.end();
+        end();
         return true;
       }
       const round = state.activeRound;
@@ -1623,8 +1611,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // Guard against concurrent or duplicate room-idle requests for the same round.
       if (!state.activeRound || state.activeRound.resolved || !state.activeRound.idleTriggered) {
         send("done", { type: "done", finishReason: "stale-idle" });
-        res.write("event: end\ndata: {}\n\n");
-        res.end();
+        end();
         return true;
       }
       const playerName = state.character?.name ?? "the student";
@@ -1748,8 +1735,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       log.error("chat.event-failed", err, { faculty, trigger });
       send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
-      res.write("event: end\ndata: {}\n\n");
-      res.end();
+      end();
     }
     return true;
   }
@@ -1936,28 +1922,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       }
     }
 
-    const res = ctx.res as {
-      writeHead: (status: number, headers: Record<string, string | string[]>) => void;
-      write: (chunk: string) => boolean | void;
-      end: () => void;
-      flushHeaders?: () => void;
-    };
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-store",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    res.flushHeaders?.();
-    const send = (event: string, data: unknown) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
+    const { send, end } = openSse(ctx.res);
 
     if (!ruby.isOpinionRoundReadyToGrade(sessionId)) {
       send("waiting", { ok: true });
-      res.write("event: end\ndata: {}\n\n");
-      res.end();
+      end();
       return true;
     }
 
@@ -2045,8 +2014,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     } catch (err) {
       send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
-      res.write("event: end\ndata: {}\n\n");
-      res.end();
+      end();
     }
     return true;
   }

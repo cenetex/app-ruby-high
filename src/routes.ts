@@ -1045,169 +1045,93 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           difficulty?: string;
           mode?: "class" | "practice";
           reward?: GraduationReward;
+          name?: string;
+          playbookId?: string;
+          stats?: CharacterStats;
+          arcAnswer?: string;
+          flavorQuote?: string;
+          personality?: string;
+          portraitDataUrl?: string;
+          mentorAccepted?: boolean;
+          grade?: string;
         }
       | null;
     const type = body?.type;
 
-    try {
-      if (type === "answer") {
+    const persist = (state: QuizState, message: string, command = String(type ?? "unknown")) =>
+      sendPersistedCommandState(ctx, {
+        ruby,
+        sessionId: stateKey,
+        state,
+        runtime,
+        faculty,
+        cookieHeader: ctx.cookieHeader,
+        command,
+        message,
+      });
+    const noteReveal = (state: QuizState) => {
+      if (!state.lastReveal) return;
+      noteGradedAnswer({
+        runtime,
+        cookieHeader: ctx.cookieHeader,
+        faculty: state.faculty,
+        picked: state.lastReveal.picked,
+        correct: state.lastReveal.correct,
+        wasCorrect: state.lastReveal.wasCorrect,
+      });
+    };
+    const playBonusCommand = async () => {
+      // Renamed from play-daily; old clients still send the legacy name during the rolling window.
+      const state = ruby.playBonus(stateKey);
+      return await persist(state, "Today's class question is on the board.");
+    };
+    const commandHandlers: Record<string, () => Promise<boolean>> = {
+      answer: async () => {
         const picked = String(body?.picked ?? "").toUpperCase() as Choice;
         if (!CHOICES.includes(picked)) throw new Error("Pick must be A, B, C, or D");
         const state = ruby.submitAnswer(stateKey, picked);
-        if (state.lastReveal) {
-          noteGradedAnswer({
-            runtime,
-            cookieHeader: ctx.cookieHeader,
-            faculty: state.faculty,
-            picked: state.lastReveal.picked,
-            correct: state.lastReveal.correct,
-            wasCorrect: state.lastReveal.wasCorrect,
-          });
-        }
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: state.lastReveal?.wasCorrect ? "Correct" : "Marked",
-        });
-      }
-
-      if (type === "answer-text") {
+        noteReveal(state);
+        return await persist(state, state.lastReveal?.wasCorrect ? "Correct" : "Marked");
+      },
+      "answer-text": async () => {
         const answerText = String(body?.answerText ?? "");
         const state = ruby.submitTextAnswer(stateKey, answerText);
-        if (state.lastReveal) {
-          noteGradedAnswer({
-            runtime,
-            cookieHeader: ctx.cookieHeader,
-            faculty: state.faculty,
-            picked: state.lastReveal.picked,
-            correct: state.lastReveal.correct,
-            wasCorrect: state.lastReveal.wasCorrect,
-          });
-        }
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: state.lastReveal?.wasCorrect ? "Correct" : "Marked",
-        });
-      }
-
-      if (type === "generate-mc") {
+        noteReveal(state);
+        return await persist(state, state.lastReveal?.wasCorrect ? "Correct" : "Marked");
+      },
+      "generate-mc": async () => {
         const state = await ruby.generateCurrentMcQuestion(stateKey, ctx.apiKeyHeader);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Multiple choice generated",
-        });
-      }
-
-      if (type === "pick") {
+        return await persist(state, "Multiple choice generated");
+      },
+      pick: async () => {
         const state = ruby.pickAndPose(stateKey, {
           faculty: body?.faculty,
           subject: body?.subject,
           difficulty: body?.difficulty as Difficulty | undefined,
           mode: body?.mode,
         });
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Picked",
-        });
-      }
-
-      if (type === "play-bonus" || type === "play-daily") {
-        // Renamed from play-daily; old clients still send the legacy
-        // name during the rolling window.
-        const state = ruby.playBonus(stateKey);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Today's class question is on the board.",
-        });
-      }
-
-      if (type === "set-faculty") {
+        return await persist(state, "Picked");
+      },
+      "play-bonus": playBonusCommand,
+      "play-daily": playBonusCommand,
+      "set-faculty": async () => {
         if (!body?.faculty) throw new Error("Missing faculty id");
         const state = ruby.setFaculty(stateKey, body.faculty);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: `Now teaching: ${state.faculty}`,
-        });
-      }
-
-      if (type === "clear") {
+        return await persist(state, `Now teaching: ${state.faculty}`);
+      },
+      clear: async () => {
         const state = ruby.clearBoard(stateKey);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Cleared",
-        });
-      }
-
-      if (type === "reset") {
+        return await persist(state, "Cleared");
+      },
+      reset: async () => {
         const state = ruby.resetSession(stateKey);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Session reset",
-        });
-      }
-
-      if (type === "force-resolve") {
+        return await persist(state, "Session reset");
+      },
+      "force-resolve": async () => {
         const state = ruby.forceResolveRound(stateKey);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Round resolved",
-        });
-      }
-
-      if (type === "roll-advantage") {
+        return await persist(state, "Round resolved");
+      },
+      "roll-advantage": async () => {
         const { state, result, reason } = ruby.rollAdvantage(stateKey);
         const message = result == null
           ? reason === "exhausted"
@@ -1220,130 +1144,63 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
             : result.outcome === "mixed"
               ? `Mixed (${result.total}) — eliminated ${result.eliminated.join(" & ")}.`
               : `Miss (${result.total}) — nothing's crossed out, but you're no worse off.`;
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message,
-        });
-      }
-
-      if (type === "complete-graduation") {
+        return await persist(state, message);
+      },
+      "complete-graduation": async () => {
         const reward = body?.reward;
         if (!reward || typeof reward !== "object" || !("kind" in reward)) {
           throw new Error("Pick a graduation reward.");
         }
         const state = ruby.completeGraduation(stateKey, reward);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: state.character && (state.character.yearbook ?? []).length >= 4
-            ? "Graduated"
-            : "Advanced",
-        });
-      }
-
-      if (type === "create-character") {
-        const cb = body as { name?: string; playbookId?: string; stats?: CharacterStats; arcAnswer?: string; flavorQuote?: string; personality?: string; portraitDataUrl?: string; mentorAccepted?: boolean };
-        if (!cb.name || !cb.playbookId || !cb.stats) {
+        const message = state.character && (state.character.yearbook ?? []).length >= 4 ? "Graduated" : "Advanced";
+        return await persist(state, message);
+      },
+      "create-character": async () => {
+        if (!body?.name || !body.playbookId || !body.stats) {
           throw new Error("Missing name, playbookId, or stats.");
         }
-        if (!PLAYBOOKS.some((p) => p.id === cb.playbookId)) {
-          throw new Error(`Unknown playbookId: ${cb.playbookId}`);
+        if (!PLAYBOOKS.some((p) => p.id === body.playbookId)) {
+          throw new Error(`Unknown playbookId: ${body.playbookId}`);
         }
-        if (!isValidStatDistribution(cb.stats)) {
+        if (!isValidStatDistribution(body.stats)) {
           throw new Error("Invalid stat distribution — must be one each of +2, +1, 0, -1.");
         }
         const state = ruby.createCharacter(stateKey, {
-          name: cb.name,
-          playbookId: cb.playbookId,
-          stats: cb.stats,
-          arcAnswer: cb.arcAnswer ?? "",
-          flavorQuote: cb.flavorQuote,
-          personality: cb.personality ?? "",
-          portraitDataUrl: cb.portraitDataUrl,
-          mentorAccepted: !!cb.mentorAccepted,
+          name: body.name,
+          playbookId: body.playbookId,
+          stats: body.stats,
+          arcAnswer: body.arcAnswer ?? "",
+          flavorQuote: body.flavorQuote,
+          personality: body.personality ?? "",
+          portraitDataUrl: body.portraitDataUrl,
+          mentorAccepted: !!body.mentorAccepted,
         });
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Character created",
-        });
-      }
-
-      if (type === "clear-character") {
+        return await persist(state, "Character created");
+      },
+      "clear-character": async () => {
         const state = ruby.clearCharacter(stateKey);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Character cleared",
-        });
-      }
-
-      if (type === "set-portrait") {
-        const url = String((body as { portraitDataUrl?: string }).portraitDataUrl ?? "");
+        return await persist(state, "Character cleared");
+      },
+      "set-portrait": async () => {
+        const url = String(body?.portraitDataUrl ?? "");
         const state = ruby.setPortrait(stateKey, url);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Portrait updated",
-        });
-      }
-
-      if (type === "select-grade") {
-        const grade = String((body as { grade?: string })?.grade ?? "") as Grade;
+        return await persist(state, "Portrait updated");
+      },
+      "select-grade": async () => {
+        const grade = String(body?.grade ?? "") as Grade;
         if (!GRADES.includes(grade)) throw new Error(`Grade must be one of ${GRADES.join(", ")}`);
         const state = ruby.selectGrade(stateKey, grade);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: `Grade set to ${grade}`,
-        });
-      }
-
-      if (type === "mark-intro-seen") {
+        return await persist(state, `Grade set to ${grade}`);
+      },
+      "mark-intro-seen": async () => {
         const state = ruby.markIntroSeen(stateKey);
-        return await sendPersistedCommandState(ctx, {
-          ruby,
-          sessionId: stateKey,
-          state,
-          runtime,
-          faculty,
-          cookieHeader: ctx.cookieHeader,
-          command: type,
-          message: "Intro acknowledged",
-        });
-      }
+        return await persist(state, "Intro acknowledged");
+      },
+    };
 
+    try {
+      const handler = typeof type === "string" ? commandHandlers[type] : undefined;
+      if (handler) return await handler();
       const state = ruby.getOrCreate(stateKey);
       ctx.json(ctx.res, {
         success: true,
