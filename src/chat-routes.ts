@@ -57,6 +57,55 @@ async function openRouterFetch(init: RequestInit, timeoutMs: number = OPENROUTER
   }
 }
 
+function readNonNegativeMs(value: string | undefined, fallback: number): number {
+  if (value == null || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+const OPINION_SUBMIT_READY_GRACE_MS = readNonNegativeMs(process.env.RUBY_HIGH_OPINION_SUBMIT_READY_GRACE_MS, 1_500);
+const OPINION_SUBMIT_READY_POLL_MS = 75;
+
+async function waitForOpinionReadyToGrade(ruby: RubyHighService, sessionId: string, timeoutMs = OPINION_SUBMIT_READY_GRACE_MS): Promise<boolean> {
+  if (ruby.isOpinionRoundReadyToGrade(sessionId)) return true;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const delayMs = Math.min(OPINION_SUBMIT_READY_POLL_MS, Math.max(0, deadline - Date.now()));
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    if (ruby.isOpinionRoundReadyToGrade(sessionId)) return true;
+  }
+  return ruby.isOpinionRoundReadyToGrade(sessionId);
+}
+
+function fillMissingOpinionResponders(
+  ruby: RubyHighService,
+  sessionId: string,
+  mode: "force" | "offline" | "grace",
+): boolean {
+  const state = ruby.getOrCreate(sessionId);
+  const round = state.activeRound;
+  if (!round || round.type !== "opinion" || round.resolved) return false;
+  let mutated = false;
+  const present = new Set(round.opinionResponses.map((r) => r.responder));
+  if (!present.has("player")) {
+    ruby.recordOpinion(sessionId, "player", "(no response — ran out the clock)");
+    present.add("player");
+    mutated = true;
+  }
+  for (const npc of round.npcs) {
+    if (present.has(npc.studentId)) continue;
+    const placeholder = mode === "offline"
+      ? "(thinking it over silently)"
+      : mode === "grace"
+        ? "(still thinking it over)"
+        : "(no response — couldn't get it down in time)";
+    ruby.recordOpinion(sessionId, npc.studentId, placeholder);
+    present.add(npc.studentId);
+    mutated = true;
+  }
+  return mutated;
+}
+
 export function publicChatHistory(messages: ChatMessage[]): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
   const pendingTools = new Map<string, { call: ToolCall; faculty?: string }>();
@@ -2279,31 +2328,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ruby.recordOpinion(sessionId, "player", text);
       mutated = true;
     }
+    const offline = !apiKey;
+    if (apiKey && text && !force) {
+      void chat.kickoffNpcOpinions(apiKey, sessionId).catch((err) => {
+        log.error("opinion.npc-kickoff-failed", err, { sessionId });
+      });
+    }
 
     // Force-grade path: the round timer expired or all NPCs are in but the
     // player never spoke. Fill missing responders with placeholders so the
     // teacher can grade what's there. In offline mode we always force-fill
     // so the round can resolve without an LLM-driven NPC turn.
-    const offline = !apiKey;
     if (force || offline) {
-      const state = ruby.getOrCreate(sessionId);
-      const round = state.activeRound;
-      if (round && round.type === "opinion" && !round.resolved) {
-        const present = new Set(round.opinionResponses.map((r) => r.responder));
-        if (!present.has("player")) {
-          ruby.recordOpinion(sessionId, "player", "(no response — ran out the clock)");
-          mutated = true;
-        }
-        for (const npc of round.npcs) {
-          if (!present.has(npc.studentId)) {
-            const placeholder = offline
-              ? "(thinking it over silently)"
-              : "(no response — couldn't get it down in time)";
-            ruby.recordOpinion(sessionId, npc.studentId, placeholder);
-            mutated = true;
-          }
-        }
-      }
+      mutated = fillMissingOpinionResponders(ruby, sessionId, offline ? "offline" : "force") || mutated;
     }
     if (mutated) {
       try {
@@ -2312,6 +2349,27 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         log.error("opinion.persist-failed", err, { sessionId });
         ctx.error(ctx.res, "Opinion response could not be persisted. Please retry.", 503);
         return true;
+      }
+    }
+
+    // Normal AI path: player submissions used to return "waiting" until
+    // every NPC response arrived, which made the UI look frozen when NPC
+    // generation stalled or had been skipped by a race. Give classmates a
+    // short chance to land, then fill the missing slots and grade now; the
+    // long OpenRouter timeout should not be user-visible control flow.
+    if (!force && !offline && text && !ruby.isOpinionRoundReadyToGrade(sessionId)) {
+      await waitForOpinionReadyToGrade(ruby, sessionId);
+      if (!ruby.isOpinionRoundReadyToGrade(sessionId)) {
+        const filled = fillMissingOpinionResponders(ruby, sessionId, "grace");
+        if (filled) {
+          try {
+            await ruby.flushSession(sessionId);
+          } catch (err) {
+            log.error("opinion.persist-failed", err, { sessionId });
+            ctx.error(ctx.res, "Opinion response could not be persisted. Please retry.", 503);
+            return true;
+          }
+        }
       }
     }
 

@@ -148,6 +148,7 @@ export class ChatService extends Service {
    * spoke." Keyed identically to histories so isolation matches.
    */
   private readonly events = new Map<string, RoomEvent[]>();
+  private readonly npcOpinionKickoffs = new Map<string, Promise<void>>();
   private ruby: RubyHighService | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<ChatService> {
@@ -157,6 +158,7 @@ export class ChatService extends Service {
   async stop(): Promise<void> {
     this.histories.clear();
     this.events.clear();
+    this.npcOpinionKickoffs.clear();
   }
 
   setRubyHighService(ruby: RubyHighService): void {
@@ -500,7 +502,12 @@ export class ChatService extends Service {
     if (!round || round.type !== "opinion" || round.resolved) return;
     const q = state.current;
     if (!q) return;
-    if (round.opinionResponses.length > 0) return; // already kicked off
+    const kickoffKey = `${agentSessionId}:${round.questionId}`;
+    const existing = this.npcOpinionKickoffs.get(kickoffKey);
+    if (existing) return existing;
+    const responded = new Set(round.opinionResponses.map((r) => r.responder));
+    const missingNpcs = round.npcs.filter((entry) => !responded.has(entry.studentId));
+    if (missingNpcs.length === 0) return;
 
     const grade = state.currentGrade;
     const facultyId = state.faculty;
@@ -513,32 +520,43 @@ export class ChatService extends Service {
     // Resolve each NPC's character + stats from the roster.
     const roster = grade ? state.npcRosters[grade] ?? [] : [];
 
-    const tasks = round.npcs.map(async (entry) => {
-      const student = STUDENTS[entry.studentId];
-      if (!student) return;
-      const rosterRow = roster.find((r) => r.id === entry.studentId);
-      const stats = rosterRow?.stats ?? { head: 0, heart: 0, hustle: 0, honor: 0 };
-      try {
-        const text = await callOpinionForNpc({
-          apiKey,
-          student,
-          stats,
-          teacherId: facultyId,
-          classmates,
-          playerName,
-          grade,
-          question: q.prompt,
-          rubric: q.rubric,
-        });
-        // Record. The recordOpinion in ruby-high-service is a no-op if the
-        // round already moved on, so a slow response after grading is harmless.
-        this.ruby!.recordOpinion(agentSessionId, entry.studentId, text);
-      } catch {
-        // Fall back to a placeholder so grading can still proceed.
-        this.ruby!.recordOpinion(agentSessionId, entry.studentId, "(...thinking, couldn't get the words out.)");
+    const kickoff = (async () => {
+      const tasks = missingNpcs.map(async (entry) => {
+        const student = STUDENTS[entry.studentId];
+        if (!student) return;
+        const rosterRow = roster.find((r) => r.id === entry.studentId);
+        const stats = rosterRow?.stats ?? { head: 0, heart: 0, hustle: 0, honor: 0 };
+        try {
+          const text = await callOpinionForNpc({
+            apiKey,
+            student,
+            stats,
+            teacherId: facultyId,
+            classmates,
+            playerName,
+            grade,
+            question: q.prompt,
+            rubric: q.rubric,
+          });
+          // Record. The recordOpinion in ruby-high-service is a no-op if the
+          // round already moved on, so a slow response after grading is harmless.
+          this.ruby!.recordOpinion(agentSessionId, entry.studentId, text);
+        } catch {
+          // Fall back to a placeholder so grading can still proceed.
+          this.ruby!.recordOpinion(agentSessionId, entry.studentId, "(...thinking, couldn't get the words out.)");
+        }
+      });
+      await Promise.allSettled(tasks);
+      await this.ruby?.flushSession(agentSessionId).catch(() => undefined);
+    })();
+    this.npcOpinionKickoffs.set(kickoffKey, kickoff);
+    try {
+      await kickoff;
+    } finally {
+      if (this.npcOpinionKickoffs.get(kickoffKey) === kickoff) {
+        this.npcOpinionKickoffs.delete(kickoffKey);
       }
-    });
-    await Promise.allSettled(tasks);
+    }
   }
 
   private async dispatchTool(

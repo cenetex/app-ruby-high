@@ -507,6 +507,49 @@ describe("ChatService.send — message composition", () => {
     expect(systemBlob).toContain("applauded");
   });
 
+  it("kicks off missing NPC opinion responses even when the player answered first", async () => {
+    const { ruby, chat } = await makeServices();
+    const sid = "session:opinion-player-first";
+    ruby.createCharacter(sid, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(sid, "9");
+    ruby.poseOpinion(sid, {
+      prompt: "When a classmate answers confidently, what should you trust and what should you check?",
+      faculty: "ruby",
+    });
+    const beforeRound = ruby.getOrCreate(sid).activeRound;
+    expect(beforeRound?.type).toBe("opinion");
+    const npcIds = beforeRound!.npcs.map((n) => n.studentId);
+    expect(npcIds.length).toBeGreaterThan(0);
+
+    ruby.recordOpinion(sid, "player", "I trust concrete evidence and check claims that skip the source.");
+    const calls: any[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input: any, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+      calls.push(body);
+      const userPrompt = String(body.messages?.find((m: any) => m.role === "user")?.content ?? "");
+      const name = userPrompt.match(/^You are ([^,]+)/)?.[1] ?? "Classmate";
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: `${name} gives a concrete answer.` } }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await chat.kickoffNpcOpinions("sk-test", sid);
+
+    const afterRound = ruby.getOrCreate(sid).activeRound;
+    const responders = afterRound?.opinionResponses.map((r) => r.responder) ?? [];
+    expect(responders).toEqual(expect.arrayContaining(["player", ...npcIds]));
+    expect(calls).toHaveLength(npcIds.length);
+  });
+
   it("history payload contains no system messages — Tier A is dialogue-only", async () => {
     // Set up: an event in the log, a user message, then a turn.
     mockOpenRouter(buildSseChunk([{ content: "first.", finish: "stop" }]));

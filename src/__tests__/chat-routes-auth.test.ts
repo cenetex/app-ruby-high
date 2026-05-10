@@ -437,6 +437,60 @@ describe("chat event context", () => {
     expect(state.activeRound?.opinionGrades.some((g) => g.responder === "player")).toBe(true);
   });
 
+  it("grades a submitted opinion instead of waiting on the round timeout when NPCs are missing", async () => {
+    const token = "route-opinion-submit-no-timeout-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-opinion-submit-no-timeout-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Opinion No Timeout",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(sessionId, "9");
+    ruby.poseOpinion(sessionId, {
+      prompt: "When a classmate answers confidently, what should you trust and what should you check?",
+      faculty: "ruby",
+    });
+    const round = ruby.getOrCreate(sessionId).activeRound;
+    expect(round?.type).toBe("opinion");
+    expect(round!.npcs.length).toBeGreaterThan(0);
+
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response("openrouter down", { status: 500, statusText: "Bad Gateway" });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/opinion-submit"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: { text: "I trust a clear trail of evidence and check the source behind the confidence." },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: opinion-graded");
+    expect(res.body).not.toContain("event: waiting");
+    expect(res.body).not.toContain("event: error");
+    const state = ruby.getOrCreate(sessionId);
+    expect(state.activeRound?.resolved).toBe(true);
+    expect(state.activeRound?.opinionResponses.map((r) => r.responder)).toEqual(
+      expect.arrayContaining(["player", ...round!.npcs.map((n) => n.studentId)]),
+    );
+    expect(state.activeRound?.opinionGrades.some((g) => g.responder === "player")).toBe(true);
+  });
+
   it("drops answer-graded teacher turns when the live reveal has moved on", async () => {
     const token = "route-stale-answer-token";
     auth.injectSessionForTest(token, {
