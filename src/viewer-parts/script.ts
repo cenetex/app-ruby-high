@@ -2575,11 +2575,45 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     closeRails();
   }
+  async function startPostClassPractice(postClass) {
+    if (!postClass || !postClass.report) return false;
+    if (manualChatBusy) return true;
+    els.nextBtn.disabled = true;
+    try {
+      if (postClass.canPick) {
+        const data = await command({ type: "pick", mode: "practice" });
+        if (!(data && data.noQuestionDue)) {
+          lockedFor = null;
+          return true;
+        }
+      }
+      if (aiEnabled) {
+        await runAgentTurn("manual", {
+          grade: lastTelemetry && lastTelemetry.current_grade,
+          intent: "advance",
+        }, { force: true });
+      } else {
+        showNoScheduledQuestionReadyHint();
+      }
+      lockedFor = null;
+      return true;
+    } finally {
+      els.nextBtn.disabled = manualChatBusy || agentBusy;
+    }
+  }
   async function pickNext() {
     // Graduation ceremony is always accessible — bypass the agentBusy guard so
     // the Ceremony button works even while a teacher SSE turn is in flight.
     if (lastTelemetry && lastTelemetry.graduation_ready && !lastTelemetry.current) {
       openSheet();
+      return;
+    }
+    const postClass = postClassState(lastTelemetry);
+    if (postClass.report) {
+      const now = Date.now();
+      if (now - lastChatButtonAt < 900) return;
+      lastChatButtonAt = now;
+      await startPostClassPractice(postClass);
       return;
     }
     // When the round clock expired but the room-idle DM turn hasn't resolved
@@ -2651,13 +2685,6 @@ const VIEWER_SCRIPT_SUFFIX = `
           return;
         }
         await runPlayerChatTurn("report");
-        return;
-      }
-      const postClass = postClassState(lastTelemetry);
-      if (postClass.report && postClass.canPick) {
-        const data = await command({ type: "pick" });
-        if (data && data.noQuestionDue) await runPlayerChatTurn("class");
-        lockedFor = null;
         return;
       }
       await runPlayerChatTurn("class");
