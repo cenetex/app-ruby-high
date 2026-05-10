@@ -72,6 +72,17 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart");
   });
 
+  it("uses explicit top status labels instead of ambiguous streak/classes copy", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('title="Consecutive school days with a passed daily class"');
+    expect(html).toContain('title="Subject courses passed with a C or better"');
+    expect(script).toContain('streakCount + "/" + streakReq + " school days"');
+    expect(script).toContain('classes.met + "/" + classes.total + " courses passed"');
+    expect(script).toContain('formatWholeNumber(t.scorePoints || 0) + " score"');
+  });
+
   it("builds the class report with teacher art and a real star meter", () => {
     const script = inlineScript(renderedViewer());
 

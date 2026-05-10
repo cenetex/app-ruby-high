@@ -262,6 +262,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     const n = Number(score);
     return Number.isFinite(n) ? Math.round(n) + "%" : "—";
   }
+  function formatWholeNumber(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "0";
+    return String(Math.round(n)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+  }
 
   // Build the chalkboard's class-grade row — three pills (Homeroom /
   // Science / Literature) showing the player's letter standing in each
@@ -1405,8 +1410,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   // ── top-bar arc indicator (live progress through the 4-year arc) ────────
-  // Shape: "Junior · streak 2/3 · 2/3 classes". Hidden until a character
-  // exists. Streak/class progress turns accent-colored once the gate is met (player's
+  // Shape: "Junior · 2/3 school days · 2/3 courses passed". Hidden until a character
+  // exists. School-day/course progress turns accent-colored once the gate is met (player's
   // sitting on the threshold, waiting for the other gate to land). After
   // graduation the year flips to "Graduated" and the gate hints drop.
   function renderArcIndicator(t) {
@@ -1423,21 +1428,21 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.arcYear.textContent = "Graduated";
       els.arcStreak.textContent = "diploma earned";
       els.arcStreak.classList.remove("is-met");
-      els.arcXp.textContent = "classes passed";
+      els.arcXp.textContent = "courses passed";
       els.arcXp.classList.remove("is-met");
-      els.arcScore.textContent = Math.round(Number(t.scorePoints || 0)) + " score";
+      els.arcScore.textContent = formatWholeNumber(t.scorePoints || 0) + " score";
       return;
     }
     const yearLabel = GRADE_LABELS[grade] || ("Grade " + grade);
     els.arcYear.textContent = yearLabel;
     const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
     const streakReq   = STREAK_REQUIRED[grade] || 1;
-    els.arcStreak.textContent = "streak " + streakCount + "/" + streakReq;
+    els.arcStreak.textContent = streakCount + "/" + streakReq + " school days";
     els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
     const classes = classGradeSummary();
-    els.arcXp.textContent = classes.met + "/" + classes.total + " classes";
+    els.arcXp.textContent = classes.met + "/" + classes.total + " courses passed";
     els.arcXp.classList.toggle("is-met", classes.met >= classes.total);
-    els.arcScore.textContent = Math.round(Number(t.scorePoints || 0)) + " score";
+    els.arcScore.textContent = formatWholeNumber(t.scorePoints || 0) + " score";
   }
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────

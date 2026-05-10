@@ -65,11 +65,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="arc-indicator" id="arc-indicator" hidden>
         <span class="arc-year" id="arc-year">—</span>
         <span class="arc-sep">·</span>
-        <span class="arc-streak" id="arc-streak" title="Daily-class streak this year">streak —</span>
+        <span class="arc-streak" id="arc-streak" title="Consecutive school days with a passed daily class">— school days</span>
         <span class="arc-sep">·</span>
-        <span class="arc-xp" id="arc-xp" title="Class standing">— classes</span>
+        <span class="arc-xp" id="arc-xp" title="Subject courses passed with a C or better">— courses passed</span>
         <span class="arc-sep">·</span>
-        <span class="arc-score" id="arc-score" title="Session score">0 score</span>
+        <span class="arc-score" id="arc-score" title="Total score">0 score</span>
       </div>
       <button class="pack-btn" id="pack-btn" type="button" title="Content packs" aria-label="Content packs" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

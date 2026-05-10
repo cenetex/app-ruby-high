@@ -670,7 +670,7 @@ export const VIEWER_CSS = `
   .arc-indicator .arc-xp.is-met { color: var(--accent); }
   .arc-indicator .arc-score { color: #ffe08a; font-variant-numeric: tabular-nums; }
   .arc-indicator.is-graduated .arc-year { color: #f0b441; }
-  /* Mobile: hide the streak/class detail, keep just the year tag. The full
+  /* Mobile: hide the school-day/course detail, keep just the year tag. The full
    * progress is one tap away on the character sheet. */
   @media (max-width: 540px) {
     .arc-indicator .arc-sep,
