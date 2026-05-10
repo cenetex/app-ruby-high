@@ -1,5 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { RubyHighService } from "../services/ruby-high-service.js";
+import { getSessionId as getRuntimeSessionId } from "../services/session-identity.js";
 
 export function getService(runtime: IAgentRuntime): RubyHighService {
   const svc = runtime.getService<RubyHighService>(RubyHighService.serviceType);
@@ -12,8 +13,7 @@ export function getService(runtime: IAgentRuntime): RubyHighService {
 }
 
 export function getSessionId(runtime: IAgentRuntime): string {
-  const agentId = (runtime as { agentId?: string } | null)?.agentId;
-  return agentId ? `ruby-high:${agentId}` : "ruby-high:anonymous";
+  return getRuntimeSessionId(runtime, undefined, { allowAgentFallback: true });
 }
 
 export function errorText(err: unknown): string {

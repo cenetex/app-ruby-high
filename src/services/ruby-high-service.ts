@@ -215,6 +215,13 @@ interface ScheduledPickPlan {
   question?: BankedQuestion;
 }
 
+export interface DailyStatus {
+  available: boolean;
+  reason?: "completed" | "no-grade" | "no-character";
+  facultyId: string;
+  dailyKey: string;
+}
+
 interface DailyClassUpdate {
   mode: "class" | "practice";
   cardRole?: DeckCardRole;
@@ -255,6 +262,41 @@ const CLASS_QUESTIONS_PER_DAY = 3;
 const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [2, 4, 6] as const;
 const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 1;
 const MAX_STORED_IMAGE_REF_LENGTH = 280_000;
+
+export function advantageRollsForState(state: QuizState): { used: number; cap: number; remaining: number } {
+  const grade = state.currentGrade;
+  const used = (grade && state.character?.advantageRollsUsed?.[grade]) ?? 0;
+  const bonus = (grade && state.character?.advantageRollBonuses?.[grade]) ?? 0;
+  const cap = ADVANTAGE_ROLLS_PER_GRADE + Math.max(0, bonus);
+  return { used, cap, remaining: Math.max(0, cap - used) };
+}
+
+export function dailyStatusForState(state: QuizState, now: Date = new Date()): DailyStatus {
+  const key = dailyKey(now);
+  const fac = dailyFacultyForQuizState(state, key);
+  if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
+  if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
+  if (state.character.lastBonusDate === key) {
+    return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
+  }
+  return { available: true, facultyId: fac, dailyKey: key };
+}
+
+function dailyFacultyForQuizState(state: QuizState, key: string): string {
+  const scheduled = facultyForDay(key);
+  const resolved = resolveFacultyIdForSession(state, scheduled);
+  if (resolved) return resolved;
+
+  const pack = packForSession(state);
+  const courseFacultyIds = coursesForPack(pack)
+    .map((c) => c.facultyId)
+    .filter((facultyId) => pack.faculty.some((f) =>
+      f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+    ));
+  if (courseFacultyIds.length === 0) return scheduled;
+  const idx = ((dailyIndex(key) % courseFacultyIds.length) + courseFacultyIds.length) % courseFacultyIds.length;
+  return courseFacultyIds[idx]!;
+}
 
 function cardMemoryKey(courseId: string, questionId: string): string {
   return `${courseId}::${questionId}`;
@@ -533,11 +575,7 @@ export class RubyHighService extends Service {
    *  session-state payload so the viewer can render "2/3 left" and disable
    *  the button when the pool is empty. */
   advantageRollsRemaining(sessionId: string): { used: number; cap: number; remaining: number } {
-    const state = this.getOrCreate(sessionId);
-    const grade = state.currentGrade;
-    const used = (grade && state.character?.advantageRollsUsed?.[grade]) ?? 0;
-    const cap = grade && state.character ? this.advantageRollCapFor(state.character, grade) : ADVANTAGE_ROLLS_PER_GRADE;
-    return { used, cap, remaining: Math.max(0, cap - used) };
+    return advantageRollsForState(this.getOrCreate(sessionId));
   }
 
   private advantageRollCapFor(ch: PlayerCharacter, grade: Grade): number {
@@ -936,22 +974,6 @@ export class RubyHighService extends Service {
     return pack.id.startsWith("anki:") && pack.faculty.some((f) =>
       f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
     );
-  }
-
-  private dailyFacultyForState(state: QuizState, key: string): string {
-    const scheduled = facultyForDay(key);
-    const resolved = resolveFacultyIdForSession(state, scheduled);
-    if (resolved) return resolved;
-
-    const pack = packForSession(state);
-    const courseFacultyIds = coursesForPack(pack)
-      .map((c) => c.facultyId)
-      .filter((facultyId) => pack.faculty.some((f) =>
-        f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
-      ));
-    if (courseFacultyIds.length === 0) return scheduled;
-    const idx = ((dailyIndex(key) % courseFacultyIds.length) + courseFacultyIds.length) % courseFacultyIds.length;
-    return courseFacultyIds[idx]!;
   }
 
   private dailyClassRecord(state: QuizState, facultyId: string, date = dailyKey()): DailyClassRecord | null {
@@ -2640,21 +2662,8 @@ export class RubyHighService extends Service {
   /** Daily-class status. This is the once-per-day graded class entry point. The
    *  faculty-of-the-day rotation still works the same way (deterministic by
    *  date), so the class flow nudges the player toward different rooms over the week. */
-  dailyStatus(sessionId: string, now: Date = new Date()): {
-    available: boolean;
-    reason?: "completed" | "no-grade" | "no-character";
-    facultyId: string;
-    dailyKey: string;
-  } {
-    const state = this.getOrCreate(sessionId);
-    const key = dailyKey(now);
-    const fac = this.dailyFacultyForState(state, key);
-    if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
-    if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
-    if (state.character.lastBonusDate === key) {
-      return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
-    }
-    return { available: true, facultyId: fac, dailyKey: key };
+  dailyStatus(sessionId: string, now: Date = new Date()): DailyStatus {
+    return dailyStatusForState(this.getOrCreate(sessionId), now);
   }
 
   /** Pose today's daily class question. Throws if today's class entry has already been used. */

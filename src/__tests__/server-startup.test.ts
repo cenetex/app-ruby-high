@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const serverEntry = readFileSync(new URL("../../scripts/server.mjs", import.meta.url), "utf8");
+const devServerEntry = readFileSync(new URL("../../scripts/dev-server.mjs", import.meta.url), "utf8");
+const httpLimits = readFileSync(new URL("../../scripts/http-limits.mjs", import.meta.url), "utf8");
 const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
 const flyConfig = readFileSync(new URL("../../fly.toml", import.meta.url), "utf8");
 
@@ -26,5 +28,16 @@ describe("production startup guardrails", () => {
     expect(dockerfile).toContain("+'/health'");
     expect(flyConfig).toContain('grace_period = "30s"');
     expect(flyConfig).toContain('path = "/health"');
+  });
+
+  it("keeps host JSON body caps aligned for all large import routes", () => {
+    expect(httpLimits).toContain('"/api/apps/ruby-high/packs/import-anki"');
+    expect(httpLimits).toContain('"/api/apps/ruby-high/packs/import-pdf"');
+
+    for (const entry of [serverEntry, devServerEntry]) {
+      expect(entry).toContain('import { bodyLimitForPath } from "./http-limits.mjs";');
+      expect(entry).toContain("readJsonBody(req, bodyLimitForPath(url.pathname))");
+      expect(entry).not.toContain('url.pathname === "/api/apps/ruby-high/packs/import-anki"');
+    }
   });
 });

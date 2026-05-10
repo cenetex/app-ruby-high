@@ -72,10 +72,10 @@ export interface PackRouteDeps {
 const PACK_PREFIX = "/api/apps/ruby-high/packs";
 const IMPORT_LIMITER = new TokenBucket(8, 1 / 30); // 8 burst, ~1 every 30s
 
-/** Hard cap on the JSON body size for /packs/import-anki. An Anki .apkg
- *  base64-inflates by ~33%, so this gives headroom for ~12 MB on-disk
- *  decks — bigger than any sensible single-deck import. The point isn't
- *  to size for typical use but to stop a 1 GB JSON DoS. */
+/** Hard cap on large pack import payloads. Base64 inflates by ~33%, so
+ *  this gives headroom for ~12 MB on-disk decks/PDFs. The host server's
+ *  pre-route cap is kept in scripts/http-limits.mjs and covered by a
+ *  startup guardrail test so new import routes do not drift. */
 const MAX_IMPORT_BODY_BYTES = 16 * 1024 * 1024;
 
 // Drop idle limiter keys hourly so one-off imports from different IPs

@@ -7,6 +7,7 @@
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
+import { bodyLimitForPath } from "./http-limits.mjs";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -65,14 +66,7 @@ async function bootServices() {
   bootReady = true;
 }
 
-// 1 MB cap keeps the host from OOM'ing on malformed or hostile requests.
-// Legitimate Ruby High traffic is well under 4 KB per request. Anki imports
-// are the exception: they carry a base64 .apkg payload and are route-capped
-// in pack-routes.ts at 16 MB.
-const MAX_BODY_BYTES = 1024 * 1024;
-const MAX_IMPORT_BODY_BYTES = 16 * 1024 * 1024;
-const IMPORT_BODY_HOST_CAP_BYTES = MAX_IMPORT_BODY_BYTES + 1024 * 1024;
-function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
+function readJsonBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0;
@@ -161,12 +155,7 @@ function makeRouteContext(req, res, url) {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(data));
     },
-    readJsonBody: () => readJsonBody(
-      req,
-      url.pathname === "/api/apps/ruby-high/packs/import-anki"
-        ? IMPORT_BODY_HOST_CAP_BYTES
-        : MAX_BODY_BYTES,
-    ),
+    readJsonBody: () => readJsonBody(req, bodyLimitForPath(url.pathname)),
   };
 }
 

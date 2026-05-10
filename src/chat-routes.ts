@@ -4,6 +4,27 @@ import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } fr
 import { RubyHighService, type QuestionBankStatus } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
+import {
+  getRuntime,
+  getSessionId,
+  tryGetService as getService,
+} from "./services/session-identity.js";
+import {
+  REFERER,
+  STUDENT_MODEL,
+  TITLE,
+  openRouterFetch,
+  throwOpenRouterError,
+} from "./services/openrouter-client.js";
+import {
+  highestScoringFaculty,
+  maybeUploadPortrait,
+  renderCharacterPortrait,
+  renderDiplomaImage,
+  rollRandomCharacter,
+  type CharacterComponent,
+  type RolledCharacter,
+} from "./services/character-generation.js";
 import { parseTeacherGrades } from "./grading.js";
 import {
   GRADE_LABELS,
@@ -20,42 +41,6 @@ import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
 import { statForQuestion } from "./question-stats.js";
 import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { createHash } from "node:crypto";
-
-const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
-
-/** Throw a debuggable error from an OpenRouter HTTP response. The default
- *  `throw new Error("OpenRouter " + status)` pattern dropped the body, which
- *  hid the real cause (auth issue, model not found, content filter, etc).
- *  This helper preserves the body text up to a sane limit. */
-async function throwOpenRouterError(r: Response, label: string): Promise<never> {
-  const body = await r.text().catch(() => "");
-  const trimmed = body.length > 500 ? body.slice(0, 500) + "…" : body;
-  throw new Error(`${label}: OpenRouter ${r.status} ${r.statusText}${trimmed ? ` — ${trimmed}` : ""}`);
-}
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
-const TITLE = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
-
-/** Default ceiling for non-streaming OpenRouter calls. Without this a
- *  hung upstream (network blip, model overloaded but not erroring,
- *  Cloudflare grey-period) holds the Node request slot indefinitely.
- *  60s is comfortably above realistic completion times for the prompts
- *  in this file — student lines (~80 tokens), opinion responses
- *  (~220 tokens), opinion grading (~700 tokens), character JSON
- *  (~480 tokens) all finish in well under 30s on the configured models.
- *  Configurable via RUBY_HIGH_OPENROUTER_TIMEOUT_MS for slower models. */
-const OPENROUTER_TIMEOUT_MS = Number(process.env.RUBY_HIGH_OPENROUTER_TIMEOUT_MS ?? 60_000);
-async function openRouterFetch(init: RequestInit, timeoutMs: number = OPENROUTER_TIMEOUT_MS): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(OPENROUTER_URL, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
   if (value == null || value.trim() === "") return fallback;
@@ -657,405 +642,6 @@ async function gradeOpinionResponses(args: {
   return parseTeacherGrades(text);
 }
 
-const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
-const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
-
-/** One-shot portrait gen using the same sticker style as the teachers/students.
- *  Returns a base64 data URL. */
-/** Image-gen retry strategy: image models are flaky in three ways
- *  (overload 5xx, slow-stall hang, success-with-empty-image content
- *  filter). One retry catches all three with high probability. We
- *  also bound each attempt to PORTRAIT_TIMEOUT_MS so a stalled
- *  request can't block the response indefinitely.
- *
- *  Rate limiter (PORTRAIT_LIMITER) is on the OUTER endpoint, so the
- *  retry consumes the same budget as the original request — no
- *  amplification. */
-const PORTRAIT_TIMEOUT_MS = 60_000;
-async function fetchPortraitOnce(args: {
-  apiKey: string;
-  prompt: string;
-}): Promise<string> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), PORTRAIT_TIMEOUT_MS);
-  try {
-    const r = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${args.apiKey}`,
-        "HTTP-Referer": REFERER,
-        "X-Title": TITLE,
-      },
-      body: JSON.stringify({
-        model: PORTRAIT_MODEL,
-        modalities: ["image", "text"],
-        messages: [{ role: "user", content: args.prompt }],
-        max_tokens: PORTRAIT_MAX_TOKENS,
-      }),
-      signal: ctrl.signal,
-    });
-    if (!r.ok) {
-      const text = await r.text().catch(() => "");
-      throw new Error(`OpenRouter ${r.status}: ${(text || r.statusText).slice(0, 240)}`);
-    }
-    const body = await r.json() as {
-      choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
-    };
-    const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    if (!url) throw new Error("OpenRouter returned no image (likely a content-filter trip; try a different name/personality).");
-    return url;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** Upload a base64 image dataUrl to S3 and return the public URL.
- *
- *  Why S3: AI-generated portraits are routinely 200KB–1MB as inline
- *  base64. Storing them in the character record blew DynamoDB's 400KB
- *  per-item cap and crashed the persist path (which then crashed the
- *  process — caught and patched in ruby-high-service.persistSession).
- *  Storing the bytes in S3 and the URL in the character record keeps
- *  the record tiny.
- *
- *  Configuration via env:
- *    RUBY_HIGH_PORTRAITS_BUCKET   — bucket name (required to enable)
- *    RUBY_HIGH_PORTRAITS_REGION   — bucket region (default us-east-1)
- *    RUBY_HIGH_PORTRAITS_PUBLIC_BASE — optional CDN/custom-domain prefix
- *      (default: https://<bucket>.s3.<region>.amazonaws.com)
- *
- *  When the bucket isn't configured, returns the input unchanged so
- *  callers degrade gracefully — the server-side size cap in
- *  createCharacter will still reject inline data > 280KB. Default-pack
- *  portraits are simple URL strings, so they always pass.
- */
-let portraitS3Client: S3Client | null = null;
-function getPortraitS3Client(): S3Client | null {
-  const bucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
-  if (!bucket) return null;
-  if (portraitS3Client) return portraitS3Client;
-  portraitS3Client = new S3Client({
-    region: process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1",
-  });
-  return portraitS3Client;
-}
-
-async function maybeUploadPortrait(dataUrl: string, kind: "portrait" | "diploma"): Promise<string> {
-  const bucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
-  const client = getPortraitS3Client();
-  if (!bucket || !client) {
-    // S3 disabled — return the dataUrl unchanged. The downstream size
-    // cap in createCharacter will reject if it's too big, surfacing a
-    // clear error to the user instead of a silent corruption.
-    return dataUrl;
-  }
-  // Parse the dataUrl into mime + bytes. The OpenRouter image endpoint
-  // returns image/png most of the time but we read the actual mime
-  // rather than assume.
-  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
-  if (!match) {
-    // Not a dataUrl — could be already a URL (legacy path). Return
-    // unchanged.
-    return dataUrl;
-  }
-  const mime = match[1] ?? "image/png";
-  const bytes = Buffer.from(match[2] ?? "", "base64");
-  // Content-addressed key so identical bytes dedupe and we don't have
-  // to track per-character object ownership for cleanup.
-  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 32);
-  const ext = mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png";
-  const key = `${kind}/${hash}.${ext}`;
-  try {
-    await client.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: bytes,
-      ContentType: mime,
-      CacheControl: "public, max-age=31536000, immutable",
-    }));
-  } catch (err) {
-    log.error("portrait.s3-upload-failed", err, { kind, bucket, key, bytes: bytes.length });
-    // Surface to caller — the route will translate to 502 and the
-    // client falls back to the default portrait.
-    throw new Error("portrait upload failed: " + (err instanceof Error ? err.message : String(err)));
-  }
-  const base = process.env.RUBY_HIGH_PORTRAITS_PUBLIC_BASE
-    ?? `https://${bucket}.s3.${process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1"}.amazonaws.com`;
-  return base.replace(/\/+$/, "") + "/" + key;
-}
-
-async function renderCharacterPortrait(args: {
-  apiKey: string;
-  name: string;
-  personality: string;
-}): Promise<string> {
-  const prompt = [
-    `JRPG dialog-portrait of ${args.name}, a high schooler at Ruby High.`,
-    `Personality: ${args.personality}`,
-    "",
-    "STYLE: JRPG-style FULL BODY standing portrait — 3/4 view, head to ankles. Tall portrait orientation. Anime-influenced. Bold black outline 5px. Vibrant flat colors, subtle cel shading. Dynamic relaxed pose, expressive face that fits the personality.",
-    "",
-    "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale lavender background (#ece6f5). The background fills the entire frame as one perfectly even color — no gradient, no texture, no pattern, no scenery, no objects, no border, no transparency. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
-    "No text, no logo, no signature, no caption.",
-  ].join("\n");
-  try {
-    return await fetchPortraitOnce({ apiKey: args.apiKey, prompt });
-  } catch (err) {
-    log.event("portrait.first-attempt-failed", {
-      reason: err instanceof Error ? err.message : String(err),
-    });
-    // Single retry. Most flake is transient (model overload / abort);
-    // a second swing inside the same request budget catches it.
-    return fetchPortraitOnce({ apiKey: args.apiKey, prompt });
-  }
-}
-
-/** Diploma image — generated at Senior graduation. Same image model as
- *  portrait gen ("nano banana 2" / google/gemini-3.1-flash-image-preview),
- *  different prompt: cap-and-gown JRPG sticker featuring a subject-themed
- *  accessory derived from the player's highest-scoring faculty.
- *
- *  Subject accessory map:
- *    sally-science    → microscope or beaker
- *    professor-edward → book or quill
- *    ruby             → diploma scroll (homeroom default)
- */
-async function renderDiplomaImage(args: {
-  apiKey: string;
-  name: string;
-  personality: string;
-  bestSubjectFacultyId: string;
-}): Promise<string> {
-  const accessory = (() => {
-    switch (args.bestSubjectFacultyId) {
-      case "sally-science": return "holding a beaker that glows faintly green";
-      case "professor-edward": return "holding a thick hardcover book against their chest";
-      case "ruby":
-      default: return "holding a rolled diploma scroll tied with a red ribbon";
-    }
-  })();
-  const prompt = [
-    `JRPG dialog-portrait of ${args.name} at their Ruby High graduation.`,
-    `Personality: ${args.personality}`,
-    "",
-    `STYLE: JRPG-style FULL BODY standing portrait — 3/4 view, head to ankles. Tall portrait orientation. Anime-influenced. Bold black outline 5px. Vibrant flat colors, subtle cel shading. The character is wearing a high-school graduation cap and gown over their normal clothes — gown is a warm crimson red, cap is matching with a yellow tassel. They are smiling, proud but a little nervous. ${accessory}.`,
-    "",
-    "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale gold background (#f5e8c2). The background fills the entire frame as one perfectly even color — no gradient, no texture, no pattern, no scenery, no objects, no border, no transparency. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
-    "No text, no logo, no signature, no caption.",
-  ].join("\n");
-  // Same retry-once-on-flake strategy as the regular portrait path.
-  try {
-    return await fetchPortraitOnce({ apiKey: args.apiKey, prompt });
-  } catch (err) {
-    log.event("diploma.first-attempt-failed", {
-      reason: err instanceof Error ? err.message : String(err),
-    });
-    return fetchPortraitOnce({ apiKey: args.apiKey, prompt });
-  }
-}
-
-/** Determine the player's highest-scoring faculty for the diploma image's
- *  subject accessory. Ties broken by total volume (more answered → wins).
- *  Defaults to "ruby" if no scores yet (shouldn't happen at graduation
- *  since you can't graduate without answering questions, but guarded). */
-function highestScoringFaculty(scores: Record<string, { correct: number; total: number }> | undefined): string {
-  if (!scores) return "ruby";
-  let best: { id: string; ratio: number; total: number } | null = null;
-  for (const [id, s] of Object.entries(scores)) {
-    if (s.total === 0) continue;
-    const ratio = s.correct / s.total;
-    if (!best || ratio > best.ratio || (ratio === best.ratio && s.total > best.total)) {
-      best = { id, ratio, total: s.total };
-    }
-  }
-  return best ? best.id : "ruby";
-}
-
-/** Generate a random valid stat distribution: one each of +2, +1, 0, -1
- *  shuffled across the four stat keys. */
-function randomStatDistribution(): CharacterStats {
-  const values = [2, 1, 0, -1];
-  // Fisher-Yates shuffle in place.
-  for (let i = values.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = values[i]!;
-    values[i] = values[j]!;
-    values[j] = tmp;
-  }
-  return { head: values[0]!, heart: values[1]!, hustle: values[2]!, honor: values[3]! };
-}
-
-/** Default-name nudge: the LLM converges on a small pool of training-bias
- *  picks unless told otherwise. We give it a no-go list rather than steering
- *  toward any particular tradition — the previous "vibe rotation" produced
- *  cultural-tourism mashups (e.g. "Derek Igloolik"). First names only. */
-const FORBIDDEN_NAMES_HINT = [
-  "Marcus", "Maya", "Mariana", "Emma", "Sarah", "James", "Alex", "Sam", "Jordan", "Liam",
-  "Olivia", "Noah", "Ava", "Mia", "Ethan", "Aiden", "Lucas", "Harper", "Sophia",
-];
-
-/** Component identifiers the creation card can ask the server to reroll.
- *  Stats and playbook are dice (instant, no LLM); the four text fields go
- *  through a single LLM call with the unchanged fields locked in the
- *  prompt so the model can match register. */
-export type CharacterComponent = "name" | "personality" | "arcAnswer" | "flavorQuote" | "stats" | "playbook";
-const ALL_COMPONENTS: CharacterComponent[] = ["name", "personality", "arcAnswer", "flavorQuote", "stats", "playbook"];
-
-interface RolledCharacter {
-  name: string;
-  playbookId: string;
-  stats: CharacterStats;
-  arcAnswer: string;
-  flavorQuote: string;
-  personality: string;
-}
-
-/** Roll a character. Three modes:
- *
- *  - Full roll (regen omitted or includes everything) — current behaviour.
- *  - Dice-only reroll (regen ⊆ {stats, playbook}) — no LLM call. Returns
- *    the reshuffled fields merged with `keep`.
- *  - Text reroll (regen contains any of name / personality / arcAnswer /
- *    flavorQuote) — one LLM call with `keep` fields locked into the
- *    prompt. The model is asked to emit only the requested fields; the
- *    rest are echoed back from `keep` server-side so the contract is
- *    "always returns a full character." */
-async function rollRandomCharacter(args: {
-  apiKey: string;
-  regen?: CharacterComponent[];
-  keep?: Partial<RolledCharacter>;
-}): Promise<RolledCharacter> {
-  const regenSet = new Set<CharacterComponent>(args.regen && args.regen.length > 0 ? args.regen : ALL_COMPONENTS);
-  const keep = args.keep ?? {};
-
-  // ── dice rolls (no LLM) ───────────────────────────────────────────────
-  let playbook = regenSet.has("playbook")
-    ? PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!
-    : PLAYBOOKS.find((p) => p.id === keep.playbookId);
-  if (!playbook) {
-    // keep.playbookId was missing or unknown — fall back to a fresh roll
-    // rather than throwing. Same for stats below.
-    playbook = PLAYBOOKS[Math.floor(Math.random() * PLAYBOOKS.length)]!;
-  }
-  const stats: CharacterStats = regenSet.has("stats") || !keep.stats
-    ? randomStatDistribution()
-    : keep.stats;
-
-  // Text fields needing the LLM. If none, return the dice-only result.
-  const textFields: CharacterComponent[] = ["name", "personality", "arcAnswer", "flavorQuote"];
-  const textRegen = textFields.filter((f) => regenSet.has(f));
-  if (textRegen.length === 0) {
-    // Pure dice reroll. All text fields must be present in `keep`.
-    const name = String(keep.name ?? "").trim();
-    const arcAnswer = String(keep.arcAnswer ?? "").trim();
-    const flavorQuote = String(keep.flavorQuote ?? "").trim();
-    const personality = String(keep.personality ?? "").trim();
-    if (!name || !arcAnswer || !personality) {
-      throw new Error("Dice-only reroll requires name, arcAnswer, and personality in `keep`.");
-    }
-    return { name, playbookId: playbook.id, stats, arcAnswer, flavorQuote, personality };
-  }
-
-  const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
-
-  // Locked-fields block: only fields the user is KEEPING (i.e. text
-  // fields not in regen) get fed back to the model so it can match
-  // register. The fresh-roll path leaves this block empty, which
-  // collapses back to the original prompt shape.
-  const lockedLines: string[] = [];
-  if (!regenSet.has("name") && keep.name) lockedLines.push(`Existing name (do not change): ${keep.name}`);
-  if (!regenSet.has("personality") && keep.personality) lockedLines.push(`Existing personality (do not change): ${keep.personality}`);
-  if (!regenSet.has("arcAnswer") && keep.arcAnswer) lockedLines.push(`Existing arcAnswer (do not change): ${keep.arcAnswer}`);
-  if (!regenSet.has("flavorQuote") && keep.flavorQuote) lockedLines.push(`Existing flavorQuote (do not change): ${keep.flavorQuote}`);
-
-  // Schema string: only the fields being regenerated appear. The LLM
-  // returns a partial JSON object; we merge with `keep` server-side.
-  const schemaFields = textRegen.map((f) => `"${f}":"..."`).join(",");
-  const schemaLine = `{${schemaFields}}`;
-
-  const userPrompt = [
-    "Roll a random AI student attending Ruby High (a high school RPG). The player inhabits this character. Aim for a real teenager with small specific concerns — the register of group-chat texts, lunch-line gossip, a half-finished homework excuse.",
-    "",
-    `Playbook (locked): ${playbook.name} — ${playbook.blurb}`,
-    `Hook question (locked): "${playbook.hookQuestion}"`,
-    `Stats (locked): HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}`,
-    ...lockedLines,
-    "",
-    `Generate JSON containing ONLY the fields below (no other text, no markdown, no code fences). Output exactly this shape:`,
-    schemaLine,
-    "",
-    "Field guidance:",
-    "- name: ONE first name. Anything goes — common, uncommon, a chosen name, a nickname, a strange spelling. The kind of name a teenager actually has. Examples of the spread: Kit, Theo, Saoirse, Mei, Pip, Yusuf, Birta, Lior, Niamh, Tomás, Arlo, Vic, Ren, Esi, Soren. Skip the AI-default picks: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
-    "- arcAnswer: 1-2 sentences answering the hook in voice. Specific, dorky, small. Examples of the register:",
-    `    Overachiever / "Why is Cs not enough?": "honestly if i get an A- i replay it for like a week. last quiz i missed one and didn't sleep. my mom thinks im fine."`,
-    `    Slacker / "Who do you not want to disappoint?": "my older brother. he was good at this stuff. its embarrassing how much i think about it."`,
-    `    Class Clown / "What can't you say without a joke?": "anytime someone cries i panic and do a bit. did one at my uncle's funeral. my mom is still annoyed."`,
-    `    Lifer / "What's the best gossip you've picked up?": "the science wing has a closet with 40 trophies from 1987 and nobody knows why. also Mr. Kelner is on his third divorce."`,
-    `    Pull from the same register as the playbook above.`,
-    `- flavorQuote: ONE short line, 6-18 words. Magic: the Gathering flavor text — captures attitude in a moment, not backstory. Examples of the right shape:`,
-    `    "I'd rather you be wrong with reasons than right by accident." (Sally Science)`,
-    `    "wait what — i KNEW it was c. ok im rewriting my notes." (Lyra)`,
-    `    "i'm just here to drink chocolate milk and lose, and im out of chocolate milk."`,
-    `    "if mr. patek calls on me one more time im transferring to the moon."`,
-    `  No surrounding quote marks — the renderer adds them.`,
-    "- personality: 2-3 sentences. How they SHOW UP in class — fixations, doodles, what they whisper, who they sit by, their thing. Tie one trait to a high stat (HEAD=sharp / HEART=warm / HUSTLE=quick / HONOR=principled) and one to the low stat. Examples of the register:",
-    `    "Always has gum, never offers it. Sits by the broken radiator on purpose because the noise helps her think. Doodles snakes through every verbal lesson and forgets her name is being called."`,
-    `    "Knows the lyrics to one (1) song and references it constantly. Visibly stressed when the teacher reorders the day. Will eat anyone's leftover fries without asking."`,
-    `    Third person. Same scale as those — kid stuff, not life themes.`,
-  ].join("\n");
-
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${args.apiKey}`,
-      "HTTP-Referer": REFERER,
-      "X-Title": TITLE,
-    },
-    body: JSON.stringify({
-      model: STUDENT_MODEL,
-      messages: [
-        { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: 480,
-      temperature: 1.1,
-    }),
-  });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
-  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
-  const raw = (body.choices?.[0]?.message?.content ?? "").trim();
-  // Strip code fences if the model added any despite instructions.
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  let parsed: { name?: unknown; arcAnswer?: unknown; flavorQuote?: unknown; personality?: unknown };
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (err) {
-    throw new Error(`Could not parse character JSON: ${(err as Error).message} — body: ${cleaned.slice(0, 200)}`);
-  }
-  // Merge: the LLM only emits fields named in `regen`. For the others
-  // we trust the `keep` payload. The full-roll path has empty `keep`
-  // but `regen` covers everything, so the merge collapses to the
-  // current-behaviour shape.
-  const pick = (field: "name" | "arcAnswer" | "flavorQuote" | "personality"): string => {
-    if (regenSet.has(field)) {
-      const v = String(parsed[field] ?? "").trim();
-      // Strip wrapping quotes the model sometimes adds to flavorQuote.
-      return field === "flavorQuote" ? v.replace(/^["“'\s]+|["”'\s]+$/g, "") : v;
-    }
-    return String(keep[field] ?? "").trim();
-  };
-  const name = pick("name");
-  const arcAnswer = pick("arcAnswer");
-  const flavorQuote = pick("flavorQuote");
-  const personality = pick("personality");
-  if (!name || !arcAnswer || !personality) {
-    throw new Error("Generated character missing required fields.");
-  }
-  return { name, playbookId: playbook.id, stats, arcAnswer, flavorQuote, personality };
-}
-
 async function generateStudentLine(args: {
   apiKey: string;
   student: StudentCharacter;
@@ -1444,20 +1030,6 @@ const CHAT_PREFIX = "/api/apps/ruby-high/chat";
 const AUTH_PREFIX = "/api/apps/ruby-high/auth";
 const DEFAULT_AUTH_REDIRECT = "/api/apps/ruby-high/viewer";
 
-function getRuntime(value: unknown): IAgentRuntime | null {
-  if (!value || typeof value !== "object") return null;
-  const candidate = value as { agentId?: unknown; getService?: unknown };
-  if (typeof candidate.getService !== "function") return null;
-  return candidate as unknown as IAgentRuntime;
-}
-
-/** See routes.ts for the multi-tenant explanation. Per-user state keys come
- *  from the app-owned auth session, not the raw cookie token. */
-function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | null): string {
-  const auth = getService<AuthService>(runtime, AuthService.serviceType);
-  return auth?.stateKeyForCookie(cookieHeader) ?? "rh:anonymous";
-}
-
 /** Trim + sanity-check the OpenRouter key the client sent in
  *  X-Openrouter-Key. Returns null if the header is absent or obviously
  *  malformed; the caller should respond with 401 in that case. We don't
@@ -1496,15 +1068,6 @@ function activeFacultyMatches(ruby: RubyHighService, sessionId: string, faculty:
     ? state.faculty
     : (resolveFacultyIdForSession(state, state.faculty) ?? state.faculty);
   return active === faculty;
-}
-
-function getService<T>(runtime: IAgentRuntime | null, type: string): T | null {
-  if (!runtime) return null;
-  try {
-    return (runtime.getService(type) as T | undefined) ?? null;
-  } catch {
-    return null;
-  }
 }
 
 function setCookieHeader(res: unknown, value: string): void {

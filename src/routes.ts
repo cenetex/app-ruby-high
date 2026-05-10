@@ -9,16 +9,17 @@ import type {
   PluginAppLaunchDiagnostic,
   PluginAppSessionState,
 } from "@elizaos/core";
-import { RubyHighService, type CourseProgress } from "./services/ruby-high-service.js";
+import {
+  RubyHighService,
+  advantageRollsForState,
+  dailyStatusForState,
+  type CourseProgress,
+} from "./services/ruby-high-service.js";
 import { FacultyService, toFacultyMember } from "./services/faculty-service.js";
 import {
-  ADVANTAGE_ROLLS_PER_GRADE,
   CHOICES,
   GRADES,
   TEACHING_ROOMS,
-  dailyIndex,
-  dailyKey,
-  facultyForDay,
   type CharacterStats,
   type Choice,
   type Difficulty,
@@ -35,6 +36,7 @@ import { renderViewerHtml, VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "./viewer.js"
 import { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
 import { handlePackRoutes } from "./pack-routes.js";
 import { AuthService } from "./services/auth-service.js";
+import { getRuntime, getSessionId, tryGetService } from "./services/session-identity.js";
 import { log } from "./services/logger.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import {
@@ -43,7 +45,6 @@ import {
   coursesForSession,
   facultyForSession,
   packForSession,
-  resolveFacultyIdForSession,
   roomsForSession,
   roomsWithLoungeForSession,
 } from "./content/registry.js";
@@ -306,34 +307,9 @@ interface SessionTelemetry extends Record<string, unknown> {
   graduation_ready: PlayerCharacter["pendingGraduation"] | null;
 }
 
-function getRuntime(value: unknown): IAgentRuntime | null {
-  if (!value || typeof value !== "object") return null;
-  const candidate = value as { agentId?: unknown; getService?: unknown };
-  if (typeof candidate.getService !== "function") return null;
-  return candidate as unknown as IAgentRuntime;
-}
-
-function tryGetService<T>(runtime: IAgentRuntime | null, type: string): T | null {
-  if (!runtime) return null;
-  try {
-    return (runtime.getService(type) as T | undefined) ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function getCharacterName(runtime: IAgentRuntime | null): string {
   const character = (runtime as { character?: { name?: string } } | null)?.character;
   return character?.name ?? "Ruby";
-}
-
-/** Derive a per-user state key from the app-owned auth session. Pre-auth users
- *  share an "anonymous" bucket; signed-in OpenRouter accounts resolve to a
- *  stable Ruby High user id, so state, character, NPC roster, etc. survive
- *  cookie rotation and server restarts. */
-function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | null): string {
-  const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
-  return auth?.stateKeyForCookie(cookieHeader) ?? "rh:anonymous";
 }
 
 function facultyForState(state: QuizState, id: string): FacultyMember {
@@ -406,51 +382,6 @@ function deriveActiveRound(state: QuizState) {
         }
       : null,
   };
-}
-
-/** Per-grade advantage-roll budget — mirrors RubyHighService.advantageRollsRemaining
- *  but stays inline so buildSessionState doesn't need a service handle. */
-function deriveAdvantageRolls(state: QuizState): { used: number; cap: number; remaining: number } {
-  const grade = state.currentGrade;
-  const used = (grade && state.character?.advantageRollsUsed?.[grade]) ?? 0;
-  const bonus = (grade && state.character?.advantageRollBonuses?.[grade]) ?? 0;
-  const cap = ADVANTAGE_ROLLS_PER_GRADE + Math.max(0, bonus);
-  return { used, cap, remaining: Math.max(0, cap - used) };
-}
-
-/** Derives today's bonus status for the viewer. Mirrors
- *  RubyHighService.dailyStatus() — kept inline here so buildSessionState
- *  doesn't need a service handle. Both implementations use the same
- *  dailyKey / facultyForDay helpers, so they stay in lockstep. */
-function deriveDailyStatus(state: QuizState, now: Date = new Date()): {
-  available: boolean;
-  reason?: "completed" | "no-grade" | "no-character";
-  facultyId: string;
-  dailyKey: string;
-} {
-  const key = dailyKey(now);
-  const fac = dailyFacultyForState(state, key);
-  if (!state.character) return { available: false, reason: "no-character", facultyId: fac, dailyKey: key };
-  if (!state.currentGrade) return { available: false, reason: "no-grade", facultyId: fac, dailyKey: key };
-  if (state.character.lastBonusDate === key) {
-    return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
-  }
-  return { available: true, facultyId: fac, dailyKey: key };
-}
-
-function dailyFacultyForState(state: QuizState, key: string): string {
-  const scheduled = facultyForDay(key);
-  const resolved = resolveFacultyIdForSession(state, scheduled);
-  if (resolved) return resolved;
-  const pack = packForSession(state);
-  const courses = coursesForSession(state)
-    .map((course) => course.facultyId)
-    .filter((facultyId) => pack.faculty.some((f) =>
-      f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
-    ));
-  if (courses.length === 0) return scheduled;
-  const idx = ((dailyIndex(key) % courses.length) + courses.length) % courses.length;
-  return courses[idx]!;
 }
 
 function deriveRoomCohort(roster: NpcStudentState[], state: QuizState): Record<string, string[]> {
@@ -588,10 +519,10 @@ function buildSessionState(args: {
     character: state.character,
     school_events: (state.schoolEvents ?? []).slice(-30),
     playbooks: PLAYBOOKS,
-    daily: deriveDailyStatus(state),
+    daily: dailyStatusForState(state),
     npc_cohort: state.npcCohort ?? [],
     mentor_offer: state.mentorOffer ?? null,
-    advantage_rolls: deriveAdvantageRolls(state),
+    advantage_rolls: advantageRollsForState(state),
     graduation_ready: state.character?.pendingGraduation ?? null,
   };
 

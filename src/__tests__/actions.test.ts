@@ -5,6 +5,8 @@ import { gradeAnswerAction } from "../actions/grade-answer.js";
 import { handoffFacultyAction } from "../actions/handoff-faculty.js";
 import { pickQuestionAction } from "../actions/pick-question.js";
 import { poseQuestionAction } from "../actions/pose-question.js";
+import { getSessionId as getActionSessionId } from "../actions/_helpers.js";
+import { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 
 function runtimeFor(service: unknown, agentId = "agent-1"): IAgentRuntime {
@@ -29,6 +31,20 @@ async function runAction(action: Action, service: unknown, parameters?: Record<s
 }
 
 describe("Eliza runtime actions", () => {
+  it("uses an agent-scoped key for runtime actions even when AuthService is registered without a cookie", () => {
+    const auth = { stateKeyForCookie: vi.fn(() => "rh:anonymous") };
+    const runtime = {
+      agentId: "agent-1",
+      getService(type: string) {
+        if (type === AuthService.serviceType) return auth;
+        return null;
+      },
+    } as never as IAgentRuntime;
+
+    expect(getActionSessionId(runtime)).toBe("rh:agent:agent-1");
+    expect(auth.stateKeyForCookie).not.toHaveBeenCalled();
+  });
+
   it("POSE_QUESTION validates required input before mutating the service", async () => {
     const service = { pose: vi.fn() };
 
@@ -61,7 +77,7 @@ describe("Eliza runtime actions", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(service.pose).toHaveBeenCalledWith("ruby-high:agent-1", {
+    expect(service.pose).toHaveBeenCalledWith("rh:agent:agent-1", {
       prompt: "What is a tool call?",
       options: { A: "A request", B: "A snack", C: "A room", D: "A badge" },
       correct: "A",
@@ -92,7 +108,7 @@ describe("Eliza runtime actions", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(service.pickAndPose).toHaveBeenCalledWith("ruby-high:agent-1", {
+    expect(service.pickAndPose).toHaveBeenCalledWith("rh:agent:agent-1", {
       faculty: "sally-science",
       subject: "biology",
       difficulty: "medium",
@@ -113,7 +129,7 @@ describe("Eliza runtime actions", () => {
       success: true,
       text: "That was B. The answer was A. Score 2/3.",
     });
-    expect(service.submitAnswer).toHaveBeenCalledWith("ruby-high:agent-1", "B");
+    expect(service.submitAnswer).toHaveBeenCalledWith("rh:agent:agent-1", "B");
   });
 
   it("CLEAR_BOARD and HANDOFF_FACULTY call the expected service methods", async () => {
@@ -127,8 +143,8 @@ describe("Eliza runtime actions", () => {
 
     expect(cleared).toMatchObject({ success: true, text: "Board cleared." });
     expect(handedOff).toMatchObject({ success: true, text: "Now teaching: professor-edward." });
-    expect(service.clearBoard).toHaveBeenCalledWith("ruby-high:agent-1");
-    expect(service.setFaculty).toHaveBeenCalledWith("ruby-high:agent-1", "professor-edward");
+    expect(service.clearBoard).toHaveBeenCalledWith("rh:agent:agent-1");
+    expect(service.setFaculty).toHaveBeenCalledWith("rh:agent:agent-1", "professor-edward");
   });
 
   it("wraps missing RubyHighService errors as action failures", async () => {

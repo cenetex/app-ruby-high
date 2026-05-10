@@ -3,6 +3,7 @@
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
+import { bodyLimitForPath } from "./http-limits.mjs";
 import {
   AuthService,
   ChatService,
@@ -47,14 +48,7 @@ const rubySvc = await (async () => {
 })();
 chatSvc.setRubyHighService(rubySvc);
 
-// 1 MB is generous for normal app requests — opinion text is 2-3 sentences,
-// character JSON is well under 4 KB, even portrait gen sends a few hundred
-// chars. Anki imports are the one larger request class and are route-capped
-// in pack-routes.ts at 16 MB.
-const MAX_BODY_BYTES = 1024 * 1024;
-const MAX_IMPORT_BODY_BYTES = 16 * 1024 * 1024;
-const IMPORT_BODY_HOST_CAP_BYTES = MAX_IMPORT_BODY_BYTES + 1024 * 1024;
-function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
+function readJsonBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0;
@@ -124,12 +118,7 @@ function makeRouteContext(req, res, url) {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(data));
     },
-    readJsonBody: () => readJsonBody(
-      req,
-      url.pathname === "/api/apps/ruby-high/packs/import-anki"
-        ? IMPORT_BODY_HOST_CAP_BYTES
-        : MAX_BODY_BYTES,
-    ),
+    readJsonBody: () => readJsonBody(req, bodyLimitForPath(url.pathname)),
   };
 }
 
