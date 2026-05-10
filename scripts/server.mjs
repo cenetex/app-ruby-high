@@ -14,6 +14,8 @@ const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH
   ?? (process.env.RUBY_HIGH_DATA_DIR ? `${process.env.RUBY_HIGH_DATA_DIR}/state.json` : null);
 const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? null;
 const ROOT_REDIRECT = process.env.RUBY_HIGH_ROOT_REDIRECT ?? "/api/apps/ruby-high/viewer";
+const APP_ROUTE_PREFIX = "/api/apps/ruby-high";
+const VIEWER_PATH = `${APP_ROUTE_PREFIX}/viewer`;
 
 let handleAppRoutes = null;
 let stateStore = null;
@@ -180,34 +182,124 @@ function healthPayload() {
   };
 }
 
+function sendJson(res, data, status = 200) {
+  if (res.headersSent) return;
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Cache-Control", "no-store");
+  res.end(JSON.stringify(data));
+}
+
+function sendStartupHtml(res) {
+  if (res.headersSent) return;
+  res.statusCode = 503;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.setHeader("Retry-After", "1");
+  res.end(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="1">
+  <title>Ruby High</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #15171f;
+      color: #f4f0ea;
+      font: 600 18px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(420px, calc(100vw - 48px));
+      padding: 28px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 8px;
+      background: #202332;
+      box-shadow: 0 18px 44px rgba(0,0,0,0.32);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0;
+      color: #c9ccda;
+      font-size: 15px;
+      font-weight: 500;
+    }
+    .bar {
+      height: 4px;
+      margin-top: 20px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.14);
+    }
+    .bar::before {
+      content: "";
+      display: block;
+      width: 40%;
+      height: 100%;
+      border-radius: inherit;
+      background: #e64040;
+      animation: load 1s ease-in-out infinite alternate;
+    }
+    @keyframes load {
+      from { transform: translateX(-25%); }
+      to { transform: translateX(175%); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Ruby High</h1>
+    <p>Class is opening. This page will retry automatically.</p>
+    <div class="bar" aria-hidden="true"></div>
+  </main>
+  <script>
+    setTimeout(() => location.reload(), 1000);
+  </script>
+</body>
+</html>`);
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${HOST}:${PORT}`}`);
 
-  if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
+  if (req.method === "GET" && url.pathname === "/livez") {
+    sendJson(res, {
+      ...healthPayload(),
+      ok: true,
+      status: bootError ? "boot-failed" : bootReady ? "ready" : "starting",
+      t: Date.now(),
+    });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/health" || url.pathname === "/healthz" || url.pathname === "/readyz")
+  ) {
     if (bootError) {
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({
+      sendJson(res, {
         ...healthPayload(),
         ok: false,
         status: "boot-failed",
         error: bootError instanceof Error ? bootError.message : String(bootError),
         t: Date.now(),
-      }));
+      }, 500);
       return;
     }
     if (!bootReady) {
-      // This endpoint is a platform liveness check: once the socket is open,
-      // Fly should keep the machine alive while the app finishes hydration.
-      // User-facing API routes still return 503 until bootReady flips true.
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ...healthPayload(), status: "starting", t: Date.now() }));
+      sendJson(res, { ...healthPayload(), ok: false, status: "starting", t: Date.now() }, 503);
       return;
     }
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ...healthPayload(), t: Date.now() }));
+    sendJson(res, { ...healthPayload(), status: "ready", t: Date.now() });
     return;
   }
 
@@ -217,17 +309,17 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname.startsWith("/api/apps/ruby-high")) {
+  if (url.pathname.startsWith(APP_ROUTE_PREFIX)) {
     if (bootError) {
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "Ruby High boot failed." }));
+      sendJson(res, { error: "Ruby High boot failed." }, 500);
       return;
     }
     if (!bootReady || !handleAppRoutes) {
-      res.statusCode = 503;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "Ruby High is starting." }));
+      if (req.method === "GET" && url.pathname === VIEWER_PATH) {
+        sendStartupHtml(res);
+      } else {
+        sendJson(res, { error: "Ruby High is starting.", status: "starting" }, 503);
+      }
       return;
     }
     const ctx = makeRouteContext(req, res, url);
@@ -236,18 +328,14 @@ const server = createServer(async (req, res) => {
       if (handled) return;
     } catch (err) {
       if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 500);
       }
       return;
     }
   }
 
   if (!res.headersSent) {
-    res.statusCode = 404;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: "Not found", path: url.pathname }));
+    sendJson(res, { error: "Not found", path: url.pathname }, 404);
   }
 });
 

@@ -5,7 +5,7 @@
  * HTTP checks that together exercise the app's boot, auth, offline play,
  * viewer shell, and AI auth gate:
  *
- *   1. /health → 200 + JSON shape
+ *   1. /health → 200 + JSON shape after readiness
  *      Catches: container won't boot (auth-service crash, dynamodb table
  *      missing, AWS creds wrong, etc.).
  *
@@ -161,18 +161,34 @@ async function waitForAppReady() {
 
 async function check1Health() {
   const name = "health";
-  try {
-    const r = await fetchWithTimeout(`${base}/health`);
-    if (r.status !== 200) return fail(name, `expected 200, got ${r.status}`);
-    const body = await r.json().catch(() => null);
-    if (!body || body.ok !== true || body.app !== "ruby-high") {
-      return fail(name, `unexpected body shape: ${JSON.stringify(body).slice(0, 200)}`);
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  let attempts = 0;
+  let last = "";
+
+  while (Date.now() <= deadline) {
+    attempts++;
+    try {
+      const r = await fetchWithTimeout(`${base}/health`);
+      const text = await readText(r.clone());
+      if (r.status === 200) {
+        const body = await readJson(r);
+        if (!body || body.ok !== true || body.app !== "ruby-high") {
+          return fail(name, `unexpected body shape: ${JSON.stringify(body).slice(0, 200)}`);
+        }
+        if (!body.state) return fail(name, "missing 'state' field");
+        return ok(name, `ready after ${attempts} ${attempts === 1 ? "try" : "tries"}; state=${body.state} build=${body.build}`);
+      }
+      last = `status ${r.status}: ${text.slice(0, 200)}`;
+      if (r.status !== 503 || !/starting/i.test(text)) {
+        return fail(name, last);
+      }
+    } catch (e) {
+      last = e?.message || String(e);
     }
-    if (!body.state) return fail(name, "missing 'state' field");
-    ok(name, `state=${body.state} build=${body.build}`);
-  } catch (e) {
-    fail(name, e?.message || String(e));
+    await sleep(READY_POLL_MS);
   }
+
+  fail(name, `timed out after ${Math.round(READY_TIMEOUT_MS / 1000)}s; last response: ${last || "none"}`);
 }
 
 async function check2ViewerRenders() {

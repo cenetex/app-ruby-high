@@ -60,7 +60,7 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
 
-The `/health` route returns 200 once the services have booted; configure your platform's healthcheck against it. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
+The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
 No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key via PKCE.
 

@@ -17,7 +17,7 @@
 # Things deliberately NOT in this file:
 #  - Secrets (RUBY_HIGH_DYNAMO_TABLE, AWS_ACCESS_KEY_ID, etc.). Those go in
 #    `flyctl secrets set` per the runbook in infra/fly-deploy.md.
-#  - Health-check command. Fly reads the Dockerfile's HEALTHCHECK line.
+#  - Docker health-check command. Fly's public readiness check is below.
 
 app = "ruby-high"
 primary_region = "iad"
@@ -51,7 +51,7 @@ primary_region = "iad"
   [[http_service.checks]]
     interval = "30s"
     timeout = "5s"
-    grace_period = "20s"
+    grace_period = "30s"
     method = "GET"
     path = "/health"
 
