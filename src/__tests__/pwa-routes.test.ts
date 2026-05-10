@@ -106,6 +106,21 @@ describe("PWA surface", () => {
     expect(text).toContain("/api/apps/ruby-high/auth/guest");
   });
 
+  it("serves transparent teacher sticker assets", async () => {
+    const response = makeResponse();
+    const handled = await handleAppRoutes(makeCtx("/api/apps/ruby-high/assets/teachers/ruby-sticker.png", response));
+
+    expect(handled).toBe(true);
+    expect(response.res.statusCode).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/image\/png/);
+    expect(Buffer.isBuffer(response.raw)).toBe(true);
+
+    const body = response.raw as Buffer;
+    expect(body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+    expect(body.subarray(12, 16).toString("ascii")).toBe("IHDR");
+    expect(body[25]).toBe(6);
+  });
+
   it("serves a scoped service worker that leaves stateful APIs network-only", async () => {
     const response = makeResponse();
     const handled = await handleAppRoutes(makeCtx("/api/apps/ruby-high/service-worker.js", response));

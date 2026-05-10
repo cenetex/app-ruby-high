@@ -2785,25 +2785,17 @@ export const VIEWER_CSS = `
     align-self: end;
     width: clamp(76px, 15vw, 118px);
     height: clamp(76px, 16vw, 122px);
-    overflow: hidden;
+    overflow: visible;
     pointer-events: none;
-    opacity: 0.95;
-  }
-  .board .class-report-teacher-art::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, rgba(26,77,45,0.55), rgba(26,77,45,0) 42%),
-      linear-gradient(0deg, rgba(26,77,45,0.72), rgba(26,77,45,0) 34%);
-    pointer-events: none;
+    opacity: 1;
+    filter: drop-shadow(0 8px 10px rgba(0,0,0,0.28));
   }
   .board .class-report-teacher-art img {
     width: 100%;
-    height: 114%;
+    height: 118%;
     object-fit: contain;
     object-position: center bottom;
-    mix-blend-mode: multiply;
-    filter: saturate(1.05) contrast(1.06);
+    filter: saturate(1.05) contrast(1.04);
   }
   .board .class-report-letter {
     width: clamp(72px, 13vw, 108px);

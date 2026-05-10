@@ -98,7 +98,7 @@ describe("viewer regression guardrails", () => {
 
     expect(script).toContain("function buildClassReportCard");
     expect(script).toContain("class-report-teacher-art");
-    expect(script).toContain("teacherAssetUrl(artAssetId");
+    expect(script).toContain('teacherAssetUrl(artAssetId, "sticker")');
     expect(script).toContain("class-report-star-meter");
     expect(script).toContain('star.textContent = "★"');
     expect(script).toContain('classProgress.setAttribute("aria-label"');
@@ -117,7 +117,8 @@ describe("viewer regression guardrails", () => {
     expect(starMeter).toContain("white-space: nowrap");
 
     expect(cssRule(".board .class-report-star")).toContain("flex: 0 0 auto");
-    expect(cssRule(".board .class-report-teacher-art")).toContain("overflow: hidden");
+    expect(cssRule(".board .class-report-teacher-art")).toContain("overflow: visible");
+    expect(cssRule(".board .class-report-teacher-art")).toContain("drop-shadow");
     expect(cssRule(".board .class-report-teacher-art img")).toContain("object-fit: contain");
   });
 });

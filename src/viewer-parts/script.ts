@@ -1289,7 +1289,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       img.alt = "";
       img.decoding = "async";
       img.loading = "lazy";
-      img.src = teacherAssetUrl(artAssetId, "");
+      img.src = teacherAssetUrl(artAssetId, "sticker");
       img.onerror = () => art.remove();
       art.appendChild(img);
       main.appendChild(art);
