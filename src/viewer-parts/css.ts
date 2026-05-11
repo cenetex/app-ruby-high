@@ -2282,46 +2282,7 @@ export const VIEWER_CSS = `
     color: var(--text-mute);
   }
 
-  /* ── creation card surfaces ──────────────────────────────────────────── */
-  /* The creation card is a two-column layout on wide viewports — portrait
-     on the left, fields on the right — so the portrait can be tall
-     without the form stretching. On mobile (<= 600px) it stacks; the
-     portrait goes full-width and noticeably bigger since the user is
-     scrolling anyway. */
-  .creation-card {
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    gap: 16px;
-    align-items: start;
-    margin: 8px 0 12px;
-  }
-  @media (max-width: 600px) {
-    .creation-card { grid-template-columns: 1fr; }
-  }
-  .creation-portrait {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-  }
-  .creation-portrait img {
-    width: 200px;
-    height: 260px;
-    object-fit: cover;
-    object-position: center top;
-    border-radius: 12px;
-    border: 2px solid var(--accent);
-    background: var(--bg-elev-2);
-  }
-  @media (max-width: 600px) {
-    /* Mobile gets a generously larger portrait — the user is scrolling
-       to see the rerolls below it anyway, so we may as well let the
-       art breathe. */
-    .creation-portrait img {
-      width: min(280px, 80vw);
-      height: min(360px, 105vw);
-    }
-  }
+  /* ── creation controls inside shared card surfaces ───────────────────── */
   @media (max-width: 430px) {
     .sheet-overlay {
       align-items: flex-start;
@@ -2336,23 +2297,38 @@ export const VIEWER_CSS = `
       max-width: calc(100vw - 16px);
       padding: 8px;
     }
+    .creation-fields {
+      gap: 6px;
+      margin: 0;
+    }
+    .creation-row {
+      grid-template-columns: 74px 1fr auto;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 9px;
+    }
+    .creation-row-label {
+      font-size: 9px;
+      line-height: 1.1;
+      padding-top: 2px;
+    }
+    .creation-row-value {
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .creation-reroll {
+      width: 26px;
+      height: 26px;
+    }
+    .creation-portrait-status,
+    .stat-budget {
+      font-size: 11px;
+      text-align: left;
+    }
     .ccg-card {
       border-radius: 14px;
     }
   }
-  .creation-ai-portrait {
-    appearance: none;
-    border: 1px solid var(--line);
-    background: var(--bg-elev);
-    color: var(--text);
-    border-radius: 999px;
-    padding: 6px 14px;
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .creation-ai-portrait:hover { background: var(--bg-elev-2); }
-  .creation-ai-portrait:disabled { opacity: 0.5; cursor: not-allowed; }
   .creation-portrait-status {
     font-size: 11px;
     color: var(--text-mute);
@@ -2426,9 +2402,19 @@ export const VIEWER_CSS = `
     font-weight: 700;
     cursor: pointer;
   }
+  .ccg-card-actions button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 900;
+  }
   .ccg-card-actions button.secondary {
     background: var(--bg-elev);
     color: var(--text-soft);
+  }
+  .ccg-card-actions button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   /* ── progression "what you need" hint ────────────────────────────────── */
@@ -2635,39 +2621,43 @@ export const VIEWER_CSS = `
     font-size: 10px;
   }
   .blackboard-panel[data-question-type="class-report"] .board {
-    min-height: 210px;
+    min-height: clamp(240px, 32vw, 360px);
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
+    overflow: visible;
+    position: relative;
   }
   .blackboard-panel[data-question-type="class-report"] .board .prompt {
     width: 100%;
     white-space: normal;
+    overflow: visible;
   }
   .board .class-report-card {
     margin: 0 auto;
-    width: min(100%, 640px);
+    width: min(100%, 700px);
+    min-height: clamp(210px, 27vw, 280px);
+    position: relative;
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
     gap: clamp(8px, 1.8vw, 12px);
-    padding: clamp(10px, 2.2vw, 16px);
+    padding: clamp(10px, 2.2vw, 16px) clamp(104px, 16vw, 146px) clamp(10px, 2.2vw, 16px) clamp(10px, 2.2vw, 16px);
     border: 2px solid rgba(255,255,255,0.24);
     border-radius: 8px;
     background: rgba(5, 31, 20, 0.30);
     color: var(--ink);
     box-shadow: inset 0 0 22px rgba(0,0,0,0.12);
-    max-height: 100%;
+    max-height: none;
     overflow: visible;
   }
   .board .class-report-main {
     min-width: 0;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(104px, 0.48fr);
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: clamp(10px, 2.4vw, 18px);
-    min-height: clamp(116px, 19vw, 158px);
-    overflow: hidden;
+    min-height: clamp(112px, 17vw, 150px);
+    overflow: visible;
     position: relative;
   }
   .board .class-report-heading {
@@ -2693,22 +2683,38 @@ export const VIEWER_CSS = `
     text-transform: lowercase;
   }
   .board .class-report-teacher-art {
-    position: relative;
-    justify-self: end;
-    align-self: stretch;
-    width: clamp(104px, 19vw, 160px);
-    height: 100%;
+    position: absolute;
+    right: clamp(-30px, -2vw, -14px);
+    bottom: clamp(-30px, -2.8vw, -14px);
+    width: clamp(92px, 14vw, 124px);
+    height: clamp(176px, 27vw, 236px);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
     overflow: visible;
     pointer-events: none;
     opacity: 1;
-    filter: drop-shadow(0 8px 10px rgba(0,0,0,0.28));
+    filter: drop-shadow(0 10px 11px rgba(0,0,0,0.34));
+    z-index: 2;
+  }
+  .board .class-report-teacher-art::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    width: 84%;
+    height: 11px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.28);
+    filter: blur(5px);
+    transform: translateX(-50%);
+    z-index: -1;
   }
   .board .class-report-teacher-art img {
-    width: 100%;
-    height: 142%;
-    object-fit: contain;
+    width: auto;
+    height: 100%;
+    max-width: none;
     object-position: center bottom;
-    transform: translateY(clamp(16px, 2.4vw, 28px));
     filter: saturate(1.05) contrast(1.04);
   }
   .board .class-report-letter {
@@ -2775,15 +2781,16 @@ export const VIEWER_CSS = `
   }
   @media (max-width: 620px) {
     .blackboard-panel[data-question-type="class-report"] .board {
-      min-height: 170px;
+      min-height: 210px;
       padding: 10px;
     }
     .board .class-report-card {
       gap: 8px;
-      padding: 9px;
+      min-height: 168px;
+      padding: 9px 76px 9px 9px;
     }
     .board .class-report-main {
-      grid-template-columns: auto minmax(0, 1fr) minmax(72px, 0.36fr);
+      grid-template-columns: auto minmax(0, 1fr);
       gap: 8px;
       min-height: clamp(92px, 25vw, 120px);
     }
@@ -2793,7 +2800,10 @@ export const VIEWER_CSS = `
       font-size: clamp(34px, 10vw, 46px);
     }
     .board .class-report-teacher-art {
-      width: clamp(76px, 21vw, 98px);
+      width: clamp(64px, 18vw, 82px);
+      height: clamp(132px, 34vw, 168px);
+      right: -8px;
+      bottom: -14px;
     }
     .board .class-report-metric {
       padding: 5px 7px;
@@ -2824,6 +2834,8 @@ export const VIEWER_CSS = `
   @media (max-width: 440px) {
     .board .class-report-card {
       gap: 6px;
+      min-height: 0;
+      padding-right: 9px;
     }
     .board .class-report-main {
       grid-template-columns: auto minmax(0, 1fr);
@@ -3010,6 +3022,13 @@ export const VIEWER_CSS = `
   }
   .card-deck-track > .ccg-card.is-career-card .ccg-body {
     padding-top: 34px;
+  }
+  .card-deck-track > .ccg-card.is-creation-candidate-card,
+  .card-deck-track > .ccg-card.is-creation-control-card {
+    min-height: 560px;
+  }
+  .card-deck-track > .ccg-card.is-creation-control-card .creation-fields {
+    margin-top: 4px;
   }
   .career-metrics {
     display: flex;

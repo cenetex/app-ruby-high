@@ -873,6 +873,13 @@ const VIEWER_SCRIPT_SUFFIX = `
           autoPickLastKey = null;
           return null;
         }
+        // A live-board rejection is the expected loser in scheduler races
+        // where two pick paths notice the same empty board. The board is
+        // already playable, so surfacing the raw service error only makes the
+        // first session feel broken.
+        if (payload && payload.type === "pick" && /cannot post another question while a question is live/i.test(msg)) {
+          return null;
+        }
         appendSystem("error · " + msg);
         return null;
       }
@@ -1283,7 +1290,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       img.alt = "";
       img.decoding = "async";
       img.loading = "lazy";
-      img.src = teacherAssetUrl(artAssetId, "sticker");
+      img.src = teacherAssetUrl(artAssetId, "full-sticker");
       img.onerror = () => art.remove();
       art.appendChild(img);
       main.appendChild(art);
@@ -4479,48 +4486,90 @@ const VIEWER_SCRIPT_SUFFIX = `
       + '<div class="creation-loading-sub">Drawing your character. Please wait.</div>';
     sheetCard.appendChild(loading);
 
-    const h = document.createElement("h2");
-    h.textContent = "Choose your avatar";
-    h.style.display = "none"; // hidden during loading; revealed when rolled lands
-    sheetCard.appendChild(h);
-    const sub = document.createElement("p");
-    sub.className = "sub";
-    sub.textContent = aiEnabled
-      ? "Reroll any field you don't like. AI can refresh the voice and portrait."
-      : "Reroll any field you don't like. Enable AI later for a custom portrait.";
-    sub.style.display = "none";
-    sheetCard.appendChild(sub);
-
-    // Two-column wrap: portrait on the left, rerollable fields on the
-    // right. Stacks on mobile (CSS handles the breakpoint). Each side
-    // builds independently below.
-    const card = document.createElement("div");
-    card.className = "creation-card";
-    card.style.display = "none";
-    sheetCard.appendChild(card);
-
-    // Portrait section — default-pack PNG by playbook, plus an opt-in
-    // "✨ Generate AI portrait" button that swaps in a custom image.
-    const portraitWrap = document.createElement("div");
-    portraitWrap.className = "creation-portrait";
-    card.appendChild(portraitWrap);
+    // Creation now uses the same two-card deck surface as profile sheets:
+    // a playable character card beside a roll-control card.
+    const candidateCard = document.createElement("div");
+    candidateCard.className = "ccg-card is-character-card is-creation-candidate-card";
+    const candidateRole = document.createElement("span");
+    candidateRole.className = "ccg-role player";
+    candidateRole.textContent = "player";
+    candidateCard.appendChild(candidateRole);
+    const candidateArt = document.createElement("div");
+    candidateArt.className = "ccg-art";
     const portraitImg = document.createElement("img");
     portraitImg.alt = "";
-    portraitWrap.appendChild(portraitImg);
-    const portraitBtn = document.createElement("button");
-    portraitBtn.type = "button";
-    portraitBtn.className = "creation-ai-portrait";
-    portraitBtn.textContent = "✨ Generate AI portrait";
-    portraitWrap.appendChild(portraitBtn);
+    candidateArt.appendChild(portraitImg);
+    candidateCard.appendChild(candidateArt);
+    const candidateBody = document.createElement("div");
+    candidateBody.className = "ccg-body";
+    candidateCard.appendChild(candidateBody);
+    const candidateName = document.createElement("div");
+    candidateName.className = "ccg-name";
+    candidateBody.appendChild(candidateName);
+    const candidateSubtitle = document.createElement("div");
+    candidateSubtitle.className = "ccg-subtitle";
+    candidateBody.appendChild(candidateSubtitle);
+    const candidateStats = document.createElement("div");
+    candidateStats.className = "ccg-stats";
+    candidateBody.appendChild(candidateStats);
+    const candidateQuote = document.createElement("blockquote");
+    candidateQuote.className = "ccg-quote";
+    candidateBody.appendChild(candidateQuote);
+    const candidateMove = document.createElement("div");
+    candidateMove.className = "ccg-footer";
+    const candidateMoveTitle = document.createElement("strong");
+    const candidateMoveContent = document.createElement("span");
+    candidateMoveContent.className = "ccg-footer-content";
+    candidateMove.appendChild(candidateMoveTitle);
+    candidateMove.appendChild(candidateMoveContent);
+    candidateBody.appendChild(candidateMove);
+    const candidateHint = document.createElement("div");
+    candidateHint.className = "ccg-next-step";
+    candidateHint.textContent = "Lock this student in to start today's class.";
+    candidateBody.appendChild(candidateHint);
     const portraitStatus = document.createElement("div");
     portraitStatus.className = "creation-portrait-status";
-    portraitWrap.appendChild(portraitStatus);
+    candidateBody.appendChild(portraitStatus);
+    const candidateActions = document.createElement("div");
+    candidateActions.className = "ccg-card-actions";
+    const portraitBtn = document.createElement("button");
+    portraitBtn.type = "button";
+    portraitBtn.className = "secondary";
+    portraitBtn.textContent = "✨ Generate AI portrait";
+    const acceptBtn = document.createElement("button");
+    acceptBtn.type = "button";
+    acceptBtn.className = "primary";
+    acceptBtn.textContent = "Lock it in";
+    acceptBtn.disabled = true;
+    candidateActions.appendChild(portraitBtn);
+    candidateActions.appendChild(acceptBtn);
+    candidateBody.appendChild(candidateActions);
 
-    // Form rows: one per component. Each row has a reroll button that
+    const controlsCard = document.createElement("div");
+    controlsCard.className = "ccg-card is-career-card is-creation-control-card";
+    const controlsRole = document.createElement("span");
+    controlsRole.className = "ccg-role career";
+    controlsRole.textContent = "roll";
+    controlsCard.appendChild(controlsRole);
+    const controlsBody = document.createElement("div");
+    controlsBody.className = "ccg-body";
+    controlsCard.appendChild(controlsBody);
+    const controlsName = document.createElement("div");
+    controlsName.className = "ccg-name";
+    controlsName.textContent = "Character Roll";
+    controlsBody.appendChild(controlsName);
+    const controlsSub = document.createElement("div");
+    controlsSub.className = "ccg-subtitle";
+    controlsSub.textContent = aiEnabled
+      ? "Reroll any field. AI can refresh the voice and portrait."
+      : "Reroll any field. Enable AI later for a custom portrait.";
+    controlsBody.appendChild(controlsSub);
+
+    // Control rows: one per component. Each row has a reroll button that
     // re-fires /chat/character/generate with regen=[<field>], keep=<rest>.
     const fields = document.createElement("div");
     fields.className = "creation-fields";
-    card.appendChild(fields);
+    controlsBody.appendChild(fields);
 
     function makeRow(label, key) {
       const row = document.createElement("div");
@@ -4552,30 +4601,16 @@ const VIEWER_SCRIPT_SUFFIX = `
     // Status line for in-flight rolls / errors.
     const status = document.createElement("div");
     status.className = "stat-budget";
-    status.style.display = "none";
-    sheetCard.appendChild(status);
+    controlsBody.appendChild(status);
 
-    // Actions — single primary button. No "Reroll all" because each
-    // field has its own reroll. If the player wants a clean slate they
-    // can spam ↻ on every row.
-    const actions = document.createElement("div");
-    actions.className = "sheet-actions";
-    actions.style.display = "none";
-    const acceptBtn = document.createElement("button");
-    acceptBtn.textContent = "Lock it in";
-    acceptBtn.disabled = true;
-    actions.appendChild(acceptBtn);
-    sheetCard.appendChild(actions);
+    let deckRendered = false;
 
     // Reveal the form (and hide the loading state) once the first
     // roll lands. Subsequent component-rerolls don't re-trigger this.
     function revealForm() {
-      loading.style.display = "none";
-      h.style.display = "";
-      sub.style.display = "";
-      card.style.display = "";
-      status.style.display = "";
-      actions.style.display = "";
+      if (deckRendered) return;
+      deckRendered = true;
+      renderCardDeck([candidateCard, controlsCard]);
     }
 
     let rolled = null;
@@ -4655,8 +4690,37 @@ const VIEWER_SCRIPT_SUFFIX = `
       portraitBtn.disabled = !rolled || !aiEnabled || inFlight.portrait;
     }
 
+    function renderCreationStatsInto(parent, stats) {
+      parent.replaceChildren();
+      const fmt = (n) => (n >= 0 ? "+" : "") + n;
+      ["head", "heart", "hustle", "honor"].forEach((k) => {
+        const wrap = document.createElement("span");
+        wrap.className = "stat";
+        const ke = document.createElement("span");
+        ke.className = "k";
+        ke.textContent = k;
+        const ve = document.createElement("span");
+        const v = Number(stats && stats[k] || 0);
+        ve.className = "v" + (v > 0 ? " pos" : v < 0 ? " neg" : "");
+        ve.textContent = fmt(v);
+        wrap.appendChild(ke);
+        wrap.appendChild(ve);
+        parent.appendChild(wrap);
+      });
+    }
+
     function renderRolled(c) {
       const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, startingMove: { name: "—", description: "" } };
+      candidateName.textContent = c.name || "—";
+      candidateSubtitle.textContent = (pb.name || c.playbookId || "Student") + " · Freshman candidate";
+      if (pb.accent) {
+        candidateCard.style.borderColor = pb.accent;
+        candidateRole.style.background = pb.accent;
+      }
+      renderCreationStatsInto(candidateStats, c.stats);
+      renderMarkdownInto(candidateQuote, c.flavorQuote ? "“" + c.flavorQuote + "”" : (c.arcAnswer ? "“" + c.arcAnswer + "”" : "—"), { inline: true });
+      candidateMoveTitle.textContent = pb.startingMove && pb.startingMove.name ? pb.startingMove.name : "Starting Move";
+      renderMarkdownInto(candidateMoveContent, pb.startingMove && pb.startingMove.description ? pb.startingMove.description : "No move text yet.", { inline: true });
       nameRow.val.textContent = c.name;
       playbookRow.val.textContent = pb.name;
       const fmt = (n) => (n >= 0 ? "+" : "") + n;
@@ -4801,13 +4865,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       if (data && data.session) {
         closeSheet();
-        // Auto-pose the first question so the new player lands on a
-        // live board instead of an empty chalkboard with the cryptic
-        // "the teacher will write a question on the board in a moment."
-        // The default faculty after createCharacter is "ruby" (homeroom),
-        // and command({type:"pick"}) draws the first class question.
-        try { await command({ type: "pick" }); }
-        catch { /* swallow — empty board is the worst case, not a crash */ }
       } else {
         applyDisabled();
         setStatus("Save failed — try again.", true);

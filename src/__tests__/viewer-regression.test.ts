@@ -93,25 +93,28 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("if (postClass.report)");
   });
 
-  it("builds the class report with teacher sticker art and graded-question count", () => {
+  it("builds the class report with full-body teacher standee art and graded-question count", () => {
     const script = inlineScript(renderedViewer());
 
     expect(script).toContain("function buildClassReportCard");
     expect(script).toContain("class-report-teacher-art");
-    expect(script).toContain('teacherAssetUrl(artAssetId, "sticker")');
+    expect(script).toContain('teacherAssetUrl(artAssetId, "full-sticker")');
     expect(script).toContain('addMetric("graded"');
     expect(script).toContain('"questions"');
   });
 
-  it("stages class report teacher stickers larger with bottom cropping", () => {
+  it("stages class report teachers as full-body standees in front of the report card", () => {
+    expect(cssRule('.blackboard-panel[data-question-type="class-report"] .board')).toContain("overflow: visible");
     expect(cssRule(".board .class-report-card")).toContain("overflow: visible");
+    expect(cssRule(".board .class-report-card")).toContain("position: relative");
     expect(cssRule(".board .class-report-metric")).toContain("overflow: visible");
     expect(cssRule(".board .class-report-metric .v")).toContain("overflow: visible");
 
-    expect(cssRule(".board .class-report-main")).toContain("overflow: hidden");
-    expect(cssRule(".board .class-report-teacher-art")).toContain("width: clamp(104px, 19vw, 160px)");
+    expect(cssRule(".board .class-report-main")).toContain("overflow: visible");
+    expect(cssRule(".board .class-report-teacher-art")).toContain("position: absolute");
+    expect(cssRule(".board .class-report-teacher-art")).toContain("height: clamp(176px, 27vw, 236px)");
     expect(cssRule(".board .class-report-teacher-art")).toContain("drop-shadow");
-    expect(cssRule(".board .class-report-teacher-art img")).toContain("object-fit: contain");
-    expect(cssRule(".board .class-report-teacher-art img")).toContain("transform: translateY");
+    expect(cssRule(".board .class-report-teacher-art img")).toContain("height: 100%");
+    expect(cssRule(".board .class-report-teacher-art img")).toContain("max-width: none");
   });
 });
