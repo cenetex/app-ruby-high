@@ -8,7 +8,7 @@ export const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 
 /** Ruby HIGH School — only grades 9-12 (Freshman, Sophomore, Junior, Senior).
  *  Players start at Freshman and progress year by year. Each year completes
- *  when the player clears the streak and per-class credit gates. After
+ *  when the player clears the daily-class and subject-grade gates. After
  *  Senior, graduation closes the run. */
 export type Grade = "9" | "10" | "11" | "12";
 
@@ -29,8 +29,8 @@ export const GRADE_SHORT_LABELS: Record<Grade, string> = {
   "12": "SR",
 };
 
-/** Players start at Freshman year. The streak/yearbook loop is the arc:
- *  clear enough school days and class credits to advance to the next year. */
+/** Players start at Freshman year. The yearbook loop is the arc:
+ *  pass enough daily classes and clear enough subject grades to advance. */
 export const DEFAULT_GRADE: Grade = "9";
 
 /** Legacy card rarity. Kept for old persisted states; new credit and streak
@@ -68,8 +68,8 @@ export function rollRarity(rng: () => number = Math.random): Rarity {
   return "common";
 }
 
-/** Legacy per-grade daily target. New streaks tick on the first passed
- *  question of the school day. */
+/** Legacy per-grade daily target. Current daily-class counters tick on the
+ *  first passed daily class of the day. */
 export function legendariesPerDayFor(grade: Grade): number {
   switch (grade) {
     case "9":  return 1;
@@ -88,15 +88,15 @@ export function legendariesPerDayFor(grade: Grade): number {
  *  hard-walling the player out of help on their first few questions. */
 export const ADVANTAGE_ROLLS_PER_GRADE = 3;
 
-/** Per-grade streak length: how many consecutive school days the player
- *  must pass at least one question to advance OUT of `grade`.
+/** Per-grade daily-class count: how many daily classes the player must pass
+ *  to advance OUT of `grade`. Stored in the legacy `streak` field.
  *
- *    Freshman → 1 day
- *    Sophomore → 2 days
- *    Junior → 3 days
- *    Senior → 4 days
+ *    Freshman → 1 daily class
+ *    Sophomore → 2 daily classes
+ *    Junior → 3 daily classes
+ *    Senior → 4 daily classes
  *
- *  Combined with the per-class credit gate (below), these are the two
+ *  Combined with the per-subject grade gate, these are the two
  *  gates a player must clear to advance years. */
 export function requiredStreakForGrade(grade: Grade): number {
   const idx = GRADES.indexOf(grade);
@@ -104,10 +104,8 @@ export function requiredStreakForGrade(grade: Grade): number {
   return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
 }
 
-/** A school-day streak is also a class-score accelerator based on the streak
- *  carried into the school day. A 2-day carried streak pays 2x, a 3-day
- *  carried streak pays 3x, and a 4+ day carried streak pays the capped
- *  Friday Bonus at 5x. */
+/** The daily-class counter also accelerates score payouts. A carried count of
+ *  2 pays 2x, 3 pays 3x, and 4+ pays the capped Daily Class Bonus at 5x. */
 export function streakScoreMultiplier(streakCount: number | undefined | null): number {
   const n = Math.max(0, Math.floor(Number(streakCount ?? 0)));
   if (n >= 4) return 5;
@@ -294,9 +292,9 @@ export interface LastReveal {
     mode: "exact" | "alias" | "fuzzy";
     score: number;
   };
-  /** Successful answers can earn extra hidden class-mastery credit from the
-   *  streak carried into the day: 2x after two days, 3x after three days,
-   *  and the 5x Friday Bonus after four days. */
+  /** Successful answers can earn extra score from the daily-class count
+   *  carried into the day: 2x after two, 3x after three, and the 5x
+   *  Daily Class Bonus after four. */
   scoreMultiplier?: number;
   /** Visible session-score payout for this question. Practice and class
    *  questions both award this; only class questions affect advancement. */
@@ -306,7 +304,7 @@ export interface LastReveal {
     points: number;
     possible: number;
   };
-  /** Daily class bookkeeping. Class rounds update visible course standing;
+  /** Daily class bookkeeping. Class rounds update visible subject standing;
    *  practice rounds still review cards but do not affect advancement. */
   classProgress?: {
     mode: "class" | "practice";
@@ -704,12 +702,12 @@ export interface PlayerCharacter {
     reward: GraduationReward;
     awardedAt: number;
   }>;
-  /** School-day streak in the active grade. A "day complete" is the
+  /** Daily-class counter in the active grade. A counted day is the
    *  first passed daily class on a given UTC date.
    *  Each completion increments `count` (capped to once per UTC date,
    *  recorded in `lastDate`). Count caps at 5 to model a school week:
-   *  a carried 2-day streak earns 2x, a carried 3-day streak earns 3x,
-   *  and a carried 4-day streak earns the day-5 Friday Bonus at 5x.
+   *  a carried count of 2 earns 2x, 3 earns 3x, and 4 earns the 5x
+   *  Daily Class Bonus.
    *  Skipping a day (today is more than 1 day past `lastDate`) resets
    *  the streak. Switching grade resets to `{ grade: newGrade, count: 0 }`.
    *
@@ -735,8 +733,8 @@ export interface PlayerCharacter {
   /** One classroom affinity per grade: the first miss in that class becomes
    *  a second-chance pass and then marks used. */
   classAffinity?: Partial<Record<Grade, { facultyId: string; used: boolean }>>;
-  /** One graded class per teacher per school day. These records are the
-   *  visible course-standing source of truth; hidden card memory remains only
+  /** One graded daily class per teacher per date. These records are the
+   *  visible subject-standing source of truth; hidden card memory remains only
    *  the scheduler for which questions get asked. Keyed by
    *  `${grade}:${facultyId}:${date}`. */
   dailyClasses?: Record<string, DailyClassRecord>;
@@ -870,22 +868,22 @@ export interface NpcStudentState {
 }
 
 /** Per-NPC arc state — tracks each classmate's independent progression
- *  through the 4-year arc. Same shape as the player: a streak in their
+ *  through the 4-year arc. Same shape as the player: a daily-class counter in their
  *  current grade, a list of completed grades, a graduated flag. NPCs
- *  ride along on the player's school-day completions — when the player's
- *  streak ticks, every still-in-school NPC also rolls pass/fail and ticks
- *  their own streak. They can outpace or fall behind. The
+ *  ride along on the player's daily-class completions — when the player's
+ *  counter ticks, every still-in-school NPC also rolls pass/fail and ticks
+ *  their own counter. They can outpace or fall behind. The
  *  cohort is the rivalry layer: "Indra graduated last week" is real. */
 export interface NpcArcState {
   id: string;
   /** Current grade. Independent of `currentGrade` on QuizState. */
   grade: Grade;
-  /** Per-grade school-day streak, anchored to the current grade. */
+  /** Per-grade daily-class counter, anchored to the current grade. */
   streak: { grade: Grade; count: number };
   completedGrades: Grade[];
   /** True once Senior streak completes. Stops further ticking. */
   graduated: boolean;
-  /** Day key (YYYY-MM-DD) of the last school-day tick this NPC participated in.
+  /** Day key (YYYY-MM-DD) of the last daily-class tick this NPC participated in.
    *  Prevents double-tick if the player retries on the same day. */
   lastDailyDate?: string;
 }
@@ -1123,8 +1121,8 @@ export function npcsInRoom(roster: NpcStudentState[], room: TeachingRoomId): Npc
   return roster.filter((n) => n.currentRoom === room);
 }
 
-/** Initial cohort — all 6 NPCs as Freshmen, fresh streaks. They'll diverge
- *  from this baseline as the player clears school days and the dice roll for
+/** Initial cohort — all 6 NPCs as Freshmen, fresh daily-class counters. They'll diverge
+ *  from this baseline as the player clears daily classes and the dice roll for
  *  each one independently. */
 export function initialNpcCohort(): NpcArcState[] {
   return ALL_STUDENT_IDS.map((id) => ({
@@ -1136,7 +1134,7 @@ export function initialNpcCohort(): NpcArcState[] {
   }));
 }
 
-/** NPC stats keyed by id — for dice rolls during school-day ticks. */
+/** NPC stats keyed by id — for dice rolls during daily-class ticks. */
 export function npcStatsFor(id: string): CharacterStats {
   return { ...(NPC_STAT_DEFAULTS[id] ?? { head: 0, heart: 0, hustle: 0, honor: 0 }) };
 }

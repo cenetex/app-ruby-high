@@ -693,7 +693,7 @@ describe("RubyHighService Phase 1", () => {
     expect(memory.lastScoreMultiplier).toBe(3);
   });
 
-  it("caps the school-week streak with a 5x Friday Bonus", async () => {
+  it("caps the daily-class counter with a 5x Daily Class Bonus", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-score-cap";
     const pack = fakeAnkiPackWithSally("anki:vocab-streak-cap", "vocab-streak-cap-q1");
@@ -723,7 +723,7 @@ describe("RubyHighService Phase 1", () => {
     expect(memory.lastScoreMultiplier).toBe(5);
   });
 
-  it("uses the same class-grade model for Ruby High packs", async () => {
+  it("uses the same subject-grade model for Ruby High packs", async () => {
     const { ruby } = await makeServices();
     const sid = "test:ruby-bank-mastery-grade";
     const pack = fakeLeveledPack("pack:ruby-bank-mastery-grade");

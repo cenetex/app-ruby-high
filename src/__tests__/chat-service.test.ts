@@ -847,7 +847,7 @@ describe("ChatService.send — message composition", () => {
     expect(toolNames).not.toContain("pick_from_bank");
     expect(toolNames).toContain("pose_question");
     const promptText = JSON.stringify(captured!.body.messages);
-    expect(promptText).toContain("COURSE STATUS for Ruby.");
+    expect(promptText).toContain("SUBJECT STATUS for Ruby.");
     expect(promptText).toContain("no Ruby High card is available right now");
     expect(promptText).toContain("pick_from_bank is not available this turn");
   });

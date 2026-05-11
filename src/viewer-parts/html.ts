@@ -65,7 +65,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="arc-indicator" id="arc-indicator" hidden>
         <span class="arc-year" id="arc-year">—</span>
         <span class="arc-sep">·</span>
-        <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">— daily passes</span>
+        <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">— daily classes</span>
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">— subjects cleared</span>
         <span class="arc-sep">·</span>
@@ -178,7 +178,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div class="pack-list" id="pack-list"></div>
     <hr style="border: 0; border-top: 1px solid var(--line); margin: 16px 0;" />
     <h3 style="margin: 0 0 8px; font-size: 14px;">Import an Anki deck</h3>
-    <p class="sub" style="margin: 0 0 10px;">Pick a .apkg file. Cards import as typed-answer study cards; subdecks or strong tags become classes. Use the MC button on a card only when you want AI distractors generated and cached.</p>
+    <p class="sub" style="margin: 0 0 10px;">Pick a .apkg file. Cards import as typed-answer study cards; subdecks or strong tags become subjects. Use the MC button on a card only when you want AI distractors generated and cached.</p>
     <label class="pack-import-field" for="pack-teacher-select">
       <span>Teacher</span>
       <select id="pack-teacher-select"></select>

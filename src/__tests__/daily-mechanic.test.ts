@@ -121,7 +121,7 @@ function completeClassOnDate(
 // ── pure helpers ────────────────────────────────────────────────────────────
 
 describe("dailyKey", () => {
-  it("returns the same key for two moments inside the same school day", () => {
+  it("returns the same key for two moments inside the same daily-class date", () => {
     // 17:00 UTC = bell. 18:00 UTC same calendar day still = today.
     const k1 = dailyKey(new Date("2026-05-04T18:00:00Z"));
     const k2 = dailyKey(new Date("2026-05-04T23:30:00Z"));
@@ -561,8 +561,8 @@ describe("Streak + grade advancement", () => {
       { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
     ];
 
-    // Senior streak required is 4 school days. One correct answer per
-    // school day ticks the streak.
+    // Senior's daily-class counter requires 4 dates. One passed daily class
+    // per date ticks the legacy streak field.
     const days = [
       "2026-05-04T18:00:00Z", // Mon
       "2026-05-05T18:00:00Z", // Tue

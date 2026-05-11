@@ -52,7 +52,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
   const GRADE_SHORT_LABELS = { "9": "Fresh", "10": "Soph", "11": "Junior", "12": "Senior" };
   const GRADE_ORDER = ["9", "10", "11", "12"];
-  // Mirrored from types.ts: school-day streak gates by year.
+  // Mirrored from types.ts: passed-daily-class gates by year.
   const STREAK_REQUIRED       = { "9": 1, "10": 2, "11": 3, "12": 4 };
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
   const TEACHING_FACULTY_LABELS = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
@@ -71,7 +71,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!award) return "";
     const points = Math.max(0, Math.round(Number(award.points || 0)));
     const mult = Math.max(1, Math.round(Number(award.multiplier || 1)));
-    if (mult >= 5) return "+" + points + " score · Friday ×5";
+    if (mult >= 5) return "+" + points + " score · Daily Class ×5";
     return "+" + points + " score" + (mult > 1 ? " · ×" + mult : "");
   }
   function letterGradePasses(grade) {
@@ -93,7 +93,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (n >= 2) return 2;
     return 1;
   }
-  function courseProgressForFaculty(fid) {
+  function subjectProgressForFaculty(fid) {
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     return roster.find((f) => f.id === fid) || null;
   }
@@ -115,15 +115,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (left <= 0) return "Daily class complete";
     return (left === 1 ? "There is " : "There are ") + questionsLeftText(today);
   }
-  function classesLeftText(done, required) {
-    const left = Math.max(0, Number(required || 0) - Number(done || 0));
-    return left + " daily " + (left === 1 ? "pass" : "passes") + " left";
-  }
   function classGradeForFaculty(fid) {
-    const progress = courseProgressForFaculty(fid);
+    const progress = subjectProgressForFaculty(fid);
     return (progress && progress.courseGrade) || "—";
   }
-  function courseStatusText(progress) {
+  function subjectStatusText(progress) {
     if (!progress) return "settling in";
     const grade = progress.grade || "—";
     const done = Number(progress.completedClasses || 0);
@@ -135,11 +131,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (today.status === "active") {
       return questionsLeftText(today) + " · " + grade;
     }
-    return done + "/" + required + " daily passes · " + grade;
+    return done + "/" + required + " daily classes · " + grade;
   }
   function postClassState(t) {
     const progress = t && t.active_course_progress;
-    const report = !!(t && activeCourseIsComplete(t) && !t.current && !t.graduation_ready);
+    const report = !!(t && activeDailyClassIsComplete(t) && !t.current && !t.graduation_ready);
     const nextRole = (progress && progress.nextCardRole) || "";
     const canPick = scheduledCanPick(t);
     return {
@@ -202,11 +198,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       .map((f) => f.id);
     return ids.length > 0 ? ids : TEACHING_FACULTY_IDS;
   }
-  function classGradeSummary() {
+  function subjectClearSummary() {
     const grades = teachingFacultyIdsForSummary().map((fid) => ({
       facultyId: fid,
       grade: classGradeForFaculty(fid),
-      progress: courseProgressForFaculty(fid),
+      progress: subjectProgressForFaculty(fid),
     }));
     const met = grades.filter((g) => {
       const p = g.progress || {};
@@ -218,7 +214,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function finalGradeSummary() {
     const rows = teachingFacultyIdsForSummary().map((fid) => {
-      const progress = courseProgressForFaculty(fid) || {};
+      const progress = subjectProgressForFaculty(fid) || {};
       const score = Number(progress.averageScore);
       return {
         facultyId: fid,
@@ -238,7 +234,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       letter: averageScore == null ? "—" : letterGradeForScore(averageScore),
     };
   }
-  function activeCourseIsComplete(t) {
+  function activeDailyClassIsComplete(t) {
     const today = t && t.active_course_progress && t.active_course_progress.today;
     return !!(today && today.status === "complete");
   }
@@ -268,32 +264,32 @@ const VIEWER_SCRIPT_SUFFIX = `
     return String(Math.round(n)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
   }
 
-  // Build the chalkboard's class-grade row — three pills (Homeroom /
+  // Build the chalkboard's subject-grade row — three pills (Homeroom /
   // Science / Literature) showing the player's letter standing in each
-  // class for the active grade. Rendered into the empty-board state so
+  // subject for the active grade. Rendered into the empty-board state so
   // the player can see where they stand without opening the School Career
-  // sheet. CLASS_GATE_META and makeClassGradeChip are defined further
+  // sheet. SUBJECT_GATE_META and makeSubjectGradeChip are defined further
   // down (function declarations are hoisted within the IIFE).
-  function buildBoardClassGrades() {
+  function buildBoardSubjectGrades() {
     const t = lastTelemetry;
     if (!t || !t.character || !t.current_grade) return null;
-    const summary = classGradeSummary();
+    const summary = subjectClearSummary();
     const wrap = document.createElement("div");
-    wrap.className = "board-class-grades";
+    wrap.className = "board-subject-grades";
     const heading = document.createElement("div");
-    heading.className = "board-class-grades-title";
+    heading.className = "board-subject-grades-title";
     heading.textContent = (GRADE_LABELS[t.current_grade] || ("Grade " + t.current_grade)) + " · " + summary.met + "/" + summary.total + " subjects cleared";
     wrap.appendChild(heading);
     const row = document.createElement("div");
-    row.className = "board-class-grades-row";
+    row.className = "board-subject-grades-row";
     for (const g of summary.grades) {
-      const meta = CLASS_GATE_META.find((m) => m.facultyId === g.facultyId)
+      const meta = SUBJECT_GATE_META.find((m) => m.facultyId === g.facultyId)
         || { facultyId: g.facultyId, label: (g.progress && g.progress.displayName) || g.facultyId, icon: "□" };
       const p = g.progress || {};
       const completed = Number(p.completedClasses || 0);
       const required = Number(p.requiredClasses || 0);
       const met = required > 0 && completed >= required && letterGradePasses(g.grade);
-      row.appendChild(makeClassGradeChip({
+      row.appendChild(makeSubjectGradeChip({
         label: meta.label,
         icon: meta.icon,
         grade: g.grade || "—",
@@ -658,7 +654,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function playerLoungeLine() {
     const recent = latestConversationLine();
     if (recent) return "I heard that: " + recent + " What should I understand about it?";
-    return "What are you all noticing about classes today?";
+    return "What are you all noticing about subjects today?";
   }
   function playerClassLine(intent) {
     const t = lastTelemetry || {};
@@ -1256,7 +1252,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!progress || !today || today.status !== "complete") return null;
     const teacherName = teacherShortName(faculty, progress.displayName);
     const classLetter = today.letterGrade || letterGradeForScore(today.score);
-    const courseLetter = progress.grade || "—";
+    const subjectLetter = progress.grade || "—";
     const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
     const wrap = document.createElement("section");
     wrap.className = "class-report-card" + (passedToday ? " is-passed" : " needs-work");
@@ -1273,7 +1269,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     title.textContent = "Teacher " + teacherName;
     const subtitle = document.createElement("div");
     subtitle.className = "class-report-subtitle";
-    subtitle.textContent = passedToday ? "daily credit earned" : "practice open";
+    subtitle.textContent = passedToday ? "daily class passed" : "practice open";
     titleWrap.appendChild(title);
     titleWrap.appendChild(subtitle);
     main.appendChild(badge);
@@ -1316,7 +1312,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       metrics.appendChild(item);
     };
     addMetric("score", formatClassScore(today.score), "average");
-    addMetric("course", courseLetter, "standing");
+    addMetric("subject", subjectLetter, "grade");
     const gradedCount = Math.max(0, Number(today.questionCount || 0));
     const gradedTotal = Math.max(gradedCount, Number(today.totalQuestions || 3));
     addMetric("graded", Math.min(gradedCount, gradedTotal) + "/" + gradedTotal, "questions");
@@ -1395,7 +1391,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   // ── top-bar arc indicator (live progress through the 4-year arc) ────────
-  // Shape: "Junior · 2/3 daily passes · 2/3 subjects cleared". Hidden until a character
+  // Shape: "Junior · 2/3 daily classes · 2/3 subjects cleared". Hidden until a character
   // exists. Daily/subject progress turns accent-colored once the gate is met (player's
   // sitting on the threshold, waiting for the other gate to land). After
   // graduation the year flips to "Graduated" and the gate hints drop.
@@ -1422,11 +1418,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.arcYear.textContent = yearLabel;
     const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
     const streakReq   = STREAK_REQUIRED[grade] || 1;
-    els.arcStreak.textContent = streakCount + "/" + streakReq + " daily passes";
+    els.arcStreak.textContent = streakCount + "/" + streakReq + " daily classes";
     els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
-    const classes = classGradeSummary();
-    els.arcXp.textContent = classes.met + "/" + classes.total + " subjects cleared";
-    els.arcXp.classList.toggle("is-met", classes.met >= classes.total);
+    const subjects = subjectClearSummary();
+    els.arcXp.textContent = subjects.met + "/" + subjects.total + " subjects cleared";
+    els.arcXp.classList.toggle("is-met", subjects.met >= subjects.total);
     els.arcScore.textContent = formatWholeNumber(t.scorePoints || 0) + " score";
   }
 
@@ -1634,7 +1630,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         showBlackboardCeremony(faculty, currentGrade);
         return;
       }
-      if (authed && lastTelemetry && lastTelemetry.character && activeCourseIsComplete(lastTelemetry)) {
+      if (authed && lastTelemetry && lastTelemetry.character && activeDailyClassIsComplete(lastTelemetry)) {
         showBlackboardClassReport(faculty, currentGrade);
         return;
       }
@@ -1667,7 +1663,7 @@ const VIEWER_SCRIPT_SUFFIX = `
             : "Start today's graded class — tap Chat to start.";
         els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
       }
-      // Below the lead text: a sleeker on-board class-grade chip row, so the
+      // Below the lead text: a sleeker on-board subject-grade chip row, so the
       // player can read class standing without opening the sheet.
       let extras = els.blackboardEmpty.querySelector(".blackboard-empty-extras");
       if (!extras) {
@@ -1680,7 +1676,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const inLounge = !!(faculty && faculty.id === LOUNGE_ID);
       if (authed && t && t.character && !inLounge) {
         if (t.current_grade) {
-          const grades = buildBoardClassGrades();
+          const grades = buildBoardSubjectGrades();
           if (grades) extras.appendChild(grades);
         }
       }
@@ -1738,7 +1734,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       cls.textContent = cardRole === "social"
         ? "SOCIAL"
         : ar.classSession.mode === "class"
-        ? "CLASS " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
+        ? "GRADED " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
         : "PRACTICE";
       els.blackboardMeta.appendChild(cls);
     }
@@ -1910,7 +1906,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Friday Bonus ×5" : "◆ ×" + scoreMult + " score");
+        : (scoreMult >= 5 ? "◆ Daily Class Bonus ×5" : "◆ ×" + scoreMult + " score");
       els.boardReveal.appendChild(mult);
     }
     if (reveal.explanation) {
@@ -2143,7 +2139,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Friday ×5" : "◆ ×" + scoreMult);
+        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult);
       body.appendChild(mult);
     }
     appendMashTickChips(body, reveal);
@@ -2361,13 +2357,13 @@ const VIEWER_SCRIPT_SUFFIX = `
         row.appendChild(students);
       }
       if (fac && fac.courseGrade) {
-        const courseMark = document.createElement("span");
-        courseMark.className = "course-status-pill";
+        const subjectMark = document.createElement("span");
+        subjectMark.className = "subject-status-pill";
         const done = Number(fac.completedClasses || 0);
         const required = Number(fac.requiredClasses || 0);
-        courseMark.title = done + "/" + required + " classes";
-        courseMark.textContent = fac.courseGrade;
-        row.appendChild(courseMark);
+        subjectMark.title = done + "/" + required + " daily classes passed";
+        subjectMark.textContent = fac.courseGrade;
+        row.appendChild(subjectMark);
       }
       row.addEventListener("click", () => fac && setFaculty(fac.id));
       els.channelsList.appendChild(row);
@@ -2913,12 +2909,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     // Header
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
     els.channelTitle.textContent = fac ? channelNameFor(fac) : "lounge";
-    const courseProgress = t.active_course_progress;
-    const courseStatus = courseProgress
-      ? courseStatusText(courseProgress)
+    const subjectProgress = t.active_course_progress;
+    const subjectStatus = subjectProgress
+      ? subjectStatusText(subjectProgress)
       : (t.current_grade ? "Grade " + t.current_grade : "settling in");
     els.channelSub.textContent = fac
-      ? fac.displayName + " · " + courseStatus
+      ? fac.displayName + " · " + subjectStatus
       : "loading…";
     renderArcIndicator(t);
 
@@ -3152,26 +3148,26 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   // Lifted out of appendProgression so the same chip + metadata are reusable
-  // by the on-board class-grade row that renders when the chalkboard is empty.
-  const CLASS_GATE_META = [
+  // by the on-board subject-grade row that renders when the chalkboard is empty.
+  const SUBJECT_GATE_META = [
     { facultyId: "ruby", label: "Homeroom", icon: "⌂" },
     { facultyId: "sally-science", label: "Science", icon: "⚗" },
     { facultyId: "professor-edward", label: "Literature", icon: "✎" },
   ];
-  function makeClassGradeChip(spec) {
+  function makeSubjectGradeChip(spec) {
     const grade = spec.grade || "F";
     const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
     const chip = document.createElement("span");
-    chip.className = "class-grade-chip" + (met ? " is-met" : "");
+    chip.className = "subject-grade-chip" + (met ? " is-met" : "");
     chip.title = grade === "—"
-      ? spec.label + ": no class grade yet"
-      : spec.label + ": " + grade + (met ? " complete" : " needs C and daily passes");
+      ? spec.label + ": no subject grade yet"
+      : spec.label + ": " + grade + (met ? " subject cleared" : " needs C and daily classes");
     chip.setAttribute("aria-label", chip.title);
     const icon = document.createElement("span");
-    icon.className = "class-grade-icon";
+    icon.className = "subject-grade-icon";
     icon.textContent = spec.icon;
     const letter = document.createElement("span");
-    letter.className = "class-grade-letter";
+    letter.className = "subject-grade-letter";
     letter.textContent = grade;
     chip.appendChild(icon);
     chip.appendChild(letter);
@@ -3185,46 +3181,15 @@ const VIEWER_SCRIPT_SUFFIX = `
       "11": "Junior",
       "12": "Senior",
     };
-    const makeGradeChip = makeClassGradeChip;
-    const makeGateRing = (spec) => {
-      const have = Number(spec.have || 0);
-      const need = Number(spec.need || 0);
-      const remaining = Math.max(0, need - have);
-      const met = remaining <= 0;
-      const pct = need > 0 ? Math.max(0, Math.min(1, have / need)) : 1;
-      const ring = document.createElement("span");
-      ring.className = "gate-ring"
-        + (spec.kind ? " " + spec.kind + "-ring" : "")
-        + (met ? " is-met" : "");
-      ring.style.setProperty("--pct", String(Math.round(pct * 100)) + "%");
-      const titleUnit = remaining === 1 ? spec.unit : (spec.pluralUnit || spec.unit);
-      ring.title = met
-        ? spec.label + " complete"
-        : spec.label + ": " + remaining + " " + titleUnit + " left";
-      ring.setAttribute("aria-label", ring.title);
-      const core = document.createElement("span");
-      core.className = "gate-core";
-      const icon = document.createElement("span");
-      icon.className = "gate-icon";
-      icon.textContent = spec.icon;
-      core.appendChild(icon);
-      if (!met && remaining > 0) {
-        const count = document.createElement("span");
-        count.className = "gate-count";
-        count.textContent = String(remaining);
-        core.appendChild(count);
-      }
-      ring.appendChild(core);
-      return ring;
-    };
+    const makeGradeChip = makeSubjectGradeChip;
     const makeStreakMark = (r) => {
       const need = Math.max(1, Number((r.streakProgress && r.streakProgress.need) || r.streakReq || 1));
       const have = Math.max(0, Number((r.streakProgress && r.streakProgress.have) || 0));
       const mark = document.createElement("span");
       mark.className = "rung-streak";
       mark.title = r.state === "current"
-        ? "Daily passes: " + Math.min(have, need) + "/" + need
-        : need + " daily " + (need === 1 ? "pass" : "passes") + " needed";
+        ? "Daily classes: " + Math.min(have, need) + "/" + need
+        : need + " daily " + (need === 1 ? "class" : "classes") + " needed";
       mark.setAttribute("aria-label", mark.title);
       for (let i = 0; i < need; i++) {
         const diamond = document.createElement("span");
@@ -3255,7 +3220,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     wrap.className = "ccg-progression";
     const head = document.createElement("div");
     head.className = "ccg-progression-title";
-    head.textContent = progression.graduated ? "Yearbook" : "Class Schedule";
+    head.textContent = progression.graduated ? "Yearbook" : "Year Requirements";
     wrap.appendChild(head);
     const list = document.createElement("ol");
     list.className = "rungs";
@@ -3271,7 +3236,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (r.state === "current" && r.streakProgress) {
         if (Array.isArray(r.classProgress)) {
           for (const cp of r.classProgress) {
-            const meta = CLASS_GATE_META.find((m) => m.facultyId === cp.facultyId)
+            const meta = SUBJECT_GATE_META.find((m) => m.facultyId === cp.facultyId)
               || { label: cp.facultyId, icon: "□" };
             gates.appendChild(makeGradeChip({
               label: meta.label,
@@ -3283,7 +3248,7 @@ const VIEWER_SCRIPT_SUFFIX = `
             }));
           }
         } else {
-          for (const meta of CLASS_GATE_META) {
+          for (const meta of SUBJECT_GATE_META) {
             gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
@@ -3293,7 +3258,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         }
       } else {
         if (r.state === "completed") {
-          for (const meta of CLASS_GATE_META) {
+          for (const meta of SUBJECT_GATE_META) {
             gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
@@ -3301,7 +3266,7 @@ const VIEWER_SCRIPT_SUFFIX = `
             }));
           }
         } else {
-          for (const meta of CLASS_GATE_META) {
+          for (const meta of SUBJECT_GATE_META) {
             gates.appendChild(makeFutureReq({
               icon: meta.icon,
               title: meta.label + ": C required",
@@ -3422,7 +3387,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
     // Pull this NPC's parallel-arc state from the cohort. That's the
-    // rivalry surface — what year they're on, what their daily pass count looks
+    // rivalry surface — what year they're on, what their daily-class count looks
     // like, whether they've already graduated past you.
     const arc = (lastTelemetry && lastTelemetry.npc_cohort)
       ? lastTelemetry.npc_cohort.find((n) => n.id === npc.id)
@@ -3431,7 +3396,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       ? (GRADE_LABELS[npc.grade] || npc.grade)
       : arc.graduated
         ? "Graduated · " + arc.completedGrades.length + " years"
-        : (GRADE_LABELS[arc.grade] || arc.grade) + " · daily " + arc.streak.count;
+        : (GRADE_LABELS[arc.grade] || arc.grade) + " · " + arc.streak.count + " daily classes";
     renderCardDeck([
       buildCharacterCard({
         role: "student",
@@ -3492,15 +3457,16 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
   }
   function buildTeacherCareerCard(fac) {
+    const subjectLine = TEACHER_SUBJECT_LINE[fac.id] || (Array.isArray(fac.subjects) ? fac.subjects.join(", ") : fac.bio);
     return buildProfileCareerCard({
       badgeLabel: "faculty",
-      subtitle: "Faculty · graduated",
+      name: "Faculty Card",
+      subtitle: subjectLine,
       metrics: [
-        { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
-        { label: "yearbook", value: "4/4", detail: "paper cards sealed", met: true },
-        { label: "questions", value: String(fac.questionCount || 0), detail: "in this pack", met: false },
+        { label: "role", value: "Teacher", detail: "faculty", met: true },
+        { label: "subject", value: TEACHING_FACULTY_LABELS[fac.id] || "Faculty", detail: "room", met: true },
+        { label: "questions", value: String(fac.questionCount || 0), detail: "question bank", met: false },
       ],
-      progression: buildCompletedHighSchoolProgression(),
     });
   }
   function buildStudentCareerCard(npc, _s, arc) {
@@ -3520,8 +3486,8 @@ const VIEWER_SCRIPT_SUFFIX = `
           ]
         : [
             { label: "year", value: gradeLabel, detail: "active grade", met: false },
-            { label: "daily", value: streakHere + "/" + streakReq, detail: "passes", met: streakHere >= streakReq },
-            { label: "room", value: roomLabelFor(npc.currentRoom), detail: "current class", met: false },
+            { label: "daily", value: streakHere + "/" + streakReq, detail: "classes passed", met: streakHere >= streakReq },
+            { label: "room", value: roomLabelFor(npc.currentRoom), detail: "current room", met: false },
           ],
       progression: buildProgressionForNpcArc(arc, grade),
     });
@@ -3540,7 +3506,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const nameEl = document.createElement("div");
     nameEl.className = "ccg-name";
-    nameEl.textContent = "School Career";
+    nameEl.textContent = spec.name || "School Career";
     body.appendChild(nameEl);
 
     const sub = document.createElement("div");
@@ -3583,12 +3549,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     streak.className = "career-token-lane";
     const streakLabel = document.createElement("span");
     streakLabel.className = "career-token-label";
-    streakLabel.textContent = "Daily pass";
+    streakLabel.textContent = "Daily classes";
     streak.appendChild(streakLabel);
     const streakTrack = document.createElement("span");
     streakTrack.className = "career-streak-track";
-    // Streak track: cap visible diamonds at STREAK_TRACK_VISIBLE_CAP (3) so
-    // the day-4 / Friday tier is a surprise reveal, not a spoiled preview.
+    // Daily-class track: cap visible diamonds at STREAK_TRACK_VISIBLE_CAP (3)
+    // so the highest bonus tier is a surprise reveal, not a spoiled preview.
     // The underlying gameplay still uses spec.streakReq for advancement.
     const STREAK_TRACK_VISIBLE_CAP = 3;
     const streakReq = Math.max(0, spec.streakReq || 0);
@@ -3617,7 +3583,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       for (let i = 0; i < streakCap; i++) {
         const diamond = document.createElement("span");
         diamond.className = "career-diamond" + (i < streakFilled ? " is-filled" : "");
-        diamond.setAttribute("aria-label", i < streakFilled ? "Daily pass complete" : "Daily pass needed");
+        diamond.setAttribute("aria-label", i < streakFilled ? "Daily class passed" : "Daily class needed");
         diamonds.appendChild(diamond);
       }
       streakTrack.appendChild(diamonds);
@@ -3759,9 +3725,9 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   // ── "What you need" hint ───────────────────────────────────────────────
   // Gates:
-  //   1. Daily class — one passed class can tick the school-day streak.
-  //   2. Streak — consecutive school days with at least one passed class.
-  //   3. Class grades — each teaching room must be brought to C or better.
+  //   1. Daily class — one passed graded session counts toward the year.
+  //   2. Daily-class count — later years require more passed daily classes.
+  //   3. Subject grades — each teaching room must be brought to C or better.
   // The hint surfaces the most-blocking gate as one short sentence.
   function buildNextStepHint(c) {
     if (!c) return "";
@@ -3776,21 +3742,21 @@ const VIEWER_SCRIPT_SUFFIX = `
     const streakLastDate = c.streak && c.streak.grade === grade ? c.streak.lastDate : "";
     const todayKey = (t.daily && t.daily.dailyKey) || "";
     const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
-    const ROOM_LABEL = { ruby: "homeroom", "sally-science": "Sally's class", "professor-edward": "Edward's class" };
+    const ROOM_LABEL = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
 
     const streakNeeded = Math.max(0, streakReq - streakHere);
-    const classGaps = classGradeSummary().grades
+    const subjectGaps = subjectClearSummary().grades
       .filter((x) => !letterGradePasses(x.grade));
 
     const parts = [];
     if (streakNeeded > 0 && !todayDone) {
-      parts.push("Pass one daily class at C or better (" + streakHere + "/" + streakReq + " daily passes)");
+      parts.push("Pass today's daily class at C or better (" + streakHere + "/" + streakReq + " daily classes)");
     } else if (streakNeeded > 0) {
-      parts.push("Daily pass banked — " + streakHere + "/" + streakReq + ", come back tomorrow");
+      parts.push("Daily class counted — " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
-    if (classGaps.length > 0) {
-      const segs = classGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + cg.grade + ")");
-      parts.push("Complete each daily class at C or better: " + segs.join(", "));
+    if (subjectGaps.length > 0) {
+      const segs = subjectGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + cg.grade + ")");
+      parts.push("Clear each subject at C or better: " + segs.join(", "));
     }
 
     if (parts.length === 0) {
@@ -3803,7 +3769,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   // Build the four-rung "Freshman → Sophomore → Junior → Senior" ladder for
-  // the character sheet. Each rung names the gates (streak + class credit) so the
+  // the character sheet. Each rung names the gates (daily classes + subject grades) so the
   // player can see what unlocks each year. The current rung shows live
   // progress; completed rungs show a check; future rungs show targets.
   function buildProgressionForCharacter(c) {
@@ -3819,7 +3785,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       } else if (g === currentGrade && !graduatedFor(c)) {
         state = "current";
         streakProgress = { have: streakHere, need: streakReq };
-        classProgress = classGradeSummary().grades;
+        classProgress = subjectClearSummary().grades;
       } else {
         state = "future";
       }
@@ -3895,8 +3861,8 @@ const VIEWER_SCRIPT_SUFFIX = `
           item.appendChild(d);
           metrics.appendChild(item);
         };
-        addMetric("final", finalGrade.averageScore == null ? "—" : formatClassScore(finalGrade.averageScore), "three-class average");
-        addMetric("done", finalGrade.scored + "/" + finalGrade.total, "classes averaged");
+        addMetric("final", finalGrade.averageScore == null ? "—" : formatClassScore(finalGrade.averageScore), "three-subject average");
+        addMetric("done", finalGrade.scored + "/" + finalGrade.total, "subjects averaged");
         addMetric("next", next ? "Next year" : "Diploma", "ceremony");
         wrap.appendChild(metrics);
         row = document.createElement("div");
@@ -4028,8 +3994,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     // Current character-sheet model:
     //   CHARACTER CARD — stable identity: portrait/diploma, playbook,
     //     stats, quote, and starting move. It upgrades at graduation.
-    //   SCHOOL CAREER CARD — live dashboard: grade, streak, class
-    //     gates, advantage budget, and next-step hint.
+    //   SCHOOL CAREER CARD — live dashboard: grade, daily-class counter,
+    //     subject gates, advantage budget, and next-step hint.
     //   SEALED YEARS — frozen snapshots of past years. They sit behind the
     //     current character card as a collapsed yearbook stack, then accordion
     //     open when clicked.
@@ -4244,8 +4210,8 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const sub = document.createElement("div");
     sub.className = "ccg-subtitle";
-    const classes = classGradeSummary();
-    const gradeLine = classes.grades.map((g) => g.grade).join(" ");
+    const subjects = subjectClearSummary();
+    const gradeLine = subjects.grades.map((g) => g.grade).join(" ");
     sub.textContent = graduated ? "Arc complete" : gradeLabel + " · " + gradeLine;
     body.appendChild(sub);
 
@@ -4274,8 +4240,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       addMetric("yearbook", yearbookCount + "/4", "paper cards sealed", yearbookCount >= 4);
     } else {
       // The active standing already lives in the subtitle + badge. Keep the
-      // live gates compact: diamonds for the grade streak, boost chips for
-      // post-streak scoring, and dice for advantage.
+      // live gates compact: diamonds for daily classes, boost chips for
+      // scoring bonuses, and dice for advantage.
     }
     if (metrics.children.length > 0) body.appendChild(metrics);
     if (!graduated) {
@@ -4873,7 +4839,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packPdfStatusEl = $("pack-pdf-status");
   const packBtn = els.packBtn;
   const BUILTIN_IMPORT_TEACHERS = [
-    { id: "", name: "Auto: classes + teachers" },
+    { id: "", name: "Auto: subjects + teachers" },
     { id: "ruby", name: "Ruby" },
     { id: "sally-science", name: "Sally Science" },
     { id: "professor-edward", name: "Professor Edward" },
@@ -5763,7 +5729,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   applyAuthUI();
   // The session is born already enrolled at Freshman year (server-side
   // default). The player progresses Freshman → Sophomore → Junior → Senior
-  // → graduate as they clear per-grade streak and class-credit gates. There is no year
+  // → graduate as they clear per-grade daily-class and subject-grade gates. There is no year
   // picker — they walk in, get started, and advance by playing.
   fetchSession();
   // Auth is checked once on boot and again whenever the OAuth tab writes

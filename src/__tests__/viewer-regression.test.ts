@@ -78,8 +78,8 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('title="Passed daily classes needed for this year"');
     expect(html).toContain('title="Subjects cleared with a C or better this year"');
-    expect(script).toContain('streakCount + "/" + streakReq + " daily passes"');
-    expect(script).toContain('classes.met + "/" + classes.total + " subjects cleared"');
+    expect(script).toContain('streakCount + "/" + streakReq + " daily classes"');
+    expect(script).toContain('subjects.met + "/" + subjects.total + " subjects cleared"');
     expect(script).toContain('formatWholeNumber(t.scorePoints || 0) + " score"');
   });
 

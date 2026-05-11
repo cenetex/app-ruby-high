@@ -1686,7 +1686,7 @@ export class RubyHighService extends Service {
 
     // Player progression. Card mastery updates above; class grades are derived
     // from completed daily classes. Practice updates card memory but does not
-    // tick the school-day streak or the graduation gate.
+    // tick the daily-class counter or the graduation gate.
     const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, classProgress);
     if (progress.dailyTicked) {
       const correctAns = (q.correct ?? "A") as Choice;
@@ -1750,10 +1750,10 @@ export class RubyHighService extends Service {
    *       the diploma's subject-themed accessory at graduation.
    *    2. Card memory already updated before this call; it only drives
    *       scheduling/practice.
-   *    3. The first passed class completion on a UTC date is a "school day
-   *       complete": tick the streak, with date-gap reset.
-   *    4. Re-check grade completion after every progress mutation. Streak
-   *       and class credit can land in either order; once both gates are met,
+   *    3. The first passed daily class on a UTC date counts for the year:
+   *       tick the legacy streak field, with date-gap reset.
+   *    4. Re-check grade completion after every progress mutation. Daily
+   *       classes and subject grades can land in either order; once both gates are met,
    *       the year completes immediately.
    */
   private applyPlayerProgress(
@@ -2078,11 +2078,11 @@ export class RubyHighService extends Service {
   }
 
   /** Cohort tick — every NPC who's still in school rolls against today's
-   *  school-day progress check and ticks their own streak. Independent of the player's pass:
+   *  daily-class progress check and ticks their own counter. Independent of the player's pass:
    *  Indra might pass while you miss, or vice versa. Streak resets on
-   *  miss; advances on threshold; graduates after Senior streak.
+   *  miss; advances on threshold; graduates after the Senior counter.
    *
-   *  NPCs gate on streak alone — no XP gate. They feel hungrier than the
+   *  NPCs gate on the daily-class counter alone — no XP gate. They feel hungrier than the
    *  player, which makes the rivalry tense ("Indra graduated last week").
    *
    *  The day-key dedupe prevents double-tick if the player passes multiple
@@ -2689,7 +2689,7 @@ export class RubyHighService extends Service {
     if (!q) {
       throw new Error(`No scheduled review card is due for ${facultyId}; cannot pose today's class question.`);
     }
-    // Daily class guarantees a school-day question; class grades come from
+    // Daily class guarantees a graded question; subject grades come from
     // the same card mastery path as regular room questions.
     const next = this.poseBankedQuestion(sessionId, state, q);
     if (next.activeRound) {

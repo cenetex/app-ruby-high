@@ -319,7 +319,7 @@ export const VIEWER_CSS = `
     padding: 2px 7px;
     border-radius: 999px;
   }
-  .channel-row .course-status-pill {
+  .channel-row .subject-status-pill {
     margin-left: auto;
     flex: 0 0 auto;
     color: #f0b441;
@@ -863,7 +863,7 @@ export const VIEWER_CSS = `
     color: var(--text-soft);
     font-size: 14px;
   }
-  /* Block under the empty-board lead text. Hosts the class-grade chip row;
+  /* Block under the empty-board lead text. Hosts the subject-grade chip row;
    * graduation now renders inside the chalkboard frame itself. */
   .blackboard-empty-extras {
     margin: 14px auto 0;
@@ -874,26 +874,26 @@ export const VIEWER_CSS = `
     gap: 12px;
   }
   .blackboard-empty-extras:empty { display: none; }
-  .board-class-grades {
+  .board-subject-grades {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 6px;
   }
-  .board-class-grades-title {
+  .board-subject-grades-title {
     font-size: 10px;
     font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--text-mute);
   }
-  .board-class-grades-row {
+  .board-subject-grades-row {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     justify-content: center;
   }
-  .board-class-grades .class-grade-chip {
+  .board-subject-grades .subject-grade-chip {
     min-width: 48px;
     height: 30px;
     padding: 0 9px;
@@ -907,16 +907,16 @@ export const VIEWER_CSS = `
     color: var(--text-soft);
     font: 900 12px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
   }
-  .board-class-grades .class-grade-chip.is-met {
+  .board-subject-grades .subject-grade-chip.is-met {
     background: rgba(76,181,85,0.20);
     border-color: rgba(76,181,85,0.45);
     color: #b9f2bd;
   }
-  .board-class-grades .class-grade-icon {
+  .board-subject-grades .subject-grade-icon {
     font-size: 13px;
     line-height: 1;
   }
-  .board-class-grades .class-grade-letter {
+  .board-subject-grades .subject-grade-letter {
     font-size: 12px;
     letter-spacing: 0;
   }
@@ -1965,73 +1965,6 @@ export const VIEWER_CSS = `
     color: var(--text-soft);
     min-width: 0;
   }
-  .ccg-progression .gate-ring {
-    --pct: 0%;
-    width: 28px;
-    height: 28px;
-    border-radius: 999px;
-    padding: 1px;
-    background:
-      conic-gradient(var(--gate-color, #3aa3e0) var(--pct), rgba(255,255,255,0.10) 0),
-      rgba(255,255,255,0.04);
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
-    display: inline-grid;
-    place-items: center;
-    flex: 0 0 auto;
-    font-variant-numeric: tabular-nums;
-  }
-  .ccg-progression .gate-ring.streak-ring { --gate-color: #f0b441; }
-  .ccg-progression .gate-ring.class-ring { --gate-color: #4cb555; }
-  .ccg-progression .gate-ring.is-met {
-    background:
-      rgba(255,255,255,0.075);
-    box-shadow:
-      inset 0 0 0 1px rgba(255,255,255,0.12);
-  }
-  .ccg-progression .gate-core {
-    width: 100%;
-    height: 100%;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1px;
-    background: rgba(25,27,40,0.94);
-    color: var(--text-soft);
-    line-height: 1;
-    font-size: 10px;
-    font-weight: 900;
-  }
-  .ccg-progression .gate-ring.is-met .gate-core {
-    color: var(--gate-color);
-    background: rgba(25,27,40,0.94);
-  }
-  .ccg-progression .gate-ring.streak-ring.is-met .gate-core { color: #f0b441; }
-  .ccg-progression .gate-ring.class-ring.is-met {
-    background: #4cb555;
-    box-shadow:
-      inset 0 0 0 1px rgba(228,255,230,0.18);
-  }
-  .ccg-progression .gate-ring.class-ring.is-met .gate-core {
-    color: #f4fff4;
-    background: #4cb555;
-    text-shadow: none;
-  }
-  .ccg-progression .gate-icon {
-    font-size: 12px;
-    font-weight: 900;
-    line-height: 1;
-  }
-  .ccg-progression .gate-ring.class-ring .gate-icon {
-    font-size: 16px;
-    transform: translateY(-0.5px);
-  }
-  .ccg-progression .gate-ring.class-ring.is-met .gate-icon { font-size: 17px; }
-  .ccg-progression .gate-count {
-    color: var(--text);
-    font-size: 10px;
-    font-weight: 900;
-  }
   .ccg-progression .future-req {
     width: 30px;
     min-width: 0;
@@ -2058,7 +1991,7 @@ export const VIEWER_CSS = `
     font-size: 11px;
     font-weight: 900;
   }
-  .ccg-progression .class-grade-chip {
+  .ccg-progression .subject-grade-chip {
     width: 34px;
     min-width: 0;
     height: 26px;
@@ -2075,16 +2008,16 @@ export const VIEWER_CSS = `
     line-height: 1;
     justify-self: center;
   }
-  .ccg-progression .class-grade-chip.is-met {
+  .ccg-progression .subject-grade-chip.is-met {
     background: rgba(76,181,85,0.18);
     border-color: rgba(76,181,85,0.42);
     color: #b9f2bd;
   }
-  .ccg-progression .class-grade-icon {
+  .ccg-progression .subject-grade-icon {
     font-size: 15px;
     line-height: 1;
   }
-  .ccg-progression .class-grade-letter {
+  .ccg-progression .subject-grade-letter {
     font-size: 11px;
     letter-spacing: 0;
   }
@@ -2107,29 +2040,6 @@ export const VIEWER_CSS = `
     display: block;
     margin-bottom: 2px;
   }
-  .ccg-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  .ccg-actions button {
-    appearance: none;
-    border: none;
-    background: var(--accent);
-    color: #fff;
-    font-weight: 800;
-    border-radius: 999px;
-    padding: 9px 16px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .ccg-actions button.secondary {
-    background: var(--bg-elev);
-    color: var(--text-soft);
-  }
-  .ccg-actions button:disabled { opacity: 0.5; }
-
   /* ── character sheet overlay ──────────────────────────────────────────── */
   .sheet-overlay {
     position: fixed;
@@ -3214,7 +3124,7 @@ export const VIEWER_CSS = `
     box-shadow: 0 0 10px rgba(240,180,65,0.26);
     opacity: 1;
   }
-  /* Bonus-only streak lane: the bonus pill replaces the diamonds AND the
+  /* Bonus-only daily-class lane: the bonus pill replaces the diamonds AND the
    * count, so size it up to carry the lane on its own. */
   .career-streak-track.is-bonus-only {
     flex: 1;

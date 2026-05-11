@@ -992,8 +992,8 @@ function describeClassReportBoardForModel(status: QuestionBankStatus): string | 
     `Today's class is complete: ${today.questionCount}/${today.totalQuestions} questions.`,
     today.letterGrade ? `Final grade shown: ${today.letterGrade}.` : "",
     typeof today.score === "number" ? `Today score shown: ${formatBoardPercent(today.score)}.` : "",
-    status.courseGrade ? `Course grade shown: ${status.courseGrade}.` : "",
-    required > 0 ? `Course progress shown: ${completed}/${required} completed classes.` : "",
+    status.courseGrade ? `Subject grade shown: ${status.courseGrade}.` : "",
+    required > 0 ? `Subject progress shown: ${completed}/${required} daily classes passed.` : "",
     "Practice is open after this report; a fresh board should appear only when the engine or allowed tool flow advances.",
   ].filter(Boolean).join("\n");
 }
@@ -1137,18 +1137,18 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
         : `Today's graded class is available: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}; practice and social cards may appear before class cards.`
     : "Today's class status is unavailable.";
   const standing = status.courseGrade
-    ? `Course standing: ${status.courseGrade} (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} classes complete).`
-    : `Course standing: no completed class yet (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} classes complete).`;
+    ? `Subject standing: ${status.courseGrade} (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`
+    : `Subject standing: no completed daily class yet (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`;
   if (status.mode === "srs") {
     const mastered = status.masteredCount ?? 0;
     const shaky = status.shakyCount ?? 0;
     const learning = status.learningCount ?? 0;
     if (!scheduledPickAvailable(status)) {
       return [
-        `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+        `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
         `Scheduler detail: no deck card is due right now (${mastered}/${status.total} learned, ${shaky} shaky, ${learning} learning).`,
         "pick_from_bank is not available this turn. Do not say the deck is exhausted, dry, depleted, or used up.",
-        "If the class needs a board, either speak briefly about progress or call pose_question exactly once for a custom challenge.",
+        "If the room needs a board, either speak briefly about progress or call pose_question exactly once for a custom challenge.",
       ].join("\n");
     }
     const subjects = Object.entries(status.remainingBySubject)
@@ -1157,10 +1157,10 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
       .map(([subject, count]) => `${subject}:${count}`)
       .join(", ");
     return [
-      `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+      `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
       `Scheduler detail: deck material is available (${mastered}/${status.total} learned, ${shaky} shaky).`,
       subjects ? `Available subjects: ${subjects}.` : "",
-      "Use pick_from_bank for the next board. Do not describe cards as consumed or exhausted; this course uses spaced review.",
+      "Use pick_from_bank for the next board. Do not describe cards as consumed or exhausted; this subject uses spaced review.",
     ].filter(Boolean).join("\n");
   }
   const difficultyCounts = ["easy", "medium", "hard"]
@@ -1173,24 +1173,24 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     .join(", ");
   if (!scheduledPickAvailable(status)) {
     return [
-      `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+      `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
       `Scheduler detail: no Ruby High card is available right now (${status.masteredCount ?? 0}/${status.total} mastered, ${status.shakyCount ?? 0} shaky, ${status.learningCount ?? 0} learning).`,
       "pick_from_bank is not available this turn. Do not say the bank is exhausted, dry, depleted, or used up.",
-      "If the class needs a board, call pose_question exactly once and author a custom question; it will join the reusable Ruby High bank.",
+      "If the room needs a board, call pose_question exactly once and author a custom question; it will join the reusable Ruby High bank.",
     ].join("\n");
   }
   if (status.remaining <= 0 && status.nextCardRole === "social") {
     return [
-      `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+      `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
       "Scheduler detail: Ruby High has a generated homeroom social card ready.",
       "Use pick_from_bank for the next board; it will post the scheduled social card.",
     ].join("\n");
   }
   return [
-    `COURSE STATUS for ${status.displayName}. ${standing} ${classLine}`,
+    `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
     status.defaultDifficulty ? `Default grade difficulty: ${status.defaultDifficulty}. Scheduler by difficulty: ${difficultyCounts}.` : `Scheduler by difficulty: ${difficultyCounts}.`,
     subjects ? `Available subjects: ${subjects}.` : "",
-    "Use pick_from_bank as the normal next-board move. This course uses spaced review; do not describe cards as consumed or exhausted.",
+    "Use pick_from_bank as the normal next-board move. This subject uses spaced review; do not describe cards as consumed or exhausted.",
   ].filter(Boolean).join("\n");
 }
 
