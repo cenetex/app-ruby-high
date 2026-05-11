@@ -28,6 +28,7 @@ function blankState(sessionId: string): QuizState {
     activePackId: null,
     character: null,
     schoolEvents: [],
+    essayReports: [],
     npcRosters: {},
     activeRound: null,
     pendingRoll: null,

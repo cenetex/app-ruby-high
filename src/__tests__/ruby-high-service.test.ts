@@ -979,6 +979,49 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("persists an essay report when an opinion round is graded", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:essay-report";
+    attachTestCharacter(ruby, sid);
+
+    ruby.poseOpinion(sid, {
+      faculty: "ruby",
+      subject: "agent-culture",
+      questionId: "essay-report-q1",
+      prompt: "What makes an AI answer worth trusting?",
+      rubric: "Names a concrete source signal and a verification step.",
+    });
+    ruby.recordOpinion(sid, "player", "I trust answers that cite concrete evidence and I verify claims against the source.");
+    ruby.recordOpinion(sid, "lyra", "I check the source first and compare it with what the answer claims.");
+
+    const after = ruby.recordGrades(sid, [
+      { responder: "player", score: 8.5, comment: "Grounded and specific." },
+      { responder: "lyra", score: 9, comment: "Sharper verification step." },
+    ], "lyra");
+
+    expect(after.essayReports).toHaveLength(1);
+    expect(after.essayReports[0]).toMatchObject({
+      questionId: "essay-report-q1",
+      faculty: "ruby",
+      grade: "9",
+      subject: "agent-culture",
+      prompt: "What makes an AI answer worth trusting?",
+      response: "I trust answers that cite concrete evidence and I verify claims against the source.",
+      score: 8.5,
+      passed: true,
+      comment: "Grounded and specific.",
+      bestResponder: "lyra",
+      bestResponderScore: 9,
+      bestResponderComment: "Sharper verification step.",
+      classSession: {
+        mode: "practice",
+        cardRole: "social",
+        facultyId: "ruby",
+        grade: "9",
+      },
+    });
+  });
+
   it("forceAdvanceRound resolves an idle-triggered open round as a forfeit", async () => {
     const { ruby } = await makeServices();
     const sid = "test:force-advance-forfeit";

@@ -24,6 +24,7 @@ import {
   type CharacterStats,
   type Choice,
   type Difficulty,
+  type EssayReport,
   type FacultyMember,
   type Grade,
   type GraduationReward,
@@ -289,6 +290,8 @@ interface SessionTelemetry extends Record<string, unknown> {
   /** Durable engine-owned school events. Chat history is separate; these
    *  are facts the UI and AI can react to without inventing outcomes. */
   school_events: QuizState["schoolEvents"];
+  /** Durable graded-essay artifacts for the visible report-card surface. */
+  essay_reports: EssayReport[];
   /** Playbook catalog for the character creation UI. */
   playbooks: typeof PLAYBOOKS;
   /** Cohort of 6 NPCs running their own arcs. Each has independent
@@ -530,6 +533,7 @@ function buildSessionState(args: {
     is_opinion: state.current?.type === "opinion",
     character: state.character,
     school_events: (state.schoolEvents ?? []).slice(-30),
+    essay_reports: (state.essayReports ?? []).slice(-30),
     playbooks: PLAYBOOKS,
     daily: dailyStatusForState(state),
     npc_cohort: state.npcCohort ?? [],

@@ -4009,14 +4009,16 @@ const VIEWER_SCRIPT_SUFFIX = `
     //     stats, quote, and starting move. It upgrades at graduation.
     //   SCHOOL CAREER CARD — live dashboard: grade, daily-class counter,
     //     subject gates, advantage budget, and next-step hint.
+    //   REPORT CARD — durable essay artifacts: teacher notes, average, and
+    //     recent class winner comparison.
     //   SEALED YEARS — frozen snapshots of past years. They sit behind the
     //     current character card as a collapsed yearbook stack, then accordion
     //     open when clicked.
     //
-    // Layout: the carousel only carries the two active surfaces: Character
-    // Card + School Career Card. Sealed prior years live inside the Character
-    // Card so they read as history behind the current year instead of a third
-    // competing card.
+    // Layout: the carousel carries the active surfaces: Character Card, School
+    // Career Card, and Report Card. Sealed prior years live inside the Character
+    // Card so they read as history behind the current year instead of crowding
+    // the active surfaces.
     const pb = playbooks.find((p) => p.id === c.playbookId)
       || { name: c.playbookId, blurb: "", startingMove: { name: "—", description: "" } };
     const portraitFallback = defaultPortraitFor(c.playbookId);
@@ -4031,6 +4033,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const cards = [
       buildCurrentCharacterCard(c, pb, portraitFallback, grad, papers, playbooks),
       buildCareerCard(c, grad),
+      buildReportCard(),
     ];
     renderCardDeck(cards);
   }
@@ -4189,6 +4192,176 @@ const VIEWER_SCRIPT_SUFFIX = `
       wrap.appendChild(list);
     }
     return wrap;
+  }
+
+  function essayReportsForCard() {
+    const reports = lastTelemetry && Array.isArray(lastTelemetry.essay_reports) ? lastTelemetry.essay_reports : [];
+    return reports
+      .filter((r) => r && typeof r === "object")
+      .slice()
+      .sort((a, b) => Number(a.gradedAt || 0) - Number(b.gradedAt || 0));
+  }
+  function essayScoreText(score) {
+    if (score === null || score === undefined || score === "") return "—";
+    const n = Number(score);
+    if (!Number.isFinite(n)) return "—";
+    const rounded = Math.round(n * 10) / 10;
+    return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + "/10";
+  }
+  function essayLetter(score) {
+    const n = Number(score);
+    return Number.isFinite(n) ? letterGradeForScore(n * 10) : "—";
+  }
+  function essayAverage(reports) {
+    const scores = reports
+      .map((r) => Number(r.score))
+      .filter((n) => Number.isFinite(n));
+    if (scores.length === 0) return null;
+    return scores.reduce((sum, n) => sum + n, 0) / scores.length;
+  }
+  function essayResponderName(id) {
+    if (!id) return "—";
+    if (id === "player") return playerDisplayName();
+    return studentNameById(id);
+  }
+  function clipEssayText(value, max) {
+    const text = String(value || "").replace(/\\s+/g, " ").trim();
+    if (text.length <= max) return text;
+    return text.slice(0, Math.max(0, max - 1)).trim() + "…";
+  }
+  function essayRivalryText(recent) {
+    if (!recent.length) return "No essay results yet.";
+    let playerWins = 0;
+    const rivals = {};
+    recent.forEach((r) => {
+      const winner = r.bestResponder;
+      if (!winner) return;
+      if (winner === "player") playerWins += 1;
+      else rivals[winner] = (rivals[winner] || 0) + 1;
+    });
+    let rivalId = null;
+    let rivalCount = 0;
+    Object.keys(rivals).forEach((id) => {
+      if (rivals[id] > rivalCount) {
+        rivalId = id;
+        rivalCount = rivals[id];
+      }
+    });
+    if (rivalId) {
+      return essayResponderName(rivalId) + " out-essayed you " + rivalCount + " of the last " + recent.length + ".";
+    }
+    if (playerWins > 0) {
+      return "You held the top essay " + playerWins + " of the last " + recent.length + ".";
+    }
+    return "No classroom winner recorded yet.";
+  }
+  function buildReportEntry(report) {
+    const row = document.createElement("article");
+    row.className = "report-entry" + (report.passed ? " is-passed" : "");
+
+    const grade = document.createElement("div");
+    grade.className = "report-entry-grade";
+    grade.textContent = essayLetter(report.score);
+    row.appendChild(grade);
+
+    const body = document.createElement("div");
+    body.className = "report-entry-body";
+
+    const title = document.createElement("div");
+    title.className = "report-entry-title";
+    title.textContent = clipEssayText(report.prompt, 72) || "Essay";
+    body.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "report-entry-meta";
+    const subject = report.subject ? " · " + report.subject : "";
+    meta.textContent = facultyLabel(report.faculty) + subject + " · " + essayScoreText(report.score) + " · " + formatSealedDate(report.gradedAt);
+    body.appendChild(meta);
+
+    if (report.comment) {
+      const comment = document.createElement("div");
+      comment.className = "report-entry-comment";
+      comment.textContent = clipEssayText(report.comment, 104);
+      body.appendChild(comment);
+    }
+
+    const foot = document.createElement("div");
+    foot.className = "report-entry-foot";
+    if (report.bestResponder) {
+      const best = document.createElement("span");
+      best.textContent = "Best: " + essayResponderName(report.bestResponder)
+        + (Number.isFinite(Number(report.bestResponderScore)) ? " " + essayScoreText(report.bestResponderScore) : "");
+      foot.appendChild(best);
+    }
+    if (report.response) {
+      const yours = document.createElement("span");
+      yours.textContent = "You: " + clipEssayText(report.response, 58);
+      foot.appendChild(yours);
+    }
+    if (foot.children.length > 0) body.appendChild(foot);
+
+    row.appendChild(body);
+    return row;
+  }
+  function buildReportCard() {
+    const reports = essayReportsForCard();
+    const recent = reports.slice(-5).reverse();
+    const visible = recent.slice(0, 3);
+    const avg = essayAverage(reports);
+    const playerWins = reports.filter((r) => r.bestResponder === "player").length;
+    const topScore = reports
+      .map((r) => Number(r.score))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => b - a)[0];
+
+    const card = document.createElement("div");
+    card.className = "ccg-card is-report-card";
+
+    const role = document.createElement("span");
+    role.className = "ccg-role report";
+    role.textContent = "report";
+    card.appendChild(role);
+
+    const body = document.createElement("div");
+    body.className = "ccg-body";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "ccg-name";
+    nameEl.textContent = "Report Card";
+    body.appendChild(nameEl);
+
+    const sub = document.createElement("div");
+    sub.className = "ccg-subtitle";
+    sub.textContent = reports.length
+      ? reports.length + " essays · average " + essayScoreText(avg)
+      : "No graded essays yet";
+    body.appendChild(sub);
+
+    body.appendChild(buildCareerMetrics([
+      { label: "essays", value: String(reports.length), detail: "graded", met: reports.length > 0 },
+      { label: "average", value: essayScoreText(avg), detail: "teacher score", met: Number(avg) >= 7 },
+      { label: "top", value: Number.isFinite(Number(topScore)) ? essayScoreText(topScore) : "—", detail: playerWins + " class wins", met: playerWins > 0 },
+    ]));
+
+    if (reports.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "report-empty";
+      empty.textContent = "Your first graded essay will land here.";
+      body.appendChild(empty);
+    } else {
+      const rivalry = document.createElement("div");
+      rivalry.className = "report-rivalry";
+      rivalry.textContent = essayRivalryText(recent);
+      body.appendChild(rivalry);
+
+      const list = document.createElement("div");
+      list.className = "report-list";
+      visible.forEach((report) => list.appendChild(buildReportEntry(report)));
+      body.appendChild(list);
+    }
+
+    card.appendChild(body);
+    return card;
   }
 
   // ── School Career Card builder ──────────────────────────────────────────

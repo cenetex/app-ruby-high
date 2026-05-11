@@ -40,6 +40,7 @@ import {
   type DailyClassRecord,
   type DeckCardRole,
   type Difficulty,
+  type EssayReport,
   type FacultyMember,
   type Grade,
   type GraduationReward,
@@ -167,6 +168,7 @@ export interface QuestionBankStatus {
 }
 
 const SCHOOL_EVENT_LIMIT = 80;
+const ESSAY_REPORT_LIMIT = 100;
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -803,6 +805,7 @@ export class RubyHighService extends Service {
         activePackId: null,
         character: null,
         schoolEvents: [],
+        essayReports: [],
         npcRosters: {},
         npcCohort: initialNpcCohort(),
         activeRound: null,
@@ -831,6 +834,15 @@ export class RubyHighService extends Service {
       events.splice(0, events.length - SCHOOL_EVENT_LIMIT);
     }
     state.schoolEvents = events;
+  }
+
+  private appendEssayReport(state: QuizState, report: EssayReport): void {
+    const reports = Array.isArray(state.essayReports) ? state.essayReports : [];
+    reports.push(report);
+    if (reports.length > ESSAY_REPORT_LIMIT) {
+      reports.splice(0, reports.length - ESSAY_REPORT_LIMIT);
+    }
+    state.essayReports = reports;
   }
 
   private schoolEventId(kind: SchoolEvent["kind"]): string {
@@ -2430,6 +2442,8 @@ export class RubyHighService extends Service {
     round.opinionGrades = grades;
     round.bestResponder = bestResponder;
     const playerGrade = grades.find((g) => g.responder === "player");
+    const playerResponse = round.opinionResponses.find((r) => r.responder === "player");
+    const bestGrade = bestResponder ? grades.find((g) => g.responder === bestResponder) : undefined;
     let passed = !!playerGrade && playerGrade.score >= 7;
     let affinitySave: { facultyId: string } | null = null;
     if (!passed && playerGrade && state.character && state.currentGrade) {
@@ -2463,6 +2477,36 @@ export class RubyHighService extends Service {
         rawQuestionScore,
         record.at,
       );
+      const reportFaculty = q.faculty ?? round.classSession?.facultyId ?? state.faculty;
+      const reportClassSession: EssayReport["classSession"] | undefined = round.classSession
+        ? {
+            mode: round.classSession.mode,
+            facultyId: round.classSession.facultyId,
+            ...(round.cardRole ? { cardRole: round.cardRole } : {}),
+            ...(round.classSession.grade ? { grade: round.classSession.grade } : {}),
+            ...(round.classSession.date ? { date: round.classSession.date } : {}),
+            ...(typeof round.classSession.index === "number" ? { questionCount: round.classSession.index } : {}),
+            ...(typeof round.classSession.total === "number" ? { totalQuestions: round.classSession.total } : {}),
+          }
+        : undefined;
+      this.appendEssayReport(state, {
+        id: `essay_${q.id}_${reviewAt.toString(36)}`,
+        questionId: q.id,
+        faculty: reportFaculty,
+        grade: state.currentGrade,
+        ...(q.subject ? { subject: q.subject } : {}),
+        prompt: q.prompt,
+        response: playerResponse?.text ?? "",
+        score: playerGrade ? clamp(playerGrade.score, 0, 10) : null,
+        passed,
+        comment: playerGrade?.comment ?? "",
+        bestResponder,
+        ...(bestGrade ? { bestResponderScore: clamp(bestGrade.score, 0, 10) } : {}),
+        ...(bestGrade?.comment ? { bestResponderComment: bestGrade.comment } : {}),
+        submittedAt: playerResponse?.submittedAt ?? reviewAt,
+        gradedAt: reviewAt,
+        ...(reportClassSession ? { classSession: reportClassSession } : {}),
+      });
       // Same progression as MC rounds. Opinion rounds update card mastery
       // through the review rating above; no XP is awarded.
       const progress = this.applyPlayerProgress(state, passed, state.faculty, classProgress);
@@ -3221,6 +3265,58 @@ function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
   return out.slice(-SCHOOL_EVENT_LIMIT);
 }
 
+function normalizeEssayReports(value: unknown): EssayReport[] {
+  if (!Array.isArray(value)) return [];
+  const out: EssayReport[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    if (typeof e.questionId !== "string" || !e.questionId) continue;
+    if (typeof e.prompt !== "string") continue;
+    const gradedAt = typeof e.gradedAt === "number" && Number.isFinite(e.gradedAt) ? e.gradedAt : Date.now();
+    const score = typeof e.score === "number" && Number.isFinite(e.score) ? clamp(e.score, 0, 10) : null;
+    const grade = typeof e.grade === "string" && (GRADES as string[]).includes(e.grade) ? (e.grade as Grade) : null;
+    const report: EssayReport = {
+      id: typeof e.id === "string" && e.id ? e.id : `essay_${e.questionId}_${gradedAt.toString(36)}`,
+      questionId: e.questionId,
+      faculty: typeof e.faculty === "string" && e.faculty ? e.faculty : RUBY_FACULTY.id,
+      grade,
+      ...(typeof e.subject === "string" && e.subject ? { subject: e.subject } : {}),
+      prompt: e.prompt,
+      response: typeof e.response === "string" ? e.response : "",
+      score,
+      passed: typeof e.passed === "boolean" ? e.passed : !!(score !== null && score >= 7),
+      comment: typeof e.comment === "string" ? e.comment : "",
+      bestResponder: typeof e.bestResponder === "string" ? e.bestResponder : null,
+      ...(typeof e.bestResponderScore === "number" && Number.isFinite(e.bestResponderScore)
+        ? { bestResponderScore: clamp(e.bestResponderScore, 0, 10) }
+        : {}),
+      ...(typeof e.bestResponderComment === "string" && e.bestResponderComment
+        ? { bestResponderComment: e.bestResponderComment }
+        : {}),
+      submittedAt: typeof e.submittedAt === "number" && Number.isFinite(e.submittedAt) ? e.submittedAt : gradedAt,
+      gradedAt,
+    };
+    const rawClass = e.classSession;
+    if (rawClass && typeof rawClass === "object") {
+      const c = rawClass as Record<string, unknown>;
+      if (c.mode === "class" || c.mode === "practice") {
+        report.classSession = {
+          mode: c.mode,
+          facultyId: typeof c.facultyId === "string" && c.facultyId ? c.facultyId : report.faculty,
+          ...(c.cardRole === "practice" || c.cardRole === "class" || c.cardRole === "social" ? { cardRole: c.cardRole } : {}),
+          ...(typeof c.grade === "string" && (GRADES as string[]).includes(c.grade) ? { grade: c.grade as Grade } : {}),
+          ...(typeof c.date === "string" && c.date ? { date: c.date } : {}),
+          ...(typeof c.questionCount === "number" && Number.isFinite(c.questionCount) ? { questionCount: c.questionCount } : {}),
+          ...(typeof c.totalQuestions === "number" && Number.isFinite(c.totalQuestions) ? { totalQuestions: c.totalQuestions } : {}),
+        };
+      }
+    }
+    out.push(report);
+  }
+  return out.slice(-ESSAY_REPORT_LIMIT);
+}
+
 function normalizeLoaded(s: QuizState): QuizState {
   // Migrate stale K-8 grades from previous schema versions to a high-school
   // grade so the player isn't stranded on a grade that no longer exists.
@@ -3247,6 +3343,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     hasSeenIntro: !!s.hasSeenIntro,
     activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
+    essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     npcCohort: Array.isArray(s.npcCohort) ? s.npcCohort : initialNpcCohort(),
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,

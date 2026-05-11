@@ -1806,6 +1806,7 @@ export const VIEWER_CSS = `
   .ccg-role.teacher { background: #5865f2; }
   .ccg-role.player  { background: var(--accent); }
   .ccg-role.career  { background: #f0b441; color: #1a1520; }
+  .ccg-role.report  { background: #62d3c2; color: #061f1c; }
   .ccg-art {
     aspect-ratio: 5 / 4;
     width: 100%;
@@ -3094,6 +3095,19 @@ export const VIEWER_CSS = `
   .card-deck-track > .ccg-card.is-career-card .ccg-body {
     padding-top: 34px;
   }
+  .card-deck-track > .ccg-card.is-report-card {
+    border-color: #62d3c2;
+    background:
+      linear-gradient(180deg, rgba(98,211,194,0.10) 0%, rgba(98,211,194,0.02) 42%),
+      linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 100%);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08) inset,
+      0 18px 40px rgba(0,0,0,0.50),
+      0 0 24px rgba(98,211,194,0.18);
+  }
+  .card-deck-track > .ccg-card.is-report-card .ccg-body {
+    padding-top: 34px;
+  }
   .card-deck-track > .ccg-card.is-creation-candidate-card,
   .card-deck-track > .ccg-card.is-creation-control-card {
     min-height: 560px;
@@ -3142,6 +3156,84 @@ export const VIEWER_CSS = `
     min-width: 0;
   }
   .career-metric.is-met .v { color: #b6f5b9; }
+
+  .report-empty,
+  .report-rivalry {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.20);
+    color: var(--text-soft);
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 9px 10px;
+  }
+  .report-rivalry {
+    color: #d3fff8;
+    border-color: rgba(98,211,194,0.35);
+    background: rgba(98,211,194,0.10);
+    font-weight: 800;
+  }
+  .report-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .report-entry {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.035);
+  }
+  .report-entry.is-passed {
+    border-color: rgba(182,245,185,0.32);
+  }
+  .report-entry-grade {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: rgba(98,211,194,0.16);
+    color: #d3fff8;
+    font-size: 15px;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+  }
+  .report-entry-body {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .report-entry-title {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.22;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .report-entry-meta,
+  .report-entry-comment,
+  .report-entry-foot {
+    color: var(--text-mute);
+    font-size: 10.5px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .report-entry-comment {
+    color: var(--text-soft);
+  }
+  .report-entry-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
 
   .career-token-strip {
     display: flex;

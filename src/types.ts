@@ -476,6 +476,9 @@ export interface QuizState {
    *  counterpart to volatile chat room events; AI can react to these but must
    *  not invent or mutate them. */
   schoolEvents: SchoolEvent[];
+  /** Durable graded-essay artifacts. Each report snapshots the player's essay,
+   *  the teacher score/comment, and the classroom winner for later display. */
+  essayReports: EssayReport[];
   /** Per-grade NPC student rosters. Keyed by grade so progress persists when
    *  the player switches grades and comes back. */
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
@@ -923,6 +926,33 @@ export interface OpinionGrade {
   responder: string;
   score: number;     // 0-10
   comment: string;
+}
+
+export interface EssayReport {
+  id: string;
+  questionId: string;
+  faculty: string;
+  grade: Grade | null;
+  subject?: string;
+  prompt: string;
+  response: string;
+  score: number | null; // 0-10 teacher score
+  passed: boolean;
+  comment: string;
+  bestResponder: string | null;
+  bestResponderScore?: number;
+  bestResponderComment?: string;
+  submittedAt: number;
+  gradedAt: number;
+  classSession?: {
+    mode: "class" | "practice";
+    cardRole?: DeckCardRole;
+    facultyId: string;
+    grade?: Grade;
+    date?: string;
+    questionCount?: number;
+    totalQuestions?: number;
+  };
 }
 
 export interface ActiveRound {
