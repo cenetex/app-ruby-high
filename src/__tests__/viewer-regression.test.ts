@@ -76,10 +76,10 @@ describe("viewer regression guardrails", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
-    expect(html).toContain('title="Consecutive school days with a passed daily class"');
-    expect(html).toContain('title="Subject courses passed with a C or better"');
-    expect(script).toContain('streakCount + "/" + streakReq + " school days"');
-    expect(script).toContain('classes.met + "/" + classes.total + " courses passed"');
+    expect(html).toContain('title="Passed daily classes needed for this year"');
+    expect(html).toContain('title="Subjects cleared with a C or better this year"');
+    expect(script).toContain('streakCount + "/" + streakReq + " daily passes"');
+    expect(script).toContain('classes.met + "/" + classes.total + " subjects cleared"');
     expect(script).toContain('formatWholeNumber(t.scorePoints || 0) + " score"');
   });
 
@@ -93,32 +93,25 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("if (postClass.report)");
   });
 
-  it("builds the class report with teacher art and a real star meter", () => {
+  it("builds the class report with teacher sticker art and graded-question count", () => {
     const script = inlineScript(renderedViewer());
 
     expect(script).toContain("function buildClassReportCard");
     expect(script).toContain("class-report-teacher-art");
     expect(script).toContain('teacherAssetUrl(artAssetId, "sticker")');
-    expect(script).toContain("class-report-star-meter");
-    expect(script).toContain('star.textContent = "★"');
-    expect(script).toContain('classProgress.setAttribute("aria-label"');
+    expect(script).toContain('addMetric("graded"');
+    expect(script).toContain('"questions"');
   });
 
-  it("does not crop class report stars or the teacher overlay container", () => {
+  it("stages class report teacher stickers larger with bottom cropping", () => {
     expect(cssRule(".board .class-report-card")).toContain("overflow: visible");
     expect(cssRule(".board .class-report-metric")).toContain("overflow: visible");
     expect(cssRule(".board .class-report-metric .v")).toContain("overflow: visible");
 
-    const starMeter = cssRule(".board .class-report-star-meter");
-    expect(starMeter).toContain("display: inline-flex");
-    expect(starMeter).toContain("width: max-content");
-    expect(starMeter).toContain("min-width: max-content");
-    expect(starMeter).toContain("max-width: none");
-    expect(starMeter).toContain("white-space: nowrap");
-
-    expect(cssRule(".board .class-report-star")).toContain("flex: 0 0 auto");
-    expect(cssRule(".board .class-report-teacher-art")).toContain("overflow: visible");
+    expect(cssRule(".board .class-report-main")).toContain("overflow: hidden");
+    expect(cssRule(".board .class-report-teacher-art")).toContain("width: clamp(104px, 19vw, 160px)");
     expect(cssRule(".board .class-report-teacher-art")).toContain("drop-shadow");
     expect(cssRule(".board .class-report-teacher-art img")).toContain("object-fit: contain");
+    expect(cssRule(".board .class-report-teacher-art img")).toContain("transform: translateY");
   });
 });

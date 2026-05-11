@@ -670,7 +670,7 @@ export const VIEWER_CSS = `
   .arc-indicator .arc-xp.is-met { color: var(--accent); }
   .arc-indicator .arc-score { color: #ffe08a; font-variant-numeric: tabular-nums; }
   .arc-indicator.is-graduated .arc-year { color: #f0b441; }
-  /* Mobile: hide the school-day/course detail, keep just the year tag. The full
+  /* Mobile: hide the daily/subject detail, keep just the year tag. The full
    * progress is one tap away on the character sheet. */
   @media (max-width: 540px) {
     .arc-indicator .arc-sep,
@@ -2753,9 +2753,12 @@ export const VIEWER_CSS = `
   .board .class-report-main {
     min-width: 0;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(78px, 0.42fr);
+    grid-template-columns: auto minmax(0, 1fr) minmax(104px, 0.48fr);
     align-items: center;
     gap: clamp(10px, 2.4vw, 18px);
+    min-height: clamp(116px, 19vw, 158px);
+    overflow: hidden;
+    position: relative;
   }
   .board .class-report-heading {
     min-width: 0;
@@ -2782,9 +2785,9 @@ export const VIEWER_CSS = `
   .board .class-report-teacher-art {
     position: relative;
     justify-self: end;
-    align-self: end;
-    width: clamp(76px, 15vw, 118px);
-    height: clamp(76px, 16vw, 122px);
+    align-self: stretch;
+    width: clamp(104px, 19vw, 160px);
+    height: 100%;
     overflow: visible;
     pointer-events: none;
     opacity: 1;
@@ -2792,9 +2795,10 @@ export const VIEWER_CSS = `
   }
   .board .class-report-teacher-art img {
     width: 100%;
-    height: 118%;
+    height: 142%;
     object-fit: contain;
     object-position: center bottom;
+    transform: translateY(clamp(16px, 2.4vw, 28px));
     filter: saturate(1.05) contrast(1.04);
   }
   .board .class-report-letter {
@@ -2859,30 +2863,6 @@ export const VIEWER_CSS = `
     overflow: visible;
     text-align: right;
   }
-  .board .class-report-star-meter {
-    display: inline-flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: clamp(2px, 0.65vw, 5px);
-    width: max-content;
-    min-width: max-content;
-    max-width: none;
-    white-space: nowrap;
-  }
-  .board .class-report-star-meter.is-count {
-    display: inline-block;
-    font-variant-numeric: tabular-nums;
-  }
-  .board .class-report-star {
-    flex: 0 0 auto;
-    color: rgba(255,255,255,0.42);
-    font-size: clamp(13px, 2vw, 20px);
-    line-height: 1;
-    text-shadow: 0 1px 0 rgba(0,0,0,0.16);
-  }
-  .board .class-report-star.is-filled {
-    color: #fff6d1;
-  }
   @media (max-width: 620px) {
     .blackboard-panel[data-question-type="class-report"] .board {
       min-height: 170px;
@@ -2893,8 +2873,9 @@ export const VIEWER_CSS = `
       padding: 9px;
     }
     .board .class-report-main {
-      grid-template-columns: auto minmax(0, 1fr) minmax(58px, 0.32fr);
+      grid-template-columns: auto minmax(0, 1fr) minmax(72px, 0.36fr);
       gap: 8px;
+      min-height: clamp(92px, 25vw, 120px);
     }
     .board .class-report-letter {
       width: clamp(64px, 19vw, 82px);
@@ -2902,8 +2883,7 @@ export const VIEWER_CSS = `
       font-size: clamp(34px, 10vw, 46px);
     }
     .board .class-report-teacher-art {
-      width: clamp(58px, 15vw, 76px);
-      height: clamp(62px, 17vw, 82px);
+      width: clamp(76px, 21vw, 98px);
     }
     .board .class-report-metric {
       padding: 5px 7px;

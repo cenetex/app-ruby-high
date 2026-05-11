@@ -117,7 +117,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function classesLeftText(done, required) {
     const left = Math.max(0, Number(required || 0) - Number(done || 0));
-    return left + " " + (left === 1 ? "class" : "classes") + " left";
+    return left + " daily " + (left === 1 ? "pass" : "passes") + " left";
   }
   function classGradeForFaculty(fid) {
     const progress = courseProgressForFaculty(fid);
@@ -135,7 +135,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (today.status === "active") {
       return questionsLeftText(today) + " · " + grade;
     }
-    return done + "/" + required + " classes · " + grade;
+    return done + "/" + required + " daily passes · " + grade;
   }
   function postClassState(t) {
     const progress = t && t.active_course_progress;
@@ -282,7 +282,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     wrap.className = "board-class-grades";
     const heading = document.createElement("div");
     heading.className = "board-class-grades-title";
-    heading.textContent = (GRADE_LABELS[t.current_grade] || ("Grade " + t.current_grade)) + " · " + summary.met + "/" + summary.total + " classes passed";
+    heading.textContent = (GRADE_LABELS[t.current_grade] || ("Grade " + t.current_grade)) + " · " + summary.met + "/" + summary.total + " subjects cleared";
     wrap.appendChild(heading);
     const row = document.createElement("div");
     row.className = "board-class-grades-row";
@@ -1258,8 +1258,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     const classLetter = today.letterGrade || letterGradeForScore(today.score);
     const courseLetter = progress.grade || "—";
     const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
-    const completed = Number(progress.completedClasses || 0);
-    const required = Number(progress.requiredClasses || 0);
     const wrap = document.createElement("section");
     wrap.className = "class-report-card" + (passedToday ? " is-passed" : " needs-work");
 
@@ -1319,22 +1317,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
     addMetric("score", formatClassScore(today.score), "average");
     addMetric("course", courseLetter, "standing");
-    const classesLeft = Math.max(0, required - completed);
-    const classProgress = document.createElement("span");
-    classProgress.className = "class-report-star-meter";
-    if (required > 0 && required <= 5) {
-      classProgress.setAttribute("aria-label", completed + " of " + required + " classes complete");
-      for (let i = 0; i < required; i++) {
-        const star = document.createElement("span");
-        star.className = "class-report-star" + (i < completed ? " is-filled" : "");
-        star.textContent = "★";
-        classProgress.appendChild(star);
-      }
-    } else {
-      classProgress.classList.add("is-count");
-      classProgress.textContent = required > 0 ? completed + "/" + required : classesLeft + " left";
-    }
-    addMetric("classes", classProgress, "to ceremony");
+    const gradedCount = Math.max(0, Number(today.questionCount || 0));
+    const gradedTotal = Math.max(gradedCount, Number(today.totalQuestions || 3));
+    addMetric("graded", Math.min(gradedCount, gradedTotal) + "/" + gradedTotal, "questions");
     wrap.appendChild(metrics);
     return wrap;
   }
@@ -1410,8 +1395,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   // ── top-bar arc indicator (live progress through the 4-year arc) ────────
-  // Shape: "Junior · 2/3 school days · 2/3 courses passed". Hidden until a character
-  // exists. School-day/course progress turns accent-colored once the gate is met (player's
+  // Shape: "Junior · 2/3 daily passes · 2/3 subjects cleared". Hidden until a character
+  // exists. Daily/subject progress turns accent-colored once the gate is met (player's
   // sitting on the threshold, waiting for the other gate to land). After
   // graduation the year flips to "Graduated" and the gate hints drop.
   function renderArcIndicator(t) {
@@ -1428,7 +1413,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.arcYear.textContent = "Graduated";
       els.arcStreak.textContent = "diploma earned";
       els.arcStreak.classList.remove("is-met");
-      els.arcXp.textContent = "courses passed";
+      els.arcXp.textContent = "subjects cleared";
       els.arcXp.classList.remove("is-met");
       els.arcScore.textContent = formatWholeNumber(t.scorePoints || 0) + " score";
       return;
@@ -1437,10 +1422,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.arcYear.textContent = yearLabel;
     const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
     const streakReq   = STREAK_REQUIRED[grade] || 1;
-    els.arcStreak.textContent = streakCount + "/" + streakReq + " school days";
+    els.arcStreak.textContent = streakCount + "/" + streakReq + " daily passes";
     els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
     const classes = classGradeSummary();
-    els.arcXp.textContent = classes.met + "/" + classes.total + " courses passed";
+    els.arcXp.textContent = classes.met + "/" + classes.total + " subjects cleared";
     els.arcXp.classList.toggle("is-met", classes.met >= classes.total);
     els.arcScore.textContent = formatWholeNumber(t.scorePoints || 0) + " score";
   }
@@ -3180,7 +3165,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     chip.className = "class-grade-chip" + (met ? " is-met" : "");
     chip.title = grade === "—"
       ? spec.label + ": no class grade yet"
-      : spec.label + ": " + grade + (met ? " complete" : " needs C and daily classes");
+      : spec.label + ": " + grade + (met ? " complete" : " needs C and daily passes");
     chip.setAttribute("aria-label", chip.title);
     const icon = document.createElement("span");
     icon.className = "class-grade-icon";
@@ -3237,10 +3222,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       const have = Math.max(0, Number((r.streakProgress && r.streakProgress.have) || 0));
       const mark = document.createElement("span");
       mark.className = "rung-streak";
-      const dayUnit = need === 1 ? "day" : "days";
       mark.title = r.state === "current"
-        ? "School-day streak: " + Math.min(have, need) + "/" + need
-        : need + " school-day streak " + dayUnit;
+        ? "Daily passes: " + Math.min(have, need) + "/" + need
+        : need + " daily " + (need === 1 ? "pass" : "passes") + " needed";
       mark.setAttribute("aria-label", mark.title);
       for (let i = 0; i < need; i++) {
         const diamond = document.createElement("span");
@@ -3438,7 +3422,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
     // Pull this NPC's parallel-arc state from the cohort. That's the
-    // rivalry surface — what year they're on, what their streak looks
+    // rivalry surface — what year they're on, what their daily pass count looks
     // like, whether they've already graduated past you.
     const arc = (lastTelemetry && lastTelemetry.npc_cohort)
       ? lastTelemetry.npc_cohort.find((n) => n.id === npc.id)
@@ -3447,7 +3431,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       ? (GRADE_LABELS[npc.grade] || npc.grade)
       : arc.graduated
         ? "Graduated · " + arc.completedGrades.length + " years"
-        : (GRADE_LABELS[arc.grade] || arc.grade) + " · streak " + arc.streak.count;
+        : (GRADE_LABELS[arc.grade] || arc.grade) + " · daily " + arc.streak.count;
     renderCardDeck([
       buildCharacterCard({
         role: "student",
@@ -3536,7 +3520,7 @@ const VIEWER_SCRIPT_SUFFIX = `
           ]
         : [
             { label: "year", value: gradeLabel, detail: "active grade", met: false },
-            { label: "streak", value: streakHere + "/" + streakReq, detail: "school days", met: streakHere >= streakReq },
+            { label: "daily", value: streakHere + "/" + streakReq, detail: "passes", met: streakHere >= streakReq },
             { label: "room", value: roomLabelFor(npc.currentRoom), detail: "current class", met: false },
           ],
       progression: buildProgressionForNpcArc(arc, grade),
@@ -3599,7 +3583,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     streak.className = "career-token-lane";
     const streakLabel = document.createElement("span");
     streakLabel.className = "career-token-label";
-    streakLabel.textContent = "Streak";
+    streakLabel.textContent = "Daily pass";
     streak.appendChild(streakLabel);
     const streakTrack = document.createElement("span");
     streakTrack.className = "career-streak-track";
@@ -3633,7 +3617,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       for (let i = 0; i < streakCap; i++) {
         const diamond = document.createElement("span");
         diamond.className = "career-diamond" + (i < streakFilled ? " is-filled" : "");
-        diamond.setAttribute("aria-label", i < streakFilled ? "Streak day complete" : "Streak day needed");
+        diamond.setAttribute("aria-label", i < streakFilled ? "Daily pass complete" : "Daily pass needed");
         diamonds.appendChild(diamond);
       }
       streakTrack.appendChild(diamonds);
@@ -3800,9 +3784,9 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const parts = [];
     if (streakNeeded > 0 && !todayDone) {
-      parts.push("Complete one daily class at C or better to grow your streak (" + streakHere + "/" + streakReq + ")");
+      parts.push("Pass one daily class at C or better (" + streakHere + "/" + streakReq + " daily passes)");
     } else if (streakNeeded > 0) {
-      parts.push("Streak banked for this school day — " + streakHere + "/" + streakReq + ", come back tomorrow");
+      parts.push("Daily pass banked — " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
     if (classGaps.length > 0) {
       const segs = classGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + cg.grade + ")");

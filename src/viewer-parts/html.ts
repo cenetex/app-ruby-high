@@ -65,9 +65,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="arc-indicator" id="arc-indicator" hidden>
         <span class="arc-year" id="arc-year">—</span>
         <span class="arc-sep">·</span>
-        <span class="arc-streak" id="arc-streak" title="Consecutive school days with a passed daily class">— school days</span>
+        <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">— daily passes</span>
         <span class="arc-sep">·</span>
-        <span class="arc-xp" id="arc-xp" title="Subject courses passed with a C or better">— courses passed</span>
+        <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">— subjects cleared</span>
         <span class="arc-sep">·</span>
         <span class="arc-score" id="arc-score" title="Total score">0 score</span>
       </div>
