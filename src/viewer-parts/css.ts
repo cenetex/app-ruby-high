@@ -2283,6 +2283,77 @@ export const VIEWER_CSS = `
   }
 
   /* ── creation controls inside shared card surfaces ───────────────────── */
+  @media (max-width: 600px) {
+    .sheet-card.is-creation-sheet {
+      padding: 10px;
+    }
+    .sheet-card.is-creation-sheet .card-deck {
+      padding: 0;
+      --deck-card-w: min(292px, calc(100vw - 46px));
+      --deck-gap: 12px;
+    }
+    .sheet-card.is-creation-sheet .card-deck-track {
+      padding: 12px var(--deck-edge-pad) 14px;
+    }
+    .sheet-card.is-creation-sheet .ccg-card {
+      border-radius: 14px;
+    }
+    .sheet-card.is-creation-sheet .ccg-art {
+      aspect-ratio: 3 / 2;
+    }
+    .sheet-card.is-creation-sheet .ccg-body {
+      gap: 6px;
+      padding: 8px 10px 10px;
+    }
+    .sheet-card.is-creation-sheet .ccg-name {
+      font-size: 16px;
+    }
+    .sheet-card.is-creation-sheet .ccg-subtitle,
+    .sheet-card.is-creation-sheet .ccg-quote,
+    .sheet-card.is-creation-sheet .ccg-footer,
+    .sheet-card.is-creation-sheet .ccg-next-step {
+      font-size: 12px;
+    }
+    .sheet-card.is-creation-sheet .ccg-next-step {
+      margin-top: 0;
+      padding: 6px 8px;
+    }
+    .sheet-card.is-creation-sheet .creation-portrait-status,
+    .sheet-card.is-creation-sheet .stat-budget {
+      font-size: 11px;
+      min-height: 12px;
+    }
+    .sheet-card.is-creation-sheet .creation-fields {
+      gap: 6px;
+      margin: 2px 0 6px;
+    }
+    .sheet-card.is-creation-sheet .creation-row {
+      grid-template-columns: 68px 1fr auto;
+      gap: 6px;
+      padding: 6px 8px;
+    }
+    .sheet-card.is-creation-sheet .creation-row-label {
+      font-size: 9px;
+    }
+    .sheet-card.is-creation-sheet .creation-row-value {
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .sheet-card.is-creation-sheet .ccg-card-actions {
+      margin-top: 4px;
+    }
+    .sheet-card.is-creation-sheet .ccg-card-actions button {
+      padding: 10px 12px;
+      border-radius: 12px;
+    }
+    .sheet-card.is-creation-sheet .ccg-card-actions button.primary {
+      flex: 1 1 auto;
+    }
+    .sheet-card.is-creation-sheet .card-deck-track > .ccg-card.is-creation-candidate-card,
+    .sheet-card.is-creation-sheet .card-deck-track > .ccg-card.is-creation-control-card {
+      min-height: auto;
+    }
+  }
   @media (max-width: 430px) {
     .sheet-overlay {
       align-items: flex-start;

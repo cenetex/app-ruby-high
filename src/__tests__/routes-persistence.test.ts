@@ -195,6 +195,36 @@ describe("command route persistence and scheduler misses", () => {
     expect(harness.response?.body.session.telemetry.current).toBeNull();
   });
 
+  it("returns a no-op success when offline pick races an existing live board", async () => {
+    setActivePack(singleQuestionPack());
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new MemorySessionStore());
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+
+    const sid = "rh:anonymous";
+    ruby.createCharacter(sid, {
+      name: "Ari",
+      playbookId: "overachiever",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      arcAnswer: "I want the transcript to look impossible.",
+      personality: "intense but kind",
+    });
+    const first = ruby.pickAndPose(sid, { faculty: "ruby" });
+
+    const harness = makeCommandCtx(ruby, { type: "pick" }, faculty);
+    const handled = await handleAppRoutes(harness.ctx);
+
+    expect(handled).toBe(true);
+    expect(harness.response?.status).toBe(200);
+    expect(harness.response?.body).toMatchObject({
+      success: true,
+      questionAlreadyLive: true,
+      message: "Question already live.",
+    });
+    expect(harness.response?.body.session.telemetry.current.id).toBe(first.current!.id);
+  });
+
   it("offline pick still advances generated Ruby social cards when no bank card is ready", async () => {
     setActivePack(rubyHomeroomSocialPack());
     const faculty = await FacultyService.start({} as never);

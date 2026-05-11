@@ -850,6 +850,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     questionCounter = 0;
     showBlackboardEmpty(true);
   }
+  function isActiveBoardCommandError(msg) {
+    return /Question already (on|posted by).*board|wait for the student answer|Cannot (post another question|clear the board) while a question is live/i.test(String(msg || ""));
+  }
 
   // ── command helper ────────────────────────────────────────────────────────
   async function command(payload) {
@@ -877,7 +880,8 @@ const VIEWER_SCRIPT_SUFFIX = `
         // where two pick paths notice the same empty board. The board is
         // already playable, so surfacing the raw service error only makes the
         // first session feel broken.
-        if (payload && payload.type === "pick" && /cannot post another question while a question is live/i.test(msg)) {
+        if (payload && payload.type === "pick" && isActiveBoardCommandError(msg)) {
+          fetchSession();
           return null;
         }
         appendSystem("error · " + msg);
@@ -3292,6 +3296,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function appendCard(spec) {
     sheetCard.classList.remove("is-card-deck-sheet");
     sheetCard.classList.remove("is-two-card-deck");
+    sheetCard.classList.remove("is-creation-sheet");
     sheetCard.innerHTML = "";
     const card = buildCharacterCard(spec);
     if (card) sheetCard.appendChild(card);
@@ -3299,6 +3304,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function renderCardDeck(cardNodes) {
     sheetCard.classList.add("is-card-deck-sheet");
+    sheetCard.classList.remove("is-creation-sheet");
     sheetCard.classList.toggle("is-two-card-deck", cardNodes.length === 2);
     sheetCard.innerHTML = "";
     const wrap = document.createElement("div");
@@ -4470,6 +4476,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function renderSheetCreation(playbooks) {
     sheetCard.classList.remove("is-card-deck-sheet");
     sheetCard.classList.remove("is-two-card-deck");
+    sheetCard.classList.add("is-creation-sheet");
     sheetCard.innerHTML = "";
 
     // Full-pane loading state — covers the sheet while the initial
@@ -4611,6 +4618,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (deckRendered) return;
       deckRendered = true;
       renderCardDeck([candidateCard, controlsCard]);
+      sheetCard.classList.add("is-creation-sheet");
     }
 
     let rolled = null;

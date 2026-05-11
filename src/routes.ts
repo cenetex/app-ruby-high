@@ -943,6 +943,10 @@ function isNoScheduledQuestionDue(message: string): boolean {
   return /no scheduled (question|deck card) is due/i.test(message);
 }
 
+function isLiveBoardMutationBlocked(message: string): boolean {
+  return /Question already (on|posted by).*board|wait for the student answer|Cannot (post another question|clear the board) while a question is live/i.test(message);
+}
+
 export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   const runtime = getRuntime(ctx.runtime);
 
@@ -1250,6 +1254,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
           message: status.mode === "srs"
             ? "No scheduled deck card is ready right now."
             : "No scheduled question is ready right now.",
+          session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
+        });
+        return true;
+      }
+      if (type === "pick" && isLiveBoardMutationBlocked(message)) {
+        const state = ruby.getOrCreate(stateKey);
+        ctx.json(ctx.res, {
+          success: true,
+          questionAlreadyLive: true,
+          message: "Question already live.",
           session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
         });
         return true;
