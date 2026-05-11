@@ -93,14 +93,17 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("if (postClass.report)");
   });
 
-  it("builds the class report with full-body teacher standee art and graded-question count", () => {
+  it("builds the class report with full-body teacher standee art and a score metric", () => {
     const script = inlineScript(renderedViewer());
 
     expect(script).toContain("function buildClassReportCard");
+    expect(script).toContain("function shouldShowClassReport");
+    expect(script).toContain("shownClassReportKey = classReportKey(lastTelemetry)");
     expect(script).toContain("class-report-teacher-art");
     expect(script).toContain('teacherAssetUrl(artAssetId, "full-sticker")');
-    expect(script).toContain('addMetric("graded"');
-    expect(script).toContain('"questions"');
+    expect(script).toContain('addMetric("score"');
+    expect(script).not.toContain('addMetric("score / grade"');
+    expect(script).not.toContain('addMetric("questions"');
   });
 
   it("stages class report teachers as full-body standees in front of the report card", () => {

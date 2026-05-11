@@ -989,7 +989,7 @@ function describeClassReportBoardForModel(status: QuestionBankStatus): string | 
   return [
     "BOARD STATUS: CLASS_REPORT.",
     `The chalkboard is showing today's ${status.displayName} class report card, not a live question.`,
-    `Today's class is complete: ${today.questionCount}/${today.totalQuestions} questions.`,
+    "Today's graded class is complete.",
     today.letterGrade ? `Final grade shown: ${today.letterGrade}.` : "",
     typeof today.score === "number" ? `Today score shown: ${formatBoardPercent(today.score)}.` : "",
     status.courseGrade ? `Subject grade shown: ${status.courseGrade}.` : "",

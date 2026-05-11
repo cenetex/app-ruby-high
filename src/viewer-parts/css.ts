@@ -2807,9 +2807,14 @@ export const VIEWER_CSS = `
   }
   .board .class-report-metrics {
     display: grid;
-    grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.9fr) minmax(0, 1.14fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     min-width: 0;
+    max-width: 320px;
+  }
+  .board .graduation-report-card .class-report-metrics {
+    grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.9fr) minmax(0, 1.14fr);
+    max-width: none;
   }
   .board .class-report-metric {
     min-width: 0;
@@ -2819,7 +2824,7 @@ export const VIEWER_CSS = `
     background: rgba(255,255,255,0.08);
     padding: 6px 8px;
     display: grid;
-    grid-template-columns: minmax(54px, 0.38fr) minmax(0, 0.62fr);
+    grid-template-columns: minmax(92px, 0.48fr) minmax(0, 0.52fr);
     column-gap: 9px;
     align-items: baseline;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
@@ -2831,9 +2836,9 @@ export const VIEWER_CSS = `
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
   .board .class-report-metric .k {
     grid-column: 1;
@@ -2880,7 +2885,7 @@ export const VIEWER_CSS = `
     .board .class-report-metric {
       padding: 5px 7px;
       column-gap: 7px;
-      grid-template-columns: minmax(44px, 0.36fr) minmax(0, 0.64fr);
+      grid-template-columns: minmax(78px, 0.46fr) minmax(0, 0.54fr);
     }
     .board .class-report-metric .d {
       display: none;
@@ -2922,6 +2927,9 @@ export const VIEWER_CSS = `
     .board .class-report-metrics {
       grid-template-columns: 1fr;
       gap: 5px;
+    }
+    .board .graduation-report-card .class-report-metrics {
+      grid-template-columns: 1fr;
     }
   }
 

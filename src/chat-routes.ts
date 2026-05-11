@@ -735,7 +735,7 @@ function playerClassReportContext(bankStatus?: QuestionBankStatus | null): strin
   const required = bankStatus.requiredClasses ?? 0;
   return [
     `Visible board: class report card for ${bankStatus.displayName}.`,
-    `Today's class is complete: ${today.questionCount}/${today.totalQuestions} questions.`,
+    "Today's graded class is complete.",
     today.letterGrade ? `Final grade shown: ${today.letterGrade}.` : "",
     typeof today.score === "number" ? `Today score shown: ${formatPromptPercent(today.score)}.` : "",
     bankStatus.courseGrade ? `Course grade shown: ${bankStatus.courseGrade}.` : "",

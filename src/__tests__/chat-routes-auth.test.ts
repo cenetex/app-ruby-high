@@ -314,7 +314,8 @@ describe("chat event context", () => {
     expect(JSON.parse(res.body).line).toBe("Okay, that F is loud. Can we practice the weak spot now?");
     const promptText = JSON.stringify(capturedChatRequest.body.messages);
     expect(promptText).toContain("Visible board: class report card for Sally Science.");
-    expect(promptText).toContain("Today's class is complete: 3/3 questions.");
+    expect(promptText).toContain("Today's graded class is complete.");
+    expect(promptText).not.toContain("3/3 questions");
     expect(promptText).toContain("Final grade shown: F.");
     expect(promptText).toContain("The report card says practice is open");
     expect(promptText).not.toContain("Visible board: empty");

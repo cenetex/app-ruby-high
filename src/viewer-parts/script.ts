@@ -238,6 +238,23 @@ const VIEWER_SCRIPT_SUFFIX = `
     const today = t && t.active_course_progress && t.active_course_progress.today;
     return !!(today && today.status === "complete");
   }
+  function classReportKey(t) {
+    const progress = t && t.active_course_progress;
+    const today = progress && progress.today;
+    if (!progress || !today || today.status !== "complete") return "";
+    return [
+      progress.facultyId || t.faculty || "",
+      t.current_grade || "",
+      today.date || "",
+      progress.completedClasses || 0,
+      today.letterGrade || "",
+      today.score == null ? "" : Math.round(Number(today.score)),
+    ].join(":");
+  }
+  function shouldShowClassReport(t) {
+    const key = classReportKey(t);
+    return !!(key && !t.current && !t.graduation_ready && key !== shownClassReportKey);
+  }
   function currentRevealMatches(t) {
     return !!(t && t.current && t.lastReveal && t.lastReveal.questionId === t.current.id);
   }
@@ -450,6 +467,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   let activeQuestionId = null; // currently displayed question id on the blackboard
   let questionCounter = 0;     // session-local question count for "Question N" label
   let lastShownGrade = null;
+  let shownClassReportKey = null;
   // Tracks the yearbook's length on the previous telemetry tick so we
   // can detect Senior completion (the only grade transition that
   // doesn't change current_grade). null on first boot — same suppress-
@@ -1263,7 +1281,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!progress || !today || today.status !== "complete") return null;
     const teacherName = teacherShortName(faculty, progress.displayName);
     const classLetter = today.letterGrade || letterGradeForScore(today.score);
-    const subjectLetter = progress.grade || "—";
     const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
     const wrap = document.createElement("section");
     wrap.className = "class-report-card" + (passedToday ? " is-passed" : " needs-work");
@@ -1323,10 +1340,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       metrics.appendChild(item);
     };
     addMetric("score", formatClassScore(today.score), "average");
-    addMetric("subject", subjectLetter, "grade");
-    const gradedCount = Math.max(0, Number(today.questionCount || 0));
-    const gradedTotal = Math.max(gradedCount, Number(today.totalQuestions || 3));
-    addMetric("graded", Math.min(gradedCount, gradedTotal) + "/" + gradedTotal, "questions");
     wrap.appendChild(metrics);
     return wrap;
   }
@@ -1375,6 +1388,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardPanel.dataset.questionType = "class-report";
     els.blackboardPanel.dataset.cardRole = "report";
     activeQuestionId = null;
+    shownClassReportKey = classReportKey(lastTelemetry) || shownClassReportKey;
 
     els.blackboardMeta.replaceChildren();
     if (faculty) {
@@ -1641,7 +1655,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         showBlackboardCeremony(faculty, currentGrade);
         return;
       }
-      if (authed && lastTelemetry && lastTelemetry.character && activeDailyClassIsComplete(lastTelemetry)) {
+      if (authed && lastTelemetry && lastTelemetry.character && shouldShowClassReport(lastTelemetry)) {
         showBlackboardClassReport(faculty, currentGrade);
         return;
       }
