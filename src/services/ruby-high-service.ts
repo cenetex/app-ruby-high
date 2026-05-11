@@ -16,8 +16,6 @@ import {
   npcsInRoom,
   classifyTotal,
   dailyKey,
-  dailyIndex,
-  facultyForDay,
   initialNpcCohort,
   letterGradePasses,
   nextGradeAfter,
@@ -28,7 +26,6 @@ import {
   rollNpcAnswer,
   rollOpinionDelay,
   statusForPhase,
-  streakScoreMultiplier,
   type ActiveRound,
   type AdvantageRoll,
   type AnswerRecord,
@@ -78,6 +75,25 @@ import {
 } from "../characters/mash.js";
 import { studentById } from "../characters/students.js";
 import { statForQuestion, normalizeQuestionStat } from "../question-stats.js";
+import {
+  SRS_AGAIN_MS,
+  SRS_ONE_DAY_MS,
+  awardSessionScore,
+  cardMemoryKey,
+  classAverage,
+  classQuestionScore,
+  classRecordKey,
+  clamp,
+  dailyFacultyForQuizState,
+  defaultCardMemory,
+  dueKnownCard,
+  intervalForCorrect,
+  judgeTypedAnswer,
+  letterGradeForClassScore,
+  normalizeStoredImageRef,
+  requiredClassCompletionsForGrade,
+  scoreMultiplierForPass,
+} from "./ruby-high/helpers.js";
 import {
   activeFaculty,
   appendQuestionToPackBank,
@@ -238,32 +254,10 @@ interface DailyClassUpdate {
   passedClass?: boolean;
 }
 
-interface TypedAnswerJudgeResult {
-  correct: boolean;
-  mode: "exact" | "alias" | "fuzzy";
-  score: number;
-}
-
-const SRS_AGAIN_MS = 5 * 60 * 1000;
-const SRS_HARD_MS = 30 * 60 * 1000;
-const SRS_ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const GLOBAL_PACK_OWNER = "__ruby_high_global__";
-const SRS_GOOD_INTERVALS_MS = [
-  10 * 60 * 1000,
-  SRS_ONE_DAY_MS,
-  3 * SRS_ONE_DAY_MS,
-  7 * SRS_ONE_DAY_MS,
-];
-const SRS_EASY_INTERVALS_MS = [
-  30 * 60 * 1000,
-  2 * SRS_ONE_DAY_MS,
-  7 * SRS_ONE_DAY_MS,
-  14 * SRS_ONE_DAY_MS,
-];
 const CLASS_QUESTIONS_PER_DAY = 3;
 const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [2, 4, 6] as const;
 const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 1;
-const MAX_STORED_IMAGE_REF_LENGTH = 280_000;
 
 export function advantageRollsForState(state: QuizState): { used: number; cap: number; remaining: number } {
   const grade = state.currentGrade;
@@ -282,192 +276,6 @@ export function dailyStatusForState(state: QuizState, now: Date = new Date()): D
     return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
   }
   return { available: true, facultyId: fac, dailyKey: key };
-}
-
-function dailyFacultyForQuizState(state: QuizState, key: string): string {
-  const scheduled = facultyForDay(key);
-  const resolved = resolveFacultyIdForSession(state, scheduled);
-  if (resolved) return resolved;
-
-  const pack = packForSession(state);
-  const courseFacultyIds = coursesForPack(pack)
-    .map((c) => c.facultyId)
-    .filter((facultyId) => pack.faculty.some((f) =>
-      f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
-    ));
-  if (courseFacultyIds.length === 0) return scheduled;
-  const idx = ((dailyIndex(key) % courseFacultyIds.length) + courseFacultyIds.length) % courseFacultyIds.length;
-  return courseFacultyIds[idx]!;
-}
-
-function cardMemoryKey(courseId: string, questionId: string): string {
-  return `${courseId}::${questionId}`;
-}
-
-function defaultCardMemory(courseId: string, questionId: string): CardMemory {
-  return {
-    courseId,
-    questionId,
-    phase: "new",
-    dueAt: 0,
-    stability: 0,
-    difficulty: 0.5,
-    consecutiveCorrect: 0,
-    correctCount: 0,
-    wrongCount: 0,
-    delayedCorrectCount: 0,
-    lapses: 0,
-  };
-}
-
-function carriedStreakCountForPass(state: QuizState, now: number): number {
-  const ch = state.character;
-  const grade = state.currentGrade;
-  if (!ch || !grade) return 0;
-  const today = dailyKey(new Date(now));
-  const current = ch.streak && ch.streak.grade === grade ? ch.streak : null;
-  if (!current?.lastDate) return 0;
-  if (current.lastDate === today) return Math.max(0, current.count - 1);
-  if (daysBetween(current.lastDate, today) === 1) return current.count;
-  return 0;
-}
-
-function scoreMultiplierForPass(state: QuizState, passed: boolean, now: number): number {
-  if (!passed) return 1;
-  return streakScoreMultiplier(carriedStreakCountForPass(state, now));
-}
-
-function normalizeAnswerForJudge(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/&nbsp;/g, " ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function answerWords(value: string): string[] {
-  return normalizeAnswerForJudge(value).split(" ").filter(Boolean);
-}
-
-function wordOverlapScore(submitted: string, expected: string): number {
-  const expectedWords = answerWords(expected);
-  if (expectedWords.length === 0) return 0;
-  const submittedWords = new Set(answerWords(submitted));
-  if (submittedWords.size === 0) return 0;
-  let matched = 0;
-  for (const word of expectedWords) {
-    if (submittedWords.has(word)) matched += 1;
-  }
-  return matched / expectedWords.length;
-}
-
-function judgeTypedAnswer(submitted: string, acceptedAnswers: string[]): TypedAnswerJudgeResult {
-  const normalizedSubmitted = normalizeAnswerForJudge(submitted);
-  const candidates = acceptedAnswers
-    .map((answer) => answer.trim())
-    .filter((answer) => answer.length > 0);
-  if (!normalizedSubmitted || candidates.length === 0) {
-    return { correct: false, mode: "fuzzy", score: 0 };
-  }
-  for (let i = 0; i < candidates.length; i++) {
-    if (normalizedSubmitted === normalizeAnswerForJudge(candidates[i]!)) {
-      return { correct: true, mode: i === 0 ? "exact" : "alias", score: 1 };
-    }
-  }
-  const score = Math.max(...candidates.map((answer) => wordOverlapScore(submitted, answer)));
-  return { correct: score >= 0.8, mode: "fuzzy", score: Math.round(score * 100) / 100 };
-}
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
-}
-
-function intervalForCorrect(rating: CardReviewRating, consecutiveCorrect: number): number {
-  if (rating === "hard") return SRS_HARD_MS;
-  const table = rating === "easy" ? SRS_EASY_INTERVALS_MS : SRS_GOOD_INTERVALS_MS;
-  return table[Math.min(consecutiveCorrect - 1, table.length - 1)] ?? SRS_GOOD_INTERVALS_MS[0]!;
-}
-
-function dueKnownCard(memory: CardMemory, now: number): boolean {
-  return memory.dueAt <= now;
-}
-
-function classRecordKey(grade: Grade, facultyId: string, date: string): string {
-  return `${grade}:${facultyId}:${date}`;
-}
-
-function requiredClassCompletionsForGrade(grade: Grade): number {
-  return requiredStreakForGrade(grade);
-}
-
-function letterGradeForClassScore(score: number | undefined): string | undefined {
-  if (score == null || Number.isNaN(score)) return undefined;
-  if (score >= 90) return "A";
-  if (score >= 80) return "B";
-  if (score >= 70) return "C";
-  if (score >= 60) return "D";
-  return "F";
-}
-
-function classQuestionScore(
-  wasCorrect: boolean,
-  playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
-): number {
-  // Wrong answers earn no class score. Per DESIGN.md §1.6.4 the dice
-  // classify the round (hit/mixed/miss) but "rolls only ever upgrade the
-  // outcome, never punish" — and a wrong answer is its own consequence,
-  // so the dice cannot retroactively reward it. Previously a missed
-  // question still paid 20–55 points, which inflated session score and
-  // letter grades on a streak of misses.
-  if (!wasCorrect) return 0;
-  const outcome = playerRoll?.outcome ?? "miss";
-  const base = outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80;
-  return clamp(base, 0, 100);
-}
-
-function awardSessionScore(
-  state: QuizState,
-  baseScore: number,
-  scoreMultiplier = 1,
-): NonNullable<NonNullable<QuizState["lastReveal"]>["scoreAward"]> {
-  const multiplier = clamp(Math.floor(scoreMultiplier), 1, 5);
-  const base = clamp(Math.round(baseScore), 0, 100);
-  const points = base * multiplier;
-  const possible = 100 * multiplier;
-  state.score.points = Math.max(0, Math.floor(Number(state.score.points ?? 0))) + points;
-  state.score.possible = Math.max(0, Math.floor(Number(state.score.possible ?? 0))) + possible;
-  return { base, multiplier, points, possible };
-}
-
-function classAverage(record: DailyClassRecord): number | undefined {
-  if (record.questionCount <= 0) return undefined;
-  return Math.round(record.scoreTotal / record.questionCount);
-}
-
-function normalizeStoredImageRef(
-  value: string | undefined | null,
-  fieldName: "portraitDataUrl" | "diplomaImageDataUrl",
-): string | undefined {
-  if (value == null) return undefined;
-  const text = value.trim();
-  if (!text) return undefined;
-  if (text.length > MAX_STORED_IMAGE_REF_LENGTH) {
-    throw new Error(
-      `${fieldName} too large (${text.length} bytes; cap is ${MAX_STORED_IMAGE_REF_LENGTH}). Store the image externally before saving.`,
-    );
-  }
-  if (text.startsWith("data:image/")) return text;
-  if (text.startsWith("/api/apps/ruby-high/assets/")) return text;
-  try {
-    const url = new URL(text);
-    if (url.protocol === "http:" || url.protocol === "https:") return text;
-  } catch {
-    // Fall through to the explicit error below.
-  }
-  throw new Error(`${fieldName} must be an image data URL, http(s) URL, or Ruby High asset URL.`);
 }
 
 export class RubyHighService extends Service {

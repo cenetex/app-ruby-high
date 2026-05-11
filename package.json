@@ -30,6 +30,7 @@
     "start": "node scripts/server.mjs",
     "typecheck": "tsc --noEmit && node scripts/check-viewer-script.mjs",
     "test": "vitest",
+    "check": "npm run typecheck && npm test -- --run && npm run build",
     "smoke": "node scripts/smoke.mjs",
     "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
     "deploy": "flyctl deploy --app ruby-high --remote-only --build-arg RUBY_HIGH_BUILD=$(git rev-parse --short=12 HEAD) && npm run smoke:prod",
