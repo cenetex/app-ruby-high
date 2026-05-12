@@ -2,8 +2,8 @@
  * Content pack — a swappable bundle of teachers + rooms + question banks
  * that drives a single Ruby High experience. The shipped product is one
  * pack at a time (the player picks which one they're playing). Future
- * surfaces (a pack store, Anki imports, paid SAT/MCAT packs, LLM-
- * generated packs) all materialize as ContentPack instances.
+ * surfaces (a pack store, connected teachers, paid SAT/MCAT packs,
+ * LLM-generated packs) all materialize as ContentPack instances.
  *
  * A pack owns:
  *   - a small set of courses (what is being taught)
@@ -19,7 +19,7 @@
  * The shape is intentionally inline — bank questions live IN the
  * faculty entry, not in a separate file. This keeps a pack a single
  * portable object: trivial to ship from a CDN, embed at build time,
- * cache in localStorage, or generate at runtime (Anki adapter).
+ * cache in localStorage, or generate at runtime.
  */
 
 import type { BankedQuestion, Difficulty } from "../types.js";
@@ -87,7 +87,7 @@ export interface PackFaculty {
   /** Inline question bank. Matches the existing BankedQuestion shape so
    *  pickQuestion / pickDaily logic doesn't change. */
   questions: BankedQuestion[];
-  /** Raw imported source cards. Anki imports keep these cheap by default:
+  /** Raw source cards. Connected/generated packs can keep these cheap by default:
    *  the player can type answers immediately, and MC distractors are
    *  generated/cached later only when explicitly requested. */
   sourceCards?: PackSourceCard[];
@@ -116,7 +116,7 @@ export interface PackSourceCard {
   kind: "basic" | "image-occlusion";
   front: string;
   back: string;
-  /** Raw field HTML retained from Anki for media/image detection. The viewer
+  /** Optional raw field HTML retained for media/image detection. The viewer
    *  still receives sanitized structured media, not this HTML. */
   frontHtml?: string;
   backHtml?: string;

@@ -1,40 +1,48 @@
 /**
- * Anki front/back → multiple-choice question. Called only by the explicit
- * "MC" action in the viewer, not by import. It asks OpenRouter for three
- * plausible wrong answers, then assembles a BankedQuestion the rest of the
- * system already knows how to play.
+ * Source-card front/back → multiple-choice question. Called only by the
+ * explicit "MC" action in the viewer. It asks OpenRouter for three plausible
+ * wrong answers, then assembles a BankedQuestion the rest of the system
+ * already knows how to play.
  *
- * Cost shape: per-card only. Large decks stay cheap to try because this
- * module is invoked one source card at a time unless a caller explicitly
+ * Cost shape: per-card only. Large source banks stay cheap to try because
+ * this module is invoked one source card at a time unless a caller explicitly
  * chooses the batch helper.
  *
  * Failure modes:
- *  - Single-card LLM error → retry once, then skip. Caller sees a
- *    skipped count for an "imported X of Y" UX.
+ *  - Single-card LLM error → retry once, then skip. Batch callers can
+ *    surface the skipped count in their own UX.
  *  - 401 / 403 from OpenRouter → fail-fast. The key is bad or the
  *    account is rate-limited; every subsequent call will fail the same
  *    way. The first worker to hit FatalAuthError trips a kill switch
- *    the others see; the import bails instead of grinding through 50
- *    futile calls and burning the user's quota.
- *
- * The pack-store import route no longer invokes this. The viewer command
- * route calls cardToMcQuestion for the active source card and caches it.
+ *    the others see instead of grinding through futile calls and burning
+ *    the user's quota.
  */
 
-import type { BankedQuestion, Choice, Difficulty } from "../../types.js";
-import { classifyQuestionStat } from "../../question-stats.js";
-import type { AnkiCard } from "./parse.js";
-import { OpenRouterHttpError, openRouterJson, STUDENT_MODEL, type OpenRouterChatCompletion } from "../../services/openrouter-client.js";
+import type { BankedQuestion, Choice, Difficulty } from "../types.js";
+import type { PackMediaAsset } from "./types.js";
+import { classifyQuestionStat } from "../question-stats.js";
+import { OpenRouterHttpError, openRouterJson, STUDENT_MODEL, type OpenRouterChatCompletion } from "../services/openrouter-client.js";
+
+export interface SourceCardInput {
+  noteId: string;
+  front: string;
+  back: string;
+  deckName: string;
+  tags: string[];
+  frontHtml?: string;
+  backHtml?: string;
+  media?: PackMediaAsset[];
+}
 
 export interface DistractorOpts {
   apiKey: string;
   /** Faculty id stamped on the resulting question. The BankedQuestion
    *  schema requires it so pickQuestion can scope to a faculty. */
   facultyId: string;
-  /** Subject label — typically the Anki deck name. Surfaces as the
+  /** Subject label. Surfaces as the
    *  subject pill on the chalkboard. */
   subject: string;
-  /** Difficulty — Anki doesn't carry one, so the caller picks. */
+  /** Difficulty. Source-card providers may omit it, so the caller picks. */
   difficulty?: Difficulty;
   /** OpenRouter model. Defaults to a cheap fast one. */
   model?: string;
@@ -48,8 +56,7 @@ export interface DistractorOpts {
 
 export interface DistractorResult {
   questions: BankedQuestion[];
-  /** Cards we couldn't generate distractors for. The import UI surfaces
-   *  this as "imported X of Y cards." */
+  /** Cards we couldn't generate distractors for. */
   skipped: number;
 }
 
@@ -61,11 +68,11 @@ export class FatalAuthError extends Error {
   constructor(message: string) { super(message); this.name = "FatalAuthError"; }
 }
 
-/** Generate MC questions for every card in the deck, in parallel under
+/** Generate MC questions for every source card, in parallel under
  *  the concurrency cap. Returns whatever succeeded; throws FatalAuthError
  *  if the API key is rejected. */
 export async function generateBankFromCards(
-  cards: AnkiCard[],
+  cards: SourceCardInput[],
   opts: DistractorOpts,
 ): Promise<DistractorResult> {
   const concurrency = Math.max(1, Math.min(8, opts.concurrency ?? 4));
@@ -106,7 +113,7 @@ export async function generateBankFromCards(
 }
 
 export async function cardToMcQuestion(
-  card: AnkiCard,
+  card: SourceCardInput,
   opts: DistractorOpts,
 ): Promise<BankedQuestion | null> {
   const max = opts.maxRetriesPerCard ?? 1;
@@ -144,7 +151,7 @@ export async function cardToMcQuestion(
       };
     } catch (err) {
       // FatalAuth isn't retryable AND isn't card-local — propagate so the
-      // worker pool bails the whole import.
+      // worker pool bails the whole batch.
       if (err instanceof FatalAuthError) throw err;
       if (attempt === max) return null;
     }
@@ -153,7 +160,7 @@ export async function cardToMcQuestion(
 }
 
 async function callOpenRouterForDistractors(
-  card: AnkiCard,
+  card: SourceCardInput,
   opts: DistractorOpts,
 ): Promise<string[]> {
   const model = opts.model ?? STUDENT_MODEL;
@@ -169,8 +176,8 @@ async function callOpenRouterForDistractors(
   try {
     body = await openRouterJson<OpenRouterChatCompletion>({
       apiKey: opts.apiKey,
-      label: "anki-distractors",
-      title: "Ruby High Anki Import",
+      label: "source-card-distractors",
+      title: "Ruby High Source Card",
       body: {
         model,
         messages: [

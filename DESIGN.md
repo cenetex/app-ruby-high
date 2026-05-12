@@ -177,9 +177,9 @@ Every question has per-character mastery memory with one of four phases:
 | **review** | answered correctly two in a row; on a review schedule |
 | **mastered** | answered correctly enough times in a row to be retired from the queue |
 
-Each round's hit/mixed/miss outcome rates the card and pushes it through the phases or knocks it back. This memory drives scheduling and practice: shaky cards come back, stable cards move out, and imported Anki decks land in the same review queue.
+Each round's hit/mixed/miss outcome rates the card and pushes it through the phases or knocks it back. This memory drives scheduling and practice: shaky cards come back, stable cards move out, and connected/generated teacher packs can land in the same review queue.
 
-Daily class grades are tracked separately from card memory: each completed class records a score and letter grade, and those class records gate year advancement (§1.6.6). Card mastery is the layer that makes "answering a question" feel like banking a card, and "coming back tomorrow" feel like clearing a queue. It is also what makes Anki ingest (§1.6.10) a one-pipe import: external SRS decks land natively.
+Daily class grades are tracked separately from card memory: each completed class records a score and letter grade, and those class records gate year advancement (§1.6.6). Card mastery is the layer that makes "answering a question" feel like banking a card, and "coming back tomorrow" feel like clearing a queue.
 
 ### 1.6.6 The year gates
 
@@ -240,9 +240,9 @@ Senior completion also writes a `GraduationReward` — one of stat / advantage /
 | `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks daily-class and practice questions. |
 | `ChatService` | `src/services/chat-service.ts` | OpenRouter SSE per-teacher. Owns chat history, dispatches tools into the game state. |
 | `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions; the API key never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. Maintains a per-user record so a player's character persists across sessions. |
-| Content registry | `src/content/registry.ts` (+ `src/content/anki/`, `src/content/packs/`) | Active content pack resolver, global and per-session. Serves the built-in `ruby-high-original` plus private imported Anki packs; `.apkg` import parses subdecks/tags into classes, generates distractors, and can either generate per-class teachers or reuse a built-in teacher template. |
+| Content registry | `src/content/registry.ts` (+ `src/content/packs/`) | Active content pack resolver, global and per-session. Serves the built-in `ruby-high-original` plus session-scoped runtime packs. |
 | `StateStore` | `src/services/state-store.ts` + `dynamo-state-store.ts` | Two backends: atomic JSON-file for local dev, DynamoDB on-demand for production. Stores both per-session quiz state and per-user identity. |
-| Event log | `src/services/logger.ts` | Structured JSON events emitted to stdout. Today's emissions: `bonus.posed`, `character.created`, `player.grade-advanced`, `player.graduation-ready`, `player.graduated`, `pack.import-anki.*`, `pack.session-switched`, `question.promoted-to-bank`, `chat.bank-exhausted`, `diploma.first-attempt-failed`, `portrait.first-attempt-failed`. |
+| Event log | `src/services/logger.ts` | Structured JSON events emitted to stdout. Today's emissions: `bonus.posed`, `character.created`, `player.grade-advanced`, `player.graduation-ready`, `player.graduated`, `pack.activated`, `pack.session-switched`, `question.promoted-to-bank`, `chat.bank-exhausted`, `diploma.first-attempt-failed`, `portrait.first-attempt-failed`. |
 | Rate limiter | `src/services/rate-limit.ts` | Token-bucket utility. Wired but optional per route — endpoint coverage is in Gaps (3.2). |
 
 ### Key design choices
@@ -300,7 +300,7 @@ Same daily class window, two students, one shared lounge. The cohort already run
 
 ## 2.5 Community-authored faculty packs
 
-The pack registry, per-session pack switching, Anki ingest, and LLM-derived class name + teacher persona are all wired for this. Future state: a teacher pack is a name, a voice prompt, a sticker portrait, a question bank (or an Anki deck the system distractor-fills + persona-fills), and a model preference. Authors publish packs; players load them per-session; the pack switch is a one-click action.
+The pack registry and per-session pack switching are wired for this. Future state: a teacher pack is a name, a voice prompt, a sticker portrait, a question bank or a live connected teacher endpoint, and a model preference. Authors publish packs; players load them per-session; the pack switch is a one-click action.
 
 This depends on §2.2's evaluation harness — voice evaluation is a public-good guard, not a private-product nicety, the moment outside packs are loadable.
 
@@ -340,7 +340,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 | **Yearbook share-card route** | A `GET /yearbook/:characterId/:grade` route that renders a shareable static page with OG tags + a `?format=png` server-rendered image. The yearbook entry exists in state; it is not exposed outside the session. | Small (1–2 days). |
 | **Per-essay grade history (Report Card tab)** | A read-only viewer panel that surfaces per-essay grades by teacher, with averages and a "Lyra has out-essayed you 3 of the last 5 Tuesdays" line. The data is in state; no UI surfaces it. | Small (1–2 days). |
 | **Faculty-voice evaluation harness** | A `npm run eval:voice` that scores generated questions and grades against hand-curated reference Q/A pairs per teacher. Required before §2.2 (faculty expansion) and §2.5 (community packs). | Medium (3–4 days for v0). |
-| **Curated content beyond ruby-high-original** | The built-in pack ships with 15 questions per teacher, and users can privately import Anki decks from the pack store. No curated first-party SAT/MCAT/AP/community packs have been ingested and reviewed yet. | Medium (per pack: 1 day to ingest + curate). |
+| **Curated content beyond ruby-high-original** | The built-in pack ships with 15 questions per teacher. No curated first-party SAT/MCAT/AP/community packs have been ingested and reviewed yet. | Medium (per pack: 1 day to ingest + curate). |
 | **Retention dashboard** | Three numbers: D1 retention, questions per session, grade-completion rate. Logs emit to stdout; the layer above (a sink + queries + a small JSON endpoint) is missing. | Small (1 day on top of P0 in §3.4). |
 | **Legacy rarity/XP compatibility removal** | `Rarity`, `XP_FOR_RARITY`, `xpForRarity`, `rollRarity`, and legacy round fields can be deleted once older persisted states no longer need to hydrate through them. | Trivial once state compatibility is no longer required. |
 
@@ -350,7 +350,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 |---|---|---|
 | **Mentor mode mechanical effect** | `inheritedFrom` field captured on the new character; rendered on card. | No code reads `inheritedFrom` during round resolution. The inherited move is lore, not mechanics. |
 | **Playbook moves** | All six moves named, described, rendered on character card, and passed to teacher context as flavor. | None of the six change round resolution. |
-| **Rate-limiter endpoint coverage** | Four buckets cover the LLM-backed chat surface, portrait/diploma generation, Anki import, and (newly) the `/command` game-state mutation surface. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
+| **Rate-limiter endpoint coverage** | Three buckets cover the LLM-backed chat surface, portrait/diploma generation, and the `/command` game-state mutation surface. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
 
 ## 3.3 Open questions
 
@@ -382,7 +382,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 ### P3 — content & evaluation (the moat)
 
-5. **Ingest one real Anki deck** through the existing pipeline into a teacher pack with the LLM-derived class name + persona. Proves the pipeline works on real data and gives the audit a concrete example.
+5. **Prototype one connected teacher pack** backed by an OpenAI-compatible RATi/aws-swarm agent endpoint. Proves the live-teacher boundary, auth model, and fallback behavior before broadening the UI.
 6. **Faculty-voice eval harness.** Automate the "is this in voice?" check before community faculty become possible. Cheapest version: 20–30 hand-graded reference Q/A pairs per teacher + an LLM-judge prompt, run as `npm run eval:voice`.
 
 ### Defer

@@ -155,7 +155,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>
-    <p class="sub">Ruby High can run offline. OpenRouter enables AI chat, custom portraits, and AI-assisted imports; your inference key never leaves your browser.</p>
+    <p class="sub">Ruby High can run offline. OpenRouter enables AI chat and custom portraits; your inference key never leaves your browser.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <a id="signin-cta" class="primary-link" href="/api/apps/ruby-high/auth/start">Enable AI with OpenRouter</a>
     </div>
@@ -174,33 +174,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay" id="pack-overlay">
   <div class="sheet-card" id="pack-card">
     <h2>Content packs</h2>
-    <p class="sub">Switch which curriculum the school is teaching. Pre-bundled packs are listed below; you can also import your own Anki deck (.apkg). Imports are private — only you see your own decks.</p>
+    <p class="sub">Switch which curriculum the school is teaching. Pre-bundled and connected packs are listed below.</p>
     <div class="pack-list" id="pack-list"></div>
-    <hr style="border: 0; border-top: 1px solid var(--line); margin: 16px 0;" />
-    <h3 style="margin: 0 0 8px; font-size: 14px;">Import an Anki deck</h3>
-    <p class="sub" style="margin: 0 0 10px;">Pick a .apkg file. Cards import as typed-answer study cards; subdecks or strong tags become subjects. Use the MC button on a card only when you want AI distractors generated and cached.</p>
-    <label class="pack-import-field" for="pack-teacher-select">
-      <span>Teacher</span>
-      <select id="pack-teacher-select"></select>
-    </label>
-    <input type="file" id="pack-anki-file" accept=".apkg,application/octet-stream" />
-    <div id="pack-import-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
-    <div class="sheet-actions" style="margin-bottom: 0;">
-      <button type="button" class="secondary" id="pack-close-btn">Close</button>
-      <button type="button" id="pack-import-btn" disabled>Import deck</button>
-    </div>
-    <hr style="border: 0; border-top: 1px solid var(--line); margin: 16px 0;" />
-    <h3 style="margin: 0 0 8px; font-size: 14px;">Import a PDF</h3>
-    <p class="sub" style="margin: 0 0 10px;">Pick a .pdf file. The AI reads it and generates typed-answer study cards. Requires your OpenRouter key.</p>
-    <label class="pack-import-field" for="pack-pdf-teacher-select">
-      <span>Teacher</span>
-      <select id="pack-pdf-teacher-select"></select>
-    </label>
-    <input type="file" id="pack-pdf-file" accept=".pdf,application/pdf" />
-    <div id="pack-pdf-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
+    <div id="pack-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
     <div class="sheet-actions">
-      <span></span>
-      <button type="button" id="pack-pdf-import-btn" disabled>Import PDF</button>
+      <button type="button" class="secondary" id="pack-close-btn">Close</button>
     </div>
   </div>
 </div>

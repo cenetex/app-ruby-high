@@ -6,8 +6,8 @@
  *
  * This is the freemium core experience. Lean in: AI/agent culture (Ruby),
  * STEM (Sally), postwar lit (Edward). Future paid packs (SAT prep, USMLE,
- * AP US History, language-vocab) and free runtime packs (Anki imports)
- * follow the same shape.
+ * AP US History, language-vocab) and connected teacher packs follow the
+ * same shape.
  */
 
 import { readFile } from "node:fs/promises";

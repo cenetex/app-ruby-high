@@ -3,8 +3,8 @@ import {
   generateBankFromCards,
   FatalAuthError,
   type DistractorOpts,
-} from "../content/anki/distractors.js";
-import type { AnkiCard } from "../content/anki/parse.js";
+  type SourceCardInput,
+} from "../content/source-distractors.js";
 
 // Distractor generator tests. OpenRouter is mocked via vi.spyOn(globalThis,
 // "fetch") so we exercise the validation + retry + fail-fast paths
@@ -12,7 +12,7 @@ import type { AnkiCard } from "../content/anki/parse.js";
 
 let calls = 0;
 
-function makeCards(n: number): AnkiCard[] {
+function makeCards(n: number): SourceCardInput[] {
   return Array.from({ length: n }, (_, i) => ({
     front: `Q${i + 1}: front`,
     back: `A${i + 1}`,

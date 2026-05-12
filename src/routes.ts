@@ -135,8 +135,6 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         pathname: ctx.pathname,
         res: ctx.res,
         cookieHeader: ctx.cookieHeader,
-        apiKeyHeader: ctx.apiKeyHeader,
-        clientIp: ctx.clientIp,
         error: ctx.error,
         json: ctx.json,
         readJsonBody: ctx.readJsonBody,

@@ -4,40 +4,24 @@
  *   GET  /packs                — list packs visible to this session.
  *   POST /packs/active         — switch THIS session's active pack
  *                                (auth required).
- *   POST /packs/import-anki    — upload an Anki .apkg (base64 in JSON
- *                                body), server parses + generates
- *                                source cards, registers as the
- *                                IMPORTING SESSION'S pack, activates
- *                                it. Auth required.
  *
  * Auth: every mutation requires a signed-in user. Read (GET /packs) is
  * also auth-required so unauthed callers can't enumerate registered
  * pack ids.
  *
- * Privacy: imported packs are owned by the importing session — only
- * that session sees them in /packs and can activate them. Built-in
+ * Privacy: session-scoped packs are owned by the registering session —
+ * only that session sees them in /packs and can activate them. Built-in
  * packs (the original) are visible to everyone.
- *
- * Rate limit: import is gated by a slow bucket (8 burst, 1 per 30s).
- * Body cap of 16 MB prevents
- * 1 GB JSON DoS attempts.
  */
 
 import { AuthService } from "./services/auth-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
-import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
-import { parseApkg } from "./content/anki/parse.js";
-import { buildAnkiPack } from "./content/anki/pack.js";
-import { extractPdfText } from "./content/pdf/extract.js";
-import { buildPdfPack } from "./content/pdf/pack.js";
-import { TEACHERS } from "./characters/teachers.js";
 import {
   availablePacksForSession,
   coursesForPack,
   getPackByIdForSession,
   packForSession,
-  registerPack,
 } from "./content/registry.js";
 import type { ContentPack } from "./content/types.js";
 
@@ -46,10 +30,6 @@ export interface PackRouteContext {
   pathname: string;
   res: unknown;
   cookieHeader?: string | null;
-  /** Caller-provided OpenRouter key — passed as a header on each
-   *  request, not stored server-side. Same pattern the chat layer uses. */
-  apiKeyHeader?: string | null;
-  clientIp?: string | null;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
@@ -70,26 +50,6 @@ export interface PackRouteDeps {
 }
 
 const PACK_PREFIX = "/api/apps/ruby-high/packs";
-const IMPORT_LIMITER = new TokenBucket(8, 1 / 30); // 8 burst, ~1 every 30s
-
-/** Hard cap on large pack import payloads. Base64 inflates by ~33%, so
- *  this gives headroom for ~12 MB on-disk decks/PDFs. The host server's
- *  pre-route cap is kept in scripts/http-limits.mjs and covered by a
- *  startup guardrail test so new import routes do not drift. */
-const MAX_IMPORT_BODY_BYTES = 16 * 1024 * 1024;
-
-// Drop idle limiter keys hourly so one-off imports from different IPs
-// don't accumulate forever.
-const importLimiterGcTimer = setInterval(() => {
-  IMPORT_LIMITER.gc(Date.now());
-}, 60 * 60 * 1000);
-if (typeof importLimiterGcTimer === "object" && importLimiterGcTimer && "unref" in importLimiterGcTimer) {
-  (importLimiterGcTimer as { unref: () => void }).unref();
-}
-
-function rateLimitKey(ctx: PackRouteContext, token: string | null): string {
-  return `${ctx.clientIp ?? "unknown"}:${token ?? "anon"}`;
-}
 
 function packSummary(pack: ContentPack) {
   const countFacultyCards = (f: ContentPack["faculty"][number]) =>
@@ -134,7 +94,7 @@ export async function handlePackRoutes(
   const state = deps.ruby.getOrCreate(sessionId);
 
   // GET /packs — list packs visible to this session (built-ins + own
-  // imports). Other users' imports are filtered out.
+  // session-scoped packs). Other users' packs are filtered out.
   if (ctx.method === "GET" && sub === "/") {
     ctx.json(ctx.res, {
       active_pack_id: packForSession(state).id,
@@ -170,187 +130,5 @@ export async function handlePackRoutes(
     return true;
   }
 
-  // POST /packs/import-anki — base64 .apkg → source cards → register +
-  // set as THIS session's active pack.
-  if (ctx.method === "POST" && sub === "/import-anki") {
-    const apiKey = (ctx.apiKeyHeader ?? "").trim();
-    const rlKey = rateLimitKey(ctx, token);
-    if (!IMPORT_LIMITER.take(rlKey)) {
-      const retryAfter = IMPORT_LIMITER.retryAfterSeconds(rlKey);
-      ctx.error(ctx.res, `Too many imports — wait ${retryAfter}s and try again.`, 429);
-      return true;
-    }
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as {
-      filename?: unknown;
-      data?: unknown;
-      maxCards?: unknown;
-      packName?: unknown;
-      teacherId?: unknown;
-    } | null;
-    const filename = typeof body?.filename === "string" ? body.filename : "deck.apkg";
-    const dataB64 = typeof body?.data === "string" ? body.data : "";
-    if (!dataB64) {
-      ctx.error(ctx.res, "data (base64-encoded .apkg) required", 400);
-      return true;
-    }
-    // Fast-path body cap: reject before allocating the Buffer if the
-    // base64 string is already over budget.
-    if (dataB64.length > MAX_IMPORT_BODY_BYTES) {
-      ctx.error(ctx.res, `Deck too large — base64 payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
-      return true;
-    }
-    const maxCards = typeof body?.maxCards === "number" ? body.maxCards : 50;
-    const packName = typeof body?.packName === "string" ? body.packName : undefined;
-    const teacherId = typeof body?.teacherId === "string" ? body.teacherId : undefined;
-    if (teacherId && !TEACHERS[teacherId]) {
-      ctx.error(ctx.res, `Unknown teacher id: ${teacherId}`, 400);
-      return true;
-    }
-
-    let bytes: Uint8Array;
-    try {
-      bytes = base64ToBytes(dataB64);
-    } catch {
-      ctx.error(ctx.res, "data must be valid base64", 400);
-      return true;
-    }
-    if (bytes.length > MAX_IMPORT_BODY_BYTES) {
-      ctx.error(ctx.res, `Deck too large — decoded payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
-      return true;
-    }
-
-    try {
-      log.event("pack.import-anki.start", { sessionId, filename, sizeKb: Math.round(bytes.length / 1024) });
-      const deck = await parseApkg(bytes);
-      if (deck.cards.length === 0) {
-        ctx.error(ctx.res, "Deck has no cards — nothing to import.", 400);
-        return true;
-      }
-      const { pack, skipped } = await buildAnkiPack(deck, {
-        ...(apiKey ? { apiKey } : {}),
-        packName,
-        maxCards,
-        teacherId,
-      });
-      const importedQuestionCount = pack.faculty.reduce((sum, f) => sum + f.questions.length + (f.sourceCards?.length ?? 0), 0);
-      if (importedQuestionCount === 0) {
-        ctx.error(ctx.res, "Deck produced no usable study cards.", 502);
-        return true;
-      }
-      registerPack(pack, sessionId);
-      await deps.ruby.persistImportedPack(sessionId, pack);
-      deps.ruby.setActivePackForSession(sessionId, pack.id);
-      await deps.ruby.flushSession(sessionId);
-      log.event("pack.import-anki.done", {
-        sessionId, packId: pack.id, deckName: deck.name,
-        cardsImported: importedQuestionCount, classCount: pack.faculty.length, skipped, teacherId,
-      });
-      ctx.json(ctx.res, {
-        ok: true,
-        pack: packSummary(pack),
-        skipped,
-        deck_name: deck.name,
-      });
-    } catch (err) {
-      log.error("pack.import-anki.failed", err, { sessionId, filename });
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
-    }
-    return true;
-  }
-
-  // POST /packs/import-pdf — base64 PDF bytes → AI-generated study cards → private pack.
-  if (ctx.method === "POST" && sub === "/import-pdf") {
-    const apiKey = (ctx.apiKeyHeader ?? "").trim();
-    if (!apiKey) {
-      ctx.error(ctx.res, "OpenRouter API key required for PDF import (AI generates the study cards).", 401);
-      return true;
-    }
-    const rlKey = rateLimitKey(ctx, token);
-    if (!IMPORT_LIMITER.take(rlKey)) {
-      ctx.error(ctx.res, `Too many imports — wait ${IMPORT_LIMITER.retryAfterSeconds(rlKey)}s and try again.`, 429);
-      return true;
-    }
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as {
-      filename?: unknown;
-      data?: unknown;
-      maxCards?: unknown;
-      packName?: unknown;
-      teacherId?: unknown;
-    } | null;
-    const filename = typeof body?.filename === "string" ? body.filename : "document.pdf";
-    const dataB64 = typeof body?.data === "string" ? body.data : "";
-    if (!dataB64) {
-      ctx.error(ctx.res, "data (base64-encoded PDF) required", 400);
-      return true;
-    }
-    if (dataB64.length > MAX_IMPORT_BODY_BYTES) {
-      ctx.error(ctx.res, `PDF too large — base64 payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
-      return true;
-    }
-    const maxCards = typeof body?.maxCards === "number" ? body.maxCards : 50;
-    const packName = typeof body?.packName === "string" ? body.packName : undefined;
-    const teacherId = typeof body?.teacherId === "string" ? body.teacherId : undefined;
-    if (teacherId && !TEACHERS[teacherId]) {
-      ctx.error(ctx.res, `Unknown teacher id: ${teacherId}`, 400);
-      return true;
-    }
-    let bytes: Uint8Array;
-    try {
-      bytes = base64ToBytes(dataB64);
-    } catch {
-      ctx.error(ctx.res, "data must be valid base64", 400);
-      return true;
-    }
-    if (bytes.length > MAX_IMPORT_BODY_BYTES) {
-      ctx.error(ctx.res, `PDF too large — decoded payload exceeds ${Math.round(MAX_IMPORT_BODY_BYTES / 1024 / 1024)} MB.`, 413);
-      return true;
-    }
-    try {
-      log.event("pack.import-pdf.start", { sessionId, filename, sizeKb: Math.round(bytes.length / 1024) });
-      const extract = await extractPdfText(bytes);
-      if (extract.pages.length === 0 || extract.pages.every((p) => p.trim().length < 20)) {
-        ctx.error(ctx.res, "Could not extract readable text from this PDF.", 400);
-        return true;
-      }
-      const { pack, generated } = await buildPdfPack(extract, {
-        apiKey,
-        packName,
-        maxCards,
-        teacherId,
-        filename,
-      });
-      if (generated === 0) {
-        ctx.error(ctx.res, "AI could not generate study cards from this PDF. Try a different document.", 502);
-        return true;
-      }
-      registerPack(pack, sessionId);
-      await deps.ruby.persistImportedPack(sessionId, pack);
-      deps.ruby.setActivePackForSession(sessionId, pack.id);
-      await deps.ruby.flushSession(sessionId);
-      log.event("pack.import-pdf.done", { sessionId, packId: pack.id, filename, generated, teacherId });
-      ctx.json(ctx.res, { ok: true, pack: packSummary(pack), generated });
-    } catch (err) {
-      log.error("pack.import-pdf.failed", err, { sessionId, filename });
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
-    }
-    return true;
-  }
-
   return false;
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  // Strip data: prefix if present (data:application/octet-stream;base64,...).
-  const cleaned = (b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64).replace(/\s+/g, "");
-  if (!cleaned) throw new Error("empty base64 payload");
-  if (/[^A-Za-z0-9+/=]/.test(cleaned)) throw new Error("invalid base64 characters");
-  const unpadded = cleaned.replace(/=+$/, "");
-  if (cleaned.length - unpadded.length > 2 || cleaned.slice(0, unpadded.length).includes("=")) {
-    throw new Error("invalid base64 padding");
-  }
-  const remainder = unpadded.length % 4;
-  if (remainder === 1) throw new Error("invalid base64 length");
-  const normalized = unpadded + (remainder === 0 ? "" : "=".repeat(4 - remainder));
-  const buf = Buffer.from(normalized, "base64");
-  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }

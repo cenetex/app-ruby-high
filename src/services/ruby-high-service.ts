@@ -110,8 +110,7 @@ import {
   setActivePack,
 } from "../content/registry.js";
 import type { ContentPack, PackSourceCard } from "../content/types.js";
-import { cardToMcQuestion, type DistractorOpts } from "../content/anki/distractors.js";
-import type { AnkiCard } from "../content/anki/parse.js";
+import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
 
 export interface PoseInput {
   prompt: string;
@@ -1110,7 +1109,7 @@ export class RubyHighService extends Service {
     ) ?? null;
   }
 
-  private sourceCardToAnkiCard(card: PackSourceCard): AnkiCard {
+  private sourceCardToInput(card: PackSourceCard): SourceCardInput {
     return {
       noteId: card.id.startsWith("anki-") ? card.id.slice("anki-".length) : card.id,
       front: card.front,
@@ -1207,7 +1206,8 @@ export class RubyHighService extends Service {
           m.phase = "learning";
         }
         // Legacy one-use-bank state has already shown the card. Mark it due
-        // now so imports recover into the review queue instead of staying dry.
+        // now so source-card packs recover into the review queue instead
+        // of staying dry.
         m.dueAt = Date.now();
         memory[key] = m;
         mutated = true;
@@ -2666,7 +2666,7 @@ export class RubyHighService extends Service {
       throw new Error("You already submitted an answer for this card.");
     }
     const source = this.sourceCardForQuestion(state, current);
-    if (!source) throw new Error("Could not find the imported source card for this question.");
+    if (!source) throw new Error("Could not find the source card for this question.");
     const expected = {
       questionId: current.id,
       questionType: current.type,
@@ -2691,7 +2691,7 @@ export class RubyHighService extends Service {
         difficulty: source.difficulty,
         maxRetriesPerCard: 1,
       };
-      const generated = await cardToMcQuestion(this.sourceCardToAnkiCard(source), opts);
+      const generated = await cardToMcQuestion(this.sourceCardToInput(source), opts);
       if (!generated) throw new Error("Could not generate multiple-choice distractors for this card.");
       mc = this.normalizeGeneratedMcQuestion(source, generated);
       const updated = appendQuestionToPackBank(sourcePackId, source.faculty, mc);
@@ -2897,7 +2897,7 @@ export class RubyHighService extends Service {
   }
 
   /** Switch the active content pack for THIS session. Per-session so a
-   *  future runtime pack switch (Anki / paid packs) flips only the
+   *  future runtime pack switch (connected teachers / paid packs) flips only the
    *  relevant session's view; other sessions on the same server stay on
    *  whatever they were on. Caller is expected to have already
    *  registered the pack in the global registry; this method just

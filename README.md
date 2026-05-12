@@ -17,9 +17,9 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (PKCE, your own key, no card). The API key lives in your browser's localStorage; the server never holds it. Game state, auth sessions, and imported packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (PKCE, your own key, no card). The API key lives in your browser's localStorage; the server never holds it. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
 
-The standalone viewer is installable as a PWA from `/api/apps/ruby-high/viewer`. The service worker is scoped to `/api/apps/ruby-high/`, caches the shell and core assets, and keeps auth, chat, pack import, and session state requests network-only. Full offline gameplay still requires the Ruby High server because the authoritative school state lives there.
+The standalone viewer is installable as a PWA from `/api/apps/ruby-high/viewer`. The service worker is scoped to `/api/apps/ruby-high/`, caches the shell and core assets, and keeps auth, chat, pack management, and session state requests network-only. Full offline gameplay still requires the Ruby High server because the authoritative school state lives there.
 
 ### Dev endpoints
 
@@ -70,7 +70,7 @@ No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with
 npm test
 ```
 
-The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, the Anki parser + distractor generator, pack routes, and the content-pack registry.
+The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, and the content-pack registry.
 
 ## Deploy
 

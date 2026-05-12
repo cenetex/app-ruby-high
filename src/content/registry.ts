@@ -9,11 +9,9 @@
  *     diagnostics, telemetry default).
  *
  *  2. The MULTI-PACK REGISTRY — a Map<packId, RegisteredPack>. Holds
- *     the built-in pack PLUS any runtime-registered packs (Anki imports,
- *     LLM-generated, paid). Each entry is tagged with an owner so user-
- *     imported packs only show up for the importer (privacy: Anki decks
- *     are often private study material; one user's import shouldn't
- *     leak to another).
+ *     the built-in pack PLUS any runtime-registered packs (connected
+ *     teachers, generated, paid). Each entry is tagged with an owner so
+ *     session-scoped packs only show up for the owner.
  *
  * Per-session resolution: each QuizState carries activePackId. The
  * packForSession(session) helper looks the id up in the registry,
@@ -21,7 +19,7 @@
  * id never breaks reads.
  *
  * Built-in packs are pinned (never evicted; can't be overwritten by a
- * runtime registerPack call). User-imported packs evict LRU per-owner
+ * runtime registerPack call). Session-scoped packs evict LRU per-owner
  * past MAX_PACKS_PER_OWNER.
  */
 
@@ -32,11 +30,9 @@ import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
 /** Stable id of the built-in pack. */
 export const ORIGINAL_PACK_ID = "ruby-high-original";
 
-/** Pack-id builder for Anki imports — keeps the `anki:` prefix in one
- *  place so any future "is this a runtime-imported pack?" check is
- *  one helper away. */
-export function ankiPackId(slug: string): string {
-  return `anki:${slug}`;
+/** Pack-id builder for connected teacher packs. */
+export function connectedPackId(slug: string): string {
+  return `agent:${slug}`;
 }
 
 /** Per-owner soft cap on registered packs. When an owner exceeds this,
@@ -117,8 +113,8 @@ export function setActivePack(pack: ContentPack): void {
   active = Promise.resolve(pack);
 }
 
-/** Trusted server-side mutation for extending a pack's inline bank. User
- *  imports still go through registerPack(); this path is for the app itself
+/** Trusted server-side mutation for extending a pack's inline bank. Runtime
+ *  pack creation still goes through registerPack(); this path is for the app itself
  *  promoting teacher-authored Ruby High questions into the reusable bank. */
 export function appendQuestionToPackBank(
   packId: string,
@@ -151,9 +147,9 @@ export function resetActivePack(): void {
 // ── multi-pack registry ─────────────────────────────────────────────────
 
 /** Register a pack so it shows up in availablePacksForSession + can be
- *  activated. Refuses to overwrite a built-in (pinned) pack id — user
- *  imports can't replace the original. Re-registering a previously
- *  imported pack re-touches it (moves to end of LRU). */
+ *  activated. Refuses to overwrite a built-in (pinned) pack id —
+ *  session-scoped packs can't replace the original. Re-registering a
+ *  previously registered pack re-touches it (moves to end of LRU). */
 export function registerPack(pack: ContentPack, ownerSessionId: string, touchedAt = Date.now()): void {
   const existing = packs.get(pack.id);
   if (existing && existing.ownerSessionId === null) {
@@ -166,7 +162,7 @@ export function registerPack(pack: ContentPack, ownerSessionId: string, touchedA
 }
 
 /** All packs the given session can see: built-ins + this session's own
- *  imports. Other users' imports are filtered out (privacy). */
+ *  session-scoped packs. Other users' packs are filtered out. */
 export function availablePacksForSession(sessionId: string | null): ContentPack[] {
   return Array.from(packs.values())
     .filter((r) => r.ownerSessionId === null || r.ownerSessionId === sessionId)

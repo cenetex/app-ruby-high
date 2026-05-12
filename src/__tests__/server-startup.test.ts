@@ -40,14 +40,11 @@ describe("production startup guardrails", () => {
     }
   });
 
-  it("keeps host JSON body caps aligned for all large import routes", () => {
-    expect(httpLimits).toContain('"/api/apps/ruby-high/packs/import-anki"');
-    expect(httpLimits).toContain('"/api/apps/ruby-high/packs/import-pdf"');
-
+  it("uses the shared host JSON body cap helper", () => {
     for (const entry of [serverEntry, devServerEntry]) {
       expect(entry).toContain('import { bodyLimitForPath } from "./http-limits.mjs";');
       expect(entry).toContain("readJsonBody(req, bodyLimitForPath(url.pathname))");
-      expect(entry).not.toContain('url.pathname === "/api/apps/ruby-high/packs/import-anki"');
     }
+    expect(httpLimits).not.toContain("/packs/import-");
   });
 });

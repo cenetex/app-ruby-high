@@ -21,7 +21,6 @@
  * |--------------------|----------------|---------:|-------:|-----------|
  * | CHAT_LIMITER       | chat-routes.ts |       60 |  1/sec | POST /chat, /chat/event, /chat/student-chime, /chat/opinion-submit, /chat/character/generate, /chat/reset |
  * | PORTRAIT_LIMITER   | chat-routes.ts |        8 | 1/30s  | POST /chat/character/portrait, /chat/character/diploma |
- * | IMPORT_LIMITER     | pack-routes.ts |        8 | 1/30s  | POST /packs/import-anki |
  * | COMMAND_LIMITER    | routes.ts      |      120 |  2/sec | POST /command (game-state mutation surface) |
  *
  * Endpoints intentionally NOT gated:

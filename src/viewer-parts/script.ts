@@ -1582,10 +1582,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (on) renderLoungeFigures();
   }
   // Lounge figures come from the ACTIVE PACK's faculty roster — for the
-  // original pack that's Ruby/Sally/Edward; for an Anki-imported pack
-  // it's the deck-derived teacher (one figure). Without this the lounge
+  // original pack that's Ruby/Sally/Edward; for a connected/generated pack
+  // it's that pack's teacher roster. Without this the lounge
   // would always show the original-pack portraits regardless of which
-  // pack the player is on. Anki teachers (no portrait asset) fall back
+  // pack the player is on. Teachers without portrait assets fall back
   // to a deterministic accent-tinted initial placeholder on the 404.
   let lastLoungeSig = "";
   function renderLoungeFigures() {
@@ -1628,7 +1628,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       images.slice(0, 3).forEach((asset) => {
         const img = document.createElement("img");
         img.src = asset.dataUrl;
-        img.alt = asset.name || "Anki card image";
+        img.alt = asset.name || "Source card image";
         wrap.appendChild(img);
       });
       els.boardPrompt.appendChild(wrap);
@@ -5077,29 +5077,15 @@ const VIEWER_SCRIPT_SUFFIX = `
   const sheetCloseBtn = $("sheet-close");
   if (sheetCloseBtn) sheetCloseBtn.addEventListener("click", closeSheet);
 
-  // ── pack store overlay (Anki import + pack switcher) ────────────────────
+  // ── pack store overlay (pack switcher) ───────────────────────────────────
   const packEl = $("pack-overlay");
   const packListEl = $("pack-list");
-  const packFileInput = $("pack-anki-file");
-  const packTeacherSelect = $("pack-teacher-select");
-  const packImportBtn = $("pack-import-btn");
   const packCloseBtn = $("pack-close-btn");
-  const packStatusEl = $("pack-import-status");
-  const packPdfFile = $("pack-pdf-file");
-  const packPdfTeacherSelect = $("pack-pdf-teacher-select");
-  const packPdfImportBtn = $("pack-pdf-import-btn");
-  const packPdfStatusEl = $("pack-pdf-status");
+  const packStatusEl = $("pack-status");
   const packBtn = els.packBtn;
-  const BUILTIN_IMPORT_TEACHERS = [
-    { id: "", name: "Auto: subjects + teachers" },
-    { id: "ruby", name: "Ruby" },
-    { id: "sally-science", name: "Sally Science" },
-    { id: "professor-edward", name: "Professor Edward" },
-  ];
 
   function openPackStore() {
     packEl.classList.add("is-open");
-    renderPackTeacherOptions();
     renderPackList();
   }
   function closePackStore() {
@@ -5144,20 +5130,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       packListEl.appendChild(row);
     }
   }
-  function renderPackTeacherOptions() {
-    for (const sel of [packTeacherSelect, packPdfTeacherSelect]) {
-      if (!sel) continue;
-      const previous = sel.value || "";
-      sel.innerHTML = "";
-      for (const teacher of BUILTIN_IMPORT_TEACHERS) {
-        const opt = document.createElement("option");
-        opt.value = teacher.id;
-        opt.textContent = teacher.name;
-        sel.appendChild(opt);
-      }
-      sel.value = BUILTIN_IMPORT_TEACHERS.some((t) => t.id === previous) ? previous : "";
-    }
-  }
   async function switchPack(packId) {
     packStatusEl.textContent = "Switching…";
     packStatusEl.classList.remove("is-invalid");
@@ -5181,101 +5153,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       packStatusEl.classList.add("is-invalid");
     }
   }
-  packFileInput.addEventListener("change", () => {
-    const file = packFileInput.files && packFileInput.files[0];
-    packImportBtn.disabled = !file;
-    if (file) packStatusEl.textContent = file.name + " — " + Math.round(file.size / 1024) + " KB";
-  });
-  packImportBtn.addEventListener("click", async () => {
-    const file = packFileInput.files && packFileInput.files[0];
-    if (!file) return;
-    packImportBtn.disabled = true;
-    packFileInput.disabled = true;
-    packStatusEl.textContent = "Reading file…";
-    packStatusEl.classList.remove("is-invalid");
-    try {
-      const buf = await file.arrayBuffer();
-      const b64 = bytesToBase64(new Uint8Array(buf));
-      packStatusEl.textContent = "Parsing + generating distractors (~$0.05, ~30s)…";
-      // Use apiFetch — the server-side import handler reads the OpenRouter
-      // key from X-Openrouter-Key (it pays for the distractor LLM calls).
-      // Plain fetch() would skip the header and the import would 400 with
-      // "OpenRouter API key required."
-      const teacherId = packTeacherSelect && packTeacherSelect.value ? packTeacherSelect.value : "";
-      const body = { filename: file.name, data: b64, maxCards: 50 };
-      if (teacherId) body.teacherId = teacherId;
-      const r = await apiFetch("/api/apps/ruby-high/packs/import-anki", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: r.status }));
-        throw new Error(err.error || "import " + r.status);
-      }
-      const data = await r.json();
-      const skipped = data.skipped || 0;
-      const imported = data.pack && data.pack.question_count;
-      packStatusEl.textContent = "Imported " + imported + " questions" + (skipped > 0 ? " (" + skipped + " skipped)" : "") + ". Reloading…";
-      setTimeout(() => window.location.reload(), 600);
-    } catch (err) {
-      packStatusEl.textContent = "Import failed · " + (err && err.message ? err.message : "error");
-      packStatusEl.classList.add("is-invalid");
-      packImportBtn.disabled = false;
-      packFileInput.disabled = false;
-    }
-  });
-  packPdfFile.addEventListener("change", () => {
-    const file = packPdfFile.files && packPdfFile.files[0];
-    packPdfImportBtn.disabled = !file;
-    if (file) packPdfStatusEl.textContent = file.name + " — " + Math.round(file.size / 1024) + " KB";
-  });
-  packPdfImportBtn.addEventListener("click", async () => {
-    const file = packPdfFile.files && packPdfFile.files[0];
-    if (!file) return;
-    packPdfImportBtn.disabled = true;
-    packPdfFile.disabled = true;
-    packPdfStatusEl.textContent = "Reading file…";
-    packPdfStatusEl.classList.remove("is-invalid");
-    try {
-      const buf = await file.arrayBuffer();
-      const b64 = bytesToBase64(new Uint8Array(buf));
-      packPdfStatusEl.textContent = "AI reading PDF and generating cards (~$0.05, ~30s)…";
-      const teacherId = packPdfTeacherSelect && packPdfTeacherSelect.value ? packPdfTeacherSelect.value : "";
-      const body = { filename: file.name, data: b64, maxCards: 50 };
-      if (teacherId) body.teacherId = teacherId;
-      const r = await apiFetch("/api/apps/ruby-high/packs/import-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: r.status }));
-        throw new Error(err.error || "import " + r.status);
-      }
-      const data = await r.json();
-      const generated = data.generated || 0;
-      packPdfStatusEl.textContent = "Generated " + generated + " study cards. Reloading…";
-      setTimeout(() => window.location.reload(), 600);
-    } catch (err) {
-      packPdfStatusEl.textContent = "Import failed · " + (err && err.message ? err.message : "error");
-      packPdfStatusEl.classList.add("is-invalid");
-      packPdfImportBtn.disabled = false;
-      packPdfFile.disabled = false;
-    }
-  });
   packCloseBtn.addEventListener("click", closePackStore);
   packEl.addEventListener("click", (e) => { if (e.target === packEl) closePackStore(); });
   packBtn.addEventListener("click", openPackStore);
-  function bytesToBase64(bytes) {
-    // Avoid String.fromCharCode(...bytes) overflow on big files by chunking.
-    let s = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-    }
-    return btoa(s);
-  }
 
   // ── student chime ─────────────────────────────────────────────────────────
   // When AI is enabled, fire the LLM-backed /chat/student-chime endpoint so

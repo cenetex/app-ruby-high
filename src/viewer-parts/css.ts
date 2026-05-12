@@ -678,9 +678,8 @@ export const VIEWER_CSS = `
     .arc-indicator .arc-xp { display: none; }
   }
   /* Pack-store button — sits next to the arc chip in the top bar. Opens
-   * the pack-overlay where the user can switch curricula or import an
-   * Anki deck. It stays hidden during first-run setup so today's class
-   * remains the only obvious path. */
+   * the pack-overlay where the user can switch curricula. It stays hidden
+   * during first-run setup so today's class remains the only obvious path. */
   .pack-btn {
     appearance: none;
     background: var(--bg-elev);
@@ -738,33 +737,7 @@ export const VIEWER_CSS = `
     letter-spacing: 0.06em;
     flex: 0 0 auto;
   }
-  .pack-import-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin: 0 0 10px;
-  }
-  .pack-import-field span {
-    color: var(--text-mute);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-  }
-  .pack-import-field select {
-    width: 100%;
-    background: var(--bg-elev);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    color: var(--text);
-    padding: 8px 10px;
-    outline: none;
-  }
-  .pack-import-field select:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
-  }
-  /* Lounge placeholder — shown when an Anki-imported faculty has no
+  /* Lounge placeholder — shown when a connected/generated faculty has no
    * portrait asset on disk. Single colored circle with the teacher's
    * initial; matches the size of the real portrait images. */
   .lounge-placeholder {
