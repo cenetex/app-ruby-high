@@ -697,8 +697,16 @@ export const VIEWER_CSS = `
   .pack-btn:hover { color: var(--text); background: var(--bg-elev-2); }
   .pack-btn[hidden] { display: none; }
   .pack-btn svg { width: 18px; height: 18px; }
-  /* Pack list inside the pack-store overlay. Each row is a pack the
-   * user can switch to; the active one is highlighted. */
+  /* Connected teacher list inside the overlay. Each row is a teacher
+   * roster entry; the active one is highlighted. */
+  .pack-section-title {
+    margin-top: 14px;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
   .pack-list {
     display: flex;
     flex-direction: column;
@@ -737,6 +745,19 @@ export const VIEWER_CSS = `
     letter-spacing: 0.06em;
     flex: 0 0 auto;
   }
+  .pack-row .pack-action {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-elev-2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .pack-row .pack-action:hover { border-color: var(--accent); }
   /* Lounge placeholder — shown when a connected/generated faculty has no
    * portrait asset on disk. Single colored circle with the teacher's
    * initial; matches the size of the real portrait images. */

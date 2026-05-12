@@ -59,10 +59,13 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_STUDENT_MODEL` | `anthropic/claude-haiku-4.5` | Model used for NPC opinion responses. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
+| `RUBY_HIGH_RATI_BASE_URL` | `https://swarm.rati.chat/api/v1` | OpenAI-compatible RATi/aws-swarm base URL for connected teachers. |
+| `RUBY_HIGH_RATI_API_KEY` | — | Server-side RATi key used to list/connect live teachers. Never sent to the browser or stored in packs. |
+| `RUBY_HIGH_RATI_TIMEOUT_MS` | `60000` | Timeout for RATi model listing and chat calls. |
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
-No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key via PKCE.
+No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key via PKCE. RATi connected teachers are the exception: they use the server-side `RUBY_HIGH_RATI_API_KEY` and run as chat-only teachers until aws-swarm exposes caller-supplied tool calls on its OpenAI-compatible route.
 
 ## Tests
 

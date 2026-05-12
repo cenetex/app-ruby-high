@@ -5,7 +5,13 @@ import type { CharacterStats, Choice, Difficulty, NpcStudentState, QuizState } f
 import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
 import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "../content/registry.js";
 import { RubyHighService, type QuestionBankStatus } from "./ruby-high-service.js";
-import { openRouterJson, openRouterStream, STUDENT_MODEL, type OpenRouterChatCompletion } from "./openrouter-client.js";
+import { openRouterJson, STUDENT_MODEL, type OpenRouterChatCompletion, type OpenRouterRequest } from "./openrouter-client.js";
+import {
+  providerForFaculty,
+  providerRequiresBrowserKey,
+  providerSupportsTools,
+  streamTeacherCompletion,
+} from "./teacher-providers.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -89,7 +95,7 @@ export type ChatStreamEvent =
   | { type: "error"; message: string };
 
 export interface SendOpts {
-  apiKey: string;
+  apiKey?: string | null;
   sessionToken: string;
   agentSessionId: string;
   faculty: string;
@@ -154,6 +160,13 @@ export class ChatService extends Service {
     this.ruby = ruby;
   }
 
+  requiresBrowserApiKey(agentSessionId: string, faculty: string): boolean {
+    if (!this.ruby) return true;
+    const state = this.ruby.getOrCreate(agentSessionId);
+    const resolved = resolveFacultyIdForSession(state, faculty) ?? faculty;
+    return providerRequiresBrowserKey(providerForFaculty(facultyByIdForSession(state, resolved)));
+  }
+
   history(key: ChatHistoryKey): ChatMessage[] {
     return this.histories.get(this.keyOf(key)) ?? [];
   }
@@ -214,6 +227,12 @@ export class ChatService extends Service {
       : (resolveFacultyIdForSession(state, rawBucketFaculty) ?? rawBucketFaculty);
     const activeFaculty = resolveFacultyIdForSession(state, opts.faculty) ?? opts.faculty;
     const teacher = teacherForSession(state, speakerId);
+    const teacherProvider = providerForFaculty(facultyByIdForSession(state, speakerId));
+    const teacherSupportsTools = providerSupportsTools(teacherProvider);
+    if (providerRequiresBrowserKey(teacherProvider) && !opts.apiKey) {
+      yield { type: "error", message: "OpenRouter key required for this teacher." };
+      return;
+    }
     const key: ChatHistoryKey = { sessionToken: opts.sessionToken, faculty: bucketFaculty };
     const history = this.ensure(key);
     this.trim(key);
@@ -250,7 +269,7 @@ export class ChatService extends Service {
     // a filter is dry, then the teacher writes a custom question. Once a tool
     // successfully puts a board state in place, the next round is narration-only
     // to preserve the old anti-repeat-pick guard.
-    let safety = opts.disableTools ? 1 : Math.max(2, MAX_AGENT_ROUNDS);
+    let safety = opts.disableTools || !teacherSupportsTools ? 1 : Math.max(2, MAX_AGENT_ROUNDS);
     let narrationOnlyNext = false;
 
     while (safety-- > 0) {
@@ -266,20 +285,25 @@ export class ChatService extends Service {
       });
       const liveStateBeforeCall = this.ruby.getOrCreate(opts.agentSessionId);
       const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
-      const toolDefs = opts.disableTools || boardIsWaitingForStudent(liveStateBeforeCall)
+      const toolDefs = opts.disableTools || !teacherSupportsTools || boardIsWaitingForStudent(liveStateBeforeCall)
         ? []
         : buildToolDefs({ includePickFromBank: scheduledPickAvailable(bankStatus) });
 
-      const stream = openRouterStream({
-        apiKey: opts.apiKey,
+      const body: OpenRouterRequest = {
+        model: opts.model ?? teacher.defaultModel,
+        messages,
+        max_tokens: opts.maxTokens ?? 600,
+      };
+      const activeToolDefs = narrationOnlyNext ? [] : toolDefs;
+      body.tools = activeToolDefs;
+      if (activeToolDefs.length > 0) {
+        body.tool_choice = "auto";
+      }
+      const stream = streamTeacherCompletion({
+        provider: teacherProvider,
+        browserApiKey: opts.apiKey,
         label: "chat-stream",
-        body: {
-          model: opts.model ?? teacher.defaultModel,
-          messages,
-          tools: narrationOnlyNext ? [] : toolDefs,
-          tool_choice: "auto",
-          max_tokens: opts.maxTokens ?? 600,
-        },
+        body,
       });
 
       let assistantText = "";
@@ -377,7 +401,7 @@ export class ChatService extends Service {
           result: { ok: result.payload.ok, message: result.payload.message, error: result.payload.error },
           state: result.state ?? undefined,
         });
-        if (call.function.name === "pose_opinion" && result.payload.ok && result.state) {
+        if (call.function.name === "pose_opinion" && result.payload.ok && result.state && opts.apiKey) {
           void this.kickoffNpcOpinions(opts.apiKey, opts.agentSessionId);
         }
         if (call.function.name === "handoff_faculty" && result.payload.ok) {

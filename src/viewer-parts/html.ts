@@ -71,7 +71,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-score" id="arc-score" title="Total score">0 score</span>
       </div>
-      <button class="pack-btn" id="pack-btn" type="button" title="Content packs" aria-label="Content packs" hidden>
+      <button class="pack-btn" id="pack-btn" type="button" title="Connected teachers" aria-label="Connected teachers" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>
         </svg>
@@ -170,11 +170,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <div class="sheet-card" id="sheet-card"></div>
 </div>
 
-<!-- Content-pack store overlay -->
+<!-- Connected-teacher overlay -->
 <div class="sheet-overlay" id="pack-overlay">
   <div class="sheet-card" id="pack-card">
-    <h2>Content packs</h2>
-    <p class="sub">Switch which curriculum the school is teaching. Pre-bundled and connected packs are listed below.</p>
+    <h2>Connected teachers</h2>
+    <p class="sub">Switch the active teacher or connect a live RATi/aws-swarm avatar as a guest instructor.</p>
+    <div class="pack-section-title">RATi teachers</div>
+    <div class="pack-list" id="connected-teacher-list"></div>
+    <div class="pack-section-title">Active roster</div>
     <div class="pack-list" id="pack-list"></div>
     <div id="pack-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
     <div class="sheet-actions">

@@ -121,8 +121,11 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     });
   }
 
-  // Pack-store endpoints: per-session ownership, auth required.
-  if (ctx.pathname.startsWith("/api/apps/ruby-high/packs")) {
+  // Connected-teacher endpoints: per-session ownership, auth required.
+  if (
+    ctx.pathname.startsWith("/api/apps/ruby-high/packs") ||
+    ctx.pathname === "/api/apps/ruby-high/connected-teachers"
+  ) {
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {

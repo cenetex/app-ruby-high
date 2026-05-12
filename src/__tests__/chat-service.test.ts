@@ -33,6 +33,8 @@ let tmpDir: string;
 let storePath: string;
 let captured: { url: string; body: any } | null = null;
 let activeRuby: RubyHighService | null = null;
+const originalRatiBaseUrl = process.env.RUBY_HIGH_RATI_BASE_URL;
+const originalRatiApiKey = process.env.RUBY_HIGH_RATI_API_KEY;
 
 function buildSseChunk(events: Array<{ content?: string; toolCalls?: any[]; finish?: string }>): Uint8Array {
   const lines: string[] = [];
@@ -140,6 +142,11 @@ function fakeImportedPack(): ContentPack {
   };
 }
 
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+
 class FailingSaveSessionStore implements StateStoreLike {
   async load(): Promise<Map<string, QuizState>> {
     return new Map();
@@ -175,6 +182,8 @@ class FailingSaveSessionStore implements StateStoreLike {
 }
 
 beforeEach(async () => {
+  delete process.env.RUBY_HIGH_RATI_BASE_URL;
+  delete process.env.RUBY_HIGH_RATI_API_KEY;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-"));
   storePath = join(tmpDir, "state.json");
   captured = null;
@@ -182,6 +191,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  restoreEnv("RUBY_HIGH_RATI_BASE_URL", originalRatiBaseUrl);
+  restoreEnv("RUBY_HIGH_RATI_API_KEY", originalRatiApiKey);
   vi.restoreAllMocks();
   // Drain any in-flight persistSession writes before nuking the dir,
   // otherwise a fire-and-forget write can race the rm and trip ENOTEMPTY.
@@ -232,6 +243,49 @@ describe("ChatService.send — message composition", () => {
     const messages: any[] = captured!.body.messages;
     expect(messages[0].content).toContain("IMPORTED ANKI CELLS PROMPT");
     expect(messages[0].content).not.toContain("You are Ruby");
+  });
+
+  it("uses a server-backed RATi provider without a browser OpenRouter key", async () => {
+    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
+    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    mockOpenRouter(buildSseChunk([{ content: "RATi here.", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    const sid = "session:rati-chat";
+    const pack = fakeImportedPack();
+    pack.id = "agent:rati-rati";
+    pack.faculty[0] = {
+      ...pack.faculty[0]!,
+      id: "rati-rati",
+      displayName: "RATi",
+      defaultModel: "avatar:rati",
+      provider: {
+        kind: "rati-openai-compatible",
+        model: "avatar:rati",
+        externalId: "rati",
+        supportsTools: false,
+      },
+      questions: [],
+    };
+    pack.courses![0] = { ...pack.courses![0]!, facultyId: "rati-rati", id: "rati-rati" };
+    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "rati-rati" };
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      sessionToken: "t-rati",
+      agentSessionId: sid,
+      faculty: "rati-rati",
+      userMessage: "Can you teach here?",
+    })) {
+      events.push(ev);
+    }
+
+    expect(events.some((ev) => ev.type === "delta" && ev.text === "RATi here.")).toBe(true);
+    expect(captured?.url).toBe("https://swarm.test/api/v1/chat/completions");
+    expect(captured?.body.model).toBe("avatar:rati");
+    expect(captured?.body.tools).toBeUndefined();
+    expect(captured?.body.tool_choice).toBeUndefined();
   });
 
   it("describes imported decks as no due cards, not exhausted", async () => {

@@ -24,6 +24,8 @@ let storePath: string;
 let auth: AuthService;
 let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
+const originalRatiBaseUrl = process.env.RUBY_HIGH_RATI_BASE_URL;
+const originalRatiApiKey = process.env.RUBY_HIGH_RATI_API_KEY;
 
 function makeCtx(opts: { method: string; path: string; cookie?: string | null; body?: any }): PackRouteContext {
   lastResponse = null;
@@ -62,6 +64,8 @@ function signInUser(token: string): string {
 }
 
 beforeEach(async () => {
+  delete process.env.RUBY_HIGH_RATI_BASE_URL;
+  delete process.env.RUBY_HIGH_RATI_API_KEY;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-pack-routes-"));
   storePath = join(tmpDir, "state.json");
   resetActivePack();
@@ -73,10 +77,71 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  restoreEnv("RUBY_HIGH_RATI_BASE_URL", originalRatiBaseUrl);
+  restoreEnv("RUBY_HIGH_RATI_API_KEY", originalRatiApiKey);
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
   await rm(tmpDir, { recursive: true, force: true });
+});
+
+describe("/connected-teachers", () => {
+  it("GET /connected-teachers returns 401 without a session cookie", async () => {
+    const ctx = makeCtx({ method: "GET", path: "/api/apps/ruby-high/connected-teachers" });
+    await handlePackRoutes(ctx, makeDeps());
+    expect(lastResponse?.status).toBe(401);
+  });
+
+  it("GET /connected-teachers reports an unconfigured server without calling RATi", async () => {
+    signInUser("alice");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const ctx = makeCtx({ method: "GET", path: "/api/apps/ruby-high/connected-teachers", cookie: "rh_session=alice" });
+    await handlePackRoutes(ctx, makeDeps());
+    expect(lastResponse).toMatchObject({ status: 200, body: { configured: false, teachers: [] } });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("connects an allowlisted RATi model as this session's active teacher", async () => {
+    signInUser("alice");
+    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
+    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      object: "list",
+      data: [{
+        id: "avatar:rati",
+        root: "rati",
+        avatar: {
+          name: "RATi",
+          description: "Recursive teacher",
+          profile_image: null,
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/connect-agent",
+      cookie: "rh_session=alice",
+      body: { modelId: "avatar:rati" },
+    });
+    await handlePackRoutes(ctx, makeDeps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.pack.id).toBe("agent:rati-rati");
+    const state = ruby.getOrCreate("rh:user:test-alice");
+    expect(state.activePackId).toBe("agent:rati-rati");
+    const activePack = packForSession(state);
+    expect(activePack.faculty[0]?.provider).toEqual({
+      kind: "rati-openai-compatible",
+      model: "avatar:rati",
+      externalId: "rati",
+      supportsTools: false,
+    });
+    expect(JSON.stringify(activePack)).not.toContain("sk-rati-test");
+  });
 });
 
 describe("/packs auth", () => {
@@ -229,4 +294,9 @@ function syntheticPack(id: string): ContentPack {
       teaches: true,
     }],
   };
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
 }

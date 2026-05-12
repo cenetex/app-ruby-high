@@ -32,12 +32,14 @@ import {
   roomsWithLoungeForSession,
 } from "../content/registry.js";
 import type { PackCourse, PackRoom } from "../content/types.js";
+import { publicProviderForFaculty, type PublicTeacherProvider } from "../services/teacher-providers.js";
 import { APP_DISPLAY_NAME, APP_NAME } from "./constants.js";
 
 interface FacultyTelemetry extends FacultyMember {
   questionCount: number;
   subjects: string[];
   assetTeacherId?: string;
+  teacherProvider: PublicTeacherProvider;
   courseGrade?: string;
   completedClasses?: number;
   requiredClasses?: number;
@@ -83,6 +85,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   completed_grades: Grade[];
   has_seen_intro: boolean;
   active_pack: { id: string; name: string; description: string };
+  active_teacher_provider: PublicTeacherProvider;
   active_course: PackCourse | null;
   active_course_progress: CourseProgress | null;
   courses: PackCourse[];
@@ -235,6 +238,7 @@ function buildFacultyRoster(
       available: true,
       accent: f.accent,
       ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
+      teacherProvider: publicProviderForFaculty(f),
       questionCount: countFacultyCards(f),
       ...(progress?.grade ? { courseGrade: progress.grade } : {}),
       ...(progress ? {
@@ -263,6 +267,9 @@ export function buildSessionState(args: {
   const sessionId = getSessionId(runtime, args.cookieHeader);
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
   const fac = facultyForState(state, state.faculty);
+  const activePackFaculty = facultyForSession(state).find((f) => f.id === state.faculty)
+    ?? facultyForSession(state)[0]
+    ?? null;
 
   const telemetry: SessionTelemetry = {
     faculty: state.faculty,
@@ -302,6 +309,7 @@ export function buildSessionState(args: {
       const p = packForSession(state);
       return { id: p.id, name: p.name, description: p.description };
     })(),
+    active_teacher_provider: publicProviderForFaculty(activePackFaculty),
     active_course: courseForFacultyForSession(state, state.faculty),
     active_course_progress: ruby?.courseProgress(sessionId, state.faculty) ?? null,
     courses: coursesForSession(state),

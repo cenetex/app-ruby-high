@@ -40,6 +40,15 @@ interface OpenRouterCallOpts {
   timeoutMs?: number;
 }
 
+interface ChatCompletionStreamOpts {
+  url: string;
+  headers: Record<string, string>;
+  body: OpenRouterRequest;
+  label?: string;
+  providerName?: string;
+  timeoutMs?: number;
+}
+
 export class OpenRouterHttpError extends Error {
   constructor(
     message: string,
@@ -50,6 +59,33 @@ export class OpenRouterHttpError extends Error {
     super(message);
     this.name = "OpenRouterHttpError";
   }
+}
+
+export class ChatCompletionHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly statusText: string,
+    readonly body: string,
+  ) {
+    super(message);
+    this.name = "ChatCompletionHttpError";
+  }
+}
+
+export async function throwChatCompletionError(
+  r: Response,
+  label: string,
+  providerName = "chat-completion",
+): Promise<never> {
+  const body = await r.text().catch(() => "");
+  const trimmed = body.length > 500 ? body.slice(0, 500) + "…" : body;
+  throw new ChatCompletionHttpError(
+    `${label}: ${providerName} ${r.status} ${r.statusText}${trimmed ? ` — ${trimmed}` : ""}`,
+    r.status,
+    r.statusText,
+    body,
+  );
 }
 
 export async function throwOpenRouterError(r: Response, label: string): Promise<never> {
@@ -96,18 +132,29 @@ export async function openRouterJson<T = OpenRouterChatCompletion>(opts: OpenRou
 }
 
 export async function* openRouterStream(opts: OpenRouterCallOpts): AsyncGenerator<OpenRouterStreamChunk> {
+  yield* chatCompletionStream({
+    url: OPENROUTER_URL,
+    headers: openRouterHeaders(opts.apiKey, opts.title),
+    body: opts.body,
+    label: opts.label ?? "openrouter-stream",
+    providerName: "OpenRouter",
+    timeoutMs: opts.timeoutMs ?? OPENROUTER_STREAM_TIMEOUT_MS,
+  });
+}
+
+export async function* chatCompletionStream(opts: ChatCompletionStreamOpts): AsyncGenerator<OpenRouterStreamChunk> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? OPENROUTER_STREAM_TIMEOUT_MS);
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   try {
-    const r = await fetch(OPENROUTER_URL, {
+    const r = await fetch(opts.url, {
       method: "POST",
-      headers: openRouterHeaders(opts.apiKey, opts.title),
+      headers: opts.headers,
       body: JSON.stringify({ ...opts.body, stream: true }),
       signal: ctrl.signal,
     });
-    if (!r.ok) await throwOpenRouterError(r, opts.label ?? "openrouter-stream");
-    if (!r.body) throw new Error(`${opts.label ?? "openrouter-stream"}: OpenRouter response had no stream body`);
+    if (!r.ok) await throwChatCompletionError(r, opts.label ?? "chat-completion-stream", opts.providerName);
+    if (!r.body) throw new Error(`${opts.label ?? "chat-completion-stream"}: ${opts.providerName ?? "Provider"} response had no stream body`);
 
     reader = r.body.getReader();
     const decoder = new TextDecoder("utf-8");

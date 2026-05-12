@@ -83,6 +83,10 @@ export interface PackFaculty {
   /** OpenRouter model id. Cheap fast models work fine — chat is short
    *  and high-volume. */
   defaultModel: string;
+  /** Optional live teacher backend. Omitted means the existing browser-owned
+   *  OpenRouter credential path. Server-backed providers must not store
+   *  secrets here; keep only stable public ids and capability flags. */
+  provider?: PackFacultyProvider;
   // ── question bank (inline) ────────────────────────────────────────────
   /** Inline question bank. Matches the existing BankedQuestion shape so
    *  pickQuestion / pickDaily logic doesn't change. */
@@ -92,6 +96,28 @@ export interface PackFaculty {
    *  generated/cached later only when explicitly requested. */
   sourceCards?: PackSourceCard[];
 }
+
+export type PackFacultyProvider =
+  | {
+      kind: "openrouter";
+      /** Whether this provider can accept OpenAI-style Ruby High board tools. */
+      supportsTools?: boolean;
+    }
+  | {
+      kind: "rati-openai-compatible";
+      /** Model id sent to the RATi/aws-swarm OpenAI-compatible API. */
+      model: string;
+      /** Stable upstream id/root for display and reconnect validation. */
+      externalId?: string;
+      /** Current aws-swarm public compat route is chat-only. */
+      supportsTools?: boolean;
+    }
+  | {
+      kind: "elizaos";
+      /** Local/runtime agent id or future elizaOS HTTP agent id. */
+      agentId: string;
+      supportsTools?: boolean;
+    };
 
 export interface PackRoom {
   id: string;

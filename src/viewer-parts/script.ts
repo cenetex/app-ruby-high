@@ -462,6 +462,13 @@ const VIEWER_SCRIPT_SUFFIX = `
   let lastIdleTriggerId = null;
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // OpenRouter key + Ruby High session present
+  function activeTeacherUsesServerAi() {
+    const provider = lastTelemetry && lastTelemetry.active_teacher_provider;
+    return !!(provider && provider.requiresBrowserKey === false);
+  }
+  function teacherChatEnabled() {
+    return !!authed && (aiEnabled || activeTeacherUsesServerAi());
+  }
   let lockedFor = null;
   let renderedHistorySig = null;
   let activeQuestionId = null; // currently displayed question id on the blackboard
@@ -561,9 +568,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function packStoreUnlocked(t) {
     if (!t || !t.character) return false;
-    const activePackId = t.active_pack && t.active_pack.id;
-    if (activePackId && activePackId !== "ruby-high-original") return true;
-    return secondarySurfacesUnlocked(t);
+    return true;
   }
   async function maybeAutoStartClass(t) {
     if (autoPickInFlight) return;
@@ -584,7 +589,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     //   - AI off → sit on the empty board and surface the offline hint once.
     if (!canPick) {
       autoPickLastKey = key;
-      if (aiEnabled) {
+      if (teacherChatEnabled()) {
         runAgentTurn("manual", { grade: t.current_grade }, { force: true });
       } else {
         showNoScheduledQuestionReadyHint();
@@ -596,7 +601,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       const data = await command({ type: "pick" });
       if (data && data.noQuestionDue) {
-        if (aiEnabled) runAgentTurn("manual", { grade: t.current_grade }, { force: true });
+        if (teacherChatEnabled()) runAgentTurn("manual", { grade: t.current_grade }, { force: true });
         else showNoScheduledQuestionReadyHint();
       }
     }
@@ -803,7 +808,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         });
         if (intent !== "class") return;
       }
-      if (aiEnabled) {
+      if (teacherChatEnabled()) {
         await runAgentTurn("manual", context, { force: true });
       } else {
         appendSystem(intent === "hint" ? "Answer the board to continue. Enable AI for teacher hints." : "Enable AI for teacher replies.");
@@ -1950,7 +1955,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (triggerId === lastAnswerGradedTriggerId) return;
     const ceremonyReady = !!(t.graduation_ready || (t.character && t.character.pendingGraduation));
     const arcFinished = t.character && graduatedFor(t.character);
-    if (!aiEnabled || t.faculty === LOUNGE_ID || arcFinished || ceremonyReady) return;
+    if (!teacherChatEnabled() || t.faculty === LOUNGE_ID || arcFinished || ceremonyReady) return;
     lastAnswerGradedTriggerId = triggerId;
     setTimeout(() => {
       // If the player switches rooms before the delayed reaction fires,
@@ -1993,7 +1998,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!round || round.resolved || !round.idleTriggered) return;
     const triggerId = round.questionId;
     if (triggerId === lastIdleTriggerId) return;
-    if (!aiEnabled || t.faculty === LOUNGE_ID) return;
+    if (!teacherChatEnabled() || t.faculty === LOUNGE_ID) return;
     const ceremonyReady = !!(t.graduation_ready || (t.character && t.character.pendingGraduation));
     const arcFinished = t.character && graduatedFor(t.character);
     if (arcFinished || ceremonyReady) return;
@@ -2555,7 +2560,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const actualFaculty = data.session.telemetry.faculty || facultyId;
       const fac = (data.session.telemetry.faculty_roster || []).find((f) => f.id === actualFaculty);
       const grade = data.session.telemetry.current_grade;
-      if (aiEnabled) {
+      if (teacherChatEnabled()) {
         loadHistory(actualFaculty);
         runAgentTurn("channel-enter", { grade }, { force: true });
       } else if (fac) {
@@ -2593,7 +2598,7 @@ const VIEWER_SCRIPT_SUFFIX = `
           return true;
         }
       }
-      if (aiEnabled) {
+      if (teacherChatEnabled()) {
         await runAgentTurn("manual", {
           grade: lastTelemetry && lastTelemetry.current_grade,
           intent: "advance",
@@ -2632,9 +2637,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.nextBtn.disabled = true;
     try {
       const phase = telemetryPhase(lastTelemetry);
-      if (!aiEnabled) {
+      if (!teacherChatEnabled()) {
         if (phase === "asking") {
-          appendSystem("Answer the board to continue. Enable AI for hints.");
+          appendSystem("Answer the board to continue. Connect or enable AI for hints.");
           return;
         }
         if (phase === "lounge") {
@@ -2883,7 +2888,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
     lastTelemetry = t;
-    if (aiEnabled && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
+    if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
     applyViewMode(deriveViewMode(t));
@@ -5080,6 +5085,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   // ── pack store overlay (pack switcher) ───────────────────────────────────
   const packEl = $("pack-overlay");
   const packListEl = $("pack-list");
+  const connectedTeacherListEl = $("connected-teacher-list");
   const packCloseBtn = $("pack-close-btn");
   const packStatusEl = $("pack-status");
   const packBtn = els.packBtn;
@@ -5087,6 +5093,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function openPackStore() {
     packEl.classList.add("is-open");
     renderPackList();
+    renderConnectedTeachers();
   }
   function closePackStore() {
     packEl.classList.remove("is-open");
@@ -5101,7 +5108,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (packs.length === 0) {
       const empty = document.createElement("div");
       empty.className = "sub";
-      empty.textContent = "No packs registered yet.";
+      empty.textContent = "No connected teachers registered yet.";
       packListEl.appendChild(empty);
       return;
     }
@@ -5115,7 +5122,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       name.textContent = p.name;
       const meta = document.createElement("div");
       meta.className = "pack-meta";
-      meta.textContent = (p.faculty_count || 0) + " faculty · " + (p.question_count || 0) + " questions" + (p.description ? " — " + p.description : "");
+      meta.textContent = (p.faculty_count || 0) + " teacher" + ((p.faculty_count || 0) === 1 ? "" : "s") + " · " + (p.question_count || 0) + " board cards" + (p.description ? " — " + p.description : "");
       body.appendChild(name);
       body.appendChild(meta);
       row.appendChild(body);
@@ -5130,13 +5137,105 @@ const VIEWER_SCRIPT_SUFFIX = `
       packListEl.appendChild(row);
     }
   }
+  async function renderConnectedTeachers() {
+    if (!connectedTeacherListEl) return;
+    connectedTeacherListEl.innerHTML = "";
+    const loading = document.createElement("div");
+    loading.className = "sub";
+    loading.textContent = "Checking RATi roster…";
+    connectedTeacherListEl.appendChild(loading);
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/connected-teachers");
+      const data = await r.json().catch(() => ({}));
+      connectedTeacherListEl.innerHTML = "";
+      if (!r.ok) throw new Error(data.error || "roster " + r.status);
+      if (!data.configured) {
+        const empty = document.createElement("div");
+        empty.className = "sub";
+        empty.textContent = "RATi teacher backend is not configured on this server.";
+        connectedTeacherListEl.appendChild(empty);
+        return;
+      }
+      const teachers = Array.isArray(data.teachers) ? data.teachers : [];
+      if (teachers.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "sub";
+        empty.textContent = "No RATi teachers are available for this key.";
+        connectedTeacherListEl.appendChild(empty);
+        return;
+      }
+      const activeProvider = lastTelemetry && lastTelemetry.active_teacher_provider;
+      const activeModel = activeProvider && activeProvider.kind === "rati-openai-compatible"
+        ? ((lastTelemetry.active_pack && lastTelemetry.active_pack.id) || "")
+        : "";
+      for (const teacher of teachers) {
+        const row = document.createElement("div");
+        row.className = "pack-row";
+        const body = document.createElement("div");
+        body.className = "pack-body";
+        const name = document.createElement("div");
+        name.className = "pack-name";
+        name.textContent = teacher.name || teacher.root || teacher.model;
+        const meta = document.createElement("div");
+        meta.className = "pack-meta";
+        meta.textContent = (teacher.supportsTools ? "board tools" : "chat-only") + " · " + (teacher.description || teacher.model);
+        body.appendChild(name);
+        body.appendChild(meta);
+        row.appendChild(body);
+        const teacherSlug = String(teacher.root || teacher.model || "teacher").toLowerCase().replace(/^avatar:/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "teacher";
+        const expectedPackId = "agent:rati-" + teacherSlug;
+        if (activeModel === expectedPackId) {
+          const tag = document.createElement("span");
+          tag.className = "pack-active-tag";
+          tag.textContent = "Active";
+          row.appendChild(tag);
+        } else {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "pack-action";
+          btn.textContent = "Connect";
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            connectTeacher(teacher.model);
+          });
+          row.appendChild(btn);
+        }
+        connectedTeacherListEl.appendChild(row);
+      }
+    } catch (err) {
+      connectedTeacherListEl.innerHTML = "";
+      const error = document.createElement("div");
+      error.className = "sub";
+      error.textContent = "Couldn't load RATi teachers · " + (err && err.message ? err.message : "error");
+      connectedTeacherListEl.appendChild(error);
+    }
+  }
+  async function connectTeacher(modelId) {
+    packStatusEl.textContent = "Connecting teacher…";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/packs/connect-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: r.status }));
+        throw new Error(err.error || "connect " + r.status);
+      }
+      packStatusEl.textContent = "Teacher connected. Reloading…";
+      setTimeout(() => window.location.reload(), 300);
+    } catch (err) {
+      packStatusEl.textContent = "Couldn't connect · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    }
+  }
   async function switchPack(packId) {
     packStatusEl.textContent = "Switching…";
     packStatusEl.classList.remove("is-invalid");
     try {
-      const r = await fetch("/api/apps/ruby-high/packs/active", {
+      const r = await apiFetch("/api/apps/ruby-high/packs/active", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ packId }),
       });
@@ -5258,7 +5357,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       signinEl.classList.remove("is-open");
       signinEl.setAttribute("aria-hidden", "true");
     }
-    if (aiEnabled && lastTelemetry) loadHistory(lastTelemetry.faculty);
+    if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
     if (sheetOverlayOpen) renderSheet();
     if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
       sheetAutoShown = true;
@@ -5319,7 +5418,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       return;
     }
     if (authed) {
-      els.youState.textContent = aiEnabled ? "AI enabled" : "offline mode";
+      els.youState.textContent = aiEnabled ? "AI enabled" : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
       els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
       els.footerAction.hidden = false;
       els.chatForm.hidden = true;
@@ -5356,10 +5455,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastAuthState = null;
     await deriveAuth();
     applyAuthUI();
-    if (aiEnabled && lastTelemetry) loadHistory(lastTelemetry.faculty);
+    if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
   }
   async function loadHistory(facultyId) {
-    if (!aiEnabled || !facultyId) return;
+    if (!teacherChatEnabled() || !facultyId) return;
     const requestSeq = chatViewSeq;
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/history?faculty=" + encodeURIComponent(facultyId));
@@ -5512,7 +5611,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   async function sendChatMessage(text) {
-    if (!aiEnabled || !text.trim()) return;
+    if (!teacherChatEnabled() || !text.trim()) return;
     if (agentBusy) return;
     // While the room-idle DM turn is in progress (clock expired, round not
     // yet resolved), hold player chat so it doesn't race the teacher.
@@ -5590,8 +5689,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
       if (els.nextBtn && !manualChatBusy) els.nextBtn.disabled = false;
-      els.chatInput.disabled = !aiEnabled;
-      els.chatSend.disabled = !aiEnabled;
+      els.chatInput.disabled = !teacherChatEnabled();
+      els.chatSend.disabled = !teacherChatEnabled();
       els.chatInput.focus();
     }
   }
@@ -5606,7 +5705,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   // (group-chat semantics — multiple speakers, no global lock); this flag
   // is the transitional shape.
   async function runAgentTurn(trigger, context, opts) {
-    if (!aiEnabled) return;
+    if (!teacherChatEnabled()) return;
     const force = !!(opts && opts.force);
     if (!force && agentBusy) return;
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";

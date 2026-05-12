@@ -1080,6 +1080,16 @@ function requireAuth(
   return { token, apiKey, record, stateKey: auth.stateKeyForRecord(record) };
 }
 
+function requireSession(
+  ctx: ChatRouteContext,
+  auth: AuthService,
+): { token: string; apiKey: string | null; record: AuthRecord; stateKey: string } | null {
+  const token = auth.parseSessionToken(ctx.cookieHeader);
+  const record = auth.resolve(token);
+  if (!token || !record) return null;
+  return { token, apiKey: readApiKey(ctx), record, stateKey: auth.stateKeyForRecord(record) };
+}
+
 function canonicalFacultyForRoute(ruby: RubyHighService, sessionId: string, requested?: string | null): string {
   const state = ruby.getOrCreate(sessionId);
   const raw = requested && requested.trim().length > 0 ? requested.trim() : state.faculty;
@@ -1347,9 +1357,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "POST" && ctx.pathname === CHAT_PREFIX) {
-    const cred = requireAuth(ctx, auth);
+    const cred = requireSession(ctx, auth);
     if (!cred) {
-      ctx.error(ctx.res, "Not authenticated. Sign in with OpenRouter first.", 401);
+      ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
     const { token, apiKey } = cred;
@@ -1359,10 +1369,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
 
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { faculty?: string; message?: string; model?: string }
       | null;
-    const faculty = canonicalFacultyForRoute(ruby, getSessionId(runtime, ctx.cookieHeader), body?.faculty);
+    const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
+      ctx.error(ctx.res, "Sign in with OpenRouter first for this teacher.", 401);
+      return true;
+    }
     const message = (body?.message ?? "").trim();
     if (!message) {
       ctx.error(ctx.res, "Missing 'message'.", 400);
@@ -1376,7 +1391,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       for await (const ev of chat.send({
         apiKey,
         sessionToken: token,
-        agentSessionId: getSessionId(runtime, ctx.cookieHeader),
+        agentSessionId: sessionId,
         faculty,
         userMessage: message,
         model: body?.model,
@@ -1433,7 +1448,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // etc. The server constructs the appropriate system directive and runs the
   // model, streaming the response back.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/event`) {
-    const cred = requireAuth(ctx, auth);
+    const cred = requireSession(ctx, auth);
     if (!cred) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
@@ -1449,6 +1464,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       | null;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
+      ctx.error(ctx.res, "Sign in with OpenRouter first for this teacher.", 401);
+      return true;
+    }
     const trigger = String(body?.trigger ?? "manual");
     const grade = body?.context?.grade;
     const contextIntent = cleanPlayerChatIntent(body?.context?.intent);
