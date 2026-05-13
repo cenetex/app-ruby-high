@@ -941,15 +941,27 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (haystack.includes("ruby")) return "ruby";
     return "";
   }
+  const BUILTIN_TEACHER_ASSET_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
+  function teacherInitial(facultyOrName) {
+    if (!facultyOrName) return "?";
+    if (typeof facultyOrName === "string") return facultyOrName.charAt(0).toUpperCase();
+    return String(facultyOrName.shortName || facultyOrName.displayName || facultyOrName.id || "?").charAt(0).toUpperCase();
+  }
   function facultyAssetId(facultyOrId) {
     if (!facultyOrId) return "";
-    if (typeof facultyOrId === "object") return facultyOrId.assetTeacherId || knownTeacherAssetId(facultyOrId) || facultyOrId.id || "";
+    if (typeof facultyOrId === "object") {
+      const explicit = facultyOrId.assetTeacherId || knownTeacherAssetId(facultyOrId);
+      if (explicit) return explicit;
+      return BUILTIN_TEACHER_ASSET_IDS.has(facultyOrId.id) ? facultyOrId.id : "";
+    }
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     const fac = roster.find((f) => f.id === facultyOrId);
-    return (fac && (fac.assetTeacherId || knownTeacherAssetId(fac))) || facultyOrId;
+    if (fac) return facultyAssetId(fac);
+    return BUILTIN_TEACHER_ASSET_IDS.has(facultyOrId) ? facultyOrId : "";
   }
   function teacherAssetUrl(facultyOrId, variant) {
-    const assetId = facultyAssetId(facultyOrId) || "ruby";
+    const assetId = facultyAssetId(facultyOrId);
+    if (!assetId) return null;
     const suffix = variant ? "-" + variant : "";
     return apiBase + "/assets/teachers/" + encodeURIComponent(assetId) + suffix + ".png";
   }
@@ -1039,7 +1051,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function appendEmptyState({ title, body, ctaLabel, ctaAction, facultyId }) {
     const wrap = document.createElement("div");
     wrap.className = "empty-state";
-    const heroSrc = facultyId ? teacherAssetUrl(facultyId, "full") : teacherAssetUrl("ruby", "full");
+    const heroSrc = (facultyId && teacherAssetUrl(facultyId, "full")) || teacherAssetUrl("ruby", "full");
     wrap.innerHTML =
       '<img class="logo" src="' + heroSrc + '" alt=""/>' +
       '<h2>' + escape(title) + '</h2>' +
@@ -1568,6 +1580,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     // Use the -face crop for the corner badge — cleaner head/shoulders fit.
     const assetId = facultyAssetId(faculty);
     const url = teacherAssetUrl(faculty, "face");
+    if (!url) {
+      els.teacherFigure.hidden = true;
+      els.teacherFigure.removeAttribute("src");
+      els.teacherFigure.dataset.facultyId = faculty.id;
+      els.teacherFigure.dataset.assetId = "";
+      return;
+    }
     if (els.teacherFigure.dataset.facultyId !== faculty.id || els.teacherFigure.dataset.assetId !== assetId) {
       // Clear first so the browser repaints even if the URL is cached, and
       // restart the entry animation so the speaker change reads visually.
@@ -1601,8 +1620,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastLoungeSig = sig;
     els.loungeFigures.innerHTML = "";
     for (const f of roster) {
+      const url = teacherAssetUrl(f, "full");
+      if (!url) {
+        els.loungeFigures.appendChild(loungePlaceholder(f));
+        continue;
+      }
       const img = document.createElement("img");
-      img.src = teacherAssetUrl(f, "full");
+      img.src = url;
       img.alt = f.displayName || f.id;
       img.addEventListener("error", () => {
         img.replaceWith(loungePlaceholder(f));
@@ -2354,11 +2378,21 @@ const VIEWER_SCRIPT_SUFFIX = `
         thumb.title = "Open " + fac.displayName + "'s card";
         thumb.style.cursor = "pointer";
         thumb.addEventListener("click", (e) => { e.stopPropagation(); openTeacherProfile(fac.id); });
-        const img = document.createElement("img");
-        img.src = teacherAssetUrl(fac, "face");
-        img.alt = "";
-        img.onerror = () => { thumb.style.background = fac.accent || "#444"; thumb.removeChild(img); };
-        thumb.appendChild(img);
+        const thumbUrl = teacherAssetUrl(fac, "face");
+        if (thumbUrl) {
+          const img = document.createElement("img");
+          img.src = thumbUrl;
+          img.alt = "";
+          img.onerror = () => {
+            thumb.style.background = fac.accent || "#444";
+            thumb.textContent = teacherInitial(fac);
+            if (img.parentNode === thumb) thumb.removeChild(img);
+          };
+          thumb.appendChild(img);
+        } else {
+          thumb.style.background = fac.accent || "#444";
+          thumb.textContent = teacherInitial(fac);
+        }
         row.appendChild(thumb);
       }
       const hash = document.createElement("span");

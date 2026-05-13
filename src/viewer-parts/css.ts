@@ -291,6 +291,11 @@ export const VIEWER_CSS = `
     overflow: hidden;
     flex: 0 0 auto;
     border: 1.5px solid rgba(255,255,255,0.12);
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 900;
   }
   .channel-row .teacher-thumb img {
     width: 100%;
