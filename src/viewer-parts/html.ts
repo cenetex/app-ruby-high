@@ -47,7 +47,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
            mode, "Sign out" when an OpenRouter key is active. -->
       <button class="footer-action" id="footer-action" type="button" hidden></button>
     </div>
-    <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Open an issue on GitHub.">Report a bug</button>
+    <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Draft a bug report email.">Report a bug</button>
   </aside>
 
   <!-- workspace -->

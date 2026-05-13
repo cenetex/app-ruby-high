@@ -83,6 +83,16 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('formatWholeNumber(t.scorePoints || 0) + " score"');
   });
 
+  it("routes bug reports to public support email instead of private GitHub issues", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('title="Something broken? Draft a bug report email."');
+    expect(script).toContain("mailto:hello@ratimics.com");
+    expect(script).toContain("RECENT_ERRORS");
+    expect(script).not.toContain("github.com/cenetex/app-ruby-high/issues/new");
+  });
+
   it("routes the post-class Practice button to a practice board or teacher advance", () => {
     const script = inlineScript(renderedViewer());
 

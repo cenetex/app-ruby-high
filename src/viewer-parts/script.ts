@@ -6017,7 +6017,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   // ── bug-report surface ─────────────────────────────────────────────────
   // Capture the last few console errors + unhandled rejections so the
-  // GitHub-issue prefill includes them. Limit to a small ring buffer
+  // bug-report prefill includes them. Limit to a small ring buffer
   // so a chatty page doesn't bloat the URL we end up encoding.
   const RECENT_ERRORS = [];
   const ERROR_LIMIT = 5;
@@ -6085,11 +6085,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       "",
       "</details>",
     ].join("\\n");
-    const issueUrl = "https://github.com/cenetex/app-ruby-high/issues/new?title="
-      + encodeURIComponent("[bug] ")
-      + "&body=" + encodeURIComponent(body)
-      + "&labels=" + encodeURIComponent("bug,user-report");
-    window.open(issueUrl, "_blank", "noopener");
+    const mailtoUrl = "mailto:hello@ratimics.com?subject="
+      + encodeURIComponent("[Ruby High bug] ")
+      + "&body=" + encodeURIComponent(body);
+    window.location.href = mailtoUrl;
   });
 
   // Click your name/avatar to open the character sheet.
