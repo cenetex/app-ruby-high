@@ -39,6 +39,7 @@ interface FacultyTelemetry extends FacultyMember {
   questionCount: number;
   subjects: string[];
   assetTeacherId?: string;
+  profileImageUrl?: string;
   teacherProvider: PublicTeacherProvider;
   courseGrade?: string;
   completedClasses?: number;
@@ -238,6 +239,7 @@ function buildFacultyRoster(
       available: true,
       accent: f.accent,
       ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
+      ...(f.profileImageUrl ? { profileImageUrl: f.profileImageUrl } : {}),
       teacherProvider: publicProviderForFaculty(f),
       questionCount: countFacultyCards(f),
       ...(progress?.grade ? { courseGrade: progress.grade } : {}),

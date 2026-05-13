@@ -117,7 +117,7 @@ describe("/connected-teachers", () => {
         avatar: {
           name: "RATi",
           description: "Recursive teacher",
-          profile_image: null,
+          profile_image: "https://media.example.test/avatars/rati/profile.png",
         },
       }],
       }), {
@@ -179,9 +179,11 @@ describe("/connected-teachers", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.pack.id).toBe("agent:rati-rati");
     expect(lastResponse?.body.pack.question_count).toBe(4);
+    expect(lastResponse?.body.pack.faculty[0].profileImageUrl).toBe("https://media.example.test/avatars/rati/profile.png");
     const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe("agent:rati-rati");
     const activePack = packForSession(state);
+    expect(activePack.faculty[0]?.profileImageUrl).toBe("https://media.example.test/avatars/rati/profile.png");
     expect(activePack.faculty[0]?.questions).toHaveLength(4);
     expect(activePack.faculty[0]?.questions[0]).toMatchObject({
       id: "rati-rati-seed-1",

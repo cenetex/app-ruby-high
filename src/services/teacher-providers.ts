@@ -34,6 +34,7 @@ interface RatiModelRecord {
     name?: unknown;
     description?: unknown;
     profile_image?: unknown;
+    profileImage?: unknown;
   };
 }
 
@@ -206,6 +207,7 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, qu
       id: facultyId,
       displayName,
       shortName,
+      ...(candidate.profileImage ? { profileImageUrl: candidate.profileImage } : {}),
       subjects,
       bio: candidate.description || "A live RATi/aws-swarm avatar teaching at Ruby High.",
       accent: colorForString(candidate.model),
@@ -290,6 +292,7 @@ function candidateFromModel(model: RatiModelRecord): ConnectedTeacherCandidate |
   if (!id) return null;
   const root = typeof model.root === "string" && model.root.trim() ? model.root.trim() : id.replace(/^avatar:/, "");
   const avatar = model.avatar ?? {};
+  const profileImage = profileImageFromModelAvatar(avatar);
   const name = typeof avatar.name === "string" && avatar.name.trim()
     ? avatar.name.trim()
     : root.replace(/[-_]+/g, " ");
@@ -302,8 +305,20 @@ function candidateFromModel(model: RatiModelRecord): ConnectedTeacherCandidate |
     description,
     provider: "rati-openai-compatible",
     supportsTools: ratiToolsEnabled(),
-    profileImage: typeof avatar.profile_image === "string" ? avatar.profile_image : null,
+    profileImage,
   };
+}
+
+function profileImageFromModelAvatar(avatar: RatiModelRecord["avatar"]): string | null {
+  const snake = avatar && typeof avatar.profile_image === "string" ? avatar.profile_image.trim() : "";
+  if (snake) return snake;
+  const camel = avatar && avatar.profileImage;
+  if (typeof camel === "string" && camel.trim()) return camel.trim();
+  if (camel && typeof camel === "object") {
+    const url = (camel as { url?: unknown }).url;
+    if (typeof url === "string" && url.trim()) return url.trim();
+  }
+  return null;
 }
 
 function connectedFacultyId(candidate: ConnectedTeacherCandidate): string {

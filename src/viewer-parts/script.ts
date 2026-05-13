@@ -959,15 +959,28 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (fac) return facultyAssetId(fac);
     return BUILTIN_TEACHER_ASSET_IDS.has(facultyOrId) ? facultyOrId : "";
   }
+  function facultyProfileImageUrl(facultyOrId) {
+    if (!facultyOrId) return "";
+    if (typeof facultyOrId === "object") {
+      const url = typeof facultyOrId.profileImageUrl === "string" ? facultyOrId.profileImageUrl.trim() : "";
+      return /^(https?:|data:image\\/|\\/)/i.test(url) ? url : "";
+    }
+    const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
+    const fac = roster.find((f) => f.id === facultyOrId);
+    return fac ? facultyProfileImageUrl(fac) : "";
+  }
   function teacherAssetUrl(facultyOrId, variant) {
     const assetId = facultyAssetId(facultyOrId);
     if (!assetId) return null;
     const suffix = variant ? "-" + variant : "";
     return apiBase + "/assets/teachers/" + encodeURIComponent(assetId) + suffix + ".png";
   }
+  function teacherPortraitUrl(facultyOrId, variant) {
+    return teacherAssetUrl(facultyOrId, variant) || facultyProfileImageUrl(facultyOrId) || null;
+  }
   function teacherStickerUrl(facultyId) {
     if (!facultyId) return null;
-    return teacherAssetUrl(facultyId, "");
+    return teacherPortraitUrl(facultyId, "");
   }
   function studentStickerUrl(studentId) {
     if (!studentId) return null;
@@ -1579,7 +1592,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     // Use the -face crop for the corner badge — cleaner head/shoulders fit.
     const assetId = facultyAssetId(faculty);
-    const url = teacherAssetUrl(faculty, "face");
+    const profileUrl = facultyProfileImageUrl(faculty);
+    const url = teacherPortraitUrl(faculty, "face");
     if (!url) {
       els.teacherFigure.hidden = true;
       els.teacherFigure.removeAttribute("src");
@@ -1587,11 +1601,12 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.teacherFigure.dataset.assetId = "";
       return;
     }
-    if (els.teacherFigure.dataset.facultyId !== faculty.id || els.teacherFigure.dataset.assetId !== assetId) {
+    const imageKey = assetId || profileUrl;
+    if (els.teacherFigure.dataset.facultyId !== faculty.id || els.teacherFigure.dataset.assetId !== imageKey) {
       // Clear first so the browser repaints even if the URL is cached, and
       // restart the entry animation so the speaker change reads visually.
       els.teacherFigure.dataset.facultyId = faculty.id;
-      els.teacherFigure.dataset.assetId = assetId;
+      els.teacherFigure.dataset.assetId = imageKey;
       els.teacherFigure.style.borderColor = faculty.accent || "var(--accent)";
       els.teacherFigure.removeAttribute("src");
       // Force reflow so the animation actually re-runs.
@@ -1620,7 +1635,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastLoungeSig = sig;
     els.loungeFigures.innerHTML = "";
     for (const f of roster) {
-      const url = teacherAssetUrl(f, "full");
+      const url = teacherPortraitUrl(f, "full");
       if (!url) {
         els.loungeFigures.appendChild(loungePlaceholder(f));
         continue;
@@ -3506,7 +3521,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     })[roomId] || roomId || "class";
   }
   function teacherFullPortraitUrl(facultyId) {
-    return teacherAssetUrl(facultyId, "full");
+    return teacherPortraitUrl(facultyId, "full");
   }
   function buildTeacherProfileCard(fac) {
     const subjectLine = TEACHER_SUBJECT_LINE[fac.id] || (Array.isArray(fac.subjects) ? fac.subjects.join(", ") : fac.bio);

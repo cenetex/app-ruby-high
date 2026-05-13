@@ -68,6 +68,8 @@ export interface PackFaculty {
   /** Optional built-in teacher asset id used for portraits when a generated
    *  pack borrows an existing teacher's face/figure but keeps a unique id. */
   assetTeacherId?: string;
+  /** Optional external profile image URL for connected live teachers. */
+  profileImageUrl?: string;
   // ── metadata ──────────────────────────────────────────────────────────
   /** Subjects this teacher covers — surfaced in the UI as filter pills and
    *  fed to the chat layer for routing decisions. */
