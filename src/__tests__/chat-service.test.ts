@@ -293,6 +293,56 @@ describe("ChatService.send — message composition", () => {
     expect(captured?.body.tool_choice).toBe("auto");
   });
 
+  it("drops RATi provider fallback text before streaming or saving teacher chat", async () => {
+    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
+    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    mockOpenRouter(buildSseChunk([
+      { content: "I apologize, but I couldn" },
+      { content: "'t generate a response. Please try again." },
+      { content: "Let's reset with a real question." },
+      { finish: "stop" },
+    ]));
+    const { ruby, chat } = await makeServices();
+    const sid = "session:rati-fallback";
+    const pack = fakeImportedPack();
+    pack.id = "agent:rati-fallback";
+    pack.faculty[0] = {
+      ...pack.faculty[0]!,
+      id: "rati-fallback",
+      displayName: "Opus",
+      defaultModel: "avatar:opus",
+      provider: {
+        kind: "rati-openai-compatible",
+        model: "avatar:opus",
+        externalId: "opus",
+        supportsTools: true,
+      },
+      questions: [],
+    };
+    pack.courses![0] = { ...pack.courses![0]!, facultyId: "rati-fallback", id: "rati-fallback" };
+    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "rati-fallback" };
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      sessionToken: "t-rati-fallback",
+      agentSessionId: sid,
+      faculty: "rati-fallback",
+      userMessage: "next",
+    })) {
+      events.push(ev);
+    }
+
+    const streamed = events.filter((ev) => ev.type === "delta").map((ev) => ev.text).join("");
+    expect(streamed).toBe("Let's reset with a real question.");
+    expect(streamed).not.toContain("couldn't generate a response");
+    expect(chat.history({ sessionToken: "t-rati-fallback", faculty: "rati-fallback" }))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: "assistant", content: "Let's reset with a real question." }),
+      ]));
+  });
+
   it("strips board-tool instructions for a chat-only RATi backend", async () => {
     process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
     process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";

@@ -97,7 +97,7 @@ export async function* streamTeacherCompletion(opts: {
       delete body.tools;
       delete body.tool_choice;
     }
-    yield* chatCompletionStream({
+    yield* stripKnownProviderFallbackChunks(chatCompletionStream({
       url: `${config.baseUrl}/chat/completions`,
       headers: {
         "Content-Type": "application/json",
@@ -107,7 +107,7 @@ export async function* streamTeacherCompletion(opts: {
       label: opts.label ?? "rati-teacher-stream",
       providerName: "RATi",
       timeoutMs: RATI_TIMEOUT_MS || OPENROUTER_STREAM_TIMEOUT_MS,
-    });
+    }));
     return;
   }
 
@@ -399,6 +399,74 @@ function normalizeDifficulty(value: unknown): Difficulty {
 
 function ratiToolsEnabled(): boolean {
   return readBoolean(process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS, true);
+}
+
+const KNOWN_PROVIDER_FALLBACK_TEXTS = [
+  "I apologize, but I couldn't generate a response. Please try again.",
+  "I apologise, but I couldn't generate a response. Please try again.",
+  "I apologize, but I could not generate a response. Please try again.",
+  "I'm sorry, but I couldn't generate a response. Please try again.",
+  "I’m sorry, but I couldn’t generate a response. Please try again.",
+].map((text) => text.toLowerCase());
+
+export function stripKnownProviderFallbackText(text: string): string {
+  let next = text;
+  for (const fallback of KNOWN_PROVIDER_FALLBACK_TEXTS) {
+    next = next.replace(new RegExp(escapeRegExp(fallback).replace(/\s+/g, "\\s+") + "\\s*", "gi"), "");
+  }
+  return next;
+}
+
+async function* stripKnownProviderFallbackChunks(
+  chunks: AsyncGenerator<OpenRouterStreamChunk>,
+): AsyncGenerator<OpenRouterStreamChunk> {
+  let buffer = "";
+  const flushText = (final = false): string => {
+    buffer = stripKnownProviderFallbackText(buffer);
+    if (!buffer) return "";
+    if (final) {
+      const text = buffer;
+      buffer = "";
+      return text;
+    }
+    const retain = fallbackPrefixSuffixLength(buffer);
+    const emit = buffer.slice(0, buffer.length - retain);
+    buffer = buffer.slice(buffer.length - retain);
+    return emit;
+  };
+
+  for await (const chunk of chunks) {
+    if (chunk.kind === "text") {
+      buffer += chunk.text;
+      const text = flushText(false);
+      if (text) yield { kind: "text", text };
+      continue;
+    }
+    if (chunk.kind === "finish") {
+      const text = flushText(true);
+      if (text) yield { kind: "text", text };
+    }
+    yield chunk;
+  }
+}
+
+function fallbackPrefixSuffixLength(text: string): number {
+  const lower = text.toLowerCase();
+  let best = 0;
+  for (const fallback of KNOWN_PROVIDER_FALLBACK_TEXTS) {
+    const max = Math.min(lower.length, fallback.length - 1);
+    for (let length = max; length > best; length--) {
+      if (fallback.startsWith(lower.slice(lower.length - length))) {
+        best = length;
+        break;
+      }
+    }
+  }
+  return best;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function slugForModel(value: string): string {

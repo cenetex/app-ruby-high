@@ -337,6 +337,10 @@ export class ChatService extends Service {
       }
 
       const historyLenBeforeAssistant = history.length;
+      if (assistantToolCalls.length === 0 && assistantText.trim().length === 0) {
+        yield { type: "done", finishReason: finishReason ?? "empty-response" };
+        return;
+      }
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: assistantText,
