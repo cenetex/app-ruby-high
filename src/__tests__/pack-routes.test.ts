@@ -199,6 +199,73 @@ describe("/connected-teachers", () => {
     });
     expect(JSON.stringify(activePack)).not.toContain("sk-rati-test");
   });
+
+  it("refuses to import a RATi agent owned by another session before generating questions", async () => {
+    signInUser("alice");
+    signInUser("bob");
+    registerPack(syntheticPack("agent:rati-rati"), "rh:user:test-alice");
+    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
+    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        object: "list",
+        data: [{
+          id: "avatar:rati",
+          root: "rati",
+          avatar: {
+            name: "RATi",
+            description: "Recursive teacher",
+            profile_image: null,
+          },
+        }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const rosterCtx = makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/connected-teachers",
+      cookie: "rh_session=bob",
+    });
+    await handlePackRoutes(rosterCtx, makeDeps());
+    expect(lastResponse?.body.teachers[0]).toMatchObject({
+      model: "avatar:rati",
+      packId: "agent:rati-rati",
+      ownedByAnotherSession: true,
+      unavailableReason: "already-connected",
+    });
+
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
+      object: "list",
+      data: [{
+        id: "avatar:rati",
+        root: "rati",
+        avatar: {
+          name: "RATi",
+          description: "Recursive teacher",
+          profile_image: null,
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/connect-agent",
+      cookie: "rh_session=bob",
+      body: { modelId: "avatar:rati" },
+    });
+    await handlePackRoutes(ctx, makeDeps());
+
+    expect(lastResponse).toMatchObject({
+      status: 409,
+      body: { error: "This connected teacher is already owned by another Ruby High session." },
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("/packs auth", () => {

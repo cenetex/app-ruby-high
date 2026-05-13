@@ -180,6 +180,12 @@ export function getPackByIdForSession(packId: string, sessionId: string | null):
   return r.pack;
 }
 
+/** Ownership lookup for trusted route logic. Returns undefined when the pack
+ *  is unknown, null for built-ins, or the owning session id for scoped packs. */
+export function packOwnerSessionId(packId: string): string | null | undefined {
+  return packs.get(packId)?.ownerSessionId;
+}
+
 // ── sync accessors over the loaded pack ─────────────────────────────────
 // Used by code paths that don't have a session in scope. Per-session
 // callers should prefer the *ForSession variants below.

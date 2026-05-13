@@ -5305,17 +5305,25 @@ const VIEWER_SCRIPT_SUFFIX = `
         name.textContent = teacher.name || teacher.root || teacher.model;
         const meta = document.createElement("div");
         meta.className = "pack-meta";
-        meta.textContent = (teacher.supportsTools ? "board tools" : "chat-only") + " · " + (teacher.description || teacher.model);
+        meta.textContent = (teacher.supportsTools ? "board tools" : "chat-only") + " · " + (teacher.description || teacher.model) + (teacher.ownedByAnotherSession ? " · already connected elsewhere" : "");
         body.appendChild(name);
         body.appendChild(meta);
         row.appendChild(body);
         const teacherSlug = String(teacher.root || teacher.model || "teacher").toLowerCase().replace(/^avatar:/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "teacher";
-        const expectedPackId = "agent:rati-" + teacherSlug;
+        const expectedPackId = teacher.packId || ("agent:rati-" + teacherSlug);
         if (activeModel === expectedPackId) {
           const tag = document.createElement("span");
           tag.className = "pack-active-tag";
           tag.textContent = "Active";
           row.appendChild(tag);
+        } else if (teacher.ownedByAnotherSession) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "pack-action";
+          btn.textContent = "In use";
+          btn.title = "This teacher is already connected by another Ruby High session.";
+          btn.disabled = true;
+          row.appendChild(btn);
         } else {
           const btn = document.createElement("button");
           btn.type = "button";

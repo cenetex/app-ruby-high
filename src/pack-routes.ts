@@ -21,15 +21,18 @@ import {
   availablePacksForSession,
   coursesForPack,
   getPackByIdForSession,
+  packOwnerSessionId,
   packForSession,
   registerPack,
 } from "./content/registry.js";
 import type { ContentPack } from "./content/types.js";
 import {
   generateConnectedTeacherQuestionBank,
+  connectedTeacherPackId,
   listRatiTeacherCandidates,
   packForConnectedTeacher,
   ratiConfigured,
+  type ConnectedTeacherCandidate,
 } from "./services/teacher-providers.js";
 
 export interface PackRouteContext {
@@ -83,6 +86,24 @@ function packSummary(pack: ContentPack) {
   };
 }
 
+function connectedTeacherSummary(candidate: ConnectedTeacherCandidate, sessionId: string) {
+  const packId = connectedTeacherPackId(candidate);
+  const ownerSessionId = packOwnerSessionId(packId);
+  const ownedByAnotherSession = typeof ownerSessionId === "string" && ownerSessionId !== sessionId;
+  return {
+    ...candidate,
+    packId,
+    connected: ownerSessionId === sessionId,
+    ownedByAnotherSession,
+    ...(ownedByAnotherSession ? { unavailableReason: "already-connected" } : {}),
+  };
+}
+
+function connectedTeacherOwnedByAnotherSession(candidate: ConnectedTeacherCandidate, sessionId: string): boolean {
+  const ownerSessionId = packOwnerSessionId(connectedTeacherPackId(candidate));
+  return typeof ownerSessionId === "string" && ownerSessionId !== sessionId;
+}
+
 export async function handlePackRoutes(
   ctx: PackRouteContext,
   deps: PackRouteDeps,
@@ -113,7 +134,7 @@ export async function handlePackRoutes(
     try {
       ctx.json(ctx.res, {
         configured: true,
-        teachers: await listRatiTeacherCandidates(),
+        teachers: (await listRatiTeacherCandidates()).map((candidate) => connectedTeacherSummary(candidate, sessionId)),
       });
     } catch (err) {
       log.error("connected-teachers.list-failed", err, { sessionId });
@@ -179,6 +200,16 @@ export async function handlePackRoutes(
       const candidate = candidates.find((entry) => entry.model === modelId || entry.root === modelId || entry.id === modelId);
       if (!candidate) {
         ctx.error(ctx.res, "Unknown connected teacher.", 404);
+        return true;
+      }
+      if (connectedTeacherOwnedByAnotherSession(candidate, sessionId)) {
+        log.event("connected-teacher.connect-denied", {
+          sessionId,
+          model: candidate.model,
+          packId: connectedTeacherPackId(candidate),
+          reason: "owned-by-another-session",
+        });
+        ctx.error(ctx.res, "This connected teacher is already owned by another Ruby High session.", 409);
         return true;
       }
       const questions = await generateConnectedTeacherQuestionBank(candidate);

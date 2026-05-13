@@ -189,7 +189,7 @@ export async function generateConnectedTeacherQuestionBank(candidate: ConnectedT
 }
 
 export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, questions: BankedQuestion[] = []): ContentPack {
-  const slug = slugForModel(candidate.root || candidate.model);
+  const packId = connectedTeacherPackId(candidate);
   const facultyId = connectedFacultyId(candidate);
   const roomId = `${facultyId}-room`;
   const displayName = candidate.name || candidate.root || candidate.model;
@@ -199,7 +199,7 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, qu
     "open study",
   ]));
   return {
-    id: connectedPackId(`rati-${slug}`),
+    id: packId,
     name: `${displayName} Teacher`,
     description: candidate.description || `Live RATi teacher connected through ${candidate.model}.`,
     version: "1.0.0",
@@ -241,6 +241,10 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, qu
       teaches: true,
     }],
   };
+}
+
+export function connectedTeacherPackId(candidate: ConnectedTeacherCandidate): string {
+  return connectedPackId(`rati-${slugForModel(candidate.root || candidate.model)}`);
 }
 
 async function ratiChatCompletionJson(body: OpenRouterRequest): Promise<unknown> {
