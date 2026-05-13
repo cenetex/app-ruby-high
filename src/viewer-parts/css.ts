@@ -730,6 +730,8 @@ export const VIEWER_CSS = `
     transition: border-color 0.15s ease;
   }
   .pack-row:hover { background: var(--bg-elev-2); }
+  .sheet-overlay.is-busy .pack-row { cursor: default; opacity: 0.72; }
+  .sheet-overlay.is-busy .pack-row:hover { background: var(--bg-elev); }
   .pack-row.is-active { border-color: var(--accent); cursor: default; }
   .pack-row .pack-name {
     font-weight: 700;
@@ -763,6 +765,48 @@ export const VIEWER_CSS = `
     cursor: pointer;
   }
   .pack-row .pack-action:hover { border-color: var(--accent); }
+  .pack-row .pack-action:disabled,
+  #pack-close-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .pack-import-panel {
+    margin: 12px 0 4px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+  }
+  .pack-import-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .pack-import-detail {
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--text-mute);
+  }
+  .pack-progress {
+    margin-top: 10px;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.10);
+    overflow: hidden;
+  }
+  .pack-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: var(--accent);
+    transition: width 0.45s ease;
+  }
+  .pack-import-panel.is-error {
+    border-color: rgba(210,42,42,0.55);
+  }
+  .pack-import-panel.is-error .pack-progress-fill {
+    background: #d22a2a;
+  }
   /* Lounge placeholder — shown when a connected/generated faculty has no
    * portrait asset on disk. Single colored circle with the teacher's
    * initial; matches the size of the real portrait images. */

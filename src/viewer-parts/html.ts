@@ -177,6 +177,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <p class="sub">Switch the active teacher or connect a live RATi/aws-swarm avatar as a guest instructor.</p>
     <div class="pack-section-title">RATi teachers</div>
     <div class="pack-list" id="connected-teacher-list"></div>
+    <div class="pack-import-panel" id="pack-import-panel" hidden>
+      <div class="pack-import-title" id="pack-import-title">Preparing teacher</div>
+      <div class="pack-import-detail" id="pack-import-detail">Ruby High is setting up the class.</div>
+      <div class="pack-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Teacher import progress">
+        <div class="pack-progress-fill" id="pack-progress-fill"></div>
+      </div>
+    </div>
     <div class="pack-section-title">Active roster</div>
     <div class="pack-list" id="pack-list"></div>
     <div id="pack-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>

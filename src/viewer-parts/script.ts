@@ -5122,7 +5122,20 @@ const VIEWER_SCRIPT_SUFFIX = `
   const connectedTeacherListEl = $("connected-teacher-list");
   const packCloseBtn = $("pack-close-btn");
   const packStatusEl = $("pack-status");
+  const packImportPanelEl = $("pack-import-panel");
+  const packImportTitleEl = $("pack-import-title");
+  const packImportDetailEl = $("pack-import-detail");
+  const packProgressFillEl = $("pack-progress-fill");
   const packBtn = els.packBtn;
+  let packImportBusy = false;
+  let packImportTimer = null;
+  const PACK_IMPORT_STEPS = [
+    { pct: 8, title: "Connecting to RATi OS", detail: "Opening the teacher roster." },
+    { pct: 28, title: "Generating seed questions", detail: "The agent is writing a Ruby High board bank." },
+    { pct: 58, title: "Validating generated cards", detail: "Checking answer keys, options, subjects, and difficulty." },
+    { pct: 82, title: "Saving teacher pack", detail: "Persisting the generated board bank to your session." },
+    { pct: 96, title: "Preparing classroom", detail: "Ruby High is switching the active teacher." },
+  ];
 
   function openPackStore() {
     packEl.classList.add("is-open");
@@ -5130,10 +5143,74 @@ const VIEWER_SCRIPT_SUFFIX = `
     renderConnectedTeachers();
   }
   function closePackStore() {
+    if (packImportBusy) {
+      packStatusEl.textContent = "Finish importing the teacher before closing this panel.";
+      packStatusEl.classList.remove("is-invalid");
+      return;
+    }
     packEl.classList.remove("is-open");
     packStatusEl.textContent = "";
     packStatusEl.classList.remove("is-invalid");
+    resetPackImportProgress();
   }
+  function setPackBusy(busy) {
+    packImportBusy = !!busy;
+    packEl.classList.toggle("is-busy", packImportBusy);
+    if (packCloseBtn) packCloseBtn.disabled = packImportBusy;
+    if (packBtn) packBtn.disabled = packImportBusy;
+    packEl.querySelectorAll("button.pack-action").forEach((btn) => { btn.disabled = packImportBusy; });
+  }
+  function updatePackImportProgress(pct, title, detail, isError) {
+    if (!packImportPanelEl) return;
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    packImportPanelEl.hidden = false;
+    packImportPanelEl.classList.toggle("is-error", !!isError);
+    if (packImportTitleEl) packImportTitleEl.textContent = title;
+    if (packImportDetailEl) packImportDetailEl.textContent = detail;
+    const progress = packImportPanelEl.querySelector(".pack-progress");
+    if (progress) progress.setAttribute("aria-valuenow", String(clamped));
+    if (packProgressFillEl) packProgressFillEl.style.width = clamped + "%";
+  }
+  function startPackImportProgress(teacherName) {
+    clearInterval(packImportTimer);
+    setPackBusy(true);
+    packStatusEl.textContent = "Do not close this panel while Ruby High imports the teacher.";
+    packStatusEl.classList.remove("is-invalid");
+    const startedAt = Date.now();
+    updatePackImportProgress(4, "Starting import", "Ruby High is preparing " + (teacherName || "this teacher") + ".", false);
+    packImportTimer = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const pct = Math.min(94, 4 + Math.floor(elapsed / 650) * 6);
+      const step = PACK_IMPORT_STEPS.reduce((best, entry) => entry.pct <= pct ? entry : best, PACK_IMPORT_STEPS[0]);
+      updatePackImportProgress(pct, step.title, step.detail, false);
+    }, 650);
+  }
+  function finishPackImportProgress(title, detail) {
+    clearInterval(packImportTimer);
+    packImportTimer = null;
+    updatePackImportProgress(100, title, detail, false);
+    setPackBusy(false);
+  }
+  function failPackImportProgress(message) {
+    clearInterval(packImportTimer);
+    packImportTimer = null;
+    updatePackImportProgress(100, "Import failed", message, true);
+    setPackBusy(false);
+  }
+  function resetPackImportProgress() {
+    clearInterval(packImportTimer);
+    packImportTimer = null;
+    if (packImportPanelEl) {
+      packImportPanelEl.hidden = true;
+      packImportPanelEl.classList.remove("is-error");
+    }
+    if (packProgressFillEl) packProgressFillEl.style.width = "0%";
+  }
+  window.addEventListener("beforeunload", (e) => {
+    if (!packImportBusy) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
   function renderPackList() {
     const t = lastTelemetry || {};
     const packs = t.available_packs || [];
@@ -5166,12 +5243,13 @@ const VIEWER_SCRIPT_SUFFIX = `
         tag.textContent = "Active";
         row.appendChild(tag);
       } else {
-        row.addEventListener("click", () => switchPack(p.id));
+        row.addEventListener("click", () => { if (!packImportBusy) switchPack(p.id); });
       }
       packListEl.appendChild(row);
     }
   }
   async function renderConnectedTeachers() {
+    if (packImportBusy) return;
     if (!connectedTeacherListEl) return;
     connectedTeacherListEl.innerHTML = "";
     const loading = document.createElement("div");
@@ -5228,9 +5306,10 @@ const VIEWER_SCRIPT_SUFFIX = `
           btn.type = "button";
           btn.className = "pack-action";
           btn.textContent = "Connect";
+          btn.disabled = packImportBusy;
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            connectTeacher(teacher.model);
+            connectTeacher(teacher);
           });
           row.appendChild(btn);
         }
@@ -5244,8 +5323,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       connectedTeacherListEl.appendChild(error);
     }
   }
-  async function connectTeacher(modelId) {
-    packStatusEl.textContent = "Connecting teacher…";
+  async function connectTeacher(teacher) {
+    if (packImportBusy) return;
+    const modelId = teacher && teacher.model;
+    const teacherName = teacher && (teacher.name || teacher.root || teacher.model);
+    startPackImportProgress(teacherName);
     packStatusEl.classList.remove("is-invalid");
     try {
       const r = await apiFetch("/api/apps/ruby-high/packs/connect-agent", {
@@ -5257,14 +5339,20 @@ const VIEWER_SCRIPT_SUFFIX = `
         const err = await r.json().catch(() => ({ error: r.status }));
         throw new Error(err.error || "connect " + r.status);
       }
-      packStatusEl.textContent = "Teacher connected. Reloading…";
+      const data = await r.json().catch(() => ({}));
+      const count = data && data.pack && typeof data.pack.question_count === "number" ? data.pack.question_count : 0;
+      finishPackImportProgress("Teacher ready", "Generated " + count + " board card" + (count === 1 ? "" : "s") + ". Reloading...");
+      packStatusEl.textContent = "Teacher connected. Reloading...";
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
-      packStatusEl.textContent = "Couldn't connect · " + (err && err.message ? err.message : "error");
+      const message = "Couldn't connect · " + (err && err.message ? err.message : "error");
+      failPackImportProgress(message);
+      packStatusEl.textContent = message;
       packStatusEl.classList.add("is-invalid");
     }
   }
   async function switchPack(packId) {
+    if (packImportBusy) return;
     packStatusEl.textContent = "Switching…";
     packStatusEl.classList.remove("is-invalid");
     try {
