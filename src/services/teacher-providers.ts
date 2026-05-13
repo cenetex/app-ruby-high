@@ -40,6 +40,7 @@ interface RatiModelRecord {
 
 const DEFAULT_RATI_BASE_URL = "https://swarm.rati.chat/api/v1";
 const RATI_TIMEOUT_MS = readPositiveInt(process.env.RUBY_HIGH_RATI_TIMEOUT_MS, 60_000);
+const RATI_PROFILE_IMAGE_TIMEOUT_MS = readPositiveInt(process.env.RUBY_HIGH_RATI_PROFILE_IMAGE_TIMEOUT_MS, 3_000);
 const CONNECTED_TEACHER_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_CONNECTED_TEACHER_QUESTION_COUNT, 8);
 
 export function providerForFaculty(faculty: PackFaculty | null | undefined): PackFacultyProvider {
@@ -243,6 +244,12 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, qu
   };
 }
 
+export async function candidateWithReachableProfileImage(candidate: ConnectedTeacherCandidate): Promise<ConnectedTeacherCandidate> {
+  if (!candidate.profileImage) return candidate;
+  const reachable = await profileImageReachable(candidate.profileImage);
+  return reachable ? candidate : { ...candidate, profileImage: null };
+}
+
 export function connectedTeacherPackId(candidate: ConnectedTeacherCandidate): string {
   return connectedPackId(`rati-${slugForModel(candidate.root || candidate.model)}`);
 }
@@ -335,6 +342,25 @@ function usableProfileImageUrl(value: string): string | null {
     return url.toString();
   } catch {
     return null;
+  }
+}
+
+async function profileImageReachable(url: string): Promise<boolean> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RATI_PROFILE_IMAGE_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "HEAD",
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (!response.ok) return false;
+    const contentType = response.headers.get("content-type") || "";
+    return !contentType || contentType.toLowerCase().startsWith("image/");
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -975,7 +975,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!/^https?:\\/\\//i.test(raw)) return false;
     try {
       const url = new URL(raw);
-      return !/\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(url.hostname);
+      return !/\\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(url.hostname);
     } catch (_err) {
       return false;
     }

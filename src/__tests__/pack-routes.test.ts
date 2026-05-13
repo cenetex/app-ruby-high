@@ -124,6 +124,10 @@ describe("/connected-teachers", () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         choices: [{
           message: {
@@ -220,6 +224,86 @@ describe("/connected-teachers", () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify([
+              {
+                subject: "recursion",
+                difficulty: "easy",
+                prompt: "What is recursion?",
+                options: { A: "A function calling itself", B: "A color", C: "A file type", D: "A classroom" },
+                correct: "A",
+                explanation: "Recursion repeats a process by referring back to itself.",
+              },
+              {
+                subject: "systems",
+                difficulty: "medium",
+                prompt: "Why do feedback loops matter?",
+                options: { A: "They never change behavior", B: "They can amplify or stabilize behavior", C: "They delete inputs", D: "They only work in math" },
+                correct: "B",
+                explanation: "Feedback loops change future behavior based on previous outputs.",
+              },
+              {
+                subject: "agents",
+                difficulty: "medium",
+                prompt: "What makes an agent useful in a classroom?",
+                options: { A: "Ignoring context", B: "Adapting to the student", C: "Never asking questions", D: "Hiding goals" },
+                correct: "B",
+                explanation: "A useful agent adapts its teaching to the learner and setting.",
+              },
+              {
+                subject: "reasoning",
+                difficulty: "hard",
+                prompt: "What is the best way to debug a multi-step system?",
+                options: { A: "Guess randomly", B: "Inspect each boundary in order", C: "Change everything at once", D: "Ignore logs" },
+                correct: "B",
+                explanation: "Boundary-by-boundary inspection isolates where behavior changes.",
+              },
+            ]),
+          },
+        }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/connect-agent",
+      cookie: "rh_session=alice",
+      body: { modelId: "avatar:rati" },
+    });
+    await handlePackRoutes(ctx, makeDeps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.pack.faculty[0]).not.toHaveProperty("profileImageUrl");
+    const state = ruby.getOrCreate("rh:user:test-alice");
+    const activePack = packForSession(state);
+    expect(activePack.faculty[0]).not.toHaveProperty("profileImageUrl");
+  });
+
+  it("drops unreachable RATi profile image URLs during import", async () => {
+    signInUser("alice");
+    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
+    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        object: "list",
+        data: [{
+          id: "avatar:rati",
+          root: "rati",
+          avatar: {
+            name: "RATi",
+            description: "Recursive teacher",
+            profile_image: "https://dodxbiygmi95j.cloudfront.net/avatars/agent-1-6yan/profile/6e331855-ac0b-4734-b0f1-343c346a4228.png",
+          },
+        }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockRejectedValueOnce(new TypeError("getaddrinfo ENOTFOUND dodxbiygmi95j.cloudfront.net"))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         choices: [{
           message: {

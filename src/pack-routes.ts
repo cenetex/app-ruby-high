@@ -27,6 +27,7 @@ import {
 } from "./content/registry.js";
 import type { ContentPack } from "./content/types.js";
 import {
+  candidateWithReachableProfileImage,
   generateConnectedTeacherQuestionBank,
   connectedTeacherPackId,
   listRatiTeacherCandidates,
@@ -212,8 +213,9 @@ export async function handlePackRoutes(
         ctx.error(ctx.res, "This connected teacher is already owned by another Ruby High session.", 409);
         return true;
       }
-      const questions = await generateConnectedTeacherQuestionBank(candidate);
-      const pack = packForConnectedTeacher(candidate, questions);
+      const importCandidate = await candidateWithReachableProfileImage(candidate);
+      const questions = await generateConnectedTeacherQuestionBank(importCandidate);
+      const pack = packForConnectedTeacher(importCandidate, questions);
       registerPack(pack, sessionId);
       await deps.ruby.persistImportedPack(sessionId, pack);
       deps.ruby.setActivePackForSession(sessionId, pack.id);
