@@ -108,7 +108,8 @@ describe("/connected-teachers", () => {
     signInUser("alice");
     process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
     process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
       object: "list",
       data: [{
         id: "avatar:rati",
@@ -119,10 +120,53 @@ describe("/connected-teachers", () => {
           profile_image: null,
         },
       }],
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }));
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify([
+              {
+                subject: "recursion",
+                difficulty: "easy",
+                prompt: "What is recursion?",
+                options: { A: "A function calling itself", B: "A color", C: "A file type", D: "A classroom" },
+                correct: "A",
+                explanation: "Recursion repeats a process by referring back to itself.",
+              },
+              {
+                subject: "systems",
+                difficulty: "medium",
+                prompt: "Why do feedback loops matter?",
+                options: { A: "They never change behavior", B: "They can amplify or stabilize behavior", C: "They delete inputs", D: "They only work in math" },
+                correct: "B",
+                explanation: "Feedback loops change future behavior based on previous outputs.",
+              },
+              {
+                subject: "agents",
+                difficulty: "medium",
+                prompt: "What makes an agent useful in a classroom?",
+                options: { A: "Ignoring context", B: "Adapting to the student", C: "Never asking questions", D: "Hiding goals" },
+                correct: "B",
+                explanation: "A useful agent adapts its teaching to the learner and setting.",
+              },
+              {
+                subject: "reasoning",
+                difficulty: "hard",
+                prompt: "What is the best way to debug a multi-step system?",
+                options: { A: "Guess randomly", B: "Inspect each boundary in order", C: "Change everything at once", D: "Ignore logs" },
+                correct: "B",
+                explanation: "Boundary-by-boundary inspection isolates where behavior changes.",
+              },
+            ]),
+          },
+        }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
 
     const ctx = makeCtx({
       method: "POST",
@@ -134,9 +178,17 @@ describe("/connected-teachers", () => {
 
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.pack.id).toBe("agent:rati-rati");
+    expect(lastResponse?.body.pack.question_count).toBe(4);
     const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe("agent:rati-rati");
     const activePack = packForSession(state);
+    expect(activePack.faculty[0]?.questions).toHaveLength(4);
+    expect(activePack.faculty[0]?.questions[0]).toMatchObject({
+      id: "rati-rati-seed-1",
+      faculty: "rati-rati",
+      subject: "recursion",
+      correct: "A",
+    });
     expect(activePack.faculty[0]?.provider).toEqual({
       kind: "rati-openai-compatible",
       model: "avatar:rati",

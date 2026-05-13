@@ -26,6 +26,7 @@ import {
 } from "./content/registry.js";
 import type { ContentPack } from "./content/types.js";
 import {
+  generateConnectedTeacherQuestionBank,
   listRatiTeacherCandidates,
   packForConnectedTeacher,
   ratiConfigured,
@@ -179,7 +180,8 @@ export async function handlePackRoutes(
         ctx.error(ctx.res, "Unknown connected teacher.", 404);
         return true;
       }
-      const pack = packForConnectedTeacher(candidate);
+      const questions = await generateConnectedTeacherQuestionBank(candidate);
+      const pack = packForConnectedTeacher(candidate, questions);
       registerPack(pack, sessionId);
       await deps.ruby.persistImportedPack(sessionId, pack);
       deps.ruby.setActivePackForSession(sessionId, pack.id);
@@ -189,6 +191,7 @@ export async function handlePackRoutes(
         packId: pack.id,
         model: candidate.model,
         provider: candidate.provider,
+        generatedQuestions: questions.length,
       });
       ctx.json(ctx.res, { ok: true, pack: packSummary(pack), teacher: candidate });
     } catch (err) {

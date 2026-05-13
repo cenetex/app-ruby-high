@@ -1,5 +1,6 @@
 import type { ContentPack, PackFaculty, PackFacultyProvider } from "../content/types.js";
 import { connectedPackId } from "../content/registry.js";
+import type { BankedQuestion, Choice, Difficulty } from "../types.js";
 import {
   chatCompletionStream,
   openRouterStream,
@@ -38,6 +39,7 @@ interface RatiModelRecord {
 
 const DEFAULT_RATI_BASE_URL = "https://swarm.rati.chat/api/v1";
 const RATI_TIMEOUT_MS = readPositiveInt(process.env.RUBY_HIGH_RATI_TIMEOUT_MS, 60_000);
+const CONNECTED_TEACHER_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_CONNECTED_TEACHER_QUESTION_COUNT, 8);
 
 export function providerForFaculty(faculty: PackFaculty | null | undefined): PackFacultyProvider {
   return faculty?.provider ?? { kind: "openrouter", supportsTools: true };
@@ -142,13 +144,59 @@ export async function listRatiTeacherCandidates(): Promise<ConnectedTeacherCandi
   }
 }
 
-export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate): ContentPack {
+export async function generateConnectedTeacherQuestionBank(candidate: ConnectedTeacherCandidate): Promise<BankedQuestion[]> {
+  if (CONNECTED_TEACHER_QUESTION_COUNT <= 0) return [];
+  const config = ratiConfig();
+  if (!config.configured) throw new Error("RATi teacher backend is not configured.");
+  const facultyId = connectedFacultyId(candidate);
+  const displayName = candidate.name || candidate.root || candidate.model;
+  const response = await ratiChatCompletionJson({
+    model: candidate.model,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You create Ruby High multiple-choice study cards.",
+          "Return only valid JSON. No markdown. No commentary.",
+          "Every question must be answerable from general reasoning or your teaching domain, not private chat state.",
+        ].join("\n"),
+      },
+      {
+        role: "user",
+        content: [
+          `Teacher: ${displayName}`,
+          candidate.description ? `Teacher description: ${candidate.description}` : "",
+          `Write ${CONNECTED_TEACHER_QUESTION_COUNT} Ruby High board questions for a high-school class taught by this teacher.`,
+          "Return a JSON array. Each item must have exactly these fields:",
+          `{"subject":"short subject label","difficulty":"easy|medium|hard","prompt":"question text","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A|B|C|D","explanation":"one sentence"}`,
+          "Make the questions varied, classroom-appropriate, and concrete.",
+        ].filter(Boolean).join("\n"),
+      },
+    ],
+    max_tokens: 2400,
+    temperature: 0.35,
+  });
+  const content = firstMessageContent(response);
+  const items = parseQuestionBankJson(content);
+  const questions = items
+    .map((item, index) => bankedQuestionFromGeneratedItem(item, { facultyId, index }))
+    .filter((question): question is BankedQuestion => !!question);
+  if (questions.length < Math.min(4, CONNECTED_TEACHER_QUESTION_COUNT)) {
+    throw new Error(`RATi teacher returned ${questions.length} valid generated questions; at least ${Math.min(4, CONNECTED_TEACHER_QUESTION_COUNT)} required.`);
+  }
+  return questions.slice(0, CONNECTED_TEACHER_QUESTION_COUNT);
+}
+
+export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, questions: BankedQuestion[] = []): ContentPack {
   const slug = slugForModel(candidate.root || candidate.model);
-  const facultyId = `rati-${slug}`;
+  const facultyId = connectedFacultyId(candidate);
   const roomId = `${facultyId}-room`;
   const displayName = candidate.name || candidate.root || candidate.model;
   const shortName = displayName.split(/\s+/)[0] || "Teacher";
-  const subjects = ["open study"];
+  const subjects = Array.from(new Set([
+    ...questions.map((q) => q.subject).filter(Boolean),
+    "open study",
+  ]));
   return {
     id: connectedPackId(`rati-${slug}`),
     name: `${displayName} Teacher`,
@@ -173,7 +221,7 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate): C
         externalId: candidate.root,
         supportsTools: candidate.supportsTools,
       },
-      questions: [],
+      questions,
     }],
     courses: [{
       id: facultyId,
@@ -191,6 +239,31 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate): C
       teaches: true,
     }],
   };
+}
+
+async function ratiChatCompletionJson(body: OpenRouterRequest): Promise<unknown> {
+  const config = ratiConfig();
+  if (!config.configured) throw new Error("RATi teacher backend is not configured.");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RATI_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({ ...body, stream: false }),
+      signal: ctrl.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`RATi question generation ${response.status} ${response.statusText}${text ? ` — ${text.slice(0, 300)}` : ""}`);
+    }
+    return await response.json() as unknown;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function ratiConfig(): { configured: false; baseUrl: string; apiKey: "" } | { configured: true; baseUrl: string; apiKey: string } {
@@ -231,6 +304,97 @@ function candidateFromModel(model: RatiModelRecord): ConnectedTeacherCandidate |
     supportsTools: ratiToolsEnabled(),
     profileImage: typeof avatar.profile_image === "string" ? avatar.profile_image : null,
   };
+}
+
+function connectedFacultyId(candidate: ConnectedTeacherCandidate): string {
+  return `rati-${slugForModel(candidate.root || candidate.model)}`;
+}
+
+function firstMessageContent(response: unknown): string {
+  const choices = response && typeof response === "object" ? (response as { choices?: unknown }).choices : undefined;
+  if (!Array.isArray(choices)) return "";
+  const first = choices[0];
+  if (!first || typeof first !== "object") return "";
+  const message = (first as { message?: unknown }).message;
+  if (!message || typeof message !== "object") return "";
+  const content = (message as { content?: unknown }).content;
+  return typeof content === "string" ? content.trim() : "";
+}
+
+function parseQuestionBankJson(text: string): unknown[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const direct = safeJson(trimmed);
+  if (Array.isArray(direct)) return direct;
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) {
+    const parsed = safeJson(fenced[1]!.trim());
+    if (Array.isArray(parsed)) return parsed;
+  }
+  const start = trimmed.indexOf("[");
+  const end = trimmed.lastIndexOf("]");
+  if (start !== -1 && end > start) {
+    const parsed = safeJson(trimmed.slice(start, end + 1));
+    if (Array.isArray(parsed)) return parsed;
+  }
+  return [];
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function bankedQuestionFromGeneratedItem(
+  item: unknown,
+  opts: { facultyId: string; index: number },
+): BankedQuestion | null {
+  if (!item || typeof item !== "object") return null;
+  const record = item as Record<string, unknown>;
+  const optionsRaw = record.options;
+  if (!optionsRaw || typeof optionsRaw !== "object") return null;
+  const optionsRecord = optionsRaw as Record<string, unknown>;
+  const options = {
+    A: cleanText(optionsRecord.A),
+    B: cleanText(optionsRecord.B),
+    C: cleanText(optionsRecord.C),
+    D: cleanText(optionsRecord.D),
+  };
+  if (!options.A || !options.B || !options.C || !options.D) return null;
+  const correct = cleanText(record.correct).toUpperCase();
+  if (!isChoice(correct)) return null;
+  const prompt = cleanText(record.prompt);
+  if (!prompt) return null;
+  const difficulty = normalizeDifficulty(record.difficulty);
+  const subject = cleanText(record.subject) || "open study";
+  return {
+    id: `${opts.facultyId}-seed-${opts.index + 1}`,
+    prompt,
+    type: "multiple-choice",
+    options,
+    correct,
+    explanation: cleanText(record.explanation) || undefined,
+    subject,
+    difficulty,
+    faculty: opts.facultyId,
+  };
+}
+
+function cleanText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isChoice(value: string): value is Choice {
+  return value === "A" || value === "B" || value === "C" || value === "D";
+}
+
+function normalizeDifficulty(value: unknown): Difficulty {
+  const text = cleanText(value).toLowerCase();
+  if (text === "easy" || text === "medium" || text === "hard") return text;
+  return "medium";
 }
 
 function ratiToolsEnabled(): boolean {

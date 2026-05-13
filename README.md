@@ -63,6 +63,7 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_RATI_API_KEY` | — | Server-side RATi key used to list/connect live teachers. Never sent to the browser or stored in packs. |
 | `RUBY_HIGH_RATI_SUPPORTS_TOOLS` | `true` | Whether RATi connected teachers receive Ruby High board tools. Set `false` only for an older chat-only RATi backend. |
 | `RUBY_HIGH_RATI_TIMEOUT_MS` | `60000` | Timeout for RATi model listing and chat calls. |
+| `RUBY_HIGH_CONNECTED_TEACHER_QUESTION_COUNT` | `8` | Number of seed questions a connected teacher must generate when imported. Set `0` to skip seed-bank generation. |
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
