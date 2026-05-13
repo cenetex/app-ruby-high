@@ -35,6 +35,7 @@ let captured: { url: string; body: any } | null = null;
 let activeRuby: RubyHighService | null = null;
 const originalRatiBaseUrl = process.env.RUBY_HIGH_RATI_BASE_URL;
 const originalRatiApiKey = process.env.RUBY_HIGH_RATI_API_KEY;
+const originalRatiSupportsTools = process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
 
 function buildSseChunk(events: Array<{ content?: string; toolCalls?: any[]; finish?: string }>): Uint8Array {
   const lines: string[] = [];
@@ -184,6 +185,7 @@ class FailingSaveSessionStore implements StateStoreLike {
 beforeEach(async () => {
   delete process.env.RUBY_HIGH_RATI_BASE_URL;
   delete process.env.RUBY_HIGH_RATI_API_KEY;
+  delete process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-"));
   storePath = join(tmpDir, "state.json");
   captured = null;
@@ -193,6 +195,7 @@ beforeEach(async () => {
 afterEach(async () => {
   restoreEnv("RUBY_HIGH_RATI_BASE_URL", originalRatiBaseUrl);
   restoreEnv("RUBY_HIGH_RATI_API_KEY", originalRatiApiKey);
+  restoreEnv("RUBY_HIGH_RATI_SUPPORTS_TOOLS", originalRatiSupportsTools);
   vi.restoreAllMocks();
   // Drain any in-flight persistSession writes before nuking the dir,
   // otherwise a fire-and-forget write can race the rm and trip ENOTEMPTY.
@@ -245,7 +248,7 @@ describe("ChatService.send — message composition", () => {
     expect(messages[0].content).not.toContain("You are Ruby");
   });
 
-  it("uses a server-backed RATi provider without a browser OpenRouter key", async () => {
+  it("uses a server-backed RATi provider with board tools and no browser OpenRouter key", async () => {
     process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
     process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
     mockOpenRouter(buildSseChunk([{ content: "RATi here.", finish: "stop" }]));
@@ -284,8 +287,52 @@ describe("ChatService.send — message composition", () => {
     expect(events.some((ev) => ev.type === "delta" && ev.text === "RATi here.")).toBe(true);
     expect(captured?.url).toBe("https://swarm.test/api/v1/chat/completions");
     expect(captured?.body.model).toBe("avatar:rati");
+    const toolNames = captured?.body.tools.map((tool: any) => tool.function.name);
+    expect(toolNames).toContain("pose_question");
+    expect(toolNames).not.toContain("pick_from_bank");
+    expect(captured?.body.tool_choice).toBe("auto");
+  });
+
+  it("strips board-tool instructions for a chat-only RATi backend", async () => {
+    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
+    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS = "false";
+    mockOpenRouter(buildSseChunk([{ content: "RATi here.", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    const sid = "session:rati-chat-only";
+    const pack = fakeImportedPack();
+    pack.id = "agent:rati-chat-only";
+    pack.faculty[0] = {
+      ...pack.faculty[0]!,
+      id: "rati-chat-only",
+      displayName: "RATi",
+      defaultModel: "avatar:rati",
+      provider: {
+        kind: "rati-openai-compatible",
+        model: "avatar:rati",
+        externalId: "rati",
+        supportsTools: true,
+      },
+      questions: [],
+    };
+    pack.courses![0] = { ...pack.courses![0]!, facultyId: "rati-chat-only", id: "rati-chat-only" };
+    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "rati-chat-only" };
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    for await (const _ of chat.send({
+      sessionToken: "t-rati-chat-only",
+      agentSessionId: sid,
+      faculty: "rati-chat-only",
+      systemEventNote: "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question.",
+    })) { /* consume */ }
+
     expect(captured?.body.tools).toBeUndefined();
     expect(captured?.body.tool_choice).toBeUndefined();
+    const promptText = JSON.stringify(captured?.body.messages);
+    expect(promptText).not.toContain("pick_from_bank");
+    expect(promptText).not.toContain("pose_question");
+    expect(promptText).toContain("Ruby High board tools are not available");
   });
 
   it("describes imported decks as no due cards, not exhausted", async () => {

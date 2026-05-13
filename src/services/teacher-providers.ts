@@ -58,7 +58,14 @@ export function providerRequiresBrowserKey(provider: PackFacultyProvider): boole
 }
 
 export function providerSupportsTools(provider: PackFacultyProvider): boolean {
-  return provider.supportsTools !== false && provider.kind !== "rati-openai-compatible";
+  if (provider.kind === "rati-openai-compatible") {
+    // This is a server-side backend capability, not stable pack metadata.
+    // Older persisted connected-teacher packs stored supportsTools:false from
+    // the previous chat-only route, so do not let that stale flag disable the
+    // board tools after the RATi API has gained tool-call support.
+    return ratiToolsEnabled();
+  }
+  return provider.supportsTools !== false;
 }
 
 export async function* streamTeacherCompletion(opts: {
@@ -157,7 +164,7 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate): C
       systemPrompt: [
         `You are ${displayName}, a live guest teacher at Ruby High.`,
         "Teach conversationally, keep answers concrete, and adapt to the student's current class context.",
-        "The current RATi compatibility route is chat-only, so do not claim you changed the blackboard unless Ruby High reports that state to you.",
+        "Use Ruby High board tools when the class needs a new challenge; Ruby High will report the blackboard state after a tool succeeds.",
       ].join("\n"),
       defaultModel: candidate.model,
       provider: {
@@ -221,9 +228,13 @@ function candidateFromModel(model: RatiModelRecord): ConnectedTeacherCandidate |
     name,
     description,
     provider: "rati-openai-compatible",
-    supportsTools: false,
+    supportsTools: ratiToolsEnabled(),
     profileImage: typeof avatar.profile_image === "string" ? avatar.profile_image : null,
   };
+}
+
+function ratiToolsEnabled(): boolean {
+  return readBoolean(process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS, true);
 }
 
 function slugForModel(value: string): string {
@@ -244,6 +255,14 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback;
   const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+function readBoolean(raw: string | undefined, fallback: boolean): boolean {
+  if (raw == null || raw.trim() === "") return fallback;
+  const value = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(value)) return true;
+  if (["0", "false", "no", "off"].includes(value)) return false;
+  return fallback;
 }
 
 function colorForString(value: string): string {

@@ -269,7 +269,11 @@ export class ChatService extends Service {
     // a filter is dry, then the teacher writes a custom question. Once a tool
     // successfully puts a board state in place, the next round is narration-only
     // to preserve the old anti-repeat-pick guard.
-    let safety = opts.disableTools || !teacherSupportsTools ? 1 : Math.max(2, MAX_AGENT_ROUNDS);
+    const toolsDisabledForProvider = !teacherSupportsTools;
+    const effectiveTurnDirective = toolsDisabledForProvider && turnDirective
+      ? toolFreeDirective(turnDirective)
+      : turnDirective;
+    let safety = opts.disableTools || toolsDisabledForProvider ? 1 : Math.max(2, MAX_AGENT_ROUNDS);
     let narrationOnlyNext = false;
 
     while (safety-- > 0) {
@@ -279,13 +283,13 @@ export class ChatService extends Service {
         agentSessionId: opts.agentSessionId,
         bucketKey: key,
         speakerId,
-        turnDirective,
+        turnDirective: effectiveTurnDirective,
         extraSystemContext: opts.extraSystemContext,
-        disableTools: !!opts.disableTools,
+        disableTools: !!opts.disableTools || toolsDisabledForProvider,
       });
       const liveStateBeforeCall = this.ruby.getOrCreate(opts.agentSessionId);
       const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
-      const toolDefs = opts.disableTools || !teacherSupportsTools || boardIsWaitingForStudent(liveStateBeforeCall)
+      const toolDefs = opts.disableTools || toolsDisabledForProvider || boardIsWaitingForStudent(liveStateBeforeCall)
         ? []
         : buildToolDefs({ includePickFromBank: scheduledPickAvailable(bankStatus) });
 
@@ -1216,6 +1220,23 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     subjects ? `Available subjects: ${subjects}.` : "",
     "Use pick_from_bank as the normal next-board move. This subject uses spaced review; do not describe cards as consumed or exhausted.",
   ].filter(Boolean).join("\n");
+}
+
+function toolFreeDirective(text: string): string {
+  const cleaned = text
+    .replace(/Then call pick_from_bank[^.]*\./gi, "Then offer a short conversational practice prompt in chat.")
+    .replace(/Call pick_from_bank exactly once[^.]*\./gi, "Offer a short conversational practice prompt in chat.")
+    .replace(/Use pick_from_bank[^.]*\./gi, "Offer a short conversational practice prompt in chat.")
+    .replace(/call pose_question exactly once[^.]*\./gi, "offer a short conversational practice prompt in chat.")
+    .replace(/Call pose_question exactly once[^.]*\./g, "Offer a short conversational practice prompt in chat.")
+    .replace(/Do NOT call pick_from_bank or try alternate filters\./gi, "")
+    .replace(/pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty/gi, "Ruby High board tools")
+    .replace(/\s+/g, " ")
+    .trim();
+  return [
+    cleaned,
+    "Ruby High board tools are not available to this provider on this turn. Do not mention tool names, missing tools, prompts, or technical limitations; speak only as the teacher.",
+  ].filter(Boolean).join(" ");
 }
 
 function buildToolDefs(opts: { includePickFromBank?: boolean } = {}): unknown[] {

@@ -26,6 +26,7 @@ let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
 const originalRatiBaseUrl = process.env.RUBY_HIGH_RATI_BASE_URL;
 const originalRatiApiKey = process.env.RUBY_HIGH_RATI_API_KEY;
+const originalRatiSupportsTools = process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
 
 function makeCtx(opts: { method: string; path: string; cookie?: string | null; body?: any }): PackRouteContext {
   lastResponse = null;
@@ -66,6 +67,7 @@ function signInUser(token: string): string {
 beforeEach(async () => {
   delete process.env.RUBY_HIGH_RATI_BASE_URL;
   delete process.env.RUBY_HIGH_RATI_API_KEY;
+  delete process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-pack-routes-"));
   storePath = join(tmpDir, "state.json");
   resetActivePack();
@@ -79,6 +81,7 @@ beforeEach(async () => {
 afterEach(async () => {
   restoreEnv("RUBY_HIGH_RATI_BASE_URL", originalRatiBaseUrl);
   restoreEnv("RUBY_HIGH_RATI_API_KEY", originalRatiApiKey);
+  restoreEnv("RUBY_HIGH_RATI_SUPPORTS_TOOLS", originalRatiSupportsTools);
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
@@ -138,7 +141,7 @@ describe("/connected-teachers", () => {
       kind: "rati-openai-compatible",
       model: "avatar:rati",
       externalId: "rati",
-      supportsTools: false,
+      supportsTools: true,
     });
     expect(JSON.stringify(activePack)).not.toContain("sk-rati-test");
   });

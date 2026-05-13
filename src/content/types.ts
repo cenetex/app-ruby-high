@@ -109,7 +109,7 @@ export type PackFacultyProvider =
       model: string;
       /** Stable upstream id/root for display and reconnect validation. */
       externalId?: string;
-      /** Current aws-swarm public compat route is chat-only. */
+      /** Server-side capability hint for Ruby High board tools. */
       supportsTools?: boolean;
     }
   | {
