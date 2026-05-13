@@ -314,15 +314,32 @@ function candidateFromModel(model: RatiModelRecord): ConnectedTeacherCandidate |
 }
 
 function profileImageFromModelAvatar(avatar: RatiModelRecord["avatar"]): string | null {
-  const snake = avatar && typeof avatar.profile_image === "string" ? avatar.profile_image.trim() : "";
+  const snake = avatar && typeof avatar.profile_image === "string" ? usableProfileImageUrl(avatar.profile_image) : null;
   if (snake) return snake;
   const camel = avatar && avatar.profileImage;
-  if (typeof camel === "string" && camel.trim()) return camel.trim();
+  if (typeof camel === "string") return usableProfileImageUrl(camel);
   if (camel && typeof camel === "object") {
     const url = (camel as { url?: unknown }).url;
-    if (typeof url === "string" && url.trim()) return url.trim();
+    if (typeof url === "string") return usableProfileImageUrl(url);
   }
   return null;
+}
+
+function usableProfileImageUrl(value: string): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (hostnameLooksLikeImageFile(url.hostname)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function hostnameLooksLikeImageFile(hostname: string): boolean {
+  return /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(hostname);
 }
 
 function connectedFacultyId(candidate: ConnectedTeacherCandidate): string {

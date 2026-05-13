@@ -963,11 +963,22 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!facultyOrId) return "";
     if (typeof facultyOrId === "object") {
       const url = typeof facultyOrId.profileImageUrl === "string" ? facultyOrId.profileImageUrl.trim() : "";
-      return /^(https?:|data:image\\/|\\/)/i.test(url) ? url : "";
+      return isUsableProfileImageUrl(url) ? url : "";
     }
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     const fac = roster.find((f) => f.id === facultyOrId);
     return fac ? facultyProfileImageUrl(fac) : "";
+  }
+  function isUsableProfileImageUrl(raw) {
+    if (!raw) return false;
+    if (/^data:image\\//i.test(raw) || (raw.startsWith("/") && !raw.startsWith("//"))) return true;
+    if (!/^https?:\\/\\//i.test(raw)) return false;
+    try {
+      const url = new URL(raw);
+      return !/\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(url.hostname);
+    } catch (_err) {
+      return false;
+    }
   }
   function teacherAssetUrl(facultyOrId, variant) {
     const assetId = facultyAssetId(facultyOrId);
