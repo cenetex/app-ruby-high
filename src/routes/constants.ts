@@ -5,3 +5,4 @@ export const VIEWER_PATH = `${APP_ROUTE_PREFIX}/viewer`;
 export const ASSETS_PREFIX = `${APP_ROUTE_PREFIX}/assets/`;
 export const MANIFEST_PATH = `${APP_ROUTE_PREFIX}/manifest.webmanifest`;
 export const SERVICE_WORKER_PATH = `${APP_ROUTE_PREFIX}/service-worker.js`;
+export const BUG_REPORT_PATH = `${APP_ROUTE_PREFIX}/bug-report`;

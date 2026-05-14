@@ -47,7 +47,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
            mode, "Sign out" when an OpenRouter key is active. -->
       <button class="footer-action" id="footer-action" type="button" hidden></button>
     </div>
-    <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Draft a bug report email.">Report a bug</button>
+    <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Send a bug report.">Report a bug</button>
   </aside>
 
   <!-- workspace -->
@@ -168,6 +168,25 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay" id="sheet-overlay">
   <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card" id="sheet-card"></div>
+</div>
+
+<!-- Bug report overlay -->
+<div class="sheet-overlay" id="bug-report-overlay">
+  <button class="sheet-close" id="bug-report-close" type="button" aria-label="Close">×</button>
+  <form class="sheet-card is-bug-report-sheet" id="bug-report-form">
+    <h2>Report a bug</h2>
+    <p class="sub">Send the current Ruby High context to the private issue tracker.</p>
+    <div class="field">
+      <label for="bug-report-text">What broke?</label>
+      <textarea id="bug-report-text" rows="5" maxlength="4000" placeholder="What happened, and what did you expect?"></textarea>
+    </div>
+    <div class="bug-report-context">Recent console errors and classroom context will be included.</div>
+    <div class="stat-budget" id="bug-report-status" aria-live="polite"></div>
+    <div class="sheet-actions">
+      <button type="button" class="secondary" id="bug-report-cancel">Cancel</button>
+      <button type="submit" id="bug-report-submit">Send report</button>
+    </div>
+  </form>
 </div>
 
 <!-- Connected-teacher overlay -->

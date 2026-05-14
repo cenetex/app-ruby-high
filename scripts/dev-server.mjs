@@ -101,6 +101,8 @@ function makeRouteContext(req, res, url) {
     apiKeyHeader,
     isSecure: false,
     clientIp: deriveClientIp(req),
+    contentTypeHeader: req.headers["content-type"] ?? null,
+    originHeader: req.headers.origin ?? null,
     ifNoneMatch: req.headers["if-none-match"] ?? null,
     acceptEncoding: req.headers["accept-encoding"] ?? null,
     callbackUrlBuilder: (path) => {

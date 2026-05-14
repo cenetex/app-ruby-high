@@ -425,6 +425,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     //  surfaced as a chrome banner. The bonus endpoint stays alive
     //  on the server for future re-introduction.)
     reportBugLink: $("report-bug-link"),
+    bugReportOverlay: $("bug-report-overlay"),
+    bugReportClose: $("bug-report-close"),
+    bugReportCancel: $("bug-report-cancel"),
+    bugReportForm: $("bug-report-form"),
+    bugReportText: $("bug-report-text"),
+    bugReportSubmit: $("bug-report-submit"),
+    bugReportStatus: $("bug-report-status"),
     blackboardMeta: $("blackboard-meta"),
     boardFrameHost: $("board-frame-host"),
     boardPrompt: $("board-prompt"),
@@ -6043,52 +6050,79 @@ const VIEWER_SCRIPT_SUFFIX = `
     origConsoleError(...args);
   };
 
-  els.reportBugLink.addEventListener("click", () => {
+  function collectBugReportContext() {
     const ch = lastTelemetry && lastTelemetry.character;
     const grade = lastTelemetry && lastTelemetry.current_grade;
     const faculty = lastTelemetry && lastTelemetry.faculty;
-    // Markdown fence built dynamically because this whole script is wrapped
-    // in an outer template literal — a literal backtick in this file would
-    // close the wrapping template prematurely. charCode 96 is the fence char.
-    const FENCE = String.fromCharCode(96).repeat(3);
-    // NB: this whole script is wrapped in an outer TS template literal, so
-    // a single-backslash newline-escape here would be consumed at build
-    // time and emit an actual newline inside the double-quoted string
-    // (→ unterminated literal). Double the backslash so the rendered JS
-    // keeps the escape.
-    const fenced = (s) => FENCE + "\\n" + s + "\\n" + FENCE;
-    const tail = RECENT_ERRORS.length ? fenced(RECENT_ERRORS.join("\\n")) : "_(none in this session)_";
-    const body = [
-      "**What happened?**",
-      "<!-- describe the bug here, including what you expected -->",
-      "",
-      "**Steps to reproduce:**",
-      "1.",
-      "2.",
-      "3.",
-      "",
-      "---",
-      "<details><summary>auto-collected context</summary>",
-      "",
-      "- url: " + window.location.href,
-      "- user-agent: " + navigator.userAgent,
-      "- timestamp: " + new Date().toISOString(),
-      "- session: " + (authed ? "yes" : "no"),
-      "- ai enabled: " + (aiEnabled ? "yes" : "no"),
-      "- character: " + (ch ? ch.name + " (" + (ch.playbookId || "?") + ")" : "none"),
-      "- grade: " + (grade || "—"),
-      "- faculty: " + (faculty || "—"),
-      "- viewport: " + window.innerWidth + "×" + window.innerHeight,
-      "",
-      "**Recent console errors:**",
-      tail,
-      "",
-      "</details>",
-    ].join("\\n");
-    const mailtoUrl = "mailto:hello@ratimics.com?subject="
-      + encodeURIComponent("[Ruby High bug] ")
-      + "&body=" + encodeURIComponent(body);
-    window.location.href = mailtoUrl;
+    return {
+      url: window.location.href,
+      userAgent: navigator.userAgent,
+      timestamp: new Date().toISOString(),
+      session: authed,
+      aiEnabled,
+      character: ch ? ch.name + " (" + (ch.playbookId || "?") + ")" : "none",
+      grade: grade || "—",
+      faculty: faculty || "—",
+      viewport: window.innerWidth + "×" + window.innerHeight,
+      recentErrors: RECENT_ERRORS.slice(),
+    };
+  }
+  function setBugReportBusy(busy) {
+    els.bugReportOverlay && els.bugReportOverlay.classList.toggle("is-busy", !!busy);
+    if (els.bugReportSubmit) els.bugReportSubmit.disabled = !!busy;
+    if (els.bugReportCancel) els.bugReportCancel.disabled = !!busy;
+    if (els.bugReportClose) els.bugReportClose.disabled = !!busy;
+    if (els.bugReportText) els.bugReportText.disabled = !!busy;
+  }
+  function setBugReportStatus(text, invalid) {
+    if (!els.bugReportStatus) return;
+    els.bugReportStatus.textContent = text || "";
+    els.bugReportStatus.classList.toggle("is-invalid", !!invalid);
+  }
+  function openBugReport() {
+    if (!els.bugReportOverlay) return;
+    setBugReportStatus("", false);
+    els.bugReportOverlay.classList.add("is-open");
+    setTimeout(() => { if (els.bugReportText) els.bugReportText.focus(); }, 0);
+  }
+  function closeBugReport() {
+    if (!els.bugReportOverlay) return;
+    if (els.bugReportOverlay.classList.contains("is-busy")) return;
+    els.bugReportOverlay.classList.remove("is-open");
+    setBugReportBusy(false);
+    setBugReportStatus("", false);
+  }
+  async function submitBugReport(e) {
+    if (e) e.preventDefault();
+    const description = els.bugReportText ? els.bugReportText.value.trim() : "";
+    setBugReportBusy(true);
+    setBugReportStatus("Sending report…", false);
+    try {
+      const r = await apiFetch(apiBase + "/bug-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description, context: collectBugReportContext() }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.success) {
+        throw new Error(data.error || "report " + r.status);
+      }
+      setBugReportStatus("Report sent.", false);
+      if (els.bugReportText) els.bugReportText.value = "";
+      setBugReportBusy(false);
+      setTimeout(closeBugReport, 900);
+    } catch (err) {
+      setBugReportStatus("Couldn't send · " + (err && err.message ? err.message : "error"), true);
+      setBugReportBusy(false);
+    }
+  }
+
+  els.reportBugLink.addEventListener("click", openBugReport);
+  if (els.bugReportForm) els.bugReportForm.addEventListener("submit", submitBugReport);
+  if (els.bugReportClose) els.bugReportClose.addEventListener("click", closeBugReport);
+  if (els.bugReportCancel) els.bugReportCancel.addEventListener("click", closeBugReport);
+  if (els.bugReportOverlay) els.bugReportOverlay.addEventListener("click", (e) => {
+    if (e.target === els.bugReportOverlay) closeBugReport();
   });
 
   // Click your name/avatar to open the character sheet.

@@ -14,6 +14,7 @@ import { getRuntime, getSessionId, tryGetService } from "./services/session-iden
 import {
   APP_ROUTE_PREFIX,
   ASSETS_PREFIX,
+  BUG_REPORT_PATH,
   MANIFEST_PATH,
   SERVICE_WORKER_PATH,
   VIEWER_PATH,
@@ -25,6 +26,7 @@ import {
   sendServiceWorker,
 } from "./routes/assets.js";
 import { handleCommandRoute } from "./routes/commands.js";
+import { handleBugReportRoute } from "./routes/bug-report.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import type { RouteContext } from "./routes/context.js";
 
@@ -98,6 +100,10 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   if ((ctx.method === "GET" || ctx.method === "HEAD") && ctx.pathname === SERVICE_WORKER_PATH) {
     sendServiceWorker(ctx.res, ctx.method === "GET");
     return true;
+  }
+
+  if (ctx.pathname === BUG_REPORT_PATH) {
+    return handleBugReportRoute(ctx);
   }
 
   if (

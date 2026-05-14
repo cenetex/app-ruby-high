@@ -21,6 +21,10 @@ export interface RouteContext {
    *  rate limiting in the chat layer. Optional - when absent, rate limiting
    *  falls back to per-cookie keys only. */
   clientIp?: string | null;
+  /** Request Content-Type. Mutation endpoints use this to reject non-JSON browser posts. */
+  contentTypeHeader?: string | string[] | null;
+  /** Raw Origin request header, when present. */
+  originHeader?: string | string[] | null;
   /** Raw If-None-Match request header. Static asset routes use it to return
    *  304 Not Modified when the client's cached ETag matches. Optional - if
    *  absent, assets always serve the full body (correct, just not cached). */

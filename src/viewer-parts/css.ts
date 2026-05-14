@@ -2185,6 +2185,18 @@ export const VIEWER_CSS = `
     resize: vertical;
     min-height: 56px;
   }
+  .sheet-card.is-bug-report-sheet {
+    max-width: 520px;
+  }
+  .bug-report-context {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    color: var(--text-mute);
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 10px 12px;
+  }
   .playbook-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
