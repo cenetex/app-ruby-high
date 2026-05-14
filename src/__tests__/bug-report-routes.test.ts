@@ -12,14 +12,16 @@ afterEach(() => {
 function makeHarness(body: unknown, opts: {
   clientIp?: string;
   contentType?: string | null;
+  callbackOrigin?: string;
   origin?: string | null;
+  urlOrigin?: string;
 } = {}) {
   let response: { status: number; body: any; headers: Record<string, string> } | null = null;
   const headers: Record<string, string> = {};
   const ctx: RouteContext = {
     method: "POST",
     pathname: "/api/apps/ruby-high/bug-report",
-    url: new URL("https://rubyhighai.com/api/apps/ruby-high/bug-report"),
+    url: new URL(`${opts.urlOrigin ?? "https://rubyhighai.com"}/api/apps/ruby-high/bug-report`),
     runtime: null,
     res: {
       setHeader(name: string, value: string) {
@@ -30,7 +32,7 @@ function makeHarness(body: unknown, opts: {
     clientIp: opts.clientIp ?? "203.0.113.10",
     contentTypeHeader: opts.contentType === undefined ? "application/json" : opts.contentType,
     originHeader: opts.origin === undefined ? "https://rubyhighai.com" : opts.origin,
-    callbackUrlBuilder: (path: string) => `https://rubyhighai.com${path}`,
+    callbackUrlBuilder: (path: string) => `${opts.callbackOrigin ?? "https://rubyhighai.com"}${path}`,
     error: (_res, message, status = 500) => {
       response = { status, body: { error: message }, headers };
     },
@@ -119,5 +121,25 @@ describe("bug report route", () => {
     await handleAppRoutes(badOrigin.ctx);
     expect(badOrigin.response?.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows custom-domain origins when the proxy callback origin differs", async () => {
+    process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN = "ghp_test_token";
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ number: 43 }), {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const harness = makeHarness({ description: "custom domain" }, {
+      clientIp: "203.0.113.15",
+      callbackOrigin: "https://ruby-high.fly.dev",
+      origin: "https://rubyhighai.com",
+      urlOrigin: "http://rubyhighai.com",
+    });
+
+    await handleAppRoutes(harness.ctx);
+
+    expect(harness.response?.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -118,10 +118,18 @@ function requestLooksLikeJson(ctx: RouteContext): boolean {
 function originAllowed(ctx: RouteContext): boolean {
   const origin = firstHeader(ctx.originHeader);
   if (!origin) return true;
-  const expected = ctx.callbackUrlBuilder ? ctx.callbackUrlBuilder("/") : ctx.url?.origin;
-  if (!expected) return true;
   try {
-    return new URL(origin).origin === new URL(expected).origin;
+    const originUrl = new URL(origin);
+    const candidates = [
+      ctx.callbackUrlBuilder ? ctx.callbackUrlBuilder("/") : null,
+      ctx.url?.origin ?? null,
+    ].filter(Boolean) as string[];
+    if (candidates.length === 0) return true;
+    return candidates.some((candidate) => {
+      const candidateUrl = new URL(candidate);
+      return candidateUrl.origin === originUrl.origin
+        || (originUrl.protocol === "https:" && candidateUrl.host === originUrl.host);
+    });
   } catch {
     return false;
   }
