@@ -49,9 +49,22 @@ describe("viewer regression guardrails", () => {
 
     expect(script).toContain('/api/apps/ruby-high/chat/opinion-submit');
     expect(script).toContain('event === "waiting" || event === "opinion-graded"');
-    expect(script).toContain("await fetchSession();");
+    expect(script).toContain("refreshSessionAfterStreamEvent();");
     expect(script).toContain("body: JSON.stringify({ force: true })");
     expect(script).toContain("opinionGradeFired = true");
+  });
+
+  it("keeps stream refreshes from holding the Chat/Practice busy lock", () => {
+    const script = inlineScript(renderedViewer());
+    const consumeStart = script.indexOf("async function consumeSseStream");
+    const consumeEnd = script.indexOf("async function sendChatMessage");
+    const consumeBody = script.slice(consumeStart, consumeEnd);
+
+    expect(script).toContain("function withTimeoutSignal");
+    expect(script).toContain("const SESSION_REFRESH_TIMEOUT_MS = 8000");
+    expect(script).toContain("function syncNextButtonDisabled()");
+    expect(consumeBody).toContain("refreshSessionAfterStreamEvent();");
+    expect(consumeBody).not.toContain("await fetchSession(");
   });
 
   it("keeps SSE streams bounded so stale network reads cannot hold the UI lock forever", () => {

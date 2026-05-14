@@ -342,20 +342,39 @@ const VIEWER_SCRIPT_SUFFIX = `
   // the rh_session cookie expired but localStorage still has a stale key — we
   // clear the local credential and re-derive auth state. That normally creates
   // a guest session again; only hard failure opens the fallback overlay.
+  const COMMAND_TIMEOUT_MS = 15000;
+  const PLAYER_LINE_TIMEOUT_MS = 12000;
+  const STREAM_CONNECT_TIMEOUT_MS = 15000;
+  const SESSION_REFRESH_TIMEOUT_MS = 8000;
+
+  function withTimeoutSignal(opts, timeoutMs) {
+    const ms = Number(timeoutMs || 0);
+    if (!(ms > 0) || typeof AbortController === "undefined" || opts.signal) return () => {};
+    const ctrl = new AbortController();
+    opts.signal = ctrl.signal;
+    const timer = setTimeout(() => {
+      try { ctrl.abort(); } catch (e) { /* ignore */ }
+    }, ms);
+    return () => clearTimeout(timer);
+  }
+
   function apiFetch(url, init) {
     const opts = init ? Object.assign({}, init) : {};
     const headers = new Headers(opts.headers || {});
+    const timeoutMs = Number(opts.timeoutMs || 0);
+    delete opts.timeoutMs;
     const key = getStoredApiKey();
     if (key) headers.set("X-Openrouter-Key", key);
     opts.headers = headers;
     if (!opts.credentials) opts.credentials = "same-origin";
+    const clearFetchTimeout = withTimeoutSignal(opts, timeoutMs);
     return fetch(url, opts).then((r) => {
       if (r.status === 401 && getStoredApiKey()) {
         clearStoredAuth();
         try { deriveAuth(); } catch (_e) { /* deriveAuth not yet defined on boot */ }
       }
       return r;
-    });
+    }).finally(clearFetchTimeout);
   }
 
   // ── AI students ──────────────────────────────────────────────────────────
@@ -509,6 +528,12 @@ const VIEWER_SCRIPT_SUFFIX = `
   // from staring at an empty chalkboard with no signal that the system is
   // working as intended. Reset on context change.
   let emptyBoardHintShown = false;
+  function setNextButtonDisabled(disabled) {
+    if (els.nextBtn) els.nextBtn.disabled = !!disabled;
+  }
+  function syncNextButtonDisabled() {
+    setNextButtonDisabled(manualChatBusy || agentBusy);
+  }
   function scheduledReadyCount(t) {
     const progress = t && t.active_course_progress;
     return Number(progress && progress.ready || 0);
@@ -741,6 +766,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const r = await apiFetch("/api/apps/ruby-high/chat/player-line", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: PLAYER_LINE_TIMEOUT_MS,
         body: JSON.stringify({
           faculty: lastTelemetry && lastTelemetry.faculty,
           context: { intent: playerChatIntentForServer(intent) },
@@ -791,7 +817,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function runPlayerChatTurn(intent, extraContext) {
     if (manualChatBusy || agentBusy) return;
     manualChatBusy = true;
-    if (els.nextBtn) els.nextBtn.disabled = true;
+    setNextButtonDisabled(true);
     try {
       const playerLine = await generatePlayerChatLine(intent);
       appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
@@ -822,7 +848,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
     } finally {
       manualChatBusy = false;
-      if (els.nextBtn && !agentBusy) els.nextBtn.disabled = false;
+      syncNextButtonDisabled();
     }
   }
   function syncPlayerMessageHeaders() {
@@ -892,6 +918,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: COMMAND_TIMEOUT_MS,
         body: JSON.stringify(payload),
       });
       if (!r.ok) {
@@ -1458,7 +1485,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardFoot.replaceChildren(buildClassReportNextStep());
     els.boardReveal.hidden = true;
     els.boardReveal.replaceChildren();
-    els.nextBtn.disabled = manualChatBusy || agentBusy;
+    syncNextButtonDisabled();
     els.nextBtn.textContent = nextQuestionButtonLabel(lastTelemetry);
     els.teacherFigure.hidden = true;
   }
@@ -1880,7 +1907,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     // The bottom Chat action is always available during play. It advances an
     // empty/revealed board and asks for a hint while a challenge is live.
-    els.nextBtn.disabled = false;
+    syncNextButtonDisabled();
     els.nextBtn.textContent = nextQuestionButtonLabel();
     els.blackboardFoot.hidden = !authed;
 
@@ -2661,7 +2688,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function startPostClassPractice(postClass) {
     if (!postClass || !postClass.report) return false;
     if (manualChatBusy) return true;
-    els.nextBtn.disabled = true;
+    setNextButtonDisabled(true);
     try {
       if (postClass.canPick) {
         const data = await command({ type: "pick", mode: "practice" });
@@ -2681,7 +2708,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       lockedFor = null;
       return true;
     } finally {
-      els.nextBtn.disabled = manualChatBusy || agentBusy;
+      syncNextButtonDisabled();
     }
   }
   async function pickNext() {
@@ -2706,7 +2733,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const now = Date.now();
     if (now - lastChatButtonAt < 900) return;
     lastChatButtonAt = now;
-    els.nextBtn.disabled = true;
+    setNextButtonDisabled(true);
     try {
       const phase = telemetryPhase(lastTelemetry);
       if (!teacherChatEnabled()) {
@@ -2772,7 +2799,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
       await runPlayerChatTurn("class");
     } finally {
-      els.nextBtn.disabled = manualChatBusy || agentBusy;
+      syncNextButtonDisabled();
     }
   }
   async function pickAnswer(choice, btn) {
@@ -2820,6 +2847,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
           body: JSON.stringify(aiEnabled ? { text: answerText } : { text: answerText, force: true }),
         });
         await consumeSseStream(r, { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq });
@@ -5785,17 +5813,17 @@ const VIEWER_SCRIPT_SUFFIX = `
           // in an outer template literal at compose time and any
           // backtick here closes it prematurely.
           appendTool(toolSummary(parsed, teacherName));
-          await fetchSession();
+          refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "error") {
           appendSystem("error · " + (parsed.message || "unknown"));
-          await fetchSession();
+          refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "waiting" || event === "opinion-graded") {
-          await fetchSession();
+          refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "done" || event === "end") {
-          await fetchSession();
+          refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         }
       }
@@ -5868,12 +5896,14 @@ const VIEWER_SCRIPT_SUFFIX = `
         r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
           body: JSON.stringify({ text }),
         });
       } else {
         r = await apiFetch("/api/apps/ruby-high/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
           body: JSON.stringify({ faculty: targetFaculty, message: text }),
         });
       }
@@ -5883,7 +5913,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
-      if (els.nextBtn && !manualChatBusy) els.nextBtn.disabled = false;
+      syncNextButtonDisabled();
       els.chatInput.disabled = !teacherChatEnabled();
       els.chatSend.disabled = !teacherChatEnabled();
       els.chatInput.focus();
@@ -5915,6 +5945,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const r = await apiFetch("/api/apps/ruby-high/chat/event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
         body: JSON.stringify({ faculty: targetFaculty, trigger, context: context || {}, clientTurnSeq: streamGuard.streamSeq }),
       });
       await consumeSseStream(r, streamGuard);
@@ -5923,19 +5954,26 @@ const VIEWER_SCRIPT_SUFFIX = `
     } finally {
       if (agentBusySeq === busySeq) agentBusy = false;
       await clearResolvedBoardAfterTeacherTurn(trigger, streamGuard);
-      if (els.nextBtn && !manualChatBusy) els.nextBtn.disabled = false;
+      syncNextButtonDisabled();
     }
   }
 
-  async function fetchSession() {
+  function refreshSessionAfterStreamEvent() {
+    void fetchSession({ timeoutMs: SESSION_REFRESH_TIMEOUT_MS });
+  }
+
+  async function fetchSession(opts) {
+    opts = opts || {};
     // Snapshot command counters at request start. If a command starts or
     // settles while this GET is in flight, the GET may represent pre-command
     // state; discard rather than overwrite the command response already
     // rendered.
     const seqAtStart = commandSeq;
     const settledAtStart = lastSettledCommandSeq;
+    const fetchOpts = { credentials: "same-origin" };
+    const clearFetchTimeout = withTimeoutSignal(fetchOpts, opts.timeoutMs || SESSION_REFRESH_TIMEOUT_MS);
     try {
-      const r = await fetch(sessionUrl, { credentials: "same-origin" });
+      const r = await fetch(sessionUrl, fetchOpts);
       if (!r.ok) throw new Error("session " + r.status);
       const s = await r.json();
       if (commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart) return;
@@ -5946,6 +5984,8 @@ const VIEWER_SCRIPT_SUFFIX = `
           ? "Ruby High is offline. Reconnect to resume class."
           : "Ruby High is unavailable. Retrying...";
       }
+    } finally {
+      clearFetchTimeout();
     }
   }
 
@@ -6026,6 +6066,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
         body: JSON.stringify({ force: true }),
       });
       await consumeSseStream(r, streamGuard);
