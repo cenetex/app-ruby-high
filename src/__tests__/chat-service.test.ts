@@ -832,6 +832,24 @@ describe("ChatService.send — message composition", () => {
     expect(tool.tool).toBe("pick_from_bank");
   });
 
+  it("can suppress opinion tools for manual practice advance turns", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "Practice time.", finish: "stop" }]));
+    const { chat } = await makeServices();
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-practice-tools",
+      agentSessionId: "session:practice-tools",
+      faculty: "ruby",
+      systemEventNote: "The player pressed Practice. Put a fresh practice challenge on the board.",
+      allowOpinionTool: false,
+    })) { /* consume */ }
+
+    const toolNames = captured!.body.tools.map((tool: any) => tool.function.name);
+    expect(toolNames).toContain("pose_question");
+    expect(toolNames).not.toContain("pose_opinion");
+  });
+
   it("does not expose teacher tools while a board is waiting for the student", async () => {
     mockOpenRouter(buildSseChunk([{ content: "Waiting.", finish: "stop" }]));
     const { ruby, chat } = await makeServices();

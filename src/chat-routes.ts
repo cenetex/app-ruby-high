@@ -919,6 +919,8 @@ export interface ChatRouteContext {
   /** Best-known client IP, derived by the host (x-forwarded-for or socket.remoteAddress).
    *  Optional — when absent, rate limiting falls back to a per-cookie key only. */
   clientIp?: string | null;
+  /** Raw Origin request header, when present. Used to reject cross-site auth POSTs. */
+  originHeader?: string | string[] | null;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
@@ -1240,6 +1242,37 @@ function defaultCallbackBuilder(ctx: ChatRouteContext): (path: string) => string
   };
 }
 
+function firstHeader(value: string | string[] | null | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+function authOriginAllowed(ctx: ChatRouteContext, buildCallback: (path: string) => string): boolean {
+  const origin = firstHeader(ctx.originHeader);
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const candidates = [
+      buildCallback("/"),
+      ctx.url?.origin ?? null,
+    ].filter(Boolean) as string[];
+    if (candidates.length === 0) return true;
+    return candidates.some((candidate) => {
+      const candidateUrl = new URL(candidate);
+      return candidateUrl.origin === originUrl.origin
+        || (originUrl.protocol === "https:" && candidateUrl.host === originUrl.host);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function rejectBadAuthOrigin(ctx: ChatRouteContext, buildCallback: (path: string) => string): boolean {
+  if (authOriginAllowed(ctx, buildCallback)) return false;
+  ctx.error(ctx.res, "Auth request origin is not allowed.", 403);
+  return true;
+}
+
 /**
  * Returns true if the route was handled. Otherwise the host should try other handlers.
  */
@@ -1268,6 +1301,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/guest`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
     const existingToken = auth.parseSessionToken(ctx.cookieHeader);
     const { token, record } = await auth.createGuestSession(existingToken);
     if (token !== existingToken) {
@@ -1327,6 +1361,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/logout`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
     const token = auth.parseSessionToken(ctx.cookieHeader);
     auth.destroy(token);
     setCookieHeader(ctx.res, auth.buildClearCookie({ secure }));
@@ -1683,6 +1718,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       send("speaker", { facultyId: faculty });
       let questionPosted = false;
       let handoffFired = false;
+      const allowOpinionTool = !(trigger === "manual" && contextIntent === "advance");
       for await (const ev of chat.send({
         apiKey,
         sessionToken: token,
@@ -1690,6 +1726,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         faculty,
         userMessage: playerLine,
         disableTools: disableToolsForTurn,
+        allowOpinionTool,
         extraSystemContext,
         systemEventNote: directive,
         isStale: isStaleChatEvent,
@@ -1744,6 +1781,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             agentSessionId,
             faculty,
             systemEventNote: noQuestionDirective,
+            allowOpinionTool: false,
             isStale: isStaleChatEvent,
           })) {
             send(ev.type, ev);

@@ -121,6 +121,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       callbackUrlBuilder: ctx.callbackUrlBuilder,
       isSecure: ctx.isSecure,
       clientIp: ctx.clientIp,
+      originHeader: ctx.originHeader,
       error: ctx.error,
       json: ctx.json,
       readJsonBody: ctx.readJsonBody,

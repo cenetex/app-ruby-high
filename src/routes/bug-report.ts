@@ -115,6 +115,11 @@ function requestLooksLikeJson(ctx: RouteContext): boolean {
   return contentType.startsWith("application/json");
 }
 
+function statusCodeForJsonError(err: unknown): number {
+  const statusCode = (err as { statusCode?: unknown })?.statusCode;
+  return typeof statusCode === "number" && statusCode >= 400 && statusCode < 500 ? statusCode : 400;
+}
+
 function originAllowed(ctx: RouteContext): boolean {
   const origin = firstHeader(ctx.originHeader);
   if (!origin) return true;
@@ -149,6 +154,19 @@ export async function handleBugReportRoute(ctx: RouteContext): Promise<true> {
     return true;
   }
 
+  let body: BugReportBody;
+  try {
+    body = await ctx.readJsonBody() as BugReportBody;
+  } catch (err) {
+    const status = statusCodeForJsonError(err);
+    ctx.error(
+      ctx.res,
+      status === 413 ? "Bug report request body is too large." : "Bug report JSON is malformed.",
+      status,
+    );
+    return true;
+  }
+
   const key = rateKey(ctx);
   if (!BUG_REPORT_LIMITER.take(key)) {
     const retryAfter = BUG_REPORT_LIMITER.retryAfterSeconds(key);
@@ -169,7 +187,6 @@ export async function handleBugReportRoute(ctx: RouteContext): Promise<true> {
     return true;
   }
 
-  const body = (await ctx.readJsonBody().catch(() => null)) as BugReportBody;
   const description = cleanText(body?.description, MAX_DESCRIPTION_CHARS);
   const issueBody = makeIssueBody(description, body?.context ?? null);
   const issueTitle = makeIssueTitle(description);

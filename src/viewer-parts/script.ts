@@ -2366,11 +2366,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     const grade = t.current_grade;
     const roster = t.faculty_roster || [];
     const unlocked = secondarySurfacesUnlocked(t);
+    const roomsSig = (t.rooms || []).map((r) => r.id + ":" + r.channelName + ":" + (r.teacherId || "")).join("|");
     const sig = (grade ?? "?") + "::" + roster.map((f) =>
       f.id + ":" + f.available + ":" + f.questionCount + ":" + (f.courseGrade || "")
         + ":" + (f.completedClasses ?? "") + "/" + (f.requiredClasses ?? "")
         + ":" + ((f.todayClass && f.todayClass.status) || "")
-    ).join("|") + "::" + t.faculty + "::" + (!!t.character ? "1" : "0") + "::" + (unlocked ? "1" : "0")
+    ).join("|") + "::rooms=" + roomsSig + "::" + t.faculty + "::" + (!!t.character ? "1" : "0") + "::" + (unlocked ? "1" : "0")
       + "::students=" + studentRailSignature(t);
     if (sig === lastRosterSig) return;
     lastRosterSig = sig;
@@ -2607,6 +2608,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   function roomForTeacher(facultyId, rooms) {
     return (rooms || []).find((r) => r.teacherId === facultyId) || null;
   }
+  function channelTitleFor(t, fac) {
+    const room = fac ? roomForTeacher(fac.id, t.rooms) : null;
+    return room && room.channelName ? room.channelName : (fac ? channelNameFor(fac) : "lounge");
+  }
 
   // ── primary actions ──────────────────────────────────────────────────────
   function greetingFor(fac, grade) {
@@ -2660,7 +2665,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       if (postClass.canPick) {
         const data = await command({ type: "pick", mode: "practice" });
-        if (!(data && data.noQuestionDue)) {
+        if (data && !data.noQuestionDue) {
           lockedFor = null;
           return true;
         }
@@ -3005,7 +3010,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     // Header
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
-    els.channelTitle.textContent = fac ? channelNameFor(fac) : "lounge";
+    els.channelTitle.textContent = channelTitleFor(t, fac);
     const subjectProgress = t.active_course_progress;
     const subjectStatus = subjectProgress
       ? subjectStatusText(subjectProgress)
@@ -5364,17 +5369,41 @@ const VIEWER_SCRIPT_SUFFIX = `
       connectedTeacherListEl.appendChild(error);
     }
   }
+  function channelSlugFor(value, fallback) {
+    const source = String(value || "").trim() ? value : fallback;
+    const text = String(source || "teacher")
+      .toLowerCase()
+      .replace(/^avatar:/, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+    return text || "teacher";
+  }
+  function defaultChannelNameForConnectedTeacher(teacher) {
+    return channelSlugFor(
+      teacher && (teacher.defaultChannelName || teacher.name || teacher.root || teacher.model),
+      "teacher",
+    );
+  }
+  function askConnectedTeacherChannelName(teacher) {
+    const fallback = defaultChannelNameForConnectedTeacher(teacher);
+    const raw = window.prompt("Classroom channel name", fallback);
+    if (raw === null) return null;
+    return channelSlugFor(raw, fallback);
+  }
   async function connectTeacher(teacher) {
     if (packImportBusy) return;
     const modelId = teacher && teacher.model;
     const teacherName = teacher && (teacher.name || teacher.root || teacher.model);
+    const channelName = askConnectedTeacherChannelName(teacher);
+    if (channelName === null) return;
     startPackImportProgress(teacherName);
     packStatusEl.classList.remove("is-invalid");
     try {
       const r = await apiFetch("/api/apps/ruby-high/packs/connect-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelId }),
+        body: JSON.stringify({ modelId, channelName }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ error: r.status }));
@@ -5756,14 +5785,17 @@ const VIEWER_SCRIPT_SUFFIX = `
           // in an outer template literal at compose time and any
           // backtick here closes it prematurely.
           appendTool(toolSummary(parsed, teacherName));
-          fetchSession();
+          await fetchSession();
           streamMsgEl = null;
         } else if (event === "error") {
           appendSystem("error · " + (parsed.message || "unknown"));
-          fetchSession();
+          await fetchSession();
           streamMsgEl = null;
         } else if (event === "waiting" || event === "opinion-graded") {
-          fetchSession();
+          await fetchSession();
+          streamMsgEl = null;
+        } else if (event === "done" || event === "end") {
+          await fetchSession();
           streamMsgEl = null;
         }
       }

@@ -176,7 +176,7 @@ describe("/connected-teachers", () => {
       method: "POST",
       path: "/api/apps/ruby-high/packs/connect-agent",
       cookie: "rh_session=alice",
-      body: { modelId: "avatar:rati" },
+      body: { modelId: "avatar:rati", channelName: "Opus Lab" },
     });
     await handlePackRoutes(ctx, makeDeps());
 
@@ -187,6 +187,7 @@ describe("/connected-teachers", () => {
     const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe("agent:rati-rati");
     const activePack = packForSession(state);
+    expect(activePack.rooms[0]?.channelName).toBe("opus-lab");
     expect(activePack.faculty[0]?.profileImageUrl).toBe("https://media.example.test/avatars/rati/profile.png");
     expect(activePack.faculty[0]?.questions).toHaveLength(4);
     expect(activePack.faculty[0]?.questions[0]).toMatchObject({

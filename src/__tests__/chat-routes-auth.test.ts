@@ -68,6 +68,7 @@ function makeCtx(url: URL, res: TestResponse, opts: {
   method?: string;
   cookieHeader?: string | null;
   apiKeyHeader?: string | null;
+  originHeader?: string | string[] | null;
   body?: unknown;
 } = {}): ChatRouteContext {
   return {
@@ -78,6 +79,7 @@ function makeCtx(url: URL, res: TestResponse, opts: {
     res,
     cookieHeader: opts.cookieHeader ?? null,
     apiKeyHeader: opts.apiKeyHeader ?? null,
+    originHeader: opts.originHeader ?? null,
     error: (_res, message, status = 500) => {
       res.statusCode = status;
       res.body = JSON.stringify({ error: message });
@@ -149,6 +151,57 @@ describe("auth callback redirect sanitization", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('window.location.replace("/api/apps/ruby-high/viewer?tab=packs#store")');
+  });
+});
+
+describe("auth origin guard", () => {
+  it("allows same-origin guest session creation", async () => {
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/guest"),
+      res,
+      { method: "POST", originHeader: "http://localhost:3000" },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.getHeader("set-cookie")).toBeDefined();
+  });
+
+  it("rejects cross-origin auth POSTs without mutating the session", async () => {
+    const guestRes = new TestResponse();
+    const guestHandled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/guest"),
+      guestRes,
+      { method: "POST", originHeader: "https://evil.example" },
+    ));
+
+    expect(guestHandled).toBe(true);
+    expect(guestRes.statusCode).toBe(403);
+    expect(guestRes.getHeader("set-cookie")).toBeUndefined();
+
+    const token = "csrf-logout-token";
+    auth.injectSessionForTest(token, {
+      userId: "csrf-logout-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "CSRF User",
+    });
+    const logoutRes = new TestResponse();
+    const logoutHandled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/logout"),
+      logoutRes,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        originHeader: "https://evil.example",
+      },
+    ));
+
+    expect(logoutHandled).toBe(true);
+    expect(logoutRes.statusCode).toBe(403);
+    expect(logoutRes.getHeader("set-cookie")).toBeUndefined();
+    expect(auth.resolve(token)).not.toBeNull();
   });
 });
 

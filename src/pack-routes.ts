@@ -28,6 +28,7 @@ import {
 import type { ContentPack } from "./content/types.js";
 import {
   candidateWithReachableProfileImage,
+  connectedTeacherChannelName,
   generateConnectedTeacherQuestionBank,
   connectedTeacherPackId,
   listRatiTeacherCandidates,
@@ -96,6 +97,7 @@ function connectedTeacherSummary(candidate: ConnectedTeacherCandidate, sessionId
     packId,
     connected: ownerSessionId === sessionId,
     ownedByAnotherSession,
+    defaultChannelName: connectedTeacherChannelName(null, candidate.name || candidate.root || candidate.model),
     ...(ownedByAnotherSession ? { unavailableReason: "already-connected" } : {}),
   };
 }
@@ -185,7 +187,12 @@ export async function handlePackRoutes(
   // avatar as this session's active teacher pack. The browser submits only a
   // model id; endpoint and credential remain server-side.
   if (ctx.method === "POST" && sub === "/connect-agent") {
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as { model?: unknown; modelId?: unknown; agentId?: unknown } | null;
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as {
+      model?: unknown;
+      modelId?: unknown;
+      agentId?: unknown;
+      channelName?: unknown;
+    } | null;
     const requested = [body?.model, body?.modelId, body?.agentId].find((value) => typeof value === "string" && value.trim());
     const modelId = typeof requested === "string" ? requested.trim() : "";
     if (!modelId) {
@@ -215,7 +222,8 @@ export async function handlePackRoutes(
       }
       const importCandidate = await candidateWithReachableProfileImage(candidate);
       const questions = await generateConnectedTeacherQuestionBank(importCandidate);
-      const pack = packForConnectedTeacher(importCandidate, questions);
+      const requestedChannelName = typeof body?.channelName === "string" ? body.channelName : null;
+      const pack = packForConnectedTeacher(importCandidate, questions, { channelName: requestedChannelName });
       registerPack(pack, sessionId);
       await deps.ruby.persistImportedPack(sessionId, pack);
       deps.ruby.setActivePackForSession(sessionId, pack.id);

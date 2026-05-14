@@ -41,7 +41,7 @@ interface RatiModelRecord {
 const DEFAULT_RATI_BASE_URL = "https://swarm.rati.chat/api/v1";
 const RATI_TIMEOUT_MS = readPositiveInt(process.env.RUBY_HIGH_RATI_TIMEOUT_MS, 60_000);
 const RATI_PROFILE_IMAGE_TIMEOUT_MS = readPositiveInt(process.env.RUBY_HIGH_RATI_PROFILE_IMAGE_TIMEOUT_MS, 3_000);
-const CONNECTED_TEACHER_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_CONNECTED_TEACHER_QUESTION_COUNT, 8);
+const CONNECTED_TEACHER_QUESTION_COUNT = readNonNegativeInt(process.env.RUBY_HIGH_CONNECTED_TEACHER_QUESTION_COUNT, 8);
 
 export function providerForFaculty(faculty: PackFaculty | null | undefined): PackFacultyProvider {
   return faculty?.provider ?? { kind: "openrouter", supportsTools: true };
@@ -189,12 +189,17 @@ export async function generateConnectedTeacherQuestionBank(candidate: ConnectedT
   return questions.slice(0, CONNECTED_TEACHER_QUESTION_COUNT);
 }
 
-export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, questions: BankedQuestion[] = []): ContentPack {
+export function packForConnectedTeacher(
+  candidate: ConnectedTeacherCandidate,
+  questions: BankedQuestion[] = [],
+  opts: { channelName?: string | null } = {},
+): ContentPack {
   const packId = connectedTeacherPackId(candidate);
   const facultyId = connectedFacultyId(candidate);
   const roomId = `${facultyId}-room`;
   const displayName = candidate.name || candidate.root || candidate.model;
   const shortName = displayName.split(/\s+/)[0] || "Teacher";
+  const channelName = connectedTeacherChannelName(opts.channelName, displayName);
   const subjects = Array.from(new Set([
     ...questions.map((q) => q.subject).filter(Boolean),
     "open study",
@@ -236,7 +241,7 @@ export function packForConnectedTeacher(candidate: ConnectedTeacherCandidate, qu
     rooms: [{
       id: roomId,
       name: `${displayName} Seminar`,
-      channelName: channelNameFor(displayName),
+      channelName,
       teacherId: facultyId,
       description: candidate.description || `Live class with ${displayName}.`,
       teaches: true,
@@ -252,6 +257,11 @@ export async function candidateWithReachableProfileImage(candidate: ConnectedTea
 
 export function connectedTeacherPackId(candidate: ConnectedTeacherCandidate): string {
   return connectedPackId(`rati-${slugForModel(candidate.root || candidate.model)}`);
+}
+
+export function connectedTeacherChannelName(raw: string | null | undefined, fallback: string): string {
+  const value = typeof raw === "string" && raw.trim() ? raw : fallback;
+  return channelNameFor(value);
 }
 
 async function ratiChatCompletionJson(body: OpenRouterRequest): Promise<unknown> {
@@ -549,6 +559,12 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback;
   const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+function readNonNegativeInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : fallback;
 }
 
 function readBoolean(raw: string | undefined, fallback: boolean): boolean {

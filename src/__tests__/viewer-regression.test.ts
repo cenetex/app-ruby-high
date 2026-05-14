@@ -49,7 +49,7 @@ describe("viewer regression guardrails", () => {
 
     expect(script).toContain('/api/apps/ruby-high/chat/opinion-submit');
     expect(script).toContain('event === "waiting" || event === "opinion-graded"');
-    expect(script).toContain("fetchSession();");
+    expect(script).toContain("await fetchSession();");
     expect(script).toContain("body: JSON.stringify({ force: true })");
     expect(script).toContain("opinionGradeFired = true");
   });

@@ -115,6 +115,8 @@ export interface SendOpts {
   /** Disable the blackboard tool surface for this turn (lounge mode, or
    *  scheduled class flow where the deterministic scheduler owns the board). */
   disableTools?: boolean;
+  /** Manual practice/advance turns should post a question, not open a social/opinion round. */
+  allowOpinionTool?: boolean;
   /** Append additional context to the system prompt for this turn. */
   extraSystemContext?: string;
   model?: string;
@@ -291,7 +293,10 @@ export class ChatService extends Service {
       const bankStatus = this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
       const toolDefs = opts.disableTools || toolsDisabledForProvider || boardIsWaitingForStudent(liveStateBeforeCall)
         ? []
-        : buildToolDefs({ includePickFromBank: scheduledPickAvailable(bankStatus) });
+        : buildToolDefs({
+            includePickFromBank: scheduledPickAvailable(bankStatus),
+            includePoseOpinion: opts.allowOpinionTool !== false,
+          });
 
       const body: OpenRouterRequest = {
         model: opts.model ?? teacher.defaultModel,
@@ -1243,7 +1248,7 @@ function toolFreeDirective(text: string): string {
   ].filter(Boolean).join(" ");
 }
 
-function buildToolDefs(opts: { includePickFromBank?: boolean } = {}): unknown[] {
+function buildToolDefs(opts: { includePickFromBank?: boolean; includePoseOpinion?: boolean } = {}): unknown[] {
   const tools: unknown[] = [
     {
       type: "function",
@@ -1334,9 +1339,13 @@ function buildToolDefs(opts: { includePickFromBank?: boolean } = {}): unknown[] 
       },
     },
   ];
-  return opts.includePickFromBank === false
-    ? tools.filter((tool) => (tool as { function?: { name?: string } }).function?.name !== "pick_from_bank")
-    : tools;
+  const filtered = tools.filter((tool) => {
+    const name = (tool as { function?: { name?: string } }).function?.name;
+    if (opts.includePickFromBank === false && name === "pick_from_bank") return false;
+    if (opts.includePoseOpinion === false && name === "pose_opinion") return false;
+    return true;
+  });
+  return filtered;
 }
 
 function toOpenRouterMessage(m: ChatMessage): unknown {

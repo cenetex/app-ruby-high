@@ -123,6 +123,29 @@ describe("bug report route", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed and oversized JSON before calling GitHub", async () => {
+    process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN = "ghp_test_token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const malformed = makeHarness({ description: "x" }, { clientIp: "203.0.113.16" });
+    malformed.ctx.readJsonBody = async () => {
+      throw new SyntaxError("Unexpected end of JSON input");
+    };
+    await handleAppRoutes(malformed.ctx);
+    expect(malformed.response?.status).toBe(400);
+
+    const oversized = makeHarness({ description: "x" }, { clientIp: "203.0.113.17" });
+    oversized.ctx.readJsonBody = async () => {
+      const err = new Error("Request body too large") as Error & { statusCode: number };
+      err.statusCode = 413;
+      throw err;
+    };
+    await handleAppRoutes(oversized.ctx);
+    expect(oversized.response?.status).toBe(413);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("allows custom-domain origins when the proxy callback origin differs", async () => {
     process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN = "ghp_test_token";
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ number: 43 }), {
