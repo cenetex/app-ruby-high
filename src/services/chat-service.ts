@@ -304,6 +304,7 @@ export class ChatService extends Service {
         max_tokens: opts.maxTokens ?? 600,
       };
       const activeToolDefs = narrationOnlyNext ? [] : toolDefs;
+      const activeToolNames = new Set(activeToolDefs.map(toolNameFromDef).filter((name): name is string => !!name));
       body.tools = activeToolDefs;
       if (activeToolDefs.length > 0) {
         body.tool_choice = "auto";
@@ -377,6 +378,7 @@ export class ChatService extends Service {
         const liveState = this.ruby.getOrCreate(opts.agentSessionId);
         const liveFaculty = resolveFacultyIdForSession(liveState, liveState.faculty) ?? liveState.faculty;
         const turnStillOwnsRoom = liveFaculty === activeFaculty;
+        const toolAllowed = activeToolNames.has(call.function.name);
         const boardToolBlocked =
           turnStillOwnsRoom &&
           isBoardChangingTool(call.function.name) &&
@@ -390,6 +392,15 @@ export class ChatService extends Service {
               },
               state: liveState,
             }
+          : !toolAllowed
+            ? {
+                args: {},
+                payload: {
+                  ok: false,
+                  error: `Tool ${call.function.name} is not available this turn.`,
+                },
+                state: liveState,
+              }
           : boardToolBlocked
             ? blockedBoardToolResult(
                 call,
@@ -1346,6 +1357,11 @@ function buildToolDefs(opts: { includePickFromBank?: boolean; includePoseOpinion
     return true;
   });
   return filtered;
+}
+
+function toolNameFromDef(tool: unknown): string | null {
+  const name = (tool as { function?: { name?: unknown } }).function?.name;
+  return typeof name === "string" ? name : null;
 }
 
 function toOpenRouterMessage(m: ChatMessage): unknown {

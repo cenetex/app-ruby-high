@@ -154,6 +154,15 @@ export async function handleBugReportRoute(ctx: RouteContext): Promise<true> {
     return true;
   }
 
+  const key = rateKey(ctx);
+  if (!BUG_REPORT_LIMITER.take(key)) {
+    const retryAfter = BUG_REPORT_LIMITER.retryAfterSeconds(key);
+    const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+    res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
+    ctx.error(ctx.res, "Too many bug reports — wait a moment and try again.", 429);
+    return true;
+  }
+
   let body: BugReportBody;
   try {
     body = await ctx.readJsonBody() as BugReportBody;
@@ -164,15 +173,6 @@ export async function handleBugReportRoute(ctx: RouteContext): Promise<true> {
       status === 413 ? "Bug report request body is too large." : "Bug report JSON is malformed.",
       status,
     );
-    return true;
-  }
-
-  const key = rateKey(ctx);
-  if (!BUG_REPORT_LIMITER.take(key)) {
-    const retryAfter = BUG_REPORT_LIMITER.retryAfterSeconds(key);
-    const res = ctx.res as { setHeader?: (name: string, value: string) => void };
-    res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
-    ctx.error(ctx.res, "Too many bug reports — wait a moment and try again.", 429);
     return true;
   }
 

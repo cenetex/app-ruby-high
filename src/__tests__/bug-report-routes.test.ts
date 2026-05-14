@@ -146,6 +146,28 @@ describe("bug report route", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rate limits malformed reports before parsing the body", async () => {
+    process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN = "ghp_test_token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    let parseCalls = 0;
+    const statuses: Array<number | undefined> = [];
+
+    for (let i = 0; i < 4; i += 1) {
+      const harness = makeHarness({ description: "x" }, { clientIp: "203.0.113.66" });
+      harness.ctx.readJsonBody = async () => {
+        parseCalls += 1;
+        throw new SyntaxError("Unexpected end of JSON input");
+      };
+      await handleAppRoutes(harness.ctx);
+      statuses.push(harness.response?.status);
+    }
+
+    expect(statuses).toEqual([400, 400, 400, 429]);
+    expect(parseCalls).toBe(3);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("allows custom-domain origins when the proxy callback origin differs", async () => {
     process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN = "ghp_test_token";
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ number: 43 }), {

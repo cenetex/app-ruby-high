@@ -850,6 +850,52 @@ describe("ChatService.send — message composition", () => {
     expect(toolNames).not.toContain("pose_opinion");
   });
 
+  it("does not execute a suppressed opinion tool if the provider returns one", async () => {
+    const sse = buildSseChunk([
+      {
+        toolCalls: [{
+          index: 0,
+          id: "call_suppressed_opinion",
+          function: {
+            name: "pose_opinion",
+            arguments: JSON.stringify({
+              prompt: "What should the class discuss?",
+              rubric: "A strong response is concrete.",
+            }),
+          },
+        }],
+      },
+      { finish: "tool_calls" },
+    ]);
+    mockOpenRouter(sse);
+    const { ruby, chat } = await makeServices();
+    const events: any[] = [];
+
+    for await (const ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-suppressed-opinion",
+      agentSessionId: "session:suppressed-opinion",
+      faculty: "ruby",
+      systemEventNote: "The player pressed Practice. Put a fresh practice challenge on the board.",
+      allowOpinionTool: false,
+    })) {
+      events.push(ev);
+      if (ev.type === "tool") break;
+    }
+
+    const toolNames = captured!.body.tools.map((tool: any) => tool.function.name);
+    expect(toolNames).not.toContain("pose_opinion");
+    const tool = events.find((e) => e.type === "tool");
+    expect(tool).toMatchObject({
+      tool: "pose_opinion",
+      result: { ok: false },
+    });
+    expect(tool.result.error).toContain("not available");
+    const state = ruby.getOrCreate("session:suppressed-opinion");
+    expect(state.current).toBeNull();
+    expect(state.activeRound).toBeNull();
+  });
+
   it("does not expose teacher tools while a board is waiting for the student", async () => {
     mockOpenRouter(buildSseChunk([{ content: "Waiting.", finish: "stop" }]));
     const { ruby, chat } = await makeServices();
