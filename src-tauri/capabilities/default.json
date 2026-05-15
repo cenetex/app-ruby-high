@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default Ruby High window capability.",
+  "windows": ["main"],
+  "permissions": []
+}

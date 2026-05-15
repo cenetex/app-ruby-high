@@ -25,15 +25,29 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts src/routes.ts --format esm --dts --clean",
+    "build:spa": "npm run build && node scripts/build-spa.mjs",
+    "spa:dev": "node scripts/serve-spa.mjs",
     "dev": "npm run build && node scripts/dev-server.mjs",
     "dev:server": "node scripts/dev-server.mjs",
     "start": "node scripts/server.mjs",
+    "native:desktop:dev": "tauri dev",
+    "native:desktop:build": "tauri build",
+    "native:osx:build": "tauri build --bundles app,dmg",
+    "native:windows:build": "tauri build --bundles nsis,msi",
+    "native:linux:build": "tauri build --bundles deb,rpm,appimage",
+    "native:mobile:init:ios": "cap add ios",
+    "native:mobile:init:android": "cap add android",
+    "native:mobile:sync": "npm run build:spa && cap sync",
+    "native:ios:build": "npm run native:mobile:sync && cap build ios",
+    "native:android:build": "npm run native:mobile:sync && cap build android",
+    "native:ios:open": "npm run native:mobile:sync && cap open ios",
+    "native:android:open": "npm run native:mobile:sync && cap open android",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "smoke": "node scripts/smoke.mjs",
     "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
     "deploy": "flyctl deploy --app ruby-high --remote-only --build-arg RUBY_HIGH_BUILD=$(git rev-parse --short=12 HEAD) && npm run smoke:prod",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist dist-spa .turbo"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1041.0",
@@ -48,6 +62,11 @@
     "@elizaos/core": "2.0.0-alpha.535"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@tauri-apps/cli": "^2.0.0",
     "@types/sql.js": "^1.4.11",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",

@@ -21,6 +21,37 @@ Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (P
 
 The standalone viewer is installable as a PWA from `/api/apps/ruby-high/viewer`. The service worker is scoped to `/api/apps/ruby-high/`, caches the shell and core assets, and keeps auth, chat, pack import, and session state requests network-only. Full offline gameplay still requires the Ruby High server because the authoritative school state lives there.
 
+## Offline SPA and native builds
+
+Ruby High also has a static SPA build for native packaging:
+
+```bash
+npm run build:spa
+npm run spa:dev
+```
+
+Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward question banks. Core classroom play, character creation, room switching, scoring, and local persistence work without the hosted server. AI chat, OpenRouter auth, Anki/PDF imports, and hosted account sync still require the Node service.
+
+Native wrappers share `dist-spa/`:
+
+```bash
+# macOS / Windows / Linux via Tauri. Run each target on its native OS.
+npm run native:desktop:build
+npm run native:osx:build
+npm run native:windows:build
+npm run native:linux:build
+
+# iOS / Android via Capacitor. Initialize the platform once, then build/open.
+npm run native:mobile:init:ios
+npm run native:mobile:init:android
+npm run native:ios:build
+npm run native:android:build
+```
+
+Desktop builds require Rust plus the platform WebView toolchain. iOS builds require Xcode; Android builds require Android Studio/JDK. Generated mobile projects live in `ios/` and `android/` after the init commands.
+
+GitHub Actions builds these same targets in `.github/workflows/native-builds.yml` on PRs, pushes to `main`, and manual dispatch. The workflow uploads `ruby-high-spa`, `ruby-high-desktop-*`, `ruby-high-android-debug`, and `ruby-high-ios-simulator` artifacts. The iOS artifact is an unsigned simulator build; signed App Store/TestFlight builds still need Apple signing credentials.
+
 ### Dev endpoints
 
 No eliza runtime needed for these:
