@@ -6,6 +6,7 @@ dist-spa/
 coverage/
 .turbo/
 src-tauri/target/
+src-tauri/gen/
 .vscode/
 .idea/
 test-outputs/

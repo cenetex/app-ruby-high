@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: native-builds-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: "22"
 
@@ -35,6 +39,7 @@ jobs:
         with:
           name: ruby-high-spa
           path: dist-spa
+          compression-level: 0
           if-no-files-found: error
 
   desktop:
@@ -48,13 +53,13 @@ jobs:
         include:
           - name: macOS
             os: macos-latest
-            command: npm run native:osx:build
+            command: npm run native:osx:build:ci
           - name: Windows
             os: windows-latest
-            command: npm run native:windows:build
+            command: npm run native:windows:build:ci
           - name: Linux
             os: ubuntu-22.04
-            command: npm run native:linux:build
+            command: npm run native:linux:build:ci
     steps:
       - uses: actions/checkout@v4
 
@@ -88,6 +93,11 @@ jobs:
 
       - run: npm ci
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: ruby-high-spa
+          path: dist-spa
+
       - name: Build desktop bundle
         run: ${{ matrix.command }}
 
@@ -95,6 +105,7 @@ jobs:
         with:
           name: ruby-high-desktop-${{ matrix.name }}
           path: src-tauri/target/release/bundle/**/*
+          compression-level: 0
           if-no-files-found: error
 
   android:
@@ -118,7 +129,10 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       - run: npm ci
-      - run: npm run build:spa
+      - uses: actions/download-artifact@v4
+        with:
+          name: ruby-high-spa
+          path: dist-spa
       - run: npx cap add android
       - run: npx cap sync android
 
@@ -132,6 +146,7 @@ jobs:
         with:
           name: ruby-high-android-debug
           path: android/app/build/outputs/**/*.apk
+          compression-level: 0
           if-no-files-found: error
 
   ios:
@@ -148,7 +163,10 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run build:spa
+      - uses: actions/download-artifact@v4
+        with:
+          name: ruby-high-spa
+          path: dist-spa
       - run: npx cap add ios
       - run: npx cap sync ios
 
@@ -168,4 +186,5 @@ jobs:
         with:
           name: ruby-high-ios-simulator
           path: ios/build/Build/Products/Debug-iphonesimulator/App.app
+          compression-level: 0
           if-no-files-found: error

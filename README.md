@@ -52,6 +52,8 @@ Desktop builds require Rust plus the platform WebView toolchain. iOS builds requ
 
 GitHub Actions builds these same targets in `.github/workflows/native-builds.yml` on PRs, pushes to `main`, and manual dispatch. The workflow uploads `ruby-high-spa`, `ruby-high-desktop-*`, `ruby-high-android-debug`, and `ruby-high-ios-simulator` artifacts. The iOS artifact is an unsigned simulator build; signed App Store/TestFlight builds still need Apple signing credentials.
 
+CI builds `dist-spa/` once, then reuses that artifact for Tauri and Capacitor jobs. The `native:*:build:ci` scripts merge `src-tauri/tauri.ci.conf.json` to skip Tauri's frontend rebuild step.
+
 ### Dev endpoints
 
 No eliza runtime needed for these:
