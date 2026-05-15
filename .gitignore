@@ -1,9 +1,11 @@
 node_modules/
 dist/
+dist-spa/
 .DS_Store
 *.log
 coverage/
 .turbo/
+src-tauri/target/
 .vscode/
 .idea/
 test-outputs/
