@@ -27,8 +27,36 @@ export interface AuthStoreSnapshot {
 
 export interface StoredContentPackRecord {
   pack: ContentPack;
-  ownerSessionId: string;
+  /** null = globally visible public pack. The legacy built-in active pack
+   *  uses RubyHighService's private sentinel string instead. */
+  ownerSessionId: string | null;
   touchedAt: number;
+}
+
+export type StoredTeacherVisibility = "private" | "unlisted" | "public";
+export type StoredTeacherStatus = "draft" | "published";
+
+export interface StoredTeacherRecord {
+  id: string;
+  creatorUserId: string;
+  creatorSessionId: string;
+  creatorWallet?: string;
+  ratiAvatarId: string;
+  ratiModel: string;
+  displayName: string;
+  description: string;
+  profileImageUrl?: string;
+  socialsUrl?: string;
+  materials: string;
+  subjects: string[];
+  questionCount: number;
+  packId: string;
+  visibility: StoredTeacherVisibility;
+  status: StoredTeacherStatus;
+  createdAt: number;
+  updatedAt: number;
+  publishedAt?: number;
+  pack: ContentPack;
 }
 
 /**
@@ -55,11 +83,14 @@ export interface StateStoreLike {
   load(): Promise<Map<string, QuizState>>;
   loadAuth(): Promise<AuthStoreSnapshot>;
   loadPacks(): Promise<StoredContentPackRecord[]>;
+  loadTeachers(): Promise<StoredTeacherRecord[]>;
   saveSession(state: QuizState): Promise<void>;
   saveAuthUser(user: AuthUserRecord): Promise<void>;
   saveAuthSession(session: AuthSessionRecord): Promise<void>;
   savePack(record: StoredContentPackRecord): Promise<void>;
-  deletePack(ownerSessionId: string, packId: string): Promise<void>;
+  saveTeacher(record: StoredTeacherRecord): Promise<void>;
+  deletePack(ownerSessionId: string | null, packId: string): Promise<void>;
+  deleteTeacher(teacherId: string): Promise<void>;
   deleteAuthSession(token: string): Promise<void>;
   save(states: Iterable<QuizState>): Promise<void>;
   describe(): string;
@@ -92,6 +123,7 @@ export class StateStore implements StateStoreLike {
   private authUsers = new Map<string, AuthUserRecord>();
   private authSessions = new Map<string, AuthSessionRecord>();
   private importedPacks = new Map<string, StoredContentPackRecord>();
+  private teachers = new Map<string, StoredTeacherRecord>();
 
   // Debounced-write batching. Per-mutation calls (saveSession, saveAuthUser,
   // savePack, deleteAuthSession) all rewrite the same file, so we coalesce
@@ -134,11 +166,18 @@ export class StateStore implements StateStoreLike {
     return Array.from(this.importedPacks.values());
   }
 
+  async loadTeachers(): Promise<StoredTeacherRecord[]> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    return Array.from(this.teachers.values());
+  }
+
   private async readFileSnapshot(): Promise<{
     sessions?: QuizState[];
     authUsers?: AuthUserRecord[];
     authSessions?: AuthSessionRecord[];
     packs?: StoredContentPackRecord[];
+    teachers?: StoredTeacherRecord[];
   } | null> {
     try {
       const raw = await readFile(this.path, "utf8");
@@ -147,6 +186,7 @@ export class StateStore implements StateStoreLike {
           authUsers?: AuthUserRecord[];
           authSessions?: AuthSessionRecord[];
           packs?: StoredContentPackRecord[];
+          teachers?: StoredTeacherRecord[];
         };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -154,6 +194,7 @@ export class StateStore implements StateStoreLike {
         this.authUsers = new Map();
         this.authSessions = new Map();
         this.importedPacks = new Map();
+        this.teachers = new Map();
         return null;
       }
       throw err;
@@ -165,6 +206,7 @@ export class StateStore implements StateStoreLike {
     authUsers?: AuthUserRecord[];
     authSessions?: AuthSessionRecord[];
     packs?: StoredContentPackRecord[];
+    teachers?: StoredTeacherRecord[];
   }): void {
     const sessions = new Map<string, QuizState>();
     for (const s of parsed.sessions ?? []) {
@@ -199,16 +241,36 @@ export class StateStore implements StateStoreLike {
         r &&
         r.pack &&
         typeof r.pack.id === "string" &&
-        typeof r.ownerSessionId === "string" &&
+        (typeof r.ownerSessionId === "string" || r.ownerSessionId === null) &&
         typeof r.touchedAt === "number"
       ) {
         importedPacks.set(packRecordKey(r.ownerSessionId, r.pack.id), r);
+      }
+    }
+    const teachers = new Map<string, StoredTeacherRecord>();
+    for (const r of parsed.teachers ?? []) {
+      if (
+        r &&
+        typeof r.id === "string" &&
+        typeof r.creatorUserId === "string" &&
+        typeof r.creatorSessionId === "string" &&
+        typeof r.ratiAvatarId === "string" &&
+        typeof r.ratiModel === "string" &&
+        typeof r.displayName === "string" &&
+        typeof r.packId === "string" &&
+        r.pack &&
+        r.pack.id === r.packId &&
+        (r.status === "draft" || r.status === "published") &&
+        (r.visibility === "private" || r.visibility === "unlisted" || r.visibility === "public")
+      ) {
+        teachers.set(r.id, r);
       }
     }
     this.snapshot = sessions;
     this.authUsers = authUsers;
     this.authSessions = authSessions;
     this.importedPacks = importedPacks;
+    this.teachers = teachers;
   }
 
   /**
@@ -259,9 +321,20 @@ export class StateStore implements StateStoreLike {
     return this.scheduleWrite();
   }
 
-  deletePack(ownerSessionId: string, packId: string): Promise<void> {
+  saveTeacher(record: StoredTeacherRecord): Promise<void> {
+    this.teachers.set(record.id, record);
+    return this.scheduleWrite();
+  }
+
+  deletePack(ownerSessionId: string | null, packId: string): Promise<void> {
     if (!this.importedPacks.has(packRecordKey(ownerSessionId, packId))) return Promise.resolve();
     this.importedPacks.delete(packRecordKey(ownerSessionId, packId));
+    return this.scheduleWrite();
+  }
+
+  deleteTeacher(teacherId: string): Promise<void> {
+    if (!this.teachers.has(teacherId)) return Promise.resolve();
+    this.teachers.delete(teacherId);
     return this.scheduleWrite();
   }
 
@@ -345,6 +418,7 @@ export class StateStore implements StateStoreLike {
       authUsers: Array.from(this.authUsers.values()),
       authSessions: Array.from(this.authSessions.values()),
       packs: Array.from(this.importedPacks.values()),
+      teachers: Array.from(this.teachers.values()),
     }, null, 2), "utf8");
     await rename(tmp, this.path);
   }
@@ -364,8 +438,8 @@ export function authUserKey(provider: AuthUserRecord["provider"], providerUserHa
   return `${provider}:${providerUserHash}`;
 }
 
-export function packRecordKey(ownerSessionId: string, packId: string): string {
-  return `${ownerSessionId}:${packId}`;
+export function packRecordKey(ownerSessionId: string | null, packId: string): string {
+  return `${ownerSessionId ?? "public"}:${packId}`;
 }
 
 let defaultStateStore: StateStore | null = null;

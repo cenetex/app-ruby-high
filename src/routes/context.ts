@@ -25,6 +25,10 @@ export interface RouteContext {
   contentTypeHeader?: string | string[] | null;
   /** Raw Origin request header, when present. */
   originHeader?: string | string[] | null;
+  /** Temporary Privy/RATi bridge: wallet verified by the client integration.
+   *  Server-side Privy verification should replace this header once Ruby High
+   *  owns the Privy login flow. */
+  walletAddressHeader?: string | string[] | null;
   /** Raw If-None-Match request header. Static asset routes use it to return
    *  304 Not Modified when the client's cached ETag matches. Optional - if
    *  absent, assets always serve the full body (correct, just not cached). */

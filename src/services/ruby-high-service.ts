@@ -61,7 +61,7 @@ import {
   type TeachingRoomId,
 } from "../types.js";
 import { FacultyService, toFacultyMember } from "./faculty-service.js";
-import { getDefaultStateStore, type StateStoreLike } from "./state-store.js";
+import { getDefaultStateStore, type StateStoreLike, type StoredTeacherRecord } from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
@@ -104,6 +104,7 @@ import {
   MAX_PACKS_PER_OWNER,
   ORIGINAL_PACK_ID,
   packForSession,
+  registerPublicPack,
   registerPack,
   resolveFacultyIdForSession,
   roomForFacultyForSession,
@@ -450,6 +451,8 @@ export class RubyHighService extends Service {
         try {
           if (record.ownerSessionId === GLOBAL_PACK_OWNER) {
             setActivePack(record.pack);
+          } else if (record.ownerSessionId === null) {
+            registerPublicPack(record.pack, record.touchedAt);
           } else {
             registerPack(record.pack, record.ownerSessionId, record.touchedAt);
           }
@@ -548,6 +551,37 @@ export class RubyHighService extends Service {
       await this.prunePersistedImportedPacks(sessionId);
     } catch (err) {
       log.error("ruby-high.persist-pack-failed", err, { sessionId, packId: pack.id });
+      throw err;
+    }
+  }
+
+  async listTeacherRecords(): Promise<StoredTeacherRecord[]> {
+    return this.store.loadTeachers();
+  }
+
+  async saveTeacherRecord(record: StoredTeacherRecord): Promise<void> {
+    try {
+      await this.store.saveTeacher(record);
+    } catch (err) {
+      log.error("ruby-high.persist-teacher-failed", err, { teacherId: record.id });
+      throw err;
+    }
+  }
+
+  async persistPublicTeacherPack(pack: ContentPack, opts: { previousOwnerSessionId?: string | null } = {}): Promise<void> {
+    const touchedAt = Date.now();
+    try {
+      registerPublicPack(pack, touchedAt, { ownerSessionId: opts.previousOwnerSessionId ?? null });
+      await this.store.savePack({
+        pack,
+        ownerSessionId: null,
+        touchedAt,
+      });
+      if (opts.previousOwnerSessionId) {
+        await this.store.deletePack(opts.previousOwnerSessionId, pack.id);
+      }
+    } catch (err) {
+      log.error("ruby-high.persist-public-teacher-pack-failed", err, { packId: pack.id });
       throw err;
     }
   }

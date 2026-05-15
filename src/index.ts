@@ -90,8 +90,15 @@ export {
   type AuthStoreSnapshot,
   type AuthUserRecord,
   type StateStoreLike,
+  type StoredTeacherRecord,
 } from "./services/state-store.js";
 export { DynamoStateStore, type DynamoStateStoreOptions } from "./services/dynamo-state-store.js";
+export {
+  HttpRatiTeacherAvatarProvider,
+  getDefaultRatiTeacherAvatarProvider,
+  type RatiTeacherAvatarProvider,
+  type RatiUserAvatar,
+} from "./services/rati-avatar-provider.js";
 export { createStateStore, type CreateStateStoreOptions } from "./services/state-store-factory.js";
 export { AuthService } from "./services/auth-service.js";
 export { ChatService } from "./services/chat-service.js";

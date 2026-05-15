@@ -195,6 +195,26 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <div class="sheet-card" id="pack-card">
     <h2>Connected teachers</h2>
     <p class="sub">Switch the active teacher or connect a live RATi/aws-swarm avatar as a guest instructor.</p>
+    <div class="pack-section-title">Creator studio</div>
+    <div class="teacher-creator">
+      <div class="teacher-creator-row">
+        <input id="teacher-wallet-input" type="text" placeholder="Wallet address" autocomplete="off">
+        <button type="button" class="secondary" id="teacher-load-avatars-btn">Load avatars</button>
+      </div>
+      <select id="teacher-avatar-select" disabled>
+        <option value="">Load wallet avatars first</option>
+      </select>
+      <input id="teacher-display-name-input" type="text" placeholder="Teacher display name (optional)">
+      <input id="teacher-socials-input" type="url" placeholder="Socials link (optional)">
+      <textarea id="teacher-materials-input" rows="5" maxlength="80000" placeholder="Paste markdown or course materials"></textarea>
+      <label class="teacher-publish-toggle">
+        <input id="teacher-publish-checkbox" type="checkbox" checked>
+        <span>Publish to the global teacher set</span>
+      </label>
+      <button type="button" class="pack-action teacher-create-btn" id="teacher-create-btn">Create teacher</button>
+    </div>
+    <div class="pack-section-title">Published teachers</div>
+    <div class="pack-list" id="teacher-catalog-list"></div>
     <div class="pack-section-title">RATi teachers</div>
     <div class="pack-list" id="connected-teacher-list"></div>
     <div class="pack-import-panel" id="pack-import-panel" hidden>

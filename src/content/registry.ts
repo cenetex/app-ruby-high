@@ -161,6 +161,30 @@ export function registerPack(pack: ContentPack, ownerSessionId: string, touchedA
   touch(pack.id, pack, ownerSessionId, touchedAt);
 }
 
+/** Publish a runtime pack globally. Public teacher packs use owner=null so
+ *  they are visible to every session, but they are not the same as the
+ *  legacy built-in active pack. Callers may promote their own private draft
+ *  pack by passing the expected owner session id. */
+export function registerPublicPack(
+  pack: ContentPack,
+  touchedAt = Date.now(),
+  opts: { ownerSessionId?: string | null } = {},
+): void {
+  const existing = packs.get(pack.id);
+  if (existing) {
+    if (existing.ownerSessionId !== null && existing.ownerSessionId !== opts.ownerSessionId) {
+      throw new Error(`Pack ${pack.id} is owned by another session — cannot publish.`);
+    }
+    if (existing.ownerSessionId === null && pack.id === ORIGINAL_PACK_ID) {
+      throw new Error(`Cannot overwrite pinned built-in pack: ${pack.id}`);
+    }
+    if (existing.ownerSessionId === null && !pack.id.startsWith("teacher:")) {
+      throw new Error(`Cannot overwrite global pack: ${pack.id}`);
+    }
+  }
+  touch(pack.id, pack, null, touchedAt);
+}
+
 /** All packs the given session can see: built-ins + this session's own
  *  session-scoped packs. Other users' packs are filtered out. */
 export function availablePacksForSession(sessionId: string | null): ContentPack[] {

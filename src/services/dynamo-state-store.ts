@@ -13,6 +13,7 @@ import type {
   AuthUserRecord,
   StateStoreLike,
   StoredContentPackRecord,
+  StoredTeacherRecord,
 } from "./state-store.js";
 
 /**
@@ -171,8 +172,33 @@ export class DynamoStateStore implements StateStoreLike {
         record &&
         record.pack &&
         typeof record.pack.id === "string" &&
-        typeof record.ownerSessionId === "string" &&
+        (typeof record.ownerSessionId === "string" || record.ownerSessionId === null) &&
         typeof record.touchedAt === "number"
+      ) {
+        records.push(record);
+      }
+    }
+    return records;
+  }
+
+  async loadTeachers(): Promise<StoredTeacherRecord[]> {
+    const records: StoredTeacherRecord[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const record = item.teacherRecord as StoredTeacherRecord | undefined;
+      if (
+        record &&
+        typeof record.id === "string" &&
+        typeof record.creatorUserId === "string" &&
+        typeof record.creatorSessionId === "string" &&
+        typeof record.ratiAvatarId === "string" &&
+        typeof record.ratiModel === "string" &&
+        typeof record.displayName === "string" &&
+        typeof record.packId === "string" &&
+        record.pack &&
+        record.pack.id === record.packId &&
+        (record.status === "draft" || record.status === "published") &&
+        (record.visibility === "private" || record.visibility === "unlisted" || record.visibility === "public")
       ) {
         records.push(record);
       }
@@ -323,11 +349,32 @@ export class DynamoStateStore implements StateStoreLike {
     }));
   }
 
-  async deletePack(ownerSessionId: string, packId: string): Promise<void> {
+  async saveTeacher(record: StoredTeacherRecord): Promise<void> {
+    this.invalidateScanCache();
+    const item: Record<string, unknown> = {
+      pk: `teacher:${encodeURIComponent(record.id)}`,
+      teacherRecord: record,
+      updatedAt: record.updatedAt,
+    };
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
+    }));
+  }
+
+  async deletePack(ownerSessionId: string | null, packId: string): Promise<void> {
     this.invalidateScanCache();
     await this.client.send(new DeleteCommand({
       TableName: this.tableName,
       Key: { pk: this.packPk(ownerSessionId, packId) },
+    }));
+  }
+
+  async deleteTeacher(teacherId: string): Promise<void> {
+    this.invalidateScanCache();
+    await this.client.send(new DeleteCommand({
+      TableName: this.tableName,
+      Key: { pk: `teacher:${encodeURIComponent(teacherId)}` },
     }));
   }
 
@@ -394,8 +441,8 @@ export class DynamoStateStore implements StateStoreLike {
     return item;
   }
 
-  private packPk(ownerSessionId: string, packId: string): string {
-    return `pack:${encodeURIComponent(ownerSessionId)}:${encodeURIComponent(packId)}`;
+  private packPk(ownerSessionId: string | null, packId: string): string {
+    return `pack:${encodeURIComponent(ownerSessionId ?? "public")}:${encodeURIComponent(packId)}`;
   }
 }
 

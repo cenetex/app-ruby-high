@@ -435,6 +435,58 @@ describe("DynamoStateStore", () => {
     expect(await store.loadPacks()).toEqual([]);
   });
 
+  it("saves and loads public content packs", async () => {
+    await store.savePack({
+      pack: fakePack("teacher:public"),
+      ownerSessionId: null,
+      touchedAt: 456,
+    });
+
+    const snapshot = fake.snapshot();
+    expect(snapshot.get("pack:public:teacher%3Apublic")?.contentPack).toBeDefined();
+
+    const packs = await store.loadPacks();
+    expect(packs).toHaveLength(1);
+    expect(packs[0]?.ownerSessionId).toBeNull();
+
+    await store.deletePack(null, "teacher:public");
+    expect(fake.snapshot().has("pack:public:teacher%3Apublic")).toBe(false);
+  });
+
+  it("saves and loads teacher records in separate Dynamo items", async () => {
+    const pack = fakePack("teacher:stored");
+    await store.saveTeacher({
+      id: "teacher_1",
+      creatorUserId: "usr_1",
+      creatorSessionId: "rh:user:usr_1",
+      creatorWallet: "0x1111111111111111111111111111111111111111",
+      ratiAvatarId: "avatar-1",
+      ratiModel: "avatar:avatar-1",
+      displayName: "Stored Teacher",
+      description: "A persisted teacher.",
+      materials: "# Unit",
+      subjects: ["systems"],
+      questionCount: 1,
+      packId: pack.id,
+      visibility: "public",
+      status: "published",
+      createdAt: 10,
+      updatedAt: 20,
+      publishedAt: 20,
+      pack,
+    });
+
+    const snapshot = fake.snapshot();
+    expect(snapshot.get("teacher:teacher_1")?.teacherRecord).toBeDefined();
+
+    const teachers = await store.loadTeachers();
+    expect(teachers).toHaveLength(1);
+    expect(teachers[0]?.displayName).toBe("Stored Teacher");
+
+    await store.deleteTeacher("teacher_1");
+    expect(fake.snapshot().has("teacher:teacher_1")).toBe(false);
+  });
+
   it("shares close-together table scans across hydrate calls", async () => {
     await store.saveSession(blankState("rh:user:state"));
     await store.saveAuthUser({

@@ -50,6 +50,8 @@ const DEFAULT_RATI_BASE_URL = "https://swarm.rati.chat/api/v1";
 const RATI_TIMEOUT_MS = readPositiveInt(process.env.RUBY_HIGH_RATI_TIMEOUT_MS, 60_000);
 const RATI_PROFILE_IMAGE_TIMEOUT_MS = readPositiveInt(process.env.RUBY_HIGH_RATI_PROFILE_IMAGE_TIMEOUT_MS, 3_000);
 const CONNECTED_TEACHER_QUESTION_COUNT = readNonNegativeInt(process.env.RUBY_HIGH_CONNECTED_TEACHER_QUESTION_COUNT, 8);
+const CREATOR_TEACHER_QUESTION_COUNT = readNonNegativeInt(process.env.RUBY_HIGH_CREATOR_TEACHER_QUESTION_COUNT, 18);
+const MAX_CREATOR_MATERIAL_CHARS = readPositiveInt(process.env.RUBY_HIGH_CREATOR_MATERIAL_CHARS, 18_000);
 
 export function providerForFaculty(faculty: PackFaculty | null | undefined): PackFacultyProvider {
   return faculty?.provider ?? { kind: "openrouter", supportsTools: true };
@@ -170,11 +172,34 @@ export async function listRatiTeacherCandidates(): Promise<ConnectedTeacherCandi
 }
 
 export async function generateConnectedTeacherQuestionBank(candidate: ConnectedTeacherCandidate): Promise<BankedQuestion[]> {
-  if (CONNECTED_TEACHER_QUESTION_COUNT <= 0) return [];
+  return generateQuestionBankForCandidate(candidate, {
+    questionCount: CONNECTED_TEACHER_QUESTION_COUNT,
+  });
+}
+
+export async function generateConnectedTeacherQuestionBankFromMaterials(
+  candidate: ConnectedTeacherCandidate,
+  materials: string,
+  opts: { questionCount?: number } = {},
+): Promise<BankedQuestion[]> {
+  const requested = normalizeQuestionCount(opts.questionCount ?? CREATOR_TEACHER_QUESTION_COUNT);
+  return generateQuestionBankForCandidate(candidate, {
+    questionCount: requested,
+    materials,
+  });
+}
+
+async function generateQuestionBankForCandidate(
+  candidate: ConnectedTeacherCandidate,
+  opts: { questionCount: number; materials?: string },
+): Promise<BankedQuestion[]> {
+  const questionCount = normalizeQuestionCount(opts.questionCount);
+  if (questionCount <= 0) return [];
   const config = ratiConfig();
   if (!config.configured) throw new Error("RATi teacher backend is not configured.");
   const facultyId = connectedFacultyId(candidate);
   const displayName = candidate.name || candidate.root || candidate.model;
+  const materials = cleanText(opts.materials).slice(0, MAX_CREATOR_MATERIAL_CHARS);
   const response = await ratiChatCompletionJson({
     model: candidate.model,
     messages: [
@@ -183,7 +208,9 @@ export async function generateConnectedTeacherQuestionBank(candidate: ConnectedT
         content: [
           "You create Ruby High multiple-choice study cards.",
           "Return only valid JSON. No markdown. No commentary.",
-          "Every question must be answerable from general reasoning or your teaching domain, not private chat state.",
+          materials
+            ? "Every question must be answerable from the supplied course materials."
+            : "Every question must be answerable from general reasoning or your teaching domain, not private chat state.",
         ].join("\n"),
       },
       {
@@ -191,14 +218,17 @@ export async function generateConnectedTeacherQuestionBank(candidate: ConnectedT
         content: [
           `Teacher: ${displayName}`,
           candidate.description ? `Teacher description: ${candidate.description}` : "",
-          `Write ${CONNECTED_TEACHER_QUESTION_COUNT} Ruby High board questions for a high-school class taught by this teacher.`,
+          materials ? "Course materials:\n" + materials : "",
+          `Write ${questionCount} Ruby High board questions for a high-school class taught by this teacher.`,
           "Return a JSON array. Each item must have exactly these fields:",
           `{"subject":"short subject label","difficulty":"easy|medium|hard","prompt":"question text","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A|B|C|D","explanation":"one sentence"}`,
-          "Make the questions varied, classroom-appropriate, and concrete.",
+          materials
+            ? "Use the materials as source of truth, vary the subjects, and avoid trivia that is not supported by the text."
+            : "Make the questions varied, classroom-appropriate, and concrete.",
         ].filter(Boolean).join("\n"),
       },
     ],
-    max_tokens: 2400,
+    max_tokens: Math.max(2400, Math.min(7000, 300 * questionCount)),
     temperature: 0.35,
   });
   const content = firstMessageContent(response);
@@ -206,10 +236,10 @@ export async function generateConnectedTeacherQuestionBank(candidate: ConnectedT
   const questions = items
     .map((item, index) => bankedQuestionFromGeneratedItem(item, { facultyId, index }))
     .filter((question): question is BankedQuestion => !!question);
-  if (questions.length < Math.min(4, CONNECTED_TEACHER_QUESTION_COUNT)) {
-    throw new Error(`RATi teacher returned ${questions.length} valid generated questions; at least ${Math.min(4, CONNECTED_TEACHER_QUESTION_COUNT)} required.`);
+  if (questions.length < Math.min(4, questionCount)) {
+    throw new Error(`RATi teacher returned ${questions.length} valid generated questions; at least ${Math.min(4, questionCount)} required.`);
   }
-  return questions.slice(0, CONNECTED_TEACHER_QUESTION_COUNT);
+  return questions.slice(0, questionCount);
 }
 
 export function packForConnectedTeacher(
@@ -588,6 +618,12 @@ function readNonNegativeInt(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : fallback;
+}
+
+function normalizeQuestionCount(value: unknown): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return CREATOR_TEACHER_QUESTION_COUNT;
+  return Math.max(0, Math.min(40, Math.floor(number)));
 }
 
 function readBoolean(raw: string | undefined, fallback: boolean): boolean {

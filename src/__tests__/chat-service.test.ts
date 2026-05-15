@@ -13,6 +13,7 @@ import {
   type AuthUserRecord,
   type StateStoreLike,
   type StoredContentPackRecord,
+  type StoredTeacherRecord,
 } from "../services/state-store.js";
 import { registerPack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
@@ -161,6 +162,10 @@ class FailingSaveSessionStore implements StateStoreLike {
     return [];
   }
 
+  async loadTeachers(): Promise<StoredTeacherRecord[]> {
+    return [];
+  }
+
   async saveSession(_state: QuizState): Promise<void> {
     throw new Error("DynamoDB unavailable");
   }
@@ -171,7 +176,11 @@ class FailingSaveSessionStore implements StateStoreLike {
 
   async savePack(_record: StoredContentPackRecord): Promise<void> {}
 
-  async deletePack(_ownerSessionId: string, _packId: string): Promise<void> {}
+  async saveTeacher(_record: StoredTeacherRecord): Promise<void> {}
+
+  async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
+
+  async deleteTeacher(_teacherId: string): Promise<void> {}
 
   async deleteAuthSession(_token: string): Promise<void> {}
 

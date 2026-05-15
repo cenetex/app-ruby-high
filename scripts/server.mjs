@@ -143,6 +143,7 @@ function makeRouteContext(req, res, url) {
     clientIp: deriveClientIp(req),
     contentTypeHeader: req.headers["content-type"] ?? null,
     originHeader: req.headers.origin ?? null,
+    walletAddressHeader: req.headers["x-ruby-high-wallet"] ?? null,
     ifNoneMatch: req.headers["if-none-match"] ?? null,
     acceptEncoding: req.headers["accept-encoding"] ?? null,
     callbackUrlBuilder: (path) => new URL(base).origin + path,

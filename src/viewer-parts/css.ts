@@ -718,6 +718,46 @@ export const VIEWER_CSS = `
     gap: 8px;
     margin: 8px 0;
   }
+  .teacher-creator {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0 12px;
+  }
+  .teacher-creator-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .teacher-creator input,
+  .teacher-creator select,
+  .teacher-creator textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    color: var(--text);
+    padding: 9px 10px;
+    font: inherit;
+    font-size: 13px;
+  }
+  .teacher-creator textarea {
+    resize: vertical;
+    min-height: 112px;
+    line-height: 1.35;
+  }
+  .teacher-publish-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-soft);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .teacher-publish-toggle input { width: auto; }
+  .teacher-create-btn {
+    justify-self: end;
+  }
   .pack-row {
     display: flex;
     align-items: center;

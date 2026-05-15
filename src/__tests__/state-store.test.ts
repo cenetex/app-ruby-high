@@ -145,6 +145,64 @@ describe("StateStore", () => {
     expect(deleted).toHaveLength(0);
   });
 
+  it("round-trips public content packs", async () => {
+    const store = new StateStore(storePath);
+    await store.savePack({
+      pack: fakePack("teacher:public"),
+      ownerSessionId: null,
+      touchedAt: 456,
+    });
+
+    const fresh = new StateStore(storePath);
+    const packs = await fresh.loadPacks();
+    expect(packs).toHaveLength(1);
+    expect(packs[0]?.pack.id).toBe("teacher:public");
+    expect(packs[0]?.ownerSessionId).toBeNull();
+
+    await fresh.deletePack(null, "teacher:public");
+    expect(await new StateStore(storePath).loadPacks()).toHaveLength(0);
+  });
+
+  it("round-trips teacher records separately from sessions", async () => {
+    const pack = fakePack("teacher:stored");
+    const store = new StateStore(storePath);
+    await store.save([blankState("a")]);
+    await store.saveTeacher({
+      id: "teacher_1",
+      creatorUserId: "usr_1",
+      creatorSessionId: "rh:user:usr_1",
+      creatorWallet: "0x1111111111111111111111111111111111111111",
+      ratiAvatarId: "avatar-1",
+      ratiModel: "avatar:avatar-1",
+      displayName: "Stored Teacher",
+      description: "A persisted teacher.",
+      materials: "# Unit",
+      subjects: ["systems"],
+      questionCount: 1,
+      packId: pack.id,
+      visibility: "public",
+      status: "published",
+      createdAt: 10,
+      updatedAt: 20,
+      publishedAt: 20,
+      pack,
+    });
+
+    const fresh = new StateStore(storePath);
+    const teachers = await fresh.loadTeachers();
+    expect(teachers).toHaveLength(1);
+    expect(teachers[0]).toMatchObject({
+      id: "teacher_1",
+      creatorUserId: "usr_1",
+      ratiAvatarId: "avatar-1",
+      packId: "teacher:stored",
+      status: "published",
+    });
+
+    await fresh.deleteTeacher("teacher_1");
+    expect(await new StateStore(storePath).loadTeachers()).toHaveLength(0);
+  });
+
   it("load returns an empty map when the file doesn't exist", async () => {
     const store = new StateStore(join(tmpDir, "nope.json"));
     const loaded = await store.load();

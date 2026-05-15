@@ -5163,6 +5163,15 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packEl = $("pack-overlay");
   const packListEl = $("pack-list");
   const connectedTeacherListEl = $("connected-teacher-list");
+  const teacherCatalogListEl = $("teacher-catalog-list");
+  const teacherWalletInputEl = $("teacher-wallet-input");
+  const teacherLoadAvatarsBtn = $("teacher-load-avatars-btn");
+  const teacherAvatarSelectEl = $("teacher-avatar-select");
+  const teacherDisplayNameInputEl = $("teacher-display-name-input");
+  const teacherSocialsInputEl = $("teacher-socials-input");
+  const teacherMaterialsInputEl = $("teacher-materials-input");
+  const teacherPublishCheckboxEl = $("teacher-publish-checkbox");
+  const teacherCreateBtn = $("teacher-create-btn");
   const packCloseBtn = $("pack-close-btn");
   const packStatusEl = $("pack-status");
   const packImportPanelEl = $("pack-import-panel");
@@ -5183,6 +5192,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   function openPackStore() {
     packEl.classList.add("is-open");
     renderPackList();
+    renderTeacherCatalog();
     renderConnectedTeachers();
   }
   function closePackStore() {
@@ -5202,6 +5212,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (packCloseBtn) packCloseBtn.disabled = packImportBusy;
     if (packBtn) packBtn.disabled = packImportBusy;
     packEl.querySelectorAll("button.pack-action").forEach((btn) => { btn.disabled = packImportBusy; });
+    if (teacherLoadAvatarsBtn) teacherLoadAvatarsBtn.disabled = packImportBusy;
+    if (teacherCreateBtn) teacherCreateBtn.disabled = packImportBusy;
   }
   function updatePackImportProgress(pct, title, detail, isError) {
     if (!packImportPanelEl) return;
@@ -5289,6 +5301,170 @@ const VIEWER_SCRIPT_SUFFIX = `
         row.addEventListener("click", () => { if (!packImportBusy) switchPack(p.id); });
       }
       packListEl.appendChild(row);
+    }
+  }
+  async function renderTeacherCatalog() {
+    if (!teacherCatalogListEl) return;
+    teacherCatalogListEl.innerHTML = "";
+    const loading = document.createElement("div");
+    loading.className = "sub";
+    loading.textContent = "Loading shared teacher catalog…";
+    teacherCatalogListEl.appendChild(loading);
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/teachers");
+      const data = await r.json().catch(() => ({}));
+      teacherCatalogListEl.innerHTML = "";
+      if (!r.ok) throw new Error(data.error || "teachers " + r.status);
+      const teachers = Array.isArray(data.teachers) ? data.teachers : [];
+      if (teachers.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "sub";
+        empty.textContent = "No published teachers yet.";
+        teacherCatalogListEl.appendChild(empty);
+        return;
+      }
+      const activeId = lastTelemetry && lastTelemetry.active_pack && lastTelemetry.active_pack.id;
+      for (const teacher of teachers) {
+        const row = document.createElement("div");
+        row.className = "pack-row" + (teacher.packId === activeId ? " is-active" : "");
+        const body = document.createElement("div");
+        body.className = "pack-body";
+        const name = document.createElement("div");
+        name.className = "pack-name";
+        name.textContent = teacher.displayName || "Teacher";
+        const meta = document.createElement("div");
+        meta.className = "pack-meta";
+        const subjects = Array.isArray(teacher.subjects) && teacher.subjects.length ? teacher.subjects.slice(0, 3).join(", ") : "open study";
+        meta.textContent = (teacher.questionCount || 0) + " cards · " + subjects + (teacher.owner ? " · yours" : "");
+        body.appendChild(name);
+        body.appendChild(meta);
+        row.appendChild(body);
+        if (teacher.packId === activeId) {
+          const tag = document.createElement("span");
+          tag.className = "pack-active-tag";
+          tag.textContent = "Active";
+          row.appendChild(tag);
+        } else {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "pack-action";
+          btn.textContent = "Activate";
+          btn.disabled = packImportBusy;
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            activatePublishedTeacher(teacher);
+          });
+          row.appendChild(btn);
+        }
+        teacherCatalogListEl.appendChild(row);
+      }
+    } catch (err) {
+      teacherCatalogListEl.innerHTML = "";
+      const error = document.createElement("div");
+      error.className = "sub";
+      error.textContent = "Couldn't load teacher catalog · " + (err && err.message ? err.message : "error");
+      teacherCatalogListEl.appendChild(error);
+    }
+  }
+  async function loadWalletAvatars() {
+    if (!teacherWalletInputEl || !teacherAvatarSelectEl) return;
+    const walletAddress = String(teacherWalletInputEl.value || "").trim();
+    if (!walletAddress) {
+      packStatusEl.textContent = "Enter a wallet address first.";
+      packStatusEl.classList.add("is-invalid");
+      return;
+    }
+    packStatusEl.textContent = "Loading wallet avatars…";
+    packStatusEl.classList.remove("is-invalid");
+    teacherAvatarSelectEl.disabled = true;
+    teacherAvatarSelectEl.innerHTML = '<option value="">Loading…</option>';
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/teachers/me/avatars?walletAddress=" + encodeURIComponent(walletAddress));
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "avatars " + r.status);
+      const avatars = Array.isArray(data.avatars) ? data.avatars : [];
+      teacherAvatarSelectEl.innerHTML = "";
+      if (avatars.length === 0) {
+        teacherAvatarSelectEl.innerHTML = '<option value="">No avatars linked to this wallet</option>';
+        packStatusEl.textContent = "No avatars found for that wallet.";
+        return;
+      }
+      for (const avatar of avatars) {
+        const option = document.createElement("option");
+        option.value = avatar.id || avatar.model;
+        option.textContent = avatar.name || avatar.id || avatar.model;
+        option.dataset.model = avatar.model || "";
+        teacherAvatarSelectEl.appendChild(option);
+      }
+      teacherAvatarSelectEl.disabled = false;
+      packStatusEl.textContent = "Choose an avatar, paste materials, then create the teacher.";
+    } catch (err) {
+      teacherAvatarSelectEl.innerHTML = '<option value="">Could not load avatars</option>';
+      packStatusEl.textContent = "Couldn't load avatars · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    }
+  }
+  async function createTeacherFromCreatorForm() {
+    if (packImportBusy) return;
+    const walletAddress = String((teacherWalletInputEl && teacherWalletInputEl.value) || "").trim();
+    const avatarId = String((teacherAvatarSelectEl && teacherAvatarSelectEl.value) || "").trim();
+    const materials = String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || "").trim();
+    if (!walletAddress || !avatarId || !materials) {
+      packStatusEl.textContent = "Wallet, avatar, and course materials are required.";
+      packStatusEl.classList.add("is-invalid");
+      return;
+    }
+    startPackImportProgress("custom teacher");
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const body = {
+        walletAddress,
+        avatarId,
+        displayName: String((teacherDisplayNameInputEl && teacherDisplayNameInputEl.value) || "").trim() || undefined,
+        socialsUrl: String((teacherSocialsInputEl && teacherSocialsInputEl.value) || "").trim() || undefined,
+        materials,
+        questionCount: 18,
+        publish: !!(teacherPublishCheckboxEl && teacherPublishCheckboxEl.checked),
+        visibility: "public",
+      };
+      const r = await apiFetch("/api/apps/ruby-high/teachers/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "create " + r.status);
+      const count = data && data.teacher && typeof data.teacher.questionCount === "number" ? data.teacher.questionCount : 0;
+      finishPackImportProgress("Teacher ready", "Generated " + count + " board card" + (count === 1 ? "" : "s") + ". Reloading…");
+      packStatusEl.textContent = "Teacher created. Reloading…";
+      setTimeout(() => window.location.reload(), 300);
+    } catch (err) {
+      const message = "Couldn't create teacher · " + (err && err.message ? err.message : "error");
+      failPackImportProgress(message);
+      packStatusEl.textContent = message;
+      packStatusEl.classList.add("is-invalid");
+    }
+  }
+  async function activatePublishedTeacher(teacher) {
+    if (packImportBusy || !teacher || !teacher.id) return;
+    startPackImportProgress(teacher.displayName || "teacher");
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/teachers/" + encodeURIComponent(teacher.id) + "/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "activate " + r.status);
+      finishPackImportProgress("Teacher active", "Reloading classroom…");
+      packStatusEl.textContent = "Teacher activated. Reloading…";
+      setTimeout(() => window.location.reload(), 300);
+    } catch (err) {
+      const message = "Couldn't activate teacher · " + (err && err.message ? err.message : "error");
+      failPackImportProgress(message);
+      packStatusEl.textContent = message;
+      packStatusEl.classList.add("is-invalid");
     }
   }
   async function renderConnectedTeachers() {
@@ -5452,6 +5628,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   packCloseBtn.addEventListener("click", closePackStore);
   packEl.addEventListener("click", (e) => { if (e.target === packEl) closePackStore(); });
   packBtn.addEventListener("click", openPackStore);
+  if (teacherLoadAvatarsBtn) teacherLoadAvatarsBtn.addEventListener("click", loadWalletAvatars);
+  if (teacherCreateBtn) teacherCreateBtn.addEventListener("click", createTeacherFromCreatorForm);
 
   // ── student chime ─────────────────────────────────────────────────────────
   // When AI is enabled, fire the LLM-backed /chat/student-chime endpoint so
