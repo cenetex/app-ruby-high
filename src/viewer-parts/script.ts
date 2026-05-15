@@ -507,14 +507,90 @@ const VIEWER_SCRIPT_SUFFIX = `
   // toast-on-first-tick semantics as lastShownGrade.
   let lastYearbookLen = null;
   let lastShownFaculty = null;
-  let agentBusy = false;       // true while a teacher-driven SSE turn is running
-  let manualChatBusy = false;  // true while the bottom Chat action is composing/sending
   let lastChatButtonAt = 0;
-  let agentBusySeq = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let lastSocialSummaryId = null;
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
-  let chatStreamSeq = 0;       // bumps on each teacher/user SSE stream; older streams stop painting
+  function setNextButtonDisabled(disabled) {
+    if (els.nextBtn) els.nextBtn.disabled = !!disabled;
+  }
+  function createTurnController() {
+    const state = {
+      agentBusy: false,
+      manualChatBusy: false,
+      buttonBusy: false,
+      agentSeq: 0,
+      streamSeq: 0,
+    };
+    function syncButton() {
+      setNextButtonDisabled(state.buttonBusy || state.manualChatBusy || state.agentBusy);
+      syncChatComposerDisabled();
+    }
+    function beginManual() {
+      if (state.manualChatBusy || state.agentBusy) return null;
+      state.manualChatBusy = true;
+      syncButton();
+      return {
+        finish() {
+          state.manualChatBusy = false;
+          syncButton();
+        },
+      };
+    }
+    function beginAgent(force) {
+      if (!force && state.agentBusy) return null;
+      state.agentBusy = true;
+      const seq = ++state.agentSeq;
+      syncButton();
+      return {
+        finish() {
+          if (state.agentSeq === seq) state.agentBusy = false;
+          syncButton();
+        },
+      };
+    }
+    function beginButtonAction() {
+      if (state.buttonBusy || state.manualChatBusy || state.agentBusy) return null;
+      state.buttonBusy = true;
+      syncButton();
+      return {
+        finish() {
+          state.buttonBusy = false;
+          syncButton();
+        },
+      };
+    }
+    return {
+      isBusy() {
+        return state.buttonBusy || state.manualChatBusy || state.agentBusy;
+      },
+      beginManual,
+      beginAgent,
+      beginButtonAction,
+      nextStreamGuard(facultyId) {
+        return { viewSeq: chatViewSeq, facultyId, streamSeq: ++state.streamSeq };
+      },
+      streamStillCurrent(opts) {
+        if (!opts) return true;
+        if (opts.viewSeq !== chatViewSeq) return false;
+        if (opts.streamSeq != null && opts.streamSeq !== state.streamSeq) return false;
+        if (!opts.facultyId || !lastTelemetry) return true;
+        return lastTelemetry.faculty === opts.facultyId;
+      },
+      syncButton,
+    };
+  }
+  const turnController = createTurnController();
+  function syncNextButtonDisabled() {
+    turnController.syncButton();
+  }
+  function setChatComposerDisabled(disabled) {
+    els.chatInput.disabled = !!disabled;
+    els.chatSend.disabled = !!disabled;
+  }
+  function syncChatComposerDisabled() {
+    setChatComposerDisabled(!teacherChatEnabled() || turnController.isBusy());
+  }
   // Auto-start guard: when the player lands in a teaching room with an
   // empty board (no current question, no live round), kick off the next
   // class question without waiting for the AI to call pose_question via a
@@ -528,12 +604,6 @@ const VIEWER_SCRIPT_SUFFIX = `
   // from staring at an empty chalkboard with no signal that the system is
   // working as intended. Reset on context change.
   let emptyBoardHintShown = false;
-  function setNextButtonDisabled(disabled) {
-    if (els.nextBtn) els.nextBtn.disabled = !!disabled;
-  }
-  function syncNextButtonDisabled() {
-    setNextButtonDisabled(manualChatBusy || agentBusy);
-  }
   function scheduledReadyCount(t) {
     const progress = t && t.active_course_progress;
     return Number(progress && progress.ready || 0);
@@ -815,9 +885,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line and keep the room moving.";
   }
   async function runPlayerChatTurn(intent, extraContext) {
-    if (manualChatBusy || agentBusy) return;
-    manualChatBusy = true;
-    setNextButtonDisabled(true);
+    const manualTurn = turnController.beginManual();
+    if (!manualTurn) return;
     try {
       const playerLine = await generatePlayerChatLine(intent);
       appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
@@ -847,8 +916,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         appendSystem(intent === "hint" ? "Answer the board to continue. Enable AI for teacher hints." : "Enable AI for teacher replies.");
       }
     } finally {
-      manualChatBusy = false;
-      syncNextButtonDisabled();
+      manualTurn.finish();
     }
   }
   function syncPlayerMessageHeaders() {
@@ -2687,8 +2755,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   async function startPostClassPractice(postClass) {
     if (!postClass || !postClass.report) return false;
-    if (manualChatBusy) return true;
-    setNextButtonDisabled(true);
+    const manualTurn = turnController.beginManual();
+    if (!manualTurn) return true;
     try {
       if (postClass.canPick) {
         const data = await command({ type: "pick", mode: "practice" });
@@ -2708,11 +2776,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       lockedFor = null;
       return true;
     } finally {
-      syncNextButtonDisabled();
+      manualTurn.finish();
     }
   }
   async function pickNext() {
-    // Graduation ceremony is always accessible — bypass the agentBusy guard so
+    // Graduation ceremony is always accessible — bypass the agent turn guard so
     // the Ceremony button works even while a teacher SSE turn is in flight.
     if (lastTelemetry && lastTelemetry.graduation_ready && !lastTelemetry.current) {
       openSheet();
@@ -2729,11 +2797,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     // When the round clock expired but the room-idle DM turn hasn't resolved
     // the board yet, suppress extra chat turns — the teacher is already on it.
     if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) return;
-    if (manualChatBusy || agentBusy) return;
+    if (turnController.isBusy()) return;
     const now = Date.now();
     if (now - lastChatButtonAt < 900) return;
     lastChatButtonAt = now;
-    setNextButtonDisabled(true);
+    const buttonTurn = turnController.beginButtonAction();
+    if (!buttonTurn) return;
     try {
       const phase = telemetryPhase(lastTelemetry);
       if (!teacherChatEnabled()) {
@@ -2799,7 +2868,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
       await runPlayerChatTurn("class");
     } finally {
-      syncNextButtonDisabled();
+      buttonTurn.finish();
     }
   }
   async function pickAnswer(choice, btn) {
@@ -2844,13 +2913,14 @@ const VIEWER_SCRIPT_SUFFIX = `
         // missing NPC slots and resolves the round; without that flag a
         // non-AI session would just sit on "waiting" forever (NPCs never
         // chime in without the LLM turn).
+        const streamGuard = turnController.nextStreamGuard(targetFaculty);
         const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
           body: JSON.stringify(aiEnabled ? { text: answerText } : { text: answerText, force: true }),
         });
-        await consumeSseStream(r, { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq });
+        await consumeSseStream(r, streamGuard);
       } else {
         const data = await command({ type: "answer-text", answerText, role });
         lockedFor = data && data.session && data.session.telemetry && data.session.telemetry.current
@@ -2976,8 +3046,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.shell.dataset.mode = mode;
     updateChatAction(mode);
     els.chatForm.hidden = true;
-    els.chatInput.disabled = true;
-    els.chatSend.disabled = true;
+    setChatComposerDisabled(true);
     // Race strip + answers + advantage + footer-filter all hide via CSS now.
     // We still null out the race-row contents on mode exit so the next
     // round-live paint doesn't double-render stale cards.
@@ -3077,8 +3146,8 @@ const VIEWER_SCRIPT_SUFFIX = `
         // teacher's response starts streaming first; the student chime
         // (scheduled below) lands later as a follow-up reaction, not as
         // the only voice in the room while the teacher is still loading.
-        // force=true: bypass the agentBusy guard. If a prior turn's SSE
-        // stream stuck (network drop, server hang), agentBusy stays true
+        // force=true: bypass the current agent turn. If a prior turn's SSE
+        // stream stuck (network drop, server hang), the old busy flag stayed true
         // and answer-graded gets silently dropped — leaving the player
         // staring at a revealed answer with no next question. The teacher
         // reaction is the thing that unsticks the flow; never gate it.
@@ -5642,16 +5711,14 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
       els.footerAction.hidden = false;
       els.chatForm.hidden = true;
-      els.chatInput.disabled = true;
-      els.chatSend.disabled = true;
+      setChatComposerDisabled(true);
     } else {
       // Unauthed means even guest-session creation failed; the fallback
       // sign-in overlay is the only thing the user can see.
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
       els.chatForm.hidden = true;
-      els.chatInput.disabled = true;
-      els.chatSend.disabled = true;
+      setChatComposerDisabled(true);
       if (els.nextBtn) els.nextBtn.hidden = true;
     }
     // Re-render the blackboard so its visibility flips with auth state.
@@ -5741,11 +5808,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
   }
   function chatStreamStillCurrent(opts) {
-    if (!opts) return true;
-    if (opts.viewSeq !== chatViewSeq) return false;
-    if (opts.streamSeq != null && opts.streamSeq !== chatStreamSeq) return false;
-    if (!opts.facultyId || !lastTelemetry) return true;
-    return lastTelemetry.faculty === opts.facultyId;
+    return turnController.streamStillCurrent(opts);
   }
   async function consumeSseStream(response, opts) {
     if (!response.ok || !response.body) {
@@ -5761,7 +5824,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     let buf = "";
     // Hard ceiling: if the server hangs or the connection drops without a
     // proper close, the loop below would await reader.read() forever and
-    // hold the agentBusy lock forever. Cancel after 45s so the surrounding
+    // hold the agent-turn lock forever. Cancel after 45s so the surrounding
     // try/finally always reaches its release.
     const watchdog = setTimeout(() => { try { reader.cancel(); } catch { /* ignore */ } }, 45000);
     try {
@@ -5835,12 +5898,14 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   async function sendChatMessage(text) {
     if (!teacherChatEnabled() || !text.trim()) return;
-    if (agentBusy) return;
+    const agentTurn = turnController.beginAgent(false);
+    if (!agentTurn) return;
     // While the room-idle DM turn is in progress (clock expired, round not
     // yet resolved), hold player chat so it doesn't race the teacher.
-    if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) return;
-    agentBusy = true;
-    const busySeq = ++agentBusySeq;
+    if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) {
+      agentTurn.finish();
+      return;
+    }
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
 
     // If an opinion question is active and the player hasn't submitted their
@@ -5857,39 +5922,38 @@ const VIEWER_SCRIPT_SUFFIX = `
       && !(opinionSubmitted && opinionSubmittedQuestionId === opinionQuestionId)
     );
 
-    appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
-    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq };
-
-    // @-mention: if the player named an in-room classmate, that student
-    // chimes in directly. Each mention bypasses the 5s cooldown and a
-    // small per-student delay keeps overlapping mentions from stomping
-    // each other. Out-of-room mentions are silently ignored.
-    const inRoomStudents = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
-    const mentionedIds = new Set();
-    for (const s of inRoomStudents) {
-      const re = new RegExp("\\b" + s.name + "\\b", "i");
-      if (re.test(text)) mentionedIds.add(s.id);
-    }
-    let mentionDelayBase = 600;
-    for (const sid of mentionedIds) {
-      fireStudentChime({
-        situation: "mention",
-        note: "The player addressed you directly. Respond in 1 sentence — react to what they actually said, in your voice.",
-        playerText: text,
-        grade: lastTelemetry && lastTelemetry.current_grade,
-        faculty: lastTelemetry && lastTelemetry.faculty,
-        delayMs: mentionDelayBase,
-        studentId: sid,
-        bypassCooldown: true,
-      });
-      mentionDelayBase += 800 + Math.random() * 600;
-    }
-
-    els.chatInput.value = "";
-    els.chatInput.style.height = "40px";
-    els.chatInput.disabled = true;
-    els.chatSend.disabled = true;
+    const streamGuard = turnController.nextStreamGuard(targetFaculty);
     try {
+      appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
+
+      // @-mention: if the player named an in-room classmate, that student
+      // chimes in directly. Each mention bypasses the 5s cooldown and a
+      // small per-student delay keeps overlapping mentions from stomping
+      // each other. Out-of-room mentions are silently ignored.
+      const inRoomStudents = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
+      const mentionedIds = new Set();
+      for (const s of inRoomStudents) {
+        const re = new RegExp("\\b" + s.name + "\\b", "i");
+        if (re.test(text)) mentionedIds.add(s.id);
+      }
+      let mentionDelayBase = 600;
+      for (const sid of mentionedIds) {
+        fireStudentChime({
+          situation: "mention",
+          note: "The player addressed you directly. Respond in 1 sentence — react to what they actually said, in your voice.",
+          playerText: text,
+          grade: lastTelemetry && lastTelemetry.current_grade,
+          faculty: lastTelemetry && lastTelemetry.faculty,
+          delayMs: mentionDelayBase,
+          studentId: sid,
+          bypassCooldown: true,
+        });
+        mentionDelayBase += 800 + Math.random() * 600;
+      }
+
+      els.chatInput.value = "";
+      els.chatInput.style.height = "40px";
+      setChatComposerDisabled(true);
       let r;
       if (inOpinion) {
         markOpinionSubmitted(opinionQuestionId);
@@ -5912,18 +5976,16 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (inOpinion) clearOpinionSubmitted();
       if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
-      if (agentBusySeq === busySeq) agentBusy = false;
-      syncNextButtonDisabled();
-      els.chatInput.disabled = !teacherChatEnabled();
-      els.chatSend.disabled = !teacherChatEnabled();
-      els.chatInput.focus();
+      agentTurn.finish();
+      syncChatComposerDisabled();
+      if (!els.chatInput.disabled) els.chatInput.focus();
     }
   }
 
   // Teacher-driven turn — fires when a state event happens (channel enter,
   // answer graded). The teacher decides what to say and whether to put a new
   // question on the board via tool calls.
-  // opts.force = true bypasses the agentBusy guard. Used for user-initiated
+  // opts.force = true bypasses the current agent-turn guard. Used for user-initiated
   // transitions (room switch, lounge entry, grade selection) — blocking the
   // user while the previous teacher is still streaming is the antipattern
   // we're stepping away from. Eventually the busy concept moves chat-side
@@ -5932,15 +5994,14 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function runAgentTurn(trigger, context, opts) {
     if (!teacherChatEnabled()) return;
     const force = !!(opts && opts.force);
-    if (!force && agentBusy) return;
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
     const triggerKey = trigger + "::" + targetFaculty + "::" + ((context && context.grade) || "?");
     // Channel-enter dedupes per (grade, faculty); answer-graded fires every time.
     if (trigger === "channel-enter" && triggerKey === lastAgentTrigger) return;
+    const agentTurn = turnController.beginAgent(force);
+    if (!agentTurn) return;
     lastAgentTrigger = triggerKey;
-    agentBusy = true;
-    const busySeq = ++agentBusySeq;
-    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq };
+    const streamGuard = turnController.nextStreamGuard(targetFaculty);
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/event", {
         method: "POST",
@@ -5952,9 +6013,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     } catch (err) {
       if (chatStreamStillCurrent(streamGuard)) appendSystem("teacher offline · " + (err && err.message ? err.message : "error"));
     } finally {
-      if (agentBusySeq === busySeq) agentBusy = false;
+      agentTurn.finish();
       await clearResolvedBoardAfterTeacherTurn(trigger, streamGuard);
-      syncNextButtonDisabled();
     }
   }
 
@@ -6061,7 +6121,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!allIn && !expired) return;
     opinionGradeFired = true;
     const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || null;
-    const streamGuard = { viewSeq: chatViewSeq, facultyId: targetFaculty, streamSeq: ++chatStreamSeq };
+    const streamGuard = turnController.nextStreamGuard(targetFaculty);
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
         method: "POST",

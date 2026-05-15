@@ -62,9 +62,18 @@ describe("viewer regression guardrails", () => {
 
     expect(script).toContain("function withTimeoutSignal");
     expect(script).toContain("const SESSION_REFRESH_TIMEOUT_MS = 8000");
+    expect(script).toContain("function createTurnController()");
     expect(script).toContain("function syncNextButtonDisabled()");
+    expect(script).toContain("const manualTurn = turnController.beginManual()");
+    expect(script).toContain("const agentTurn = turnController.beginAgent(false)");
+    expect(script).toContain("const buttonTurn = turnController.beginButtonAction()");
+    expect(script).toContain("function syncChatComposerDisabled()");
+    expect(script).toContain("if (!els.chatInput.disabled) els.chatInput.focus();");
+    expect(script).not.toContain("els.chatInput.disabled = !teacherChatEnabled()");
     expect(consumeBody).toContain("refreshSessionAfterStreamEvent();");
     expect(consumeBody).not.toContain("await fetchSession(");
+    expect(script).not.toContain("let agentBusy =");
+    expect(script).not.toContain("let manualChatBusy =");
   });
 
   it("keeps SSE streams bounded so stale network reads cannot hold the UI lock forever", () => {
@@ -74,7 +83,8 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("const watchdog = setTimeout");
     expect(script).toContain("reader.cancel()");
     expect(script).toContain("clearTimeout(watchdog)");
-    expect(script).toContain("opts.streamSeq !== chatStreamSeq");
+    expect(script).toContain("opts.streamSeq !== state.streamSeq");
+    expect(script).toContain("turnController.nextStreamGuard(targetFaculty)");
   });
 
   it("drops session polls that overlap command requests", () => {
