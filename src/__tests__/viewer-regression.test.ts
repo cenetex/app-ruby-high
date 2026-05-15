@@ -62,12 +62,13 @@ describe("viewer regression guardrails", () => {
 
     expect(script).toContain("function withTimeoutSignal");
     expect(script).toContain("const SESSION_REFRESH_TIMEOUT_MS = 8000");
-    expect(script).toContain("function createTurnController()");
+    expect(script).toContain("function createViewerTurnController");
+    expect(script).toContain("const turnController = createViewerTurnController");
     expect(script).toContain("function syncNextButtonDisabled()");
     expect(script).toContain("const manualTurn = turnController.beginManual()");
     expect(script).toContain("const agentTurn = turnController.beginAgent(false)");
     expect(script).toContain("const buttonTurn = turnController.beginButtonAction()");
-    expect(script).toContain("function syncChatComposerDisabled()");
+    expect(script).toContain("turnController.syncControls()");
     expect(script).toContain("if (!els.chatInput.disabled) els.chatInput.focus();");
     expect(script).not.toContain("els.chatInput.disabled = !teacherChatEnabled()");
     expect(consumeBody).toContain("refreshSessionAfterStreamEvent();");

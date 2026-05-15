@@ -1,4 +1,5 @@
 import type { ViewerRenderOptions } from "../viewer.js";
+import { createViewerTurnController } from "./turn-controller.js";
 
 // Returns the SPA viewer's inline JS as a string. Threads only the
 // per-session opts that bootstrap the client (apiBase, sessionId, role) —
@@ -514,82 +515,20 @@ const VIEWER_SCRIPT_SUFFIX = `
   function setNextButtonDisabled(disabled) {
     if (els.nextBtn) els.nextBtn.disabled = !!disabled;
   }
-  function createTurnController() {
-    const state = {
-      agentBusy: false,
-      manualChatBusy: false,
-      buttonBusy: false,
-      agentSeq: 0,
-      streamSeq: 0,
-    };
-    function syncButton() {
-      setNextButtonDisabled(state.buttonBusy || state.manualChatBusy || state.agentBusy);
-      syncChatComposerDisabled();
-    }
-    function beginManual() {
-      if (state.manualChatBusy || state.agentBusy) return null;
-      state.manualChatBusy = true;
-      syncButton();
-      return {
-        finish() {
-          state.manualChatBusy = false;
-          syncButton();
-        },
-      };
-    }
-    function beginAgent(force) {
-      if (!force && state.agentBusy) return null;
-      state.agentBusy = true;
-      const seq = ++state.agentSeq;
-      syncButton();
-      return {
-        finish() {
-          if (state.agentSeq === seq) state.agentBusy = false;
-          syncButton();
-        },
-      };
-    }
-    function beginButtonAction() {
-      if (state.buttonBusy || state.manualChatBusy || state.agentBusy) return null;
-      state.buttonBusy = true;
-      syncButton();
-      return {
-        finish() {
-          state.buttonBusy = false;
-          syncButton();
-        },
-      };
-    }
-    return {
-      isBusy() {
-        return state.buttonBusy || state.manualChatBusy || state.agentBusy;
-      },
-      beginManual,
-      beginAgent,
-      beginButtonAction,
-      nextStreamGuard(facultyId) {
-        return { viewSeq: chatViewSeq, facultyId, streamSeq: ++state.streamSeq };
-      },
-      streamStillCurrent(opts) {
-        if (!opts) return true;
-        if (opts.viewSeq !== chatViewSeq) return false;
-        if (opts.streamSeq != null && opts.streamSeq !== state.streamSeq) return false;
-        if (!opts.facultyId || !lastTelemetry) return true;
-        return lastTelemetry.faculty === opts.facultyId;
-      },
-      syncButton,
-    };
-  }
-  const turnController = createTurnController();
-  function syncNextButtonDisabled() {
-    turnController.syncButton();
-  }
   function setChatComposerDisabled(disabled) {
     els.chatInput.disabled = !!disabled;
     els.chatSend.disabled = !!disabled;
   }
-  function syncChatComposerDisabled() {
-    setChatComposerDisabled(!teacherChatEnabled() || turnController.isBusy());
+  ${createViewerTurnController.toString()}
+  const turnController = createViewerTurnController({
+    setNextButtonDisabled,
+    setChatComposerDisabled,
+    teacherChatEnabled,
+    currentViewSeq() { return chatViewSeq; },
+    currentFaculty() { return lastTelemetry && lastTelemetry.faculty; },
+  });
+  function syncNextButtonDisabled() {
+    turnController.syncControls();
   }
   // Auto-start guard: when the player lands in a teaching room with an
   // empty board (no current question, no live round), kick off the next
