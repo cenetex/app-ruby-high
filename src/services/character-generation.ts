@@ -5,8 +5,12 @@ import type { CharacterStats } from "../types.js";
 import { log } from "./logger.js";
 import {
   openRouterJson,
-  STUDENT_MODEL,
 } from "./openrouter-client.js";
+import {
+  fetchLlmChatCompletions,
+  resolveStudentModel,
+  throwLlmResponseError,
+} from "./llm-provider.js";
 
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
 const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
@@ -252,11 +256,10 @@ export async function rollRandomCharacter(args: {
     "    Third person. Same scale as those — kid stuff, not life themes.",
   ].join("\n");
 
-  const body = await openRouterJson<CharacterResponse>({
+  const r = await fetchLlmChatCompletions({
     apiKey: args.apiKey,
-    label: "character",
     body: {
-      model: STUDENT_MODEL,
+      model: resolveStudentModel(),
       messages: [
         { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
         { role: "user", content: userPrompt },
@@ -265,6 +268,8 @@ export async function rollRandomCharacter(args: {
       temperature: 1.1,
     },
   });
+  if (!r.ok) await throwLlmResponseError(r, "character");
+  const body = await r.json() as CharacterResponse;
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   let parsed: { name?: unknown; arcAnswer?: unknown; flavorQuote?: unknown; personality?: unknown };

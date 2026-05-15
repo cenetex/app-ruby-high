@@ -8,6 +8,14 @@ import {
   type OpenRouterRequest,
   type OpenRouterStreamChunk,
 } from "./openrouter-client.js";
+import {
+  isLocalLlmProvider,
+  llmChatCompletionsUrl,
+  llmHeaders,
+  llmProviderName,
+  resolveLlmApiKey,
+  resolveLlmModel,
+} from "./llm-provider.js";
 
 export interface PublicTeacherProvider {
   kind: PackFacultyProvider["kind"];
@@ -51,14 +59,14 @@ export function publicProviderForFaculty(faculty: PackFaculty | null | undefined
   const provider = providerForFaculty(faculty);
   return {
     kind: provider.kind,
-    requiresBrowserKey: provider.kind === "openrouter",
+    requiresBrowserKey: providerRequiresBrowserKey(provider),
     supportsTools: providerSupportsTools(provider),
     label: providerLabel(provider),
   };
 }
 
 export function providerRequiresBrowserKey(provider: PackFacultyProvider): boolean {
-  return provider.kind === "openrouter";
+  return provider.kind === "openrouter" && !resolveLlmApiKey(null);
 }
 
 export function providerSupportsTools(provider: PackFacultyProvider): boolean {
@@ -79,9 +87,24 @@ export async function* streamTeacherCompletion(opts: {
   label?: string;
 }): AsyncGenerator<OpenRouterStreamChunk> {
   if (opts.provider.kind === "openrouter") {
-    if (!opts.browserApiKey) throw new Error("OpenRouter key required for this teacher.");
+    const apiKey = resolveLlmApiKey(opts.browserApiKey);
+    if (!apiKey) throw new Error("OpenRouter key required for this teacher.");
+    if (isLocalLlmProvider()) {
+      yield* chatCompletionStream({
+        url: llmChatCompletionsUrl(),
+        headers: llmHeaders(apiKey),
+        body: {
+          ...opts.body,
+          model: resolveLlmModel(typeof opts.body.model === "string" ? opts.body.model : null),
+        },
+        label: opts.label ?? "local-teacher-stream",
+        providerName: llmProviderName(),
+        timeoutMs: OPENROUTER_STREAM_TIMEOUT_MS,
+      });
+      return;
+    }
     yield* openRouterStream({
-      apiKey: opts.browserApiKey,
+      apiKey,
       label: opts.label,
       body: opts.body,
     });
@@ -302,7 +325,7 @@ function normalizeBaseUrl(raw: string): string {
 
 function providerLabel(provider: PackFacultyProvider): string {
   switch (provider.kind) {
-    case "openrouter": return "OpenRouter";
+    case "openrouter": return llmProviderName();
     case "rati-openai-compatible": return "RATi";
     case "elizaos": return "elizaOS";
   }

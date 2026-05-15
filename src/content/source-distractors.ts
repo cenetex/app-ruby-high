@@ -1,7 +1,7 @@
 /**
  * Source-card front/back → multiple-choice question. Called only by the
  * explicit "MC" action in the viewer. It asks OpenRouter for three plausible
- * wrong answers, then assembles a BankedQuestion the rest of the system
+ * wrong answers from the configured text LLM, then assembles a BankedQuestion the rest of the system
  * already knows how to play.
  *
  * Cost shape: per-card only. Large source banks stay cheap to try because
@@ -11,7 +11,7 @@
  * Failure modes:
  *  - Single-card LLM error → retry once, then skip. Batch callers can
  *    surface the skipped count in their own UX.
- *  - 401 / 403 from OpenRouter → fail-fast. The key is bad or the
+ *  - 401 / 403 from the text LLM provider → fail-fast. The key is bad or the
  *    account is rate-limited; every subsequent call will fail the same
  *    way. The first worker to hit FatalAuthError trips a kill switch
  *    the others see instead of grinding through futile calls and burning
@@ -21,7 +21,11 @@
 import type { BankedQuestion, Choice, Difficulty } from "../types.js";
 import type { PackMediaAsset } from "./types.js";
 import { classifyQuestionStat } from "../question-stats.js";
-import { OpenRouterHttpError, openRouterJson, STUDENT_MODEL, type OpenRouterChatCompletion } from "../services/openrouter-client.js";
+import {
+  fetchLlmChatCompletions,
+  llmProviderName,
+  resolveStudentModel,
+} from "../services/llm-provider.js";
 
 export interface SourceCardInput {
   noteId: string;
@@ -44,7 +48,7 @@ export interface DistractorOpts {
   subject: string;
   /** Difficulty. Source-card providers may omit it, so the caller picks. */
   difficulty?: Difficulty;
-  /** OpenRouter model. Defaults to a cheap fast one. */
+  /** Text LLM model. Defaults to a cheap fast one or the configured local model. */
   model?: string;
   /** Max retries on a parse failure for a single card before giving up. */
   maxRetriesPerCard?: number;
@@ -60,7 +64,7 @@ export interface DistractorResult {
   skipped: number;
 }
 
-/** Marker thrown by the distractor call when OpenRouter returns 401/403,
+/** Marker thrown by the distractor call when the text LLM provider returns 401/403,
  *  meaning every subsequent call will fail the same way (bad/expired key,
  *  account-wide block). The worker pool catches this once and trips a
  *  fail-fast flag so we don't burn through all N calls. */
@@ -163,7 +167,7 @@ async function callOpenRouterForDistractors(
   card: SourceCardInput,
   opts: DistractorOpts,
 ): Promise<string[]> {
-  const model = opts.model ?? STUDENT_MODEL;
+  const model = opts.model ?? resolveStudentModel();
   const userPrompt = [
     `Topic: ${opts.subject || card.deckName || "general knowledge"}.`,
     `Question: ${card.front}`,
@@ -172,28 +176,27 @@ async function callOpenRouterForDistractors(
     `Return ONLY a JSON array of 3 strings. No prose, no markdown fences. Example: ["wrong1","wrong2","wrong3"]`,
   ].join("\n");
 
-  let body: OpenRouterChatCompletion;
-  try {
-    body = await openRouterJson<OpenRouterChatCompletion>({
-      apiKey: opts.apiKey,
-      label: "source-card-distractors",
-      title: "Ruby High Source Card",
-      body: {
-        model,
-        messages: [
-          { role: "system", content: "You generate plausible distractors for multiple-choice questions. Always respond with ONLY a JSON array of 3 strings." },
-          { role: "user", content: userPrompt },
-        ],
-        max_tokens: 200,
-        temperature: 0.6,
-      },
-    });
-  } catch (err) {
-    if (err instanceof OpenRouterHttpError && (err.status === 401 || err.status === 403)) {
-      throw new FatalAuthError(err.message);
+  const r = await fetchLlmChatCompletions({
+    apiKey: opts.apiKey,
+    title: "Ruby High Source Card",
+    body: {
+      model,
+      messages: [
+        { role: "system", content: "You generate plausible distractors for multiple-choice questions. Always respond with ONLY a JSON array of 3 strings." },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 200,
+      temperature: 0.6,
+    },
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    if (r.status === 401 || r.status === 403) {
+      throw new FatalAuthError(`${llmProviderName()} ${r.status}: ${detail || r.statusText}`);
     }
-    throw err;
+    throw new Error(`${llmProviderName()} ${r.status}: ${detail || r.statusText}`);
   }
+  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   // Strip code fences if the model added any despite instructions.
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();

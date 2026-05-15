@@ -3,6 +3,7 @@ import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { TokenBucket } from "../services/rate-limit.js";
 import { log } from "../services/logger.js";
+import { resolveLlmApiKey } from "../services/llm-provider.js";
 import { noteGradedAnswer } from "../chat-routes.js";
 import { PLAYBOOKS, isValidStatDistribution } from "../characters/playbooks.js";
 import {
@@ -162,7 +163,7 @@ export async function handleCommandRoute(args: {
       return await persist(state, state.lastReveal?.wasCorrect ? "Correct" : "Marked");
     },
     "generate-mc": async () => {
-      const state = await ruby.generateCurrentMcQuestion(stateKey, ctx.apiKeyHeader);
+      const state = await ruby.generateCurrentMcQuestion(stateKey, resolveLlmApiKey(ctx.apiKeyHeader ?? null));
       return await persist(state, "Multiple choice generated");
     },
     pick: async () => {

@@ -44,7 +44,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="you-state" id="you-state">checking…</span>
       </div>
       <!-- Footer action is filled by applyAuthUI(): "Enable AI" in offline
-           mode, "Sign out" when an OpenRouter key is active. -->
+           mode, "Sign out" when an OpenRouter key is active. Hidden when
+           a configured local LLM already provides text AI. -->
       <button class="footer-action" id="footer-action" type="button" hidden></button>
     </div>
     <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Send a bug report.">Report a bug</button>
@@ -155,7 +156,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>
-    <p class="sub">Ruby High can run offline. OpenRouter enables AI chat and custom portraits; your inference key never leaves your browser.</p>
+    <p class="sub">Ruby High can run offline. A local LLM or OpenRouter enables AI chat and AI-assisted imports; OpenRouter is still used for custom portraits.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <a id="signin-cta" class="primary-link" href="/api/apps/ruby-high/auth/start">Enable AI with OpenRouter</a>
     </div>

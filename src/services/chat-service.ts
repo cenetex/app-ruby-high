@@ -5,7 +5,12 @@ import type { CharacterStats, Choice, Difficulty, NpcStudentState, QuizState } f
 import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
 import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "../content/registry.js";
 import { RubyHighService, type QuestionBankStatus } from "./ruby-high-service.js";
-import { openRouterJson, STUDENT_MODEL, type OpenRouterChatCompletion, type OpenRouterRequest } from "./openrouter-client.js";
+import type { OpenRouterRequest } from "./openrouter-client.js";
+import {
+  fetchLlmChatCompletions,
+  resolveStudentModel,
+  throwLlmResponseError,
+} from "./llm-provider.js";
 import {
   providerForFaculty,
   providerRequiresBrowserKey,
@@ -811,7 +816,7 @@ function readAgentRoundLimit(raw: string | undefined): number {
   return Math.max(2, Math.floor(n));
 }
 
-/** One-shot OpenRouter call asking an NPC to write an opinion in their voice
+/** One-shot text LLM call asking an NPC to write an opinion in their voice
  *  with full social context (their teacher, their classmates, their stats). */
 async function callOpinionForNpc(args: {
   apiKey: string;
@@ -848,11 +853,10 @@ async function callOpinionForNpc(args: {
     "Write 2-3 sentences in your voice (under 60 words). Specific, with an opinion, engaging the question. Reference a classmate or the teacher by name when it fits. The response is the answer itself — just the prose, nothing wrapping it.",
   ].filter(Boolean).join("\n");
 
-  const body = await openRouterJson<OpenRouterChatCompletion>({
+  const r = await fetchLlmChatCompletions({
     apiKey: args.apiKey,
-    label: "opinion-npc",
     body: {
-      model: STUDENT_MODEL,
+      model: resolveStudentModel(),
       messages: [
         { role: "system", content: args.student.systemPrompt },
         { role: "user", content: userPrompt },
@@ -861,6 +865,8 @@ async function callOpinionForNpc(args: {
       temperature: 0.95,
     },
   });
+  if (!r.ok) await throwLlmResponseError(r, "opinion-npc");
+  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   return ((body.choices?.[0]?.message?.content ?? "").trim()).replace(/^["'\s]+|["'\s]+$/g, "");
 }
 

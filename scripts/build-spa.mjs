@@ -99,6 +99,11 @@ function offlineApiScript(data) {
   const APP_BASE = "/api/apps/ruby-high";
   const SESSION_ID = "rh:offline";
   const STORAGE_KEY = "ruby-high:offline-state:v1";
+  const LOCAL_LLM_BASE_KEY = "ruby-high:local-llm-base";
+  const LOCAL_LLM_MODEL_KEY = "ruby-high:local-llm-model";
+  const LOCAL_LLM_API_KEY = "ruby-high:local-llm-api-key";
+  const DEFAULT_LOCAL_LLM_BASE = "http://127.0.0.1:11434/v1";
+  const DEFAULT_LOCAL_LLM_MODEL = "ruby-high-local";
   const DATA = ${scriptJson(data)};
   const ORIGINAL_FETCH = window.fetch.bind(window);
   const CHOICES = ["A", "B", "C", "D"];
@@ -733,17 +738,331 @@ function offlineApiScript(data) {
     }
   }
 
+  function localLlmBaseUrl() {
+    try {
+      const stored = localStorage.getItem(LOCAL_LLM_BASE_KEY);
+      if (!stored || isOldDefaultLocalLlmBase(stored)) {
+        localStorage.setItem(LOCAL_LLM_BASE_KEY, DEFAULT_LOCAL_LLM_BASE);
+        return DEFAULT_LOCAL_LLM_BASE;
+      }
+      return stored;
+    } catch (_err) { return DEFAULT_LOCAL_LLM_BASE; }
+  }
+
+  function localLlmModel() {
+    try {
+      const stored = localStorage.getItem(LOCAL_LLM_MODEL_KEY);
+      if (!stored || stored === "Qwen3-4B-Instruct-2507") {
+        localStorage.setItem(LOCAL_LLM_MODEL_KEY, DEFAULT_LOCAL_LLM_MODEL);
+        return DEFAULT_LOCAL_LLM_MODEL;
+      }
+      return stored;
+    } catch (_err) { return DEFAULT_LOCAL_LLM_MODEL; }
+  }
+
+  function isOldDefaultLocalLlmBase(value) {
+    const raw = String(value || "").trim().replace(/\\/+$/, "").toLowerCase();
+    return raw === "http://127.0.0.1:8080"
+      || raw === "http://127.0.0.1:8080/v1"
+      || raw === "http://127.0.0.1:8080/v1/chat/completions"
+      || raw === "http://localhost:8080"
+      || raw === "http://localhost:8080/v1"
+      || raw === "http://localhost:8080/v1/chat/completions";
+  }
+
+  function localLlmApiKey() {
+    try { return localStorage.getItem(LOCAL_LLM_API_KEY) || ""; } catch (_err) { return ""; }
+  }
+
+  function normalizeLocalLlmUrl(value) {
+    const raw = String(value || DEFAULT_LOCAL_LLM_BASE).trim().replace(/\\/+$/, "");
+    if (!raw) return DEFAULT_LOCAL_LLM_BASE + "/chat/completions";
+    if (raw.endsWith("/chat/completions")) return raw;
+    if (raw.endsWith("/v1")) return raw + "/chat/completions";
+    return raw + "/v1/chat/completions";
+  }
+
+  function tauriInvoke() {
+    return window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
+      ? window.__TAURI__.core.invoke
+      : null;
+  }
+
+  async function localChatCompletion(messages, opts) {
+    const promptMessages = messages.map(function(message, index) {
+      if (message && message.role === "user" && typeof message.content === "string") {
+        const suffix = message.content.indexOf("/no_think") === -1 ? "\\n/no_think" : "";
+        return Object.assign({}, message, { content: message.content + suffix });
+      }
+      return message;
+    });
+    const body = {
+      model: localLlmModel(),
+      messages: promptMessages,
+      max_tokens: opts && opts.maxTokens ? opts.maxTokens : 180,
+      temperature: opts && opts.temperature != null ? opts.temperature : 0.65,
+      stream: false
+    };
+    const payload = JSON.stringify(body);
+    const url = normalizeLocalLlmUrl(localLlmBaseUrl());
+    const key = localLlmApiKey();
+    const invoke = tauriInvoke();
+    let responseBody;
+    try {
+      responseBody = await postLocalChat(url, key, payload, invoke);
+    } catch (err) {
+      if (!isOldDefaultLocalLlmBase(localLlmBaseUrl())) throw err;
+      try { localStorage.setItem(LOCAL_LLM_BASE_KEY, DEFAULT_LOCAL_LLM_BASE); } catch (_storageErr) {}
+      responseBody = await postLocalChat(normalizeLocalLlmUrl(DEFAULT_LOCAL_LLM_BASE), key, payload, invoke);
+    }
+    const text = responseBody && responseBody.choices && responseBody.choices[0] && responseBody.choices[0].message
+      ? String(responseBody.choices[0].message.content || "").trim()
+      : "";
+    if (!text) throw new Error("local LLM returned no message text");
+    return text;
+  }
+
+  async function postLocalChat(url, key, payload, invoke) {
+    if (invoke) {
+      const raw = await invoke("local_llm_chat", { url, apiKey: key || null, body: payload });
+      return JSON.parse(String(raw || "{}"));
+    }
+    const headers = { "Content-Type": "application/json" };
+    if (key) headers.Authorization = "Bearer " + key;
+    const r = await ORIGINAL_FETCH(url, { method: "POST", headers, body: payload });
+    if (!r.ok) throw new Error("local LLM HTTP " + r.status + ": " + (await r.text()).slice(0, 240));
+    return r.json();
+  }
+
+  function teacherVoice(facultyId) {
+    if (facultyId === "sally-science") return "You are Sally Science, a sharp STEM teacher at Ruby High. Be warm, direct, and a little lab-coat intense.";
+    if (facultyId === "professor-edward") return "You are Professor Edward, a dry but kind literature teacher at Ruby High. Be precise and lightly theatrical.";
+    return "You are Ruby, the homeroom teacher at Ruby High. Be encouraging, brisk, and classroom-direct.";
+  }
+
+  function studentVoice(studentId) {
+    const names = { lyra: "Lyra", sami: "Sami", ravi: "Ravi", indra: "Indra", mika: "Mika", noor: "Noor" };
+    return "You are " + (names[studentId] || "a student") + ", a classmate at Ruby High. Reply like a student in one short natural line.";
+  }
+
+  function boardContext(state) {
+    const bits = [];
+    if (state.current) {
+      bits.push("Board question: " + state.current.prompt);
+      if (state.current.explanation) bits.push("Explanation: " + state.current.explanation);
+    }
+    if (state.lastReveal) {
+      bits.push("Recent result: " + (state.lastReveal.wasCorrect ? "the player was correct" : "the player missed") + " on " + (state.lastReveal.questionPrompt || state.lastReveal.questionId || "the last question"));
+    }
+    if (state.character && state.character.name) bits.push("Player: " + state.character.name);
+    bits.push("Grade: " + (state.currentGrade || "9"));
+    return bits.join("\\n");
+  }
+
+  function cleanOneLine(text, fallback) {
+    const withoutReasoning = String(text || "")
+      .replace(/<think>[\\s\\S]*?<\\/think>/gi, " ")
+      .replace(/<\\/?think>/gi, " ");
+    const line = withoutReasoning.replace(/\\s+/g, " ").trim();
+    return (line || fallback).slice(0, 320);
+  }
+
+  async function safeLocalLine(messages, fallback, opts) {
+    try {
+      return { line: cleanOneLine(await localChatCompletion(messages, opts), fallback), error: null };
+    } catch (err) {
+      return { line: fallback, error: err && err.message ? err.message : String(err) };
+    }
+  }
+
+  function sse(event, data) {
+    return "event: " + event + "\\ndata: " + JSON.stringify(data || {}) + "\\n\\n";
+  }
+
+  function sseResponse(frames) {
+    return text(frames.join("") + sse("end", {}), 200, "text/event-stream; charset=utf-8");
+  }
+
+  async function localTeacherEvent(body) {
+    let state = loadState();
+    const faculty = String((body && body.faculty) || state.faculty || "ruby");
+    const trigger = String((body && body.trigger) || "manual");
+    if (faculty && faculty !== "lounge") state.faculty = facultyById(faculty).id;
+    const fallback = trigger === "answer-graded"
+      ? "Good, note why that answer worked before we move on."
+      : state.current
+        ? "Stay with the board. What do you notice first?"
+        : "I'll put something on the board.";
+    const prompt = [
+      "Write one short teacher line for the current Ruby High moment.",
+      "Trigger: " + trigger,
+      boardContext(state),
+      "Do not mention AI, models, software tools, or UI buttons."
+    ].join("\\n");
+    const result = await safeLocalLine([
+      { role: "system", content: teacherVoice(state.faculty) },
+      { role: "user", content: prompt }
+    ], fallback, { maxTokens: 120, temperature: 0.7 });
+    const frames = [
+      sse("speaker", { facultyId: state.faculty }),
+      sse("delta", { text: result.line })
+    ];
+    const shouldPick = state.faculty !== "lounge" && !state.current && (trigger === "channel-enter" || trigger === "manual" || trigger === "lounge-enter");
+    if (shouldPick) {
+      try {
+        state = pickQuestion(state);
+        saveState(state);
+        frames.push(sse("tool", { tool: "pick_from_bank", args: { faculty: state.faculty }, result: { ok: true } }));
+      } catch (err) {
+        frames.push(sse("error", { message: err && err.message ? err.message : String(err) }));
+      }
+    }
+    if (result.error) frames.push(sse("error", { message: "Local LLM unavailable: " + result.error }));
+    return sseResponse(frames);
+  }
+
+  async function localChat(body) {
+    const state = loadState();
+    const faculty = String((body && body.faculty) || state.faculty || "ruby");
+    const message = String((body && body.message) || "");
+    const result = await safeLocalLine([
+      { role: "system", content: teacherVoice(faculty) },
+      { role: "user", content: "The player said: " + message + "\\n" + boardContext(state) + "\\nReply in 1-2 short in-character sentences." }
+    ], "I hear you. Keep your eyes on the board and take the next step.", { maxTokens: 160, temperature: 0.75 });
+    const frames = [sse("speaker", { facultyId: faculty }), sse("delta", { text: result.line })];
+    if (result.error) frames.push(sse("error", { message: "Local LLM unavailable: " + result.error }));
+    return sseResponse(frames);
+  }
+
+  async function localPlayerLine(body) {
+    const state = loadState();
+    const result = await safeLocalLine([
+      { role: "system", content: "Write as the Ruby High player character. Output one short first-person student line only." },
+      { role: "user", content: boardContext(state) + "\\nIntent: " + (((body || {}).context || {}).intent || "player-chat") }
+    ], "I think I see it. What should I focus on?", { maxTokens: 80, temperature: 0.8 });
+    return json({ line: result.line, local_ai: true, warning: result.error });
+  }
+
+  async function localStudentChime(body) {
+    const state = loadState();
+    const studentId = String((body && body.studentId) || "lyra");
+    const result = await safeLocalLine([
+      { role: "system", content: studentVoice(studentId) },
+      { role: "user", content: "Situation: " + String((body && body.situation) || "class") + "\\n" + String((body && body.note) || "") + "\\n" + boardContext(state) }
+    ], "yeah, that tracks", { maxTokens: 60, temperature: 0.9 });
+    return json({ line: result.line, local_ai: true, warning: result.error });
+  }
+
+  const CHARACTER_FIELDS = ["name", "personality", "arcAnswer", "flavorQuote", "stats", "playbook"];
+  const CHARACTER_TEXT_FIELDS = ["name", "personality", "arcAnswer", "flavorQuote"];
+  const OFFLINE_NAMES = ["Iris", "Nova", "Vee", "Mara", "Jules", "Theo", "Rin", "Cass", "Ari", "Nico", "Sol", "Mina"];
+  const OFFLINE_VOICES = [
+    "Quietly intense, observant, and allergic to obvious answers.",
+    "Fast-talking, curious, and always one foot into trouble.",
+    "Dry, focused, and more competitive than they admit.",
+    "Warm, chaotic, and very sure the room is improv.",
+    "Careful, sharp, and tracking everyone else's tells.",
+    "Brave in theory, dramatic in practice, loyal by default."
+  ];
+  const OFFLINE_QUOTES = [
+    "you guys don't see the exit signs are all wrong, do you",
+    "i am not lost, i'm collecting evidence",
+    "if this is extra credit, i am morally required to overdo it",
+    "the answer is probably hiding in the part nobody wants to read",
+    "i brought a pencil, a theory, and one terrible backup plan",
+    "school spirit is just pattern recognition with banners"
+  ];
+
+  function randomItem(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function randomStats() {
+    const values = [2, 1, 0, -1];
+    for (let i = values.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = values[i];
+      values[i] = values[j];
+      values[j] = tmp;
+    }
+    return { head: values[0], heart: values[1], hustle: values[2], honor: values[3] };
+  }
+
+  function fallbackCharacter(keep, regenSet) {
+    const playbook = regenSet.has("playbook") || !keep.playbookId
+      ? randomItem(DATA.playbooks)
+      : (DATA.playbooks.find(function(p) { return p.id === keep.playbookId; }) || randomItem(DATA.playbooks));
+    const stats = regenSet.has("stats") || !keep.stats ? randomStats() : keep.stats;
+    const name = regenSet.has("name") || !keep.name ? randomItem(OFFLINE_NAMES) : String(keep.name);
+    const personality = regenSet.has("personality") || !keep.personality ? randomItem(OFFLINE_VOICES) : String(keep.personality);
+    const arcAnswer = regenSet.has("arcAnswer") || !keep.arcAnswer
+      ? "I want to figure out what kind of student this place is trying to make me."
+      : String(keep.arcAnswer);
+    const flavorQuote = regenSet.has("flavorQuote") || !keep.flavorQuote ? randomItem(OFFLINE_QUOTES) : String(keep.flavorQuote);
+    return { name, playbookId: playbook.id, stats, personality, arcAnswer, flavorQuote };
+  }
+
+  function parseLocalJsonObject(text) {
+    const fence = String.fromCharCode(96, 96, 96);
+    const cleaned = String(text || "")
+      .replace(/<think>[\\s\\S]*?<\\/think>/gi, " ")
+      .replace(new RegExp("^" + fence + "(?:json)?\\\\s*", "i"), "")
+      .replace(new RegExp("\\\\s*" + fence + "\\\\s*$", "i"), "")
+      .trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) throw new Error("local character JSON missing object");
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+
+  async function localCharacterGenerate(body) {
+    const keep = body && body.keep && typeof body.keep === "object" ? body.keep : {};
+    const regenList = Array.isArray(body && body.regen)
+      ? body.regen.filter(function(field) { return CHARACTER_FIELDS.indexOf(field) !== -1; })
+      : CHARACTER_FIELDS;
+    const regenSet = new Set(regenList.length ? regenList : CHARACTER_FIELDS);
+    const character = fallbackCharacter(keep, regenSet);
+    const textFields = CHARACTER_TEXT_FIELDS.filter(function(field) { return regenSet.has(field); });
+    let warning = "";
+    if (textFields.length) {
+      const schema = "{" + textFields.map(function(field) { return "\\\"" + field + "\\\":\\\"...\\\""; }).join(",") + "}";
+      const playbook = DATA.playbooks.find(function(p) { return p.id === character.playbookId; }) || DATA.playbooks[0];
+      const prompt = [
+        "Generate compact JSON for a Ruby High student character.",
+        "Return only valid JSON with exactly these fields: " + schema,
+        "Playbook: " + playbook.name + " - " + playbook.blurb,
+        "Stats: HEAD " + character.stats.head + ", HEART " + character.stats.heart + ", HUSTLE " + character.stats.hustle + ", HONOR " + character.stats.honor,
+        "Tone: real teenager, specific, group-chat natural, not fantasy prose.",
+        "name is one first name. flavorQuote is 6-18 words with no wrapping quote marks. personality is 2 short third-person sentences. arcAnswer is 1-2 short first-person sentences."
+      ].join("\\n");
+      try {
+        const raw = await localChatCompletion([
+          { role: "system", content: "You generate valid JSON only. No commentary, no markdown, no code fences." },
+          { role: "user", content: prompt }
+        ], { maxTokens: 420, temperature: 0.9 });
+        const parsed = parseLocalJsonObject(raw);
+        textFields.forEach(function(field) {
+          const value = String(parsed[field] || "").trim();
+          if (value) character[field] = field === "flavorQuote" ? value.replace(/^[\\"'\\s]+|[\\"'\\s]+$/g, "") : value;
+        });
+      } catch (err) {
+        warning = err && err.message ? err.message : String(err);
+      }
+    }
+    return json({ ok: true, character, local_ai: true, warning: warning || undefined });
+  }
+
   window.fetch = async function(input, init) {
     const url = new URL(typeof input === "string" ? input : input.url, window.location.href);
     if (!url.pathname.startsWith(APP_BASE)) return ORIGINAL_FETCH(input, init);
     const method = String((init && init.method) || (typeof input !== "string" && input.method) || "GET").toUpperCase();
     try {
       if (url.pathname === APP_BASE + "/auth/me" && method === "GET") {
-        return json({ session: { id: SESSION_ID, kind: "offline" }, ai: false });
+        return json({ session: { id: SESSION_ID, kind: "offline" }, ai: true, ai_provider: "Local LLM", local_ai: true });
       }
       if (url.pathname === APP_BASE + "/auth/guest" && method === "POST") {
         saveState(loadState());
-        return json({ session: { id: SESSION_ID, kind: "offline" }, ai: false });
+        return json({ session: { id: SESSION_ID, kind: "offline" }, ai: true, ai_provider: "Local LLM", local_ai: true });
       }
       if (url.pathname === APP_BASE + "/auth/logout" && method === "POST") {
         return json({ ok: true });
@@ -755,8 +1074,14 @@ function offlineApiScript(data) {
         return json({ error: "Pack imports need the hosted Ruby High server." }, 501);
       }
       if (url.pathname.startsWith(APP_BASE + "/chat/")) {
-        if (url.pathname === APP_BASE + "/chat/history") return json({ authed: false, messages: [] });
-        return text("event: done\\ndata: {}\\n\\n", 200, "text/event-stream; charset=utf-8");
+        if (url.pathname === APP_BASE + "/chat/history") return json({ authed: true, local_ai: true, history: [] });
+        if (url.pathname === APP_BASE + "/chat/character/generate" && method === "POST") return localCharacterGenerate(await requestJson(init || {}));
+        if (url.pathname === APP_BASE + "/chat/character/portrait" && method === "POST") return json({ error: "Custom portraits require an image model; using the default local portrait.", local_ai: true }, 501);
+        if (url.pathname === APP_BASE + "/chat/player-line" && method === "POST") return localPlayerLine(await requestJson(init || {}));
+        if (url.pathname === APP_BASE + "/chat/student-chime" && method === "POST") return localStudentChime(await requestJson(init || {}));
+        if (url.pathname === APP_BASE + "/chat/event" && method === "POST") return localTeacherEvent(await requestJson(init || {}));
+        if (url.pathname === APP_BASE + "/chat" && method === "POST") return localChat(await requestJson(init || {}));
+        return sseResponse([sse("error", { message: "Offline local AI route is not implemented in the native shim." })]);
       }
       const sessionPrefix = APP_BASE + "/session/";
       if (url.pathname.startsWith(sessionPrefix)) {
