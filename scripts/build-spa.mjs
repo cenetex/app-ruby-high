@@ -830,9 +830,12 @@ export async function buildSpa() {
   const offlineScript = `<script>${offlineApiScript({ questions, playbooks })}</script>`;
   const outputHtml = html.replace("<script>", `${offlineScript}\n<script>`);
 
+  const assetsOutDir = resolve(outDir, appBase.slice(1), "assets");
   await rm(outDir, { recursive: true, force: true });
-  await mkdir(resolve(outDir, appBase.slice(1), "assets"), { recursive: true });
-  await cp(resolve(root, "assets"), resolve(outDir, appBase.slice(1), "assets"), { recursive: true });
+  await mkdir(assetsOutDir, { recursive: true });
+  await cp(resolve(root, "assets"), assetsOutDir, { recursive: true });
+  await cp(resolve(assetsOutDir, "ruby-high-logo.png"), resolve(assetsOutDir, "logo.png"));
+  await cp(resolve(assetsOutDir, "ruby-classroom.png"), resolve(assetsOutDir, "ruby.png"));
   await writeFile(resolve(outDir, "index.html"), outputHtml, "utf8");
   await writeFile(resolve(outDir, appBase.slice(1), "manifest.webmanifest"), JSON.stringify(manifestJson(), null, 2), "utf8");
   await writeFile(resolve(outDir, appBase.slice(1), "service-worker.js"), serviceWorkerJs(), "utf8");
