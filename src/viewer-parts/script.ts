@@ -1,4 +1,5 @@
 import type { ViewerRenderOptions } from "../viewer.js";
+import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
 
 // Returns the SPA viewer's inline JS as a string. Threads only the
@@ -520,6 +521,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.chatSend.disabled = !!disabled;
   }
   ${createViewerTurnController.toString()}
+  ${parseViewerSseFrames.toString()}
+  ${consumeViewerSseStream.toString()}
   const turnController = createViewerTurnController({
     setNextButtonDisabled,
     setChatComposerDisabled,
@@ -5750,46 +5753,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     return turnController.streamStillCurrent(opts);
   }
   async function consumeSseStream(response, opts) {
-    if (!response.ok || !response.body) {
-      const err = await response.json().catch(() => ({ error: response.status }));
-      if (chatStreamStillCurrent(opts)) appendSystem("chat error · " + (err.error || response.status));
-      return;
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
     // Default speaker = current channel's teacher; overridden by speaker events.
     let speaker = teacherInfo(lastTelemetry && lastTelemetry.faculty);
     let streamMsgEl = null;
-    let buf = "";
-    // Hard ceiling: if the server hangs or the connection drops without a
-    // proper close, the loop below would await reader.read() forever and
-    // hold the agent-turn lock forever. Cancel after 45s so the surrounding
-    // try/finally always reaches its release.
-    const watchdog = setTimeout(() => { try { reader.cancel(); } catch { /* ignore */ } }, 45000);
-    try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let frameEnd;
-      while ((frameEnd = buf.indexOf("\\n\\n")) !== -1) {
-        const frame = buf.slice(0, frameEnd);
-        buf = buf.slice(frameEnd + 2);
-        const lines = frame.split(/\\r?\\n/);
-        let event = "message";
-        let data = "";
-        for (const line of lines) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) data += line.slice(5).trim();
-        }
-        if (!data) continue;
-        let parsed;
-        try { parsed = JSON.parse(data); } catch { continue; }
-        const currentStream = chatStreamStillCurrent(opts);
-        if (!currentStream) {
-          try { reader.cancel(); } catch { /* ignore */ }
-          return;
-        }
+    await consumeViewerSseStream(response, {
+      isCurrent() {
+        return chatStreamStillCurrent(opts);
+      },
+      onErrorResponse(error) {
+        appendSystem("chat error · " + (error || response.status));
+      },
+      onEvent(event, parsed) {
         if (event === "speaker") {
           speaker = teacherInfo(parsed.facultyId);
           streamMsgEl = null; // force a new bubble for the new speaker
@@ -5828,11 +5802,9 @@ const VIEWER_SCRIPT_SUFFIX = `
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         }
-      }
-    }
-    } finally {
-      clearTimeout(watchdog);
-    }
+      },
+      watchdogMs: 45000,
+    });
   }
 
   async function sendChatMessage(text) {
