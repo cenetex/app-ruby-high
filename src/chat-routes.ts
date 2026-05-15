@@ -22,39 +22,70 @@ import { statForQuestion } from "./question-stats.js";
 import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createHash } from "node:crypto";
+import {
+  fetchLlmChatCompletions,
+  isLocalLlmProvider,
+  llmProviderName,
+  resolveLlmApiKey,
+  resolveStudentModel,
+  throwLlmResponseError,
+} from "./services/llm-provider.js";
 
-const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
+const STUDENT_MODEL = resolveStudentModel();
 
-/** Throw a debuggable error from an OpenRouter HTTP response. The default
- *  `throw new Error("OpenRouter " + status)` pattern dropped the body, which
+/** Throw a debuggable error from a text LLM HTTP response. The default
+ *  `throw new Error("LLM " + status)` pattern dropped the body, which
  *  hid the real cause (auth issue, model not found, content filter, etc).
  *  This helper preserves the body text up to a sane limit. */
-async function throwOpenRouterError(r: Response, label: string): Promise<never> {
-  const body = await r.text().catch(() => "");
-  const trimmed = body.length > 500 ? body.slice(0, 500) + "…" : body;
-  throw new Error(`${label}: OpenRouter ${r.status} ${r.statusText}${trimmed ? ` — ${trimmed}` : ""}`);
+async function throwChatCompletionsError(r: Response, label: string): Promise<never> {
+  return throwLlmResponseError(r, label);
 }
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 const TITLE = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
 
-/** Default ceiling for non-streaming OpenRouter calls. Without this a
+/** Default ceiling for non-streaming text LLM calls. Without this a
  *  hung upstream (network blip, model overloaded but not erroring,
  *  Cloudflare grey-period) holds the Node request slot indefinitely.
  *  60s is comfortably above realistic completion times for the prompts
  *  in this file — student lines (~80 tokens), opinion responses
  *  (~220 tokens), opinion grading (~700 tokens), character JSON
  *  (~480 tokens) all finish in well under 30s on the configured models.
- *  Configurable via RUBY_HIGH_OPENROUTER_TIMEOUT_MS for slower models. */
-const OPENROUTER_TIMEOUT_MS = Number(process.env.RUBY_HIGH_OPENROUTER_TIMEOUT_MS ?? 60_000);
-async function openRouterFetch(init: RequestInit, timeoutMs: number = OPENROUTER_TIMEOUT_MS): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+ *  Configurable via RUBY_HIGH_OPENROUTER_TIMEOUT_MS for legacy deployments. */
+const LLM_TIMEOUT_MS = Number(process.env.RUBY_HIGH_OPENROUTER_TIMEOUT_MS ?? 60_000);
+async function llmFetch(init: RequestInit, timeoutMs: number = LLM_TIMEOUT_MS): Promise<Response> {
+  const body = parseJsonRequestBody(init.body);
+  return fetchLlmChatCompletions({
+    apiKey: bearerFromHeaders(init.headers),
+    body,
+    timeoutMs,
+  });
+}
+
+function parseJsonRequestBody(body: BodyInit | null | undefined): Record<string, unknown> {
+  if (typeof body !== "string") return {};
   try {
-    return await fetch(OPENROUTER_URL, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
+    const parsed = JSON.parse(body);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
   }
+}
+
+function bearerFromHeaders(headers: HeadersInit | undefined): string | null {
+  if (!headers) return null;
+  if (headers instanceof Headers) {
+    const raw = headers.get("authorization");
+    return raw?.replace(/^Bearer\s+/i, "").trim() || null;
+  }
+  if (Array.isArray(headers)) {
+    const hit = headers.find(([k]) => k.toLowerCase() === "authorization");
+    return hit?.[1]?.replace(/^Bearer\s+/i, "").trim() || null;
+  }
+  const raw = Object.entries(headers).find(([k]) => k.toLowerCase() === "authorization")?.[1];
+  return typeof raw === "string" ? raw.replace(/^Bearer\s+/i, "").trim() || null : null;
 }
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
@@ -509,7 +540,7 @@ async function generateOpinionResponse(args: {
     question: args.question,
     rubric: args.rubric,
   });
-  const r = await openRouterFetch({
+  const r = await llmFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -527,7 +558,7 @@ async function generateOpinionResponse(args: {
       temperature: 0.9,
     }),
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
+  if (!r.ok) await throwChatCompletionsError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   return text.replace(/^["'\s]+|["'\s]+$/g, "");
@@ -633,7 +664,7 @@ async function gradeOpinionResponses(args: {
     "After the grade lines, write 2-3 short sentences in your voice as the teacher delivering the verdict to the class. Reference at least one student by name. Plain and direct, in your voice.",
   ].filter(Boolean).join("\n");
 
-  const r = await openRouterFetch({
+  const r = await llmFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -651,7 +682,7 @@ async function gradeOpinionResponses(args: {
       temperature: 0.6,
     }),
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
+  if (!r.ok) await throwChatCompletionsError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();
   return parseTeacherGrades(text);
@@ -1005,7 +1036,7 @@ async function rollRandomCharacter(args: {
     `    Third person. Same scale as those — kid stuff, not life themes.`,
   ].join("\n");
 
-  const r = await openRouterFetch({
+  const r = await llmFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1023,7 +1054,7 @@ async function rollRandomCharacter(args: {
       temperature: 1.1,
     }),
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
+  if (!r.ok) await throwChatCompletionsError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();
   // Strip code fences if the model added any despite instructions.
@@ -1110,7 +1141,7 @@ async function generateStudentLine(args: {
     "React in one short line — like a text in a group chat. Lowercase, 12 words max. Address whoever just acted by name when natural. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
   ].filter(Boolean).join("\n");
 
-  const r = await openRouterFetch({
+  const r = await llmFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1128,7 +1159,7 @@ async function generateStudentLine(args: {
       temperature: 0.95,
     }),
   });
-  if (!r.ok) await throwOpenRouterError(r, "chat");
+  if (!r.ok) await throwChatCompletionsError(r, "chat");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content?.trim() ?? "";
   // Strip wrapping quotes if model added them.
@@ -1315,7 +1346,7 @@ async function generatePlayerLine(args: {
     "Do not say 'what does the report say' unless the visible context is literally a report and that is the most natural thing to ask.",
   ].filter(Boolean).join("\n");
 
-  const r = await openRouterFetch({
+  const r = await llmFetch({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1336,7 +1367,7 @@ async function generatePlayerLine(args: {
       temperature: 0.9,
     }),
   });
-  if (!r.ok) await throwOpenRouterError(r, "player-line");
+  if (!r.ok) await throwChatCompletionsError(r, "player-line");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content ?? "";
   const line = sanitizePlayerLine(text, character.name);
@@ -1458,15 +1489,21 @@ function getSessionId(runtime: IAgentRuntime | null, cookieHeader?: string | nul
   return auth?.stateKeyForCookie(cookieHeader) ?? "rh:anonymous";
 }
 
-/** Trim + sanity-check the OpenRouter key the client sent in
- *  X-Openrouter-Key. Returns null if the header is absent or obviously
- *  malformed; the caller should respond with 401 in that case. We don't
- *  validate the key format beyond non-empty — OpenRouter is the authority. */
+/** Trim + sanity-check the browser-owned OpenRouter key, then fall back to
+ *  a configured local/server provider credential. Local LLM mode intentionally
+ *  does not require a browser key. */
 function readApiKey(ctx: ChatRouteContext): string | null {
   const raw = ctx.apiKeyHeader;
-  if (!raw) return null;
+  if (!raw) return resolveLlmApiKey(null);
   const trimmed = String(raw).trim();
-  return trimmed.length > 0 ? trimmed : null;
+  return trimmed.length > 0 ? trimmed : resolveLlmApiKey(null);
+}
+
+function readOpenRouterApiKey(ctx: ChatRouteContext): string | null {
+  const raw = ctx.apiKeyHeader;
+  if (!raw) return process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
+  const trimmed = String(raw).trim();
+  return trimmed.length > 0 ? trimmed : process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
 }
 
 /** Pull the session cookie + API key for an LLM endpoint. The cookie
@@ -1679,6 +1716,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ok: true,
       session: true,
       ai: !!readApiKey(ctx),
+      ai_provider: llmProviderName(),
+      local_ai: isLocalLlmProvider(),
       since: record.createdAt,
       label: record.label ?? "Guest",
     });
@@ -1722,6 +1761,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       authed: !!record,
       session: !!record,
       ai: !!apiKey && !!record,
+      ai_provider: llmProviderName(),
+      local_ai: isLocalLlmProvider(),
       since: record?.createdAt ?? null,
       label: record?.label ?? null,
     });
@@ -2493,12 +2534,20 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // Generate a sticker portrait of the player's character. Returns a base64
   // data URL that the client persists onto the character via set-portrait.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/portrait`) {
-    const cred = requireAuth(ctx, auth);
-    if (!cred) {
-      ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    const apiKey = readOpenRouterApiKey(ctx);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    if (!apiKey) {
+      ctx.error(ctx.res, isLocalLlmProvider()
+        ? "Local text AI is enabled, but portrait generation still requires an OpenRouter image model."
+        : "Sign in with OpenRouter first.",
+      isLocalLlmProvider() ? 501 : 401);
+      return true;
+    }
     // Image generation is the most expensive call we make — keep its bucket
     // separate and tighter than the chat one.
     const rlKey = rateLimitKey(ctx, token);
@@ -2538,12 +2587,20 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // character's subjectScores server-side to pick the subject-themed
   // accessory. Same rate-limiter as portrait gen (8 burst, 1/30s).
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/diploma`) {
-    const cred = requireAuth(ctx, auth);
-    if (!cred) {
-      ctx.error(ctx.res, "Sign in with OpenRouter first.", 401);
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    const apiKey = readOpenRouterApiKey(ctx);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    if (!apiKey) {
+      ctx.error(ctx.res, isLocalLlmProvider()
+        ? "Local text AI is enabled, but diploma image generation still requires an OpenRouter image model."
+        : "Sign in with OpenRouter first.",
+      isLocalLlmProvider() ? 501 : 401);
+      return true;
+    }
     const rlKey = rateLimitKey(ctx, token);
     if (!PORTRAIT_LIMITER.take(rlKey)) {
       reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));

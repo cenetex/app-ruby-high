@@ -5,6 +5,14 @@ import type { CharacterStats, Choice, Difficulty, NpcStudentState, QuizState } f
 import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
 import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "../content/registry.js";
 import { RubyHighService, type QuestionBankStatus } from "./ruby-high-service.js";
+import {
+  fetchLlmChatCompletions,
+  llmChatCompletionsUrl,
+  llmHeaders,
+  resolveLlmModel,
+  resolveStudentModel,
+  throwLlmResponseError,
+} from "./llm-provider.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -79,9 +87,6 @@ const HISTORY_LIMIT = 30;
 const EVENT_LOG_LIMIT = 60;
 const DEFAULT_AGENT_ROUNDS = 4;
 const MAX_AGENT_ROUNDS = readAgentRoundLimit(process.env.RUBY_HIGH_CHAT_AGENT_ROUNDS);
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const REFERER_HEADER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
-const TITLE_HEADER = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
 
 /** Wall-clock ceilings for OpenRouter calls. Without these a hung
  *  upstream holds the Node request slot indefinitely. Non-streaming
@@ -807,37 +812,20 @@ async function callOpinionForNpc(args: {
     "Write 2-3 sentences in your voice (under 60 words). Specific, with an opinion, engaging the question. Reference a classmate or the teacher by name when it fits. The response is the answer itself — just the prose, nothing wrapping it.",
   ].filter(Boolean).join("\n");
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), OPENROUTER_TIMEOUT_MS);
-  let r: Response;
-  try {
-    r = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${args.apiKey}`,
-        "HTTP-Referer": REFERER_HEADER,
-        "X-Title": TITLE_HEADER,
-      },
-      body: JSON.stringify({
-        model: "anthropic/claude-haiku-4.5",
-        messages: [
-          { role: "system", content: args.student.systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        max_tokens: 220,
-        temperature: 0.95,
-      }),
-      signal: ctrl.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    const trimmed = text.length > 500 ? text.slice(0, 500) + "…" : text;
-    throw new Error(`opinion-npc: OpenRouter ${r.status} ${r.statusText}${trimmed ? ` — ${trimmed}` : ""}`);
-  }
+  const r = await fetchLlmChatCompletions({
+    apiKey: args.apiKey,
+    timeoutMs: OPENROUTER_TIMEOUT_MS,
+    body: {
+      model: resolveStudentModel(),
+      messages: [
+        { role: "system", content: args.student.systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 220,
+      temperature: 0.95,
+    },
+  });
+  if (!r.ok) await throwLlmResponseError(r, "opinion-npc");
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   return ((body.choices?.[0]?.message?.content ?? "").trim()).replace(/^["'\s]+|["'\s]+$/g, "");
 }
@@ -1356,16 +1344,11 @@ async function* streamOpenRouter(args: OpenRouterArgs): AsyncGenerator<StreamChu
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), OPENROUTER_STREAM_TIMEOUT_MS);
   try {
-    const r = await fetch(OPENROUTER_URL, {
+    const r = await fetch(llmChatCompletionsUrl(), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${args.apiKey}`,
-        "HTTP-Referer": REFERER_HEADER,
-        "X-Title": TITLE_HEADER,
-      },
+      headers: llmHeaders(args.apiKey),
       body: JSON.stringify({
-        model: args.model,
+        model: resolveLlmModel(args.model),
         messages: args.messages,
         tools: args.tools,
         tool_choice: "auto",
@@ -1374,12 +1357,13 @@ async function* streamOpenRouter(args: OpenRouterArgs): AsyncGenerator<StreamChu
       }),
       signal: ctrl.signal,
     });
-    if (!r.ok || !r.body) {
-      const text = await r.text().catch(() => "");
-      throw new Error(`OpenRouter ${r.status}: ${text || r.statusText}`);
+    const bodyStream = r.body;
+    if (!r.ok) {
+      await throwLlmResponseError(r, "chat");
     }
+    if (!bodyStream) throw new Error("chat: LLM response did not include a stream body.");
 
-    const reader = r.body.getReader();
+    const reader = bodyStream.getReader();
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();

@@ -18,6 +18,7 @@ import {
   slug, shortenName, defaultIdSuffix, hashedAccent, teacherAccent,
   importedModulePrompt, anchoredTeacherPrompt,
 } from "../pack-utils.js";
+import { resolveStudentModel } from "../../services/llm-provider.js";
 
 export interface BuildAnkiPackOpts {
   /** Legacy no-op; JIT MC generation reads the current browser key later. */
@@ -122,7 +123,7 @@ export async function buildAnkiPack(
       systemPrompt: selectedTeacher
         ? importedModulePrompt(selectedTeacher, deck.name, plan.title)
         : anchoredTeacherPrompt(plan.title),
-      defaultModel: selectedTeacher?.defaultModel ?? "anthropic/claude-haiku-4.5",
+      defaultModel: selectedTeacher?.defaultModel ?? resolveStudentModel(),
       questions: [],
       sourceCards,
     };
@@ -396,4 +397,3 @@ function describeImport(deckName: string, classCount: number, questionCount: num
   const cards = questionCount === 1 ? "1 card" : `${questionCount} cards`;
   return `Imported from Anki: ${deckName}. ${cards} across ${classes}.`;
 }
-

@@ -37,6 +37,7 @@ import { handlePackRoutes } from "./pack-routes.js";
 import { AuthService } from "./services/auth-service.js";
 import { log } from "./services/logger.js";
 import { TokenBucket } from "./services/rate-limit.js";
+import { resolveLlmApiKey } from "./services/llm-provider.js";
 import {
   availablePacksForSession,
   courseForFacultyForSession,
@@ -1171,7 +1172,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       }
 
       if (type === "generate-mc") {
-        const state = await ruby.generateCurrentMcQuestion(stateKey, ctx.apiKeyHeader);
+        const state = await ruby.generateCurrentMcQuestion(stateKey, resolveLlmApiKey(ctx.apiKeyHeader ?? null));
         return await sendPersistedCommandState(ctx, {
           ruby,
           sessionId: stateKey,

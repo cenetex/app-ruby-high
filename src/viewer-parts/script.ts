@@ -443,7 +443,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   let lastAnswerGradedTriggerId = null;
   let lastIdleTriggerId = null;
   let authed = null; // app-owned Ruby High session ready
-  let aiEnabled = false; // OpenRouter key + Ruby High session present
+  let aiEnabled = false; // Local/OpenRouter text AI + Ruby High session present
+  let localAiEnabled = false;
   let lockedFor = null;
   let renderedHistorySig = null;
   let activeQuestionId = null; // currently displayed question id on the blackboard
@@ -4345,9 +4346,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     sheetCard.appendChild(h);
     const sub = document.createElement("p");
     sub.className = "sub";
-    sub.textContent = aiEnabled
-      ? "Reroll any field you don't like. AI can refresh the voice and portrait."
-      : "Reroll any field you don't like. Enable AI later for a custom portrait.";
+    sub.textContent = localAiEnabled
+      ? "Reroll any field you don't like. Local AI can refresh the voice."
+      : aiEnabled
+        ? "Reroll any field you don't like. AI can refresh the voice and portrait."
+        : "Reroll any field you don't like. Enable AI later for a custom portrait.";
     sub.style.display = "none";
     sheetCard.appendChild(sub);
 
@@ -4511,8 +4514,8 @@ const VIEWER_SCRIPT_SUFFIX = `
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
       });
-      portraitBtn.hidden = !aiEnabled;
-      portraitBtn.disabled = !rolled || !aiEnabled || inFlight.portrait;
+      portraitBtn.hidden = !aiEnabled || localAiEnabled;
+      portraitBtn.disabled = !rolled || !aiEnabled || localAiEnabled || inFlight.portrait;
     }
 
     function renderRolled(c) {
@@ -4608,8 +4611,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     // ships with the create-character command. On failure, leaves the
     // default in place and shows an inline error.
     portraitBtn.addEventListener("click", async () => {
-      if (!aiEnabled) {
-        portraitStatus.textContent = "Enable AI for a custom portrait.";
+      if (!aiEnabled || localAiEnabled) {
+        portraitStatus.textContent = localAiEnabled ? "Custom portraits require OpenRouter." : "Enable AI for a custom portrait.";
         portraitStatus.classList.add("is-invalid");
         return;
       }
@@ -4970,11 +4973,13 @@ const VIEWER_SCRIPT_SUFFIX = `
   let authCheckSeq = 0;
   function setAuthState(next, opts) {
     const nextAi = !!(opts && opts.ai);
-    if (next === lastAuthState && nextAi === aiEnabled) return;
+    const nextLocalAi = !!(opts && opts.local_ai);
+    if (next === lastAuthState && nextAi === aiEnabled && nextLocalAi === localAiEnabled) return;
     const wasSignedIn = lastAuthState === true;
     lastAuthState = next;
     authed = next;
     aiEnabled = nextAi;
+    localAiEnabled = nextLocalAi;
     applyAuthUI();
     // OpenRouter is optional. The overlay is now only a fallback if the app
     // cannot establish even a guest Ruby High session.
@@ -5008,7 +5013,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");
-    setAuthState(true, { ai: !!data.ai });
+    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai });
   }
   async function deriveAuth() {
     const key = getStoredApiKey();
@@ -5023,7 +5028,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const data = await r.json().catch(() => ({}));
       if (seq !== authCheckSeq) return;
       if (r.ok && data && data.session) {
-        setAuthState(true, { ai: !!data.ai });
+        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai });
       } else {
         await ensureGuestSession();
       }
@@ -5032,7 +5037,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       try {
         await ensureGuestSession();
       } catch {
-        if (lastAuthState === null) setAuthState(false, { ai: false });
+        if (lastAuthState === null) setAuthState(false, { ai: false, local_ai: false });
       }
     }
   }
@@ -5047,9 +5052,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       return;
     }
     if (authed) {
-      els.youState.textContent = aiEnabled ? "AI enabled" : "offline mode";
+      els.youState.textContent = aiEnabled ? (localAiEnabled ? "local AI" : "AI enabled") : "offline mode";
       els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
-      els.footerAction.hidden = false;
+      els.footerAction.hidden = localAiEnabled;
       els.chatForm.hidden = true;
       els.chatInput.disabled = true;
       els.chatSend.disabled = true;
@@ -5081,6 +5086,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     } catch (e) { /* network failure is fine — local state is what matters */ }
     authed = null;
     aiEnabled = false;
+    localAiEnabled = false;
     lastAuthState = null;
     await deriveAuth();
     applyAuthUI();
@@ -5480,6 +5486,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
     if (!authed) return;
+    if (localAiEnabled) return;
     if (aiEnabled) {
       logout();
     } else {

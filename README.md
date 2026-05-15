@@ -30,7 +30,27 @@ npm run build:spa
 npm run spa:dev
 ```
 
-Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward question banks. Core classroom play, character creation, room switching, scoring, and local persistence work without the hosted server. AI chat, OpenRouter auth, Anki/PDF imports, and hosted account sync still require the Node service.
+Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward question banks. Core classroom play, character creation, room switching, scoring, and local persistence work without the hosted server. In the native Tauri shell, text AI talks to an Ollama OpenAI-compatible server at `http://127.0.0.1:11434/v1` by default. Anki/PDF imports, OpenRouter auth, portrait/diploma image generation, and hosted account sync still require the Node service.
+
+For offline text AI, run Ruby High against a local OpenAI-compatible chat-completions server such as Ollama:
+
+```bash
+ollama create ruby-high-local -f /path/to/Modelfile
+ollama serve
+RUBY_HIGH_LLM_PROVIDER=local \
+RUBY_HIGH_LLM_BASE_URL=http://127.0.0.1:11434/v1 \
+RUBY_HIGH_LLM_MODEL=ruby-high-local \
+npm run dev:server
+```
+
+Local mode removes the OpenRouter key requirement for text chat, teacher turns, NPC chimes, character text, opinion grading, PDF card generation, and JIT Anki distractors. Portrait and diploma image generation still use the OpenRouter image endpoint; if no OpenRouter key is present, Ruby High keeps the bundled/default artwork.
+
+The native SPA uses the same default local model and lets you override the local endpoint in DevTools:
+
+```js
+localStorage.setItem("ruby-high:local-llm-base", "http://127.0.0.1:11434/v1");
+localStorage.setItem("ruby-high:local-llm-model", "ruby-high-local");
+```
 
 Native wrappers share `dist-spa/`:
 
@@ -87,6 +107,10 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_DYNAMO_TABLE` | — | Required when backend is `dynamodb`. |
 | `AWS_REGION` | — | Required when backend is `dynamodb`. |
 | `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | DynamoDB TTL for idle sessions. |
+| `RUBY_HIGH_LLM_PROVIDER` | `openrouter` | Set to `local` to use a local OpenAI-compatible `/v1/chat/completions` endpoint. Also inferred as `local` when `RUBY_HIGH_LLM_BASE_URL` is set. |
+| `RUBY_HIGH_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` in local mode | Local OpenAI-compatible base URL. Values ending in `/v1` or `/chat/completions` are both accepted. |
+| `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
+| `RUBY_HIGH_LLM_API_KEY` | `local` in local mode | Optional bearer token for local servers configured with an API key. |
 | `RUBY_HIGH_STUDENT_MODEL` | `anthropic/claude-haiku-4.5` | Model used for NPC opinion responses. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |

@@ -24,8 +24,7 @@
 import type { BankedQuestion, Choice, Difficulty } from "../../types.js";
 import { classifyQuestionStat } from "../../question-stats.js";
 import type { AnkiCard } from "./parse.js";
-
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+import { fetchLlmChatCompletions, llmProviderName, resolveStudentModel } from "../../services/llm-provider.js";
 
 export interface DistractorOpts {
   apiKey: string;
@@ -157,7 +156,7 @@ async function callOpenRouterForDistractors(
   card: AnkiCard,
   opts: DistractorOpts,
 ): Promise<string[]> {
-  const model = opts.model ?? "anthropic/claude-haiku-4.5";
+  const model = opts.model ?? resolveStudentModel();
   const userPrompt = [
     `Topic: ${opts.subject || card.deckName || "general knowledge"}.`,
     `Question: ${card.front}`,
@@ -166,15 +165,10 @@ async function callOpenRouterForDistractors(
     `Return ONLY a JSON array of 3 strings. No prose, no markdown fences. Example: ["wrong1","wrong2","wrong3"]`,
   ].join("\n");
 
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.apiKey}`,
-      "HTTP-Referer": "https://ruby-high.local",
-      "X-Title": "Ruby High Anki Import",
-    },
-    body: JSON.stringify({
+  const r = await fetchLlmChatCompletions({
+    apiKey: opts.apiKey,
+    title: "Ruby High Anki Import",
+    body: {
       model,
       messages: [
         { role: "system", content: "You generate plausible distractors for multiple-choice questions. Always respond with ONLY a JSON array of 3 strings." },
@@ -182,14 +176,14 @@ async function callOpenRouterForDistractors(
       ],
       max_tokens: 200,
       temperature: 0.6,
-    }),
+    },
   });
   if (!r.ok) {
     const detail = await r.text().catch(() => "");
     if (r.status === 401 || r.status === 403) {
-      throw new FatalAuthError(`OpenRouter ${r.status}: ${detail || r.statusText}`);
+      throw new FatalAuthError(`${llmProviderName()} ${r.status}: ${detail || r.statusText}`);
     }
-    throw new Error(`OpenRouter ${r.status}: ${detail || r.statusText}`);
+    throw new Error(`${llmProviderName()} ${r.status}: ${detail || r.statusText}`);
   }
   const body = (await r.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const text = (body.choices?.[0]?.message?.content ?? "").trim();

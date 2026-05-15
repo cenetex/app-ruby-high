@@ -32,6 +32,7 @@ import { buildAnkiPack } from "./content/anki/pack.js";
 import { extractPdfText } from "./content/pdf/extract.js";
 import { buildPdfPack } from "./content/pdf/pack.js";
 import { TEACHERS } from "./characters/teachers.js";
+import { isLocalLlmProvider, resolveLlmApiKey } from "./services/llm-provider.js";
 import {
   availablePacksForSession,
   coursesForPack,
@@ -89,6 +90,10 @@ if (typeof importLimiterGcTimer === "object" && importLimiterGcTimer && "unref" 
 
 function rateLimitKey(ctx: PackRouteContext, token: string | null): string {
   return `${ctx.clientIp ?? "unknown"}:${token ?? "anon"}`;
+}
+
+function readApiKey(ctx: PackRouteContext): string {
+  return resolveLlmApiKey((ctx.apiKeyHeader ?? "").trim()) ?? "";
 }
 
 function packSummary(pack: ContentPack) {
@@ -173,7 +178,7 @@ export async function handlePackRoutes(
   // POST /packs/import-anki — base64 .apkg → source cards → register +
   // set as THIS session's active pack.
   if (ctx.method === "POST" && sub === "/import-anki") {
-    const apiKey = (ctx.apiKeyHeader ?? "").trim();
+    const apiKey = readApiKey(ctx);
     const rlKey = rateLimitKey(ctx, token);
     if (!IMPORT_LIMITER.take(rlKey)) {
       const retryAfter = IMPORT_LIMITER.retryAfterSeconds(rlKey);
@@ -260,9 +265,11 @@ export async function handlePackRoutes(
 
   // POST /packs/import-pdf — base64 PDF bytes → AI-generated study cards → private pack.
   if (ctx.method === "POST" && sub === "/import-pdf") {
-    const apiKey = (ctx.apiKeyHeader ?? "").trim();
+    const apiKey = readApiKey(ctx);
     if (!apiKey) {
-      ctx.error(ctx.res, "OpenRouter API key required for PDF import (AI generates the study cards).", 401);
+      ctx.error(ctx.res, isLocalLlmProvider()
+        ? "Local LLM is not configured for PDF import."
+        : "OpenRouter API key required for PDF import (AI generates the study cards).", 401);
       return true;
     }
     const rlKey = rateLimitKey(ctx, token);

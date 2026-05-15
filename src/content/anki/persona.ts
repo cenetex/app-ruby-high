@@ -21,9 +21,9 @@
  */
 
 import type { AnkiCard } from "./parse.js";
+import { fetchLlmChatCompletions, llmProviderName, resolveStudentModel } from "../../services/llm-provider.js";
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+const DEFAULT_MODEL = resolveStudentModel();
 
 export interface PersonaOpts {
   apiKey: string;
@@ -76,15 +76,10 @@ export async function generateAnkiPersona(opts: PersonaOpts): Promise<PersonaRes
     `- systemPrompt: 4-6 sentences. Same anchored-teacher template ('You are X, you run a small classroom drilling Y...') but in their voice. Include their teaching style, their pet pet-peeve, what they reward in students. Reference at least one concrete detail from the sample cards so the model stays grounded in the actual material. Mention they have pick_from_bank and clear_board tools and should keep replies tight (1-2 sentences).`,
   ].join("\n");
 
-  const r = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.apiKey}`,
-      "HTTP-Referer": "https://ruby-high.local",
-      "X-Title": "Ruby High Anki Persona",
-    },
-    body: JSON.stringify({
+  const r = await fetchLlmChatCompletions({
+    apiKey: opts.apiKey,
+    title: "Ruby High Anki Persona",
+    body: {
       model: opts.model ?? DEFAULT_MODEL,
       messages: [
         { role: "system", content: "You write thematic teacher personas for an RPG school. Output VALID JSON only — no commentary, no code fences, no extra keys." },
@@ -92,11 +87,11 @@ export async function generateAnkiPersona(opts: PersonaOpts): Promise<PersonaRes
       ],
       max_tokens: 700,
       temperature: 1.0,
-    }),
+    },
   });
   if (!r.ok) {
     const detail = await r.text().catch(() => "");
-    throw new Error(`OpenRouter ${r.status}: ${detail.slice(0, 200) || r.statusText}`);
+    throw new Error(`${llmProviderName()} ${r.status}: ${detail.slice(0, 200) || r.statusText}`);
   }
   const body = (await r.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();

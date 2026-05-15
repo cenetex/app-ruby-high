@@ -18,6 +18,7 @@ import {
   importedModulePrompt,
   anchoredTeacherPrompt,
 } from "../pack-utils.js";
+import { fetchLlmChatCompletions, llmProviderName, resolveStudentModel } from "../../services/llm-provider.js";
 
 export interface BuildPdfPackOpts {
   apiKey: string;
@@ -32,9 +33,6 @@ export interface BuildPdfPackResult {
   generated: number;
 }
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
-const TITLE_HDR = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
 const TIMEOUT_MS = Number(process.env.RUBY_HIGH_OPENROUTER_TIMEOUT_MS ?? 60_000);
 
 const CHUNK_CHARS = 2400;
@@ -43,45 +41,33 @@ const QA_PER_CHUNK = 4;
 interface QAPair { q: string; a: string }
 
 async function generateQA(apiKey: string, chunk: string): Promise<QAPair[]> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  let r: Response;
-  try {
-    r = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": REFERER,
-        "X-Title": TITLE_HDR,
-      },
-      body: JSON.stringify({
-        model: "anthropic/claude-haiku-4.5",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You extract study questions from educational text. Respond with valid JSON only — no prose, no code fences.",
-          },
-          {
-            role: "user",
-            content:
-              `Generate exactly ${QA_PER_CHUNK} typed-answer study question/answer pairs from the text below. ` +
-              `Each answer must be concise (one clear sentence). ` +
-              `Return ONLY a JSON array: [{"q":"...","a":"..."}]\n\nTEXT:\n${chunk.slice(0, CHUNK_CHARS)}`,
-          },
-        ],
-        max_tokens: 700,
-        temperature: 0.25,
-      }),
-      signal: ctrl.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const r = await fetchLlmChatCompletions({
+    apiKey,
+    timeoutMs: TIMEOUT_MS,
+    title: "Ruby High PDF Import",
+    body: {
+      model: resolveStudentModel(),
+      messages: [
+        {
+          role: "system",
+          content:
+            "You extract study questions from educational text. Respond with valid JSON only — no prose, no code fences.",
+        },
+        {
+          role: "user",
+          content:
+            `Generate exactly ${QA_PER_CHUNK} typed-answer study question/answer pairs from the text below. ` +
+            `Each answer must be concise (one clear sentence). ` +
+            `Return ONLY a JSON array: [{"q":"...","a":"..."}]\n\nTEXT:\n${chunk.slice(0, CHUNK_CHARS)}`,
+        },
+      ],
+      max_tokens: 700,
+      temperature: 0.25,
+    },
+  });
   if (!r.ok) {
     const text = await r.text().catch(() => "");
-    throw new Error(`pdf-qa: OpenRouter ${r.status} — ${text.slice(0, 200)}`);
+    throw new Error(`pdf-qa: ${llmProviderName()} ${r.status} - ${text.slice(0, 200)}`);
   }
   const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
   const raw = (body.choices?.[0]?.message?.content ?? "").trim();
@@ -196,7 +182,7 @@ export async function buildPdfPack(
     systemPrompt: selectedTeacher
       ? importedModulePrompt(selectedTeacher, packName, packName)
       : anchoredTeacherPrompt(packName),
-    defaultModel: selectedTeacher?.defaultModel ?? "anthropic/claude-haiku-4.5",
+    defaultModel: selectedTeacher?.defaultModel ?? resolveStudentModel(),
     questions: [],
     sourceCards,
   };
