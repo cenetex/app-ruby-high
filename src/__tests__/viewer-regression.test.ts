@@ -60,8 +60,10 @@ describe("viewer regression guardrails", () => {
     const consumeEnd = script.indexOf("async function sendChatMessage");
     const consumeBody = script.slice(consumeStart, consumeEnd);
 
-    expect(script).toContain("function withTimeoutSignal");
+    expect(script).toContain("function withViewerTimeoutSignal");
     expect(script).toContain("const SESSION_REFRESH_TIMEOUT_MS = 8000");
+    expect(script).toContain("function createViewerApiClient");
+    expect(script).toContain("const apiClient = createViewerApiClient");
     expect(script).toContain("function createViewerTurnController");
     expect(script).toContain("const turnController = createViewerTurnController");
     expect(script).toContain("function syncNextButtonDisabled()");

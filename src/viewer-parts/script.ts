@@ -1,4 +1,5 @@
 import type { ViewerRenderOptions } from "../viewer.js";
+import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
 
@@ -337,47 +338,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     try { localStorage.removeItem(AUTH_LABEL); } catch (e) {}
     try { localStorage.removeItem("rh_openrouter_at"); } catch (e) {}
   }
-  // Wrapper around fetch that attaches the OpenRouter key header when one
-  // is present in localStorage. Use this for every same-origin API call.
-  //
-  // 401 handling: when the server says "not authenticated" — typically because
-  // the rh_session cookie expired but localStorage still has a stale key — we
-  // clear the local credential and re-derive auth state. That normally creates
-  // a guest session again; only hard failure opens the fallback overlay.
   const COMMAND_TIMEOUT_MS = 15000;
   const PLAYER_LINE_TIMEOUT_MS = 12000;
   const STREAM_CONNECT_TIMEOUT_MS = 15000;
   const SESSION_REFRESH_TIMEOUT_MS = 8000;
 
-  function withTimeoutSignal(opts, timeoutMs) {
-    const ms = Number(timeoutMs || 0);
-    if (!(ms > 0) || typeof AbortController === "undefined" || opts.signal) return () => {};
-    const ctrl = new AbortController();
-    opts.signal = ctrl.signal;
-    const timer = setTimeout(() => {
-      try { ctrl.abort(); } catch (e) { /* ignore */ }
-    }, ms);
-    return () => clearTimeout(timer);
-  }
-
-  function apiFetch(url, init) {
-    const opts = init ? Object.assign({}, init) : {};
-    const headers = new Headers(opts.headers || {});
-    const timeoutMs = Number(opts.timeoutMs || 0);
-    delete opts.timeoutMs;
-    const key = getStoredApiKey();
-    if (key) headers.set("X-Openrouter-Key", key);
-    opts.headers = headers;
-    if (!opts.credentials) opts.credentials = "same-origin";
-    const clearFetchTimeout = withTimeoutSignal(opts, timeoutMs);
-    return fetch(url, opts).then((r) => {
-      if (r.status === 401 && getStoredApiKey()) {
-        clearStoredAuth();
-        try { deriveAuth(); } catch (_e) { /* deriveAuth not yet defined on boot */ }
-      }
-      return r;
-    }).finally(clearFetchTimeout);
-  }
+  ${withViewerTimeoutSignal.toString()}
+  ${createViewerApiClient.toString()}
 
   // ── AI students ──────────────────────────────────────────────────────────
   const STUDENTS = [
@@ -920,58 +887,54 @@ const VIEWER_SCRIPT_SUFFIX = `
     return /Question already (on|posted by).*board|wait for the student answer|Cannot (post another question|clear the board) while a question is live/i.test(String(msg || ""));
   }
 
-  // ── command helper ────────────────────────────────────────────────────────
-  async function command(payload) {
-    const seq = ++commandSeq;
-    try {
-      const r = await apiFetch(commandUrl, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: "request " + r.status }));
-        const msg = String(err.error || r.status);
-        // The bank-empty error fires from auto-pick races (telemetry said
-        // ready>0 but the server's already drawn the last card). It's not
-        // an actionable error for the player — they just need to nudge
-        // the room forward. Swallow the chip; the empty board's "Tap
-        // Chat to start" hint already tells them what to do.
-        if (/no scheduled (question|deck card) is due/i.test(msg)) {
-          autoPickLastKey = null;
-          return null;
-        }
-        // A live-board rejection is the expected loser in scheduler races
-        // where two pick paths notice the same empty board. The board is
-        // already playable, so surfacing the raw service error only makes the
-        // first session feel broken.
-        if (payload && payload.type === "pick" && isActiveBoardCommandError(msg)) {
-          fetchSession();
-          return null;
-        }
-        appendSystem("error · " + msg);
-        return null;
+  // ── API helper ────────────────────────────────────────────────────────────
+  const apiClient = createViewerApiClient({
+    sessionUrl,
+    commandUrl,
+    commandTimeoutMs: COMMAND_TIMEOUT_MS,
+    sessionRefreshTimeoutMs: SESSION_REFRESH_TIMEOUT_MS,
+    getApiKey: getStoredApiKey,
+    clearAuth: clearStoredAuth,
+    onAuthCleared() {
+      try { deriveAuth(); } catch (_e) { /* deriveAuth not yet defined on boot */ }
+    },
+    onCommandSession(session) {
+      render(session);
+    },
+    onCommandError(message) {
+      appendSystem("error · " + message);
+    },
+    onCommandFailed(message) {
+      appendSystem("submit failed · " + message);
+    },
+    onNoScheduledQuestion() {
+      autoPickLastKey = null;
+    },
+    isActiveBoardCommandError(payload, message) {
+      return payload && payload.type === "pick" && isActiveBoardCommandError(message);
+    },
+    onActiveBoardRace() {
+      fetchSession();
+    },
+    onSessionData(session) {
+      render(session);
+    },
+    onSessionUnavailable() {
+      if (!lastTelemetry && els.blackboardEmptyText) {
+        els.blackboardEmptyText.textContent = navigator.onLine === false
+          ? "Ruby High is offline. Reconnect to resume class."
+          : "Ruby High is unavailable. Retrying...";
       }
-      const data = await r.json();
-      if (data && data.session) render(data.session);
-      return data;
-    } catch (err) {
-      appendSystem("submit failed · " + (err && err.message ? err.message : "error"));
-      return null;
-    } finally {
-      // Mark this command's seq so any in-flight fetchSession() that was
-      // started before us discards its (now-stale) response on return.
-      lastSettledCommandSeq = seq;
-    }
+    },
+  });
+
+  function apiFetch(url, init) {
+    return apiClient.apiFetch(url, init);
   }
-  // Monotonic counter bumped on every command(). Used by fetchSession() to
-  // detect "a command happened while my GET was in flight, my response may
-  // be stale, drop it." Prevents the poll from rendering a pre-mutation
-  // snapshot over a freshly-mutated state (the post-command flicker).
-  let commandSeq = 0;
-  let lastSettledCommandSeq = 0;
+
+  async function command(payload) {
+    return apiClient.command(payload);
+  }
 
   // ── message factories ────────────────────────────────────────────────────
   function knownTeacherAssetId(faculty) {
@@ -5934,30 +5897,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   async function fetchSession(opts) {
-    opts = opts || {};
-    // Snapshot command counters at request start. If a command starts or
-    // settles while this GET is in flight, the GET may represent pre-command
-    // state; discard rather than overwrite the command response already
-    // rendered.
-    const seqAtStart = commandSeq;
-    const settledAtStart = lastSettledCommandSeq;
-    const fetchOpts = { credentials: "same-origin" };
-    const clearFetchTimeout = withTimeoutSignal(fetchOpts, opts.timeoutMs || SESSION_REFRESH_TIMEOUT_MS);
-    try {
-      const r = await fetch(sessionUrl, fetchOpts);
-      if (!r.ok) throw new Error("session " + r.status);
-      const s = await r.json();
-      if (commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart) return;
-      render(s);
-    } catch {
-      if (!lastTelemetry && els.blackboardEmptyText) {
-        els.blackboardEmptyText.textContent = navigator.onLine === false
-          ? "Ruby High is offline. Reconnect to resume class."
-          : "Ruby High is unavailable. Retrying...";
-      }
-    } finally {
-      clearFetchTimeout();
-    }
+    await apiClient.fetchSession(opts || {});
   }
 
   // ── rails toggling ────────────────────────────────────────────────────────
