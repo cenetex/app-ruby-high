@@ -110,6 +110,30 @@ export async function renderCharacterPortrait(args: {
   }
 }
 
+export async function renderTeacherPortrait(args: {
+  apiKey: string;
+  name: string;
+  personality: string;
+}): Promise<string> {
+  const prompt = [
+    `JRPG faculty portrait of ${args.name}, a teacher at Ruby High.`,
+    `Teaching style: ${args.personality}`,
+    "",
+    "STYLE: JRPG-style FULL BODY standing faculty portrait — 3/4 view, head to ankles. Tall portrait orientation. Anime-influenced. Bold black outline 5px. Vibrant flat colors, subtle cel shading. Confident classroom pose, expressive face, age-appropriate adult teacher.",
+    "",
+    "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale lavender background (#ece6f5). The background fills the entire frame as one perfectly even color — no gradient, no texture, no pattern, no scenery, no objects, no border, no transparency. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
+    "No text, no logo, no signature, no caption.",
+  ].join("\n");
+  try {
+    return await fetchPortraitOnce({ apiKey: args.apiKey, prompt });
+  } catch (err) {
+    log.event("teacher-portrait.first-attempt-failed", {
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return fetchPortraitOnce({ apiKey: args.apiKey, prompt });
+  }
+}
+
 export async function renderDiplomaImage(args: {
   apiKey: string;
   name: string;

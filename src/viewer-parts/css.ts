@@ -963,6 +963,18 @@ export const VIEWER_CSS = `
     border: 1px solid var(--line);
     background: var(--bg-elev);
   }
+  .pack-teacher-roll-deck {
+    display: grid;
+    grid-template-columns: minmax(230px, 300px) minmax(260px, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+  .pack-teacher-roll-deck .ccg-card {
+    max-width: none;
+  }
+  .pack-teacher-roll-deck .ccg-art {
+    aspect-ratio: 5 / 4;
+  }
   .pack-teacher-detail-head {
     display: flex;
     align-items: flex-start;
@@ -1082,6 +1094,9 @@ export const VIEWER_CSS = `
       grid-template-columns: 1fr;
     }
     .pack-editor {
+      grid-template-columns: 1fr;
+    }
+    .pack-teacher-roll-deck {
       grid-template-columns: 1fr;
     }
     .pack-teacher-list {

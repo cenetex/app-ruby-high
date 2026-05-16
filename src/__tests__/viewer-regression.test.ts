@@ -141,6 +141,19 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('"Active pack switched. Reloading..."');
   });
 
+  it("opens New Teacher as a card-based teacher roll before saving", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(script).toContain("function startDraftTeacherCreation()");
+    expect(script).toContain("Teacher Roll");
+    expect(script).toContain("Generate teacher image");
+    expect(script).toContain("Add Teacher");
+    expect(script).toContain("/api/apps/ruby-high/chat/teacher/portrait");
+    expect(script).toContain("stats: pendingTeacherRoll.stats");
+    expect(script).toContain('makeRow("Stats", "stats", teacherStatsLine(roll.stats))');
+    expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');
+  });
+
   it("routes the post-class Practice button to a practice board or teacher advance", () => {
     const script = inlineScript(renderedViewer());
 

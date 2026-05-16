@@ -249,6 +249,7 @@ function buildFacultyRoster(
       accent: f.accent,
       ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
       ...(f.profileImageUrl ? { profileImageUrl: f.profileImageUrl } : {}),
+      ...(f.stats ? { stats: f.stats } : {}),
       teacherProvider: publicProviderForFaculty(f),
       questionCount: countFacultyCards(f),
       ...(progress?.grade ? { courseGrade: progress.grade } : {}),

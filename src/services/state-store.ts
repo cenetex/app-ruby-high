@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
-import type { BankedQuestion, QuizState } from "../types.js";
+import type { BankedQuestion, CharacterStats, QuizState } from "../types.js";
 import type { ContentPack, PackSourceCard } from "../content/types.js";
 
 export interface AuthUserRecord {
@@ -67,7 +67,9 @@ export interface StoredDraftTeacherRecord {
   id: string;
   displayName: string;
   description: string;
+  assetTeacherId?: string;
   profileImageUrl?: string;
+  stats?: CharacterStats;
   socialsUrl?: string;
   materials: string;
   materialSourceUrl?: string;

@@ -69,6 +69,7 @@ function packSummary(pack: ContentPack) {
       shortName: f.shortName,
       ...(f.assetTeacherId ? { assetTeacherId: f.assetTeacherId } : {}),
       ...(f.profileImageUrl ? { profileImageUrl: f.profileImageUrl } : {}),
+      ...(f.stats ? { stats: f.stats } : {}),
       subjects: f.subjects,
       questionCount: countFacultyCards(f),
     })),

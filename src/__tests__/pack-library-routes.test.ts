@@ -130,10 +130,16 @@ describe("/pack-library", () => {
       body: {
         displayName: "Signal Coach",
         description: "Turns signal notes into study cards.",
+        assetTeacherId: "sally-science",
+        stats: { head: 3, heart: 1, hustle: 0, honor: 2 },
       },
     });
     expect(response.status).toBe(201);
     const teacherId = response.body.teacher.id as string;
+    expect(response.body.teacher).toMatchObject({
+      assetTeacherId: "sally-science",
+      stats: { head: 3, heart: 1, hustle: 0, honor: 2 },
+    });
 
     response = await route({
       method: "PATCH",
@@ -179,6 +185,11 @@ describe("/pack-library", () => {
     });
     expect(response.status).toBe(200);
     const packId = response.body.pack.id as string;
+    const persistedPack = (await ruby.listPersistedPackRecords()).find((entry) => entry.pack.id === packId)?.pack;
+    expect(persistedPack?.faculty[0]).toMatchObject({
+      assetTeacherId: "sally-science",
+      stats: { head: 3, heart: 1, hustle: 0, honor: 2 },
+    });
     expect(response.body.pack).toMatchObject({
       name: "Signals Pack",
       enabled: true,

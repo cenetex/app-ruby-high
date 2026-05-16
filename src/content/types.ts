@@ -22,7 +22,7 @@
  * cache in localStorage, or generate at runtime.
  */
 
-import type { BankedQuestion, Difficulty } from "../types.js";
+import type { BankedQuestion, CharacterStats, Difficulty } from "../types.js";
 
 export interface ContentPack {
   /** Stable identifier — used as a key in the pack registry / per-player
@@ -70,6 +70,8 @@ export interface PackFaculty {
   assetTeacherId?: string;
   /** Optional external profile image URL for connected live teachers. */
   profileImageUrl?: string;
+  /** Optional card stats for custom pack teachers. */
+  stats?: CharacterStats;
   // ── metadata ──────────────────────────────────────────────────────────
   /** Subjects this teacher covers — surfaced in the UI as filter pills and
    *  fed to the chat layer for routing decisions. */

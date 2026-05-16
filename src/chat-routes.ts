@@ -24,6 +24,7 @@ import {
   maybeUploadPortrait,
   renderCharacterPortrait,
   renderDiplomaImage,
+  renderTeacherPortrait,
   rollRandomCharacter,
   type CharacterComponent,
   type RolledCharacter,
@@ -2245,6 +2246,79 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     ctx.json(ctx.res, {
       ok: true,
       portraitDataUrl: url,
+      ...(imageCredential.hosted ? { hallPassCost, hallPasses } : {}),
+    });
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/teacher/portrait`) {
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    const imageCredential = readOpenRouterImageCredential(ctx);
+    const apiKey = imageCredential.apiKey;
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    if (!apiKey) {
+      ctx.error(
+        ctx.res,
+        isLocalLlmProvider()
+          ? "Local text AI is enabled, but teacher portrait generation still requires an OpenRouter image model."
+          : "Sign in with OpenRouter first.",
+        isLocalLlmProvider() ? 501 : 401,
+      );
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!PORTRAIT_LIMITER.take(rlKey)) {
+      reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as
+      | { name?: string; personality?: string }
+      | null;
+    const name = String(body?.name ?? "").trim();
+    const personality = String(body?.personality ?? "").trim();
+    if (!name || !personality) {
+      ctx.error(ctx.res, "Missing name or personality.", 400);
+      return true;
+    }
+    const sessionId = auth.stateKeyForRecord(record);
+    const hallPassCost = imageCredential.hosted ? hostedImageCost("portrait") : 0;
+    if (hallPassCost > 0 && ruby.hallPassBalance(sessionId) < hallPassCost) {
+      ctx.error(ctx.res, `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted teacher image.`, 402);
+      return true;
+    }
+    let url: string;
+    try {
+      const dataUrl = await renderTeacherPortrait({ apiKey, name, personality });
+      url = await maybeUploadPortrait(dataUrl, "portrait");
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      return true;
+    }
+    let hallPasses = ruby.hallPassBalance(sessionId);
+    if (hallPassCost > 0) {
+      try {
+        const spend = ruby.spendHallPasses(sessionId, {
+          amount: hallPassCost,
+          idempotencyKey: hostedImageSpendKey("portrait", url),
+          source: "hosted-image",
+          description: "Custom teacher portrait",
+          metadata: { kind: "teacher-portrait" },
+        });
+        await ruby.flushSession(sessionId);
+        hallPasses = spend.state.wallet.hallPasses;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.error(ctx.res, message, message.startsWith("Not enough Hall Passes") ? 402 : 500);
+        return true;
+      }
+    }
+    ctx.json(ctx.res, {
+      ok: true,
+      profileImageUrl: url,
       ...(imageCredential.hosted ? { hallPassCost, hallPasses } : {}),
     });
     return true;

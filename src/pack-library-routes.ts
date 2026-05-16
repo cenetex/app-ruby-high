@@ -10,7 +10,7 @@ import {
   getPackByIdForSession,
 } from "./content/registry.js";
 import type { ContentPack, PackSourceCard } from "./content/types.js";
-import type { BankedQuestion, Difficulty } from "./types.js";
+import type { BankedQuestion, CharacterStats, Difficulty } from "./types.js";
 import type {
   StoredDraftContentPackRecord,
   StoredDraftTeacherRecord,
@@ -142,23 +142,33 @@ export async function handlePackLibraryRoutes(
     const draft = await requireDraft(deps.ruby, record, decodeURIComponent(teachersPath[1]), ctx);
     if (!draft) return true;
     const body = await readBody(ctx);
-    const now = Date.now();
-    const teacher: StoredDraftTeacherRecord = {
-      id: newTeacherId(),
-      displayName: bodyString(body, "displayName") || bodyString(body, "name") || "New Teacher",
-      description: bodyString(body, "description"),
-      ...(cleanHttpUrl(bodyString(body, "profileImageUrl")) ? { profileImageUrl: cleanHttpUrl(bodyString(body, "profileImageUrl")) } : {}),
-      ...(cleanHttpUrl(bodyString(body, "socialsUrl")) ? { socialsUrl: cleanHttpUrl(bodyString(body, "socialsUrl")) } : {}),
-      materials: "",
-      sourceCards: [],
-      questions: [],
-      generationCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const updated = touchDraft({ ...draft, teachers: [...draft.teachers, teacher] });
-    await deps.ruby.saveDraftPackRecord(updated);
-    ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacherDetail(updated, teacher) }, 201);
+    try {
+      const now = Date.now();
+      const assetTeacherId = cleanTeacherAssetId(bodyString(body, "assetTeacherId"));
+      const profileImageUrl = cleanImageRef(bodyString(body, "profileImageUrl"));
+      const stats = cleanTeacherStats(bodyValue(body, "stats"));
+      const socialsUrl = cleanHttpUrl(bodyString(body, "socialsUrl"));
+      const teacher: StoredDraftTeacherRecord = {
+        id: newTeacherId(),
+        displayName: bodyString(body, "displayName") || bodyString(body, "name") || "New Teacher",
+        description: bodyString(body, "description"),
+        ...(assetTeacherId ? { assetTeacherId } : {}),
+        ...(profileImageUrl ? { profileImageUrl } : {}),
+        ...(stats ? { stats } : {}),
+        ...(socialsUrl ? { socialsUrl } : {}),
+        materials: "",
+        sourceCards: [],
+        questions: [],
+        generationCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const updated = touchDraft({ ...draft, teachers: [...draft.teachers, teacher] });
+      await deps.ruby.saveDraftPackRecord(updated);
+      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacherDetail(updated, teacher) }, 201);
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
+    }
     return true;
   }
 
@@ -457,7 +467,9 @@ function teacherDetail(draft: StoredDraftContentPackRecord, teacher: StoredDraft
     id: teacher.id,
     displayName: teacher.displayName,
     description: teacher.description,
+    assetTeacherId: teacher.assetTeacherId ?? "",
     profileImageUrl: teacher.profileImageUrl ?? "",
+    stats: teacher.stats ?? null,
     socialsUrl: teacher.socialsUrl ?? "",
     materials: teacher.materials,
     materialSourceUrl: teacher.materialSourceUrl ?? "",
@@ -520,13 +532,17 @@ function updateDraftTeacher(
     ...teacher,
     ...(hasOwn(body, "displayName") ? { displayName: bodyString(body, "displayName") || "New Teacher" } : {}),
     ...(hasOwn(body, "description") ? { description: bodyString(body, "description") } : {}),
-    ...(hasOwn(body, "profileImageUrl") ? cleanOptionalUrlField(bodyString(body, "profileImageUrl"), "profileImageUrl") : {}),
+    ...(hasOwn(body, "assetTeacherId") ? { assetTeacherId: cleanTeacherAssetId(bodyString(body, "assetTeacherId")) || undefined } : {}),
+    ...(hasOwn(body, "profileImageUrl") ? cleanOptionalImageField(bodyString(body, "profileImageUrl")) : {}),
+    ...(hasOwn(body, "stats") ? { stats: cleanTeacherStats(bodyValue(body, "stats")) || undefined } : {}),
     ...(hasOwn(body, "socialsUrl") ? cleanOptionalUrlField(bodyString(body, "socialsUrl"), "socialsUrl") : {}),
     ...(hasOwn(body, "materials") ? { materials } : {}),
     ...(hasOwn(body, "materialSourceUrl") ? { materialSourceUrl: bodyString(body, "materialSourceUrl") } : {}),
     updatedAt: Date.now(),
   };
+  if (hasOwn(body, "assetTeacherId") && !updatedTeacher.assetTeacherId) delete updatedTeacher.assetTeacherId;
   if (hasOwn(body, "profileImageUrl") && !updatedTeacher.profileImageUrl) delete updatedTeacher.profileImageUrl;
+  if (hasOwn(body, "stats") && !updatedTeacher.stats) delete updatedTeacher.stats;
   if (hasOwn(body, "socialsUrl") && !updatedTeacher.socialsUrl) delete updatedTeacher.socialsUrl;
   return touchDraft({
     ...draft,
@@ -597,7 +613,9 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
       id: facultyId,
       displayName: teacher.displayName,
       shortName: teacher.displayName.split(/\s+/)[0] || "Teacher",
+      ...(teacher.assetTeacherId ? { assetTeacherId: teacher.assetTeacherId } : {}),
       ...(teacher.profileImageUrl ? { profileImageUrl: teacher.profileImageUrl } : {}),
+      ...(teacher.stats ? { stats: teacher.stats } : {}),
       subjects,
       bio: teacher.description || "A custom Ruby High teacher.",
       accent: colorForString(teacher.displayName),
@@ -789,9 +807,36 @@ function hasOwn(body: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(body, key);
 }
 
-function cleanOptionalUrlField(bodyValue: string, key: "profileImageUrl" | "socialsUrl"): Partial<StoredDraftTeacherRecord> {
+function cleanOptionalUrlField(bodyValue: string, key: "socialsUrl"): Partial<StoredDraftTeacherRecord> {
   const clean = cleanHttpUrl(bodyValue);
   return clean ? { [key]: clean } : { [key]: undefined };
+}
+
+function cleanOptionalImageField(bodyValue: string): Partial<StoredDraftTeacherRecord> {
+  const clean = cleanImageRef(bodyValue);
+  return clean ? { profileImageUrl: clean } : { profileImageUrl: undefined };
+}
+
+function cleanTeacherAssetId(value: string): string {
+  return value === "ruby" || value === "sally-science" || value === "professor-edward" ? value : "";
+}
+
+function cleanTeacherStats(value: unknown): CharacterStats | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const out = {
+    head: cleanStatValue(raw.head),
+    heart: cleanStatValue(raw.heart),
+    hustle: cleanStatValue(raw.hustle),
+    honor: cleanStatValue(raw.honor),
+  };
+  return Object.values(out).every((n) => Number.isFinite(n)) ? out : undefined;
+}
+
+function cleanStatValue(value: unknown): number {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return NaN;
+  return Math.max(-1, Math.min(3, Math.round(n)));
 }
 
 function visibilityFrom(value: unknown, fallback: StoredPackVisibility): StoredPackVisibility {
@@ -818,6 +863,18 @@ function cleanHttpUrl(value: string): string {
   } catch {
     return "";
   }
+}
+
+function cleanImageRef(value: string): string {
+  if (!value) return "";
+  const text = value.trim();
+  if (!text) return "";
+  if (text.length > 280_000) {
+    throw new Error("profileImageUrl too large. Store the image externally before saving.");
+  }
+  if (/^data:image\//i.test(text)) return text;
+  if (text.startsWith("/api/apps/ruby-high/assets/")) return text;
+  return cleanHttpUrl(text);
 }
 
 function slugForText(value: string): string {

@@ -3787,7 +3787,9 @@ const VIEWER_SCRIPT_SUFFIX = `
   };
 
   function teacherStatsFor(facultyId) {
-    return TEACHER_STATS[facultyId] || { head: 2, heart: 1, hustle: 1, honor: 1 };
+    if (facultyId && typeof facultyId === "object" && facultyId.stats) return facultyId.stats;
+    const id = typeof facultyId === "object" ? facultyId.id : facultyId;
+    return TEACHER_STATS[id] || { head: 2, heart: 1, hustle: 1, honor: 1 };
   }
   function roomLabelFor(roomId) {
     return ({
@@ -3808,7 +3810,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       subtitle: subjectLine,
       portraitUrl: teacherFullPortraitUrl(fac.id),
       accent: fac.accent,
-      stats: teacherStatsFor(fac.id),
+      stats: teacherStatsFor(fac),
       quote: TEACHER_SIGNATURE[fac.id] || fac.bio,
       footer: { title: "Teaches", content: subjectLine },
       // Close lives in the overlay corner now (X), so no per-card button.
@@ -5437,8 +5439,33 @@ const VIEWER_SCRIPT_SUFFIX = `
   let currentDraft = null;
   let selectedPackTeacherId = null;
   let selectedPackTab = "materials";
+  let packTeacherCreateMode = false;
+  let pendingTeacherRoll = null;
+  let pendingTeacherImageStatus = "";
+  let pendingTeacherImageInvalid = false;
+  let pendingTeacherImageBusy = false;
   let packAutosaveTimer = null;
   let teacherAutosaveTimer = null;
+  const PREGENERATED_TEACHER_ASSETS = [
+    { id: "ruby", name: "Ruby", subject: "Homeroom", description: "Warm, direct, and good at turning scattered questions into a useful classroom thread.", quote: "We start where the room actually is." },
+    { id: "sally-science", name: "Sally Science", subject: "Science Lab", description: "Evidence-first, experimental, and happiest when a wrong answer exposes a better hypothesis.", quote: "Be wrong with reasons. Then we can work." },
+    { id: "professor-edward", name: "Professor Edward", subject: "Literature", description: "Precise, patient, and tuned to the half-truth inside every messy interpretation.", quote: "Read the sentence again. It has not finished with you." },
+  ];
+  const TEACHER_ROLL_NAMES = ["Ruby", "Sally Science", "Professor Edward", "Mara Vale", "Dr. Mina Quill", "Theo Signal", "Cass Vector", "Nico Frame"];
+  const TEACHER_ROLL_STYLES = [
+    { subject: "Critical Systems", description: "Calm, surgical, and excellent at turning abstract systems into questions students can actually answer.", quote: "A system is only invisible until it breaks." },
+    { subject: "Media Lab", description: "Fast, funny, and tuned to how tools change the way students think, write, and argue.", quote: "The medium is doing homework too." },
+    { subject: "Research Seminar", description: "Skeptical but kind; pushes students to separate evidence, inference, and vibes before they commit.", quote: "Show me what would change your mind." },
+    { subject: "Ethics Studio", description: "Warm, direct, and focused on consequences, incentives, and the choices hiding inside defaults.", quote: "A default is still a decision." },
+    { subject: "Postwar Literature", description: "Quietly intense and careful with ambiguity; treats every answer as a draft worth revising.", quote: "The hard part is knowing what the question protects." },
+  ];
+  const TEACHER_STAT_ROLLS = [
+    { head: 3, heart: 1, hustle: 0, honor: 2 },
+    { head: 2, heart: 3, hustle: 1, honor: 0 },
+    { head: 1, heart: 2, hustle: 3, honor: 0 },
+    { head: 2, heart: 0, hustle: 1, honor: 3 },
+    { head: 3, heart: 0, hustle: 2, honor: -1 },
+  ];
   const PACK_IMPORT_STEPS = [
     { pct: 18, title: "Saving draft", detail: "Persisting the content pack." },
     { pct: 42, title: "Preparing materials", detail: "Checking markdown and size limits." },
@@ -5479,11 +5506,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!r.ok) throw new Error(data.error || "save draft " + r.status);
       return data.draft;
     },
-    async addTeacherToDraft(draftId) {
+    async addTeacherToDraft(draftId, teacher) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: "New Teacher" }),
+        body: JSON.stringify(teacher || { displayName: "New Teacher" }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "add teacher " + r.status);
@@ -5578,6 +5605,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     currentDraft = draft;
     selectedPackTeacherId = draft && Array.isArray(draft.teachers) && draft.teachers[0] ? draft.teachers[0].id : null;
     selectedPackTab = "materials";
+    packTeacherCreateMode = false;
+    pendingTeacherRoll = null;
+    pendingTeacherImageStatus = "";
+    pendingTeacherImageInvalid = false;
+    pendingTeacherImageBusy = false;
     packEditEl.classList.add("is-open");
     renderPackEditor();
   }
@@ -5587,6 +5619,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     packEditEl.classList.remove("is-open");
     currentDraft = null;
     selectedPackTeacherId = null;
+    packTeacherCreateMode = false;
+    pendingTeacherRoll = null;
+    pendingTeacherImageStatus = "";
+    pendingTeacherImageInvalid = false;
+    pendingTeacherImageBusy = false;
     if (packEditStatusEl) {
       packEditStatusEl.textContent = "";
       packEditStatusEl.classList.remove("is-invalid");
@@ -5823,6 +5860,265 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
   }
 
+  function packTeacherAssetUrl(assetId, variant) {
+    if (!assetId) return null;
+    const suffix = variant ? "-" + variant : "";
+    return apiBase + "/assets/teachers/" + encodeURIComponent(assetId) + suffix + ".png";
+  }
+  function draftTeacherImageUrl(teacher, variant) {
+    if (!teacher) return null;
+    if (teacher.profileImageUrl) return teacher.profileImageUrl;
+    if (teacher.assetTeacherId) return packTeacherAssetUrl(teacher.assetTeacherId, variant || "full");
+    return null;
+  }
+  function teacherRollAccent(assetId) {
+    return assetId === "sally-science" ? "#4cb555" : assetId === "professor-edward" ? "#5865f2" : "#d22a2a";
+  }
+  function randomTeacherStats() {
+    const stats = pickRandom(TEACHER_STAT_ROLLS);
+    return { head: stats.head, heart: stats.heart, hustle: stats.hustle, honor: stats.honor };
+  }
+  function teacherStatsLine(stats) {
+    const s = stats || { head: 0, heart: 0, hustle: 0, honor: 0 };
+    return "HEAD " + fmtStat(Number(s.head || 0))
+      + " · HEART " + fmtStat(Number(s.heart || 0))
+      + " · HUSTLE " + fmtStat(Number(s.hustle || 0))
+      + " · HONOR " + fmtStat(Number(s.honor || 0));
+  }
+  function differentTeacherAsset(currentAssetId) {
+    const choices = PREGENERATED_TEACHER_ASSETS.filter((asset) => asset.id !== currentAssetId);
+    return pickRandom(choices.length ? choices : PREGENERATED_TEACHER_ASSETS);
+  }
+  function rollTeacherCandidate(components) {
+    const isFullRoll = !components || components.length === 0;
+    const regen = new Set(isFullRoll ? ["name", "style", "image", "stats", "quote"] : components);
+    const prev = pendingTeacherRoll || {};
+    const asset = regen.has("image")
+      ? differentTeacherAsset(prev.assetTeacherId)
+      : PREGENERATED_TEACHER_ASSETS.find((entry) => entry.id === prev.assetTeacherId) || pickRandom(PREGENERATED_TEACHER_ASSETS);
+    const style = regen.has("style")
+      ? pickRandom(TEACHER_ROLL_STYLES)
+      : { subject: prev.subject, description: prev.description, quote: prev.quote };
+    const displayName = regen.has("name")
+      ? (isFullRoll ? asset.name : pickRandom(TEACHER_ROLL_NAMES))
+      : (prev.displayName || asset.name);
+    const stats = regen.has("stats") || !prev.stats ? randomTeacherStats() : prev.stats;
+    const quote = regen.has("quote")
+      ? pickRandom(TEACHER_ROLL_STYLES).quote
+      : (style.quote || prev.quote || asset.quote);
+    const profileImageUrl = (regen.has("name") || regen.has("style") || regen.has("image"))
+      ? ""
+      : (prev.profileImageUrl || "");
+    pendingTeacherRoll = {
+      displayName,
+      subject: style.subject || asset.subject,
+      description: style.description || asset.description,
+      quote,
+      assetTeacherId: asset.id,
+      profileImageUrl,
+      stats,
+    };
+    pendingTeacherImageStatus = "";
+    pendingTeacherImageInvalid = false;
+    return pendingTeacherRoll;
+  }
+  function startDraftTeacherCreation() {
+    if (!currentDraft || packImportBusy) return;
+    packTeacherCreateMode = true;
+    selectedPackTeacherId = null;
+    selectedPackTab = "settings";
+    pendingTeacherImageStatus = "";
+    pendingTeacherImageInvalid = false;
+    pendingTeacherImageBusy = false;
+    rollTeacherCandidate();
+    renderPackTeacherEditor();
+  }
+  function setPackEditorTabsHidden(hidden) {
+    const tabs = packEditEl.querySelector(".pack-editor-tabs");
+    if (tabs) tabs.hidden = !!hidden;
+    ["materials", "questions", "settings"].forEach((key) => {
+      const panel = $("pack-tab-" + key);
+      if (panel) panel.hidden = !!hidden;
+    });
+  }
+  function buildTeacherRollControls() {
+    const controlsCard = document.createElement("div");
+    controlsCard.className = "ccg-card is-career-card is-creation-control-card";
+    const controlsRole = document.createElement("span");
+    controlsRole.className = "ccg-role career";
+    controlsRole.textContent = "roll";
+    controlsCard.appendChild(controlsRole);
+    const controlsBody = document.createElement("div");
+    controlsBody.className = "ccg-body";
+    controlsCard.appendChild(controlsBody);
+    const controlsName = document.createElement("div");
+    controlsName.className = "ccg-name";
+    controlsName.textContent = "Teacher Roll";
+    controlsBody.appendChild(controlsName);
+    const controlsSub = document.createElement("div");
+    controlsSub.className = "ccg-subtitle";
+    controlsSub.textContent = "Start with a pregenerated Ruby High teacher, then reroll the parts that should change.";
+    controlsBody.appendChild(controlsSub);
+    const fields = document.createElement("div");
+    fields.className = "creation-fields";
+    controlsBody.appendChild(fields);
+    const makeRow = (label, key, value) => {
+      const row = document.createElement("div");
+      row.className = "creation-row";
+      const lab = document.createElement("div");
+      lab.className = "creation-row-label";
+      lab.textContent = label;
+      const val = document.createElement("div");
+      val.className = "creation-row-value";
+      val.textContent = value || "";
+      const reroll = document.createElement("button");
+      reroll.type = "button";
+      reroll.className = "creation-reroll";
+      reroll.title = "Reroll " + label.toLowerCase();
+      reroll.textContent = "↻";
+      reroll.disabled = packImportBusy || pendingTeacherImageBusy;
+      reroll.addEventListener("click", () => {
+        rollTeacherCandidate([key]);
+        renderPackTeacherEditor();
+      });
+      row.appendChild(lab);
+      row.appendChild(val);
+      row.appendChild(reroll);
+      fields.appendChild(row);
+    };
+    const roll = pendingTeacherRoll || rollTeacherCandidate();
+    const asset = PREGENERATED_TEACHER_ASSETS.find((entry) => entry.id === roll.assetTeacherId);
+    makeRow("Name", "name", roll.displayName);
+    makeRow("Style", "style", roll.subject);
+    makeRow("Image", "image", roll.profileImageUrl ? "Generated teacher image" : ((asset && asset.name) || "Pregenerated teacher"));
+    makeRow("Stats", "stats", teacherStatsLine(roll.stats));
+    makeRow("Quote", "quote", roll.quote);
+    return controlsCard;
+  }
+  function renderNewTeacherCreation() {
+    const roll = pendingTeacherRoll || rollTeacherCandidate();
+    const portraitUrl = roll.profileImageUrl || packTeacherAssetUrl(roll.assetTeacherId, "full");
+    const candidateCard = buildCharacterCard({
+      role: "teacher",
+      name: roll.displayName,
+      subtitle: roll.subject + " · teacher candidate",
+      portraitUrl,
+      accent: teacherRollAccent(roll.assetTeacherId),
+      stats: roll.stats,
+      quote: roll.quote,
+      nextStepHint: "Add this teacher to the pack, then paste materials or generate questions.",
+      footer: { title: "Teaching Style", content: roll.description },
+    });
+    candidateCard.classList.add("is-creation-candidate-card");
+    const body = candidateCard.querySelector(".ccg-body");
+    const status = document.createElement("div");
+    status.className = "creation-portrait-status" + (pendingTeacherImageInvalid ? " is-invalid" : "");
+    status.textContent = pendingTeacherImageStatus;
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "ccg-card-actions";
+    const imageBtn = document.createElement("button");
+    imageBtn.type = "button";
+    imageBtn.className = "secondary";
+    imageBtn.textContent = pendingTeacherImageBusy ? "Generating..." : "Generate teacher image";
+    imageBtn.disabled = packImportBusy || pendingTeacherImageBusy;
+    imageBtn.addEventListener("click", generateTeacherImageForPendingRoll);
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "secondary";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.disabled = packImportBusy || pendingTeacherImageBusy;
+    cancelBtn.addEventListener("click", () => {
+      packTeacherCreateMode = false;
+      pendingTeacherRoll = null;
+      pendingTeacherImageStatus = "";
+      renderPackTeacherEditor();
+    });
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "primary";
+    addBtn.textContent = "Add Teacher";
+    addBtn.disabled = packImportBusy || pendingTeacherImageBusy;
+    addBtn.addEventListener("click", savePendingTeacherRoll);
+    actionsRow.appendChild(imageBtn);
+    actionsRow.appendChild(cancelBtn);
+    actionsRow.appendChild(addBtn);
+    if (body) {
+      body.appendChild(status);
+      body.appendChild(actionsRow);
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "pack-teacher-roll-deck";
+    wrap.appendChild(candidateCard);
+    wrap.appendChild(buildTeacherRollControls());
+    packTeacherDetailEl.appendChild(wrap);
+  }
+  async function generateTeacherImageForPendingRoll() {
+    if (!pendingTeacherRoll || pendingTeacherImageBusy) return;
+    if (!aiEnabled || localAiEnabled) {
+      pendingTeacherImageStatus = localAiEnabled ? "Teacher image generation requires OpenRouter." : "Enable AI for a generated teacher image.";
+      pendingTeacherImageInvalid = true;
+      renderPackTeacherEditor();
+      return;
+    }
+    pendingTeacherImageBusy = true;
+    pendingTeacherImageStatus = "Generating teacher image...";
+    pendingTeacherImageInvalid = false;
+    renderPackTeacherEditor();
+    try {
+      const r = await apiFetch("/api/apps/ruby-high/chat/teacher/portrait", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: pendingTeacherRoll.displayName,
+          personality: pendingTeacherRoll.description,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "teacher image " + r.status);
+      if (!data.profileImageUrl) throw new Error("no image returned");
+      pendingTeacherRoll = {
+        ...pendingTeacherRoll,
+        assetTeacherId: "",
+        profileImageUrl: data.profileImageUrl,
+      };
+      pendingTeacherImageStatus = "Teacher image ready.";
+      pendingTeacherImageInvalid = false;
+    } catch (_err) {
+      pendingTeacherImageStatus = "Couldn't generate - keeping the pregenerated teacher image.";
+      pendingTeacherImageInvalid = true;
+    } finally {
+      pendingTeacherImageBusy = false;
+      renderPackTeacherEditor();
+    }
+  }
+  async function savePendingTeacherRoll() {
+    if (!currentDraft || !pendingTeacherRoll || packImportBusy || pendingTeacherImageBusy) return;
+    setPackBusy(true);
+    if (packEditStatusEl) packEditStatusEl.textContent = "Adding teacher...";
+    try {
+      currentDraft = await packStudioClient.addTeacherToDraft(currentDraft.id, {
+        displayName: pendingTeacherRoll.displayName,
+        description: pendingTeacherRoll.description,
+        assetTeacherId: pendingTeacherRoll.assetTeacherId,
+        profileImageUrl: pendingTeacherRoll.profileImageUrl,
+        stats: pendingTeacherRoll.stats,
+      });
+      selectedPackTeacherId = currentDraft.teachers[currentDraft.teachers.length - 1].id;
+      packTeacherCreateMode = false;
+      pendingTeacherRoll = null;
+      pendingTeacherImageStatus = "";
+      pendingTeacherImageInvalid = false;
+      renderPackEditor();
+      if (packEditStatusEl) packEditStatusEl.textContent = "Teacher added.";
+    } catch (err) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not add teacher · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+    } finally {
+      setPackBusy(false);
+    }
+  }
   function packTeacherInitial(teacher) {
     return String((teacher && (teacher.shortName || teacher.displayName || teacher.id)) || "?").charAt(0).toUpperCase();
   }
@@ -5833,8 +6129,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   function renderPackTeacherEditor() {
     if (!packTeacherListEl || !packTeacherDetailEl) return;
     const teachers = currentDraft && Array.isArray(currentDraft.teachers) ? currentDraft.teachers : [];
-    if (!selectedPackTeacherId && teachers[0]) selectedPackTeacherId = teachers[0].id;
-    if (!teachers.some((teacher) => teacher.id === selectedPackTeacherId)) {
+    if (!packTeacherCreateMode && !selectedPackTeacherId && teachers[0]) selectedPackTeacherId = teachers[0].id;
+    if (!packTeacherCreateMode && !teachers.some((teacher) => teacher.id === selectedPackTeacherId)) {
       selectedPackTeacherId = teachers[0] ? teachers[0].id : null;
     }
     packTeacherListEl.innerHTML = "";
@@ -5851,9 +6147,10 @@ const VIEWER_SCRIPT_SUFFIX = `
         tab.disabled = packImportBusy;
         const avatar = document.createElement("span");
         avatar.className = "pack-teacher-avatar";
-        if (teacher.profileImageUrl) {
+        const avatarUrl = draftTeacherImageUrl(teacher, "face");
+        if (avatarUrl) {
           const img = document.createElement("img");
-          img.src = teacher.profileImageUrl;
+          img.src = avatarUrl;
           img.alt = "";
           avatar.appendChild(img);
         } else {
@@ -5873,6 +6170,9 @@ const VIEWER_SCRIPT_SUFFIX = `
         tab.appendChild(copy);
         tab.addEventListener("click", () => {
           if (packImportBusy) return;
+          packTeacherCreateMode = false;
+          pendingTeacherRoll = null;
+          pendingTeacherImageStatus = "";
           selectedPackTeacherId = teacher.id;
           renderPackTeacherEditor();
         });
@@ -5884,6 +6184,12 @@ const VIEWER_SCRIPT_SUFFIX = `
   function renderSelectedPackTeacher(teachers) {
     if (!packTeacherDetailEl) return;
     packTeacherDetailEl.innerHTML = "";
+    if (packTeacherCreateMode) {
+      setPackEditorTabsHidden(true);
+      renderNewTeacherCreation();
+      return;
+    }
+    setPackEditorTabsHidden(false);
     const selected = teachers.find((teacher) => teacher.id === selectedPackTeacherId) || null;
     const head = document.createElement("div");
     head.className = "pack-teacher-detail-head";
@@ -6041,23 +6347,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
   }
 
-  async function addDraftTeacher() {
-    if (!currentDraft) return;
-    setPackBusy(true);
-    if (packEditStatusEl) packEditStatusEl.textContent = "Adding teacher...";
-    try {
-      currentDraft = await packStudioClient.addTeacherToDraft(currentDraft.id);
-      selectedPackTeacherId = currentDraft.teachers[currentDraft.teachers.length - 1].id;
-      renderPackEditor();
-      if (packEditStatusEl) packEditStatusEl.textContent = "Teacher added.";
-    } catch (err) {
-      if (packEditStatusEl) {
-        packEditStatusEl.textContent = "Could not add teacher · " + (err && err.message ? err.message : "error");
-        packEditStatusEl.classList.add("is-invalid");
-      }
-    } finally {
-      setPackBusy(false);
-    }
+  function addDraftTeacher() {
+    startDraftTeacherCreation();
   }
 
   async function loadTeacherMaterialsFromUrl() {
