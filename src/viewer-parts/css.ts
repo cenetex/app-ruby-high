@@ -832,8 +832,8 @@ export const VIEWER_CSS = `
     color: var(--text);
   }
   .sheet-card.pack-edit-card {
-    width: min(980px, calc(100vw - 28px));
-    max-width: min(980px, calc(100vw - 28px));
+    width: min(1100px, calc(100vw - 28px));
+    max-width: min(1100px, calc(100vw - 28px));
   }
   .pack-draft-fields {
     display: grid;
@@ -966,7 +966,7 @@ export const VIEWER_CSS = `
   }
   .pack-teacher-roll-deck {
     display: grid;
-    grid-template-columns: minmax(280px, 0.95fr) minmax(340px, 1.05fr);
+    grid-template-columns: minmax(280px, 0.85fr) minmax(340px, 1.15fr);
     gap: 14px;
     align-items: start;
   }
@@ -2967,19 +2967,60 @@ export const VIEWER_CSS = `
     color: var(--text);
     word-break: break-word;
   }
+  .creation-row:focus-within {
+    border-color: rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.055);
+  }
+  .creation-edit-input {
+    appearance: none;
+    width: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    padding: 0;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  textarea.creation-edit-input {
+    min-height: 42px;
+    max-height: 96px;
+    resize: vertical;
+  }
+  .creation-edit-input::placeholder {
+    color: var(--text-mute);
+  }
+  .creation-edit-input:disabled {
+    opacity: 0.55;
+  }
   .creation-row.is-compact-stats {
-    align-items: center;
+    align-items: start;
+    grid-template-columns: 1fr auto;
+  }
+  .creation-row.is-compact-stats .creation-row-label {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+  .creation-row.is-compact-stats .creation-row-value {
+    grid-column: 1;
+  }
+  .creation-row.is-compact-stats .creation-reroll {
+    grid-column: 2;
+    grid-row: 2;
   }
   .teacher-stat-pills {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
+    max-width: 100%;
   }
   .teacher-stat-pills .pill {
-    font-size: 11px;
+    font-size: 10.5px;
     line-height: 1;
-    padding: 5px 8px;
+    letter-spacing: 0;
+    padding: 5px 7px;
     white-space: nowrap;
   }
   .teacher-image-row {
@@ -3021,18 +3062,52 @@ export const VIEWER_CSS = `
   }
   .teacher-custom-generate {
     appearance: none;
-    border: 1px solid var(--line);
-    background: var(--bg-elev);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-width: 154px;
+    min-height: 40px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: linear-gradient(180deg, rgba(255,255,255,0.105), rgba(255,255,255,0.045));
     color: var(--text);
-    border-radius: 999px;
-    padding: 6px 12px;
-    font-size: 12px;
-    font-weight: 850;
+    border-radius: 12px;
+    padding: 9px 16px;
+    font-size: 13px;
+    font-weight: 900;
     cursor: pointer;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.18);
+    text-align: center;
+  }
+  .teacher-custom-generate:not(:disabled):hover {
+    border-color: rgba(255,255,255,0.26);
+    transform: translateY(-1px);
+  }
+  .teacher-custom-generate.is-loading {
+    color: var(--text-soft);
   }
   .teacher-custom-generate:disabled {
-    opacity: 0.45;
+    opacity: 0.72;
     cursor: not-allowed;
+  }
+  .teacher-button-spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid rgba(255,255,255,0.28);
+    border-top-color: var(--text);
+    animation: spin 0.85s linear infinite;
+  }
+  .is-creation-candidate-card .ccg-card-actions {
+    justify-content: stretch;
+  }
+  .is-creation-candidate-card .ccg-card-actions button.teacher-save-button {
+    width: 100%;
+    min-height: 42px;
+    border-radius: 12px;
+    padding: 10px 18px;
+    font-size: 13px;
+    box-shadow: 0 10px 22px rgba(210,42,42,0.22);
   }
   @media (max-width: 760px) {
     .teacher-image-row {

@@ -66,7 +66,9 @@ export type StoredPackVisibility = "private" | "unlisted" | "public";
 export interface StoredDraftTeacherRecord {
   id: string;
   displayName: string;
+  subject?: string;
   description: string;
+  quote?: string;
   assetTeacherId?: string;
   profileImageUrl?: string;
   stats?: CharacterStats;

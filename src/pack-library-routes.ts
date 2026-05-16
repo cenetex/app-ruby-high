@@ -156,7 +156,9 @@ export async function handlePackLibraryRoutes(
       const teacher: StoredDraftTeacherRecord = {
         id: newTeacherId(),
         displayName: bodyString(body, "displayName") || bodyString(body, "name") || "New Teacher",
+        subject: bodyString(body, "subject"),
         description: bodyString(body, "description"),
+        quote: bodyString(body, "quote"),
         ...(assetTeacherId ? { assetTeacherId } : {}),
         ...(profileImageUrl ? { profileImageUrl } : {}),
         ...(stats ? { stats } : {}),
@@ -475,7 +477,9 @@ function teacherDetail(draft: StoredDraftContentPackRecord, teacher: StoredDraft
   return {
     id: teacher.id,
     displayName: teacher.displayName,
+    subject: teacher.subject ?? "",
     description: teacher.description,
+    quote: teacher.quote ?? "",
     assetTeacherId: teacher.assetTeacherId ?? "",
     profileImageUrl: teacher.profileImageUrl ?? "",
     stats: teacher.stats ?? null,
@@ -540,7 +544,9 @@ function updateDraftTeacher(
   const updatedTeacher: StoredDraftTeacherRecord = {
     ...teacher,
     ...(hasOwn(body, "displayName") ? { displayName: bodyString(body, "displayName") || "New Teacher" } : {}),
+    ...(hasOwn(body, "subject") ? { subject: bodyString(body, "subject") } : {}),
     ...(hasOwn(body, "description") ? { description: bodyString(body, "description") } : {}),
+    ...(hasOwn(body, "quote") ? { quote: bodyString(body, "quote") } : {}),
     ...(hasOwn(body, "assetTeacherId") ? { assetTeacherId: cleanTeacherAssetId(bodyString(body, "assetTeacherId")) || undefined } : {}),
     ...(hasOwn(body, "profileImageUrl") ? cleanOptionalImageField(bodyString(body, "profileImageUrl")) : {}),
     ...(hasOwn(body, "stats") ? { stats: cleanTeacherStats(bodyValue(body, "stats")) || undefined } : {}),
@@ -618,6 +624,11 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
     const sourceCards = teacher.sourceCards.map((card) => ({ ...card, faculty: facultyId }));
     const questions = teacher.questions.map((question) => ({ ...question, faculty: facultyId }));
     const subjects = subjectsFromSourceCards(sourceCards, questions);
+    const teacherBio = [
+      teacher.subject ? `Class style: ${teacher.subject}` : "",
+      teacher.description,
+      teacher.quote ? `Signature line: "${teacher.quote}"` : "",
+    ].filter(Boolean).join(" ");
     return {
       id: facultyId,
       displayName: teacher.displayName,
@@ -626,11 +637,13 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
       ...(teacher.profileImageUrl ? { profileImageUrl: teacher.profileImageUrl } : {}),
       ...(teacher.stats ? { stats: teacher.stats } : {}),
       subjects,
-      bio: teacher.description || "A custom Ruby High teacher.",
+      bio: teacherBio || "A custom Ruby High teacher.",
       accent: colorForString(teacher.displayName),
       systemPrompt: [
         `You are ${teacher.displayName}, a custom Ruby High teacher.`,
+        teacher.subject ? `Class style: ${teacher.subject}.` : "",
         teacher.description,
+        teacher.quote ? `Signature line: "${teacher.quote}"` : "",
         "Teach from these course materials when relevant:",
         teacher.materials.slice(0, 6000),
       ].filter(Boolean).join("\n\n"),

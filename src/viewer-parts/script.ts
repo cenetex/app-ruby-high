@@ -5919,9 +5919,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const quote = regen.has("quote")
       ? pickRandom(TEACHER_ROLL_STYLES).quote
       : (style.quote || prev.quote || asset.quote);
-    const profileImageUrl = (regen.has("name") || regen.has("style") || regen.has("image"))
-      ? ""
-      : (prev.profileImageUrl || "");
+    const profileImageUrl = regen.has("image") ? "" : (prev.profileImageUrl || "");
     const imageChoice = regen.has("image")
       ? asset.id
       : (prev.imageChoice === "custom" || profileImageUrl ? "custom" : asset.id);
@@ -5978,6 +5976,30 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (roll.imageChoice === "custom" || roll.profileImageUrl) return "custom";
     return roll.assetTeacherId || "ruby";
   }
+  function updatePendingTeacherRollField(field, value) {
+    if (!pendingTeacherRoll) return;
+    const next = { ...pendingTeacherRoll };
+    const text = String(value || "");
+    if (field === "displayName") next.displayName = text;
+    else if (field === "subject") next.subject = text;
+    else if (field === "description") next.description = text;
+    else if (field === "quote") next.quote = text;
+    pendingTeacherRoll = next;
+    refreshPendingTeacherPreview();
+  }
+  function refreshPendingTeacherPreview() {
+    if (!pendingTeacherRoll || !packTeacherDetailEl) return;
+    const card = packTeacherDetailEl.querySelector(".is-creation-candidate-card");
+    if (!card) return;
+    const nameEl = card.querySelector(".ccg-name");
+    if (nameEl) nameEl.textContent = pendingTeacherRoll.displayName || "New Teacher";
+    const subtitleEl = card.querySelector(".ccg-subtitle");
+    if (subtitleEl) subtitleEl.textContent = (pendingTeacherRoll.subject || "Custom class") + " · teacher candidate";
+    const quoteEl = card.querySelector(".ccg-quote");
+    if (quoteEl) renderMarkdownInto(quoteEl, pendingTeacherRoll.quote ? "“" + pendingTeacherRoll.quote + "”" : "", { inline: true });
+    const footerEl = card.querySelector(".ccg-footer-content");
+    if (footerEl) renderMarkdownInto(footerEl, pendingTeacherRoll.description || "", { inline: true });
+  }
   function setPackEditorTabsHidden(hidden) {
     const tabs = packEditEl.querySelector(".pack-editor-tabs");
     if (tabs) tabs.hidden = !!hidden;
@@ -6015,7 +6037,18 @@ const VIEWER_SCRIPT_SUFFIX = `
       lab.textContent = label;
       const val = document.createElement("div");
       val.className = "creation-row-value";
-      if (value && typeof value === "object" && value.nodeType) val.appendChild(value);
+      if (opts && opts.editField) {
+        const input = document.createElement(opts.multiline ? "textarea" : "input");
+        input.className = "creation-edit-input" + (opts.multiline ? " is-multiline" : "");
+        if (!opts.multiline) input.type = "text";
+        input.value = value || "";
+        input.placeholder = opts.placeholder || "";
+        if (opts.maxLength) input.maxLength = opts.maxLength;
+        if (opts.multiline) input.rows = opts.rows || 2;
+        input.disabled = packImportBusy || pendingTeacherImageBusy;
+        input.addEventListener("input", () => updatePendingTeacherRollField(opts.editField, input.value));
+        val.appendChild(input);
+      } else if (value && typeof value === "object" && value.nodeType) val.appendChild(value);
       else val.textContent = value || "";
       row.appendChild(lab);
       row.appendChild(val);
@@ -6036,11 +6069,12 @@ const VIEWER_SCRIPT_SUFFIX = `
       return { row, val };
     };
     const roll = pendingTeacherRoll || rollTeacherCandidate();
-    makeRow("Name", "name", roll.displayName);
-    makeRow("Style", "style", roll.subject);
+    makeRow("Name", "name", roll.displayName, { editField: "displayName", maxLength: 64, placeholder: "Teacher name" });
+    makeRow("Class", "style", roll.subject, { editField: "subject", maxLength: 80, placeholder: "Class or subject" });
     makeTeacherImageRow(fields, roll);
     makeRow("Stats", "stats", buildTeacherStatPills(roll.stats), { className: "is-compact-stats" });
-    makeRow("Quote", "quote", roll.quote);
+    makeRow("Style", "style", roll.description, { editField: "description", multiline: true, maxLength: 220, placeholder: "Teaching style", reroll: false });
+    makeRow("Quote", "quote", roll.quote, { editField: "quote", multiline: true, maxLength: 160, placeholder: "Teacher quote" });
     return controlsCard;
   }
   function makeTeacherImageRow(fields, roll) {
@@ -6076,17 +6110,29 @@ const VIEWER_SCRIPT_SUFFIX = `
       custom.className = "teacher-custom-image";
       const generateBtn = document.createElement("button");
       generateBtn.type = "button";
-      generateBtn.className = "secondary teacher-custom-generate";
+      generateBtn.className = "secondary teacher-custom-generate" + (pendingTeacherImageBusy ? " is-loading" : "");
       generateBtn.dataset.requiresOpenrouter = "teacher-image";
-      generateBtn.textContent = pendingTeacherImageBusy ? "Generating..." : (roll.profileImageUrl ? "Generate again" : "Generate");
+      generateBtn.setAttribute("aria-busy", pendingTeacherImageBusy ? "true" : "false");
+      if (pendingTeacherImageBusy) {
+        const spinner = document.createElement("span");
+        spinner.className = "teacher-button-spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        generateBtn.appendChild(spinner);
+      }
+      const generateLabel = document.createElement("span");
+      generateLabel.textContent = pendingTeacherImageBusy ? "Generating" : (roll.profileImageUrl ? "Generate again" : "Generate");
+      generateBtn.appendChild(generateLabel);
       generateBtn.disabled = packImportBusy || pendingTeacherImageBusy || !openRouterAiEnabled();
       generateBtn.title = openRouterAiEnabled() ? "" : openRouterGenerationMessage("generating teacher images");
       generateBtn.addEventListener("click", generateTeacherImageForPendingRoll);
       custom.appendChild(generateBtn);
-      const status = document.createElement("div");
-      status.className = "creation-portrait-status" + (pendingTeacherImageInvalid ? " is-invalid" : "");
-      status.textContent = pendingTeacherImageStatus || (roll.profileImageUrl ? "Custom teacher image ready." : "");
-      custom.appendChild(status);
+      const statusText = pendingTeacherImageBusy ? "" : (pendingTeacherImageStatus || (roll.profileImageUrl ? "Custom teacher image ready." : ""));
+      if (statusText) {
+        const status = document.createElement("div");
+        status.className = "creation-portrait-status" + (pendingTeacherImageInvalid ? " is-invalid" : "");
+        status.textContent = statusText;
+        custom.appendChild(status);
+      }
       val.appendChild(custom);
     }
     row.appendChild(lab);
@@ -6113,7 +6159,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     actionsRow.className = "ccg-card-actions";
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
-    saveBtn.className = "primary";
+    saveBtn.className = "primary teacher-save-button";
     saveBtn.textContent = "Save";
     saveBtn.disabled = packImportBusy || pendingTeacherImageBusy;
     saveBtn.addEventListener("click", savePendingTeacherRoll);
@@ -6136,7 +6182,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       return;
     }
     pendingTeacherImageBusy = true;
-    pendingTeacherImageStatus = "Generating teacher image...";
+    pendingTeacherImageStatus = "";
     pendingTeacherImageInvalid = false;
     renderPackTeacherEditor();
     try {
@@ -6155,11 +6201,12 @@ const VIEWER_SCRIPT_SUFFIX = `
         ...pendingTeacherRoll,
         assetTeacherId: "",
         profileImageUrl: data.profileImageUrl,
+        imageChoice: "custom",
       };
       pendingTeacherImageStatus = "Teacher image ready.";
       pendingTeacherImageInvalid = false;
     } catch (_err) {
-      pendingTeacherImageStatus = "Couldn't generate - keeping the pregenerated teacher image.";
+      pendingTeacherImageStatus = "Couldn't generate - keeping the current teacher image.";
       pendingTeacherImageInvalid = true;
     } finally {
       pendingTeacherImageBusy = false;
@@ -6173,7 +6220,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       currentDraft = await packStudioClient.addTeacherToDraft(currentDraft.id, {
         displayName: pendingTeacherRoll.displayName,
+        subject: pendingTeacherRoll.subject,
         description: pendingTeacherRoll.description,
+        quote: pendingTeacherRoll.quote,
         assetTeacherId: pendingTeacherRoll.assetTeacherId,
         profileImageUrl: pendingTeacherRoll.profileImageUrl,
         stats: pendingTeacherRoll.stats,
