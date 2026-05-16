@@ -5078,21 +5078,12 @@ const VIEWER_SCRIPT_SUFFIX = `
       tile.setAttribute("aria-label", unlock ? "Open comic page " + pageNumber : "Comic page " + pageNumber + " locked");
       if (!unlock) tile.disabled = true;
 
-      const num = document.createElement("span");
-      num.className = "comic-page-number";
-      num.textContent = String(pageNumber).padStart(2, "0");
-      tile.appendChild(num);
-
       if (unlock) {
         const img = document.createElement("img");
         img.loading = "lazy";
         img.alt = "First Bell page " + pageNumber;
         img.src = comicPageUrl(pageNumber);
         tile.appendChild(img);
-        const found = document.createElement("span");
-        found.className = "comic-page-found";
-        found.textContent = comicUnlockLabel(unlock);
-        tile.appendChild(found);
         tile.addEventListener("click", () => showComicReader(collection, unlock));
       } else {
         const mark = document.createElement("span");
