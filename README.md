@@ -2,7 +2,7 @@
 
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
-Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, clear daily classes and practice questions, and graduate after Senior year.
+Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
 
 **For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
 

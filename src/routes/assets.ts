@@ -14,6 +14,16 @@ import {
 
 const SERVICE_WORKER_CACHE = "ruby-high-pwa-v2";
 
+const FIRST_BELL_PAGE_FILES = Object.fromEntries(
+  Array.from({ length: 12 }, (_, index) => {
+    const page = String(index + 1).padStart(2, "0");
+    return [
+      `comics/first-bell/page-${page}.jpg`,
+      { file: `comics/first-bell/page-${page}.jpg`, mime: "image/jpeg" },
+    ];
+  }),
+) as Record<string, { file: string; mime: string }>;
+
 const ASSET_FILES: Record<string, { file: string; mime: string }> = {
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby.png": { file: "ruby-classroom.png", mime: "image/png" },
@@ -51,6 +61,7 @@ const ASSET_FILES: Record<string, { file: string; mime: string }> = {
   "fonts/crafty-girls-regular.ttf": { file: "fonts/crafty-girls-regular.ttf", mime: "font/ttf" },
   "fonts/give-you-glory-regular.ttf": { file: "fonts/give-you-glory-regular.ttf", mime: "font/ttf" },
   "fonts/schoolbell-regular.ttf": { file: "fonts/schoolbell-regular.ttf", mime: "font/ttf" },
+  ...FIRST_BELL_PAGE_FILES,
 };
 
 const PWA_CORE_ASSET_NAMES = [

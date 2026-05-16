@@ -998,7 +998,7 @@ function describeRelationshipStateForTeacher(state: QuizState): string[] {
   }
 
   const recent = (state.schoolEvents ?? [])
-    .filter((event) => event.kind === "relationship.ticked" || event.kind === "mash.axis-resolved")
+    .filter((event) => event.kind === "relationship.ticked" || event.kind === "mash.axis-resolved" || event.kind === "comic.page-unlocked")
     .slice(-5);
   if (recent.length > 0) {
     lines.push("Recent durable school events:");
@@ -1020,7 +1020,10 @@ function formatSchoolEventForTeacher(event: NonNullable<QuizState["schoolEvents"
     const state = event.scratched ? ", now scratched" : event.circled ? ", now circled" : "";
     return `${name} relationship ${formatSigned(event.delta)} to ${formatSigned(event.affinity)} (${reason}${state}).`;
   }
-  return `${event.axis} resolved through ${studentNameFor(event.studentId)}: ${event.value}.`;
+  if (event.kind === "mash.axis-resolved") {
+    return `${event.axis} resolved through ${studentNameFor(event.studentId)}: ${event.value}.`;
+  }
+  return `Comic page ${event.pageNumber} unlocked: ${event.label || event.reason}.`;
 }
 
 function studentNameFor(id: string): string {

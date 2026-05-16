@@ -115,6 +115,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   is_opinion: boolean;
   character: PlayerCharacter | null;
   student_pool: StudentPoolEntry[];
+  comic_collection: QuizState["comicCollection"];
   school_events: QuizState["schoolEvents"];
   essay_reports: EssayReport[];
   playbooks: typeof PLAYBOOKS;
@@ -352,6 +353,7 @@ export function buildSessionState(args: {
     is_opinion: state.current?.type === "opinion",
     character: state.character,
     student_pool: state.studentPool ?? [],
+    comic_collection: state.comicCollection,
     school_events: (state.schoolEvents ?? []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
     playbooks: PLAYBOOKS,
