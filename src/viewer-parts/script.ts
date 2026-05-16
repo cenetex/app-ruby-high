@@ -5044,7 +5044,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (unlock.reason === "student-befriended" && unlock.sourceId) {
       return studentNameById(String(unlock.sourceId).replace(/^student:/, "")) + " insert";
     }
-    if (unlock.reason === "teacher-year-completed") return "Story page";
+    if (unlock.reason === "teacher-class-aced" || unlock.reason === "teacher-year-completed") return "Story page";
     return "Found page";
   }
 

@@ -936,7 +936,8 @@ export class RubyHighService extends Service {
     this.tickRound(state);
     const repairedMemory = this.backfillCardMemory(state);
     const repairedComicCollection = this.unlockStudentInsertPagesForCircledSocialCard(state);
-    if (this.maybeMarkGradeReady(state) || repairedMemory || repairedComicCollection) {
+    const repairedTeacherPages = this.unlockTeacherStoryPagesForAClasses(state);
+    if (this.maybeMarkGradeReady(state) || repairedMemory || repairedComicCollection || repairedTeacherPages) {
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
     }
@@ -972,6 +973,7 @@ export class RubyHighService extends Service {
     sourceId: string,
     label: string,
     now = Date.now(),
+    context: { faculty?: string; grade?: Grade | null } = {},
   ): ComicPageUnlock | null {
     if (!Number.isFinite(pageNumber) || pageNumber < 1 || pageNumber > FIRST_BELL_COMIC_PAGE_COUNT) return null;
     const collection = (state.comicCollection = normalizeComicCollection(state.comicCollection));
@@ -992,8 +994,8 @@ export class RubyHighService extends Service {
       id: this.schoolEventId("comic.page-unlocked"),
       kind: "comic.page-unlocked",
       at: now,
-      faculty: state.faculty,
-      grade: state.currentGrade,
+      faculty: context.faculty ?? state.faculty,
+      grade: context.grade ?? state.currentGrade,
       issueId: unlock.issueId,
       pageId,
       pageNumber,
@@ -1012,19 +1014,29 @@ export class RubyHighService extends Service {
     return unlock;
   }
 
-  private unlockTeacherStoryPagesForGrade(state: QuizState, grade: Grade): void {
-    for (const [facultyId, pagesByGrade] of Object.entries(TEACHER_STORY_COMIC_PAGES)) {
-      const pageNumber = pagesByGrade[grade];
-      if (!pageNumber) continue;
-      const room = COMIC_CLASS_LABELS[facultyId] ?? facultyId;
-      this.unlockComicPage(
-        state,
-        pageNumber,
-        "teacher-year-completed",
-        `teacher:${facultyId}:grade:${grade}`,
-        `${GRADE_LABELS[grade]} ${room}`,
-      );
+  private unlockTeacherStoryPageForAClass(state: QuizState, record: DailyClassRecord, now = Date.now()): ComicPageUnlock | null {
+    if (record.status !== "complete" || record.letterGrade !== "A") return null;
+    const pageNumber = TEACHER_STORY_COMIC_PAGES[record.facultyId]?.[record.grade];
+    if (!pageNumber) return null;
+    const room = COMIC_CLASS_LABELS[record.facultyId] ?? record.facultyId;
+    return this.unlockComicPage(
+      state,
+      pageNumber,
+      "teacher-class-aced",
+      `teacher:${record.facultyId}:grade:${record.grade}`,
+      `${GRADE_LABELS[record.grade]} ${room} A`,
+      now,
+      { faculty: record.facultyId, grade: record.grade },
+    );
+  }
+
+  private unlockTeacherStoryPagesForAClasses(state: QuizState, now = Date.now()): boolean {
+    const records = Object.values(state.character?.dailyClasses ?? {});
+    let changed = false;
+    for (const record of records) {
+      if (this.unlockTeacherStoryPageForAClass(state, record, now)) changed = true;
     }
+    return changed;
   }
 
   private unlockStudentInsertPagesForCircledSocialCard(state: QuizState, now = Date.now()): boolean {
@@ -1426,6 +1438,7 @@ export class RubyHighService extends Service {
         correct: record.correctCount,
         total: record.questionCount,
       });
+      this.unlockTeacherStoryPageForAClass(state, record, now);
     }
     return {
       mode: "class",
@@ -2158,7 +2171,6 @@ export class RubyHighService extends Service {
       reward: normalizedReward,
       awardedAt: Date.now(),
     });
-    this.unlockTeacherStoryPagesForGrade(state, grade);
     ch.pendingGraduation = null;
 
     if (advance) {
@@ -3566,7 +3578,14 @@ function firstBellComicPageId(pageNumber: number): string {
 }
 
 function normalizeComicUnlockReason(value: unknown): ComicPageUnlockReason {
-  if (value === "teacher-year-completed" || value === "student-befriended" || value === "legacy") return value;
+  if (
+    value === "teacher-class-aced" ||
+    value === "teacher-year-completed" ||
+    value === "student-befriended" ||
+    value === "legacy"
+  ) {
+    return value;
+  }
   return "legacy";
 }
 
