@@ -395,6 +395,7 @@ export interface MashCard {
 // The First Bell comic is a session-level collection, not a character-level
 // reward. Clearing or graduating a student should leave found pages intact.
 export type ComicPageUnlockReason =
+  | "teacher-class-aced"
   | "teacher-year-completed"
   | "student-befriended"
   | "legacy";
