@@ -268,6 +268,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <div class="pack-tab-panel" id="pack-tab-questions">
           <div class="pack-question-toolbar">
             <button type="button" class="pack-action" id="teacher-generate-questions-btn">Generate Questions</button>
+            <button type="button" class="pack-action danger" id="teacher-cancel-generation-btn" hidden>Cancel</button>
             <span class="pack-question-status" id="teacher-generation-status"></span>
           </div>
           <div class="pack-question-list" id="teacher-question-list"></div>

@@ -1534,6 +1534,60 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
   }
 
+  function usingHostedOpenRouterGeneration() {
+    return !!authed && !getStoredApiKey() && !!hostedAiActive;
+  }
+
+  function hostedImageCostLabel(kind) {
+    const costs = billingProductsCache && billingProductsCache.imageCosts ? billingProductsCache.imageCosts : {};
+    const raw = costs && costs[kind];
+    const cost = Math.max(1, Math.round(Number(raw || 1)));
+    return formatWholeNumber(cost) + " Hall Pass" + (cost === 1 ? "" : "es");
+  }
+
+  async function ensureBillingProductsForCreditWarning() {
+    if (billingProductsCache && billingProductsCache.imageCosts) return billingProductsCache;
+    try {
+      const r = await apiFetch(apiBase + "/billing/products", { timeoutMs: 8000 });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data && data.ok) billingProductsCache = data;
+    } catch (_err) {
+      // The server still enforces the true price; the warning falls back to
+      // the default one-pass portrait price if the product list is unavailable.
+    }
+    return billingProductsCache;
+  }
+
+  async function confirmHostedCreditSpend(action, kind) {
+    if (!usingHostedOpenRouterGeneration()) return true;
+    await ensureBillingProductsForCreditWarning();
+    return window.confirm(
+      action + " uses hosted OpenRouter image generation and will spend " + hostedImageCostLabel(kind) + " if the image completes. " +
+      "You can keep editing while it runs, but Save and Close stay locked until it finishes or you cancel."
+    );
+  }
+
+  function teacherImageCreditHint() {
+    if (!openRouterAiEnabled()) return openRouterGenerationMessage("generating teacher images");
+    if (usingHostedOpenRouterGeneration()) return "Hosted image generation spends " + hostedImageCostLabel("portrait") + " when it completes.";
+    return "Uses your OpenRouter key. No Hall Passes are spent.";
+  }
+
+  function applyHallPassBalance(hallPasses) {
+    if (typeof hallPasses !== "number" || !Number.isFinite(hallPasses)) return;
+    if (!lastTelemetry) return;
+    const wallet = lastTelemetry.wallet && typeof lastTelemetry.wallet === "object" ? lastTelemetry.wallet : {};
+    lastTelemetry = {
+      ...lastTelemetry,
+      wallet: {
+        ...wallet,
+        hallPasses: Math.max(0, Math.round(hallPasses)),
+      },
+    };
+    if (els.arcScore) els.arcScore.textContent = walletSummaryText(lastTelemetry);
+    syncBillingWallet(lastTelemetry);
+  }
+
   function syncBillingWallet(t) {
     if (!els.billingWallet) return;
     const wallet = walletNumbers(t || lastTelemetry);
@@ -5423,6 +5477,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const teacherMaterialUrlInputEl = $("teacher-material-url-input");
   const teacherLoadUrlBtn = $("teacher-load-url-btn");
   const teacherGenerateQuestionsBtn = $("teacher-generate-questions-btn");
+  const teacherCancelGenerationBtn = $("teacher-cancel-generation-btn");
   const teacherGenerationStatusEl = $("teacher-generation-status");
   const teacherQuestionListEl = $("teacher-question-list");
   const teacherDisplayNameInputEl = $("teacher-display-name-input");
@@ -5451,6 +5506,11 @@ const VIEWER_SCRIPT_SUFFIX = `
   let pendingTeacherImageStatus = "";
   let pendingTeacherImageInvalid = false;
   let pendingTeacherImageBusy = false;
+  let pendingTeacherImageAbortController = null;
+  let pendingTeacherImageRunId = 0;
+  let packQuestionGenerationBusy = false;
+  let packQuestionGenerationAbortController = null;
+  let packQuestionGenerationRunId = 0;
   let packAutosaveTimer = null;
   let teacherAutosaveTimer = null;
   const PREGENERATED_TEACHER_ASSETS = [
@@ -5543,10 +5603,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!r.ok) throw new Error(data.error || "load materials " + r.status);
       return data.draft;
     },
-    async generateQuestionsForDraftTeacher(draftId, teacherId) {
+    async generateQuestionsForDraftTeacher(draftId, teacherId, options) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId) + "/questions/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: options && options.signal,
         body: "{}",
       });
       const data = await r.json().catch(() => ({}));
@@ -5633,10 +5694,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     pendingTeacherImageStatus = "";
     pendingTeacherImageInvalid = false;
     pendingTeacherImageBusy = false;
+    pendingTeacherImageAbortController = null;
+    packQuestionGenerationBusy = false;
+    packQuestionGenerationAbortController = null;
     packEditEl.classList.add("is-open");
     renderPackEditor();
   }
   function closePackEditor() {
+    if (packGenerationInFlight()) {
+      warnPackGenerationBlocks("closing");
+      return;
+    }
     clearTimeout(packAutosaveTimer);
     clearTimeout(teacherAutosaveTimer);
     packEditEl.classList.remove("is-open");
@@ -5647,6 +5715,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     pendingTeacherImageStatus = "";
     pendingTeacherImageInvalid = false;
     pendingTeacherImageBusy = false;
+    pendingTeacherImageAbortController = null;
+    packQuestionGenerationBusy = false;
+    packQuestionGenerationAbortController = null;
     if (packEditStatusEl) {
       packEditStatusEl.textContent = "";
       packEditStatusEl.classList.remove("is-invalid");
@@ -5664,6 +5735,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     packEditEl.querySelectorAll("button.pack-action, button.secondary").forEach((btn) => { btn.disabled = packImportBusy; });
     if (packCreateBtn) packCreateBtn.disabled = packImportBusy;
     if (packAddTeacherBtn) packAddTeacherBtn.disabled = packImportBusy;
+    syncPackEditorGuardControls();
     packEditEl.querySelectorAll("input, textarea").forEach((field) => {
       field.disabled = packImportBusy;
     });
@@ -5715,8 +5787,32 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     if (packProgressFillEl) packProgressFillEl.style.width = "0%";
   }
+  function packGenerationInFlight() {
+    return !!(pendingTeacherImageBusy || packQuestionGenerationBusy);
+  }
+  function packGenerationLabel() {
+    if (pendingTeacherImageBusy) return "teacher image generation";
+    if (packQuestionGenerationBusy) return "question generation";
+    return "generation";
+  }
+  function warnPackGenerationBlocks(action) {
+    if (!packEditStatusEl) return;
+    packEditStatusEl.textContent = "Cancel " + packGenerationLabel() + " before " + action + ".";
+    packEditStatusEl.classList.add("is-invalid");
+  }
+  function syncPackEditorGuardControls() {
+    const generationBusy = packGenerationInFlight();
+    if (packEditCloseBtn) {
+      packEditCloseBtn.disabled = packImportBusy;
+      packEditCloseBtn.title = generationBusy ? "Cancel generation before closing." : "";
+    }
+    if (packPublishBtn) {
+      packPublishBtn.disabled = packImportBusy || generationBusy;
+      packPublishBtn.title = generationBusy ? "Cancel generation before publishing." : "";
+    }
+  }
   window.addEventListener("beforeunload", (e) => {
-    if (!packImportBusy) return;
+    if (!packImportBusy && !packGenerationInFlight()) return;
     e.preventDefault();
     e.returnValue = "";
   });
@@ -6096,7 +6192,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         input.placeholder = opts.placeholder || "";
         if (opts.maxLength) input.maxLength = opts.maxLength;
         if (opts.multiline) input.rows = opts.rows || 2;
-        input.disabled = packImportBusy || pendingTeacherImageBusy;
+        input.disabled = packImportBusy;
         input.addEventListener("input", () => updatePendingTeacherRollField(opts.editField, input.value));
         val.appendChild(input);
       } else if (value && typeof value === "object" && value.nodeType) val.appendChild(value);
@@ -6109,7 +6205,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         reroll.className = "creation-reroll";
         reroll.title = "Reroll " + label.toLowerCase();
         reroll.textContent = "↻";
-        reroll.disabled = packImportBusy || pendingTeacherImageBusy;
+        reroll.disabled = packImportBusy;
         reroll.addEventListener("click", () => {
           rollTeacherCandidate([key]);
           renderPackTeacherEditor();
@@ -6177,6 +6273,21 @@ const VIEWER_SCRIPT_SUFFIX = `
       generateBtn.title = openRouterAiEnabled() ? "" : openRouterGenerationMessage("generating teacher images");
       generateBtn.addEventListener("click", generateTeacherImageForPendingRoll);
       custom.appendChild(generateBtn);
+      if (pendingTeacherImageBusy) {
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "secondary teacher-generation-cancel";
+        cancelBtn.textContent = "Cancel generation";
+        cancelBtn.disabled = packImportBusy;
+        cancelBtn.addEventListener("click", cancelTeacherImageGeneration);
+        custom.appendChild(cancelBtn);
+      }
+      const credit = document.createElement("div");
+      credit.className = "creation-portrait-status is-credit-hint";
+      credit.textContent = pendingTeacherImageBusy
+        ? "Keep editing while the image generates. Save and Close unlock after it finishes or you cancel."
+        : teacherImageCreditHint();
+      custom.appendChild(credit);
       const statusText = pendingTeacherImageBusy ? "" : (pendingTeacherImageStatus || (roll.profileImageUrl ? "Custom teacher image ready." : ""));
       if (statusText) {
         const status = document.createElement("div");
@@ -6212,7 +6323,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     saveBtn.type = "button";
     saveBtn.className = "primary teacher-save-button";
     saveBtn.textContent = "Save";
-    saveBtn.disabled = packImportBusy || pendingTeacherImageBusy;
+    saveBtn.disabled = packImportBusy || pendingTeacherImageBusy || packQuestionGenerationBusy;
+    saveBtn.title = pendingTeacherImageBusy ? "Cancel teacher image generation before saving." : "";
     saveBtn.addEventListener("click", savePendingTeacherRoll);
     actionsRow.appendChild(saveBtn);
     if (body) {
@@ -6232,6 +6344,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       renderPackTeacherEditor();
       return;
     }
+    if (!(await confirmHostedCreditSpend("Custom teacher image generation", "portrait"))) return;
+    const runId = ++pendingTeacherImageRunId;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    pendingTeacherImageAbortController = controller;
     pendingTeacherImageBusy = true;
     pendingTeacherImageStatus = "";
     pendingTeacherImageInvalid = false;
@@ -6240,12 +6356,14 @@ const VIEWER_SCRIPT_SUFFIX = `
       const r = await apiFetch("/api/apps/ruby-high/chat/teacher/portrait", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller ? controller.signal : undefined,
         body: JSON.stringify({
           name: pendingTeacherRoll.displayName,
           personality: pendingTeacherRoll.description,
         }),
       });
       const data = await r.json().catch(() => ({}));
+      if (runId !== pendingTeacherImageRunId) return;
       if (!r.ok) throw new Error(data.error || "teacher image " + r.status);
       if (!data.profileImageUrl) throw new Error("no image returned");
       pendingTeacherRoll = {
@@ -6254,18 +6372,40 @@ const VIEWER_SCRIPT_SUFFIX = `
         profileImageUrl: data.profileImageUrl,
         imageChoice: "custom",
       };
+      applyHallPassBalance(data.hallPasses);
       pendingTeacherImageStatus = "Teacher image ready.";
       pendingTeacherImageInvalid = false;
-    } catch (_err) {
-      pendingTeacherImageStatus = "Couldn't generate - keeping the current teacher image.";
-      pendingTeacherImageInvalid = true;
+    } catch (err) {
+      if (runId !== pendingTeacherImageRunId) return;
+      const aborted = err && err.name === "AbortError";
+      pendingTeacherImageStatus = aborted
+        ? "Generation canceled. Custom image is unchanged."
+        : "Couldn't generate - keeping the current teacher image.";
+      pendingTeacherImageInvalid = !aborted;
     } finally {
-      pendingTeacherImageBusy = false;
-      renderPackTeacherEditor();
+      if (runId === pendingTeacherImageRunId) {
+        pendingTeacherImageBusy = false;
+        pendingTeacherImageAbortController = null;
+        renderPackTeacherEditor();
+      }
     }
   }
+  function cancelTeacherImageGeneration() {
+    if (!pendingTeacherImageBusy) return;
+    pendingTeacherImageRunId += 1;
+    try {
+      if (pendingTeacherImageAbortController) pendingTeacherImageAbortController.abort();
+    } catch (_err) {
+      // Best-effort client-side cancellation.
+    }
+    pendingTeacherImageAbortController = null;
+    pendingTeacherImageBusy = false;
+    pendingTeacherImageStatus = "Generation canceled. Custom image is unchanged.";
+    pendingTeacherImageInvalid = false;
+    renderPackTeacherEditor();
+  }
   async function savePendingTeacherRoll() {
-    if (!currentDraft || !pendingTeacherRoll || packImportBusy || pendingTeacherImageBusy) return;
+    if (!currentDraft || !pendingTeacherRoll || packImportBusy || pendingTeacherImageBusy || packQuestionGenerationBusy) return;
     setPackBusy(true);
     if (packEditStatusEl) packEditStatusEl.textContent = "Adding teacher...";
     try {
@@ -6345,6 +6485,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         tab.appendChild(copy);
         tab.addEventListener("click", () => {
           if (packImportBusy) return;
+          if (pendingTeacherImageBusy) cancelTeacherImageGeneration();
           packTeacherCreateMode = false;
           pendingTeacherRoll = null;
           pendingTeacherImageStatus = "";
@@ -6402,7 +6543,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (teacherMaterialUrlInputEl) teacherMaterialUrlInputEl.value = teacher && teacher.materialSourceUrl ? teacher.materialSourceUrl : "";
     if (teacherGenerationStatusEl) {
       teacherGenerationStatusEl.textContent = teacher
-        ? (openRouterAiEnabled()
+        ? (packQuestionGenerationBusy
+          ? "Generating questions... You can keep editing, but cancel before closing or publishing."
+          : openRouterAiEnabled()
           ? "Generated " + (teacher.generationCount || 0) + " time" + ((teacher.generationCount || 0) === 1 ? "" : "s") + " today"
           : openRouterGenerationMessage("generating questions"))
         : "";
@@ -6413,9 +6556,26 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function syncPackGenerationControls() {
     const canGenerate = openRouterAiEnabled();
+    syncPackEditorGuardControls();
     if (teacherGenerateQuestionsBtn) {
-      teacherGenerateQuestionsBtn.disabled = packImportBusy || !selectedDraftTeacher() || !canGenerate;
+      teacherGenerateQuestionsBtn.replaceChildren();
+      if (packQuestionGenerationBusy) {
+        const spinner = document.createElement("span");
+        spinner.className = "teacher-button-spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        teacherGenerateQuestionsBtn.appendChild(spinner);
+      }
+      const label = document.createElement("span");
+      label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate Questions";
+      teacherGenerateQuestionsBtn.appendChild(label);
+      teacherGenerateQuestionsBtn.classList.toggle("is-loading", packQuestionGenerationBusy);
+      teacherGenerateQuestionsBtn.setAttribute("aria-busy", packQuestionGenerationBusy ? "true" : "false");
+      teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerate;
       teacherGenerateQuestionsBtn.title = canGenerate ? "" : openRouterGenerationMessage("generating questions");
+    }
+    if (teacherCancelGenerationBtn) {
+      teacherCancelGenerationBtn.hidden = !packQuestionGenerationBusy;
+      teacherCancelGenerationBtn.disabled = packImportBusy;
     }
     packEditEl.querySelectorAll("[data-requires-openrouter]").forEach((btn) => {
       btn.disabled = packImportBusy || pendingTeacherImageBusy || !canGenerate;
@@ -6565,7 +6725,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   async function generateDraftQuestions() {
     const teacher = selectedDraftTeacher();
-    if (!currentDraft || !teacher) return;
+    if (!currentDraft || !teacher || packQuestionGenerationBusy) return;
     if (!openRouterAiEnabled()) {
       if (packEditStatusEl) {
         packEditStatusEl.textContent = openRouterGenerationMessage("generating questions");
@@ -6579,21 +6739,65 @@ const VIEWER_SCRIPT_SUFFIX = `
       return;
     }
     await saveSelectedTeacher();
-    setPackBusy(true);
-    if (packEditStatusEl) packEditStatusEl.textContent = "Generating questions...";
+    const runId = ++packQuestionGenerationRunId;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    packQuestionGenerationAbortController = controller;
+    packQuestionGenerationBusy = true;
+    syncPackGenerationControls();
+    if (packEditStatusEl) {
+      packEditStatusEl.textContent = "Generating questions. Keep editing, or cancel before closing/publishing.";
+      packEditStatusEl.classList.remove("is-invalid");
+    }
+    if (teacherGenerationStatusEl) {
+      teacherGenerationStatusEl.textContent = "Generating questions...";
+      teacherGenerationStatusEl.classList.remove("is-invalid");
+    }
     try {
-      currentDraft = await packStudioClient.generateQuestionsForDraftTeacher(currentDraft.id, teacher.id);
+      const updatedDraft = await packStudioClient.generateQuestionsForDraftTeacher(currentDraft.id, teacher.id, {
+        signal: controller ? controller.signal : undefined,
+      });
+      if (runId !== packQuestionGenerationRunId) return;
+      currentDraft = updatedDraft;
       selectedPackTab = "questions";
       renderPackEditor();
       if (packEditStatusEl) packEditStatusEl.textContent = "Questions generated.";
     } catch (err) {
+      if (runId !== packQuestionGenerationRunId) return;
+      const aborted = err && err.name === "AbortError";
       if (packEditStatusEl) {
-        packEditStatusEl.textContent = "Could not generate questions · " + (err && err.message ? err.message : "error");
-        packEditStatusEl.classList.add("is-invalid");
+        packEditStatusEl.textContent = aborted
+          ? "Question generation canceled."
+          : "Could not generate questions · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.toggle("is-invalid", !aborted);
       }
     } finally {
-      setPackBusy(false);
+      if (runId === packQuestionGenerationRunId) {
+        packQuestionGenerationBusy = false;
+        packQuestionGenerationAbortController = null;
+        syncPackGenerationControls();
+      }
     }
+  }
+
+  function cancelQuestionGeneration() {
+    if (!packQuestionGenerationBusy) return;
+    packQuestionGenerationRunId += 1;
+    try {
+      if (packQuestionGenerationAbortController) packQuestionGenerationAbortController.abort();
+    } catch (_err) {
+      // Best-effort client-side cancellation.
+    }
+    packQuestionGenerationAbortController = null;
+    packQuestionGenerationBusy = false;
+    if (packEditStatusEl) {
+      packEditStatusEl.textContent = "Question generation canceled.";
+      packEditStatusEl.classList.remove("is-invalid");
+    }
+    if (teacherGenerationStatusEl) {
+      teacherGenerationStatusEl.textContent = "Generation canceled. Questions are unchanged.";
+      teacherGenerationStatusEl.classList.remove("is-invalid");
+    }
+    syncPackGenerationControls();
   }
 
   async function deleteDraftQuestion(questionId) {
@@ -6612,6 +6816,10 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   async function publishCurrentDraft() {
     if (!currentDraft) return;
+    if (packGenerationInFlight()) {
+      warnPackGenerationBlocks("publishing");
+      return;
+    }
     await saveDraftPackFields();
     await saveSelectedTeacher();
     setPackBusy(true);
@@ -6640,6 +6848,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (packPublishBtn) packPublishBtn.addEventListener("click", publishCurrentDraft);
   if (teacherLoadUrlBtn) teacherLoadUrlBtn.addEventListener("click", loadTeacherMaterialsFromUrl);
   if (teacherGenerateQuestionsBtn) teacherGenerateQuestionsBtn.addEventListener("click", generateDraftQuestions);
+  if (teacherCancelGenerationBtn) teacherCancelGenerationBtn.addEventListener("click", cancelQuestionGeneration);
   if (packNameInputEl) packNameInputEl.addEventListener("input", schedulePackAutosave);
   if (packDescriptionInputEl) packDescriptionInputEl.addEventListener("input", schedulePackAutosave);
   [teacherDisplayNameInputEl, teacherSocialsInputEl, teacherProfileImageInputEl, teacherPersonaInputEl, teacherMaterialsInputEl].forEach((field) => {

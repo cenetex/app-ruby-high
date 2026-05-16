@@ -155,6 +155,10 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("Custom");
     expect(script).toContain('saveBtn.textContent = "Save"');
     expect(script).toContain("teacher-button-spinner");
+    expect(script).toContain("function cancelTeacherImageGeneration");
+    expect(script).toContain("confirmHostedCreditSpend");
+    expect(script).toContain("Hosted image generation spends");
+    expect(script).toContain("Cancel generation");
     expect(script).toContain("function updatePendingTeacherRollField");
     expect(script).toContain("profileImageUrl = regen.has(\"image\") ? \"\" : (prev.profileImageUrl || \"\")");
     expect(script).toContain("function openRouterAiEnabled()");
@@ -164,6 +168,8 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("subject: pendingTeacherRoll.subject");
     expect(script).toContain("quote: pendingTeacherRoll.quote");
     expect(script).toContain('makeRow("Stats", "stats", buildTeacherStatPills(roll.stats)');
+    expect(script).toContain("input.disabled = packImportBusy");
+    expect(script).toContain("saveBtn.disabled = packImportBusy || pendingTeacherImageBusy || packQuestionGenerationBusy");
     expect(script).not.toContain('addBtn.textContent = "Add Teacher"');
     expect(script).not.toContain('cancelBtn.textContent = "Cancel"');
     expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');
@@ -173,7 +179,10 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
 
     expect(script).toContain('openRouterGenerationMessage("generating questions")');
-    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || !selectedDraftTeacher() || !canGenerate");
+    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerate");
+    expect(script).toContain("function cancelQuestionGeneration");
+    expect(script).toContain("Cancel generation");
+    expect(script).toContain("Cancel generation before closing.");
     expect(script).toContain("if (!openRouterAiEnabled())");
   });
 
