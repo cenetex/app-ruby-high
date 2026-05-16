@@ -134,6 +134,11 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('card.addEventListener("click", () => {');
     expect(script).toContain('state.textContent = pack.active ? "Using now" : "Use"');
     expect(script).toContain('"Switching classroom pack..."');
+    expect(script).toContain("async function deleteLibraryPack");
+    expect(script).toContain("deleteDraftPack");
+    expect(script).toContain("deletePublishedPack");
+    expect(script).toContain("pack.canDelete");
+    expect(cssRule(".pack-card-actions .pack-action.danger")).toContain("#ff8c8c");
     expect(script).not.toContain('document.createTextNode("Enabled")');
     expect(script).not.toContain("togglePackInstall");
     expect(script).not.toContain("activeBtn.textContent");

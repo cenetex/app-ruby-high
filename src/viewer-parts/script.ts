@@ -5561,6 +5561,22 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!r.ok) throw new Error(data.error || "delete question " + r.status);
       return data.draft;
     },
+    async deleteDraftPack(draftId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId), {
+        method: "DELETE",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "delete draft " + r.status);
+      return data;
+    },
+    async deletePublishedPack(packId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library/" + encodeURIComponent(packId), {
+        method: "DELETE",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "delete pack " + r.status);
+      return data;
+    },
     async publishDraft(draftId) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/publish", {
         method: "POST",
@@ -5814,8 +5830,43 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       actions.appendChild(editBtn);
     }
+    if (pack.canDelete) {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "pack-action danger";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.disabled = packImportBusy;
+      deleteBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteLibraryPack(pack, { draft: isDraft });
+      });
+      actions.appendChild(deleteBtn);
+    }
     card.appendChild(actions);
     return card;
+  }
+
+  async function deleteLibraryPack(pack, opts) {
+    if (!pack || packImportBusy) return;
+    const name = pack.name || "Untitled Pack";
+    const kind = opts && opts.draft ? "draft pack" : "pack";
+    if (!window.confirm("Delete " + name + "? This removes the " + kind + " from your library.")) return;
+    setPackBusy(true);
+    packStatusEl.textContent = "Deleting pack...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      packLibraryState = opts && opts.draft
+        ? await packStudioClient.deleteDraftPack(pack.id)
+        : await packStudioClient.deletePublishedPack(pack.id);
+      renderPackList();
+      renderDraftPackList();
+      packStatusEl.textContent = "Pack deleted.";
+    } catch (err) {
+      packStatusEl.textContent = "Could not delete pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
   }
 
   async function activateLibraryPack(pack) {

@@ -118,6 +118,7 @@ import {
   resolveFacultyIdForSession,
   roomForFacultyForSession,
   setActivePack,
+  unregisterPack,
 } from "../content/registry.js";
 import type { ContentPack, PackSourceCard } from "../content/types.js";
 import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
@@ -731,6 +732,34 @@ export class RubyHighService extends Service {
       await this.store.deleteDraftPack(draftId);
     } catch (err) {
       log.error("ruby-high.delete-draft-pack-failed", err, { draftId });
+      throw err;
+    }
+  }
+
+  async deletePersistedPackRecord(ownerSessionId: string | null, packId: string): Promise<void> {
+    try {
+      unregisterPack(packId);
+      await this.store.deletePack(ownerSessionId, packId);
+    } catch (err) {
+      log.error("ruby-high.delete-pack-failed", err, { ownerSessionId, packId });
+      throw err;
+    }
+  }
+
+  async deleteTeacherRecord(teacherId: string): Promise<void> {
+    try {
+      await this.store.deleteTeacher(teacherId);
+    } catch (err) {
+      log.error("ruby-high.delete-teacher-failed", err, { teacherId });
+      throw err;
+    }
+  }
+
+  async deletePackInstallationRecord(userId: string, packId: string): Promise<void> {
+    try {
+      await this.store.deletePackInstallation(userId, packId);
+    } catch (err) {
+      log.error("ruby-high.delete-pack-installation-failed", err, { userId, packId });
       throw err;
     }
   }

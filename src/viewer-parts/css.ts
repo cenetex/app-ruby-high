@@ -822,6 +822,25 @@ export const VIEWER_CSS = `
     justify-content: flex-end;
     min-width: 90px;
   }
+  .pack-card-actions .pack-action {
+    appearance: none;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev-2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+  .pack-card-actions .pack-action:not(:disabled):hover {
+    border-color: var(--accent);
+  }
+  .pack-card-actions .pack-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
   .pack-row-state {
     color: var(--text-soft);
     font-size: 12px;
@@ -830,6 +849,14 @@ export const VIEWER_CSS = `
   }
   .pack-card-item.is-active .pack-row-state {
     color: var(--text);
+  }
+  .pack-card-actions .pack-action.danger {
+    border-color: rgba(210, 42, 42, 0.55);
+    color: #ff8c8c;
+  }
+  .pack-card-actions .pack-action.danger:not(:disabled):hover {
+    background: rgba(210, 42, 42, 0.16);
+    color: #fff;
   }
   .sheet-card.pack-edit-card {
     width: min(1100px, calc(100vw - 28px));

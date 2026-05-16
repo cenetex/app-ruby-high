@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handlePackLibraryRoutes, type PackLibraryRouteContext } from "../pack-library-routes.js";
-import { ORIGINAL_PACK_ID, getActivePack, resetActivePack } from "../content/registry.js";
+import { ORIGINAL_PACK_ID, getActivePack, getPackByIdForSession, registerPack, resetActivePack } from "../content/registry.js";
+import type { ContentPack } from "../content/types.js";
 import { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
@@ -52,6 +53,34 @@ function signInUser(token: string): string {
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
   });
   return `rh:user:${userId}`;
+}
+
+function fakePack(id: string): ContentPack {
+  return {
+    id,
+    name: id,
+    description: "Imported test pack.",
+    version: "0.0.1",
+    faculty: [{
+      id: `${id}-teacher`,
+      displayName: id,
+      shortName: id,
+      subjects: ["test"],
+      bio: "Test teacher.",
+      accent: "#d22a2a",
+      systemPrompt: "Teach the test pack.",
+      defaultModel: "anthropic/claude-haiku-4.5",
+      questions: [],
+    }],
+    rooms: [{
+      id: `${id}-room`,
+      name: id,
+      channelName: id,
+      teacherId: `${id}-teacher`,
+      description: "Test room.",
+      teaches: true,
+    }],
+  };
 }
 
 async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: number; body: any }> {
@@ -106,8 +135,61 @@ describe("/pack-library", () => {
       enabled: true,
       active: true,
       canEdit: false,
+      canDelete: false,
       status: "published",
     });
+  });
+
+  it("deletes draft packs owned by the signed-in user", async () => {
+    signInUser("alice");
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Scratch Pack" },
+    });
+    expect(response.status).toBe(201);
+    const draftId = response.body.draft.id as string;
+    expect(response.body.draft.canDelete).toBe(true);
+
+    response = await route({
+      method: "DELETE",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}`,
+      cookie: "rh_session=alice",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.drafts.some((draft: { id: string }) => draft.id === draftId)).toBe(false);
+    expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
+  });
+
+  it("deletes session-imported packs owned by the signed-in user", async () => {
+    const aliceSessionId = signInUser("alice");
+    const pack = fakePack("anki:vocab-delete");
+    registerPack(pack, aliceSessionId);
+    await ruby.persistImportedPack(aliceSessionId, pack);
+
+    let response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library",
+      cookie: "rh_session=alice",
+    });
+    expect(response.body.packs.find((entry: { id: string }) => entry.id === pack.id)).toMatchObject({
+      owner: true,
+      canDelete: true,
+    });
+
+    response = await route({
+      method: "DELETE",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(pack.id)}`,
+      cookie: "rh_session=alice",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.packs.some((entry: { id: string }) => entry.id === pack.id)).toBe(false);
+    expect((await ruby.listPersistedPackRecords()).some((entry) => entry.pack.id === pack.id)).toBe(false);
+    expect(getPackByIdForSession(pack.id, aliceSessionId)).toBeNull();
   });
 
   it("persists draft packs, generates cards manually, publishes, and keeps enable separate from active", async () => {
@@ -207,6 +289,7 @@ describe("/pack-library", () => {
       active: false,
       owner: true,
       canEdit: false,
+      canDelete: true,
       readOnly: false,
     });
     expect(ruby.getOrCreate(aliceSessionId).activePackId).not.toBe(packId);
@@ -253,5 +336,44 @@ describe("/pack-library", () => {
       active: true,
       readOnly: true,
     });
+
+    response = await route({
+      method: "DELETE",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(packId)}`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.packs.some((pack: { id: string }) => pack.id === packId)).toBe(false);
+    expect((await ruby.listPersistedPackRecords()).some((entry) => entry.pack.id === packId)).toBe(false);
+    expect((await ruby.listPackInstallationRecords()).some((entry) => entry.packId === packId)).toBe(false);
+    expect(getPackByIdForSession(packId, aliceSessionId)).toBeNull();
+    expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(ORIGINAL_PACK_ID);
+  });
+
+  it("does not delete read-only or other users' packs", async () => {
+    signInUser("alice");
+    signInUser("bob");
+
+    let response = await route({
+      method: "DELETE",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(ORIGINAL_PACK_ID)}`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(400);
+
+    response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Private Draft" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "DELETE",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}`,
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(403);
   });
 });

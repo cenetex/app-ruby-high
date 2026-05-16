@@ -185,6 +185,13 @@ export function registerPublicPack(
   touch(pack.id, pack, null, touchedAt);
 }
 
+/** Remove a runtime pack from the in-memory registry. Built-in packs stay
+ * pinned and cannot be deleted through this helper. */
+export function unregisterPack(packId: string): boolean {
+  if (packId === ORIGINAL_PACK_ID) return false;
+  return packs.delete(packId);
+}
+
 /** All packs the given session can see: built-ins + this session's own
  *  session-scoped packs. Other users' packs are filtered out. */
 export function availablePacksForSession(sessionId: string | null): ContentPack[] {

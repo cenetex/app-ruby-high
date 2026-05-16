@@ -96,6 +96,21 @@ export async function handlePackLibraryRoutes(
       }
       return true;
     }
+
+    const deletePackMatch = sub.match(/^\/([^/]+)$/);
+    if (ctx.method === "DELETE" && deletePackMatch?.[1]) {
+      const packId = decodeURIComponent(deletePackMatch[1]);
+      try {
+        await deleteOwnedPublishedPack({ ruby: deps.ruby, record, sessionId, packId });
+        ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const status = message.includes("Only the owner") ? 403 : clientErrorStatus(err);
+        if (status >= 500) log.error("pack-library.delete-failed", err, { userId: record.userId, packId });
+        ctx.error(ctx.res, message, status);
+      }
+      return true;
+    }
   }
 
   const sub = ctx.pathname.slice(DRAFT_PREFIX.length) || "/";
@@ -139,6 +154,14 @@ export async function handlePackLibraryRoutes(
     };
     await deps.ruby.saveDraftPackRecord(updated);
     ctx.json(ctx.res, { ok: true, draft: draftDetail(updated) });
+    return true;
+  }
+
+  if (ctx.method === "DELETE" && draftIdMatch?.[1]) {
+    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(draftIdMatch[1]), ctx);
+    if (!draft) return true;
+    await deps.ruby.deleteDraftPackRecord(draft.id);
+    ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
     return true;
   }
 
@@ -284,11 +307,7 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
   const installs = await ruby.listPackInstallationRecords();
   const userInstalls = installs.filter((install) => install.userId === record.userId);
   const installByPack = new Map(userInstalls.map((install) => [install.packId, install]));
-  const persistedPackOwners = new Map(
-    (await ruby.listPersistedPackRecords())
-      .filter((entry) => entry.creatorUserId)
-      .map((entry) => [entry.pack.id, entry.creatorUserId]),
-  );
+  const persistedPackRecords = await ruby.listPersistedPackRecords();
   const visiblePacks = uniquePacks([
     await getActivePack(),
     ...availablePacksForSession(sessionId),
@@ -301,7 +320,9 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
   const packs = visiblePacks.map((pack) => {
     const install = installByPack.get(pack.id);
     const builtIn = pack.id === ORIGINAL_PACK_ID;
-    const owner = publishedOwnedPackIds.has(pack.id) || persistedPackOwners.get(pack.id) === record.userId;
+    const persistedRecords = persistedPackRecords.filter((entry) => entry.pack.id === pack.id);
+    const owner = publishedOwnedPackIds.has(pack.id) || persistedRecords.some((entry) =>
+      entry.creatorUserId === record.userId || entry.ownerSessionId === sessionId);
     return packLibrarySummary(pack, {
       enabled: install ? install.enabled : builtIn,
       active: pack.id === activePackId || !!install?.active,
@@ -395,6 +416,37 @@ async function setActivePack(args: {
   await Promise.all(next.map((entry) => args.ruby.savePackInstallationRecord(entry)));
 }
 
+async function deleteOwnedPublishedPack(args: {
+  ruby: RubyHighService;
+  record: AuthRecord;
+  sessionId: string;
+  packId: string;
+}): Promise<void> {
+  if (args.packId === ORIGINAL_PACK_ID) throw new Error("Ruby High Original is read only.");
+  const persisted = (await args.ruby.listPersistedPackRecords()).filter((entry) => entry.pack.id === args.packId);
+  const ownedLegacyTeachers = (await args.ruby.listTeacherRecords())
+    .filter((teacher) => teacher.creatorUserId === args.record.userId && teacher.packId === args.packId);
+  const ownsPersisted = persisted.some((entry) =>
+    entry.creatorUserId === args.record.userId || entry.ownerSessionId === args.sessionId);
+  if (persisted.length === 0 && ownedLegacyTeachers.length === 0) throw new Error("Unknown pack.");
+  if (!ownsPersisted && ownedLegacyTeachers.length === 0) throw new Error("Only the owner can delete this pack.");
+
+  await Promise.all(persisted.map((entry) => args.ruby.deletePersistedPackRecord(entry.ownerSessionId, args.packId)));
+  if (persisted.length === 0 && ownedLegacyTeachers.length > 0) {
+    await args.ruby.deletePersistedPackRecord(null, args.packId);
+  }
+  await Promise.all(ownedLegacyTeachers.map((teacher) => args.ruby.deleteTeacherRecord(teacher.id)));
+  const installs = await args.ruby.listPackInstallationRecords();
+  await Promise.all(installs
+    .filter((install) => install.packId === args.packId)
+    .map((install) => args.ruby.deletePackInstallationRecord(install.userId, install.packId)));
+
+  if (currentActivePackId(args.ruby, args.sessionId) === args.packId) {
+    args.ruby.setActivePackForSession(args.sessionId, ORIGINAL_PACK_ID);
+    await args.ruby.flushSession(args.sessionId);
+  }
+}
+
 async function saveInstallationSet(
   ruby: RubyHighService,
   userId: string,
@@ -435,6 +487,7 @@ function packLibrarySummary(
     enabled: opts.enabled,
     active: opts.active,
     canEdit: false,
+    canDelete: opts.owner && !opts.readOnly,
     status: "published",
     facultyCount: pack.faculty.length,
     questionCount,
@@ -458,6 +511,7 @@ function draftSummary(draft: StoredDraftContentPackRecord) {
     enabled: false,
     active: false,
     canEdit: true,
+    canDelete: true,
     readOnly: false,
     teacherCount: draft.teachers.length,
     questionCount: draft.teachers.reduce((sum, teacher) => sum + teacher.sourceCards.length + teacher.questions.length, 0),
@@ -938,6 +992,7 @@ function clientErrorStatus(err: unknown): number {
     message.includes("materials") ||
     message.includes("Generate questions") ||
     message.includes("Add at least") ||
+    message.includes("read only") ||
     message.includes("limited")
   ) return 400;
   return 500;
