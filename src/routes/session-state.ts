@@ -20,6 +20,7 @@ import {
   type PlayerCharacter,
   type QuizState,
   type RubyHighWallet,
+  type StudentPoolEntry,
 } from "../types.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import { getSessionId, tryGetService } from "../services/session-identity.js";
@@ -113,6 +114,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   active_round: ReturnType<typeof deriveActiveRound>;
   is_opinion: boolean;
   character: PlayerCharacter | null;
+  student_pool: StudentPoolEntry[];
   school_events: QuizState["schoolEvents"];
   essay_reports: EssayReport[];
   playbooks: typeof PLAYBOOKS;
@@ -349,6 +351,7 @@ export function buildSessionState(args: {
     active_round: deriveActiveRound(state),
     is_opinion: state.current?.type === "opinion",
     character: state.character,
+    student_pool: state.studentPool ?? [],
     school_events: (state.schoolEvents ?? []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
     playbooks: PLAYBOOKS,

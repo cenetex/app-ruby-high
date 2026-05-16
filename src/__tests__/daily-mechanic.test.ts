@@ -389,12 +389,42 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
     expect(offer!.moveName).toBe("Old gossip");
   });
 
+  it("clearCharacter archives a completed active student without duplicating the pool", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:student-pool-archive";
+    attachCharacter(ruby, sid, "12");
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.yearbook = [
+      { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },
+      { grade: "10", completedAt: 2, summary: { correct: 2, total: 2 } },
+      { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
+      { grade: "12", completedAt: 4, summary: { correct: 4, total: 4 } },
+    ];
+
+    ruby.clearCharacter(sid);
+    let after = ruby.getOrCreate(sid);
+    expect(after.character).toBeNull();
+    expect(after.currentGrade).toBe("9");
+    expect(after.completedGrades).toEqual([]);
+    expect(after.studentPool).toHaveLength(1);
+    expect(after.studentPool![0]).toMatchObject({
+      name: "Pip",
+      playbookId: "overachiever",
+      completedAt: 4,
+    });
+
+    ruby.clearCharacter(sid);
+    after = ruby.getOrCreate(sid);
+    expect(after.studentPool).toHaveLength(1);
+  });
+
   it("clearCharacter on a non-graduated character does NOT set a mentor offer", async () => {
     const { ruby } = await makeServices();
     const sid = "test:mentor-skip";
     attachCharacter(ruby, sid);
     ruby.clearCharacter(sid);
     expect(ruby.getOrCreate(sid).mentorOffer ?? null).toBeNull();
+    expect(ruby.getOrCreate(sid).studentPool ?? []).toEqual([]);
   });
 
   it("createCharacter with mentorAccepted=true stamps inheritedFrom + clears the offer", async () => {
@@ -585,6 +615,36 @@ describe("Streak + grade advancement", () => {
     expect(finalCh.yearbook[3]?.grade).toBe("12");
     expect(ruby.getOrCreate(sid).currentGrade).toBe("12"); // doesn't advance past Senior
     expect(ruby.getOrCreate(sid).completedGrades).toContain("12");
+    expect(ruby.getOrCreate(sid).studentPool?.[0]).toMatchObject({
+      name: "Pip",
+      playbookId: "overachiever",
+    });
+  });
+
+  it("refreshes the archived completed student when a diploma image lands later", async () => {
+    const { ruby, faculty } = await makeServices();
+    const sid = "test:student-pool-diploma-refresh";
+    attachCharacter(ruby, sid, "12", false);
+    const state = ruby.getOrCreate(sid);
+    state.completedGrades = ["9", "10", "11"];
+    const ch = state.character!;
+    ch.streak = { grade: "12", count: 4, lastDate: "2026-05-07" };
+    ch.yearbook = [
+      { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },
+      { grade: "10", completedAt: 2, summary: { correct: 2, total: 2 } },
+      { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
+    ];
+    markFacultyMastered(ruby, faculty, sid, "ruby");
+    markFacultyMastered(ruby, faculty, sid, "sally-science");
+    markFacultyMastered(ruby, faculty, sid, "professor-edward");
+
+    ruby.getOrCreate(sid);
+    ruby.completeGraduation(sid, { kind: "advantage" });
+    expect(ruby.getOrCreate(sid).studentPool?.[0]?.diplomaImageDataUrl).toBeUndefined();
+
+    ruby.setDiplomaImage(sid, "https://cdn.example.test/diploma.png");
+    expect(ruby.getOrCreate(sid).studentPool?.[0]?.diplomaImageDataUrl)
+      .toBe("https://cdn.example.test/diploma.png");
   });
 
   it("reconciles already-cleared Freshman gates into ceremony-ready state on session read", async () => {

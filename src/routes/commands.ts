@@ -253,7 +253,7 @@ export async function handleCommandRoute(args: {
     },
     "clear-character": async () => {
       const state = ruby.clearCharacter(stateKey);
-      return await persist(state, "Character cleared");
+      return await persist(state, "Active character slot cleared");
     },
     "set-portrait": async () => {
       const url = String(body?.portraitDataUrl ?? "");

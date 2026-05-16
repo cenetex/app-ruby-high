@@ -2371,6 +2371,7 @@ export const VIEWER_CSS = `
   .ccg-role.player  { background: var(--accent); }
   .ccg-role.career  { background: #f0b441; color: #1a1520; }
   .ccg-role.report  { background: #62d3c2; color: #061f1c; }
+  .ccg-role.pool    { background: #62d3c2; color: #061f1c; }
   .ccg-art {
     aspect-ratio: 5 / 4;
     width: 100%;
@@ -4482,6 +4483,81 @@ export const VIEWER_CSS = `
   }
   .card-deck-track > .ccg-card.is-paper-card .ccg-subtitle {
     color: rgba(255,235,200,0.62);
+  }
+
+  .card-deck-track > .ccg-card.is-student-pool-card {
+    border-color: rgba(98,211,194,0.72);
+  }
+  .student-pool-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .student-pool-entry {
+    --pool-accent: #62d3c2;
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 9px;
+    align-items: center;
+    min-height: 52px;
+    border-left: 3px solid var(--pool-accent);
+    border-radius: 7px;
+    background: rgba(255,255,255,0.045);
+    padding: 7px 8px 7px 7px;
+  }
+  .student-pool-portrait {
+    width: 42px;
+    height: 42px;
+    border-radius: 6px;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    background: var(--bg-elev-2);
+    color: var(--text-mute);
+    font-weight: 900;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08) inset;
+  }
+  .student-pool-portrait img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .student-pool-copy { min-width: 0; }
+  .student-pool-name {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .student-pool-meta {
+    color: var(--text-mute);
+    font-size: 10px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .student-pool-quote {
+    margin-top: 3px;
+    color: var(--text-soft);
+    font-size: 10px;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .student-pool-more {
+    margin-top: 8px;
+    color: var(--text-mute);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: center;
   }
 
   /* Bonus badge — once-per-day fresh question. */

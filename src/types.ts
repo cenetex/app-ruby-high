@@ -503,6 +503,10 @@ export interface QuizState {
   /** The player's character sheet. Created once (on first run) and
    *  immutable thereafter (graduation flow archives it to a yearbook). */
   character: PlayerCharacter | null;
+  /** Completed player characters. The current slot stays singular; once a
+   *  character graduates, that sealed student is copied here so the player can
+   *  start a new active run without losing their old class history. */
+  studentPool?: StudentPoolEntry[];
   /** Engine-owned facts that changed in the school world. This is the durable
    *  counterpart to volatile chat room events; AI can react to these but must
    *  not invent or mutate them. */
@@ -794,6 +798,24 @@ export interface PlayerCharacter {
    *  backfills with `ensureMashCard` on hydrate). */
   mashCard?: MashCard;
   createdAt: number;
+}
+
+export interface StudentPoolEntry {
+  id: string;
+  name: string;
+  playbookId: string;
+  stats: CharacterStats;
+  arcAnswer: string;
+  flavorQuote?: string;
+  personality: string;
+  portraitDataUrl?: string;
+  diplomaImageDataUrl?: string;
+  yearbook: PlayerCharacter["yearbook"];
+  levelUps?: PlayerCharacter["levelUps"];
+  inheritedFrom?: PlayerCharacter["inheritedFrom"];
+  mashCard?: MashCard;
+  createdAt: number;
+  completedAt: number;
 }
 
 // ── Daily-key / class mechanic ─────────────────────────────────────────────
