@@ -935,7 +935,8 @@ export class RubyHighService extends Service {
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
     const repairedMemory = this.backfillCardMemory(state);
-    if (this.maybeMarkGradeReady(state) || repairedMemory) {
+    const repairedComicCollection = this.unlockStudentInsertPagesForCircledSocialCard(state);
+    if (this.maybeMarkGradeReady(state) || repairedMemory || repairedComicCollection) {
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
     }
@@ -1024,6 +1025,28 @@ export class RubyHighService extends Service {
         `${GRADE_LABELS[grade]} ${room}`,
       );
     }
+  }
+
+  private unlockStudentInsertPagesForCircledSocialCard(state: QuizState, now = Date.now()): boolean {
+    const ch = state.character;
+    if (!ch) return false;
+    const card = (ch.mashCard = ensureMashCard(ch.mashCard));
+    let changed = false;
+    for (const [studentId, pageNumber] of Object.entries(STUDENT_INSERT_COMIC_PAGES)) {
+      const cell = card.cells[studentId];
+      if (!cell?.circled) continue;
+      const studentName = studentById(studentId)?.shortName ?? studentId;
+      const unlock = this.unlockComicPage(
+        state,
+        pageNumber,
+        "student-befriended",
+        `student:${studentId}`,
+        `${studentName} insert`,
+        now,
+      );
+      if (unlock) changed = true;
+    }
+    return changed;
   }
 
   // ── phase transitions ────────────────────────────────────────────────────
@@ -2747,21 +2770,8 @@ export class RubyHighService extends Service {
         circled: tick.circled,
         scratched: tick.scratched,
       });
-      if (tick.befriended) {
-        const studentName = studentById(tick.studentId)?.shortName ?? tick.studentId;
-        const pageNumber = STUDENT_INSERT_COMIC_PAGES[tick.studentId];
-        if (pageNumber) {
-          this.unlockComicPage(
-            state,
-            pageNumber,
-            "student-befriended",
-            `student:${tick.studentId}`,
-            `${studentName} insert`,
-            schoolEventAt,
-          );
-        }
-      }
     }
+    this.unlockStudentInsertPagesForCircledSocialCard(state, schoolEventAt);
     round.resolved = true;
     round.resolvedAt = Date.now();
     this.transition(state, { kind: "resolve-round" });

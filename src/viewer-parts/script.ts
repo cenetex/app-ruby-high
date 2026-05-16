@@ -5008,10 +5008,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
 
     appendProgression(body, buildProgressionForCharacter(c));
-    const comicLocker = buildComicLocker();
-    if (comicLocker) body.appendChild(comicLocker);
     const mash = buildMashGrid(c, graduated);
     if (mash) body.appendChild(mash);
+    const comicLocker = buildComicLocker();
+    if (comicLocker) body.appendChild(comicLocker);
     card.appendChild(body);
     return card;
   }

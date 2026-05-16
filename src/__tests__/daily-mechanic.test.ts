@@ -797,6 +797,21 @@ describe("Streak + grade advancement", () => {
     expect(ruby.getOrCreate(sid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([7]);
   });
 
+  it("repairs student insert pages for already-circled Social Card cells", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:first-bell-repair-circled-insert";
+    const state = attachCharacter(ruby, sid, "9", false);
+    const card = emptyMashCard();
+    applyTick(card.cells.lyra!, 1);
+    applyTick(card.cells.lyra!, 1);
+    state.character!.mashCard = card;
+    state.comicCollection = { issueId: "first-bell", title: "Ruby High: Book One - First Bell", pageCount: 12, unlockedPages: [] };
+
+    const after = ruby.getOrCreate(sid);
+    expect(after.character!.mashCard!.cells.lyra!.circled).toBe(true);
+    expect(after.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([7]);
+  });
+
   it("opens Senior graduation as soon as the final class reaches C after the streak is already met", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:graduate-when-senior-class-gate-lands";
