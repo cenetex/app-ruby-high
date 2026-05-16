@@ -123,6 +123,10 @@ flyctl secrets set --app ruby-high KEY=value   # update one
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credentials. |
 | `RUBY_HIGH_DYNAMO_TABLE` | Not strictly secret, but tied to the AWS environment so it lives with the AWS creds. |
 | `RUBY_HIGH_PUBLIC_BASE` | Tied to the deploy URL; staging vs. prod differ. |
+| `RUBY_HIGH_OPENROUTER_API_KEY` | Enables hosted AI Day Passes and hosted image generation. |
+| `RUBY_HIGH_STRIPE_SECRET_KEY` / `RUBY_HIGH_STRIPE_WEBHOOK_SECRET` | Enables web Hall Pass checkout and webhook fulfillment. |
+| `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | Enables mobile/IAP Hall Pass webhook fulfillment. |
+| `RUBY_HIGH_RATI_INTERNAL_API_KEY` | Enables RATi-backed teacher pack runtime calls. |
 
 [Env, set in `fly.toml [env]`]
 

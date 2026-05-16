@@ -25,18 +25,22 @@
  *   5. POST /api/apps/ruby-high/auth/guest → 200 + Set-Cookie
  *      Catches: offline mode cannot establish a persistent character bucket.
  *
- *   6. Guest session flow: GET session, create character, draw a board,
+ *   6. Billing products + guest billing status expose entitlement shape.
+ *      Catches: hosted economy payload regressions without requiring live
+ *      Stripe/OpenRouter secrets in the smoke environment.
+ *
+ *   7. Guest session flow: GET session, create character, draw a board,
  *      answer it.
  *      Catches: broken telemetry shape, offline character creation command,
  *      scheduler question posting, and answer resolution.
  *
- *   7. POST /api/apps/ruby-high/chat/character/generate (no auth) → 401
+ *   8. POST /api/apps/ruby-high/chat/character/generate (no auth) → 401
  *      Catches: requireAuth() not gating the LLM endpoints. This is the
  *      single check that most directly catches PR #30's regression
  *      (server returning 401 was the WORKING behavior; 200 or 5xx would
  *      have signalled the gate broke).
  *
- *   8. Guest offline opinion flow: advance until Ruby's Social card appears,
+ *   9. Guest offline opinion flow: advance until Ruby's Social card appears,
  *      submit a typed opinion, and verify the SSE resolves with grading.
  *      Catches: player-submitted opinion rounds that stay stuck on "waiting"
  *      until the browser-side timeout fallback kicks in.
@@ -97,6 +101,33 @@ async function readText(r) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function entitlementShapeError(entitlements) {
+  if (!entitlements || typeof entitlements !== "object") return "missing entitlements object";
+  if (typeof entitlements.hallPasses !== "number") return "missing numeric entitlements.hallPasses";
+  const hostedAi = entitlements.hosted_ai;
+  if (!hostedAi || typeof hostedAi !== "object") return "missing hosted_ai entitlement";
+  for (const key of ["configured", "active", "affordable", "canActivate"]) {
+    if (typeof hostedAi[key] !== "boolean") return `hosted_ai.${key} is not boolean`;
+  }
+  for (const key of ["remainingMs", "cost", "durationMs"]) {
+    if (typeof hostedAi[key] !== "number") return `hosted_ai.${key} is not numeric`;
+  }
+  if (hostedAi.expiresAt !== null && typeof hostedAi.expiresAt !== "number") {
+    return "hosted_ai.expiresAt is neither null nor numeric";
+  }
+  const images = entitlements.hosted_images;
+  if (!images || typeof images !== "object") return "missing hosted_images entitlement";
+  for (const kind of ["portrait", "diploma"]) {
+    const image = images[kind];
+    if (!image || typeof image !== "object") return `missing hosted_images.${kind}`;
+    for (const key of ["configured", "affordable", "canUseHosted"]) {
+      if (typeof image[key] !== "boolean") return `hosted_images.${kind}.${key} is not boolean`;
+    }
+    if (typeof image.cost !== "number") return `hosted_images.${kind}.cost is not numeric`;
+  }
+  return "";
 }
 
 async function postJson(path, body, cookie = smokeCookie) {
@@ -297,6 +328,8 @@ async function check5GuestSession() {
     if (!body || body.session !== true || body.ai !== false || body.label !== "Guest") {
       return fail(name, `unexpected guest body: ${JSON.stringify(body).slice(0, 200)}`);
     }
+    const entitlementError = entitlementShapeError(body.entitlements);
+    if (entitlementError) return fail(name, entitlementError);
     const setCookie = firstSetCookie(r.headers);
     const cookie = setCookie.split(";")[0];
     if (!/^rh_session=/.test(cookie)) {
@@ -309,7 +342,47 @@ async function check5GuestSession() {
   }
 }
 
-async function check6OfflinePlayFlow() {
+async function check6BillingEntitlements() {
+  const name = "billing entitlements";
+  if (!smokeCookie) return fail(name, "no guest cookie from auth/guest");
+  try {
+    const productsRes = await fetchWithTimeout(`${base}/api/apps/ruby-high/billing/products`, {
+      headers: { Cookie: smokeCookie },
+    });
+    if (productsRes.status !== 200) return fail(name, `billing/products expected 200, got ${productsRes.status}`);
+    const productsBody = await readJson(productsRes);
+    if (!productsBody?.ok || !Array.isArray(productsBody.products) || productsBody.products.length < 1) {
+      return fail(name, `billing/products missing product list: ${JSON.stringify(productsBody).slice(0, 240)}`);
+    }
+    if (!productsBody.imageCosts || typeof productsBody.imageCosts.portrait !== "number" || typeof productsBody.imageCosts.diploma !== "number") {
+      return fail(name, `billing/products missing image costs: ${JSON.stringify(productsBody).slice(0, 240)}`);
+    }
+    if (!productsBody.hostedAiAccess || typeof productsBody.hostedAiAccess.configured !== "boolean") {
+      return fail(name, `billing/products missing hosted AI status: ${JSON.stringify(productsBody).slice(0, 240)}`);
+    }
+    const productsEntitlementError = entitlementShapeError(productsBody.entitlements);
+    if (productsEntitlementError) return fail(name, `billing/products ${productsEntitlementError}`);
+
+    const statusRes = await fetchWithTimeout(`${base}/api/apps/ruby-high/billing/status`, {
+      headers: { Cookie: smokeCookie },
+    });
+    if (statusRes.status !== 200) return fail(name, `billing/status expected 200, got ${statusRes.status}`);
+    const statusBody = await readJson(statusRes);
+    if (!statusBody?.ok || typeof statusBody.hallPasses !== "number") {
+      return fail(name, `billing/status missing balance: ${JSON.stringify(statusBody).slice(0, 240)}`);
+    }
+    const statusEntitlementError = entitlementShapeError(statusBody.entitlements);
+    if (statusEntitlementError) return fail(name, `billing/status ${statusEntitlementError}`);
+    ok(
+      name,
+      `${productsBody.products.length} products, stripe=${productsBody.configured ? "on" : "off"}, hostedAI=${productsBody.entitlements.hosted_ai.configured ? "on" : "off"}`,
+    );
+  } catch (e) {
+    fail(name, e?.message || String(e));
+  }
+}
+
+async function check7OfflinePlayFlow() {
   const name = "offline play flow";
   if (!smokeCookie) return fail(name, "no guest cookie from auth/guest");
   const sessionPath = "/api/apps/ruby-high/session/smoke";
@@ -362,7 +435,7 @@ async function check6OfflinePlayFlow() {
   }
 }
 
-async function check7AuthGate() {
+async function check8AuthGate() {
   const name = "character/generate auth gate";
   try {
     const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/chat/character/generate`, {
@@ -380,7 +453,7 @@ async function check7AuthGate() {
   }
 }
 
-async function check8OfflineOpinionFlow() {
+async function check9OfflineOpinionFlow() {
   const name = "offline opinion flow";
   if (!smokeCookie) return fail(name, "no guest cookie from auth/guest");
   const sessionPath = "/api/apps/ruby-high/session/smoke";
@@ -451,9 +524,10 @@ await check2ViewerRenders();
 await check3AuthStart();
 await check4AuthMe();
 await check5GuestSession();
-await check6OfflinePlayFlow();
-await check7AuthGate();
-await check8OfflineOpinionFlow();
+await check6BillingEntitlements();
+await check7OfflinePlayFlow();
+await check8AuthGate();
+await check9OfflineOpinionFlow();
 
 console.log();
 if (failed > 0) {
