@@ -729,6 +729,74 @@ describe("Streak + grade advancement", () => {
     });
   });
 
+  it("unlocks teacher story pages only at Freshman and Junior year-end", async () => {
+    const { ruby } = await makeServices();
+
+    const freshmanSid = "test:first-bell-freshman-pages";
+    attachCharacter(ruby, freshmanSid, "9");
+    ruby.getOrCreate(freshmanSid).character!.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ruby.getOrCreate(freshmanSid);
+    const freshman = ruby.completeGraduation(freshmanSid, { kind: "advantage" });
+    expect(freshman.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([1, 2, 3]);
+
+    const sophomoreSid = "test:first-bell-sophomore-no-pages";
+    attachCharacter(ruby, sophomoreSid, "10");
+    ruby.getOrCreate(sophomoreSid).character!.streak = { grade: "10", count: 2, lastDate: "2026-05-05" };
+    ruby.getOrCreate(sophomoreSid);
+    const sophomore = ruby.completeGraduation(sophomoreSid, { kind: "advantage" });
+    expect(sophomore.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([]);
+
+    const juniorSid = "test:first-bell-junior-pages";
+    attachCharacter(ruby, juniorSid, "11");
+    ruby.getOrCreate(juniorSid).character!.streak = { grade: "11", count: 3, lastDate: "2026-05-06" };
+    ruby.getOrCreate(juniorSid);
+    const junior = ruby.completeGraduation(juniorSid, { kind: "advantage" });
+    expect(junior.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([4, 5, 6]);
+  });
+
+  it("unlocks a fixed student insert page on first friendship and keeps it across characters", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:first-bell-student-insert";
+    attachCharacter(ruby, sid, "9", false);
+    const ch = ruby.getOrCreate(sid).character!;
+    const card = emptyMashCard();
+    applyTick(card.cells.lyra!, 1);
+    ch.mashCard = card;
+
+    ruby.poseOpinion(sid, {
+      faculty: "ruby",
+      subject: "social",
+      questionId: "opinion_friend_lyra",
+      prompt: "What makes a classmate trustworthy?",
+      rubric: "Names one concrete trust signal and one concrete reason to verify.",
+    });
+    ruby.recordOpinion(sid, "player", "A clear source and a reason to check it.");
+    const after = ruby.recordGrades(sid, [
+      { responder: "player", score: 8, comment: "Good." },
+      { responder: "lyra", score: 9, comment: "Best answer." },
+    ], "lyra");
+
+    expect(after.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([7]);
+    expect(after.schoolEvents.some((e) =>
+      e.kind === "comic.page-unlocked" &&
+      e.pageNumber === 7 &&
+      e.reason === "student-befriended" &&
+      e.sourceId === "student:lyra"
+    )).toBe(true);
+
+    ruby.clearCharacter(sid);
+    expect(ruby.getOrCreate(sid).character).toBeNull();
+    expect(ruby.getOrCreate(sid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([7]);
+    ruby.createCharacter(sid, {
+      name: "Pip Two",
+      playbookId: "overachiever",
+      stats: { head: 1, heart: 0, hustle: 0, honor: 1 },
+      arcAnswer: "New arc.",
+      personality: "Curious.",
+    });
+    expect(ruby.getOrCreate(sid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([7]);
+  });
+
   it("opens Senior graduation as soon as the final class reaches C after the streak is already met", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:graduate-when-senior-class-gate-lands";

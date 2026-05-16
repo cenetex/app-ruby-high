@@ -28,6 +28,7 @@ function blankState(sessionId: string): QuizState {
     hasSeenIntro: false,
     activePackId: null,
     character: null,
+    comicCollection: { issueId: "first-bell", title: "Ruby High: Book One - First Bell", pageCount: 12, unlockedPages: [] },
     schoolEvents: [],
     essayReports: [],
     npcRosters: {},

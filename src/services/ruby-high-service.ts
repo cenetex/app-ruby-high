@@ -6,6 +6,7 @@ import {
   daysBetween,
   type Rarity,
   DEFAULT_ROUND_DURATION_MS,
+  GRADE_LABELS,
   GRADES,
   LOUNGE_FACULTY,
   OPINION_ROUND_DURATION_MS,
@@ -34,6 +35,9 @@ import {
   type CardReviewRating,
   type CharacterStats,
   type Choice,
+  type ComicCollection,
+  type ComicPageUnlock,
+  type ComicPageUnlockReason,
   type DailyClassRecord,
   type DeckCardRole,
   type Difficulty,
@@ -302,6 +306,27 @@ const GLOBAL_PACK_OWNER = "__ruby_high_global__";
 const CLASS_QUESTIONS_PER_DAY = 3;
 const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [2, 4, 6] as const;
 const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 1;
+const FIRST_BELL_COMIC_ISSUE_ID = "first-bell";
+const FIRST_BELL_COMIC_TITLE = "Ruby High: Book One - First Bell";
+const FIRST_BELL_COMIC_PAGE_COUNT = 12;
+const COMIC_CLASS_LABELS: Record<string, string> = {
+  ruby: "Homeroom",
+  "sally-science": "Science",
+  "professor-edward": "Literature",
+};
+const TEACHER_STORY_COMIC_PAGES: Record<string, Partial<Record<Grade, number>>> = {
+  ruby: { "9": 1, "11": 4 },
+  "sally-science": { "9": 2, "11": 5 },
+  "professor-edward": { "9": 3, "11": 6 },
+};
+const STUDENT_INSERT_COMIC_PAGES: Record<string, number> = {
+  lyra: 7,
+  sami: 8,
+  ravi: 9,
+  indra: 10,
+  mika: 11,
+  noor: 12,
+};
 
 export function advantageRollsForState(state: QuizState): { used: number; cap: number; remaining: number } {
   const grade = state.currentGrade;
@@ -893,6 +918,7 @@ export class RubyHighService extends Service {
         activePackId: null,
         character: null,
         studentPool: [],
+        comicCollection: normalizeComicCollection(null),
         schoolEvents: [],
         essayReports: [],
         npcRosters: {},
@@ -936,6 +962,68 @@ export class RubyHighService extends Service {
 
   private schoolEventId(kind: SchoolEvent["kind"]): string {
     return `school_${kind}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  private unlockComicPage(
+    state: QuizState,
+    pageNumber: number,
+    reason: ComicPageUnlockReason,
+    sourceId: string,
+    label: string,
+    now = Date.now(),
+  ): ComicPageUnlock | null {
+    if (!Number.isFinite(pageNumber) || pageNumber < 1 || pageNumber > FIRST_BELL_COMIC_PAGE_COUNT) return null;
+    const collection = (state.comicCollection = normalizeComicCollection(state.comicCollection));
+    if (collection.unlockedPages.some((page) => page.pageNumber === pageNumber)) return null;
+    const pageId = firstBellComicPageId(pageNumber);
+    const unlock: ComicPageUnlock = {
+      issueId: FIRST_BELL_COMIC_ISSUE_ID,
+      pageId,
+      pageNumber,
+      unlockedAt: now,
+      reason,
+      sourceId,
+      label,
+    };
+    collection.unlockedPages.push(unlock);
+    collection.unlockedPages.sort((a, b) => a.pageNumber - b.pageNumber);
+    this.appendSchoolEvent(state, {
+      id: this.schoolEventId("comic.page-unlocked"),
+      kind: "comic.page-unlocked",
+      at: now,
+      faculty: state.faculty,
+      grade: state.currentGrade,
+      issueId: unlock.issueId,
+      pageId,
+      pageNumber,
+      reason,
+      sourceId,
+      label,
+    });
+    log.event("comic.page-unlocked", {
+      sessionId: state.sessionId,
+      character: state.character?.name ?? null,
+      issueId: unlock.issueId,
+      pageNumber,
+      reason,
+      sourceId,
+    });
+    return unlock;
+  }
+
+  private unlockTeacherStoryPagesForGrade(state: QuizState, grade: Grade): void {
+    for (const [facultyId, pagesByGrade] of Object.entries(TEACHER_STORY_COMIC_PAGES)) {
+      const pageNumber = pagesByGrade[grade];
+      if (!pageNumber) continue;
+      const room = COMIC_CLASS_LABELS[facultyId] ?? facultyId;
+      this.unlockComicPage(
+        state,
+        pageNumber,
+        "teacher-year-completed",
+        `teacher:${facultyId}:grade:${grade}`,
+        `${GRADE_LABELS[grade]} ${room}`,
+      );
+    }
   }
 
   // ── phase transitions ────────────────────────────────────────────────────
@@ -2047,6 +2135,7 @@ export class RubyHighService extends Service {
       reward: normalizedReward,
       awardedAt: Date.now(),
     });
+    this.unlockTeacherStoryPagesForGrade(state, grade);
     ch.pendingGraduation = null;
 
     if (advance) {
@@ -2103,7 +2192,7 @@ export class RubyHighService extends Service {
   private applyMashTicksForEssay(
     state: QuizState,
     inputs: { questionId: string; bestResponder: string | null; playerScore: number; playerPassed: boolean },
-  ): Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean }> {
+  ): Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean; befriended: boolean }> {
     const ch = state.character;
     if (!ch) return [];
     const card = (ch.mashCard = ensureMashCard(ch.mashCard));
@@ -2115,13 +2204,14 @@ export class RubyHighService extends Service {
       date: dailyKey(),
       isHeart: ch.playbookId === "heart",
     });
-    const applied: Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean }> = [];
+    const applied: Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean; befriended: boolean }> = [];
     for (const t of ticks) {
       const cell = card.cells[t.studentId];
       if (!cell) continue;
       // Don't keep ticking a scratched cell — once the relationship is
       // gone, it stays gone for this character's career.
       if (cell.scratched && t.delta !== 0) continue;
+      const wasCircled = cell.circled;
       applyMashTick(cell, t.delta, dailyKey());
       applied.push({
         studentId: t.studentId,
@@ -2130,6 +2220,7 @@ export class RubyHighService extends Service {
         affinity: cell.affinity,
         circled: cell.circled,
         scratched: cell.scratched,
+        befriended: !wasCircled && cell.circled,
       });
     }
     return applied;
@@ -2656,6 +2747,20 @@ export class RubyHighService extends Service {
         circled: tick.circled,
         scratched: tick.scratched,
       });
+      if (tick.befriended) {
+        const studentName = studentById(tick.studentId)?.shortName ?? tick.studentId;
+        const pageNumber = STUDENT_INSERT_COMIC_PAGES[tick.studentId];
+        if (pageNumber) {
+          this.unlockComicPage(
+            state,
+            pageNumber,
+            "student-befriended",
+            `student:${tick.studentId}`,
+            `${studentName} insert`,
+            schoolEventAt,
+          );
+        }
+      }
     }
     round.resolved = true;
     round.resolvedAt = Date.now();
@@ -3446,6 +3551,46 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
   };
 }
 
+function firstBellComicPageId(pageNumber: number): string {
+  return `first-bell-page-${String(pageNumber).padStart(2, "0")}`;
+}
+
+function normalizeComicUnlockReason(value: unknown): ComicPageUnlockReason {
+  if (value === "teacher-year-completed" || value === "student-befriended" || value === "legacy") return value;
+  return "legacy";
+}
+
+function normalizeComicCollection(value: unknown): ComicCollection {
+  const src = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const seen = new Set<number>();
+  const unlockedPages: ComicPageUnlock[] = [];
+  const rawPages = Array.isArray(src.unlockedPages) ? src.unlockedPages : [];
+  for (const rawPage of rawPages) {
+    if (!rawPage || typeof rawPage !== "object") continue;
+    const page = rawPage as Record<string, unknown>;
+    const pageNumber = Math.floor(Number(page.pageNumber));
+    if (!Number.isFinite(pageNumber) || pageNumber < 1 || pageNumber > FIRST_BELL_COMIC_PAGE_COUNT) continue;
+    if (seen.has(pageNumber)) continue;
+    seen.add(pageNumber);
+    unlockedPages.push({
+      issueId: FIRST_BELL_COMIC_ISSUE_ID,
+      pageId: typeof page.pageId === "string" && page.pageId ? page.pageId : firstBellComicPageId(pageNumber),
+      pageNumber,
+      unlockedAt: typeof page.unlockedAt === "number" && Number.isFinite(page.unlockedAt) ? page.unlockedAt : Date.now(),
+      reason: normalizeComicUnlockReason(page.reason),
+      sourceId: typeof page.sourceId === "string" ? page.sourceId : "",
+      label: typeof page.label === "string" ? page.label : "",
+    });
+  }
+  unlockedPages.sort((a, b) => a.pageNumber - b.pageNumber);
+  return {
+    issueId: FIRST_BELL_COMIC_ISSUE_ID,
+    title: FIRST_BELL_COMIC_TITLE,
+    pageCount: FIRST_BELL_COMIC_PAGE_COUNT,
+    unlockedPages,
+  };
+}
+
 function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
   if (!Array.isArray(value)) return [];
   const out: SchoolEvent[] = [];
@@ -3495,6 +3640,22 @@ function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
         axis: e.axis as MashAxis,
         studentId: e.studentId,
         value: e.value,
+      });
+    } else if (kind === "comic.page-unlocked") {
+      const pageNumber = Math.floor(Number(e.pageNumber));
+      if (!Number.isFinite(pageNumber) || pageNumber < 1 || pageNumber > FIRST_BELL_COMIC_PAGE_COUNT) continue;
+      out.push({
+        id,
+        kind,
+        at,
+        ...(faculty ? { faculty } : {}),
+        grade,
+        issueId: FIRST_BELL_COMIC_ISSUE_ID,
+        pageId: typeof e.pageId === "string" && e.pageId ? e.pageId : firstBellComicPageId(pageNumber),
+        pageNumber,
+        reason: normalizeComicUnlockReason(e.reason),
+        sourceId: typeof e.sourceId === "string" ? e.sourceId : "",
+        label: typeof e.label === "string" ? e.label : "",
       });
     }
   }
@@ -3641,6 +3802,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     hasSeenIntro: !!s.hasSeenIntro,
     activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
     studentPool: normalizeStudentPool((s as { studentPool?: unknown }).studentPool),
+    comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},

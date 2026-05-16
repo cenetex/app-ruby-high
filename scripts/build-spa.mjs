@@ -108,6 +108,7 @@ function offlineApiScript(data) {
   const ORIGINAL_FETCH = window.fetch.bind(window);
   const CHOICES = ["A", "B", "C", "D"];
   const GRADES = ["9", "10", "11", "12"];
+  const FIRST_BELL_PAGE_COUNT = 12;
   const FACULTY = [
     { id: "ruby", displayName: "Ruby", shortName: "Ruby", subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"], bio: "Host of Ruby High.", available: true, accent: "#d22a2a", assetTeacherId: "ruby" },
     { id: "sally-science", displayName: "Sally Science", shortName: "Sally", subjects: ["physics", "chemistry", "biology", "earth-science"], bio: "STEM teacher.", available: true, accent: "#3aa3e0", assetTeacherId: "sally-science" },
@@ -185,6 +186,7 @@ function offlineApiScript(data) {
       activePackId: "ruby-high-original",
       character: null,
       studentPool: [],
+      comicCollection: defaultComicCollection(),
       schoolEvents: [],
       npcRosters: {
         "9": buildNpcRoster("9"),
@@ -220,16 +222,60 @@ function offlineApiScript(data) {
     return { cells, resolved: {} };
   }
 
+  function defaultComicCollection() {
+    return {
+      issueId: "first-bell",
+      title: "Ruby High: Book One - First Bell",
+      pageCount: FIRST_BELL_PAGE_COUNT,
+      unlockedPages: []
+    };
+  }
+
+  function ensureComicCollection(state) {
+    const raw = state && state.comicCollection && typeof state.comicCollection === "object" ? state.comicCollection : {};
+    const seen = new Set();
+    const unlockedPages = Array.isArray(raw.unlockedPages)
+      ? raw.unlockedPages.map(function(page) {
+        const pageNumber = Math.floor(Number(page && page.pageNumber));
+        if (!Number.isFinite(pageNumber) || pageNumber < 1 || pageNumber > FIRST_BELL_PAGE_COUNT || seen.has(pageNumber)) return null;
+        seen.add(pageNumber);
+        return {
+          issueId: "first-bell",
+          pageId: page.pageId || ("first-bell-page-" + String(pageNumber).padStart(2, "0")),
+          pageNumber,
+          unlockedAt: Number(page.unlockedAt || now()),
+          reason: page.reason || "legacy",
+          sourceId: page.sourceId || "",
+          label: page.label || ""
+        };
+      }).filter(Boolean)
+      : [];
+    state.comicCollection = {
+      issueId: "first-bell",
+      title: "Ruby High: Book One - First Bell",
+      pageCount: FIRST_BELL_PAGE_COUNT,
+      unlockedPages
+    };
+    return state.comicCollection;
+  }
+
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return ensureWallet(Object.assign(defaultState(), JSON.parse(raw)));
+      if (raw) {
+        const loaded = ensureWallet(Object.assign(defaultState(), JSON.parse(raw)));
+        ensureComicCollection(loaded);
+        return loaded;
+      }
     } catch (_err) {}
-    return ensureWallet(defaultState());
+    const state = ensureWallet(defaultState());
+    ensureComicCollection(state);
+    return state;
   }
 
   function saveState(state) {
     ensureWallet(state);
+    ensureComicCollection(state);
     state.updatedAt = now();
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_err) {}
     return state;
@@ -782,6 +828,7 @@ function offlineApiScript(data) {
       is_opinion: false,
       character: state.character,
       student_pool: state.studentPool || [],
+      comic_collection: ensureComicCollection(state),
       school_events: state.schoolEvents || [],
       playbooks: DATA.playbooks,
       daily: { available: !!state.character, facultyId: state.faculty === "lounge" ? "ruby" : state.faculty, dailyKey: dailyKey() },

@@ -228,6 +228,12 @@ The inherited move is cosmetic + lore today. **Mechanical wiring is in Part 3 (3
 
 Senior completion also writes a `GraduationReward` — one of stat / advantage / affinity — applied at character completion alongside the diploma image. The diploma's subject-themed accessory is selected by best per-faculty correctness ratio.
 
+### 1.6.11 Hidden comic pages
+
+`Ruby High: Book One - First Bell` is a cross-character collection. The session owns the collection, so clearing or graduating a character does not wipe found pages.
+
+Main story pages unlock at year-end ceremonies: Ruby, Sally Science, and Professor Edward each grant one page after Freshman year and one page after Junior year. Insert pages are tied to classmates: each student grants one fixed insert page the first time their Social Card cell is circled.
+
 ## 1.7 Architecture
 
 > *One container, one DynamoDB table, four services + a content-pack registry, no queue.*

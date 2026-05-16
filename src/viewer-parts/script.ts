@@ -69,6 +69,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
   const TEACHING_FACULTY_LABELS = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
   const LOUNGE_ID = "lounge";
+  const FIRST_BELL_PAGE_COUNT = 12;
   const STAT_META = {
     head:   { emoji: "🧠", label: "Head" },
     heart:  { emoji: "💗", label: "Heart" },
@@ -5007,10 +5008,148 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
 
     appendProgression(body, buildProgressionForCharacter(c));
+    const comicLocker = buildComicLocker();
+    if (comicLocker) body.appendChild(comicLocker);
     const mash = buildMashGrid(c, graduated);
     if (mash) body.appendChild(mash);
     card.appendChild(body);
     return card;
+  }
+
+  function comicCollectionForTelemetry() {
+    const collection = lastTelemetry && lastTelemetry.comic_collection;
+    if (!collection || typeof collection !== "object") return null;
+    const pages = Array.isArray(collection.unlockedPages) ? collection.unlockedPages : [];
+    return {
+      issueId: collection.issueId || "first-bell",
+      title: collection.title || "Ruby High: Book One - First Bell",
+      pageCount: Math.max(1, Math.floor(Number(collection.pageCount || FIRST_BELL_PAGE_COUNT))),
+      unlockedPages: pages
+        .filter((page) => page && typeof page === "object" && Number.isFinite(Number(page.pageNumber)))
+        .map((page) => ({
+          ...page,
+          pageNumber: Math.floor(Number(page.pageNumber)),
+        })),
+    };
+  }
+
+  function comicPageUrl(pageNumber) {
+    const page = String(Math.max(1, Math.floor(Number(pageNumber || 1)))).padStart(2, "0");
+    return apiBase + "/assets/comics/first-bell/page-" + page + ".jpg";
+  }
+
+  function comicUnlockLabel(unlock) {
+    if (!unlock) return "";
+    if (unlock.label) return unlock.label;
+    if (unlock.reason === "student-befriended" && unlock.sourceId) {
+      return studentNameById(String(unlock.sourceId).replace(/^student:/, "")) + " insert";
+    }
+    if (unlock.reason === "teacher-year-completed") return "Story page";
+    return "Found page";
+  }
+
+  function buildComicLocker() {
+    const collection = comicCollectionForTelemetry();
+    const pageCount = collection ? Math.min(FIRST_BELL_PAGE_COUNT, collection.pageCount) : FIRST_BELL_PAGE_COUNT;
+    const unlocked = collection ? collection.unlockedPages : [];
+    const byPage = new Map(unlocked.map((page) => [page.pageNumber, page]));
+    const wrap = document.createElement("div");
+    wrap.className = "comic-locker";
+
+    const head = document.createElement("div");
+    head.className = "comic-locker-head";
+    const title = document.createElement("div");
+    title.className = "comic-locker-title";
+    title.textContent = "First Bell Comic";
+    const progress = document.createElement("div");
+    progress.className = "comic-locker-progress";
+    progress.textContent = unlocked.length + "/" + pageCount + " pages";
+    head.appendChild(title);
+    head.appendChild(progress);
+    wrap.appendChild(head);
+
+    const grid = document.createElement("div");
+    grid.className = "comic-page-grid";
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+      const unlock = byPage.get(pageNumber);
+      const tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "comic-page-tile" + (unlock ? " is-unlocked" : " is-locked");
+      tile.setAttribute("aria-label", unlock ? "Open comic page " + pageNumber : "Comic page " + pageNumber + " locked");
+      if (!unlock) tile.disabled = true;
+
+      const num = document.createElement("span");
+      num.className = "comic-page-number";
+      num.textContent = String(pageNumber).padStart(2, "0");
+      tile.appendChild(num);
+
+      if (unlock) {
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.alt = "First Bell page " + pageNumber;
+        img.src = comicPageUrl(pageNumber);
+        tile.appendChild(img);
+        const found = document.createElement("span");
+        found.className = "comic-page-found";
+        found.textContent = comicUnlockLabel(unlock);
+        tile.appendChild(found);
+        tile.addEventListener("click", () => showComicReader(collection, unlock));
+      } else {
+        const mark = document.createElement("span");
+        mark.className = "comic-page-locked-mark";
+        mark.textContent = "?";
+        tile.appendChild(mark);
+      }
+      grid.appendChild(tile);
+    }
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  function showComicReader(collection, unlock) {
+    if (!unlock) return;
+    const pageNumber = Math.floor(Number(unlock.pageNumber || 1));
+    const overlay = document.createElement("div");
+    overlay.className = "comic-reader";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+
+    const panel = document.createElement("div");
+    panel.className = "comic-reader-panel";
+    const top = document.createElement("div");
+    top.className = "comic-reader-top";
+    const title = document.createElement("div");
+    title.className = "comic-reader-title";
+    title.textContent = "Page " + String(pageNumber).padStart(2, "0") + " · " + comicUnlockLabel(unlock);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "comic-reader-close";
+    close.setAttribute("aria-label", "Close comic page");
+    close.textContent = "X";
+    top.appendChild(title);
+    top.appendChild(close);
+    panel.appendChild(top);
+
+    const img = document.createElement("img");
+    img.alt = (collection && collection.title ? collection.title : "First Bell") + " page " + pageNumber;
+    img.src = comicPageUrl(pageNumber);
+    panel.appendChild(img);
+    overlay.appendChild(panel);
+
+    const remove = () => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") remove();
+    };
+    close.addEventListener("click", remove);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) remove();
+    });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    close.focus({ preventScroll: true });
   }
 
   function buildYearbookArchive(entries, liveChar, livePb, playbooks) {

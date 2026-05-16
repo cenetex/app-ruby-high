@@ -390,6 +390,32 @@ export interface MashCard {
   resolved: Partial<Record<MashAxis, MashResolution>>;
 }
 
+// ── Hidden Comic Collection ───────────────────────────────────────────────
+//
+// The First Bell comic is a session-level collection, not a character-level
+// reward. Clearing or graduating a student should leave found pages intact.
+export type ComicPageUnlockReason =
+  | "teacher-year-completed"
+  | "student-befriended"
+  | "legacy";
+
+export interface ComicPageUnlock {
+  issueId: string;
+  pageId: string;
+  pageNumber: number;
+  unlockedAt: number;
+  reason: ComicPageUnlockReason;
+  sourceId: string;
+  label: string;
+}
+
+export interface ComicCollection {
+  issueId: string;
+  title: string;
+  pageCount: number;
+  unlockedPages: ComicPageUnlock[];
+}
+
 // ── Durable School Events ─────────────────────────────────────────────────
 //
 // Chat history is dialogue. School events are the engine-owned facts that
@@ -397,7 +423,8 @@ export interface MashCard {
 // persisted on the session and echoed to the viewer/model as recent context.
 export type SchoolEvent =
   | RelationshipTickSchoolEvent
-  | MashAxisResolvedSchoolEvent;
+  | MashAxisResolvedSchoolEvent
+  | ComicPageUnlockedSchoolEvent;
 
 interface BaseSchoolEvent {
   id: string;
@@ -422,6 +449,16 @@ export interface MashAxisResolvedSchoolEvent extends BaseSchoolEvent {
   axis: MashAxis;
   studentId: string;
   value: string;
+}
+
+export interface ComicPageUnlockedSchoolEvent extends BaseSchoolEvent {
+  kind: "comic.page-unlocked";
+  issueId: string;
+  pageId: string;
+  pageNumber: number;
+  reason: ComicPageUnlockReason;
+  sourceId: string;
+  label: string;
 }
 
 export type RubyHighWalletTransactionKind =
@@ -507,6 +544,8 @@ export interface QuizState {
    *  character graduates, that sealed student is copied here so the player can
    *  start a new active run without losing their old class history. */
   studentPool?: StudentPoolEntry[];
+  /** Cross-character collection of found First Bell comic pages. */
+  comicCollection: ComicCollection;
   /** Engine-owned facts that changed in the school world. This is the durable
    *  counterpart to volatile chat room events; AI can react to these but must
    *  not invent or mutate them. */
