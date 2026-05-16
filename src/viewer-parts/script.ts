@@ -70,6 +70,20 @@ const VIEWER_SCRIPT_SUFFIX = `
   const TEACHING_FACULTY_LABELS = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
   const LOUNGE_ID = "lounge";
   const FIRST_BELL_PAGE_COUNT = 12;
+  const FIRST_BELL_PAGE_TITLES = {
+    1: "Ruby High: Book One - First Bell",
+    2: "First-Day Survival Kit",
+    3: "Release Notes: New Faces on Campus",
+    4: "A Normal First Day",
+    5: "New School, New People",
+    6: "New Rooms, New Faces",
+    7: "Lunch Table Theory",
+    8: "First Day Debrief",
+    9: "End-of-Day Debrief",
+    10: "Captain Null: The Star That Cast a Shadow",
+    11: "Ruby's Locker Notes",
+    12: "Ruby High Student Cards",
+  };
   const STAT_META = {
     head:   { emoji: "🧠", label: "Head" },
     heart:  { emoji: "💗", label: "Heart" },
@@ -5038,14 +5052,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     return apiBase + "/assets/comics/first-bell/page-" + page + ".jpg";
   }
 
-  function comicUnlockLabel(unlock) {
-    if (!unlock) return "";
-    if (unlock.label) return unlock.label;
-    if (unlock.reason === "student-befriended" && unlock.sourceId) {
-      return studentNameById(String(unlock.sourceId).replace(/^student:/, "")) + " insert";
-    }
-    if (unlock.reason === "teacher-class-aced" || unlock.reason === "teacher-year-completed") return "Story page";
-    return "Found page";
+  function comicPageTitle(pageNumber) {
+    const n = Math.max(1, Math.floor(Number(pageNumber || 1)));
+    return FIRST_BELL_PAGE_TITLES[n] || "First Bell";
   }
 
   function buildComicLocker() {
@@ -5072,16 +5081,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     grid.className = "comic-page-grid";
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
       const unlock = byPage.get(pageNumber);
+      const pageTitle = comicPageTitle(pageNumber);
       const tile = document.createElement("button");
       tile.type = "button";
       tile.className = "comic-page-tile" + (unlock ? " is-unlocked" : " is-locked");
-      tile.setAttribute("aria-label", unlock ? "Open comic page " + pageNumber : "Comic page " + pageNumber + " locked");
+      tile.setAttribute("aria-label", unlock ? "Open " + pageTitle : pageTitle + " locked");
       if (!unlock) tile.disabled = true;
 
       if (unlock) {
         const img = document.createElement("img");
         img.loading = "lazy";
-        img.alt = "First Bell page " + pageNumber;
+        img.alt = pageTitle;
         img.src = comicPageUrl(pageNumber);
         tile.appendChild(img);
         tile.addEventListener("click", () => showComicReader(collection, unlock));
@@ -5111,7 +5121,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     top.className = "comic-reader-top";
     const title = document.createElement("div");
     title.className = "comic-reader-title";
-    title.textContent = "Page " + String(pageNumber).padStart(2, "0") + " · " + comicUnlockLabel(unlock);
+    title.textContent = comicPageTitle(pageNumber);
     const close = document.createElement("button");
     close.type = "button";
     close.className = "comic-reader-close";
@@ -5122,7 +5132,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     panel.appendChild(top);
 
     const img = document.createElement("img");
-    img.alt = (collection && collection.title ? collection.title : "First Bell") + " page " + pageNumber;
+    img.alt = comicPageTitle(pageNumber);
     img.src = comicPageUrl(pageNumber);
     panel.appendChild(img);
     overlay.appendChild(panel);
