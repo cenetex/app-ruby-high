@@ -17,6 +17,10 @@ import type {
   StoredPackInstallationRecord,
   StoredPackVisibility,
 } from "./services/state-store.js";
+import {
+  hasOpenRouterGenerationAccess,
+  openRouterGenerationRequiredMessage,
+} from "./openrouter-generation-access.js";
 
 export interface PackLibraryRouteContext {
   method: string;
@@ -24,6 +28,7 @@ export interface PackLibraryRouteContext {
   url?: URL;
   res: unknown;
   cookieHeader?: string | null;
+  apiKeyHeader?: string | null;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
@@ -214,6 +219,10 @@ export async function handlePackLibraryRoutes(
   if (ctx.method === "POST" && generatePath?.[1] && generatePath?.[2]) {
     const draft = await requireDraft(deps.ruby, record, decodeURIComponent(generatePath[1]), ctx);
     if (!draft) return true;
+    if (!hasOpenRouterGenerationAccess({ apiKeyHeader: ctx.apiKeyHeader, ruby: deps.ruby, sessionId })) {
+      ctx.error(ctx.res, openRouterGenerationRequiredMessage("generating questions"), 401);
+      return true;
+    }
     const teacherId = decodeURIComponent(generatePath[2]);
     try {
       const updated = generateQuestionsForTeacher(draft, teacherId);

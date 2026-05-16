@@ -1060,6 +1060,9 @@ export const VIEWER_CSS = `
     font-size: 12px;
     text-align: right;
   }
+  .pack-question-status.is-invalid {
+    color: #ff8c8c;
+  }
   .pack-question-list {
     display: grid;
     gap: 8px;

@@ -468,12 +468,19 @@ const VIEWER_SCRIPT_SUFFIX = `
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // Local/OpenRouter text AI + Ruby High session present
   let localAiEnabled = false;
+  let hostedAiActive = false;
   function activeTeacherUsesServerAi() {
     const provider = lastTelemetry && lastTelemetry.active_teacher_provider;
     return !!(provider && provider.requiresBrowserKey === false);
   }
   function teacherChatEnabled() {
     return !!authed && (aiEnabled || activeTeacherUsesServerAi());
+  }
+  function openRouterAiEnabled() {
+    return !!authed && (!!getStoredApiKey() || (!!aiEnabled && !localAiEnabled && hostedAiActive));
+  }
+  function openRouterGenerationMessage(action) {
+    return "Enable OpenRouter AI before " + action + ".";
   }
   let lockedFor = null;
   let renderedHistorySig = null;
@@ -5644,6 +5651,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     packEditEl.querySelectorAll("input, textarea").forEach((field) => {
       field.disabled = packImportBusy;
     });
+    syncPackGenerationControls();
   }
   function updatePackImportProgress(pct, title, detail, isError) {
     if (!packImportPanelEl) return;
@@ -5997,6 +6005,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function renderNewTeacherCreation() {
     const roll = pendingTeacherRoll || rollTeacherCandidate();
+    const canGenerateTeacherImage = openRouterAiEnabled();
     const portraitUrl = roll.profileImageUrl || packTeacherAssetUrl(roll.assetTeacherId, "full");
     const candidateCard = buildCharacterCard({
       role: "teacher",
@@ -6019,8 +6028,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const imageBtn = document.createElement("button");
     imageBtn.type = "button";
     imageBtn.className = "secondary";
+    imageBtn.dataset.requiresOpenrouter = "teacher-image";
     imageBtn.textContent = pendingTeacherImageBusy ? "Generating..." : "Generate teacher image";
-    imageBtn.disabled = packImportBusy || pendingTeacherImageBusy;
+    imageBtn.disabled = packImportBusy || pendingTeacherImageBusy || !canGenerateTeacherImage;
+    imageBtn.title = canGenerateTeacherImage ? "" : openRouterGenerationMessage("generating teacher images");
     imageBtn.addEventListener("click", generateTeacherImageForPendingRoll);
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
@@ -6054,8 +6065,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   async function generateTeacherImageForPendingRoll() {
     if (!pendingTeacherRoll || pendingTeacherImageBusy) return;
-    if (!aiEnabled || localAiEnabled) {
-      pendingTeacherImageStatus = localAiEnabled ? "Teacher image generation requires OpenRouter." : "Enable AI for a generated teacher image.";
+    if (!openRouterAiEnabled()) {
+      pendingTeacherImageStatus = openRouterGenerationMessage("generating teacher images");
       pendingTeacherImageInvalid = true;
       renderPackTeacherEditor();
       return;
@@ -6227,9 +6238,25 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (teacherMaterialUrlInputEl) teacherMaterialUrlInputEl.value = teacher && teacher.materialSourceUrl ? teacher.materialSourceUrl : "";
     if (teacherGenerationStatusEl) {
       teacherGenerationStatusEl.textContent = teacher
-        ? "Generated " + (teacher.generationCount || 0) + " time" + ((teacher.generationCount || 0) === 1 ? "" : "s") + " today"
+        ? (openRouterAiEnabled()
+          ? "Generated " + (teacher.generationCount || 0) + " time" + ((teacher.generationCount || 0) === 1 ? "" : "s") + " today"
+          : openRouterGenerationMessage("generating questions"))
         : "";
+      teacherGenerationStatusEl.classList.toggle("is-invalid", !!teacher && !openRouterAiEnabled());
     }
+    syncPackGenerationControls();
+  }
+
+  function syncPackGenerationControls() {
+    const canGenerate = openRouterAiEnabled();
+    if (teacherGenerateQuestionsBtn) {
+      teacherGenerateQuestionsBtn.disabled = packImportBusy || !selectedDraftTeacher() || !canGenerate;
+      teacherGenerateQuestionsBtn.title = canGenerate ? "" : openRouterGenerationMessage("generating questions");
+    }
+    packEditEl.querySelectorAll("[data-requires-openrouter]").forEach((btn) => {
+      btn.disabled = packImportBusy || pendingTeacherImageBusy || !canGenerate;
+      btn.title = canGenerate ? "" : openRouterGenerationMessage("generating teacher images");
+    });
   }
 
   function renderPackEditor() {
@@ -6375,6 +6402,18 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function generateDraftQuestions() {
     const teacher = selectedDraftTeacher();
     if (!currentDraft || !teacher) return;
+    if (!openRouterAiEnabled()) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = openRouterGenerationMessage("generating questions");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+      if (teacherGenerationStatusEl) {
+        teacherGenerationStatusEl.textContent = openRouterGenerationMessage("generating questions");
+        teacherGenerationStatusEl.classList.add("is-invalid");
+      }
+      syncPackGenerationControls();
+      return;
+    }
     await saveSelectedTeacher();
     setPackBusy(true);
     if (packEditStatusEl) packEditStatusEl.textContent = "Generating questions...";
@@ -6540,12 +6579,14 @@ const VIEWER_SCRIPT_SUFFIX = `
   function setAuthState(next, opts) {
     const nextAi = !!(opts && opts.ai);
     const nextLocalAi = !!(opts && opts.local_ai);
-    if (next === lastAuthState && nextAi === aiEnabled && nextLocalAi === localAiEnabled) return;
+    const nextHostedAiActive = !!(opts && opts.hosted_ai && opts.hosted_ai.active);
+    if (next === lastAuthState && nextAi === aiEnabled && nextLocalAi === localAiEnabled && nextHostedAiActive === hostedAiActive) return;
     const wasSignedIn = lastAuthState === true;
     lastAuthState = next;
     authed = next;
     aiEnabled = nextAi;
     localAiEnabled = nextLocalAi;
+    hostedAiActive = nextHostedAiActive;
     applyAuthUI();
     // OpenRouter is optional. The overlay is now only a fallback if the app
     // cannot establish even a guest Ruby High session.
@@ -6581,7 +6622,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");
-    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai });
+    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai });
   }
   async function retryGuestSession() {
     if (els.signinGuest) els.signinGuest.disabled = true;
@@ -6608,7 +6649,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const data = await r.json().catch(() => ({}));
       if (seq !== authCheckSeq) return;
       if (r.ok && data && data.session) {
-        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai });
+        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai });
       } else {
         await ensureGuestSession();
       }
@@ -6656,6 +6697,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       renderBlackboard(lastTelemetry.current || null, fac || null, lastTelemetry.current_grade);
       renderRaceStrip(lastTelemetry);
     }
+    syncPackGenerationControls();
   }
   async function logout() {
     // Clear the credential first so any in-flight refresh sees us as
@@ -6668,6 +6710,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     authed = null;
     aiEnabled = false;
     localAiEnabled = false;
+    hostedAiActive = false;
     lastAuthState = null;
     await deriveAuth();
     applyAuthUI();
@@ -6682,6 +6725,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (requestSeq !== chatViewSeq || !lastTelemetry || lastTelemetry.faculty !== facultyId) return;
       aiEnabled = !!data.authed;
       localAiEnabled = !!data.local_ai;
+      hostedAiActive = !!(data.hosted_ai && data.hosted_ai.active);
       const msgs = data.history || [];
       const sig = facultyId + ":" + playerMessageIdentitySig() + ":" + msgs.length;
       if (sig === renderedHistorySig) return;

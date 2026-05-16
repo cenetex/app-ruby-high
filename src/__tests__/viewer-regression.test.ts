@@ -148,10 +148,20 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("Teacher Roll");
     expect(script).toContain("Generate teacher image");
     expect(script).toContain("Add Teacher");
+    expect(script).toContain("function openRouterAiEnabled()");
+    expect(script).toContain('openRouterGenerationMessage("generating teacher images")');
     expect(script).toContain("/api/apps/ruby-high/chat/teacher/portrait");
     expect(script).toContain("stats: pendingTeacherRoll.stats");
     expect(script).toContain('makeRow("Stats", "stats", teacherStatsLine(roll.stats))');
     expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');
+  });
+
+  it("gates pack question generation on OpenRouter AI", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(script).toContain('openRouterGenerationMessage("generating questions")');
+    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || !selectedDraftTeacher() || !canGenerate");
+    expect(script).toContain("if (!openRouterAiEnabled())");
   });
 
   it("routes the post-class Practice button to a practice board or teacher advance", () => {

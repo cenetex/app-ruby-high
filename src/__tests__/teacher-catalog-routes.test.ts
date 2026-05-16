@@ -59,6 +59,7 @@ function makeCtx(opts: {
   method: string;
   path: string;
   cookie?: string | null;
+  apiKeyHeader?: string | null;
   body?: Record<string, unknown>;
   wallet?: string | null;
 }): TeacherCatalogRouteContext {
@@ -70,6 +71,7 @@ function makeCtx(opts: {
     url,
     res: {} as never,
     cookieHeader: opts.cookie ?? null,
+    apiKeyHeader: opts.apiKeyHeader ?? null,
     walletAddressHeader: opts.wallet ?? null,
     error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { lastResponse = { status, body: data }; },
@@ -130,6 +132,23 @@ afterEach(async () => {
 });
 
 describe("/teachers creator catalog", () => {
+  it("requires OpenRouter AI before creating generated teacher drafts", async () => {
+    signInUser("alice");
+
+    await handleTeacherCatalogRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/teachers/drafts",
+      cookie: "rh_session=alice",
+      body: {
+        displayName: "Archivist",
+        materials: "# Memory systems\nSpaced repetition schedules cards by recall strength.",
+      },
+    }), makeDeps());
+
+    expect(lastResponse?.status).toBe(401);
+    expect(lastResponse?.body.error).toContain("Enable OpenRouter AI");
+  });
+
   it("creates a local pack teacher draft without wallet-linked RATi avatars", async () => {
     const aliceSessionId = signInUser("alice");
 
@@ -137,6 +156,7 @@ describe("/teachers creator catalog", () => {
       method: "POST",
       path: "/api/apps/ruby-high/teachers/drafts",
       cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
       body: {
         displayName: "Archivist",
         description: "Teaches from uploaded notes.",
@@ -169,6 +189,7 @@ describe("/teachers creator catalog", () => {
       method: "POST",
       path: "/api/apps/ruby-high/teachers/drafts",
       cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
       wallet,
       body: {
         avatarId: "spartan",
@@ -211,6 +232,7 @@ describe("/teachers creator catalog", () => {
       method: "POST",
       path: "/api/apps/ruby-high/teachers/drafts",
       cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
       body: {
         walletAddress: wallet,
         avatarId: "spartan",

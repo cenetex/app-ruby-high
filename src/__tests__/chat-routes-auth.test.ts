@@ -286,6 +286,37 @@ describe("hosted AI day pass auth", () => {
 });
 
 describe("hosted image Hall Passes", () => {
+  it("rejects hosted teacher image generation until OpenRouter AI is enabled", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-teacher-image-no-ai-pass";
+    auth.injectSessionForTest(token, {
+      userId: "hosted-teacher-image-no-ai-pass-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Teacher Image",
+    });
+    (globalThis.fetch as any).mockClear();
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/teacher/portrait"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          name: "Signal Coach",
+          personality: "Turns signal notes into study cards.",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error).toContain("Enable OpenRouter AI");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects hosted portraits when the wallet has no Hall Passes", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
     const token = "hosted-portrait-empty-wallet";

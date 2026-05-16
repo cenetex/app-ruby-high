@@ -24,6 +24,10 @@ import {
   type RatiUserAvatar,
 } from "./services/rati-avatar-provider.js";
 import type { StoredTeacherRecord } from "./services/state-store.js";
+import {
+  hasOpenRouterGenerationAccess,
+  openRouterGenerationRequiredMessage,
+} from "./openrouter-generation-access.js";
 
 export interface TeacherCatalogRouteContext {
   method: string;
@@ -31,6 +35,7 @@ export interface TeacherCatalogRouteContext {
   url?: URL;
   res: unknown;
   cookieHeader?: string | null;
+  apiKeyHeader?: string | null;
   authorizationHeader?: string | string[] | null;
   walletAddressHeader?: string | string[] | null;
   error: (response: unknown, message: string, status?: number) => void;
@@ -114,6 +119,10 @@ export async function handleTeacherCatalogRoutes(
   if (ctx.method === "POST" && sub === "/drafts") {
     const record = requireAuth(ctx, authRecord, token);
     if (!record) return true;
+    if (!hasOpenRouterGenerationAccess({ apiKeyHeader: ctx.apiKeyHeader, ruby: deps.ruby, sessionId })) {
+      ctx.error(ctx.res, openRouterGenerationRequiredMessage("generating teachers"), 401);
+      return true;
+    }
     const body = await readBody(ctx);
     try {
       const materials = bodyString(body, "materials") || bodyString(body, "courseMaterials") || bodyString(body, "markdown") || bodyString(body, "text");

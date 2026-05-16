@@ -46,6 +46,10 @@ import { PLAYBOOKS } from "./characters/playbooks.js";
 import { statForQuestion } from "./question-stats.js";
 import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
 import { hostedAiAccessCost, hostedAiAccessDurationMs, hostedImageCost } from "./routes/billing.js";
+import {
+  openRouterGenerationRequiredMessage,
+  resolveOpenRouterGenerationCredential,
+} from "./openrouter-generation-access.js";
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
   if (value == null || value.trim() === "") return fallback;
@@ -2254,20 +2258,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/teacher/portrait`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
     const record = auth.resolve(token);
-    const imageCredential = readOpenRouterImageCredential(ctx);
-    const apiKey = imageCredential.apiKey;
     if (!token || !record) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
+    const sessionId = auth.stateKeyForRecord(record);
+    const imageCredential = resolveOpenRouterGenerationCredential({
+      apiKeyHeader: ctx.apiKeyHeader,
+      ruby,
+      sessionId,
+    });
+    const apiKey = imageCredential.apiKey;
     if (!apiKey) {
-      ctx.error(
-        ctx.res,
-        isLocalLlmProvider()
-          ? "Local text AI is enabled, but teacher portrait generation still requires an OpenRouter image model."
-          : "Sign in with OpenRouter first.",
-        isLocalLlmProvider() ? 501 : 401,
-      );
+      ctx.error(ctx.res, openRouterGenerationRequiredMessage("generating teacher images"), 401);
       return true;
     }
     const rlKey = rateLimitKey(ctx, token);
@@ -2284,7 +2287,6 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Missing name or personality.", 400);
       return true;
     }
-    const sessionId = auth.stateKeyForRecord(record);
     const hallPassCost = imageCredential.hosted ? hostedImageCost("portrait") : 0;
     if (hallPassCost > 0 && ruby.hallPassBalance(sessionId) < hallPassCost) {
       ctx.error(ctx.res, `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted teacher image.`, 402);

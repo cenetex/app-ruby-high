@@ -17,6 +17,7 @@ function makeCtx(opts: {
   method: string;
   path: string;
   cookie?: string | null;
+  apiKeyHeader?: string | null;
   body?: Record<string, unknown>;
 }): PackLibraryRouteContext {
   lastResponse = null;
@@ -27,6 +28,7 @@ function makeCtx(opts: {
     url,
     res: {} as never,
     cookieHeader: opts.cookie ?? null,
+    apiKeyHeader: opts.apiKeyHeader ?? null,
     error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { lastResponse = { status, body: data }; },
     readJsonBody: async () => opts.body ?? {},
@@ -164,6 +166,15 @@ describe("/pack-library", () => {
       method: "POST",
       path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
       cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(401);
+    expect(response.body.error).toContain("Enable OpenRouter AI");
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
+      cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
     });
     expect(response.status).toBe(200);
     expect(response.body.teacher.generationCount).toBe(1);
