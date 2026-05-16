@@ -51,6 +51,50 @@ function attachTestCharacter(ruby: RubyHighService, sid: string, streakCount = 0
   return state;
 }
 
+describe("Hall Pass wallet", () => {
+  it("applies grants and spends idempotently", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:wallet";
+
+    const grant = ruby.grantHallPasses(sid, {
+      amount: 20,
+      idempotencyKey: "stripe:checkout:cs_test_1",
+      source: "stripe",
+    });
+    expect(grant.applied).toBe(true);
+    expect(grant.state.wallet.hallPasses).toBe(20);
+
+    const repeatGrant = ruby.grantHallPasses(sid, {
+      amount: 20,
+      idempotencyKey: "stripe:checkout:cs_test_1",
+      source: "stripe",
+    });
+    expect(repeatGrant.applied).toBe(false);
+    expect(repeatGrant.state.wallet.hallPasses).toBe(20);
+
+    const spend = ruby.spendHallPasses(sid, {
+      amount: 3,
+      idempotencyKey: "hosted-image:diploma:test",
+      source: "hosted-image",
+    });
+    expect(spend.applied).toBe(true);
+    expect(spend.state.wallet.hallPasses).toBe(17);
+
+    const repeatSpend = ruby.spendHallPasses(sid, {
+      amount: 3,
+      idempotencyKey: "hosted-image:diploma:test",
+      source: "hosted-image",
+    });
+    expect(repeatSpend.applied).toBe(false);
+    expect(repeatSpend.state.wallet.hallPasses).toBe(17);
+    expect(() => ruby.spendHallPasses(sid, {
+      amount: 18,
+      idempotencyKey: "hosted-image:portrait:too-many",
+      source: "hosted-image",
+    })).toThrow(/Not enough Hall Passes/);
+  });
+});
+
 function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"): ContentPack {
   return {
     id,
@@ -318,6 +362,7 @@ describe("RubyHighService Phase 1", () => {
     const correct = s.current!.correct!;
     s = ruby.submitAnswer(sid, correct);
     expect(s.score).toMatchObject({ correct: 1, total: 1, points: 80, possible: 100 });
+    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
     expect(s.lastReveal?.scoreAward).toMatchObject({ base: 80, multiplier: 1, points: 80, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(true);
 
@@ -328,6 +373,7 @@ describe("RubyHighService Phase 1", () => {
     // Wrong answers earn no points (the dice can't pile on a miss).
     // session.points stays at the previous correct's value; possible still ticks.
     expect(s.score).toMatchObject({ correct: 1, total: 2, points: 80, possible: 200 });
+    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
     expect(s.lastReveal?.scoreAward).toMatchObject({ base: 0, multiplier: 1, points: 0, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(false);
   });
@@ -399,6 +445,8 @@ describe("RubyHighService Phase 1", () => {
     const restored = rubyB.getOrCreate(sid);
     expect(restored.score.correct).toBe(1);
     expect(restored.score.total).toBe(1);
+    expect(restored.wallet.meritStars).toBe(restored.score.points);
+    expect(restored.wallet.hallPasses).toBe(0);
     expect(restored.askedQuestionIds.length).toBe(1);
     expect(restored.faculty).toBe("sally-science");
   });
@@ -1083,6 +1131,7 @@ describe("RubyHighService Phase 1", () => {
     ruby.resetSession(sid);
     const fresh = ruby.getOrCreate(sid);
     expect(fresh.score).toMatchObject({ correct: 0, total: 0, points: 0, possible: 0 });
+    expect(fresh.wallet).toMatchObject({ meritStars: 0, hallPasses: 0 });
     expect(fresh.askedQuestionIds).toEqual([]);
     expect(fresh.history).toEqual([]);
   });

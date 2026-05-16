@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
@@ -43,6 +44,7 @@ import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
 import { statForQuestion } from "./question-stats.js";
 import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
+import { hostedAiAccessCost, hostedAiAccessDurationMs, hostedImageCost } from "./routes/billing.js";
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
   if (value == null || value.trim() === "") return fallback;
@@ -1078,22 +1080,63 @@ const CHAT_PREFIX = "/api/apps/ruby-high/chat";
 const AUTH_PREFIX = "/api/apps/ruby-high/auth";
 const DEFAULT_AUTH_REDIRECT = "/api/apps/ruby-high/viewer";
 
-/** Resolve the text LLM credential. In local mode the server can satisfy
- *  text endpoints without a browser-owned OpenRouter key. */
-function readApiKey(ctx: ChatRouteContext): string | null {
+/** Resolve a user-supplied or local text LLM credential. The hosted
+ *  OpenRouter server key is intentionally excluded here; it is only exposed
+ *  through an active Hall Pass AI window. */
+function readBrowserOrLocalApiKey(ctx: ChatRouteContext): string | null {
   const raw = ctx.apiKeyHeader;
-  if (!raw) return resolveLlmApiKey(null);
+  if (!raw) return isLocalLlmProvider() ? resolveLlmApiKey(null) : null;
   const trimmed = String(raw).trim();
-  return trimmed.length > 0 ? resolveLlmApiKey(trimmed) : resolveLlmApiKey(null);
+  return trimmed.length > 0 ? resolveLlmApiKey(trimmed) : isLocalLlmProvider() ? resolveLlmApiKey(null) : null;
+}
+
+function hostedOpenRouterApiKeyForSession(ruby: RubyHighService, sessionId: string): string | null {
+  if (isLocalLlmProvider()) return null;
+  if (!ruby.hostedAiAccessExpiresAt(sessionId)) return null;
+  return process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
+}
+
+/** Resolve the text LLM credential for this session. Browser BYOK and local
+ *  LLMs are free; server-hosted OpenRouter text AI requires an active AI Day
+ *  Pass on the Ruby High wallet. */
+function readApiKey(ctx: ChatRouteContext, ruby: RubyHighService, sessionId: string): string | null {
+  return readBrowserOrLocalApiKey(ctx) ?? hostedOpenRouterApiKeyForSession(ruby, sessionId);
+}
+
+function hostedAiStatus(ruby: RubyHighService, sessionId: string): Record<string, unknown> {
+  const expiresAt = ruby.hostedAiAccessExpiresAt(sessionId);
+  return {
+    configured: !!process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim(),
+    active: !!expiresAt,
+    expiresAt,
+    remainingMs: expiresAt ? Math.max(0, expiresAt - Date.now()) : 0,
+    cost: hostedAiAccessCost(),
+    durationMs: hostedAiAccessDurationMs(),
+  };
+}
+
+interface ImageApiCredential {
+  apiKey: string | null;
+  hosted: boolean;
 }
 
 /** Image generation still uses OpenRouter models, so local text LLM
- *  credentials intentionally do not satisfy portrait/diploma routes. */
-function readOpenRouterApiKey(ctx: ChatRouteContext): string | null {
+ *  credentials intentionally do not satisfy portrait/diploma routes.
+ *  A browser-owned key is BYOK and free to Ruby High; the server fallback
+ *  is hosted inference and spends Hall Passes. */
+function readOpenRouterImageCredential(ctx: ChatRouteContext): ImageApiCredential {
   const raw = ctx.apiKeyHeader;
-  if (!raw) return process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
-  const trimmed = String(raw).trim();
-  return trimmed.length > 0 ? trimmed : process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
+  if (raw) {
+    const trimmed = String(raw).trim();
+    if (trimmed.length > 0) return { apiKey: trimmed, hosted: false };
+  }
+  const hostedKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
+  return { apiKey: hostedKey, hosted: !!hostedKey };
+}
+
+function hostedImageSpendKey(kind: "portrait" | "diploma", imageUrl: string): string {
+  const digest = createHash("sha256").update(`${kind}:${imageUrl}`).digest("hex").slice(0, 32);
+  return `hosted-image:${kind}:${digest}`;
 }
 
 /** Pull the session cookie + API key for an LLM endpoint. The cookie
@@ -1102,22 +1145,26 @@ function readOpenRouterApiKey(ctx: ChatRouteContext): string | null {
 function requireAuth(
   ctx: ChatRouteContext,
   auth: AuthService,
+  ruby: RubyHighService,
 ): { token: string; apiKey: string; record: AuthRecord; stateKey: string } | null {
   const token = auth.parseSessionToken(ctx.cookieHeader);
-  const apiKey = readApiKey(ctx);
   const record = auth.resolve(token);
+  const stateKey = record ? auth.stateKeyForRecord(record) : "";
+  const apiKey = record ? readApiKey(ctx, ruby, stateKey) : null;
   if (!token || !apiKey || !record) return null;
-  return { token, apiKey, record, stateKey: auth.stateKeyForRecord(record) };
+  return { token, apiKey, record, stateKey };
 }
 
 function requireSession(
   ctx: ChatRouteContext,
   auth: AuthService,
+  ruby: RubyHighService,
 ): { token: string; apiKey: string | null; record: AuthRecord; stateKey: string } | null {
   const token = auth.parseSessionToken(ctx.cookieHeader);
   const record = auth.resolve(token);
   if (!token || !record) return null;
-  return { token, apiKey: readApiKey(ctx), record, stateKey: auth.stateKeyForRecord(record) };
+  const stateKey = auth.stateKeyForRecord(record);
+  return { token, apiKey: readApiKey(ctx, ruby, stateKey), record, stateKey };
 }
 
 function canonicalFacultyForRoute(ruby: RubyHighService, sessionId: string, requested?: string | null): string {
@@ -1335,12 +1382,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     if (token !== existingToken) {
       setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
     }
+    const stateKey = auth.stateKeyForRecord(record);
+    const apiKey = readApiKey(ctx, ruby, stateKey);
     ctx.json(ctx.res, {
       ok: true,
       session: true,
-      ai: !!readApiKey(ctx),
+      ai: !!apiKey,
       ai_provider: llmProviderName(),
       local_ai: isLocalLlmProvider(),
+      hosted_ai: hostedAiStatus(ruby, stateKey),
       since: record.createdAt,
       label: record.label ?? "Guest",
     });
@@ -1378,14 +1428,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // Ruby High play requires only the app-owned session cookie. AI/chat
     // additionally requires the browser-owned OpenRouter key. The key still
     // never persists server-side.
-    const apiKey = readApiKey(ctx);
     const record = auth.resolve(auth.parseSessionToken(ctx.cookieHeader));
+    const stateKey = record ? auth.stateKeyForRecord(record) : "";
+    const apiKey = record ? readApiKey(ctx, ruby, stateKey) : null;
     ctx.json(ctx.res, {
       authed: !!record,
       session: !!record,
       ai: !!apiKey && !!record,
       ai_provider: llmProviderName(),
       local_ai: isLocalLlmProvider(),
+      hosted_ai: record ? hostedAiStatus(ruby, stateKey) : null,
       since: record?.createdAt ?? null,
       label: record?.label ?? null,
     });
@@ -1417,15 +1469,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // independently — a fresh tab might have a cookie from a prior session
     // and want history but not have a key yet (or vice versa).
     ctx.json(ctx.res, {
-      authed: !!readApiKey(ctx),
+      authed: !!readApiKey(ctx, ruby, auth.stateKeyForRecord(record)),
       local_ai: isLocalLlmProvider(),
+      hosted_ai: hostedAiStatus(ruby, auth.stateKeyForRecord(record)),
       history: publicChatHistory(messages),
     });
     return true;
   }
 
   if (ctx.method === "POST" && ctx.pathname === CHAT_PREFIX) {
-    const cred = requireSession(ctx, auth);
+    const cred = requireSession(ctx, auth, ruby);
     if (!cred) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
@@ -1476,7 +1529,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/player-line`) {
-    const cred = requireAuth(ctx, auth);
+    const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
       ctx.error(ctx.res, "Not authenticated. Sign in with OpenRouter first.", 401);
       return true;
@@ -1516,7 +1569,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // etc. The server constructs the appropriate system directive and runs the
   // model, streaming the response back.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/event`) {
-    const cred = requireSession(ctx, auth);
+    const cred = requireSession(ctx, auth, ruby);
     if (!cred) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
@@ -1834,7 +1887,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // short line (no streaming, no history). Client fires this on triggers like
   // an answer reveal or a teacher message landing.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/student-chime`) {
-    const cred = requireAuth(ctx, auth);
+    const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
@@ -1951,8 +2004,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
-    const apiKey = readApiKey(ctx);
     const token = sessionToken;
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const apiKey = readApiKey(ctx, ruby, sessionId);
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -1961,7 +2015,6 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { text?: string; force?: boolean } | null;
     const text = (body?.text ?? "").trim();
     const force = !!body?.force;
-    const sessionId = getSessionId(runtime, ctx.cookieHeader);
     let mutated = false;
     if (text) {
       ruby.recordOpinion(sessionId, "player", text);
@@ -2116,7 +2169,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/portrait`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
     const record = auth.resolve(token);
-    const apiKey = readOpenRouterApiKey(ctx);
+    const imageCredential = readOpenRouterImageCredential(ctx);
+    const apiKey = imageCredential.apiKey;
     if (!token || !record) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
@@ -2147,6 +2201,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Missing name or personality.", 400);
       return true;
     }
+    const sessionId = auth.stateKeyForRecord(record);
+    const hallPassCost = imageCredential.hosted ? hostedImageCost("portrait") : 0;
+    if (hallPassCost > 0 && ruby.hallPassBalance(sessionId) < hallPassCost) {
+      ctx.error(ctx.res, `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted portrait.`, 402);
+      return true;
+    }
+    let url: string;
     try {
       const dataUrl = await renderCharacterPortrait({
         apiKey,
@@ -2158,11 +2219,34 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // size cap will then reject on save and the user sees a clear
       // error). The field name stays portraitDataUrl for callsite
       // backward compat — value is now usually an https:// URL.
-      const url = await maybeUploadPortrait(dataUrl, "portrait");
-      ctx.json(ctx.res, { ok: true, portraitDataUrl: url });
+      url = await maybeUploadPortrait(dataUrl, "portrait");
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      return true;
     }
+    let hallPasses = ruby.hallPassBalance(sessionId);
+    if (hallPassCost > 0) {
+      try {
+        const spend = ruby.spendHallPasses(sessionId, {
+          amount: hallPassCost,
+          idempotencyKey: hostedImageSpendKey("portrait", url),
+          source: "hosted-image",
+          description: "Custom character portrait",
+          metadata: { kind: "portrait" },
+        });
+        await ruby.flushSession(sessionId);
+        hallPasses = spend.state.wallet.hallPasses;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.error(ctx.res, message, message.startsWith("Not enough Hall Passes") ? 402 : 500);
+        return true;
+      }
+    }
+    ctx.json(ctx.res, {
+      ok: true,
+      portraitDataUrl: url,
+      ...(imageCredential.hosted ? { hallPassCost, hallPasses } : {}),
+    });
     return true;
   }
 
@@ -2172,7 +2256,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/diploma`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
     const record = auth.resolve(token);
-    const apiKey = readOpenRouterApiKey(ctx);
+    const imageCredential = readOpenRouterImageCredential(ctx);
+    const apiKey = imageCredential.apiKey;
     if (!token || !record) {
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
@@ -2192,12 +2277,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
-    const ruby = getService<RubyHighService>(runtime, RubyHighService.serviceType);
-    if (!ruby) {
-      ctx.error(ctx.res, "RubyHighService unavailable.", 503);
-      return true;
-    }
-    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const sessionId = auth.stateKeyForRecord(record);
     const state = ruby.getOrCreate(sessionId);
     const ch = state.character;
     if (!ch) {
@@ -2208,6 +2288,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Diploma is only available after Senior graduation.", 400);
       return true;
     }
+    const hallPassCost = imageCredential.hosted ? hostedImageCost("diploma") : 0;
+    if (hallPassCost > 0 && ruby.hallPassBalance(sessionId) < hallPassCost) {
+      ctx.error(ctx.res, `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted diploma image.`, 402);
+      return true;
+    }
+    let url: string;
     try {
       const dataUrl = await renderDiplomaImage({
         apiKey,
@@ -2215,22 +2301,41 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         personality: ch.personality,
         bestSubjectFacultyId: highestScoringFaculty(ch.subjectScores),
       });
-      const url = await maybeUploadPortrait(dataUrl, "diploma");
-      ruby.setDiplomaImage(sessionId, url);
-      await ruby.flushSession(sessionId);
-      ctx.json(ctx.res, {
-        ok: true,
-        diplomaImageDataUrl: url,
-        bestSubject: highestScoringFaculty(ch.subjectScores),
-      });
+      url = await maybeUploadPortrait(dataUrl, "diploma");
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      return true;
     }
+    ruby.setDiplomaImage(sessionId, url);
+    let hallPasses = ruby.hallPassBalance(sessionId);
+    if (hallPassCost > 0) {
+      try {
+        const spend = ruby.spendHallPasses(sessionId, {
+          amount: hallPassCost,
+          idempotencyKey: hostedImageSpendKey("diploma", url),
+          source: "hosted-image",
+          description: "Graduation diploma image",
+          metadata: { kind: "diploma" },
+        });
+        hallPasses = spend.state.wallet.hallPasses;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.error(ctx.res, message, message.startsWith("Not enough Hall Passes") ? 402 : 500);
+        return true;
+      }
+    }
+    await ruby.flushSession(sessionId);
+    ctx.json(ctx.res, {
+      ok: true,
+      diplomaImageDataUrl: url,
+      bestSubject: highestScoringFaculty(ch.subjectScores),
+      ...(imageCredential.hosted ? { hallPassCost, hallPasses } : {}),
+    });
     return true;
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/generate`) {
-    const cred = requireAuth(ctx, auth);
+    const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
       ctx.error(ctx.res, "Sign in with OpenRouter first to roll a character.", 401);
       return true;

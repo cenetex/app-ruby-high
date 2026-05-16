@@ -130,6 +130,37 @@ afterEach(async () => {
 });
 
 describe("/teachers creator catalog", () => {
+  it("creates a local pack teacher draft without wallet-linked RATi avatars", async () => {
+    const aliceSessionId = signInUser("alice");
+
+    await handleTeacherCatalogRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/teachers/drafts",
+      cookie: "rh_session=alice",
+      body: {
+        displayName: "Archivist",
+        description: "Teaches from uploaded notes.",
+        materials: "# Memory systems\nSpaced repetition schedules cards by recall strength.\n\n# Review loops\nHard cards come back sooner than easy cards.",
+        questionCount: 2,
+      },
+    }), makeDeps());
+
+    expect(lastResponse?.status).toBe(201);
+    expect(lastResponse?.body.teacher).toMatchObject({
+      displayName: "Archivist",
+      status: "draft",
+      visibility: "private",
+      providerKind: "openrouter",
+      questionCount: 2,
+      owner: true,
+    });
+    expect(provider.grants).toEqual([]);
+    const activePack = packForSession(ruby.getOrCreate(aliceSessionId));
+    expect(activePack.faculty[0]?.provider).toEqual({ kind: "openrouter", supportsTools: true });
+    expect(activePack.faculty[0]?.sourceCards).toHaveLength(2);
+    expect(activePack.faculty[0]?.questions).toHaveLength(0);
+  });
+
   it("creates a private teacher draft from a wallet-linked RATi avatar", async () => {
     const aliceSessionId = signInUser("alice");
     const wallet = "0x1111111111111111111111111111111111111111";

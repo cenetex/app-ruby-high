@@ -30,7 +30,7 @@ npm run build:spa
 npm run spa:dev
 ```
 
-Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward question banks. Core classroom play, character creation, room switching, scoring, and local persistence work without the hosted server. In the native Tauri shell, text AI talks to an Ollama OpenAI-compatible server at `http://127.0.0.1:11434/v1` by default. OpenRouter auth, portrait/diploma image generation, connected teachers, and hosted account sync still require the Node service.
+Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward question banks. Core classroom play, character creation, room switching, Merit Stars, and local persistence work without the hosted server. In the native Tauri shell, text AI talks to an Ollama OpenAI-compatible server at `http://127.0.0.1:11434/v1` by default. OpenRouter auth, Hall Pass purchases, portrait/diploma image generation, teacher publishing, and hosted account sync still require the Node service.
 
 For offline text AI, run Ruby High against a local OpenAI-compatible chat-completions server such as Ollama:
 
@@ -43,7 +43,7 @@ RUBY_HIGH_LLM_MODEL=ruby-high-local \
 npm run dev:server
 ```
 
-Local mode removes the OpenRouter key requirement for text chat, teacher turns, NPC chimes, character text, opinion grading, and multiple-choice distractors for source cards. Portrait and diploma image generation still use the OpenRouter image endpoint; if no OpenRouter key is present, Ruby High keeps the bundled/default artwork.
+Local mode removes the OpenRouter key requirement for text chat, teacher turns, NPC chimes, character text, opinion grading, and multiple-choice distractors for source cards. Portrait and diploma image generation still use the OpenRouter image endpoint. A browser-owned OpenRouter key stays BYOK/free-to-Ruby-High; the optional server-hosted image path spends Hall Passes.
 
 The native SPA uses the same default local model and lets you override the local endpoint in DevTools:
 
@@ -81,8 +81,8 @@ No eliza runtime needed for these:
 - `GET /dev/pick` — draw a question for the active faculty.
 - `GET /dev/pick?faculty=sally-science&difficulty=hard` — filter the draw.
 - `GET /dev/faculty` — roster + question counts.
-- `GET /dev/clear` — wipe the board (keeps score).
-- `GET /dev/reset` — wipe the session (score + history).
+- `GET /dev/clear` — wipe the board (keeps Merit Stars).
+- `GET /dev/reset` — wipe the session (Merit Stars + history).
 
 ## Wire it into a character
 
@@ -114,17 +114,57 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
 | `RUBY_HIGH_LLM_API_KEY` | `local` in local mode | Optional bearer token for local servers configured with an API key. |
 | `RUBY_HIGH_STUDENT_MODEL` | `anthropic/claude-haiku-4.5` | Model used for NPC opinion responses. |
+| `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for hosted AI Day Passes and hosted portrait/diploma generation. Server-hosted text AI is available only while the signed-in session has an active AI Day Pass. Browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
-| `RUBY_HIGH_RATI_BASE_URL` | `https://swarm.rati.chat/api/v1` | OpenAI-compatible RATi/aws-swarm base URL for connected teachers. |
-| `RUBY_HIGH_RATI_API_KEY` | — | Server-side RATi key used to list/connect live teachers. Never sent to the browser or stored in packs. |
-| `RUBY_HIGH_RATI_SUPPORTS_TOOLS` | `true` | Whether RATi connected teachers receive Ruby High board tools. Set `false` only for an older chat-only RATi backend. |
-| `RUBY_HIGH_RATI_TIMEOUT_MS` | `60000` | Timeout for RATi model listing and chat calls. |
-| `RUBY_HIGH_CONNECTED_TEACHER_QUESTION_COUNT` | `8` | Number of seed questions a connected teacher must generate when imported. Set `0` to skip seed-bank generation. |
+| `RUBY_HIGH_STRIPE_SECRET_KEY` | — | Enables web Hall Pass purchases via Stripe Checkout. |
+| `RUBY_HIGH_STRIPE_WEBHOOK_SECRET` | — | Required for `/api/apps/ruby-high/billing/stripe/webhook` to grant Hall Passes after paid Checkout Sessions. |
+| `RUBY_HIGH_STRIPE_CURRENCY` | `usd` | Currency for built-in Hall Pass packs. |
+| `RUBY_HIGH_HALL_PASS_5_CENTS` | `199` | Price for 5 Hall Passes. |
+| `RUBY_HIGH_HALL_PASS_20_CENTS` | `699` | Price for 20 Hall Passes. |
+| `RUBY_HIGH_HALL_PASS_50_CENTS` | `1499` | Price for 50 Hall Passes. |
+| `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
+| `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Hall Pass cost to activate server-hosted text AI for one timed window. |
+| `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `24` | Hosted AI Day Pass duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
+| `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Optional exact hosted AI pass duration override. |
+| `RUBY_HIGH_PORTRAIT_HALL_PASS_COST` | `1` | Hall Pass cost for server-hosted custom portraits. |
+| `RUBY_HIGH_DIPLOMA_HALL_PASS_COST` | `3` | Hall Pass cost for server-hosted diploma images. |
+| `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | — | Required Authorization header value for `/api/apps/ruby-high/billing/revenuecat/webhook`. The route accepts either this exact value or `Bearer <value>`. |
+| `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE` | `HLP` | RevenueCat Virtual Currency code to credit as Hall Passes when using RevenueCat Virtual Currency events. |
+| `RUBY_HIGH_CREATOR_DEFAULT_MODEL` | `anthropic/claude-haiku-4.5` | Default OpenRouter model for local teacher drafts created in Edit Pack. |
+| `RUBY_HIGH_RATI_BASE_URL` | `https://swarm.rati.chat/api/v1` | OpenAI-compatible RATi/aws-swarm base URL for persisted RATi-backed teacher packs. |
+| `RUBY_HIGH_RATI_INTERNAL_API_KEY` | — | Internal server-to-server RATi credential for RATi-backed teacher packs and avatar publishing. The legacy `RUBY_HIGH_RATI_API_KEY` is no longer read. |
+| `RUBY_HIGH_RATI_SUPPORTS_TOOLS` | `true` | Whether RATi-backed teachers receive Ruby High board tools. Set `false` only for an older chat-only RATi backend. |
+| `RUBY_HIGH_RATI_TIMEOUT_MS` | `60000` | Timeout for RATi avatar and chat calls. |
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
-No `OPENROUTER_API_KEY` is needed on the server — each user authenticates with their own key via PKCE. RATi connected teachers are the exception: they use the server-side `RUBY_HIGH_RATI_API_KEY` and can receive Ruby High board tools through the OpenAI-compatible RATi route.
+No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on an AI Day Pass, and enables hosted image generation with per-image Hall Pass costs. Edit Pack no longer lists/imports live RATi models from a server key; new local teacher drafts become OpenRouter-backed packs, while existing RATi-backed packs use `RUBY_HIGH_RATI_INTERNAL_API_KEY` only for server-to-server runtime calls.
+
+## Billing and Hall Passes
+
+Ruby High now has two currencies:
+
+- **Merit Stars** are earned by play and mirror the visible session-score payout.
+- **Hall Passes** are paid/entitlement currency for hosted AI windows and creative generation.
+
+Web purchases use Stripe Checkout:
+
+- `GET /api/apps/ruby-high/billing/products` returns Hall Pass packs, AI Day Pass cost/duration, and hosted image costs.
+- `POST /api/apps/ruby-high/billing/ai-pass` spends Hall Passes to activate server-hosted text AI for the signed-in Ruby High cookie session. A second call while active returns the existing expiry and does not spend again.
+- `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for the signed-in Ruby High cookie session.
+- `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata.
+
+Stripe webhook events to send: `checkout.session.completed` and, if using asynchronous payment methods, `checkout.session.async_payment_succeeded`.
+
+For iOS and Android, do not use Stripe for digital in-app currency. Create matching consumable in-app purchase products in App Store Connect and Google Play Console, validate receipts/purchase tokens server-side, then call the same Hall Pass grant path. RevenueCat can replace most receipt-validation boilerplate; the Ruby High server remains the authority that credits the wallet after validation.
+
+RevenueCat setup:
+
+- Use one Offering for the shop, for example `hall_passes`, with consumable packages for `hall_pass_5`, `hall_pass_20`, `hall_pass_50`, and `hall_pass_100`. Product IDs with app prefixes are okay if they end in those IDs.
+- Set the RevenueCat app user ID to the Ruby High state key (`rh:user:<userId>`). If the app sends just `<userId>`, the server prefixes it to `rh:user:<userId>`. Anonymous RevenueCat IDs are ignored for wallet fulfillment.
+- Add a webhook pointing at `/api/apps/ruby-high/billing/revenuecat/webhook` and set its Authorization header to `Bearer <RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH>` or exactly the configured value.
+- Send `NON_RENEWING_PURCHASE` events to grant Hall Passes and `CANCELLATION` events to revoke refunded Hall Passes. If using RevenueCat Virtual Currency, send `VIRTUAL_CURRENCY_TRANSACTION` events and set the currency code to `HLP` or configure `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE`.
 
 ## Tests
 

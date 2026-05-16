@@ -13,6 +13,8 @@ import type {
   AuthUserRecord,
   StateStoreLike,
   StoredContentPackRecord,
+  StoredDraftContentPackRecord,
+  StoredPackInstallationRecord,
   StoredTeacherRecord,
 } from "./state-store.js";
 
@@ -206,6 +208,44 @@ export class DynamoStateStore implements StateStoreLike {
     return records;
   }
 
+  async loadDraftPacks(): Promise<StoredDraftContentPackRecord[]> {
+    const records: StoredDraftContentPackRecord[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const record = item.draftPack as StoredDraftContentPackRecord | undefined;
+      if (
+        record &&
+        typeof record.id === "string" &&
+        typeof record.ownerUserId === "string" &&
+        typeof record.ownerSessionId === "string" &&
+        typeof record.name === "string" &&
+        (record.visibility === "private" || record.visibility === "unlisted" || record.visibility === "public") &&
+        Array.isArray(record.teachers)
+      ) {
+        records.push(record);
+      }
+    }
+    return records;
+  }
+
+  async loadPackInstallations(): Promise<StoredPackInstallationRecord[]> {
+    const records: StoredPackInstallationRecord[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const record = item.packInstallation as StoredPackInstallationRecord | undefined;
+      if (
+        record &&
+        typeof record.userId === "string" &&
+        typeof record.packId === "string" &&
+        typeof record.enabled === "boolean" &&
+        typeof record.active === "boolean"
+      ) {
+        records.push(record);
+      }
+    }
+    return records;
+  }
+
   private async scanAll(): Promise<Array<Record<string, unknown>>> {
     const now = Date.now();
     if (this.scanCache && now - this.scanCache.at <= SCAN_CACHE_MS) {
@@ -362,6 +402,34 @@ export class DynamoStateStore implements StateStoreLike {
     }));
   }
 
+  async saveDraftPack(record: StoredDraftContentPackRecord): Promise<void> {
+    this.invalidateScanCache();
+    const item: Record<string, unknown> = {
+      pk: `draft-pack:${encodeURIComponent(record.id)}`,
+      draftPack: record,
+      updatedAt: record.updatedAt,
+    };
+    if (this.ttlSeconds > 0) {
+      item.expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+    }
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
+    }));
+  }
+
+  async savePackInstallation(record: StoredPackInstallationRecord): Promise<void> {
+    this.invalidateScanCache();
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: {
+        pk: this.packInstallationPk(record.userId, record.packId),
+        packInstallation: record,
+        updatedAt: record.updatedAt,
+      },
+    }));
+  }
+
   async deletePack(ownerSessionId: string | null, packId: string): Promise<void> {
     this.invalidateScanCache();
     await this.client.send(new DeleteCommand({
@@ -375,6 +443,22 @@ export class DynamoStateStore implements StateStoreLike {
     await this.client.send(new DeleteCommand({
       TableName: this.tableName,
       Key: { pk: `teacher:${encodeURIComponent(teacherId)}` },
+    }));
+  }
+
+  async deleteDraftPack(draftId: string): Promise<void> {
+    this.invalidateScanCache();
+    await this.client.send(new DeleteCommand({
+      TableName: this.tableName,
+      Key: { pk: `draft-pack:${encodeURIComponent(draftId)}` },
+    }));
+  }
+
+  async deletePackInstallation(userId: string, packId: string): Promise<void> {
+    this.invalidateScanCache();
+    await this.client.send(new DeleteCommand({
+      TableName: this.tableName,
+      Key: { pk: this.packInstallationPk(userId, packId) },
     }));
   }
 
@@ -443,6 +527,10 @@ export class DynamoStateStore implements StateStoreLike {
 
   private packPk(ownerSessionId: string | null, packId: string): string {
     return `pack:${encodeURIComponent(ownerSessionId ?? "public")}:${encodeURIComponent(packId)}`;
+  }
+
+  private packInstallationPk(userId: string, packId: string): string {
+    return `pack-installation:${encodeURIComponent(userId)}:${encodeURIComponent(packId)}`;
   }
 }
 

@@ -68,7 +68,7 @@ export function publicProviderForFaculty(faculty: PackFaculty | null | undefined
 }
 
 export function providerRequiresBrowserKey(provider: PackFacultyProvider): boolean {
-  return provider.kind === "openrouter" && !resolveLlmApiKey(null);
+  return provider.kind === "openrouter" && !isLocalLlmProvider();
 }
 
 export function providerSupportsTools(provider: PackFacultyProvider): boolean {
@@ -89,7 +89,11 @@ export async function* streamTeacherCompletion(opts: {
   label?: string;
 }): AsyncGenerator<OpenRouterStreamChunk> {
   if (opts.provider.kind === "openrouter") {
-    const apiKey = resolveLlmApiKey(opts.browserApiKey);
+    const apiKey = opts.browserApiKey
+      ? resolveLlmApiKey(opts.browserApiKey)
+      : isLocalLlmProvider()
+        ? resolveLlmApiKey(null)
+        : null;
     if (!apiKey) throw new Error("OpenRouter key required for this teacher.");
     if (isLocalLlmProvider()) {
       yield* chatCompletionStream({
@@ -344,7 +348,7 @@ async function ratiChatCompletionJson(body: OpenRouterRequest): Promise<unknown>
 
 function ratiConfig(): { configured: false; baseUrl: string; apiKey: "" } | { configured: true; baseUrl: string; apiKey: string } {
   const baseUrl = normalizeBaseUrl(process.env.RUBY_HIGH_RATI_BASE_URL || DEFAULT_RATI_BASE_URL);
-  const apiKey = (process.env.RUBY_HIGH_RATI_API_KEY || "").trim();
+  const apiKey = (process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY || "").trim();
   if (!apiKey) return { configured: false, baseUrl, apiKey: "" };
   return { configured: true, baseUrl, apiKey };
 }

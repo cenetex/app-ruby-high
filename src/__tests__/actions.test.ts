@@ -127,7 +127,7 @@ describe("Eliza runtime actions", () => {
 
     expect(result).toMatchObject({
       success: true,
-      text: "That was B. The answer was A. Score 2/3.",
+      text: "That was B. The answer was A. Record 2/3.",
     });
     expect(service.submitAnswer).toHaveBeenCalledWith("rh:agent:agent-1", "B");
   });

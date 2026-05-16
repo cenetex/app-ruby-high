@@ -9,6 +9,8 @@ import type {
   AuthUserRecord,
   StateStoreLike,
   StoredContentPackRecord,
+  StoredDraftContentPackRecord,
+  StoredPackInstallationRecord,
   StoredTeacherRecord,
 } from "../services/state-store.js";
 import type { ContentPack } from "../content/types.js";
@@ -23,13 +25,19 @@ class FailingSessionStore implements StateStoreLike {
   async loadAuth(): Promise<AuthStoreSnapshot> { return { users: [], sessions: [] }; }
   async loadPacks(): Promise<StoredContentPackRecord[]> { return []; }
   async loadTeachers(): Promise<StoredTeacherRecord[]> { return []; }
+  async loadDraftPacks(): Promise<StoredDraftContentPackRecord[]> { return []; }
+  async loadPackInstallations(): Promise<StoredPackInstallationRecord[]> { return []; }
   async saveSession(_state: QuizState): Promise<void> { throw new Error("DynamoDB unavailable"); }
   async saveAuthUser(_user: AuthUserRecord): Promise<void> {}
   async saveAuthSession(_session: AuthSessionRecord): Promise<void> {}
   async savePack(_record: StoredContentPackRecord): Promise<void> {}
   async saveTeacher(_record: StoredTeacherRecord): Promise<void> {}
+  async saveDraftPack(_record: StoredDraftContentPackRecord): Promise<void> {}
+  async savePackInstallation(_record: StoredPackInstallationRecord): Promise<void> {}
   async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
   async deleteTeacher(_teacherId: string): Promise<void> {}
+  async deleteDraftPack(_draftId: string): Promise<void> {}
+  async deletePackInstallation(_userId: string, _packId: string): Promise<void> {}
   async deleteAuthSession(_token: string): Promise<void> {}
   async save(_states: Iterable<QuizState>): Promise<void> {}
   describe(): string { return "failing-test-store"; }
@@ -41,13 +49,19 @@ class MemorySessionStore implements StateStoreLike {
   async loadAuth(): Promise<AuthStoreSnapshot> { return { users: [], sessions: [] }; }
   async loadPacks(): Promise<StoredContentPackRecord[]> { return []; }
   async loadTeachers(): Promise<StoredTeacherRecord[]> { return []; }
+  async loadDraftPacks(): Promise<StoredDraftContentPackRecord[]> { return []; }
+  async loadPackInstallations(): Promise<StoredPackInstallationRecord[]> { return []; }
   async saveSession(state: QuizState): Promise<void> { this.sessions.set(state.sessionId, state); }
   async saveAuthUser(_user: AuthUserRecord): Promise<void> {}
   async saveAuthSession(_session: AuthSessionRecord): Promise<void> {}
   async savePack(_record: StoredContentPackRecord): Promise<void> {}
   async saveTeacher(_record: StoredTeacherRecord): Promise<void> {}
+  async saveDraftPack(_record: StoredDraftContentPackRecord): Promise<void> {}
+  async savePackInstallation(_record: StoredPackInstallationRecord): Promise<void> {}
   async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
   async deleteTeacher(_teacherId: string): Promise<void> {}
+  async deleteDraftPack(_draftId: string): Promise<void> {}
+  async deletePackInstallation(_userId: string, _packId: string): Promise<void> {}
   async deleteAuthSession(_token: string): Promise<void> {}
   async save(states: Iterable<QuizState>): Promise<void> {
     this.sessions = new Map(Array.from(states).map((s) => [s.sessionId, s]));

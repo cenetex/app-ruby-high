@@ -21,21 +21,9 @@ import {
   availablePacksForSession,
   coursesForPack,
   getPackByIdForSession,
-  packOwnerSessionId,
   packForSession,
-  registerPack,
 } from "./content/registry.js";
 import type { ContentPack } from "./content/types.js";
-import {
-  candidateWithReachableProfileImage,
-  connectedTeacherChannelName,
-  generateConnectedTeacherQuestionBank,
-  connectedTeacherPackId,
-  listRatiTeacherCandidates,
-  packForConnectedTeacher,
-  ratiConfigured,
-  type ConnectedTeacherCandidate,
-} from "./services/teacher-providers.js";
 
 export interface PackRouteContext {
   method: string;
@@ -62,7 +50,6 @@ export interface PackRouteDeps {
 }
 
 const PACK_PREFIX = "/api/apps/ruby-high/packs";
-const CONNECTED_TEACHERS_PATH = "/api/apps/ruby-high/connected-teachers";
 
 function packSummary(pack: ContentPack) {
   const countFacultyCards = (f: ContentPack["faculty"][number]) =>
@@ -88,33 +75,13 @@ function packSummary(pack: ContentPack) {
   };
 }
 
-function connectedTeacherSummary(candidate: ConnectedTeacherCandidate, sessionId: string) {
-  const packId = connectedTeacherPackId(candidate);
-  const ownerSessionId = packOwnerSessionId(packId);
-  const ownedByAnotherSession = typeof ownerSessionId === "string" && ownerSessionId !== sessionId;
-  return {
-    ...candidate,
-    packId,
-    connected: ownerSessionId === sessionId,
-    ownedByAnotherSession,
-    defaultChannelName: connectedTeacherChannelName(null, candidate.name || candidate.root || candidate.model),
-    ...(ownedByAnotherSession ? { unavailableReason: "already-connected" } : {}),
-  };
-}
-
-function connectedTeacherOwnedByAnotherSession(candidate: ConnectedTeacherCandidate, sessionId: string): boolean {
-  const ownerSessionId = packOwnerSessionId(connectedTeacherPackId(candidate));
-  return typeof ownerSessionId === "string" && ownerSessionId !== sessionId;
-}
-
 export async function handlePackRoutes(
   ctx: PackRouteContext,
   deps: PackRouteDeps,
 ): Promise<boolean> {
   const isPackRoute = ctx.pathname.startsWith(PACK_PREFIX);
-  const isConnectedTeachersRoute = ctx.pathname === CONNECTED_TEACHERS_PATH;
-  if (!isPackRoute && !isConnectedTeachersRoute) return false;
-  const sub = isPackRoute ? (ctx.pathname.slice(PACK_PREFIX.length) || "/") : "/";
+  if (!isPackRoute) return false;
+  const sub = ctx.pathname.slice(PACK_PREFIX.length) || "/";
 
   // Every endpoint requires a signed-in session — pack management is
   // per-user territory and we don't want unauthed callers enumerating
@@ -122,29 +89,11 @@ export async function handlePackRoutes(
   const token = deps.auth.parseSessionToken(ctx.cookieHeader);
   const record = deps.auth.resolve(token);
   if (!record || !token) {
-    ctx.error(ctx.res, "Sign in to manage connected teachers.", 401);
+    ctx.error(ctx.res, "Sign in to manage packs.", 401);
     return true;
   }
   const sessionId = deps.sessionIdFor(ctx.cookieHeader);
   const state = deps.ruby.getOrCreate(sessionId);
-
-  // GET /connected-teachers — list server-allowlisted live teacher backends.
-  if (isConnectedTeachersRoute && ctx.method === "GET") {
-    if (!ratiConfigured()) {
-      ctx.json(ctx.res, { configured: false, teachers: [] });
-      return true;
-    }
-    try {
-      ctx.json(ctx.res, {
-        configured: true,
-        teachers: (await listRatiTeacherCandidates()).map((candidate) => connectedTeacherSummary(candidate, sessionId)),
-      });
-    } catch (err) {
-      log.error("connected-teachers.list-failed", err, { sessionId });
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
-    }
-    return true;
-  }
 
   // GET /packs — list packs visible to this session (built-ins + own
   // session-scoped packs). Other users' packs are filtered out.
@@ -179,66 +128,6 @@ export async function handlePackRoutes(
     } catch (err) {
       log.error("pack.activate-failed", err, { sessionId, packId: id });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
-    }
-    return true;
-  }
-
-  // POST /packs/connect-agent — materialize an allowlisted RATi/aws-swarm
-  // avatar as this session's active teacher pack. The browser submits only a
-  // model id; endpoint and credential remain server-side.
-  if (ctx.method === "POST" && sub === "/connect-agent") {
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as {
-      model?: unknown;
-      modelId?: unknown;
-      agentId?: unknown;
-      channelName?: unknown;
-    } | null;
-    const requested = [body?.model, body?.modelId, body?.agentId].find((value) => typeof value === "string" && value.trim());
-    const modelId = typeof requested === "string" ? requested.trim() : "";
-    if (!modelId) {
-      ctx.error(ctx.res, "modelId required", 400);
-      return true;
-    }
-    if (!ratiConfigured()) {
-      ctx.error(ctx.res, "RATi teacher backend is not configured.", 503);
-      return true;
-    }
-    try {
-      const candidates = await listRatiTeacherCandidates();
-      const candidate = candidates.find((entry) => entry.model === modelId || entry.root === modelId || entry.id === modelId);
-      if (!candidate) {
-        ctx.error(ctx.res, "Unknown connected teacher.", 404);
-        return true;
-      }
-      if (connectedTeacherOwnedByAnotherSession(candidate, sessionId)) {
-        log.event("connected-teacher.connect-denied", {
-          sessionId,
-          model: candidate.model,
-          packId: connectedTeacherPackId(candidate),
-          reason: "owned-by-another-session",
-        });
-        ctx.error(ctx.res, "This connected teacher is already owned by another Ruby High session.", 409);
-        return true;
-      }
-      const importCandidate = await candidateWithReachableProfileImage(candidate);
-      const questions = await generateConnectedTeacherQuestionBank(importCandidate);
-      const requestedChannelName = typeof body?.channelName === "string" ? body.channelName : null;
-      const pack = packForConnectedTeacher(importCandidate, questions, { channelName: requestedChannelName });
-      registerPack(pack, sessionId);
-      await deps.ruby.persistImportedPack(sessionId, pack);
-      deps.ruby.setActivePackForSession(sessionId, pack.id);
-      await deps.ruby.flushSession(sessionId);
-      log.event("connected-teacher.activated", {
-        sessionId,
-        packId: pack.id,
-        model: candidate.model,
-        provider: candidate.provider,
-        generatedQuestions: questions.length,
-      });
-      ctx.json(ctx.res, { ok: true, pack: packSummary(pack), teacher: candidate });
-    } catch (err) {
-      log.error("connected-teacher.connect-failed", err, { sessionId, modelId });
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
     }
     return true;
   }

@@ -50,7 +50,7 @@ export class HttpRatiTeacherAvatarProvider implements RatiTeacherAvatarProvider 
       inferInternalBaseUrl(process.env.RUBY_HIGH_RATI_BASE_URL) ??
       "",
     );
-    this.apiKey = (opts.apiKey ?? process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY ?? process.env.RUBY_HIGH_RATI_API_KEY ?? "").trim();
+    this.apiKey = (opts.apiKey ?? process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY ?? "").trim();
     this.timeoutMs = opts.timeoutMs ?? readPositiveInt(process.env.RUBY_HIGH_RATI_TIMEOUT_MS, 60_000);
   }
 

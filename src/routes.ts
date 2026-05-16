@@ -9,6 +9,7 @@ import { FacultyService } from "./services/faculty-service.js";
 import { renderViewerHtml } from "./viewer.js";
 import { handleChatRoutes } from "./chat-routes.js";
 import { handlePackRoutes } from "./pack-routes.js";
+import { handlePackLibraryRoutes } from "./pack-library-routes.js";
 import { handleTeacherCatalogRoutes } from "./teacher-catalog-routes.js";
 import { AuthService } from "./services/auth-service.js";
 import { getRuntime, getSessionId, tryGetService } from "./services/session-identity.js";
@@ -28,6 +29,7 @@ import {
 } from "./routes/assets.js";
 import { handleCommandRoute } from "./routes/commands.js";
 import { handleBugReportRoute } from "./routes/bug-report.js";
+import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import type { RouteContext } from "./routes/context.js";
 
@@ -107,6 +109,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return handleBugReportRoute(ctx);
   }
 
+  if (ctx.pathname.startsWith(BILLING_PREFIX)) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!auth || !ruby) {
+      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleBillingRoutes(ctx, { auth, ruby });
+  }
+
   if (
     ctx.pathname.startsWith("/api/apps/ruby-high/auth") ||
     ctx.pathname.startsWith("/api/apps/ruby-high/chat")
@@ -145,6 +157,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         url: ctx.url,
         res: ctx.res,
         cookieHeader: ctx.cookieHeader,
+        authorizationHeader: ctx.authorizationHeader,
         walletAddressHeader: ctx.walletAddressHeader,
         error: ctx.error,
         json: ctx.json,
@@ -158,11 +171,37 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     );
   }
 
-  // Connected-teacher endpoints: per-session ownership, auth required.
   if (
-    ctx.pathname.startsWith("/api/apps/ruby-high/packs") ||
-    ctx.pathname === "/api/apps/ruby-high/connected-teachers"
+    ctx.pathname.startsWith("/api/apps/ruby-high/pack-library") ||
+    ctx.pathname.startsWith("/api/apps/ruby-high/pack-drafts")
   ) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!auth || !ruby) {
+      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handlePackLibraryRoutes(
+      {
+        method: ctx.method,
+        pathname: ctx.pathname,
+        url: ctx.url,
+        res: ctx.res,
+        cookieHeader: ctx.cookieHeader,
+        error: ctx.error,
+        json: ctx.json,
+        readJsonBody: ctx.readJsonBody,
+      },
+      {
+        auth,
+        ruby,
+        sessionIdFor: (cookieHeader) => getSessionId(runtime, cookieHeader),
+      },
+    );
+  }
+
+  // Pack endpoints: per-session ownership, auth required.
+  if (ctx.pathname.startsWith("/api/apps/ruby-high/packs")) {
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {

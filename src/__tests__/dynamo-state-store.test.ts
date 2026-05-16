@@ -138,6 +138,7 @@ function blankState(sessionId: string, updatedAt = 1): QuizState {
     current: null,
     history: [],
     score: { correct: 0, total: 0 },
+    wallet: { meritStars: 0, hallPasses: 0 },
     lastReveal: null,
     status: "idle",
     phase: "intro",

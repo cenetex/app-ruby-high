@@ -48,7 +48,7 @@ const rubySvc = await (async () => {
 })();
 chatSvc.setRubyHighService(rubySvc);
 
-function readJsonBody(req, maxBytes) {
+function readRawBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0;
@@ -68,13 +68,15 @@ function readJsonBody(req, maxBytes) {
     });
     req.on("end", () => {
       if (rejected) return;
-      try {
-        const buf = Buffer.concat(chunks).toString("utf8");
-        resolve(buf ? JSON.parse(buf) : {});
-      } catch (err) { reject(err); }
+      resolve(Buffer.concat(chunks).toString("utf8"));
     });
     req.on("error", (err) => { if (!rejected) reject(err); });
   });
+}
+
+async function readJsonBody(req, maxBytes) {
+  const buf = await readRawBody(req, maxBytes);
+  return buf ? JSON.parse(buf) : {};
 }
 
 function deriveClientIp(req) {
@@ -103,7 +105,9 @@ function makeRouteContext(req, res, url) {
     clientIp: deriveClientIp(req),
     contentTypeHeader: req.headers["content-type"] ?? null,
     originHeader: req.headers.origin ?? null,
+    authorizationHeader: req.headers.authorization ?? null,
     walletAddressHeader: req.headers["x-ruby-high-wallet"] ?? null,
+    stripeSignatureHeader: req.headers["stripe-signature"] ?? null,
     ifNoneMatch: req.headers["if-none-match"] ?? null,
     acceptEncoding: req.headers["accept-encoding"] ?? null,
     callbackUrlBuilder: (path) => {
@@ -122,6 +126,7 @@ function makeRouteContext(req, res, url) {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(data));
     },
+    readRawBody: () => readRawBody(req, bodyLimitForPath(url.pathname)),
     readJsonBody: () => readJsonBody(req, bodyLimitForPath(url.pathname)),
   };
 }

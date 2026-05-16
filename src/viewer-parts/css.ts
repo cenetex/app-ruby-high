@@ -647,8 +647,9 @@ export const VIEWER_CSS = `
     white-space: nowrap;
   }
   /* Arc indicator — the player's live progress through the 4-year arc.
-   * Replaces the old session-score chip; this is the only thing that should
-   * be in the top-right. Hidden until a character exists. */
+   * Replaces the old session-score chip and includes the wallet. This is
+   * the only thing that should be in the top-right. Hidden until a
+   * character exists. */
   .arc-indicator {
     display: inline-flex;
     align-items: center;
@@ -659,7 +660,7 @@ export const VIEWER_CSS = `
     font-size: 12px;
     font-weight: 700;
     color: var(--text);
-    /* Shrink-fit so a long "Sophomore 3800 score" never pushes the
+    /* Shrink-fit so a long "Sophomore 3800 Merit Stars" never pushes the
        hamburger or chalkboard labels off-screen. Truncate with ellipsis
        rather than clip when the available room runs out. */
     flex: 0 1 auto;
@@ -682,6 +683,22 @@ export const VIEWER_CSS = `
     .arc-indicator .arc-streak,
     .arc-indicator .arc-xp { display: none; }
   }
+  .hall-pass-btn {
+    appearance: none;
+    background: var(--bg-elev);
+    color: #ffe08a;
+    border: none;
+    border-radius: 999px;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+  .hall-pass-btn:hover { color: #fff1b5; background: var(--bg-elev-2); }
+  .hall-pass-btn[hidden] { display: none; }
+  .hall-pass-btn svg { width: 18px; height: 18px; }
   /* Pack-store button — sits next to the arc chip in the top bar. Opens
    * the pack-overlay where the user can switch curricula. It stays hidden
    * during first-run setup so today's class remains the only obvious path. */
@@ -702,8 +719,7 @@ export const VIEWER_CSS = `
   .pack-btn:hover { color: var(--text); background: var(--bg-elev-2); }
   .pack-btn[hidden] { display: none; }
   .pack-btn svg { width: 18px; height: 18px; }
-  /* Connected teacher list inside the overlay. Each row is a teacher
-   * roster entry; the active one is highlighted. */
+  /* Pack library sections and draft teacher editor rail. */
   .pack-section-title {
     margin-top: 14px;
     font-size: 11px;
@@ -717,6 +733,246 @@ export const VIEWER_CSS = `
     flex-direction: column;
     gap: 8px;
     margin: 8px 0;
+  }
+  .pack-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 8px 0;
+  }
+  .pack-library-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin: 8px 0 2px;
+  }
+  .pack-card-item {
+    display: grid;
+    gap: 10px;
+    min-height: 150px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+  }
+  .pack-card-item.is-active {
+    border-color: var(--accent);
+  }
+  .pack-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .pack-card-name {
+    color: var(--text);
+    font-weight: 900;
+    font-size: 15px;
+    line-height: 1.15;
+  }
+  .pack-card-desc {
+    margin-top: 4px;
+    color: var(--text-soft);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .pack-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .pack-chip {
+    padding: 4px 7px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    color: var(--text-soft);
+    background: var(--bg-elev-2);
+    font-size: 10px;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .pack-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .pack-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-soft);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .pack-toggle input {
+    width: auto;
+  }
+  .pack-edit-card {
+    width: min(980px, calc(100vw - 28px));
+  }
+  .pack-draft-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr);
+    gap: 8px;
+    margin: 10px 0 6px;
+  }
+  .pack-draft-fields input {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    color: var(--text);
+    padding: 9px 10px;
+    font: inherit;
+    font-size: 13px;
+  }
+  .pack-editor {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.34fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    margin-top: 10px;
+  }
+  .pack-teacher-sidebar {
+    min-width: 0;
+  }
+  .pack-teacher-list {
+    max-height: 312px;
+    overflow: auto;
+    padding-right: 2px;
+  }
+  .pack-teacher-tab {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-height: 46px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: var(--bg-elev);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+  }
+  .pack-teacher-tab:hover { background: var(--bg-elev-2); }
+  .pack-teacher-tab.is-selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+  }
+  .pack-teacher-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: var(--bg-elev-2);
+    color: var(--text);
+    font-weight: 850;
+    font-size: 13px;
+    overflow: hidden;
+  }
+  .pack-teacher-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .pack-teacher-copy {
+    min-width: 0;
+  }
+  .pack-teacher-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 850;
+  }
+  .pack-teacher-subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--text-mute);
+  }
+  .pack-add-teacher-btn {
+    width: 100%;
+    margin-top: 2px;
+  }
+  .pack-editor-main {
+    min-width: 0;
+  }
+  .pack-editor-tabs {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pack-editor-tab {
+    appearance: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-soft);
+    padding: 8px 10px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+  .pack-editor-tab.is-active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .pack-tab-panel {
+    display: none;
+    padding-top: 10px;
+  }
+  .pack-tab-panel.is-active {
+    display: block;
+  }
+  .pack-teacher-detail {
+    min-height: 96px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+  }
+  .pack-teacher-detail-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .pack-teacher-detail-name {
+    color: var(--text);
+    font-weight: 900;
+    font-size: 16px;
+    line-height: 1.15;
+  }
+  .pack-teacher-detail-meta {
+    margin-top: 4px;
+    color: var(--text-soft);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .pack-teacher-subjects {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .pack-teacher-subject {
+    padding: 4px 7px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev-2);
+    color: var(--text-soft);
+    font-size: 10px;
+    font-weight: 800;
   }
   .teacher-creator {
     display: grid;
@@ -757,6 +1013,129 @@ export const VIEWER_CSS = `
   .teacher-publish-toggle input { width: auto; }
   .teacher-create-btn {
     justify-self: end;
+  }
+  .pack-question-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .pack-question-status {
+    color: var(--text-mute);
+    font-size: 12px;
+    text-align: right;
+  }
+  .pack-question-list {
+    display: grid;
+    gap: 8px;
+    max-height: 300px;
+    overflow: auto;
+    padding-right: 2px;
+  }
+  .pack-question-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border-radius: 8px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+  }
+  .pack-question-prompt {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .pack-question-answer {
+    margin-top: 3px;
+    color: var(--text-mute);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  @media (max-width: 760px) {
+    .pack-grid,
+    .pack-draft-fields {
+      grid-template-columns: 1fr;
+    }
+    .pack-editor {
+      grid-template-columns: 1fr;
+    }
+    .pack-teacher-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      max-height: none;
+      overflow: visible;
+    }
+  }
+  .billing-card {
+    width: min(520px, calc(100vw - 28px));
+  }
+  .wallet-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 10px 0 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    color: #ffe08a;
+    font-weight: 800;
+  }
+  .billing-costs {
+    margin: 8px 0 12px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .billing-costs .cost-chip {
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: rgba(255, 224, 138, 0.12);
+    border: 1px solid rgba(255, 224, 138, 0.22);
+    color: #ffe08a;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .billing-products {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .billing-product {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+  }
+  .billing-product-title {
+    font-weight: 850;
+    color: var(--text);
+  }
+  .billing-product-meta {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-soft);
+  }
+  .billing-buy {
+    appearance: none;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 850;
+    white-space: nowrap;
+  }
+  .billing-buy:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .pack-row {
     display: flex;
@@ -2165,6 +2544,8 @@ export const VIEWER_CSS = `
   .sheet-overlay.is-mandatory[aria-hidden="true"] { display: none; }
   .signin-card { text-align: center; max-width: 440px; }
   .signin-card .primary-link {
+    appearance: none;
+    border: none;
     display: inline-block;
     background: var(--accent);
     color: #fff;
@@ -2174,6 +2555,16 @@ export const VIEWER_CSS = `
     font-weight: 800;
     font-size: 15px;
   }
+  .signin-card .secondary-link {
+    display: inline-block;
+    color: var(--text-soft);
+    text-decoration: none;
+    padding: 12px 16px;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 15px;
+  }
+  .signin-card .secondary-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
   .sheet-card {
     background: var(--bg);
     border: 1px solid var(--line);
@@ -2674,14 +3065,118 @@ export const VIEWER_CSS = `
     cursor: not-allowed;
   }
   .blackboard-panel[data-question-type="graduation"] .board {
-    min-height: 220px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    min-height: clamp(320px, 34vw, 430px);
+    display: block;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .blackboard-panel[data-question-type="graduation"] .board .prompt {
     width: 100%;
+  }
+  .board .graduation-board-card {
+    width: min(100%, 820px);
+    margin: 0 auto;
+    border: 2px solid rgba(255,255,255,0.24);
+    border-radius: 12px;
+    padding: clamp(14px, 2.4vw, 22px);
+    background: rgba(5, 31, 20, 0.30);
+    color: var(--ink);
+    box-shadow: inset 0 0 26px rgba(0,0,0,0.14);
+    display: grid;
+    gap: clamp(10px, 1.8vw, 16px);
+    hyphens: none;
+    overflow-wrap: normal;
+  }
+  .board .graduation-board-hero {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(12px, 2.4vw, 20px);
+    min-width: 0;
+  }
+  .board .graduation-board-letter {
+    width: clamp(66px, 10vw, 104px);
+    height: clamp(66px, 10vw, 104px);
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    border: clamp(3px, 0.55vw, 5px) solid rgba(255,255,255,0.34);
+    background: rgba(255,255,255,0.12);
+    color: #fff0a6;
+    font: 900 clamp(36px, 6vw, 60px)/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.22);
+  }
+  .board .graduation-board-copy {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+  .board .graduation-board-title {
+    color: var(--ink);
+    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
+    font-size: clamp(24px, 4vw, 38px);
+    line-height: 1.04;
+  }
+  .board .graduation-board-subtitle {
+    color: var(--ink-soft);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-size: clamp(13px, 1.8vw, 17px);
+    line-height: 1.35;
+  }
+  .board .graduation-board-prompt {
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-size: clamp(15px, 2.1vw, 20px);
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+  .board .graduation-board-card .graduation-choice-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(8px, 1.6vw, 12px);
+    margin-top: 0;
+  }
+  .board .graduation-board-card .graduation-choice {
+    width: 100%;
+    min-width: 0;
+    min-height: clamp(70px, 9vw, 90px);
+    border-radius: 12px;
+    padding: 12px 13px;
+    border: 1px solid rgba(255,255,255,0.24);
+    background: rgba(255,255,255,0.10);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    text-align: left;
+  }
+  .board .graduation-board-card .graduation-choice .main {
+    font-size: clamp(14px, 2vw, 18px);
+    font-weight: 900;
+    line-height: 1.15;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .board .graduation-board-card .graduation-choice .sub {
+    color: var(--ink-soft);
+    font-size: clamp(11px, 1.45vw, 13px);
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .board .graduation-board-card .graduation-choice:hover {
+    border-color: rgba(255,240,166,0.58);
+    background: rgba(255,240,166,0.14);
+  }
+  .board .graduation-board-card .graduation-status {
+    min-height: 18px;
+    margin-top: -4px;
+    color: #ffe08c;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 800;
+    text-align: center;
   }
   .board .graduation-report-card {
     grid-template-columns: minmax(104px, 0.72fr) minmax(0, 1.28fr);
@@ -3002,6 +3497,41 @@ export const VIEWER_CSS = `
       margin-top: 0;
       text-align: right;
     }
+    .blackboard-panel[data-question-type="graduation"] .board {
+      min-height: 312px;
+      padding: 10px;
+    }
+    .board .graduation-board-card {
+      gap: 10px;
+      padding: 12px;
+    }
+    .board .graduation-board-hero {
+      gap: 10px;
+    }
+    .board .graduation-board-letter {
+      width: 62px;
+      height: 62px;
+      font-size: 34px;
+    }
+    .board .graduation-board-title {
+      font-size: 24px;
+    }
+    .board .graduation-board-subtitle {
+      font-size: 12px;
+    }
+    .board .graduation-board-prompt {
+      font-size: 14px;
+    }
+    .board .graduation-board-card .graduation-choice-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .board .graduation-board-card .graduation-choice {
+      min-height: 58px;
+      padding: 9px 10px;
+    }
+    .board .graduation-board-card .graduation-choice:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
   }
   @media (max-width: 440px) {
     .board .class-report-card {
@@ -3025,6 +3555,25 @@ export const VIEWER_CSS = `
     }
     .board .graduation-report-card .class-report-metrics {
       grid-template-columns: 1fr;
+    }
+    .board .graduation-board-hero {
+      grid-template-columns: auto minmax(0, 1fr);
+      justify-items: start;
+      text-align: left;
+    }
+    .board .graduation-board-letter {
+      width: 58px;
+      height: 58px;
+      font-size: 32px;
+    }
+    .board .graduation-board-card .graduation-choice-row {
+      grid-template-columns: 1fr;
+    }
+    .board .graduation-board-card .graduation-choice:last-child:nth-child(odd) {
+      grid-column: auto;
+    }
+    .board .graduation-board-prompt {
+      text-align: left;
     }
   }
 

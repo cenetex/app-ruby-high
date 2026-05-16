@@ -70,9 +70,15 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">— subjects cleared</span>
         <span class="arc-sep">·</span>
-        <span class="arc-score" id="arc-score" title="Total score">0 score</span>
+        <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">0 Merit Stars · 0 Hall Passes</span>
       </div>
-      <button class="pack-btn" id="pack-btn" type="button" title="Connected teachers" aria-label="Connected teachers" hidden>
+      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Buy Hall Passes" aria-label="Buy Hall Passes" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 9a3 3 0 0 0 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
+          <path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>
+        </svg>
+      </button>
+      <button class="pack-btn" id="pack-btn" type="button" title="Edit pack" aria-label="Edit pack" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>
         </svg>
@@ -156,10 +162,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>
-    <p class="sub">Ruby High can run offline. A local LLM or OpenRouter enables AI chat and AI-assisted imports; OpenRouter is still used for custom portraits.</p>
+    <p class="sub">Play without AI, use a Hall Pass for a hosted AI day, or bring your own OpenRouter key.</p>
     <div class="sheet-actions" style="justify-content: center;">
-      <a id="signin-cta" class="primary-link" href="/api/apps/ruby-high/auth/start">Enable AI with OpenRouter</a>
+      <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
+      <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use OpenRouter</a>
     </div>
+    <div id="signin-status" class="stat-budget" aria-live="polite"></div>
   </div>
 </div>
 
@@ -169,6 +177,19 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay" id="sheet-overlay">
   <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card" id="sheet-card"></div>
+</div>
+
+<!-- Hall Pass store overlay -->
+<div class="sheet-overlay" id="billing-overlay">
+  <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
+  <div class="sheet-card billing-card">
+    <h2>Hall Passes</h2>
+    <p class="sub">Use Hall Passes for AI Day Passes, hosted portraits, diploma art, and future creative rewards.</p>
+    <div class="wallet-panel" id="billing-wallet">0 Hall Passes</div>
+    <div class="billing-costs" id="billing-costs"></div>
+    <div class="billing-products" id="billing-products"></div>
+    <div id="billing-status" class="stat-budget" aria-live="polite"></div>
+  </div>
 </div>
 
 <!-- Bug report overlay -->
@@ -190,45 +211,83 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </form>
 </div>
 
-<!-- Connected-teacher overlay -->
+<!-- Pack editor overlay -->
 <div class="sheet-overlay" id="pack-overlay">
   <div class="sheet-card" id="pack-card">
-    <h2>Connected teachers</h2>
-    <p class="sub">Switch the active teacher or connect a live RATi/aws-swarm avatar as a guest instructor.</p>
-    <div class="pack-section-title">Creator studio</div>
-    <div class="teacher-creator">
-      <div class="teacher-creator-row">
-        <input id="teacher-wallet-input" type="text" placeholder="Wallet address" autocomplete="off">
-        <button type="button" class="secondary" id="teacher-load-avatars-btn">Load avatars</button>
-      </div>
-      <select id="teacher-avatar-select" disabled>
-        <option value="">Load wallet avatars first</option>
-      </select>
-      <input id="teacher-display-name-input" type="text" placeholder="Teacher display name (optional)">
-      <input id="teacher-socials-input" type="url" placeholder="Socials link (optional)">
-      <textarea id="teacher-materials-input" rows="5" maxlength="80000" placeholder="Paste markdown or course materials"></textarea>
-      <label class="teacher-publish-toggle">
-        <input id="teacher-publish-checkbox" type="checkbox" checked>
-        <span>Publish to the global teacher set</span>
-      </label>
-      <button type="button" class="pack-action teacher-create-btn" id="teacher-create-btn">Create teacher</button>
+    <h2>Pack Library</h2>
+    <p class="sub">Enable packs for your library and choose the active classroom pack.</p>
+    <div class="pack-library-actions">
+      <button type="button" class="pack-action" id="pack-create-btn">+ Create New Content Pack</button>
     </div>
-    <div class="pack-section-title">Published teachers</div>
-    <div class="pack-list" id="teacher-catalog-list"></div>
-    <div class="pack-section-title">RATi teachers</div>
-    <div class="pack-list" id="connected-teacher-list"></div>
+    <div class="pack-section-title">Available packs</div>
+    <div class="pack-grid" id="pack-list"></div>
+    <div class="pack-section-title">Draft packs</div>
+    <div class="pack-grid" id="pack-draft-list"></div>
     <div class="pack-import-panel" id="pack-import-panel" hidden>
-      <div class="pack-import-title" id="pack-import-title">Preparing teacher</div>
-      <div class="pack-import-detail" id="pack-import-detail">Ruby High is setting up the class.</div>
-      <div class="pack-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Teacher import progress">
+      <div class="pack-import-title" id="pack-import-title">Working</div>
+      <div class="pack-import-detail" id="pack-import-detail">Ruby High is updating your library.</div>
+      <div class="pack-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Pack update progress">
         <div class="pack-progress-fill" id="pack-progress-fill"></div>
       </div>
     </div>
-    <div class="pack-section-title">Active roster</div>
-    <div class="pack-list" id="pack-list"></div>
     <div id="pack-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
     <div class="sheet-actions">
       <button type="button" class="secondary" id="pack-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="pack-edit-overlay">
+  <div class="sheet-card pack-edit-card" id="pack-edit-card">
+    <h2 id="pack-edit-title">Edit pack</h2>
+    <p class="sub" id="pack-edit-subtitle">Draft content pack.</p>
+    <div class="pack-draft-fields">
+      <input id="pack-name-input" type="text" placeholder="Pack name">
+      <input id="pack-description-input" type="text" placeholder="Pack description">
+    </div>
+    <div class="pack-editor">
+      <aside class="pack-teacher-sidebar">
+        <div class="pack-section-title">Teachers</div>
+        <div class="pack-list pack-teacher-list" id="pack-teacher-list"></div>
+        <button type="button" class="secondary pack-add-teacher-btn" id="pack-add-teacher-btn">+ New Teacher</button>
+      </aside>
+      <section class="pack-editor-main">
+        <div class="pack-teacher-detail" id="pack-teacher-detail"></div>
+        <div class="pack-editor-tabs" role="tablist">
+          <button type="button" class="pack-editor-tab is-active" data-pack-tab="materials">Materials</button>
+          <button type="button" class="pack-editor-tab" data-pack-tab="questions">Questions</button>
+          <button type="button" class="pack-editor-tab" data-pack-tab="settings">Settings</button>
+        </div>
+        <div class="pack-tab-panel is-active" id="pack-tab-materials">
+          <div class="teacher-creator">
+            <input id="teacher-material-url-input" type="url" placeholder="GitHub markdown URL">
+            <button type="button" class="secondary" id="teacher-load-url-btn">Load URL</button>
+            <textarea id="teacher-materials-input" rows="8" maxlength="80000" placeholder="Paste markdown or course materials"></textarea>
+          </div>
+        </div>
+        <div class="pack-tab-panel" id="pack-tab-questions">
+          <div class="pack-question-toolbar">
+            <button type="button" class="pack-action" id="teacher-generate-questions-btn">Generate Questions</button>
+            <span class="pack-question-status" id="teacher-generation-status"></span>
+          </div>
+          <div class="pack-question-list" id="teacher-question-list"></div>
+        </div>
+        <div class="pack-tab-panel" id="pack-tab-settings">
+          <div class="teacher-creator">
+            <div class="teacher-creator-row">
+              <input id="teacher-display-name-input" type="text" placeholder="Teacher display name">
+              <input id="teacher-socials-input" type="url" placeholder="Socials link">
+            </div>
+            <input id="teacher-profile-image-input" type="url" placeholder="Profile image URL">
+            <textarea id="teacher-persona-input" rows="4" maxlength="2400" placeholder="Teaching style or persona"></textarea>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div id="pack-edit-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
+    <div class="sheet-actions">
+      <button type="button" class="secondary" id="pack-edit-close-btn">Close</button>
+      <button type="button" class="secondary" id="pack-publish-btn">Publish Pack</button>
     </div>
   </div>
 </div>

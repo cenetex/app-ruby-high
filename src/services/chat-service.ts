@@ -1053,10 +1053,11 @@ function describeClassReportBoardForModel(status: QuestionBankStatus): string | 
 }
 
 function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus | null): string {
-  const scoreLine = `${state.score.correct}/${state.score.total} answers · ${state.score.points ?? 0} score`;
+  const meritStars = Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0)));
+  const scoreLine = `${state.score.correct}/${state.score.total} answers · ${meritStars} Merit Stars`;
   const header = [
     `Active faculty: ${state.faculty}.`,
-    `Score this session: ${scoreLine}.`,
+    `Session progress: ${scoreLine}.`,
   ];
   // Senior arc complete — ceremony done, diploma issued. The chalkboard
   // renders a graduated state with no question.

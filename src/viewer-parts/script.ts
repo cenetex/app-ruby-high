@@ -74,8 +74,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!award) return "";
     const points = Math.max(0, Math.round(Number(award.points || 0)));
     const mult = Math.max(1, Math.round(Number(award.multiplier || 1)));
-    if (mult >= 5) return "+" + points + " score · Daily Class ×5";
-    return "+" + points + " score" + (mult > 1 ? " · ×" + mult : "");
+    if (mult >= 5) return "+" + points + " Merit Stars · Daily Class ×5";
+    return "+" + points + " Merit Stars" + (mult > 1 ? " · ×" + mult : "");
   }
   function letterGradePasses(grade) {
     return /^[ABC]/.test(String(grade || ""));
@@ -170,11 +170,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     const t = lastTelemetry;
     const round = t && t.active_round;
     const cur = t && t.current;
+    const ceremonyReady = !!(t && t.graduation_ready && !cur);
     const inFreeformRound = !!(
       round && !round.resolved && cur
       && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion")
     );
-    els.nextBtn.hidden = !available || inFreeformRound;
+    els.nextBtn.hidden = !available || inFreeformRound || ceremonyReady;
     els.nextBtn.textContent = nextQuestionButtonLabel(t);
     const live = !!(round && !round.resolved && cur);
     const postClass = postClassState(t);
@@ -401,6 +402,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     arcStreak: $("arc-streak"),
     arcXp: $("arc-xp"),
     arcScore: $("arc-score"),
+    hallPassBtn: $("hall-pass-btn"),
     packBtn: $("pack-btn"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
@@ -444,9 +446,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     chatForm: $("chat-form"),
     chatInput: $("chat-input"),
     chatSend: $("chat-send"),
+    signinGuest: $("signin-guest"),
+    signinStatus: $("signin-status"),
     checking: $("checking"),
     scrim: $("scrim"),
     congrats: $("congrats-toast"),
+    billingOverlay: $("billing-overlay"),
+    billingClose: $("billing-close"),
+    billingWallet: $("billing-wallet"),
+    billingCosts: $("billing-costs"),
+    billingProducts: $("billing-products"),
+    billingStatus: $("billing-status"),
   };
 
   // ── view state ────────────────────────────────────────────────────────────
@@ -480,6 +490,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   let lastChatButtonAt = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let lastSocialSummaryId = null;
+  let billingProductsCache = null;
+  let billingBusy = false;
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
   function setNextButtonDisabled(disabled) {
     if (els.nextBtn) els.nextBtn.disabled = !!disabled;
@@ -1485,7 +1497,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.arcStreak.classList.remove("is-met");
       els.arcXp.textContent = "subjects cleared";
       els.arcXp.classList.remove("is-met");
-      els.arcScore.textContent = formatWholeNumber(t.scorePoints || 0) + " score";
+      els.arcScore.textContent = walletSummaryText(t);
       return;
     }
     const yearLabel = GRADE_LABELS[grade] || ("Grade " + grade);
@@ -1497,7 +1509,245 @@ const VIEWER_SCRIPT_SUFFIX = `
     const subjects = subjectClearSummary();
     els.arcXp.textContent = subjects.met + "/" + subjects.total + " subjects cleared";
     els.arcXp.classList.toggle("is-met", subjects.met >= subjects.total);
-    els.arcScore.textContent = formatWholeNumber(t.scorePoints || 0) + " score";
+    els.arcScore.textContent = walletSummaryText(t);
+  }
+
+  function walletSummaryText(t) {
+    const wallet = walletNumbers(t);
+    return formatWholeNumber(wallet.meritStars) + " Merit Stars · " + formatWholeNumber(wallet.hallPasses) + " Hall Passes";
+  }
+
+  function walletNumbers(t) {
+    const wallet = t && t.wallet && typeof t.wallet === "object" ? t.wallet : null;
+    const meritStars = wallet && wallet.meritStars != null ? wallet.meritStars : (t && t.meritStars != null ? t.meritStars : t && t.scorePoints);
+    const hallPasses = wallet && wallet.hallPasses != null ? wallet.hallPasses : (t && t.hallPasses);
+    return {
+      meritStars: Math.max(0, Math.round(Number(meritStars || 0))),
+      hallPasses: Math.max(0, Math.round(Number(hallPasses || 0))),
+    };
+  }
+
+  function syncBillingWallet(t) {
+    if (!els.billingWallet) return;
+    const wallet = walletNumbers(t || lastTelemetry);
+    const ai = hostedAiTelemetry(t || lastTelemetry);
+    els.billingWallet.textContent = formatWholeNumber(wallet.hallPasses) + " Hall Passes"
+      + (ai.active ? " · AI active " + formatRelativeExpiry(ai.expiresAt) : "");
+  }
+
+  function setBillingStatus(text, invalid) {
+    if (!els.billingStatus) return;
+    els.billingStatus.textContent = text || "";
+    els.billingStatus.classList.toggle("is-invalid", !!invalid);
+  }
+
+  function formatMoney(cents, currency) {
+    const amount = Number(cents || 0) / 100;
+    const code = String(currency || "usd").toUpperCase();
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(amount);
+    } catch (_e) {
+      return code + " " + amount.toFixed(2);
+    }
+  }
+
+  function hostedAiTelemetry(t) {
+    const ai = t && t.hosted_ai && typeof t.hosted_ai === "object" ? t.hosted_ai : null;
+    const expiresAt = ai && ai.expiresAt != null ? Number(ai.expiresAt) : 0;
+    return {
+      active: !!(ai && ai.active && expiresAt > Date.now()),
+      expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
+    };
+  }
+
+  function formatDuration(ms) {
+    const hours = Math.max(1, Math.round(Number(ms || 0) / 3600000));
+    if (hours % 24 === 0) {
+      const days = Math.max(1, Math.round(hours / 24));
+      return days + " day" + (days === 1 ? "" : "s");
+    }
+    return hours + " hour" + (hours === 1 ? "" : "s");
+  }
+
+  function formatRelativeExpiry(expiresAt) {
+    const ms = Math.max(0, Number(expiresAt || 0) - Date.now());
+    if (ms <= 0) return "";
+    const hours = Math.ceil(ms / 3600000);
+    if (hours >= 24) return Math.ceil(hours / 24) + "d";
+    return hours + "h";
+  }
+
+  function renderBillingProducts(payload) {
+    if (!els.billingProducts) return;
+    els.billingProducts.replaceChildren();
+    syncBillingWallet(lastTelemetry);
+    const costs = payload && payload.imageCosts ? payload.imageCosts : {};
+    const hostedAi = payload && payload.hostedAiAccess ? payload.hostedAiAccess : {};
+    const activeAi = hostedAiTelemetry(lastTelemetry);
+    if (els.billingCosts) {
+      els.billingCosts.replaceChildren();
+      [
+        ["AI Day Pass", hostedAi.cost],
+        ["Portrait", costs.portrait],
+        ["Diploma art", costs.diploma],
+      ].forEach(([label, cost]) => {
+        const chip = document.createElement("span");
+        chip.className = "cost-chip";
+        chip.textContent = label + ": " + formatWholeNumber(cost || 0) + " Hall Pass" + (Number(cost || 0) === 1 ? "" : "es");
+        els.billingCosts.appendChild(chip);
+      });
+    }
+    const aiRow = document.createElement("div");
+    aiRow.className = "billing-product";
+    const aiBody = document.createElement("div");
+    const aiTitle = document.createElement("div");
+    aiTitle.className = "billing-product-title";
+    aiTitle.textContent = "AI Day Pass";
+    const aiMeta = document.createElement("div");
+    aiMeta.className = "billing-product-meta";
+    aiMeta.textContent = activeAi.active
+      ? "Hosted AI active for " + formatRelativeExpiry(activeAi.expiresAt)
+      : formatDuration(hostedAi.durationMs || 86_400_000) + " of hosted AI chat and character rerolls";
+    aiBody.appendChild(aiTitle);
+    aiBody.appendChild(aiMeta);
+    const aiBuy = document.createElement("button");
+    aiBuy.type = "button";
+    aiBuy.className = "billing-buy";
+    aiBuy.textContent = activeAi.active ? "Active" : "Use " + formatWholeNumber(hostedAi.cost || 1);
+    aiBuy.disabled = activeAi.active || !hostedAi.configured || billingBusy;
+    aiBuy.addEventListener("click", activateAiPass);
+    aiRow.appendChild(aiBody);
+    aiRow.appendChild(aiBuy);
+    els.billingProducts.appendChild(aiRow);
+    const products = Array.isArray(payload && payload.products) ? payload.products : [];
+    if (products.length === 0) {
+      setBillingStatus("No Hall Pass packs are available.", true);
+      return;
+    }
+    products.forEach((product) => {
+      const row = document.createElement("div");
+      row.className = "billing-product";
+      const body = document.createElement("div");
+      const title = document.createElement("div");
+      title.className = "billing-product-title";
+      title.textContent = product.name || "Hall Pass pack";
+      const meta = document.createElement("div");
+      meta.className = "billing-product-meta";
+      meta.textContent = formatWholeNumber(product.hallPasses || 0) + " Hall Passes · " + formatMoney(product.unitAmount, product.currency);
+      body.appendChild(title);
+      body.appendChild(meta);
+      const buy = document.createElement("button");
+      buy.type = "button";
+      buy.className = "billing-buy";
+      buy.textContent = "Buy";
+      buy.disabled = !payload.configured || billingBusy;
+      buy.addEventListener("click", () => startCheckout(product.id));
+      row.appendChild(body);
+      row.appendChild(buy);
+      els.billingProducts.appendChild(row);
+    });
+    setBillingStatus(
+      payload.configured ? "" : "Web checkout is not configured on this server.",
+      !payload.configured && !hostedAi.configured,
+    );
+  }
+
+  async function loadBillingProducts() {
+    setBillingStatus("Loading Hall Pass packs…", false);
+    try {
+      const r = await apiFetch(apiBase + "/billing/products", { timeoutMs: 8000 });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.ok) throw new Error(data.error || "billing " + r.status);
+      billingProductsCache = data;
+      renderBillingProducts(data);
+    } catch (err) {
+      setBillingStatus("Couldn't load packs · " + (err && err.message ? err.message : "error"), true);
+    }
+  }
+
+  function openBilling() {
+    if (!authed || !els.billingOverlay) return;
+    syncBillingWallet(lastTelemetry);
+    els.billingOverlay.classList.add("is-open");
+    els.billingOverlay.setAttribute("aria-hidden", "false");
+    if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    void loadBillingProducts();
+  }
+
+  function closeBilling() {
+    if (!els.billingOverlay || billingBusy) return;
+    els.billingOverlay.classList.remove("is-open");
+    els.billingOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  async function startCheckout(productId) {
+    if (!productId || billingBusy) return;
+    billingBusy = true;
+    if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    setBillingStatus("Opening checkout…", false);
+    try {
+      const r = await apiFetch(apiBase + "/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 12000,
+        body: JSON.stringify({
+          productId,
+          successUrl: apiBase + "/viewer?billing=success",
+          cancelUrl: apiBase + "/viewer?billing=cancel",
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.url) throw new Error(data.error || "checkout " + r.status);
+      window.location.href = data.url;
+    } catch (err) {
+      billingBusy = false;
+      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+      setBillingStatus("Checkout failed · " + (err && err.message ? err.message : "error"), true);
+    }
+  }
+
+  async function activateAiPass() {
+    if (billingBusy) return;
+    billingBusy = true;
+    if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    setBillingStatus("Turning on hosted AI…", false);
+    try {
+      const r = await apiFetch(apiBase + "/billing/ai-pass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 12000,
+        body: JSON.stringify({}),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.ok) throw new Error(data.error || "AI pass " + r.status);
+      setBillingStatus(data.applied ? "AI is on for the day." : "AI is already active.", false);
+      await fetchSession();
+      await deriveAuth();
+      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    } catch (err) {
+      setBillingStatus("AI pass failed · " + (err && err.message ? err.message : "error"), true);
+    } finally {
+      billingBusy = false;
+      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    }
+  }
+
+  function consumeBillingReturnFlag() {
+    try {
+      const url = new URL(window.location.href);
+      const result = url.searchParams.get("billing");
+      if (result === "success") {
+        showCongrats("Hall Pass checkout complete.", true);
+      } else if (result === "cancel") {
+        showCongrats("Checkout cancelled.", false);
+      } else {
+        return;
+      }
+      url.searchParams.delete("billing");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch (_e) {
+      // Ignore URL cleanup failures.
+    }
   }
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
@@ -1994,7 +2244,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Daily Class Bonus ×5" : "◆ ×" + scoreMult + " score");
+        : (scoreMult >= 5 ? "◆ Daily Class Bonus ×5" : "◆ ×" + scoreMult + " Merit Stars");
       els.boardReveal.appendChild(mult);
     }
     if (reveal.explanation) {
@@ -2227,7 +2477,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult);
+        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult + " Merit Stars");
       body.appendChild(mult);
     }
     appendMashTickChips(body, reveal);
@@ -2963,6 +3213,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
     lastTelemetry = t;
+    syncBillingWallet(t);
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
@@ -3917,61 +4168,48 @@ const VIEWER_SCRIPT_SUFFIX = `
       const ready = (lastTelemetry && lastTelemetry.graduation_ready) || c.pendingGraduation;
       if (!ready) return null;
       const onBoard = !!(opts && opts.surface === "board");
-      const next = nextGradeAfterClient(grade);
+      const completedGrade = ready.grade || grade;
+      const next = nextGradeAfterClient(completedGrade);
       const targetLabel = next ? (GRADE_LABELS[next] || ("Grade " + next)) : "graduate";
       const finalGrade = finalGradeSummary();
       const wrap = document.createElement(onBoard ? "section" : "div");
       wrap.className = onBoard
-        ? "class-report-card graduation-report-card is-passed"
+        ? "graduation-board-card"
         : "graduation-ceremony";
       const status = document.createElement("div");
       status.className = "graduation-status";
       let row;
 
       if (onBoard) {
-        const gradeLabel = grade ? (GRADE_LABELS[grade] || ("Grade " + grade)) : "Ruby High";
-        const gradeBlock = document.createElement("div");
-        gradeBlock.className = "class-report-grade-block";
-        const badge = document.createElement("div");
-        badge.className = "class-report-letter";
-        badge.textContent = finalGrade.letter;
-        const titleWrap = document.createElement("div");
-        titleWrap.className = "class-report-heading";
-        const title = document.createElement("div");
-        title.className = "class-report-title";
-        title.textContent = next ? targetLabel : "Diploma";
-        const subtitle = document.createElement("div");
-        subtitle.className = "class-report-subtitle";
-        subtitle.textContent = gradeLabel + " final grade";
-        titleWrap.appendChild(title);
-        titleWrap.appendChild(subtitle);
-        gradeBlock.appendChild(badge);
-        gradeBlock.appendChild(titleWrap);
-        wrap.appendChild(gradeBlock);
+        const gradeLabel = completedGrade ? (GRADE_LABELS[completedGrade] || ("Grade " + completedGrade)) : "Ruby High";
+        const hero = document.createElement("div");
+        hero.className = "graduation-board-hero";
 
-        const metrics = document.createElement("div");
-        metrics.className = "class-report-metrics";
-        const addMetric = (label, value, detail) => {
-          const item = document.createElement("div");
-          item.className = "class-report-metric";
-          const k = document.createElement("span");
-          k.className = "k";
-          k.textContent = label;
-          const v = document.createElement("span");
-          v.className = "v";
-          v.textContent = value;
-          const d = document.createElement("span");
-          d.className = "d";
-          d.textContent = detail;
-          item.appendChild(k);
-          item.appendChild(v);
-          item.appendChild(d);
-          metrics.appendChild(item);
-        };
-        addMetric("final", finalGrade.averageScore == null ? "—" : formatClassScore(finalGrade.averageScore), "three-subject average");
-        addMetric("done", finalGrade.scored + "/" + finalGrade.total, "subjects averaged");
-        addMetric("next", next ? "Next year" : "Diploma", "ceremony");
-        wrap.appendChild(metrics);
+        const badge = document.createElement("div");
+        badge.className = "graduation-board-letter";
+        badge.textContent = finalGrade.letter;
+
+        const copy = document.createElement("div");
+        copy.className = "graduation-board-copy";
+        const title = document.createElement("div");
+        title.className = "graduation-board-title";
+        title.textContent = gradeLabel + " complete";
+        const subtitle = document.createElement("div");
+        subtitle.className = "graduation-board-subtitle";
+        const scoreText = finalGrade.averageScore == null ? "Final grade ready" : "Final grade " + finalGrade.letter + " · " + formatClassScore(finalGrade.averageScore);
+        subtitle.textContent = scoreText + (next ? " · next: " + targetLabel : " · diploma ceremony");
+        copy.appendChild(title);
+        copy.appendChild(subtitle);
+
+        hero.appendChild(badge);
+        hero.appendChild(copy);
+        wrap.appendChild(hero);
+
+        const prompt = document.createElement("div");
+        prompt.className = "graduation-board-prompt";
+        prompt.textContent = "Choose one yearbook reward.";
+        wrap.appendChild(prompt);
+
         row = document.createElement("div");
         row.className = "graduation-choice-row";
         wrap.appendChild(row);
@@ -4039,21 +4277,22 @@ const VIEWER_SCRIPT_SUFFIX = `
         const value = (c.stats && typeof c.stats[stat] === "number") ? c.stats[stat] : 0;
         if (value < 3) {
           pool.push({
-            label: fmtRewardStat(stat, value),
+            label: stat[0].toUpperCase() + stat.slice(1) + ": " + fmtStat(value) + " → " + fmtStat(Math.min(3, value + 1)),
             detail: "+1 stat (cap +3)",
             reward: { kind: "stat", stat },
           });
         }
       });
       pool.push({
-        label: "+1 advantage die",
+        label: "Extra Advantage",
         detail: next ? "for " + targetLabel + " year" : "for post-grad play",
         reward: { kind: "advantage" },
       });
       TEACHING_FACULTY_IDS.forEach((fid) => {
+        const name = facultyLabel(fid);
         pool.push({
-          label: facultyLabel(fid) + " affinity",
-          detail: "first miss in class counts once",
+          label: name + " Affinity",
+          detail: "First miss in " + name + "'s class becomes a pass.",
           reward: { kind: "affinity", facultyId: fid },
         });
       });
@@ -5159,21 +5398,34 @@ const VIEWER_SCRIPT_SUFFIX = `
   const sheetCloseBtn = $("sheet-close");
   if (sheetCloseBtn) sheetCloseBtn.addEventListener("click", closeSheet);
 
-  // ── pack store overlay (pack switcher) ───────────────────────────────────
+  // ── pack library + draft editor ─────────────────────────────────────────
   const packEl = $("pack-overlay");
   const packListEl = $("pack-list");
-  const connectedTeacherListEl = $("connected-teacher-list");
-  const teacherCatalogListEl = $("teacher-catalog-list");
-  const teacherWalletInputEl = $("teacher-wallet-input");
-  const teacherLoadAvatarsBtn = $("teacher-load-avatars-btn");
-  const teacherAvatarSelectEl = $("teacher-avatar-select");
+  const packDraftListEl = $("pack-draft-list");
+  const packCreateBtn = $("pack-create-btn");
+  const packEditEl = $("pack-edit-overlay");
+  const packEditTitleEl = $("pack-edit-title");
+  const packEditSubtitleEl = $("pack-edit-subtitle");
+  const packNameInputEl = $("pack-name-input");
+  const packDescriptionInputEl = $("pack-description-input");
+  const packTeacherListEl = $("pack-teacher-list");
+  const packTeacherDetailEl = $("pack-teacher-detail");
+  const packAddTeacherBtn = $("pack-add-teacher-btn");
+  const teacherMaterialUrlInputEl = $("teacher-material-url-input");
+  const teacherLoadUrlBtn = $("teacher-load-url-btn");
+  const teacherGenerateQuestionsBtn = $("teacher-generate-questions-btn");
+  const teacherGenerationStatusEl = $("teacher-generation-status");
+  const teacherQuestionListEl = $("teacher-question-list");
   const teacherDisplayNameInputEl = $("teacher-display-name-input");
   const teacherSocialsInputEl = $("teacher-socials-input");
+  const teacherProfileImageInputEl = $("teacher-profile-image-input");
+  const teacherPersonaInputEl = $("teacher-persona-input");
   const teacherMaterialsInputEl = $("teacher-materials-input");
-  const teacherPublishCheckboxEl = $("teacher-publish-checkbox");
-  const teacherCreateBtn = $("teacher-create-btn");
   const packCloseBtn = $("pack-close-btn");
+  const packEditCloseBtn = $("pack-edit-close-btn");
+  const packPublishBtn = $("pack-publish-btn");
   const packStatusEl = $("pack-status");
+  const packEditStatusEl = $("pack-edit-status");
   const packImportPanelEl = $("pack-import-panel");
   const packImportTitleEl = $("pack-import-title");
   const packImportDetailEl = $("pack-import-detail");
@@ -5181,23 +5433,139 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packBtn = els.packBtn;
   let packImportBusy = false;
   let packImportTimer = null;
+  let packLibraryState = null;
+  let currentDraft = null;
+  let selectedPackTeacherId = null;
+  let selectedPackTab = "materials";
+  let packAutosaveTimer = null;
+  let teacherAutosaveTimer = null;
   const PACK_IMPORT_STEPS = [
-    { pct: 8, title: "Connecting to RATi OS", detail: "Opening the teacher roster." },
-    { pct: 28, title: "Generating seed questions", detail: "The agent is writing a Ruby High board bank." },
-    { pct: 58, title: "Validating generated cards", detail: "Checking answer keys, options, subjects, and difficulty." },
-    { pct: 82, title: "Saving teacher pack", detail: "Persisting the generated board bank to your session." },
-    { pct: 96, title: "Preparing classroom", detail: "Ruby High is switching the active teacher." },
+    { pct: 18, title: "Saving draft", detail: "Persisting the content pack." },
+    { pct: 42, title: "Preparing materials", detail: "Checking markdown and size limits." },
+    { pct: 68, title: "Generating cards", detail: "Building the teacher question set." },
+    { pct: 88, title: "Updating library", detail: "Refreshing pack availability." },
   ];
+
+  const packStudioClient = {
+    async listPacks() {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library");
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "pack library " + r.status);
+      return data;
+    },
+    async createDraftPack() {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Untitled Content Pack" }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "create draft " + r.status);
+      return data.draft;
+    },
+    async loadDraftPack(draftId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId));
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "draft " + r.status);
+      return data.draft;
+    },
+    async updateDraftPack(draftId, patch) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "save draft " + r.status);
+      return data.draft;
+    },
+    async addTeacherToDraft(draftId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: "New Teacher" }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "add teacher " + r.status);
+      return data.draft;
+    },
+    async updateTeacher(draftId, teacherId, patch) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "save teacher " + r.status);
+      return data.draft;
+    },
+    async loadMaterialsFromUrl(draftId, teacherId, url) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId) + "/materials/from-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "load materials " + r.status);
+      return data.draft;
+    },
+    async generateQuestionsForDraftTeacher(draftId, teacherId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId) + "/questions/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "generate " + r.status);
+      return data.draft;
+    },
+    async deleteQuestion(draftId, teacherId, questionId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId) + "/questions/" + encodeURIComponent(questionId), {
+        method: "DELETE",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "delete question " + r.status);
+      return data.draft;
+    },
+    async publishDraft(draftId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "publish " + r.status);
+      return data.pack;
+    },
+    async installPack(packId, enabled) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library/" + encodeURIComponent(packId) + "/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "install " + r.status);
+      return data;
+    },
+    async setActivePack(packId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library/" + encodeURIComponent(packId) + "/active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "activate " + r.status);
+      return data;
+    },
+  };
 
   function openPackStore() {
     packEl.classList.add("is-open");
-    renderPackList();
-    renderTeacherCatalog();
-    renderConnectedTeachers();
+    refreshPackLibrary();
   }
   function closePackStore() {
     if (packImportBusy) {
-      packStatusEl.textContent = "Finish importing the teacher before closing this panel.";
+      packStatusEl.textContent = "Finish this library update before closing.";
       packStatusEl.classList.remove("is-invalid");
       return;
     }
@@ -5206,14 +5574,39 @@ const VIEWER_SCRIPT_SUFFIX = `
     packStatusEl.classList.remove("is-invalid");
     resetPackImportProgress();
   }
+  function openPackEditor(draft) {
+    currentDraft = draft;
+    selectedPackTeacherId = draft && Array.isArray(draft.teachers) && draft.teachers[0] ? draft.teachers[0].id : null;
+    selectedPackTab = "materials";
+    packEditEl.classList.add("is-open");
+    renderPackEditor();
+  }
+  function closePackEditor() {
+    clearTimeout(packAutosaveTimer);
+    clearTimeout(teacherAutosaveTimer);
+    packEditEl.classList.remove("is-open");
+    currentDraft = null;
+    selectedPackTeacherId = null;
+    if (packEditStatusEl) {
+      packEditStatusEl.textContent = "";
+      packEditStatusEl.classList.remove("is-invalid");
+    }
+    refreshPackLibrary();
+  }
   function setPackBusy(busy) {
     packImportBusy = !!busy;
     packEl.classList.toggle("is-busy", packImportBusy);
+    if (packEditEl) packEditEl.classList.toggle("is-busy", packImportBusy);
     if (packCloseBtn) packCloseBtn.disabled = packImportBusy;
+    if (packEditCloseBtn) packEditCloseBtn.disabled = packImportBusy;
     if (packBtn) packBtn.disabled = packImportBusy;
     packEl.querySelectorAll("button.pack-action").forEach((btn) => { btn.disabled = packImportBusy; });
-    if (teacherLoadAvatarsBtn) teacherLoadAvatarsBtn.disabled = packImportBusy;
-    if (teacherCreateBtn) teacherCreateBtn.disabled = packImportBusy;
+    packEditEl.querySelectorAll("button.pack-action, button.secondary").forEach((btn) => { btn.disabled = packImportBusy; });
+    if (packCreateBtn) packCreateBtn.disabled = packImportBusy;
+    if (packAddTeacherBtn) packAddTeacherBtn.disabled = packImportBusy;
+    packEditEl.querySelectorAll("input, textarea").forEach((field) => {
+      field.disabled = packImportBusy;
+    });
   }
   function updatePackImportProgress(pct, title, detail, isError) {
     if (!packImportPanelEl) return;
@@ -5266,370 +5659,521 @@ const VIEWER_SCRIPT_SUFFIX = `
     e.preventDefault();
     e.returnValue = "";
   });
+
+  async function refreshPackLibrary() {
+    if (!packListEl || !packDraftListEl) return;
+    packListEl.innerHTML = '<div class="sub">Loading packs...</div>';
+    packDraftListEl.innerHTML = "";
+    packStatusEl.textContent = "";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      packLibraryState = await packStudioClient.listPacks();
+      renderPackList();
+      renderDraftPackList();
+    } catch (err) {
+      packListEl.innerHTML = "";
+      packStatusEl.textContent = "Could not load packs · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    }
+  }
+
   function renderPackList() {
-    const t = lastTelemetry || {};
-    const packs = t.available_packs || [];
-    const activeId = t.active_pack && t.active_pack.id;
+    const packs = packLibraryState && Array.isArray(packLibraryState.packs) ? packLibraryState.packs : [];
     packListEl.innerHTML = "";
     if (packs.length === 0) {
+      packListEl.innerHTML = '<div class="sub">No packs available.</div>';
+      return;
+    }
+    packs.forEach((pack) => {
+      packListEl.appendChild(packCard(pack, { draft: false }));
+    });
+  }
+
+  function renderDraftPackList() {
+    const drafts = packLibraryState && Array.isArray(packLibraryState.drafts) ? packLibraryState.drafts : [];
+    packDraftListEl.innerHTML = "";
+    if (drafts.length === 0) {
+      packDraftListEl.innerHTML = '<div class="sub">No draft packs yet.</div>';
+      return;
+    }
+    drafts.forEach((draft) => {
+      packDraftListEl.appendChild(packCard(draft, { draft: true }));
+    });
+  }
+
+  function packCard(pack, opts) {
+    const card = document.createElement("div");
+    card.className = "pack-card-item" + (pack.active ? " is-active" : "");
+    const head = document.createElement("div");
+    head.className = "pack-card-head";
+    const titleWrap = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "pack-card-name";
+    name.textContent = pack.name || "Untitled Pack";
+    const desc = document.createElement("div");
+    desc.className = "pack-card-desc";
+    desc.textContent = pack.description || (opts.draft ? "Draft content pack." : "Ruby High content pack.");
+    titleWrap.appendChild(name);
+    titleWrap.appendChild(desc);
+    head.appendChild(titleWrap);
+    card.appendChild(head);
+
+    const meta = document.createElement("div");
+    meta.className = "pack-card-meta";
+    [
+      pack.builtIn ? "built-in" : pack.status || "pack",
+      pack.readOnly ? "read only" : pack.owner ? "yours" : "",
+      (pack.facultyCount || pack.teacherCount || 0) + " teachers",
+      (pack.questionCount || 0) + " cards",
+      pack.active ? "active" : "",
+    ].filter(Boolean).forEach((text) => {
+      const chip = document.createElement("span");
+      chip.className = "pack-chip";
+      chip.textContent = text;
+      meta.appendChild(chip);
+    });
+    card.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "pack-card-actions";
+    if (!opts.draft) {
+      const toggle = document.createElement("label");
+      toggle.className = "pack-toggle";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = !!pack.enabled;
+      checkbox.disabled = packImportBusy;
+      checkbox.addEventListener("change", async () => {
+        await togglePackInstall(pack, checkbox.checked);
+      });
+      toggle.appendChild(checkbox);
+      toggle.appendChild(document.createTextNode("Enabled"));
+      actions.appendChild(toggle);
+
+      const activeBtn = document.createElement("button");
+      activeBtn.type = "button";
+      activeBtn.className = "pack-action";
+      activeBtn.textContent = pack.active ? "Active" : "Activate";
+      activeBtn.disabled = packImportBusy || pack.active || !pack.enabled;
+      activeBtn.addEventListener("click", () => activateLibraryPack(pack));
+      actions.appendChild(activeBtn);
+    }
+
+    if (opts.draft || pack.canEdit) {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "pack-action";
+      editBtn.textContent = "Edit";
+      editBtn.disabled = packImportBusy;
+      editBtn.addEventListener("click", () => editDraftPack(pack.id));
+      actions.appendChild(editBtn);
+    }
+    card.appendChild(actions);
+    return card;
+  }
+
+  async function togglePackInstall(pack, enabled) {
+    setPackBusy(true);
+    packStatusEl.textContent = enabled ? "Enabling pack..." : "Disabling pack...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      packLibraryState = await packStudioClient.installPack(pack.id, enabled);
+      renderPackList();
+      renderDraftPackList();
+      packStatusEl.textContent = enabled ? "Pack enabled." : "Pack disabled.";
+    } catch (err) {
+      packStatusEl.textContent = "Could not update pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+      refreshPackLibrary();
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function activateLibraryPack(pack) {
+    if (!pack || packImportBusy) return;
+    setPackBusy(true);
+    packStatusEl.textContent = "Activating pack...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      packLibraryState = await packStudioClient.setActivePack(pack.id);
+      renderPackList();
+      renderDraftPackList();
+      packStatusEl.textContent = "Active pack switched. Reloading...";
+      setTimeout(() => window.location.reload(), 300);
+    } catch (err) {
+      packStatusEl.textContent = "Could not activate pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function createDraftPack() {
+    setPackBusy(true);
+    packStatusEl.textContent = "Creating draft pack...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const draft = await packStudioClient.createDraftPack();
+      packStatusEl.textContent = "";
+      openPackEditor(await packStudioClient.loadDraftPack(draft.id));
+    } catch (err) {
+      packStatusEl.textContent = "Could not create draft · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function editDraftPack(draftId) {
+    setPackBusy(true);
+    packStatusEl.textContent = "Opening draft...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      openPackEditor(await packStudioClient.loadDraftPack(draftId));
+      packStatusEl.textContent = "";
+    } catch (err) {
+      packStatusEl.textContent = "Could not open draft · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  function packTeacherInitial(teacher) {
+    return String((teacher && (teacher.shortName || teacher.displayName || teacher.id)) || "?").charAt(0).toUpperCase();
+  }
+  function packTeacherSubjectsText(teacher) {
+    const count = teacher && typeof teacher.questionCount === "number" ? teacher.questionCount : 0;
+    return count + " card" + (count === 1 ? "" : "s");
+  }
+  function renderPackTeacherEditor() {
+    if (!packTeacherListEl || !packTeacherDetailEl) return;
+    const teachers = currentDraft && Array.isArray(currentDraft.teachers) ? currentDraft.teachers : [];
+    if (!selectedPackTeacherId && teachers[0]) selectedPackTeacherId = teachers[0].id;
+    if (!teachers.some((teacher) => teacher.id === selectedPackTeacherId)) {
+      selectedPackTeacherId = teachers[0] ? teachers[0].id : null;
+    }
+    packTeacherListEl.innerHTML = "";
+    if (teachers.length === 0) {
       const empty = document.createElement("div");
       empty.className = "sub";
-      empty.textContent = "No connected teachers registered yet.";
-      packListEl.appendChild(empty);
-      return;
-    }
-    for (const p of packs) {
-      const row = document.createElement("div");
-      row.className = "pack-row" + (p.id === activeId ? " is-active" : "");
-      const body = document.createElement("div");
-      body.className = "pack-body";
-      const name = document.createElement("div");
-      name.className = "pack-name";
-      name.textContent = p.name;
-      const meta = document.createElement("div");
-      meta.className = "pack-meta";
-      meta.textContent = (p.faculty_count || 0) + " teacher" + ((p.faculty_count || 0) === 1 ? "" : "s") + " · " + (p.question_count || 0) + " board cards" + (p.description ? " — " + p.description : "");
-      body.appendChild(name);
-      body.appendChild(meta);
-      row.appendChild(body);
-      if (p.id === activeId) {
-        const tag = document.createElement("span");
-        tag.className = "pack-active-tag";
-        tag.textContent = "Active";
-        row.appendChild(tag);
-      } else {
-        row.addEventListener("click", () => { if (!packImportBusy) switchPack(p.id); });
-      }
-      packListEl.appendChild(row);
-    }
-  }
-  async function renderTeacherCatalog() {
-    if (!teacherCatalogListEl) return;
-    teacherCatalogListEl.innerHTML = "";
-    const loading = document.createElement("div");
-    loading.className = "sub";
-    loading.textContent = "Loading shared teacher catalog…";
-    teacherCatalogListEl.appendChild(loading);
-    try {
-      const r = await apiFetch("/api/apps/ruby-high/teachers");
-      const data = await r.json().catch(() => ({}));
-      teacherCatalogListEl.innerHTML = "";
-      if (!r.ok) throw new Error(data.error || "teachers " + r.status);
-      const teachers = Array.isArray(data.teachers) ? data.teachers : [];
-      if (teachers.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "sub";
-        empty.textContent = "No published teachers yet.";
-        teacherCatalogListEl.appendChild(empty);
-        return;
-      }
-      const activeId = lastTelemetry && lastTelemetry.active_pack && lastTelemetry.active_pack.id;
-      for (const teacher of teachers) {
-        const row = document.createElement("div");
-        row.className = "pack-row" + (teacher.packId === activeId ? " is-active" : "");
-        const body = document.createElement("div");
-        body.className = "pack-body";
-        const name = document.createElement("div");
-        name.className = "pack-name";
-        name.textContent = teacher.displayName || "Teacher";
-        const meta = document.createElement("div");
-        meta.className = "pack-meta";
-        const subjects = Array.isArray(teacher.subjects) && teacher.subjects.length ? teacher.subjects.slice(0, 3).join(", ") : "open study";
-        meta.textContent = (teacher.questionCount || 0) + " cards · " + subjects + (teacher.owner ? " · yours" : "");
-        body.appendChild(name);
-        body.appendChild(meta);
-        row.appendChild(body);
-        if (teacher.packId === activeId) {
-          const tag = document.createElement("span");
-          tag.className = "pack-active-tag";
-          tag.textContent = "Active";
-          row.appendChild(tag);
+      empty.textContent = "No teachers in this pack.";
+      packTeacherListEl.appendChild(empty);
+    } else {
+      teachers.forEach((teacher) => {
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.className = "pack-teacher-tab" + (teacher.id === selectedPackTeacherId ? " is-selected" : "");
+        tab.disabled = packImportBusy;
+        const avatar = document.createElement("span");
+        avatar.className = "pack-teacher-avatar";
+        if (teacher.profileImageUrl) {
+          const img = document.createElement("img");
+          img.src = teacher.profileImageUrl;
+          img.alt = "";
+          avatar.appendChild(img);
         } else {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "pack-action";
-          btn.textContent = "Activate";
-          btn.disabled = packImportBusy;
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            activatePublishedTeacher(teacher);
-          });
-          row.appendChild(btn);
+          avatar.textContent = packTeacherInitial(teacher);
         }
-        teacherCatalogListEl.appendChild(row);
-      }
-    } catch (err) {
-      teacherCatalogListEl.innerHTML = "";
-      const error = document.createElement("div");
-      error.className = "sub";
-      error.textContent = "Couldn't load teacher catalog · " + (err && err.message ? err.message : "error");
-      teacherCatalogListEl.appendChild(error);
-    }
-  }
-  async function loadWalletAvatars() {
-    if (!teacherWalletInputEl || !teacherAvatarSelectEl) return;
-    const walletAddress = String(teacherWalletInputEl.value || "").trim();
-    if (!walletAddress) {
-      packStatusEl.textContent = "Enter a wallet address first.";
-      packStatusEl.classList.add("is-invalid");
-      return;
-    }
-    packStatusEl.textContent = "Loading wallet avatars…";
-    packStatusEl.classList.remove("is-invalid");
-    teacherAvatarSelectEl.disabled = true;
-    teacherAvatarSelectEl.innerHTML = '<option value="">Loading…</option>';
-    try {
-      const r = await apiFetch("/api/apps/ruby-high/teachers/me/avatars?walletAddress=" + encodeURIComponent(walletAddress));
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || "avatars " + r.status);
-      const avatars = Array.isArray(data.avatars) ? data.avatars : [];
-      teacherAvatarSelectEl.innerHTML = "";
-      if (avatars.length === 0) {
-        teacherAvatarSelectEl.innerHTML = '<option value="">No avatars linked to this wallet</option>';
-        packStatusEl.textContent = "No avatars found for that wallet.";
-        return;
-      }
-      for (const avatar of avatars) {
-        const option = document.createElement("option");
-        option.value = avatar.id || avatar.model;
-        option.textContent = avatar.name || avatar.id || avatar.model;
-        option.dataset.model = avatar.model || "";
-        teacherAvatarSelectEl.appendChild(option);
-      }
-      teacherAvatarSelectEl.disabled = false;
-      packStatusEl.textContent = "Choose an avatar, paste materials, then create the teacher.";
-    } catch (err) {
-      teacherAvatarSelectEl.innerHTML = '<option value="">Could not load avatars</option>';
-      packStatusEl.textContent = "Couldn't load avatars · " + (err && err.message ? err.message : "error");
-      packStatusEl.classList.add("is-invalid");
-    }
-  }
-  async function createTeacherFromCreatorForm() {
-    if (packImportBusy) return;
-    const walletAddress = String((teacherWalletInputEl && teacherWalletInputEl.value) || "").trim();
-    const avatarId = String((teacherAvatarSelectEl && teacherAvatarSelectEl.value) || "").trim();
-    const materials = String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || "").trim();
-    if (!walletAddress || !avatarId || !materials) {
-      packStatusEl.textContent = "Wallet, avatar, and course materials are required.";
-      packStatusEl.classList.add("is-invalid");
-      return;
-    }
-    startPackImportProgress("custom teacher");
-    packStatusEl.classList.remove("is-invalid");
-    try {
-      const body = {
-        walletAddress,
-        avatarId,
-        displayName: String((teacherDisplayNameInputEl && teacherDisplayNameInputEl.value) || "").trim() || undefined,
-        socialsUrl: String((teacherSocialsInputEl && teacherSocialsInputEl.value) || "").trim() || undefined,
-        materials,
-        questionCount: 18,
-        publish: !!(teacherPublishCheckboxEl && teacherPublishCheckboxEl.checked),
-        visibility: "public",
-      };
-      const r = await apiFetch("/api/apps/ruby-high/teachers/drafts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        const copy = document.createElement("span");
+        copy.className = "pack-teacher-copy";
+        const title = document.createElement("span");
+        title.className = "pack-teacher-title";
+        title.textContent = teacher.displayName || teacher.id;
+        const subtitle = document.createElement("span");
+        subtitle.className = "pack-teacher-subtitle";
+        subtitle.textContent = (teacher.questionCount || 0) + " cards · " + packTeacherSubjectsText(teacher);
+        copy.appendChild(title);
+        copy.appendChild(subtitle);
+        tab.appendChild(avatar);
+        tab.appendChild(copy);
+        tab.addEventListener("click", () => {
+          if (packImportBusy) return;
+          selectedPackTeacherId = teacher.id;
+          renderPackTeacherEditor();
+        });
+        packTeacherListEl.appendChild(tab);
       });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || "create " + r.status);
-      const count = data && data.teacher && typeof data.teacher.questionCount === "number" ? data.teacher.questionCount : 0;
-      finishPackImportProgress("Teacher ready", "Generated " + count + " board card" + (count === 1 ? "" : "s") + ". Reloading…");
-      packStatusEl.textContent = "Teacher created. Reloading…";
-      setTimeout(() => window.location.reload(), 300);
-    } catch (err) {
-      const message = "Couldn't create teacher · " + (err && err.message ? err.message : "error");
-      failPackImportProgress(message);
-      packStatusEl.textContent = message;
-      packStatusEl.classList.add("is-invalid");
     }
+    renderSelectedPackTeacher(teachers);
   }
-  async function activatePublishedTeacher(teacher) {
-    if (packImportBusy || !teacher || !teacher.id) return;
-    startPackImportProgress(teacher.displayName || "teacher");
-    packStatusEl.classList.remove("is-invalid");
-    try {
-      const r = await apiFetch("/api/apps/ruby-high/teachers/" + encodeURIComponent(teacher.id) + "/activate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || "activate " + r.status);
-      finishPackImportProgress("Teacher active", "Reloading classroom…");
-      packStatusEl.textContent = "Teacher activated. Reloading…";
-      setTimeout(() => window.location.reload(), 300);
-    } catch (err) {
-      const message = "Couldn't activate teacher · " + (err && err.message ? err.message : "error");
-      failPackImportProgress(message);
-      packStatusEl.textContent = message;
-      packStatusEl.classList.add("is-invalid");
+  function renderSelectedPackTeacher(teachers) {
+    if (!packTeacherDetailEl) return;
+    packTeacherDetailEl.innerHTML = "";
+    const selected = teachers.find((teacher) => teacher.id === selectedPackTeacherId) || null;
+    const head = document.createElement("div");
+    head.className = "pack-teacher-detail-head";
+    const copy = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "pack-teacher-detail-name";
+    name.textContent = selected ? (selected.displayName || selected.id) : "No teacher selected";
+    const meta = document.createElement("div");
+    meta.className = "pack-teacher-detail-meta";
+    if (selected) {
+      meta.textContent = (selected.questionCount || 0) + " cards" + (selected.materialSourceUrl ? " · linked source" : "");
+    } else {
+      meta.textContent = "Add a teacher to configure this pack.";
     }
+    copy.appendChild(name);
+    copy.appendChild(meta);
+    head.appendChild(copy);
+    packTeacherDetailEl.appendChild(head);
+    if (selected && selected.description) {
+      const bio = document.createElement("div");
+      bio.className = "pack-teacher-detail-meta";
+      bio.textContent = selected.description;
+      packTeacherDetailEl.appendChild(bio);
+    }
+    fillTeacherDraftForm(selected);
+    renderQuestionList(selected);
+    renderPackTabs();
   }
-  async function renderConnectedTeachers() {
-    if (packImportBusy) return;
-    if (!connectedTeacherListEl) return;
-    connectedTeacherListEl.innerHTML = "";
-    const loading = document.createElement("div");
-    loading.className = "sub";
-    loading.textContent = "Checking RATi roster…";
-    connectedTeacherListEl.appendChild(loading);
-    try {
-      const r = await apiFetch("/api/apps/ruby-high/connected-teachers");
-      const data = await r.json().catch(() => ({}));
-      connectedTeacherListEl.innerHTML = "";
-      if (!r.ok) throw new Error(data.error || "roster " + r.status);
-      if (!data.configured) {
-        const empty = document.createElement("div");
-        empty.className = "sub";
-        empty.textContent = "RATi teacher backend is not configured on this server.";
-        connectedTeacherListEl.appendChild(empty);
-        return;
-      }
-      const teachers = Array.isArray(data.teachers) ? data.teachers : [];
-      if (teachers.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "sub";
-        empty.textContent = "No RATi teachers are available for this key.";
-        connectedTeacherListEl.appendChild(empty);
-        return;
-      }
-      const activeProvider = lastTelemetry && lastTelemetry.active_teacher_provider;
-      const activeModel = activeProvider && activeProvider.kind === "rati-openai-compatible"
-        ? ((lastTelemetry.active_pack && lastTelemetry.active_pack.id) || "")
+  function fillTeacherDraftForm(teacher) {
+    if (teacherDisplayNameInputEl) teacherDisplayNameInputEl.value = teacher && teacher.displayName ? teacher.displayName : "";
+    if (teacherSocialsInputEl) teacherSocialsInputEl.value = teacher && teacher.socialsUrl ? teacher.socialsUrl : "";
+    if (teacherProfileImageInputEl) teacherProfileImageInputEl.value = teacher && teacher.profileImageUrl ? teacher.profileImageUrl : "";
+    if (teacherPersonaInputEl) teacherPersonaInputEl.value = teacher && teacher.description ? teacher.description : "";
+    if (teacherMaterialsInputEl) teacherMaterialsInputEl.value = teacher && teacher.materials ? teacher.materials : "";
+    if (teacherMaterialUrlInputEl) teacherMaterialUrlInputEl.value = teacher && teacher.materialSourceUrl ? teacher.materialSourceUrl : "";
+    if (teacherGenerationStatusEl) {
+      teacherGenerationStatusEl.textContent = teacher
+        ? "Generated " + (teacher.generationCount || 0) + " time" + ((teacher.generationCount || 0) === 1 ? "" : "s") + " today"
         : "";
-      for (const teacher of teachers) {
-        const row = document.createElement("div");
-        row.className = "pack-row";
-        const body = document.createElement("div");
-        body.className = "pack-body";
-        const name = document.createElement("div");
-        name.className = "pack-name";
-        name.textContent = teacher.name || teacher.root || teacher.model;
-        const meta = document.createElement("div");
-        meta.className = "pack-meta";
-        meta.textContent = (teacher.supportsTools ? "board tools" : "chat-only") + " · " + (teacher.description || teacher.model) + (teacher.ownedByAnotherSession ? " · already connected elsewhere" : "");
-        body.appendChild(name);
-        body.appendChild(meta);
-        row.appendChild(body);
-        const teacherSlug = String(teacher.root || teacher.model || "teacher").toLowerCase().replace(/^avatar:/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "teacher";
-        const expectedPackId = teacher.packId || ("agent:rati-" + teacherSlug);
-        if (activeModel === expectedPackId) {
-          const tag = document.createElement("span");
-          tag.className = "pack-active-tag";
-          tag.textContent = "Active";
-          row.appendChild(tag);
-        } else if (teacher.ownedByAnotherSession) {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "pack-action";
-          btn.textContent = "In use";
-          btn.title = "This teacher is already connected by another Ruby High session.";
-          btn.disabled = true;
-          row.appendChild(btn);
-        } else {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "pack-action";
-          btn.textContent = "Connect";
-          btn.disabled = packImportBusy;
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            connectTeacher(teacher);
-          });
-          row.appendChild(btn);
-        }
-        connectedTeacherListEl.appendChild(row);
-      }
-    } catch (err) {
-      connectedTeacherListEl.innerHTML = "";
-      const error = document.createElement("div");
-      error.className = "sub";
-      error.textContent = "Couldn't load RATi teachers · " + (err && err.message ? err.message : "error");
-      connectedTeacherListEl.appendChild(error);
     }
   }
-  function channelSlugFor(value, fallback) {
-    const source = String(value || "").trim() ? value : fallback;
-    const text = String(source || "teacher")
-      .toLowerCase()
-      .replace(/^avatar:/, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48);
-    return text || "teacher";
+
+  function renderPackEditor() {
+    if (!currentDraft) return;
+    if (packEditTitleEl) packEditTitleEl.textContent = "Edit pack";
+    if (packEditSubtitleEl) packEditSubtitleEl.textContent = currentDraft.name || "Draft content pack";
+    if (packNameInputEl) packNameInputEl.value = currentDraft.name || "";
+    if (packDescriptionInputEl) packDescriptionInputEl.value = currentDraft.description || "";
+    renderPackTeacherEditor();
   }
-  function defaultChannelNameForConnectedTeacher(teacher) {
-    return channelSlugFor(
-      teacher && (teacher.defaultChannelName || teacher.name || teacher.root || teacher.model),
-      "teacher",
-    );
+
+  function renderPackTabs() {
+    packEditEl.querySelectorAll(".pack-editor-tab").forEach((btn) => {
+      const key = btn.getAttribute("data-pack-tab") || "";
+      btn.classList.toggle("is-active", key === selectedPackTab);
+    });
+    ["materials", "questions", "settings"].forEach((key) => {
+      const panel = $("pack-tab-" + key);
+      if (panel) panel.classList.toggle("is-active", key === selectedPackTab);
+    });
   }
-  function askConnectedTeacherChannelName(teacher) {
-    const fallback = defaultChannelNameForConnectedTeacher(teacher);
-    const raw = window.prompt("Classroom channel name", fallback);
-    if (raw === null) return null;
-    return channelSlugFor(raw, fallback);
+
+  function selectedDraftTeacher() {
+    return currentDraft && Array.isArray(currentDraft.teachers)
+      ? currentDraft.teachers.find((teacher) => teacher.id === selectedPackTeacherId) || null
+      : null;
   }
-  async function connectTeacher(teacher) {
-    if (packImportBusy) return;
-    const modelId = teacher && teacher.model;
-    const teacherName = teacher && (teacher.name || teacher.root || teacher.model);
-    const channelName = askConnectedTeacherChannelName(teacher);
-    if (channelName === null) return;
-    startPackImportProgress(teacherName);
-    packStatusEl.classList.remove("is-invalid");
+
+  function renderQuestionList(teacher) {
+    if (!teacherQuestionListEl) return;
+    teacherQuestionListEl.innerHTML = "";
+    const questions = teacher && Array.isArray(teacher.questions) ? teacher.questions : [];
+    if (!teacher) {
+      teacherQuestionListEl.innerHTML = '<div class="sub">Select or add a teacher.</div>';
+      return;
+    }
+    if (questions.length === 0) {
+      teacherQuestionListEl.innerHTML = '<div class="sub">No generated questions yet.</div>';
+      return;
+    }
+    questions.forEach((question) => {
+      const row = document.createElement("div");
+      row.className = "pack-question-row";
+      const body = document.createElement("div");
+      const prompt = document.createElement("div");
+      prompt.className = "pack-question-prompt";
+      prompt.textContent = question.prompt || "Untitled question";
+      const answer = document.createElement("div");
+      answer.className = "pack-question-answer";
+      answer.textContent = (question.subject || "open study") + " · " + (question.difficulty || "medium") + (question.answer ? " · " + question.answer : "");
+      body.appendChild(prompt);
+      body.appendChild(answer);
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "pack-action";
+      del.textContent = "Delete";
+      del.addEventListener("click", () => deleteDraftQuestion(question.id));
+      row.appendChild(body);
+      row.appendChild(del);
+      teacherQuestionListEl.appendChild(row);
+    });
+  }
+
+  function schedulePackAutosave() {
+    if (!currentDraft) return;
+    clearTimeout(packAutosaveTimer);
+    packAutosaveTimer = setTimeout(saveDraftPackFields, 450);
+  }
+
+  async function saveDraftPackFields() {
+    if (!currentDraft) return;
     try {
-      const r = await apiFetch("/api/apps/ruby-high/packs/connect-agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelId, channelName }),
+      currentDraft = await packStudioClient.updateDraftPack(currentDraft.id, {
+        name: String((packNameInputEl && packNameInputEl.value) || "").trim(),
+        description: String((packDescriptionInputEl && packDescriptionInputEl.value) || "").trim(),
       });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: r.status }));
-        throw new Error(err.error || "connect " + r.status);
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Draft saved.";
+        packEditStatusEl.classList.remove("is-invalid");
       }
-      const data = await r.json().catch(() => ({}));
-      const count = data && data.pack && typeof data.pack.question_count === "number" ? data.pack.question_count : 0;
-      finishPackImportProgress("Teacher ready", "Generated " + count + " board card" + (count === 1 ? "" : "s") + ". Reloading...");
-      packStatusEl.textContent = "Teacher connected. Reloading...";
-      setTimeout(() => window.location.reload(), 300);
     } catch (err) {
-      const message = "Couldn't connect · " + (err && err.message ? err.message : "error");
-      failPackImportProgress(message);
-      packStatusEl.textContent = message;
-      packStatusEl.classList.add("is-invalid");
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not save draft · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
     }
   }
-  async function switchPack(packId) {
-    if (packImportBusy) return;
-    packStatusEl.textContent = "Switching…";
-    packStatusEl.classList.remove("is-invalid");
+
+  function scheduleTeacherAutosave() {
+    if (!currentDraft || !selectedPackTeacherId) return;
+    clearTimeout(teacherAutosaveTimer);
+    teacherAutosaveTimer = setTimeout(saveSelectedTeacher, 550);
+  }
+
+  async function saveSelectedTeacher() {
+    if (!currentDraft || !selectedPackTeacherId) return;
     try {
-      const r = await apiFetch("/api/apps/ruby-high/packs/active", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packId }),
+      currentDraft = await packStudioClient.updateTeacher(currentDraft.id, selectedPackTeacherId, {
+        displayName: String((teacherDisplayNameInputEl && teacherDisplayNameInputEl.value) || "").trim(),
+        description: String((teacherPersonaInputEl && teacherPersonaInputEl.value) || "").trim(),
+        socialsUrl: String((teacherSocialsInputEl && teacherSocialsInputEl.value) || "").trim(),
+        profileImageUrl: String((teacherProfileImageInputEl && teacherProfileImageInputEl.value) || "").trim(),
+        materials: String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || "").trim(),
       });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: r.status }));
-        throw new Error(err.error || "switch " + r.status);
+      renderPackTeacherEditor();
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Teacher saved.";
+        packEditStatusEl.classList.remove("is-invalid");
       }
-      packStatusEl.textContent = "Active pack switched. Reloading…";
-      // Pack swap blew away faculty + question banks; safest bet is a clean
-      // reload so the channels rail + chalkboard rebuild against the new pack.
-      setTimeout(() => window.location.reload(), 300);
     } catch (err) {
-      packStatusEl.textContent = "Couldn't switch · " + (err && err.message ? err.message : "error");
-      packStatusEl.classList.add("is-invalid");
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not save teacher · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
     }
   }
+
+  async function addDraftTeacher() {
+    if (!currentDraft) return;
+    setPackBusy(true);
+    if (packEditStatusEl) packEditStatusEl.textContent = "Adding teacher...";
+    try {
+      currentDraft = await packStudioClient.addTeacherToDraft(currentDraft.id);
+      selectedPackTeacherId = currentDraft.teachers[currentDraft.teachers.length - 1].id;
+      renderPackEditor();
+      if (packEditStatusEl) packEditStatusEl.textContent = "Teacher added.";
+    } catch (err) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not add teacher · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function loadTeacherMaterialsFromUrl() {
+    const teacher = selectedDraftTeacher();
+    if (!currentDraft || !teacher) return;
+    const url = String((teacherMaterialUrlInputEl && teacherMaterialUrlInputEl.value) || "").trim();
+    if (!url) return;
+    setPackBusy(true);
+    if (packEditStatusEl) packEditStatusEl.textContent = "Loading materials...";
+    try {
+      currentDraft = await packStudioClient.loadMaterialsFromUrl(currentDraft.id, teacher.id, url);
+      renderPackEditor();
+      if (packEditStatusEl) packEditStatusEl.textContent = "Materials loaded.";
+    } catch (err) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not load materials · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function generateDraftQuestions() {
+    const teacher = selectedDraftTeacher();
+    if (!currentDraft || !teacher) return;
+    await saveSelectedTeacher();
+    setPackBusy(true);
+    if (packEditStatusEl) packEditStatusEl.textContent = "Generating questions...";
+    try {
+      currentDraft = await packStudioClient.generateQuestionsForDraftTeacher(currentDraft.id, teacher.id);
+      selectedPackTab = "questions";
+      renderPackEditor();
+      if (packEditStatusEl) packEditStatusEl.textContent = "Questions generated.";
+    } catch (err) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not generate questions · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function deleteDraftQuestion(questionId) {
+    const teacher = selectedDraftTeacher();
+    if (!currentDraft || !teacher || !questionId) return;
+    try {
+      currentDraft = await packStudioClient.deleteQuestion(currentDraft.id, teacher.id, questionId);
+      renderPackEditor();
+    } catch (err) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not delete question · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+    }
+  }
+
+  async function publishCurrentDraft() {
+    if (!currentDraft) return;
+    await saveDraftPackFields();
+    await saveSelectedTeacher();
+    setPackBusy(true);
+    if (packEditStatusEl) packEditStatusEl.textContent = "Publishing pack...";
+    try {
+      await packStudioClient.publishDraft(currentDraft.id);
+      if (packEditStatusEl) packEditStatusEl.textContent = "Pack published.";
+      await refreshPackLibrary();
+    } catch (err) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not publish pack · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
   packCloseBtn.addEventListener("click", closePackStore);
   packEl.addEventListener("click", (e) => { if (e.target === packEl) closePackStore(); });
+  if (packEditCloseBtn) packEditCloseBtn.addEventListener("click", closePackEditor);
+  if (packEditEl) packEditEl.addEventListener("click", (e) => { if (e.target === packEditEl) closePackEditor(); });
   packBtn.addEventListener("click", openPackStore);
-  if (teacherLoadAvatarsBtn) teacherLoadAvatarsBtn.addEventListener("click", loadWalletAvatars);
-  if (teacherCreateBtn) teacherCreateBtn.addEventListener("click", createTeacherFromCreatorForm);
+  if (packCreateBtn) packCreateBtn.addEventListener("click", createDraftPack);
+  if (packAddTeacherBtn) packAddTeacherBtn.addEventListener("click", addDraftTeacher);
+  if (packPublishBtn) packPublishBtn.addEventListener("click", publishCurrentDraft);
+  if (teacherLoadUrlBtn) teacherLoadUrlBtn.addEventListener("click", loadTeacherMaterialsFromUrl);
+  if (teacherGenerateQuestionsBtn) teacherGenerateQuestionsBtn.addEventListener("click", generateDraftQuestions);
+  if (packNameInputEl) packNameInputEl.addEventListener("input", schedulePackAutosave);
+  if (packDescriptionInputEl) packDescriptionInputEl.addEventListener("input", schedulePackAutosave);
+  [teacherDisplayNameInputEl, teacherSocialsInputEl, teacherProfileImageInputEl, teacherPersonaInputEl, teacherMaterialsInputEl].forEach((field) => {
+    if (field) field.addEventListener("input", scheduleTeacherAutosave);
+  });
+  packEditEl.querySelectorAll(".pack-editor-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedPackTab = btn.getAttribute("data-pack-tab") || "materials";
+      renderPackTabs();
+    });
+  });
 
   // ── student chime ─────────────────────────────────────────────────────────
   // When AI is enabled, fire the LLM-backed /chat/student-chime endpoint so
@@ -5714,6 +6258,11 @@ const VIEWER_SCRIPT_SUFFIX = `
   // ── auth ─────────────────────────────────────────────────────────────────
   let lastAuthState = null;
   let authCheckSeq = 0;
+  function setSigninStatus(text, invalid) {
+    if (!els.signinStatus) return;
+    els.signinStatus.textContent = text || "";
+    els.signinStatus.classList.toggle("is-invalid", !!invalid);
+  }
   function setAuthState(next, opts) {
     const nextAi = !!(opts && opts.ai);
     const nextLocalAi = !!(opts && opts.local_ai);
@@ -5729,10 +6278,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (authed === false) {
       signinEl.classList.add("is-open");
       signinEl.setAttribute("aria-hidden", "false");
+      setSigninStatus("Local session unavailable. Retry, or use OpenRouter.", true);
       if (sheetOverlayOpen) closeSheet();
     } else {
       signinEl.classList.remove("is-open");
       signinEl.setAttribute("aria-hidden", "true");
+      setSigninStatus("", false);
     }
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
     if (sheetOverlayOpen) renderSheet();
@@ -5757,6 +6308,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");
     setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai });
+  }
+  async function retryGuestSession() {
+    if (els.signinGuest) els.signinGuest.disabled = true;
+    setSigninStatus("Starting local session…", false);
+    try {
+      await ensureGuestSession();
+      await fetchSession();
+    } catch (err) {
+      setSigninStatus("Could not reach Ruby High. Make sure the local server is running.", true);
+    } finally {
+      if (els.signinGuest) els.signinGuest.disabled = false;
+    }
   }
   async function deriveAuth() {
     const key = getStoredApiKey();
@@ -5789,6 +6352,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (authed === null) {
       els.chatForm.hidden = true;
       if (els.nextBtn) els.nextBtn.hidden = true;
+      if (els.hallPassBtn) els.hallPassBtn.hidden = true;
       els.checking.hidden = false;
       els.youState.textContent = "checking…";
       els.footerAction.hidden = true;
@@ -5798,6 +6362,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.youState.textContent = aiEnabled ? (localAiEnabled ? "local AI" : "AI enabled") : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
       els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
       els.footerAction.hidden = localAiEnabled;
+      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
     } else {
@@ -5805,6 +6370,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       // sign-in overlay is the only thing the user can see.
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
+      if (els.hallPassBtn) els.hallPassBtn.hidden = true;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
       if (els.nextBtn) els.nextBtn.hidden = true;
@@ -6294,6 +6860,12 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (els.bugReportOverlay) els.bugReportOverlay.addEventListener("click", (e) => {
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
+  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openBilling);
+  if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
+  if (els.billingOverlay) els.billingOverlay.addEventListener("click", (e) => {
+    if (e.target === els.billingOverlay) closeBilling();
+  });
+  if (els.signinGuest) els.signinGuest.addEventListener("click", retryGuestSession);
 
   // Click your name/avatar to open the character sheet.
   const youCardBlock = document.querySelector(".channels-footer .you-meta");
@@ -6317,6 +6889,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   applyAuthUI();
+  consumeBillingReturnFlag();
   // The session is born already enrolled at Freshman year (server-side
   // default). The player progresses Freshman → Sophomore → Junior → Senior
   // → graduate as they clear per-grade daily-class and subject-grade gates. There is no year

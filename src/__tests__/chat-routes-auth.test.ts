@@ -16,6 +16,8 @@ let chat: ChatService;
 let faculty: FacultyService;
 let ruby: RubyHighService;
 let capturedChatRequest: any | null = null;
+const originalHostedOpenRouterKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY;
+const originalPortraitBucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
 
 class TestResponse {
   statusCode = 0;
@@ -110,6 +112,8 @@ async function callbackUrl(redirect: string): Promise<URL> {
 }
 
 beforeEach(async () => {
+  delete process.env.RUBY_HIGH_OPENROUTER_API_KEY;
+  delete process.env.RUBY_HIGH_PORTRAITS_BUCKET;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-routes-auth-"));
   capturedChatRequest = null;
   await getActivePack();
@@ -126,12 +130,19 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  restoreEnv("RUBY_HIGH_OPENROUTER_API_KEY", originalHostedOpenRouterKey);
+  restoreEnv("RUBY_HIGH_PORTRAITS_BUCKET", originalPortraitBucket);
   vi.restoreAllMocks();
   await auth.stop();
   await chat.stop();
   await ruby.flush();
   await rm(tmpDir, { recursive: true, force: true });
 });
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value == null) delete process.env[key];
+  else process.env[key] = value;
+}
 
 describe("auth callback redirect sanitization", () => {
   it("falls back to the viewer when redirect points off-origin", async () => {
@@ -202,6 +213,159 @@ describe("auth origin guard", () => {
     expect(logoutRes.statusCode).toBe(403);
     expect(logoutRes.getHeader("set-cookie")).toBeUndefined();
     expect(auth.resolve(token)).not.toBeNull();
+  });
+});
+
+describe("hosted AI day pass auth", () => {
+  it("does not expose the hosted OpenRouter key for text AI without an active pass", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-ai-no-pass";
+    auth.injectSessionForTest(token, {
+      userId: "hosted-ai-no-pass-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted AI",
+    });
+
+    const meRes = new TestResponse();
+    await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/me"),
+      meRes,
+      { cookieHeader: `rh_session=${token}` },
+    ));
+    const me = JSON.parse(meRes.body);
+    expect(me.ai).toBe(false);
+    expect(me.hosted_ai).toMatchObject({ configured: true, active: false });
+
+    const chatRes = new TestResponse();
+    await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      chatRes,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: { faculty: "ruby", message: "hello" },
+      },
+    ));
+    expect(chatRes.statusCode).toBe(401);
+    expect(JSON.parse(chatRes.body).error).toContain("Sign in with OpenRouter first");
+  });
+
+  it("enables text AI while a Hall Pass day window is active", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-ai-pass";
+    auth.injectSessionForTest(token, {
+      userId: "hosted-ai-pass-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted AI",
+    });
+    const stateKey = "rh:user:hosted-ai-pass-user";
+    ruby.grantHallPasses(stateKey, {
+      amount: 1,
+      idempotencyKey: "test:hosted-ai-pass-seed",
+      source: "admin",
+    });
+    ruby.activateHostedAiAccess(stateKey, {
+      hallPassCost: 1,
+      durationMs: 86_400_000,
+      now: Date.now(),
+    });
+
+    const res = new TestResponse();
+    await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/me"),
+      res,
+      { cookieHeader: `rh_session=${token}` },
+    ));
+    const body = JSON.parse(res.body);
+    expect(body.ai).toBe(true);
+    expect(body.hosted_ai.active).toBe(true);
+    expect(body.hosted_ai.expiresAt).toBeGreaterThan(Date.now());
+  });
+});
+
+describe("hosted image Hall Passes", () => {
+  it("rejects hosted portraits when the wallet has no Hall Passes", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-portrait-empty-wallet";
+    auth.injectSessionForTest(token, {
+      userId: "hosted-portrait-empty-wallet-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Portrait",
+    });
+    (globalThis.fetch as any).mockClear();
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          name: "Mina",
+          personality: "Quietly intense and observant.",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(402);
+    expect(JSON.parse(res.body).error).toContain("Need 1 Hall Pass");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("spends Hall Passes for server-hosted portraits", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-portrait-funded-wallet";
+    const record = {
+      userId: "hosted-portrait-funded-wallet-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Portrait",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.grantHallPasses(stateKey, {
+      amount: 2,
+      idempotencyKey: "stripe:checkout:funded",
+      source: "stripe",
+    });
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            images: [{ image_url: { url: "data:image/png;base64,AAAA" } }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          name: "Mina",
+          personality: "Quietly intense and observant.",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      portraitDataUrl: "data:image/png;base64,AAAA",
+      hallPassCost: 1,
+      hallPasses: 1,
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
   });
 });
 

@@ -173,6 +173,7 @@ function offlineApiScript(data) {
       current: null,
       history: [],
       score: { correct: 0, total: 0, points: 0, possible: 0 },
+      wallet: { meritStars: 0, hallPasses: 0 },
       lastReveal: null,
       status: "idle",
       phase: "in-room",
@@ -221,14 +222,25 @@ function offlineApiScript(data) {
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return Object.assign(defaultState(), JSON.parse(raw));
+      if (raw) return ensureWallet(Object.assign(defaultState(), JSON.parse(raw)));
     } catch (_err) {}
-    return defaultState();
+    return ensureWallet(defaultState());
   }
 
   function saveState(state) {
+    ensureWallet(state);
     state.updatedAt = now();
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_err) {}
+    return state;
+  }
+
+  function ensureWallet(state) {
+    const scorePoints = state && state.score ? Math.max(0, Math.floor(Number(state.score.points || 0))) : 0;
+    const raw = state && state.wallet && typeof state.wallet === "object" ? state.wallet : {};
+    state.wallet = {
+      meritStars: Math.max(0, Math.floor(Number(raw.meritStars != null ? raw.meritStars : scorePoints))),
+      hallPasses: Math.max(0, Math.floor(Number(raw.hallPasses || 0)))
+    };
     return state;
   }
 
@@ -242,6 +254,30 @@ function offlineApiScript(data) {
 
   function questionBank(facultyId) {
     return DATA.questions[facultyId] || DATA.questions.ruby || [];
+  }
+
+  function builtInPackSummary() {
+    return {
+      id: "ruby-high-original",
+      name: "Ruby High Original",
+      description: "The built-in Ruby High classroom pack.",
+      readOnly: true,
+      builtIn: true,
+      owner: false,
+      enabled: true,
+      active: true,
+      canEdit: false,
+      status: "published",
+      facultyCount: FACULTY.length,
+      questionCount: FACULTY.reduce(function(sum, faculty) {
+        return sum + questionBank(faculty.id).length;
+      }, 0),
+      courses: [
+        { id: "ruby", title: "Homeroom", facultyId: "ruby", roomId: "homeroom", subjects: FACULTY[0].subjects },
+        { id: "sally-science", title: "Science", facultyId: "sally-science", roomId: "science", subjects: FACULTY[1].subjects },
+        { id: "professor-edward", title: "Literature", facultyId: "professor-edward", roomId: "literature", subjects: FACULTY[2].subjects }
+      ]
+    };
   }
 
   function difficultyForGrade(grade) {
@@ -382,7 +418,10 @@ function offlineApiScript(data) {
     state.score.possible = Number(state.score.possible || 0) + 100;
     if (wasCorrect) {
       state.score.correct += 1;
-      state.score.points = Number(state.score.points || 0) + (outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80);
+      const points = outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80;
+      const wallet = ensureWallet(state);
+      state.score.points = Number(state.score.points || 0) + points;
+      wallet.meritStars += points;
     }
     state.history.push({ questionId: q.id, picked, correct, wasCorrect, at: answeredAt });
     state.lastReveal = {
@@ -652,6 +691,9 @@ function offlineApiScript(data) {
       scoreTotal: state.score.total,
       scorePoints: state.score.points || 0,
       scorePossible: state.score.possible || 0,
+      meritStars: ensureWallet(state).meritStars,
+      hallPasses: ensureWallet(state).hallPasses,
+      wallet: ensureWallet(state),
       status: state.status,
       phase: state.phase,
       phaseToken: state.phaseToken,
@@ -1072,6 +1114,12 @@ function offlineApiScript(data) {
       }
       if (url.pathname.startsWith(APP_BASE + "/packs/")) {
         return json({ error: "Pack imports need the hosted Ruby High server." }, 501);
+      }
+      if (url.pathname === APP_BASE + "/pack-library" && method === "GET") {
+        return json({ activePackId: "ruby-high-original", packs: [builtInPackSummary()], drafts: [] });
+      }
+      if (url.pathname.startsWith(APP_BASE + "/pack-library/") || url.pathname.startsWith(APP_BASE + "/pack-drafts")) {
+        return json({ error: "Content pack editing needs the hosted Ruby High server." }, 501);
       }
       if (url.pathname.startsWith(APP_BASE + "/chat/")) {
         if (url.pathname === APP_BASE + "/chat/history") return json({ authed: true, local_ai: true, history: [] });

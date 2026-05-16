@@ -59,9 +59,18 @@ import {
   type RoundOutcome,
   type SchoolEvent,
   type TeachingRoomId,
+  type RubyHighWalletTransaction,
+  type RubyHighWalletTransactionKind,
 } from "../types.js";
 import { FacultyService, toFacultyMember } from "./faculty-service.js";
-import { getDefaultStateStore, type StateStoreLike, type StoredTeacherRecord } from "./state-store.js";
+import {
+  getDefaultStateStore,
+  type StateStoreLike,
+  type StoredContentPackRecord,
+  type StoredDraftContentPackRecord,
+  type StoredPackInstallationRecord,
+  type StoredTeacherRecord,
+} from "./state-store.js";
 import { log } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
@@ -186,6 +195,7 @@ export interface QuestionBankStatus {
 
 const SCHOOL_EVENT_LIMIT = 80;
 const ESSAY_REPORT_LIMIT = 100;
+const WALLET_TRANSACTION_LIMIT = 200;
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -242,6 +252,35 @@ export interface DailyStatus {
   dailyKey: string;
 }
 
+export interface HallPassMutationInput {
+  amount: number;
+  idempotencyKey: string;
+  source?: RubyHighWalletTransaction["source"];
+  description?: string;
+  metadata?: RubyHighWalletTransaction["metadata"];
+  at?: number;
+}
+
+export interface HallPassMutationResult {
+  state: QuizState;
+  applied: boolean;
+  transaction: RubyHighWalletTransaction;
+}
+
+export interface HostedAiAccessActivationInput {
+  hallPassCost: number;
+  durationMs: number;
+  now?: number;
+}
+
+export interface HostedAiAccessActivationResult {
+  state: QuizState;
+  applied: boolean;
+  hallPassCost: number;
+  expiresAt: number;
+  transaction: RubyHighWalletTransaction | null;
+}
+
 interface DailyClassUpdate {
   mode: "class" | "practice";
   cardRole?: DeckCardRole;
@@ -284,7 +323,7 @@ export class RubyHighService extends Service {
   static override readonly serviceType = "ruby-high";
 
   override readonly capabilityDescription =
-    "Ruby High classroom state: tracks the active question, the student's answer, score, and which faculty member is on the floor.";
+    "Ruby High classroom state: tracks the active question, the student's answer, wallet, and which faculty member is on the floor.";
 
   private readonly sessions = new Map<string, QuizState>();
   private readonly store: StateStoreLike;
@@ -322,6 +361,108 @@ export class RubyHighService extends Service {
     const promise = this.persistSession(sessionId, { surfaceErrors: true });
     if (typeof this.store.flush === "function") await this.store.flush();
     await promise;
+  }
+
+  hallPassBalance(sessionId: string): number {
+    return Math.max(0, Math.floor(Number(this.getOrCreate(sessionId).wallet?.hallPasses ?? 0)));
+  }
+
+  hostedAiAccessExpiresAt(sessionId: string, now = Date.now()): number | null {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const expiresAt = Math.floor(Number(state.wallet.hostedAiAccessExpiresAt ?? 0));
+    return Number.isFinite(expiresAt) && expiresAt > now ? expiresAt : null;
+  }
+
+  activateHostedAiAccess(sessionId: string, input: HostedAiAccessActivationInput): HostedAiAccessActivationResult {
+    const now = typeof input.now === "number" && Number.isFinite(input.now) ? Math.floor(input.now) : Date.now();
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const existing = this.hostedAiAccessExpiresAt(sessionId, now);
+    const hallPassCost = normalizePositiveInteger(input.hallPassCost, "Hosted AI Hall Pass cost");
+    if (existing) {
+      return {
+        state,
+        applied: false,
+        hallPassCost,
+        expiresAt: existing,
+        transaction: null,
+      };
+    }
+    const durationMs = normalizePositiveInteger(input.durationMs, "Hosted AI duration");
+    const spend = this.applyHallPassTransaction(sessionId, "hall-pass-spend", {
+      amount: hallPassCost,
+      idempotencyKey: `hosted-ai:day-pass:${sessionId}:${now}`,
+      source: "hosted-ai",
+      description: "AI Day Pass",
+      at: now,
+      metadata: {
+        durationMs,
+      },
+    });
+    const expiresAt = now + durationMs;
+    spend.state.wallet.hostedAiAccessExpiresAt = expiresAt;
+    spend.state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return {
+      state: spend.state,
+      applied: spend.applied,
+      hallPassCost,
+      expiresAt,
+      transaction: spend.transaction,
+    };
+  }
+
+  grantHallPasses(sessionId: string, input: HallPassMutationInput): HallPassMutationResult {
+    return this.applyHallPassTransaction(sessionId, "hall-pass-grant", input);
+  }
+
+  spendHallPasses(sessionId: string, input: HallPassMutationInput): HallPassMutationResult {
+    return this.applyHallPassTransaction(sessionId, "hall-pass-spend", input);
+  }
+
+  refundHallPasses(sessionId: string, input: HallPassMutationInput): HallPassMutationResult {
+    return this.applyHallPassTransaction(sessionId, "hall-pass-refund", input);
+  }
+
+  revokeHallPasses(sessionId: string, input: HallPassMutationInput): HallPassMutationResult {
+    return this.applyHallPassTransaction(sessionId, "hall-pass-revoke", input);
+  }
+
+  private applyHallPassTransaction(
+    sessionId: string,
+    kind: RubyHighWalletTransactionKind,
+    input: HallPassMutationInput,
+  ): HallPassMutationResult {
+    const state = this.getOrCreate(sessionId);
+    const amount = normalizePositiveInteger(input.amount, "Hall Pass amount");
+    const id = input.idempotencyKey.trim();
+    if (!id) throw new Error("Hall Pass transaction idempotency key is required.");
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const existing = state.wallet.transactions?.find((tx) => tx.id === id);
+    if (existing) return { state, applied: false, transaction: existing };
+
+    const current = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0)));
+    if (kind === "hall-pass-spend" && current < amount) {
+      throw new Error(`Not enough Hall Passes. Need ${amount}, have ${current}.`);
+    }
+    const appliedAmount = kind === "hall-pass-revoke" ? Math.min(current, amount) : amount;
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind,
+      at: typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now(),
+      hallPasses: kind === "hall-pass-spend" || kind === "hall-pass-revoke" ? -appliedAmount : appliedAmount,
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    };
+    state.wallet.hallPasses = kind === "hall-pass-spend" || kind === "hall-pass-revoke"
+      ? current - appliedAmount
+      : current + appliedAmount;
+    state.wallet.transactions = [...(state.wallet.transactions ?? []), transaction].slice(-WALLET_TRANSACTION_LIMIT);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction };
   }
 
   /** Player taps "Roll for advantage" once per round. The roll is consumed
@@ -555,6 +696,10 @@ export class RubyHighService extends Service {
     }
   }
 
+  async listPersistedPackRecords(): Promise<StoredContentPackRecord[]> {
+    return this.store.loadPacks();
+  }
+
   async listTeacherRecords(): Promise<StoredTeacherRecord[]> {
     return this.store.loadTeachers();
   }
@@ -568,13 +713,52 @@ export class RubyHighService extends Service {
     }
   }
 
-  async persistPublicTeacherPack(pack: ContentPack, opts: { previousOwnerSessionId?: string | null } = {}): Promise<void> {
+  async listDraftPackRecords(): Promise<StoredDraftContentPackRecord[]> {
+    return this.store.loadDraftPacks();
+  }
+
+  async saveDraftPackRecord(record: StoredDraftContentPackRecord): Promise<void> {
+    try {
+      await this.store.saveDraftPack(record);
+    } catch (err) {
+      log.error("ruby-high.persist-draft-pack-failed", err, { draftId: record.id });
+      throw err;
+    }
+  }
+
+  async deleteDraftPackRecord(draftId: string): Promise<void> {
+    try {
+      await this.store.deleteDraftPack(draftId);
+    } catch (err) {
+      log.error("ruby-high.delete-draft-pack-failed", err, { draftId });
+      throw err;
+    }
+  }
+
+  async listPackInstallationRecords(): Promise<StoredPackInstallationRecord[]> {
+    return this.store.loadPackInstallations();
+  }
+
+  async savePackInstallationRecord(record: StoredPackInstallationRecord): Promise<void> {
+    try {
+      await this.store.savePackInstallation(record);
+    } catch (err) {
+      log.error("ruby-high.persist-pack-installation-failed", err, { userId: record.userId, packId: record.packId });
+      throw err;
+    }
+  }
+
+  async persistPublicTeacherPack(
+    pack: ContentPack,
+    opts: { previousOwnerSessionId?: string | null; creatorUserId?: string } = {},
+  ): Promise<void> {
     const touchedAt = Date.now();
     try {
       registerPublicPack(pack, touchedAt, { ownerSessionId: opts.previousOwnerSessionId ?? null });
       await this.store.savePack({
         pack,
         ownerSessionId: null,
+        ...(opts.creatorUserId ? { creatorUserId: opts.creatorUserId } : {}),
         touchedAt,
       });
       if (opts.previousOwnerSessionId) {
@@ -637,6 +821,7 @@ export class RubyHighService extends Service {
         current: null,
         history: [],
         score: { correct: 0, total: 0, points: 0, possible: 0 },
+        wallet: { meritStars: 0, hallPasses: 0 },
         lastReveal: null,
         status: statusForPhase("in-room"),
         askedQuestionIds: [],
@@ -3058,6 +3243,83 @@ function normalizeScore(score: QuizState["score"] | null | undefined): QuizState
   };
 }
 
+function normalizePositiveInteger(value: number, label: string): number {
+  const amount = Math.floor(Number(value));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return amount;
+}
+
+function normalizeWalletMetadata(value: unknown): RubyHighWalletTransaction["metadata"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const out: NonNullable<RubyHighWalletTransaction["metadata"]> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (raw == null) {
+      out[key] = null;
+    } else if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
+      out[key] = raw;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[] {
+  if (!Array.isArray(value)) return [];
+  const kinds: RubyHighWalletTransactionKind[] = ["hall-pass-grant", "hall-pass-spend", "hall-pass-refund", "hall-pass-revoke"];
+  const sources: Array<NonNullable<RubyHighWalletTransaction["source"]>> = [
+    "stripe",
+    "iap",
+    "revenuecat",
+    "hosted-image",
+    "hosted-ai",
+    "admin",
+    "system",
+  ];
+  const out: RubyHighWalletTransaction[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const tx = raw as Record<string, unknown>;
+    if (typeof tx.id !== "string" || !tx.id) continue;
+    if (typeof tx.kind !== "string" || !kinds.includes(tx.kind as RubyHighWalletTransactionKind)) continue;
+    const at = typeof tx.at === "number" && Number.isFinite(tx.at) ? Math.floor(tx.at) : Date.now();
+    const entry: RubyHighWalletTransaction = {
+      id: tx.id,
+      kind: tx.kind as RubyHighWalletTransactionKind,
+      at,
+    };
+    if (typeof tx.meritStars === "number" && Number.isFinite(tx.meritStars)) {
+      entry.meritStars = Math.floor(tx.meritStars);
+    }
+    if (typeof tx.hallPasses === "number" && Number.isFinite(tx.hallPasses)) {
+      entry.hallPasses = Math.floor(tx.hallPasses);
+    }
+    if (typeof tx.source === "string" && sources.includes(tx.source as NonNullable<RubyHighWalletTransaction["source"]>)) {
+      entry.source = tx.source as NonNullable<RubyHighWalletTransaction["source"]>;
+    }
+    if (typeof tx.description === "string" && tx.description.trim()) {
+      entry.description = tx.description.trim().slice(0, 240);
+    }
+    const metadata = normalizeWalletMetadata(tx.metadata);
+    if (metadata) entry.metadata = metadata;
+    out.push(entry);
+  }
+  return out.slice(-WALLET_TRANSACTION_LIMIT);
+}
+
+function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState["wallet"] {
+  const src = wallet && typeof wallet === "object" ? wallet as Partial<QuizState["wallet"]> : {};
+  const transactions = normalizeWalletTransactions(src.transactions);
+  return {
+    meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
+    hallPasses: Math.max(0, Math.floor(Number(src.hallPasses ?? 0))),
+    ...(Number.isFinite(Number(src.hostedAiAccessExpiresAt))
+      ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(src.hostedAiAccessExpiresAt))) }
+      : {}),
+    ...(transactions.length > 0 ? { transactions } : {}),
+  };
+}
+
 function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
   if (!Array.isArray(value)) return [];
   const out: SchoolEvent[] = [];
@@ -3175,13 +3437,15 @@ function normalizeLoaded(s: QuizState): QuizState {
     ? (s.completedGrades.map(validGrade).filter((g): g is Grade => !!g))
     : [];
   const phase: Phase = (s.phase as Phase | undefined) ?? derivePhaseForLegacy(s);
+  const score = normalizeScore(s.score);
   return {
     ...s,
     askedQuestionIds: Array.isArray(s.askedQuestionIds) ? s.askedQuestionIds : [],
     cardMemory: s.cardMemory && typeof s.cardMemory === "object" ? s.cardMemory : {},
     roomBoards: s.roomBoards && typeof s.roomBoards === "object" ? s.roomBoards : {},
     history: Array.isArray(s.history) ? s.history : [],
-    score: normalizeScore(s.score),
+    score,
+    wallet: normalizeWallet((s as { wallet?: unknown }).wallet, score.points ?? 0),
     status: statusForPhase(phase),
     phase,
     phaseToken: typeof s.phaseToken === "number" && s.phaseToken >= 0 ? s.phaseToken : 0,

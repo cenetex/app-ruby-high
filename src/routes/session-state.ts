@@ -19,6 +19,7 @@ import {
   type NpcStudentState,
   type PlayerCharacter,
   type QuizState,
+  type RubyHighWallet,
 } from "../types.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import { getSessionId, tryGetService } from "../services/session-identity.js";
@@ -63,6 +64,14 @@ interface SessionTelemetry extends Record<string, unknown> {
   scoreTotal: number;
   scorePoints: number;
   scorePossible: number;
+  meritStars: number;
+  hallPasses: number;
+  wallet: RubyHighWallet;
+  hosted_ai: {
+    active: boolean;
+    expiresAt: number | null;
+    remainingMs: number;
+  };
   status: QuizState["status"];
   phase: QuizState["phase"];
   phaseToken: number;
@@ -272,6 +281,11 @@ export function buildSessionState(args: {
   const activePackFaculty = facultyForSession(state).find((f) => f.id === state.faculty)
     ?? facultyForSession(state)[0]
     ?? null;
+  const wallet = normalizeWalletForTelemetry(state);
+  const hostedAiExpiresAt = typeof wallet.hostedAiAccessExpiresAt === "number"
+    ? wallet.hostedAiAccessExpiresAt
+    : null;
+  const hostedAiRemainingMs = hostedAiExpiresAt ? Math.max(0, hostedAiExpiresAt - Date.now()) : 0;
 
   const telemetry: SessionTelemetry = {
     faculty: state.faculty,
@@ -283,6 +297,14 @@ export function buildSessionState(args: {
     scoreTotal: state.score.total,
     scorePoints: state.score.points ?? 0,
     scorePossible: state.score.possible ?? 0,
+    meritStars: wallet.meritStars,
+    hallPasses: wallet.hallPasses,
+    wallet,
+    hosted_ai: {
+      active: hostedAiRemainingMs > 0,
+      expiresAt: hostedAiRemainingMs > 0 ? hostedAiExpiresAt : null,
+      remainingMs: hostedAiRemainingMs,
+    },
     status: state.status,
     phase: state.phase,
     phaseToken: state.phaseToken,
@@ -343,7 +365,7 @@ export function buildSessionState(args: {
 
   const summary = state.current
     ? `${fac.displayName} · ${state.current.subject ?? "open"} · ${state.current.difficulty ?? "?"} · awaiting answer`
-    : `${fac.displayName} on the floor · ${state.score.correct}/${state.score.total} · ${state.score.points ?? 0} score`;
+    : `${fac.displayName} on the floor · ${state.score.correct}/${state.score.total} · ${wallet.meritStars} Merit Stars`;
 
   const suggested = state.current
     ? [
@@ -370,5 +392,15 @@ export function buildSessionState(args: {
     goalLabel: state.subject ? `Ruby High · ${state.subject}` : "Ruby High",
     suggestedPrompts: suggested,
     telemetry: telemetry as PluginAppSessionState["telemetry"],
+  };
+}
+
+function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
+  return {
+    meritStars: Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0))),
+    hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
+    ...(Number.isFinite(Number(state.wallet?.hostedAiAccessExpiresAt))
+      ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(state.wallet?.hostedAiAccessExpiresAt))) }
+      : {}),
   };
 }

@@ -424,6 +424,36 @@ export interface MashAxisResolvedSchoolEvent extends BaseSchoolEvent {
   value: string;
 }
 
+export type RubyHighWalletTransactionKind =
+  | "hall-pass-grant"
+  | "hall-pass-spend"
+  | "hall-pass-refund"
+  | "hall-pass-revoke";
+
+export interface RubyHighWalletTransaction {
+  id: string;
+  kind: RubyHighWalletTransactionKind;
+  at: number;
+  /** Positive when a transaction grants earned currency. */
+  meritStars?: number;
+  /** Positive for grants/refunds, negative for spends. */
+  hallPasses?: number;
+  source?: "stripe" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "admin" | "system";
+  description?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface RubyHighWallet {
+  /** Earned by play. Mirrors visible session score for now. */
+  meritStars: number;
+  /** Paid/entitlement currency for hosted creative generation. */
+  hallPasses: number;
+  /** Server-hosted text AI access. Null/expired means BYOK or local AI is required. */
+  hostedAiAccessExpiresAt?: number;
+  /** Idempotency ledger for paid currency grants/spends. */
+  transactions?: RubyHighWalletTransaction[];
+}
+
 export interface QuizState {
   sessionId: string;
   faculty: string;
@@ -431,6 +461,7 @@ export interface QuizState {
   current: Question | null;
   history: AnswerRecord[];
   score: { correct: number; total: number; points?: number; possible?: number };
+  wallet: RubyHighWallet;
   lastReveal: LastReveal | null;
   /** Legacy 3-value status. Derived from `phase` for backwards compatibility
    *  with viewer + routes consumers that haven't migrated. New code should

@@ -13,6 +13,8 @@ import {
   type AuthUserRecord,
   type StateStoreLike,
   type StoredContentPackRecord,
+  type StoredDraftContentPackRecord,
+  type StoredPackInstallationRecord,
   type StoredTeacherRecord,
 } from "../services/state-store.js";
 import { registerPack } from "../content/registry.js";
@@ -35,7 +37,7 @@ let storePath: string;
 let captured: { url: string; body: any } | null = null;
 let activeRuby: RubyHighService | null = null;
 const originalRatiBaseUrl = process.env.RUBY_HIGH_RATI_BASE_URL;
-const originalRatiApiKey = process.env.RUBY_HIGH_RATI_API_KEY;
+const originalRatiApiKey = process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY;
 const originalRatiSupportsTools = process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
 
 function buildSseChunk(events: Array<{ content?: string; toolCalls?: any[]; finish?: string }>): Uint8Array {
@@ -166,6 +168,14 @@ class FailingSaveSessionStore implements StateStoreLike {
     return [];
   }
 
+  async loadDraftPacks(): Promise<StoredDraftContentPackRecord[]> {
+    return [];
+  }
+
+  async loadPackInstallations(): Promise<StoredPackInstallationRecord[]> {
+    return [];
+  }
+
   async saveSession(_state: QuizState): Promise<void> {
     throw new Error("DynamoDB unavailable");
   }
@@ -178,9 +188,17 @@ class FailingSaveSessionStore implements StateStoreLike {
 
   async saveTeacher(_record: StoredTeacherRecord): Promise<void> {}
 
+  async saveDraftPack(_record: StoredDraftContentPackRecord): Promise<void> {}
+
+  async savePackInstallation(_record: StoredPackInstallationRecord): Promise<void> {}
+
   async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
 
   async deleteTeacher(_teacherId: string): Promise<void> {}
+
+  async deleteDraftPack(_draftId: string): Promise<void> {}
+
+  async deletePackInstallation(_userId: string, _packId: string): Promise<void> {}
 
   async deleteAuthSession(_token: string): Promise<void> {}
 
@@ -193,7 +211,7 @@ class FailingSaveSessionStore implements StateStoreLike {
 
 beforeEach(async () => {
   delete process.env.RUBY_HIGH_RATI_BASE_URL;
-  delete process.env.RUBY_HIGH_RATI_API_KEY;
+  delete process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY;
   delete process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-"));
   storePath = join(tmpDir, "state.json");
@@ -203,7 +221,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   restoreEnv("RUBY_HIGH_RATI_BASE_URL", originalRatiBaseUrl);
-  restoreEnv("RUBY_HIGH_RATI_API_KEY", originalRatiApiKey);
+  restoreEnv("RUBY_HIGH_RATI_INTERNAL_API_KEY", originalRatiApiKey);
   restoreEnv("RUBY_HIGH_RATI_SUPPORTS_TOOLS", originalRatiSupportsTools);
   vi.restoreAllMocks();
   // Drain any in-flight persistSession writes before nuking the dir,
@@ -259,7 +277,7 @@ describe("ChatService.send — message composition", () => {
 
   it("uses a server-backed RATi provider with board tools and no browser OpenRouter key", async () => {
     process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY = "sk-rati-test";
     mockOpenRouter(buildSseChunk([{ content: "RATi here.", finish: "stop" }]));
     const { ruby, chat } = await makeServices();
     const sid = "session:rati-chat";
@@ -304,7 +322,7 @@ describe("ChatService.send — message composition", () => {
 
   it("drops RATi provider fallback text before streaming or saving teacher chat", async () => {
     process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY = "sk-rati-test";
     mockOpenRouter(buildSseChunk([
       { content: "I apologize, but I couldn" },
       { content: "'t generate a response. Please try again." },
@@ -354,7 +372,7 @@ describe("ChatService.send — message composition", () => {
 
   it("strips board-tool instructions for a chat-only RATi backend", async () => {
     process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
+    process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY = "sk-rati-test";
     process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS = "false";
     mockOpenRouter(buildSseChunk([{ content: "RATi here.", finish: "stop" }]));
     const { ruby, chat } = await makeServices();

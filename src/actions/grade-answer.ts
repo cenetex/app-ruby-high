@@ -5,7 +5,7 @@ import { errorText, getService, getSessionId } from "./_helpers.js";
 export const gradeAnswerAction: Action = {
   name: "GRADE_ANSWER",
   description:
-    "Submit the student's pick (A/B/C/D) for the current question. Reveals correct/incorrect, updates the score, and records the explanation.",
+    "Submit the student's pick (A/B/C/D) for the current question. Reveals correct/incorrect, updates Merit Stars, and records the explanation.",
   similes: ["REVEAL_ANSWER", "CHECK_ANSWER", "MARK_RESPONSE"],
   validate: async () => true,
   handler: async (
@@ -22,8 +22,8 @@ export const gradeAnswerAction: Action = {
       return {
         success: true,
         text: reveal.wasCorrect
-          ? `Correct! (${reveal.picked}) Score now ${state.score.correct}/${state.score.total}.`
-          : `That was ${reveal.picked}. The answer was ${reveal.correct}. Score ${state.score.correct}/${state.score.total}.`,
+          ? `Correct! (${reveal.picked}) Record now ${state.score.correct}/${state.score.total}.`
+          : `That was ${reveal.picked}. The answer was ${reveal.correct}. Record ${state.score.correct}/${state.score.total}.`,
       };
     } catch (err) {
       return { success: false, error: errorText(err) };

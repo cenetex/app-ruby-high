@@ -7,6 +7,8 @@ export interface RouteContext {
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
+  /** Raw request body, required for signature-verified webhooks. */
+  readRawBody?: () => Promise<string>;
   /** Raw incoming Cookie header. If absent, auth + chat features are unavailable but the rest of the app keeps working. */
   cookieHeader?: string | null;
   /** Raw value of the `X-Openrouter-Key` header, if the client sent one.
@@ -25,10 +27,14 @@ export interface RouteContext {
   contentTypeHeader?: string | string[] | null;
   /** Raw Origin request header, when present. */
   originHeader?: string | string[] | null;
+  /** Raw Authorization request header, when present. */
+  authorizationHeader?: string | string[] | null;
   /** Temporary Privy/RATi bridge: wallet verified by the client integration.
    *  Server-side Privy verification should replace this header once Ruby High
    *  owns the Privy login flow. */
   walletAddressHeader?: string | string[] | null;
+  /** Raw Stripe-Signature request header, when present. */
+  stripeSignatureHeader?: string | string[] | null;
   /** Raw If-None-Match request header. Static asset routes use it to return
    *  304 Not Modified when the client's cached ETag matches. Optional - if
    *  absent, assets always serve the full body (correct, just not cached). */

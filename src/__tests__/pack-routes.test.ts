@@ -8,9 +8,7 @@ import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import {
   ORIGINAL_PACK_ID,
-  availablePacksForSession,
   getActivePack,
-  packForSession,
   registerPack,
   resetActivePack,
 } from "../content/registry.js";
@@ -24,9 +22,6 @@ let storePath: string;
 let auth: AuthService;
 let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
-const originalRatiBaseUrl = process.env.RUBY_HIGH_RATI_BASE_URL;
-const originalRatiApiKey = process.env.RUBY_HIGH_RATI_API_KEY;
-const originalRatiSupportsTools = process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
 
 function makeCtx(opts: { method: string; path: string; cookie?: string | null; body?: any }): PackRouteContext {
   lastResponse = null;
@@ -65,9 +60,6 @@ function signInUser(token: string): string {
 }
 
 beforeEach(async () => {
-  delete process.env.RUBY_HIGH_RATI_BASE_URL;
-  delete process.env.RUBY_HIGH_RATI_API_KEY;
-  delete process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-pack-routes-"));
   storePath = join(tmpDir, "state.json");
   resetActivePack();
@@ -79,357 +71,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  restoreEnv("RUBY_HIGH_RATI_BASE_URL", originalRatiBaseUrl);
-  restoreEnv("RUBY_HIGH_RATI_API_KEY", originalRatiApiKey);
-  restoreEnv("RUBY_HIGH_RATI_SUPPORTS_TOOLS", originalRatiSupportsTools);
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
   await rm(tmpDir, { recursive: true, force: true });
-});
-
-describe("/connected-teachers", () => {
-  it("GET /connected-teachers returns 401 without a session cookie", async () => {
-    const ctx = makeCtx({ method: "GET", path: "/api/apps/ruby-high/connected-teachers" });
-    await handlePackRoutes(ctx, makeDeps());
-    expect(lastResponse?.status).toBe(401);
-  });
-
-  it("GET /connected-teachers reports an unconfigured server without calling RATi", async () => {
-    signInUser("alice");
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const ctx = makeCtx({ method: "GET", path: "/api/apps/ruby-high/connected-teachers", cookie: "rh_session=alice" });
-    await handlePackRoutes(ctx, makeDeps());
-    expect(lastResponse).toMatchObject({ status: 200, body: { configured: false, teachers: [] } });
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("connects an allowlisted RATi model as this session's active teacher", async () => {
-    signInUser("alice");
-    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-      object: "list",
-      data: [{
-        id: "avatar:rati",
-        root: "rati",
-        avatar: {
-          name: "RATi",
-          description: "Recursive teacher",
-          profile_image: "https://media.example.test/avatars/rati/profile.png",
-        },
-      }],
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }))
-      .mockResolvedValueOnce(new Response(null, {
-        status: 200,
-        headers: { "Content-Type": "image/png" },
-      }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        choices: [{
-          message: {
-            content: JSON.stringify([
-              {
-                subject: "recursion",
-                difficulty: "easy",
-                prompt: "What is recursion?",
-                options: { A: "A function calling itself", B: "A color", C: "A file type", D: "A classroom" },
-                correct: "A",
-                explanation: "Recursion repeats a process by referring back to itself.",
-              },
-              {
-                subject: "systems",
-                difficulty: "medium",
-                prompt: "Why do feedback loops matter?",
-                options: { A: "They never change behavior", B: "They can amplify or stabilize behavior", C: "They delete inputs", D: "They only work in math" },
-                correct: "B",
-                explanation: "Feedback loops change future behavior based on previous outputs.",
-              },
-              {
-                subject: "agents",
-                difficulty: "medium",
-                prompt: "What makes an agent useful in a classroom?",
-                options: { A: "Ignoring context", B: "Adapting to the student", C: "Never asking questions", D: "Hiding goals" },
-                correct: "B",
-                explanation: "A useful agent adapts its teaching to the learner and setting.",
-              },
-              {
-                subject: "reasoning",
-                difficulty: "hard",
-                prompt: "What is the best way to debug a multi-step system?",
-                options: { A: "Guess randomly", B: "Inspect each boundary in order", C: "Change everything at once", D: "Ignore logs" },
-                correct: "B",
-                explanation: "Boundary-by-boundary inspection isolates where behavior changes.",
-              },
-            ]),
-          },
-        }],
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }));
-
-    const ctx = makeCtx({
-      method: "POST",
-      path: "/api/apps/ruby-high/packs/connect-agent",
-      cookie: "rh_session=alice",
-      body: { modelId: "avatar:rati", channelName: "Opus Lab" },
-    });
-    await handlePackRoutes(ctx, makeDeps());
-
-    expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.pack.id).toBe("agent:rati-rati");
-    expect(lastResponse?.body.pack.question_count).toBe(4);
-    expect(lastResponse?.body.pack.faculty[0].profileImageUrl).toBe("https://media.example.test/avatars/rati/profile.png");
-    const state = ruby.getOrCreate("rh:user:test-alice");
-    expect(state.activePackId).toBe("agent:rati-rati");
-    const activePack = packForSession(state);
-    expect(activePack.rooms[0]?.channelName).toBe("opus-lab");
-    expect(activePack.faculty[0]?.profileImageUrl).toBe("https://media.example.test/avatars/rati/profile.png");
-    expect(activePack.faculty[0]?.questions).toHaveLength(4);
-    expect(activePack.faculty[0]?.questions[0]).toMatchObject({
-      id: "rati-rati-seed-1",
-      faculty: "rati-rati",
-      subject: "recursion",
-      correct: "A",
-    });
-    expect(activePack.faculty[0]?.provider).toEqual({
-      kind: "rati-openai-compatible",
-      model: "avatar:rati",
-      externalId: "rati",
-      supportsTools: true,
-    });
-    expect(JSON.stringify(activePack)).not.toContain("sk-rati-test");
-  });
-
-  it("drops malformed RATi profile image URLs during import", async () => {
-    signInUser("alice");
-    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        object: "list",
-        data: [{
-          id: "avatar:rati",
-          root: "rati",
-          avatar: {
-            name: "RATi",
-            description: "Recursive teacher",
-            profile_image: "https://6e331855-ac0b-4734-b0f1-343c346a4228.png",
-          },
-        }],
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        choices: [{
-          message: {
-            content: JSON.stringify([
-              {
-                subject: "recursion",
-                difficulty: "easy",
-                prompt: "What is recursion?",
-                options: { A: "A function calling itself", B: "A color", C: "A file type", D: "A classroom" },
-                correct: "A",
-                explanation: "Recursion repeats a process by referring back to itself.",
-              },
-              {
-                subject: "systems",
-                difficulty: "medium",
-                prompt: "Why do feedback loops matter?",
-                options: { A: "They never change behavior", B: "They can amplify or stabilize behavior", C: "They delete inputs", D: "They only work in math" },
-                correct: "B",
-                explanation: "Feedback loops change future behavior based on previous outputs.",
-              },
-              {
-                subject: "agents",
-                difficulty: "medium",
-                prompt: "What makes an agent useful in a classroom?",
-                options: { A: "Ignoring context", B: "Adapting to the student", C: "Never asking questions", D: "Hiding goals" },
-                correct: "B",
-                explanation: "A useful agent adapts its teaching to the learner and setting.",
-              },
-              {
-                subject: "reasoning",
-                difficulty: "hard",
-                prompt: "What is the best way to debug a multi-step system?",
-                options: { A: "Guess randomly", B: "Inspect each boundary in order", C: "Change everything at once", D: "Ignore logs" },
-                correct: "B",
-                explanation: "Boundary-by-boundary inspection isolates where behavior changes.",
-              },
-            ]),
-          },
-        }],
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }));
-
-    const ctx = makeCtx({
-      method: "POST",
-      path: "/api/apps/ruby-high/packs/connect-agent",
-      cookie: "rh_session=alice",
-      body: { modelId: "avatar:rati" },
-    });
-    await handlePackRoutes(ctx, makeDeps());
-
-    expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.pack.faculty[0]).not.toHaveProperty("profileImageUrl");
-    const state = ruby.getOrCreate("rh:user:test-alice");
-    const activePack = packForSession(state);
-    expect(activePack.faculty[0]).not.toHaveProperty("profileImageUrl");
-  });
-
-  it("drops unreachable RATi profile image URLs during import", async () => {
-    signInUser("alice");
-    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        object: "list",
-        data: [{
-          id: "avatar:rati",
-          root: "rati",
-          avatar: {
-            name: "RATi",
-            description: "Recursive teacher",
-            profile_image: "https://dodxbiygmi95j.cloudfront.net/avatars/agent-1-6yan/profile/6e331855-ac0b-4734-b0f1-343c346a4228.png",
-          },
-        }],
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }))
-      .mockRejectedValueOnce(new TypeError("getaddrinfo ENOTFOUND dodxbiygmi95j.cloudfront.net"))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        choices: [{
-          message: {
-            content: JSON.stringify([
-              {
-                subject: "recursion",
-                difficulty: "easy",
-                prompt: "What is recursion?",
-                options: { A: "A function calling itself", B: "A color", C: "A file type", D: "A classroom" },
-                correct: "A",
-                explanation: "Recursion repeats a process by referring back to itself.",
-              },
-              {
-                subject: "systems",
-                difficulty: "medium",
-                prompt: "Why do feedback loops matter?",
-                options: { A: "They never change behavior", B: "They can amplify or stabilize behavior", C: "They delete inputs", D: "They only work in math" },
-                correct: "B",
-                explanation: "Feedback loops change future behavior based on previous outputs.",
-              },
-              {
-                subject: "agents",
-                difficulty: "medium",
-                prompt: "What makes an agent useful in a classroom?",
-                options: { A: "Ignoring context", B: "Adapting to the student", C: "Never asking questions", D: "Hiding goals" },
-                correct: "B",
-                explanation: "A useful agent adapts its teaching to the learner and setting.",
-              },
-              {
-                subject: "reasoning",
-                difficulty: "hard",
-                prompt: "What is the best way to debug a multi-step system?",
-                options: { A: "Guess randomly", B: "Inspect each boundary in order", C: "Change everything at once", D: "Ignore logs" },
-                correct: "B",
-                explanation: "Boundary-by-boundary inspection isolates where behavior changes.",
-              },
-            ]),
-          },
-        }],
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }));
-
-    const ctx = makeCtx({
-      method: "POST",
-      path: "/api/apps/ruby-high/packs/connect-agent",
-      cookie: "rh_session=alice",
-      body: { modelId: "avatar:rati" },
-    });
-    await handlePackRoutes(ctx, makeDeps());
-
-    expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.pack.faculty[0]).not.toHaveProperty("profileImageUrl");
-    const state = ruby.getOrCreate("rh:user:test-alice");
-    const activePack = packForSession(state);
-    expect(activePack.faculty[0]).not.toHaveProperty("profileImageUrl");
-  });
-
-  it("refuses to import a RATi agent owned by another session before generating questions", async () => {
-    signInUser("alice");
-    signInUser("bob");
-    registerPack(syntheticPack("agent:rati-rati"), "rh:user:test-alice");
-    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_API_KEY = "sk-rati-test";
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        object: "list",
-        data: [{
-          id: "avatar:rati",
-          root: "rati",
-          avatar: {
-            name: "RATi",
-            description: "Recursive teacher",
-            profile_image: null,
-          },
-        }],
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }));
-
-    const rosterCtx = makeCtx({
-      method: "GET",
-      path: "/api/apps/ruby-high/connected-teachers",
-      cookie: "rh_session=bob",
-    });
-    await handlePackRoutes(rosterCtx, makeDeps());
-    expect(lastResponse?.body.teachers[0]).toMatchObject({
-      model: "avatar:rati",
-      packId: "agent:rati-rati",
-      ownedByAnotherSession: true,
-      unavailableReason: "already-connected",
-    });
-
-    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({
-      object: "list",
-      data: [{
-        id: "avatar:rati",
-        root: "rati",
-        avatar: {
-          name: "RATi",
-          description: "Recursive teacher",
-          profile_image: null,
-        },
-      }],
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }));
-
-    const ctx = makeCtx({
-      method: "POST",
-      path: "/api/apps/ruby-high/packs/connect-agent",
-      cookie: "rh_session=bob",
-      body: { modelId: "avatar:rati" },
-    });
-    await handlePackRoutes(ctx, makeDeps());
-
-    expect(lastResponse).toMatchObject({
-      status: 409,
-      body: { error: "This connected teacher is already owned by another Ruby High session." },
-    });
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-  });
 });
 
 describe("/packs auth", () => {
@@ -527,6 +172,19 @@ describe("/packs/active — switch flow", () => {
 });
 
 describe("/packs/import-* removal", () => {
+  it("does not handle the legacy server-key connect-agent endpoint", async () => {
+    signInUser("alice");
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/connect-agent",
+      cookie: "rh_session=alice",
+      body: { modelId: "avatar:rati" },
+    });
+    const handled = await handlePackRoutes(ctx, makeDeps());
+    expect(handled).toBe(false);
+    expect(lastResponse).toBeNull();
+  });
+
   it("does not handle authenticated Anki import requests", async () => {
     signInUser("alice");
     const ctx = makeCtx({
@@ -582,9 +240,4 @@ function syntheticPack(id: string): ContentPack {
       teaches: true,
     }],
   };
-}
-
-function restoreEnv(key: string, value: string | undefined): void {
-  if (value === undefined) delete process.env[key];
-  else process.env[key] = value;
 }
