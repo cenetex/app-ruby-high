@@ -735,9 +735,9 @@ export const VIEWER_CSS = `
     margin: 8px 0;
   }
   .pack-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     margin: 8px 0;
   }
   .pack-library-actions {
@@ -747,38 +747,60 @@ export const VIEWER_CSS = `
   }
   .pack-card-item {
     display: grid;
-    gap: 10px;
-    min-height: 150px;
-    padding: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head actions"
+      "meta actions";
+    align-items: center;
+    gap: 8px 12px;
+    min-height: auto;
+    padding: 12px 14px;
     border-radius: 8px;
     border: 1px solid var(--line);
     background: var(--bg-elev);
+    overflow: hidden;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .pack-card-item.is-clickable {
+    cursor: pointer;
+  }
+  .pack-card-item.is-clickable:hover {
+    background: var(--bg-active);
   }
   .pack-card-item.is-active {
     border-color: var(--accent);
+    background: var(--bg-active);
   }
   .pack-card-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
+    grid-area: head;
+    min-width: 0;
   }
   .pack-card-name {
     color: var(--text);
     font-weight: 900;
     font-size: 15px;
     line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .pack-card-desc {
     margin-top: 4px;
     color: var(--text-soft);
     font-size: 12px;
     line-height: 1.35;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
   .pack-card-meta {
+    grid-area: meta;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    min-width: 0;
   }
   .pack-chip {
     padding: 4px 7px;
@@ -792,22 +814,22 @@ export const VIEWER_CSS = `
     letter-spacing: 0.04em;
   }
   .pack-card-actions {
+    grid-area: actions;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
     justify-content: flex-end;
+    min-width: 90px;
   }
-  .pack-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+  .pack-row-state {
     color: var(--text-soft);
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 900;
+    white-space: nowrap;
   }
-  .pack-toggle input {
-    width: auto;
+  .pack-card-item.is-active .pack-row-state {
+    color: var(--text);
   }
   .pack-edit-card {
     width: min(980px, calc(100vw - 28px));

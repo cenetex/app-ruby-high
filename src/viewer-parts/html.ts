@@ -215,7 +215,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay" id="pack-overlay">
   <div class="sheet-card" id="pack-card">
     <h2>Pack Library</h2>
-    <p class="sub">Enable packs for your library and choose the active classroom pack.</p>
+    <p class="sub">Click a pack to use it in the classroom. Create or edit draft packs below.</p>
     <div class="pack-library-actions">
       <button type="button" class="pack-action" id="pack-create-btn">+ Create New Content Pack</button>
     </div>

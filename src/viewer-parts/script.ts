@@ -5703,7 +5703,22 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function packCard(pack, opts) {
     const card = document.createElement("div");
-    card.className = "pack-card-item" + (pack.active ? " is-active" : "");
+    const isDraft = !!opts.draft;
+    const canSwitch = !isDraft && !pack.active;
+    card.className = "pack-card-item" + (pack.active ? " is-active" : "") + (!isDraft ? " is-clickable" : "");
+    if (!isDraft) {
+      card.setAttribute("role", "button");
+      card.tabIndex = packImportBusy ? -1 : 0;
+      card.setAttribute("aria-label", (pack.active ? "Using " : "Use ") + (pack.name || "Untitled Pack"));
+      card.addEventListener("click", () => {
+        if (canSwitch) activateLibraryPack(pack);
+      });
+      card.addEventListener("keydown", (event) => {
+        if (!canSwitch || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        activateLibraryPack(pack);
+      });
+    }
     const head = document.createElement("div");
     head.className = "pack-card-head";
     const titleWrap = document.createElement("div");
@@ -5725,7 +5740,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       pack.readOnly ? "read only" : pack.owner ? "yours" : "",
       (pack.facultyCount || pack.teacherCount || 0) + " teachers",
       (pack.questionCount || 0) + " cards",
-      pack.active ? "active" : "",
     ].filter(Boolean).forEach((text) => {
       const chip = document.createElement("span");
       chip.className = "pack-chip";
@@ -5736,73 +5750,42 @@ const VIEWER_SCRIPT_SUFFIX = `
 
     const actions = document.createElement("div");
     actions.className = "pack-card-actions";
-    if (!opts.draft) {
-      const toggle = document.createElement("label");
-      toggle.className = "pack-toggle";
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = !!pack.enabled;
-      checkbox.disabled = packImportBusy;
-      checkbox.addEventListener("change", async () => {
-        await togglePackInstall(pack, checkbox.checked);
-      });
-      toggle.appendChild(checkbox);
-      toggle.appendChild(document.createTextNode("Enabled"));
-      actions.appendChild(toggle);
-
-      const activeBtn = document.createElement("button");
-      activeBtn.type = "button";
-      activeBtn.className = "pack-action";
-      activeBtn.textContent = pack.active ? "Active" : "Activate";
-      activeBtn.disabled = packImportBusy || pack.active || !pack.enabled;
-      activeBtn.addEventListener("click", () => activateLibraryPack(pack));
-      actions.appendChild(activeBtn);
+    if (!isDraft) {
+      const state = document.createElement("div");
+      state.className = "pack-row-state";
+      state.textContent = pack.active ? "Using now" : "Use";
+      actions.appendChild(state);
     }
 
-    if (opts.draft || pack.canEdit) {
+    if (isDraft || pack.canEdit) {
       const editBtn = document.createElement("button");
       editBtn.type = "button";
       editBtn.className = "pack-action";
       editBtn.textContent = "Edit";
       editBtn.disabled = packImportBusy;
-      editBtn.addEventListener("click", () => editDraftPack(pack.id));
+      editBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        editDraftPack(pack.id);
+      });
       actions.appendChild(editBtn);
     }
     card.appendChild(actions);
     return card;
   }
 
-  async function togglePackInstall(pack, enabled) {
-    setPackBusy(true);
-    packStatusEl.textContent = enabled ? "Enabling pack..." : "Disabling pack...";
-    packStatusEl.classList.remove("is-invalid");
-    try {
-      packLibraryState = await packStudioClient.installPack(pack.id, enabled);
-      renderPackList();
-      renderDraftPackList();
-      packStatusEl.textContent = enabled ? "Pack enabled." : "Pack disabled.";
-    } catch (err) {
-      packStatusEl.textContent = "Could not update pack · " + (err && err.message ? err.message : "error");
-      packStatusEl.classList.add("is-invalid");
-      refreshPackLibrary();
-    } finally {
-      setPackBusy(false);
-    }
-  }
-
   async function activateLibraryPack(pack) {
     if (!pack || packImportBusy) return;
     setPackBusy(true);
-    packStatusEl.textContent = "Activating pack...";
+    packStatusEl.textContent = "Switching classroom pack...";
     packStatusEl.classList.remove("is-invalid");
     try {
       packLibraryState = await packStudioClient.setActivePack(pack.id);
       renderPackList();
       renderDraftPackList();
-      packStatusEl.textContent = "Active pack switched. Reloading...";
+      packStatusEl.textContent = "Pack switched. Reloading...";
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
-      packStatusEl.textContent = "Could not activate pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.textContent = "Could not switch pack · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);

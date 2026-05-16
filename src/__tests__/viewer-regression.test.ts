@@ -122,6 +122,25 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("mailto:hello@ratimics.com");
   });
 
+  it("keeps the pack library as one-click rows without install vocabulary", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain("Click a pack to use it in the classroom.");
+    expect(cssRule(".pack-grid")).toContain("display: flex");
+    expect(cssRule(".pack-grid")).toContain("flex-direction: column");
+    expect(cssRule(".pack-grid")).not.toContain("grid-template-columns");
+    expect(cssRule(".pack-card-item")).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(script).toContain('card.addEventListener("click", () => {');
+    expect(script).toContain('state.textContent = pack.active ? "Using now" : "Use"');
+    expect(script).toContain('"Switching classroom pack..."');
+    expect(script).not.toContain('document.createTextNode("Enabled")');
+    expect(script).not.toContain("togglePackInstall");
+    expect(script).not.toContain("activeBtn.textContent");
+    expect(script).not.toContain('"Activating pack..."');
+    expect(script).not.toContain('"Active pack switched. Reloading..."');
+  });
+
   it("routes the post-class Practice button to a practice board or teacher advance", () => {
     const script = inlineScript(renderedViewer());
 
