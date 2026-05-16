@@ -831,8 +831,9 @@ export const VIEWER_CSS = `
   .pack-card-item.is-active .pack-row-state {
     color: var(--text);
   }
-  .pack-edit-card {
+  .sheet-card.pack-edit-card {
     width: min(980px, calc(100vw - 28px));
+    max-width: min(980px, calc(100vw - 28px));
   }
   .pack-draft-fields {
     display: grid;
@@ -965,7 +966,7 @@ export const VIEWER_CSS = `
   }
   .pack-teacher-roll-deck {
     display: grid;
-    grid-template-columns: minmax(230px, 300px) minmax(260px, 1fr);
+    grid-template-columns: minmax(280px, 0.95fr) minmax(340px, 1.05fr);
     gap: 14px;
     align-items: start;
   }
@@ -1101,6 +1102,9 @@ export const VIEWER_CSS = `
     }
     .pack-teacher-roll-deck {
       grid-template-columns: 1fr;
+    }
+    .teacher-image-row {
+      grid-template-columns: 68px 1fr;
     }
     .pack-teacher-list {
       display: grid;
@@ -2962,6 +2966,82 @@ export const VIEWER_CSS = `
     line-height: 1.45;
     color: var(--text);
     word-break: break-word;
+  }
+  .creation-row.is-compact-stats {
+    align-items: center;
+  }
+  .teacher-stat-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .teacher-stat-pills .pill {
+    font-size: 11px;
+    line-height: 1;
+    padding: 5px 8px;
+    white-space: nowrap;
+  }
+  .teacher-image-row {
+    grid-template-columns: 80px 1fr;
+  }
+  .teacher-image-control {
+    display: grid;
+    gap: 8px;
+  }
+  .teacher-image-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .teacher-image-preset {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text-soft);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+  .teacher-image-preset.is-selected {
+    border-color: var(--accent);
+    background: rgba(210, 42, 42, 0.18);
+    color: var(--text);
+  }
+  .teacher-image-preset:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .teacher-custom-image {
+    display: grid;
+    gap: 5px;
+    justify-items: start;
+  }
+  .teacher-custom-generate {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+  .teacher-custom-generate:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  @media (max-width: 760px) {
+    .teacher-image-row {
+      grid-template-columns: 68px 1fr;
+    }
+    .teacher-stat-pills .pill {
+      font-size: 10px;
+      padding: 5px 7px;
+    }
   }
   .creation-reroll {
     appearance: none;

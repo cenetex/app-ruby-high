@@ -146,13 +146,16 @@ describe("viewer regression guardrails", () => {
 
     expect(script).toContain("function startDraftTeacherCreation()");
     expect(script).toContain("Teacher Roll");
-    expect(script).toContain("Generate teacher image");
-    expect(script).toContain("Add Teacher");
+    expect(script).toContain("teacher-image-preset");
+    expect(script).toContain("Custom");
+    expect(script).toContain('saveBtn.textContent = "Save"');
     expect(script).toContain("function openRouterAiEnabled()");
     expect(script).toContain('openRouterGenerationMessage("generating teacher images")');
     expect(script).toContain("/api/apps/ruby-high/chat/teacher/portrait");
     expect(script).toContain("stats: pendingTeacherRoll.stats");
-    expect(script).toContain('makeRow("Stats", "stats", teacherStatsLine(roll.stats))');
+    expect(script).toContain('makeRow("Stats", "stats", buildTeacherStatPills(roll.stats)');
+    expect(script).not.toContain('addBtn.textContent = "Add Teacher"');
+    expect(script).not.toContain('cancelBtn.textContent = "Cancel"');
     expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');
   });
 
