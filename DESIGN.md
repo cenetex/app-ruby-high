@@ -232,7 +232,7 @@ Senior completion also writes a `GraduationReward` — one of stat / advantage /
 
 `Ruby High: Book One - First Bell` is a cross-character collection. The session owns the collection, so clearing or graduating a character does not wipe found pages.
 
-Main story pages unlock at year-end ceremonies: Ruby, Sally Science, and Professor Edward each grant one page after Freshman year and one page after Junior year. Insert pages are tied to classmates: each student grants one fixed insert page the first time their Social Card cell is circled.
+Main story pages unlock from class performance: Ruby, Sally Science, and Professor Edward each grant one page when the player earns an A in that teacher's class during Freshman year, and one more page for an A during Junior year. Insert pages are tied to classmates: each student grants one fixed insert page the first time their Social Card cell is circled.
 
 ## 1.7 Architecture
 

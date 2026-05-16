@@ -729,29 +729,55 @@ describe("Streak + grade advancement", () => {
     });
   });
 
-  it("unlocks teacher story pages only at Freshman and Junior year-end", async () => {
+  it("unlocks teacher story pages only for A classes in Freshman and Junior year", async () => {
     const { ruby } = await makeServices();
+    const realNow = Date.now;
+    const realRandom = Math.random;
+    try {
+      const freshmanSid = "test:first-bell-freshman-a-page";
+      attachCharacter(ruby, freshmanSid, "9", false);
+      Math.random = () => 0.99;
+      completeClassOnDate(ruby, freshmanSid, "sally-science", "2026-05-04T18:00:00Z");
+      const freshman = ruby.getOrCreate(freshmanSid);
+      expect(freshman.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([2]);
+      expect(freshman.schoolEvents.some((e) =>
+        e.kind === "comic.page-unlocked" &&
+        e.pageNumber === 2 &&
+        e.reason === "teacher-class-aced" &&
+        e.sourceId === "teacher:sally-science:grade:9"
+      )).toBe(true);
 
-    const freshmanSid = "test:first-bell-freshman-pages";
-    attachCharacter(ruby, freshmanSid, "9");
-    ruby.getOrCreate(freshmanSid).character!.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
-    ruby.getOrCreate(freshmanSid);
-    const freshman = ruby.completeGraduation(freshmanSid, { kind: "advantage" });
-    expect(freshman.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([1, 2, 3]);
+      const freshmanBSid = "test:first-bell-freshman-b-no-page";
+      attachCharacter(ruby, freshmanBSid, "9", false);
+      Math.random = () => 0;
+      completeClassOnDate(ruby, freshmanBSid, "sally-science", "2026-05-05T18:00:00Z");
+      expect(ruby.getOrCreate(freshmanBSid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([]);
 
-    const sophomoreSid = "test:first-bell-sophomore-no-pages";
-    attachCharacter(ruby, sophomoreSid, "10");
-    ruby.getOrCreate(sophomoreSid).character!.streak = { grade: "10", count: 2, lastDate: "2026-05-05" };
-    ruby.getOrCreate(sophomoreSid);
-    const sophomore = ruby.completeGraduation(sophomoreSid, { kind: "advantage" });
-    expect(sophomore.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([]);
+      const sophomoreSid = "test:first-bell-sophomore-a-no-page";
+      attachCharacter(ruby, sophomoreSid, "10", false);
+      Math.random = () => 0.99;
+      completeClassOnDate(ruby, sophomoreSid, "sally-science", "2026-05-06T18:00:00Z");
+      expect(ruby.getOrCreate(sophomoreSid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([]);
 
-    const juniorSid = "test:first-bell-junior-pages";
-    attachCharacter(ruby, juniorSid, "11");
-    ruby.getOrCreate(juniorSid).character!.streak = { grade: "11", count: 3, lastDate: "2026-05-06" };
-    ruby.getOrCreate(juniorSid);
-    const junior = ruby.completeGraduation(juniorSid, { kind: "advantage" });
-    expect(junior.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([4, 5, 6]);
+      const juniorSid = "test:first-bell-junior-a-page";
+      attachCharacter(ruby, juniorSid, "11", false);
+      completeClassOnDate(ruby, juniorSid, "professor-edward", "2026-05-07T18:00:00Z");
+      expect(ruby.getOrCreate(juniorSid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([6]);
+    } finally {
+      Date.now = realNow;
+      Math.random = realRandom;
+    }
+  });
+
+  it("repairs teacher story pages for existing A class records", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:first-bell-repair-teacher-a-pages";
+    attachCharacter(ruby, sid, "11");
+    const state = ruby.getOrCreate(sid);
+    state.comicCollection = { issueId: "first-bell", title: "Ruby High: Book One - First Bell", pageCount: 12, unlockedPages: [] };
+
+    const after = ruby.getOrCreate(sid);
+    expect(after.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([4, 5, 6]);
   });
 
   it("unlocks a fixed student insert page on first friendship and keeps it across characters", async () => {
