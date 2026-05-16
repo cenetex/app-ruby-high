@@ -66,6 +66,7 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("const SESSION_REFRESH_TIMEOUT_MS = 8000");
     expect(script).toContain("function createViewerApiClient");
     expect(script).toContain("const apiClient = createViewerApiClient");
+    expect(script).toContain("function imageRequestId(prefix)");
     expect(script).toContain("function createViewerTurnController");
     expect(script).toContain("const turnController = createViewerTurnController");
     expect(script).toContain("function syncNextButtonDisabled()");
@@ -166,6 +167,9 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("function openRouterAiEnabled()");
     expect(script).toContain('openRouterGenerationMessage("generating teacher images")');
     expect(script).toContain("/api/apps/ruby-high/chat/teacher/portrait");
+    expect(script).toContain('requestId: imageRequestId("teacher-portrait")');
+    expect(script).toContain('requestId: imageRequestId("character-portrait")');
+    expect(script).toContain('requestId: imageRequestId("diploma")');
     expect(script).toContain("stats: pendingTeacherRoll.stats");
     expect(script).toContain("subject: pendingTeacherRoll.subject");
     expect(script).toContain("quote: pendingTeacherRoll.quote");

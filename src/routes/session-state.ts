@@ -34,6 +34,10 @@ import {
 } from "../content/registry.js";
 import type { PackCourse, PackRoom } from "../content/types.js";
 import { publicProviderForFaculty, type PublicTeacherProvider } from "../services/teacher-providers.js";
+import {
+  hostedEntitlementStatus,
+  type HostedEntitlementStatus,
+} from "../hosted-entitlements.js";
 import { APP_DISPLAY_NAME, APP_NAME } from "./constants.js";
 
 interface FacultyTelemetry extends FacultyMember {
@@ -67,11 +71,8 @@ interface SessionTelemetry extends Record<string, unknown> {
   meritStars: number;
   hallPasses: number;
   wallet: RubyHighWallet;
-  hosted_ai: {
-    active: boolean;
-    expiresAt: number | null;
-    remainingMs: number;
-  };
+  hosted_ai: HostedEntitlementStatus["hosted_ai"];
+  entitlements: HostedEntitlementStatus;
   status: QuizState["status"];
   phase: QuizState["phase"];
   phaseToken: number;
@@ -283,10 +284,7 @@ export function buildSessionState(args: {
     ?? facultyForSession(state)[0]
     ?? null;
   const wallet = normalizeWalletForTelemetry(state);
-  const hostedAiExpiresAt = typeof wallet.hostedAiAccessExpiresAt === "number"
-    ? wallet.hostedAiAccessExpiresAt
-    : null;
-  const hostedAiRemainingMs = hostedAiExpiresAt ? Math.max(0, hostedAiExpiresAt - Date.now()) : 0;
+  const entitlements = hostedEntitlementStatus({ ruby, sessionId, state });
 
   const telemetry: SessionTelemetry = {
     faculty: state.faculty,
@@ -301,11 +299,8 @@ export function buildSessionState(args: {
     meritStars: wallet.meritStars,
     hallPasses: wallet.hallPasses,
     wallet,
-    hosted_ai: {
-      active: hostedAiRemainingMs > 0,
-      expiresAt: hostedAiRemainingMs > 0 ? hostedAiExpiresAt : null,
-      remainingMs: hostedAiRemainingMs,
-    },
+    hosted_ai: entitlements.hosted_ai,
+    entitlements,
     status: state.status,
     phase: state.phase,
     phaseToken: state.phaseToken,

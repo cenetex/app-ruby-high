@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
-import { getActivePack, resetActivePack, setActivePack } from "../content/registry.js";
+import { getActivePack, registerPack, resetActivePack, setActivePack } from "../content/registry.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import type {
@@ -18,6 +18,8 @@ import type { QuizState } from "../types.js";
 
 afterEach(() => {
   resetActivePack();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 class FailingSessionStore implements StateStoreLike {
@@ -92,6 +94,7 @@ function makeCommandCtx(
     personality: "intense but kind",
   },
   faculty?: FacultyService,
+  apiKeyHeader?: string | null,
 ): { ctx: RouteContext; response: { status: number; body: any } | null } {
   let response: { status: number; body: any } | null = null;
   const ctx: RouteContext = {
@@ -100,6 +103,7 @@ function makeCommandCtx(
     runtime: runtimeFor(ruby, faculty),
     res: {} as never,
     cookieHeader: null,
+    apiKeyHeader,
     error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { response = { status, body: data }; },
     readJsonBody: async () => body,
@@ -166,6 +170,55 @@ function rubyHomeroomSocialPack(): ContentPack {
     faculty: "ruby",
   }));
   return pack;
+}
+
+function sourceCardPack(): ContentPack {
+  return {
+    id: "anki:route-test-source-pack",
+    name: "Route Test Source Pack",
+    description: "Source-card pack for command route tests.",
+    version: "1.0.0",
+    faculty: [{
+      id: "vocab-source-course",
+      displayName: "Sally Science",
+      shortName: "Sally",
+      assetTeacherId: "sally-science",
+      subjects: ["vocab"],
+      bio: "Test teacher for source cards.",
+      accent: "#3aa3e0",
+      systemPrompt: "Teach the source card.",
+      defaultModel: "anthropic/claude-haiku-4.5",
+      questions: [],
+      sourceCards: [{
+        id: "route-test-source-card-1",
+        kind: "basic",
+        front: "What does ephemeral mean?",
+        back: "short-lived",
+        acceptedAnswers: ["short-lived", "brief"],
+        deckName: "Route Test Source Pack",
+        tags: ["vocab"],
+        subject: "vocab",
+        difficulty: "medium",
+        faculty: "vocab-source-course",
+      }],
+    }],
+    courses: [{
+      id: "vocab-source-course",
+      title: "Route Test Source",
+      facultyId: "vocab-source-course",
+      roomId: "vocab-source-room",
+      teacherTemplateId: "sally-science",
+      subjects: ["vocab"],
+    }],
+    rooms: [{
+      id: "vocab-source-room",
+      name: "Route Test Source",
+      channelName: "route-test-source",
+      teacherId: "vocab-source-course",
+      description: "Source-card classroom.",
+      teaches: true,
+    }],
+  };
 }
 
 describe("command route persistence and scheduler misses", () => {
@@ -244,6 +297,88 @@ describe("command route persistence and scheduler misses", () => {
       message: "Question already live.",
     });
     expect(harness.response?.body.session.telemetry.current.id).toBe(first.current!.id);
+  });
+
+  it("does not use the hosted OpenRouter key for MC generation without an active AI pass", async () => {
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
+    const pack = sourceCardPack();
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new MemorySessionStore());
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+
+    const sid = "rh:anonymous";
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    ruby.createCharacter(sid, {
+      name: "Ari",
+      playbookId: "overachiever",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      arcAnswer: "I want the transcript to look impossible.",
+      personality: "intense but kind",
+    });
+    ruby.pickAndPose(sid, { faculty: "vocab-source-course" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(["ancient", "loud", "careful"]) } }],
+      }), { status: 200 }),
+    );
+
+    const harness = makeCommandCtx(ruby, { type: "generate-mc" }, faculty);
+    const handled = await handleAppRoutes(harness.ctx);
+
+    expect(handled).toBe(true);
+    expect(harness.response?.status).toBe(400);
+    expect(harness.response?.body.error).toContain("Enable OpenRouter AI");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows MC generation with the hosted key after an AI Day Pass is active", async () => {
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
+    const pack = sourceCardPack();
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new MemorySessionStore());
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+
+    const sid = "rh:anonymous";
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    ruby.grantHallPasses(sid, {
+      amount: 1,
+      idempotencyKey: "test:command-hosted-ai-seed",
+      source: "admin",
+    });
+    ruby.activateHostedAiAccess(sid, {
+      hallPassCost: 1,
+      durationMs: 86_400_000,
+      now: Date.now(),
+    });
+    ruby.createCharacter(sid, {
+      name: "Ari",
+      playbookId: "overachiever",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      arcAnswer: "I want the transcript to look impossible.",
+      personality: "intense but kind",
+    });
+    ruby.pickAndPose(sid, { faculty: "vocab-source-course" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(["ancient", "loud", "careful"]) } }],
+      }), { status: 200 }),
+    );
+
+    const harness = makeCommandCtx(ruby, { type: "generate-mc" }, faculty);
+    const handled = await handleAppRoutes(harness.ctx);
+
+    expect(handled).toBe(true);
+    expect(harness.response?.status).toBe(200);
+    expect(harness.response?.body.message).toBe("Multiple choice generated");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(harness.response?.body.session.telemetry.current).toMatchObject({
+      type: "multiple-choice",
+      sourceCardId: "route-test-source-card-1",
+    });
   });
 
   it("offline pick still advances generated Ruby social cards when no bank card is ready", async () => {

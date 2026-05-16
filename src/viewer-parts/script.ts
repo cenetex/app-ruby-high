@@ -961,6 +961,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     return apiClient.apiFetch(url, init);
   }
 
+  function imageRequestId(prefix) {
+    const cryptoObj = window.crypto || window.msCrypto;
+    if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
+      return String(prefix || "image") + "-" + cryptoObj.randomUUID();
+    }
+    return String(prefix || "image") + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
   async function command(payload) {
     return apiClient.command(payload);
   }
@@ -1547,9 +1555,28 @@ const VIEWER_SCRIPT_SUFFIX = `
     return !!authed && !getStoredApiKey() && !!hostedAiActive;
   }
 
+  function hostedEntitlements(t) {
+    const src = t || lastTelemetry;
+    return src && src.entitlements && typeof src.entitlements === "object" ? src.entitlements : null;
+  }
+
+  function hostedImageEntitlement(kind, t) {
+    const entitlements = hostedEntitlements(t);
+    const images = entitlements && entitlements.hosted_images && typeof entitlements.hosted_images === "object"
+      ? entitlements.hosted_images
+      : null;
+    return images && images[kind] && typeof images[kind] === "object" ? images[kind] : null;
+  }
+
+  function usingHostedImageGeneration(kind) {
+    const image = hostedImageEntitlement(kind);
+    return !!authed && !getStoredApiKey() && !!(image && image.canUseHosted);
+  }
+
   function hostedImageCostLabel(kind) {
+    const entitlement = hostedImageEntitlement(kind);
     const costs = billingProductsCache && billingProductsCache.imageCosts ? billingProductsCache.imageCosts : {};
-    const raw = costs && costs[kind];
+    const raw = entitlement && entitlement.cost != null ? entitlement.cost : costs && costs[kind];
     const cost = Math.max(1, Math.round(Number(raw || 1)));
     return formatWholeNumber(cost) + " Hall Pass" + (cost === 1 ? "" : "es");
   }
@@ -1568,7 +1595,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   async function confirmHostedCreditSpend(action, kind) {
-    if (!usingHostedOpenRouterGeneration()) return true;
+    if (!usingHostedImageGeneration(kind)) return true;
     await ensureBillingProductsForCreditWarning();
     return window.confirm(
       action + " uses hosted OpenRouter image generation and will spend " + hostedImageCostLabel(kind) + " if the image completes. " +
@@ -1582,7 +1609,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     return "Uses your OpenRouter key. No Hall Passes are spent.";
   }
 
-  function applyHallPassBalance(hallPasses) {
+  function applyHallPassBalance(hallPasses, entitlements) {
     if (typeof hallPasses !== "number" || !Number.isFinite(hallPasses)) return;
     if (!lastTelemetry) return;
     const wallet = lastTelemetry.wallet && typeof lastTelemetry.wallet === "object" ? lastTelemetry.wallet : {};
@@ -1592,6 +1619,10 @@ const VIEWER_SCRIPT_SUFFIX = `
         ...wallet,
         hallPasses: Math.max(0, Math.round(hallPasses)),
       },
+      ...(entitlements && typeof entitlements === "object" ? {
+        entitlements,
+        hosted_ai: entitlements.hosted_ai || lastTelemetry.hosted_ai,
+      } : {}),
     };
     if (els.arcScore) els.arcScore.textContent = walletSummaryText(lastTelemetry);
     syncBillingWallet(lastTelemetry);
@@ -1622,7 +1653,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   function hostedAiTelemetry(t) {
-    const ai = t && t.hosted_ai && typeof t.hosted_ai === "object" ? t.hosted_ai : null;
+    const entitlements = hostedEntitlements(t);
+    const ai = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
+      ? entitlements.hosted_ai
+      : t && t.hosted_ai && typeof t.hosted_ai === "object" ? t.hosted_ai : null;
     const expiresAt = ai && ai.expiresAt != null ? Number(ai.expiresAt) : 0;
     return {
       active: !!(ai && ai.active && expiresAt > Date.now()),
@@ -1651,8 +1685,15 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!els.billingProducts) return;
     els.billingProducts.replaceChildren();
     syncBillingWallet(lastTelemetry);
-    const costs = payload && payload.imageCosts ? payload.imageCosts : {};
-    const hostedAi = payload && payload.hostedAiAccess ? payload.hostedAiAccess : {};
+    const entitlements = payload && payload.entitlements && typeof payload.entitlements === "object" ? payload.entitlements : null;
+    const hostedImages = entitlements && entitlements.hosted_images && typeof entitlements.hosted_images === "object"
+      ? entitlements.hosted_images
+      : null;
+    const costs = {
+      portrait: hostedImages && hostedImages.portrait ? hostedImages.portrait.cost : payload && payload.imageCosts ? payload.imageCosts.portrait : undefined,
+      diploma: hostedImages && hostedImages.diploma ? hostedImages.diploma.cost : payload && payload.imageCosts ? payload.imageCosts.diploma : undefined,
+    };
+    const hostedAi = entitlements && entitlements.hosted_ai ? entitlements.hosted_ai : payload && payload.hostedAiAccess ? payload.hostedAiAccess : {};
     const activeAi = hostedAiTelemetry(lastTelemetry);
     if (els.billingCosts) {
       els.billingCosts.replaceChildren();
@@ -4142,7 +4183,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ requestId: imageRequestId("diploma") }),
       });
       if (!r.ok) return;
       // Server stamps the data URL onto the character; next session
@@ -4466,7 +4507,7 @@ const VIEWER_SCRIPT_SUFFIX = `
             const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: "{}",
+              body: JSON.stringify({ requestId: imageRequestId("diploma") }),
             });
             if (!r.ok) throw new Error("diploma " + r.status);
             await fetchSession();
@@ -5415,7 +5456,13 @@ const VIEWER_SCRIPT_SUFFIX = `
         const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: rolled.name, playbookId: rolled.playbookId, personality: rolled.personality, stats: rolled.stats }),
+          body: JSON.stringify({
+            requestId: imageRequestId("character-portrait"),
+            name: rolled.name,
+            playbookId: rolled.playbookId,
+            personality: rolled.personality,
+            stats: rolled.stats,
+          }),
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({ error: r.status }));
@@ -6395,6 +6442,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         headers: { "Content-Type": "application/json" },
         signal: controller ? controller.signal : undefined,
         body: JSON.stringify({
+          requestId: imageRequestId("teacher-portrait"),
           name: pendingTeacherRoll.displayName,
           personality: pendingTeacherRoll.description,
         }),
@@ -6409,7 +6457,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         profileImageUrl: data.profileImageUrl,
         imageChoice: "custom",
       };
-      applyHallPassBalance(data.hallPasses);
+      applyHallPassBalance(data.hallPasses, data.entitlements);
       pendingTeacherImageStatus = "Teacher image ready.";
       pendingTeacherImageInvalid = false;
     } catch (err) {
@@ -6992,14 +7040,31 @@ const VIEWER_SCRIPT_SUFFIX = `
   function setAuthState(next, opts) {
     const nextAi = !!(opts && opts.ai);
     const nextLocalAi = !!(opts && opts.local_ai);
-    const nextHostedAiActive = !!(opts && opts.hosted_ai && opts.hosted_ai.active);
-    if (next === lastAuthState && nextAi === aiEnabled && nextLocalAi === localAiEnabled && nextHostedAiActive === hostedAiActive) return;
+    const hostedAi = opts && opts.entitlements && opts.entitlements.hosted_ai ? opts.entitlements.hosted_ai : opts && opts.hosted_ai;
+    const nextHostedAiActive = !!(hostedAi && hostedAi.active);
+    if (next === lastAuthState && nextAi === aiEnabled && nextLocalAi === localAiEnabled && nextHostedAiActive === hostedAiActive) {
+      if (opts && opts.entitlements && typeof opts.entitlements === "object" && lastTelemetry) {
+        lastTelemetry = {
+          ...lastTelemetry,
+          entitlements: opts.entitlements,
+          hosted_ai: opts.entitlements.hosted_ai || lastTelemetry.hosted_ai,
+        };
+      }
+      return;
+    }
     const wasSignedIn = lastAuthState === true;
     lastAuthState = next;
     authed = next;
     aiEnabled = nextAi;
     localAiEnabled = nextLocalAi;
     hostedAiActive = nextHostedAiActive;
+    if (opts && opts.entitlements && typeof opts.entitlements === "object" && lastTelemetry) {
+      lastTelemetry = {
+        ...lastTelemetry,
+        entitlements: opts.entitlements,
+        hosted_ai: opts.entitlements.hosted_ai || lastTelemetry.hosted_ai,
+      };
+    }
     applyAuthUI();
     // OpenRouter is optional. The overlay is now only a fallback if the app
     // cannot establish even a guest Ruby High session.
@@ -7035,7 +7100,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");
-    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai });
+    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements });
   }
   async function retryGuestSession() {
     if (els.signinGuest) els.signinGuest.disabled = true;
@@ -7062,7 +7127,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const data = await r.json().catch(() => ({}));
       if (seq !== authCheckSeq) return;
       if (r.ok && data && data.session) {
-        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai });
+        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements });
       } else {
         await ensureGuestSession();
       }
@@ -7138,7 +7203,14 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (requestSeq !== chatViewSeq || !lastTelemetry || lastTelemetry.faculty !== facultyId) return;
       aiEnabled = !!data.authed;
       localAiEnabled = !!data.local_ai;
-      hostedAiActive = !!(data.hosted_ai && data.hosted_ai.active);
+      hostedAiActive = !!((data.entitlements && data.entitlements.hosted_ai && data.entitlements.hosted_ai.active) || (data.hosted_ai && data.hosted_ai.active));
+      if (data.entitlements && typeof data.entitlements === "object") {
+        lastTelemetry = {
+          ...lastTelemetry,
+          entitlements: data.entitlements,
+          hosted_ai: data.entitlements.hosted_ai || lastTelemetry.hosted_ai,
+        };
+      }
       const msgs = data.history || [];
       const sig = facultyId + ":" + playerMessageIdentitySig() + ":" + msgs.length;
       if (sig === renderedHistorySig) return;

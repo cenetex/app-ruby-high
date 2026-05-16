@@ -121,6 +121,42 @@ describe("billing products", () => {
     expect(lastResponse?.body.products.map((p: any) => p.hallPasses)).toEqual([5, 20, 50, 100]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
     expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: false, cost: 1, durationMs: 86_400_000 });
+    expect(lastResponse?.body.entitlements).toMatchObject({
+      hallPasses: 0,
+      hosted_ai: { configured: false, active: false, affordable: false, canActivate: false },
+      hosted_images: {
+        portrait: { configured: false, cost: 1, affordable: false, canUseHosted: false },
+        diploma: { configured: false, cost: 3, affordable: false, canUseHosted: false },
+      },
+    });
+  });
+
+  it("returns session entitlement status with billing products when authenticated", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const stateKey = signInUser("products-entitlements");
+    ruby.grantHallPasses(stateKey, {
+      amount: 2,
+      idempotencyKey: "test:products-entitlements",
+      source: "admin",
+    });
+
+    const handled = await handleBillingRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/billing/products",
+      cookie: "rh_session=products-entitlements",
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.entitlements).toMatchObject({
+      hallPasses: 2,
+      hosted_ai: { configured: true, active: false, affordable: true, canActivate: true, cost: 1 },
+      hosted_images: {
+        portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
+        diploma: { configured: true, cost: 3, affordable: false, canUseHosted: false },
+      },
+    });
+    expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: true, active: false, cost: 1 });
   });
 });
 
@@ -142,6 +178,14 @@ describe("AI Day Pass", () => {
 
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({ ok: true, applied: true, hallPassCost: 1, hallPasses: 1 });
+    expect(lastResponse?.body.entitlements).toMatchObject({
+      hallPasses: 1,
+      hosted_ai: { configured: true, active: true, affordable: true, canActivate: false },
+      hosted_images: {
+        portrait: { configured: true, affordable: true },
+        diploma: { configured: true, affordable: false },
+      },
+    });
     const firstExpiry = Number(lastResponse?.body.expiresAt);
     expect(firstExpiry).toBeGreaterThan(Date.now());
     expect(ruby.getOrCreate(stateKey).wallet.hostedAiAccessExpiresAt).toBe(firstExpiry);
@@ -153,8 +197,40 @@ describe("AI Day Pass", () => {
     }), deps());
 
     expect(lastResponse?.body).toMatchObject({ ok: true, applied: false, hallPassCost: 1, hallPasses: 1 });
+    expect(lastResponse?.body.hosted_ai).toMatchObject({ configured: true, active: true });
     expect(lastResponse?.body.expiresAt).toBe(firstExpiry);
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+  });
+
+  it("returns authenticated hosted entitlement status", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const stateKey = signInUser("status-alice");
+    ruby.grantHallPasses(stateKey, {
+      amount: 3,
+      idempotencyKey: "test:status-alice",
+      source: "admin",
+    });
+
+    const handled = await handleBillingRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/billing/status",
+      cookie: "rh_session=status-alice",
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body).toMatchObject({
+      ok: true,
+      hallPasses: 3,
+      hosted_ai: { configured: true, active: false, affordable: true, canActivate: true },
+      entitlements: {
+        hallPasses: 3,
+        hosted_images: {
+          portrait: { canUseHosted: true },
+          diploma: { canUseHosted: true },
+        },
+      },
+    });
   });
 
   it("rejects hosted AI activation without enough Hall Passes", async () => {

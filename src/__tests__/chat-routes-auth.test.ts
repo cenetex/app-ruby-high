@@ -236,6 +236,13 @@ describe("hosted AI day pass auth", () => {
     const me = JSON.parse(meRes.body);
     expect(me.ai).toBe(false);
     expect(me.hosted_ai).toMatchObject({ configured: true, active: false });
+    expect(me.entitlements.hosted_ai).toMatchObject(me.hosted_ai);
+    expect(me.entitlements.hosted_images.portrait).toMatchObject({
+      configured: true,
+      cost: 1,
+      affordable: false,
+      canUseHosted: false,
+    });
 
     const chatRes = new TestResponse();
     await handleChatRoutes(makeCtx(
@@ -282,6 +289,13 @@ describe("hosted AI day pass auth", () => {
     expect(body.ai).toBe(true);
     expect(body.hosted_ai.active).toBe(true);
     expect(body.hosted_ai.expiresAt).toBeGreaterThan(Date.now());
+    expect(body.entitlements).toMatchObject({
+      hallPasses: 0,
+      hosted_ai: { configured: true, active: true, affordable: false, canActivate: false },
+      hosted_images: {
+        portrait: { configured: true, affordable: false },
+      },
+    });
   });
 });
 
@@ -336,6 +350,7 @@ describe("hosted image Hall Passes", () => {
         method: "POST",
         cookieHeader: `rh_session=${token}`,
         body: {
+          requestId: "portrait-funded-1",
           name: "Mina",
           personality: "Quietly intense and observant.",
         },
@@ -395,7 +410,145 @@ describe("hosted image Hall Passes", () => {
       portraitDataUrl: "data:image/png;base64,AAAA",
       hallPassCost: 1,
       hallPasses: 1,
+      entitlements: {
+        hallPasses: 1,
+        hosted_images: {
+          portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
+          diploma: { configured: true, cost: 3, affordable: false, canUseHosted: false },
+        },
+      },
     });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+  });
+
+  it("refunds hosted portrait spend when generation fails", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-portrait-refund-wallet";
+    const record = {
+      userId: "hosted-portrait-refund-wallet-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Portrait Refund",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.grantHallPasses(stateKey, {
+      amount: 1,
+      idempotencyKey: "stripe:checkout:refund",
+      source: "stripe",
+    });
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response(JSON.stringify({ choices: [{ message: {} }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          requestId: "portrait-fail-1",
+          name: "Mina",
+          personality: "Quietly intense and observant.",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(502);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+    const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(transactions.some((tx) =>
+      tx.kind === "hall-pass-spend" &&
+      tx.source === "hosted-image" &&
+      tx.metadata?.requestId === "portrait-fail-1" &&
+      tx.metadata?.status === "failed"
+    )).toBe(true);
+    expect(transactions.some((tx) =>
+      tx.kind === "hall-pass-refund" &&
+      tx.source === "hosted-image" &&
+      tx.metadata?.requestId === "portrait-fail-1"
+    )).toBe(true);
+  });
+
+  it("replays a completed hosted portrait request without spending twice", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-portrait-replay-wallet";
+    const record = {
+      userId: "hosted-portrait-replay-wallet-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Portrait Replay",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.grantHallPasses(stateKey, {
+      amount: 2,
+      idempotencyKey: "stripe:checkout:replay",
+      source: "stripe",
+    });
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            images: [{ image_url: { url: "data:image/png;base64,REPLAY" } }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const requestBody = {
+      requestId: "portrait-replay-1",
+      name: "Mina",
+      personality: "Quietly intense and observant.",
+    };
+    const firstRes = new TestResponse();
+    const firstHandled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      firstRes,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: requestBody,
+      },
+    ));
+    expect(firstHandled).toBe(true);
+    expect(firstRes.statusCode).toBe(200);
+    expect(JSON.parse(firstRes.body)).toMatchObject({
+      portraitDataUrl: "data:image/png;base64,REPLAY",
+      hallPasses: 1,
+    });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    const secondRes = new TestResponse();
+    const secondHandled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      secondRes,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: requestBody,
+      },
+    ));
+
+    expect(secondHandled).toBe(true);
+    expect(secondRes.statusCode).toBe(200);
+    expect(JSON.parse(secondRes.body)).toMatchObject({
+      portraitDataUrl: "data:image/png;base64,REPLAY",
+      hallPasses: 1,
+    });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(transactions.filter((tx) =>
+      tx.kind === "hall-pass-spend" &&
+      tx.source === "hosted-image" &&
+      tx.metadata?.requestId === "portrait-replay-1"
+    )).toHaveLength(1);
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
   });
 });

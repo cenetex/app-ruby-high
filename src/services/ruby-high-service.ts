@@ -368,6 +368,35 @@ export class RubyHighService extends Service {
     return Math.max(0, Math.floor(Number(this.getOrCreate(sessionId).wallet?.hallPasses ?? 0)));
   }
 
+  walletTransaction(sessionId: string, idempotencyKey: string): RubyHighWalletTransaction | null {
+    const id = idempotencyKey.trim();
+    if (!id) return null;
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    return state.wallet.transactions?.find((tx) => tx.id === id) ?? null;
+  }
+
+  annotateWalletTransaction(
+    sessionId: string,
+    idempotencyKey: string,
+    metadata: RubyHighWalletTransaction["metadata"],
+  ): RubyHighWalletTransaction | null {
+    const id = idempotencyKey.trim();
+    if (!id) return null;
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const tx = state.wallet.transactions?.find((entry) => entry.id === id) ?? null;
+    if (!tx) return null;
+    const normalized = normalizeWalletMetadata(metadata);
+    tx.metadata = {
+      ...(tx.metadata ?? {}),
+      ...(normalized ?? {}),
+    };
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return tx;
+  }
+
   hostedAiAccessExpiresAt(sessionId: string, now = Date.now()): number | null {
     const state = this.getOrCreate(sessionId);
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);

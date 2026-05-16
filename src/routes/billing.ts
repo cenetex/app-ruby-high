@@ -1,8 +1,21 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
+import {
+  hostedAiAccessCost,
+  hostedAiAccessDurationMs,
+  hostedEntitlementStatus,
+  hostedImageCost,
+  hostedOpenRouterConfigured,
+} from "../hosted-entitlements.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
+
+export {
+  hostedAiAccessCost,
+  hostedAiAccessDurationMs,
+  hostedImageCost,
+} from "../hosted-entitlements.js";
 
 export const BILLING_PREFIX = `${APP_ROUTE_PREFIX}/billing`;
 
@@ -65,7 +78,6 @@ interface RevenueCatWebhookPayload {
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
-const DEFAULT_HOSTED_AI_ACCESS_DURATION_MS = 24 * 60 * 60 * 1000;
 
 function envTrim(name: string): string | null {
   const value = process.env[name]?.trim();
@@ -85,27 +97,6 @@ function billingCurrency(): string {
 
 function revenueCatCurrencyCode(): string {
   return envTrim("RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE") ?? "HLP";
-}
-
-export function hostedImageCost(kind: "portrait" | "diploma"): number {
-  return readPositiveIntEnv(
-    kind === "portrait" ? "RUBY_HIGH_PORTRAIT_HALL_PASS_COST" : "RUBY_HIGH_DIPLOMA_HALL_PASS_COST",
-    kind === "portrait" ? 1 : 3,
-  );
-}
-
-export function hostedAiAccessCost(): number {
-  return readPositiveIntEnv("RUBY_HIGH_HOSTED_AI_HALL_PASS_COST", 1);
-}
-
-export function hostedAiAccessDurationMs(): number {
-  const explicitMs = readPositiveIntEnv("RUBY_HIGH_HOSTED_AI_DURATION_MS", 0);
-  if (explicitMs > 0) return explicitMs;
-  return readPositiveIntEnv("RUBY_HIGH_HOSTED_AI_DURATION_HOURS", 24) * 60 * 60 * 1000;
-}
-
-function hostedAiConfigured(): boolean {
-  return !!envTrim("RUBY_HIGH_OPENROUTER_API_KEY");
 }
 
 export function billingProducts(): BillingProduct[] {
@@ -365,10 +356,21 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
   return { applied: false, sessionId, reason: "ignored-event-type" };
 }
 
+function optionalEntitlementsForRequest(ctx: RouteContext, deps: BillingDeps) {
+  const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+  const record = deps.auth.resolve(token);
+  if (!token || !record) return hostedEntitlementStatus();
+  return hostedEntitlementStatus({
+    ruby: deps.ruby,
+    sessionId: deps.auth.stateKeyForRecord(record),
+  });
+}
+
 export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps): Promise<boolean> {
   if (!ctx.pathname.startsWith(BILLING_PREFIX)) return false;
 
   if (ctx.method === "GET" && ctx.pathname === `${BILLING_PREFIX}/products`) {
+    const entitlements = optionalEntitlementsForRequest(ctx, deps);
     ctx.json(ctx.res, {
       ok: true,
       configured: !!envTrim("RUBY_HIGH_STRIPE_SECRET_KEY"),
@@ -379,16 +381,38 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         diploma: hostedImageCost("diploma"),
       },
       hostedAiAccess: {
-        configured: hostedAiConfigured(),
+        configured: entitlements.hosted_ai.configured,
         cost: hostedAiAccessCost(),
         durationMs: hostedAiAccessDurationMs(),
+        active: entitlements.hosted_ai.active,
+        expiresAt: entitlements.hosted_ai.expiresAt,
+        remainingMs: entitlements.hosted_ai.remainingMs,
       },
+      entitlements,
+    });
+    return true;
+  }
+
+  if (ctx.method === "GET" && ctx.pathname === `${BILLING_PREFIX}/status`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
+    ctx.json(ctx.res, {
+      ok: true,
+      hallPasses: entitlements.hallPasses,
+      hosted_ai: entitlements.hosted_ai,
+      entitlements,
     });
     return true;
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/ai-pass`) {
-    if (!hostedAiConfigured()) {
+    if (!hostedOpenRouterConfigured()) {
       ctx.error(ctx.res, "Hosted AI is not configured on this server.", 503);
       return true;
     }
@@ -405,12 +429,15 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         durationMs: hostedAiAccessDurationMs(),
       });
       await deps.ruby.flushSession(stateKey);
+      const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
       ctx.json(ctx.res, {
         ok: true,
         applied: activation.applied,
         hallPassCost: activation.hallPassCost,
         hallPasses: activation.state.wallet.hallPasses,
         expiresAt: activation.expiresAt,
+        hosted_ai: entitlements.hosted_ai,
+        entitlements,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
@@ -15,7 +15,6 @@ import {
   fetchLlmChatCompletions,
   isLocalLlmProvider,
   llmProviderName,
-  resolveLlmApiKey,
   resolveStudentModel,
   throwLlmResponseError,
 } from "./services/llm-provider.js";
@@ -45,10 +44,15 @@ import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
 import { statForQuestion } from "./question-stats.js";
 import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
-import { hostedAiAccessCost, hostedAiAccessDurationMs, hostedImageCost } from "./routes/billing.js";
+import {
+  hostedEntitlementStatus,
+  hostedImageEntitlementStatus,
+} from "./hosted-entitlements.js";
 import {
   openRouterGenerationRequiredMessage,
+  resolveOpenRouterImageCredential,
   resolveOpenRouterGenerationCredential,
+  resolveTextLlmCredential,
 } from "./openrouter-generation-access.js";
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
@@ -1085,63 +1089,195 @@ const CHAT_PREFIX = "/api/apps/ruby-high/chat";
 const AUTH_PREFIX = "/api/apps/ruby-high/auth";
 const DEFAULT_AUTH_REDIRECT = "/api/apps/ruby-high/viewer";
 
-/** Resolve a user-supplied or local text LLM credential. The hosted
- *  OpenRouter server key is intentionally excluded here; it is only exposed
- *  through an active Hall Pass AI window. */
-function readBrowserOrLocalApiKey(ctx: ChatRouteContext): string | null {
-  const raw = ctx.apiKeyHeader;
-  if (!raw) return isLocalLlmProvider() ? resolveLlmApiKey(null) : null;
-  const trimmed = String(raw).trim();
-  return trimmed.length > 0 ? resolveLlmApiKey(trimmed) : isLocalLlmProvider() ? resolveLlmApiKey(null) : null;
-}
-
-function hostedOpenRouterApiKeyForSession(ruby: RubyHighService, sessionId: string): string | null {
-  if (isLocalLlmProvider()) return null;
-  if (!ruby.hostedAiAccessExpiresAt(sessionId)) return null;
-  return process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
-}
-
 /** Resolve the text LLM credential for this session. Browser BYOK and local
  *  LLMs are free; server-hosted OpenRouter text AI requires an active AI Day
  *  Pass on the Ruby High wallet. */
 function readApiKey(ctx: ChatRouteContext, ruby: RubyHighService, sessionId: string): string | null {
-  return readBrowserOrLocalApiKey(ctx) ?? hostedOpenRouterApiKeyForSession(ruby, sessionId);
+  return resolveTextLlmCredential({
+    apiKeyHeader: ctx.apiKeyHeader,
+    ruby,
+    sessionId,
+  }).apiKey;
 }
 
-function hostedAiStatus(ruby: RubyHighService, sessionId: string): Record<string, unknown> {
-  const expiresAt = ruby.hostedAiAccessExpiresAt(sessionId);
-  return {
-    configured: !!process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim(),
-    active: !!expiresAt,
-    expiresAt,
-    remainingMs: expiresAt ? Math.max(0, expiresAt - Date.now()) : 0,
-    cost: hostedAiAccessCost(),
-    durationMs: hostedAiAccessDurationMs(),
-  };
-}
+type HostedImageChargeRoute = "character-portrait" | "teacher-portrait" | "diploma";
 
-interface ImageApiCredential {
-  apiKey: string | null;
-  hosted: boolean;
-}
-
-/** Image generation still uses OpenRouter models, so local text LLM
- *  credentials intentionally do not satisfy portrait/diploma routes.
- *  A browser-owned key is BYOK and free to Ruby High; the server fallback
- *  is hosted inference and spends Hall Passes. */
-function readOpenRouterImageCredential(ctx: ChatRouteContext): ImageApiCredential {
-  const raw = ctx.apiKeyHeader;
-  if (raw) {
-    const trimmed = String(raw).trim();
-    if (trimmed.length > 0) return { apiKey: trimmed, hosted: false };
+class HostedImageChargeError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "HostedImageChargeError";
   }
-  const hostedKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || null;
-  return { apiKey: hostedKey, hosted: !!hostedKey };
 }
 
-function hostedImageSpendKey(kind: "portrait" | "diploma", imageUrl: string): string {
-  const digest = createHash("sha256").update(`${kind}:${imageUrl}`).digest("hex").slice(0, 32);
-  return `hosted-image:${kind}:${digest}`;
+interface HostedImageCharge {
+  hallPassCost: number;
+  hallPasses: number;
+  requestId: string | null;
+  spendKey: string | null;
+  replayUrl: string | null;
+}
+
+function hostedImageSpendKey(route: HostedImageChargeRoute, requestId: string): string {
+  const digest = createHash("sha256").update(`${route}:${requestId}`).digest("hex").slice(0, 32);
+  return `hosted-image:${route}:${digest}`;
+}
+
+function hostedImageRequestId(body: Record<string, unknown> | null | undefined): string {
+  const raw = typeof body?.requestId === "string"
+    ? body.requestId
+    : typeof body?.idempotencyKey === "string" ? body.idempotencyKey : "";
+  const trimmed = raw.trim();
+  if (/^[A-Za-z0-9:_-]{8,128}$/.test(trimmed)) return trimmed;
+  return randomUUID();
+}
+
+function hostedImageFingerprint(route: HostedImageChargeRoute, payload: Record<string, unknown>): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ route, payload }))
+    .digest("hex")
+    .slice(0, 32);
+}
+
+function walletMetadataString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function prepareHostedImageCharge(args: {
+  ruby: RubyHighService;
+  sessionId: string;
+  hosted: boolean;
+  route: HostedImageChargeRoute;
+  costKind: "portrait" | "diploma";
+  body: Record<string, unknown> | null | undefined;
+  description: string;
+  fingerprintPayload: Record<string, unknown>;
+}): Promise<HostedImageCharge> {
+  if (!args.hosted) {
+    return {
+      hallPassCost: 0,
+      hallPasses: args.ruby.hallPassBalance(args.sessionId),
+      requestId: null,
+      spendKey: null,
+      replayUrl: null,
+    };
+  }
+  const imageEntitlement = hostedImageEntitlementStatus(
+    { ruby: args.ruby, sessionId: args.sessionId },
+    args.costKind,
+  );
+  const hallPassCost = imageEntitlement.cost;
+  if (!imageEntitlement.affordable) {
+    throw new HostedImageChargeError(
+      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
+      402,
+    );
+  }
+
+  const requestId = hostedImageRequestId(args.body);
+  const spendKey = hostedImageSpendKey(args.route, requestId);
+  const fingerprint = hostedImageFingerprint(args.route, args.fingerprintPayload);
+  const existing = args.ruby.walletTransaction(args.sessionId, spendKey);
+  if (existing) {
+    const metadata = existing.metadata ?? {};
+    if (metadata.route !== args.route || metadata.requestId !== requestId || metadata.fingerprint !== fingerprint) {
+      throw new HostedImageChargeError("Hosted image request id was already used for different image inputs.", 409);
+    }
+    const imageUrl = walletMetadataString(metadata.imageUrl);
+    if (metadata.status === "completed" && imageUrl) {
+      return {
+        hallPassCost,
+        hallPasses: args.ruby.hallPassBalance(args.sessionId),
+        requestId,
+        spendKey,
+        replayUrl: imageUrl,
+      };
+    }
+    if (metadata.status === "failed") {
+      throw new HostedImageChargeError("Hosted image request failed previously. Start a new image request.", 409);
+    }
+    throw new HostedImageChargeError("Hosted image request is already in progress. Try again in a moment.", 409);
+  }
+
+  try {
+    const spend = args.ruby.spendHallPasses(args.sessionId, {
+      amount: hallPassCost,
+      idempotencyKey: spendKey,
+      source: "hosted-image",
+      description: args.description,
+      metadata: {
+        route: args.route,
+        requestId,
+        fingerprint,
+        status: "pending",
+      },
+    });
+    await args.ruby.flushSession(args.sessionId);
+    return {
+      hallPassCost,
+      hallPasses: spend.state.wallet.hallPasses,
+      requestId,
+      spendKey,
+      replayUrl: null,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new HostedImageChargeError(message, message.startsWith("Not enough Hall Passes") ? 402 : 503);
+  }
+}
+
+async function completeHostedImageCharge(args: {
+  ruby: RubyHighService;
+  sessionId: string;
+  charge: HostedImageCharge;
+  imageUrl: string;
+}): Promise<number> {
+  if (!args.charge.spendKey) return args.ruby.hallPassBalance(args.sessionId);
+  args.ruby.annotateWalletTransaction(args.sessionId, args.charge.spendKey, {
+    status: "completed",
+    imageUrl: args.imageUrl,
+  });
+  await args.ruby.flushSession(args.sessionId);
+  return args.ruby.hallPassBalance(args.sessionId);
+}
+
+async function refundHostedImageCharge(args: {
+  ruby: RubyHighService;
+  sessionId: string;
+  charge: HostedImageCharge;
+  reason: string;
+}): Promise<void> {
+  if (!args.charge.spendKey || !args.charge.requestId || args.charge.hallPassCost <= 0) return;
+  try {
+    args.ruby.annotateWalletTransaction(args.sessionId, args.charge.spendKey, {
+      status: "failed",
+      error: args.reason.slice(0, 160),
+    });
+    args.ruby.refundHallPasses(args.sessionId, {
+      amount: args.charge.hallPassCost,
+      idempotencyKey: `${args.charge.spendKey}:refund`,
+      source: "hosted-image",
+      description: "Hosted image generation refund",
+      metadata: {
+        spendKey: args.charge.spendKey,
+        requestId: args.charge.requestId,
+        reason: args.reason.slice(0, 160),
+      },
+    });
+    await args.ruby.flushSession(args.sessionId);
+  } catch (err) {
+    log.error("hosted-image.refund-failed", err, {
+      sessionId: args.sessionId,
+      spendKey: args.charge.spendKey,
+    });
+  }
+}
+
+function rejectHostedImageChargeError(ctx: ChatRouteContext, err: unknown): void {
+  if (err instanceof HostedImageChargeError) {
+    ctx.error(ctx.res, err.message, err.status);
+    return;
+  }
+  ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
 }
 
 /** Pull the session cookie + API key for an LLM endpoint. The cookie
@@ -1389,13 +1525,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     const stateKey = auth.stateKeyForRecord(record);
     const apiKey = readApiKey(ctx, ruby, stateKey);
+    const entitlements = hostedEntitlementStatus({ ruby, sessionId: stateKey });
     ctx.json(ctx.res, {
       ok: true,
       session: true,
       ai: !!apiKey,
       ai_provider: llmProviderName(),
       local_ai: isLocalLlmProvider(),
-      hosted_ai: hostedAiStatus(ruby, stateKey),
+      hosted_ai: entitlements.hosted_ai,
+      entitlements,
       since: record.createdAt,
       label: record.label ?? "Guest",
     });
@@ -1436,13 +1574,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const record = auth.resolve(auth.parseSessionToken(ctx.cookieHeader));
     const stateKey = record ? auth.stateKeyForRecord(record) : "";
     const apiKey = record ? readApiKey(ctx, ruby, stateKey) : null;
+    const entitlements = record ? hostedEntitlementStatus({ ruby, sessionId: stateKey }) : null;
     ctx.json(ctx.res, {
       authed: !!record,
       session: !!record,
       ai: !!apiKey && !!record,
       ai_provider: llmProviderName(),
       local_ai: isLocalLlmProvider(),
-      hosted_ai: record ? hostedAiStatus(ruby, stateKey) : null,
+      hosted_ai: entitlements?.hosted_ai ?? null,
+      entitlements,
       since: record?.createdAt ?? null,
       label: record?.label ?? null,
     });
@@ -1473,10 +1613,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // whether the client is "authed" for chat actions. Both can be present
     // independently — a fresh tab might have a cookie from a prior session
     // and want history but not have a key yet (or vice versa).
+    const stateKey = auth.stateKeyForRecord(record);
+    const entitlements = hostedEntitlementStatus({ ruby, sessionId: stateKey });
     ctx.json(ctx.res, {
-      authed: !!readApiKey(ctx, ruby, auth.stateKeyForRecord(record)),
+      authed: !!readApiKey(ctx, ruby, stateKey),
       local_ai: isLocalLlmProvider(),
-      hosted_ai: hostedAiStatus(ruby, auth.stateKeyForRecord(record)),
+      hosted_ai: entitlements.hosted_ai,
+      entitlements,
       history: publicChatHistory(messages),
     });
     return true;
@@ -2174,7 +2317,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/portrait`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
     const record = auth.resolve(token);
-    const imageCredential = readOpenRouterImageCredential(ctx);
+    const imageCredential = resolveOpenRouterImageCredential({
+      apiKeyHeader: ctx.apiKeyHeader,
+    });
     const apiKey = imageCredential.apiKey;
     if (!token || !record) {
       ctx.error(ctx.res, "Not authenticated.", 401);
@@ -2207,9 +2352,35 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const sessionId = auth.stateKeyForRecord(record);
-    const hallPassCost = imageCredential.hosted ? hostedImageCost("portrait") : 0;
-    if (hallPassCost > 0 && ruby.hallPassBalance(sessionId) < hallPassCost) {
-      ctx.error(ctx.res, `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted portrait.`, 402);
+    let charge: HostedImageCharge;
+    try {
+      charge = await prepareHostedImageCharge({
+        ruby,
+        sessionId,
+        hosted: imageCredential.hosted,
+        route: "character-portrait",
+        costKind: "portrait",
+        body: body as Record<string, unknown> | null,
+        description: "Custom character portrait",
+        fingerprintPayload: {
+          name,
+          personality,
+          playbookId: body?.playbookId ?? null,
+          stats: body?.stats ?? null,
+        },
+      });
+    } catch (err) {
+      rejectHostedImageChargeError(ctx, err);
+      return true;
+    }
+    if (charge.replayUrl) {
+      ctx.json(ctx.res, {
+        ok: true,
+        portraitDataUrl: charge.replayUrl,
+        hallPassCost: charge.hallPassCost,
+        hallPasses: charge.hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      });
       return true;
     }
     let url: string;
@@ -2226,31 +2397,24 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // backward compat — value is now usually an https:// URL.
       url = await maybeUploadPortrait(dataUrl, "portrait");
     } catch (err) {
+      await refundHostedImageCharge({
+        ruby,
+        sessionId,
+        charge,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
       return true;
     }
-    let hallPasses = ruby.hallPassBalance(sessionId);
-    if (hallPassCost > 0) {
-      try {
-        const spend = ruby.spendHallPasses(sessionId, {
-          amount: hallPassCost,
-          idempotencyKey: hostedImageSpendKey("portrait", url),
-          source: "hosted-image",
-          description: "Custom character portrait",
-          metadata: { kind: "portrait" },
-        });
-        await ruby.flushSession(sessionId);
-        hallPasses = spend.state.wallet.hallPasses;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        ctx.error(ctx.res, message, message.startsWith("Not enough Hall Passes") ? 402 : 500);
-        return true;
-      }
-    }
+    const hallPasses = await completeHostedImageCharge({ ruby, sessionId, charge, imageUrl: url });
     ctx.json(ctx.res, {
       ok: true,
       portraitDataUrl: url,
-      ...(imageCredential.hosted ? { hallPassCost, hallPasses } : {}),
+      ...(imageCredential.hosted ? {
+        hallPassCost: charge.hallPassCost,
+        hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      } : {}),
     });
     return true;
   }
@@ -2287,9 +2451,30 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Missing name or personality.", 400);
       return true;
     }
-    const hallPassCost = imageCredential.hosted ? hostedImageCost("portrait") : 0;
-    if (hallPassCost > 0 && ruby.hallPassBalance(sessionId) < hallPassCost) {
-      ctx.error(ctx.res, `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted teacher image.`, 402);
+    let charge: HostedImageCharge;
+    try {
+      charge = await prepareHostedImageCharge({
+        ruby,
+        sessionId,
+        hosted: imageCredential.hosted,
+        route: "teacher-portrait",
+        costKind: "portrait",
+        body: body as Record<string, unknown> | null,
+        description: "Custom teacher portrait",
+        fingerprintPayload: { name, personality },
+      });
+    } catch (err) {
+      rejectHostedImageChargeError(ctx, err);
+      return true;
+    }
+    if (charge.replayUrl) {
+      ctx.json(ctx.res, {
+        ok: true,
+        profileImageUrl: charge.replayUrl,
+        hallPassCost: charge.hallPassCost,
+        hallPasses: charge.hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      });
       return true;
     }
     let url: string;
@@ -2297,31 +2482,24 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const dataUrl = await renderTeacherPortrait({ apiKey, name, personality });
       url = await maybeUploadPortrait(dataUrl, "portrait");
     } catch (err) {
+      await refundHostedImageCharge({
+        ruby,
+        sessionId,
+        charge,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
       return true;
     }
-    let hallPasses = ruby.hallPassBalance(sessionId);
-    if (hallPassCost > 0) {
-      try {
-        const spend = ruby.spendHallPasses(sessionId, {
-          amount: hallPassCost,
-          idempotencyKey: hostedImageSpendKey("portrait", url),
-          source: "hosted-image",
-          description: "Custom teacher portrait",
-          metadata: { kind: "teacher-portrait" },
-        });
-        await ruby.flushSession(sessionId);
-        hallPasses = spend.state.wallet.hallPasses;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        ctx.error(ctx.res, message, message.startsWith("Not enough Hall Passes") ? 402 : 500);
-        return true;
-      }
-    }
+    const hallPasses = await completeHostedImageCharge({ ruby, sessionId, charge, imageUrl: url });
     ctx.json(ctx.res, {
       ok: true,
       profileImageUrl: url,
-      ...(imageCredential.hosted ? { hallPassCost, hallPasses } : {}),
+      ...(imageCredential.hosted ? {
+        hallPassCost: charge.hallPassCost,
+        hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      } : {}),
     });
     return true;
   }
@@ -2332,7 +2510,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/diploma`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
     const record = auth.resolve(token);
-    const imageCredential = readOpenRouterImageCredential(ctx);
+    const imageCredential = resolveOpenRouterImageCredential({
+      apiKeyHeader: ctx.apiKeyHeader,
+    });
     const apiKey = imageCredential.apiKey;
     if (!token || !record) {
       ctx.error(ctx.res, "Not authenticated.", 401);
@@ -2364,9 +2544,39 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Diploma is only available after Senior graduation.", 400);
       return true;
     }
-    const hallPassCost = imageCredential.hosted ? hostedImageCost("diploma") : 0;
-    if (hallPassCost > 0 && ruby.hallPassBalance(sessionId) < hallPassCost) {
-      ctx.error(ctx.res, `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted diploma image.`, 402);
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+    let charge: HostedImageCharge;
+    try {
+      charge = await prepareHostedImageCharge({
+        ruby,
+        sessionId,
+        hosted: imageCredential.hosted,
+        route: "diploma",
+        costKind: "diploma",
+        body,
+        description: "Graduation diploma image",
+        fingerprintPayload: {
+          name: ch.name,
+          personality: ch.personality,
+          bestSubjectFacultyId: highestScoringFaculty(ch.subjectScores),
+          yearbookCount: ch.yearbook?.length ?? 0,
+        },
+      });
+    } catch (err) {
+      rejectHostedImageChargeError(ctx, err);
+      return true;
+    }
+    if (charge.replayUrl) {
+      ruby.setDiplomaImage(sessionId, charge.replayUrl);
+      await ruby.flushSession(sessionId);
+      ctx.json(ctx.res, {
+        ok: true,
+        diplomaImageDataUrl: charge.replayUrl,
+        bestSubject: highestScoringFaculty(ch.subjectScores),
+        hallPassCost: charge.hallPassCost,
+        hallPasses: charge.hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      });
       return true;
     }
     let url: string;
@@ -2378,34 +2588,27 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         bestSubjectFacultyId: highestScoringFaculty(ch.subjectScores),
       });
       url = await maybeUploadPortrait(dataUrl, "diploma");
+      ruby.setDiplomaImage(sessionId, url);
     } catch (err) {
+      await refundHostedImageCharge({
+        ruby,
+        sessionId,
+        charge,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
       return true;
     }
-    ruby.setDiplomaImage(sessionId, url);
-    let hallPasses = ruby.hallPassBalance(sessionId);
-    if (hallPassCost > 0) {
-      try {
-        const spend = ruby.spendHallPasses(sessionId, {
-          amount: hallPassCost,
-          idempotencyKey: hostedImageSpendKey("diploma", url),
-          source: "hosted-image",
-          description: "Graduation diploma image",
-          metadata: { kind: "diploma" },
-        });
-        hallPasses = spend.state.wallet.hallPasses;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        ctx.error(ctx.res, message, message.startsWith("Not enough Hall Passes") ? 402 : 500);
-        return true;
-      }
-    }
-    await ruby.flushSession(sessionId);
+    const hallPasses = await completeHostedImageCharge({ ruby, sessionId, charge, imageUrl: url });
     ctx.json(ctx.res, {
       ok: true,
       diplomaImageDataUrl: url,
       bestSubject: highestScoringFaculty(ch.subjectScores),
-      ...(imageCredential.hosted ? { hallPassCost, hallPasses } : {}),
+      ...(imageCredential.hosted ? {
+        hallPassCost: charge.hallPassCost,
+        hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      } : {}),
     });
     return true;
   }
