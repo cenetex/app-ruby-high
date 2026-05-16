@@ -41,6 +41,8 @@ describe("viewer regression guardrails", () => {
 
     expect(() => new Function(script)).not.toThrow();
     expect(script).toContain("/api/apps/ruby-high/auth/guest");
+    expect(script).toContain('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)');
+    expect(script).toContain("navigator.serviceWorker.getRegistrations()");
     expect(script).toContain('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
   });
 
@@ -170,6 +172,9 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('makeRow("Stats", "stats", buildTeacherStatPills(roll.stats)');
     expect(script).toContain("input.disabled = packImportBusy");
     expect(script).toContain("saveBtn.disabled = packImportBusy || pendingTeacherImageBusy || packQuestionGenerationBusy");
+    expect(script).toContain("clientRequestId: prev.clientRequestId || newPackClientRequestId(\"teacher\")");
+    expect(script).toContain("retryPackNetworkWrite(\"Adding teacher\"");
+    expect(script).toContain("friendlyFetchFailureMessage(err)");
     expect(script).not.toContain('addBtn.textContent = "Add Teacher"');
     expect(script).not.toContain('cancelBtn.textContent = "Cancel"');
     expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');

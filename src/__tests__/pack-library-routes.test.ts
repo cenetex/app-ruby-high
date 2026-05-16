@@ -212,6 +212,7 @@ describe("/pack-library", () => {
       path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
       cookie: "rh_session=alice",
       body: {
+        clientRequestId: "teacher-save-debug-1",
         displayName: "Signal Coach",
         description: "Turns signal notes into study cards.",
         assetTeacherId: "sally-science",
@@ -224,6 +225,21 @@ describe("/pack-library", () => {
       assetTeacherId: "sally-science",
       stats: { head: 3, heart: 1, hustle: 0, honor: 2 },
     });
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+      cookie: "rh_session=alice",
+      body: {
+        clientRequestId: "teacher-save-debug-1",
+        displayName: "Signal Coach",
+        description: "Turns signal notes into study cards.",
+        assetTeacherId: "sally-science",
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.teacher.id).toBe(teacherId);
+    expect(response.body.draft.teachers).toHaveLength(1);
 
     response = await route({
       method: "PATCH",

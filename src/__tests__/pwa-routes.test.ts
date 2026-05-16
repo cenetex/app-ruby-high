@@ -72,6 +72,8 @@ describe("PWA surface", () => {
 
     expect(html).toContain('rel="manifest" href="/api/apps/ruby-high/manifest.webmanifest"');
     expect(html).toContain('rel="apple-touch-icon" href="/api/apps/ruby-high/assets/ruby.png"');
+    expect(html).toContain('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)');
+    expect(html).toContain("navigator.serviceWorker.getRegistrations()");
     expect(html).toContain('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
   });
 

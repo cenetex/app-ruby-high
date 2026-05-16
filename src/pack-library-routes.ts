@@ -172,12 +172,21 @@ export async function handlePackLibraryRoutes(
     const body = await readBody(ctx);
     try {
       const now = Date.now();
+      const clientRequestId = cleanClientRequestId(bodyString(body, "clientRequestId"));
+      if (clientRequestId) {
+        const existing = draft.teachers.find((entry) => entry.clientRequestId === clientRequestId);
+        if (existing) {
+          ctx.json(ctx.res, { ok: true, draft: draftDetail(draft), teacher: teacherDetail(draft, existing) }, 200);
+          return true;
+        }
+      }
       const assetTeacherId = cleanTeacherAssetId(bodyString(body, "assetTeacherId"));
       const profileImageUrl = cleanImageRef(bodyString(body, "profileImageUrl"));
       const stats = cleanTeacherStats(bodyValue(body, "stats"));
       const socialsUrl = cleanHttpUrl(bodyString(body, "socialsUrl"));
       const teacher: StoredDraftTeacherRecord = {
         id: newTeacherId(),
+        ...(clientRequestId ? { clientRequestId } : {}),
         displayName: bodyString(body, "displayName") || bodyString(body, "name") || "New Teacher",
         subject: bodyString(body, "subject"),
         description: bodyString(body, "description"),
@@ -881,6 +890,10 @@ function bodyString(body: Record<string, unknown> | null, key: string): string {
 
 function hasOwn(body: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(body, key);
+}
+
+function cleanClientRequestId(value: string): string {
+  return /^[A-Za-z0-9_-]{8,96}$/.test(value) ? value : "";
 }
 
 function cleanOptionalUrlField(bodyValue: string, key: "socialsUrl"): Partial<StoredDraftTeacherRecord> {

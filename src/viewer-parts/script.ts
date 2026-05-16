@@ -25,6 +25,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const role = "${role}";
   if ("serviceWorker" in navigator && window.isSecureContext) {
     window.addEventListener("load", () => {
+      const isLocalDev = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+      if (isLocalDev) {
+        navigator.serviceWorker.getRegistrations()
+          .then((regs) => regs.forEach((reg) => {
+            if (reg.scope.indexOf("/api/apps/ruby-high/") !== -1) reg.unregister().catch(() => {});
+          }))
+          .catch(() => {});
+        return;
+      }
       navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })
         .catch(() => {});
     });
@@ -6033,6 +6042,33 @@ const VIEWER_SCRIPT_SUFFIX = `
     const stats = pickRandom(TEACHER_STAT_ROLLS);
     return { head: stats.head, heart: stats.heart, hustle: stats.hustle, honor: stats.honor };
   }
+  function newPackClientRequestId(prefix) {
+    return String(prefix || "request") + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+  function isLikelyFetchFailure(err) {
+    const message = err && err.message ? String(err.message) : "";
+    return /failed to fetch|load failed|networkerror|network error/i.test(message);
+  }
+  function friendlyFetchFailureMessage(err) {
+    if (isLikelyFetchFailure(err)) return "Ruby High lost the connection while saving. The app retried once; reload if this keeps happening.";
+    return err && err.message ? err.message : "error";
+  }
+  function waitForPackRetry(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  async function retryPackNetworkWrite(label, fn) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isLikelyFetchFailure(err)) throw err;
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = label + " hit a connection hiccup. Retrying...";
+        packEditStatusEl.classList.remove("is-invalid");
+      }
+      await waitForPackRetry(450);
+      return fn();
+    }
+  }
   function buildTeacherStatPills(stats) {
     const s = stats || { head: 0, heart: 0, hustle: 0, honor: 0 };
     const wrap = document.createElement("div");
@@ -6071,6 +6107,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       ? asset.id
       : (prev.imageChoice === "custom" || profileImageUrl ? "custom" : asset.id);
     pendingTeacherRoll = {
+      clientRequestId: prev.clientRequestId || newPackClientRequestId("teacher"),
       displayName,
       subject: style.subject || asset.subject,
       description: style.description || asset.description,
@@ -6408,8 +6445,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!currentDraft || !pendingTeacherRoll || packImportBusy || pendingTeacherImageBusy || packQuestionGenerationBusy) return;
     setPackBusy(true);
     if (packEditStatusEl) packEditStatusEl.textContent = "Adding teacher...";
+    const clientRequestId = pendingTeacherRoll.clientRequestId || newPackClientRequestId("teacher");
+    pendingTeacherRoll = { ...pendingTeacherRoll, clientRequestId };
     try {
-      currentDraft = await packStudioClient.addTeacherToDraft(currentDraft.id, {
+      currentDraft = await retryPackNetworkWrite("Adding teacher", () => packStudioClient.addTeacherToDraft(currentDraft.id, {
+        clientRequestId,
         displayName: pendingTeacherRoll.displayName,
         subject: pendingTeacherRoll.subject,
         description: pendingTeacherRoll.description,
@@ -6417,7 +6457,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         assetTeacherId: pendingTeacherRoll.assetTeacherId,
         profileImageUrl: pendingTeacherRoll.profileImageUrl,
         stats: pendingTeacherRoll.stats,
-      });
+      }));
       selectedPackTeacherId = currentDraft.teachers[currentDraft.teachers.length - 1].id;
       packTeacherCreateMode = false;
       pendingTeacherRoll = null;
@@ -6427,7 +6467,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (packEditStatusEl) packEditStatusEl.textContent = "Teacher added.";
     } catch (err) {
       if (packEditStatusEl) {
-        packEditStatusEl.textContent = "Could not add teacher · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.textContent = "Could not add teacher · " + friendlyFetchFailureMessage(err);
         packEditStatusEl.classList.add("is-invalid");
       }
     } finally {
