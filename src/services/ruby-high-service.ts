@@ -58,6 +58,7 @@ import {
   type RoomBoardSnapshot,
   type RoundOutcome,
   type SchoolEvent,
+  type StudentPoolEntry,
   type TeachingRoomId,
   type RubyHighWalletTransaction,
   type RubyHighWalletTransactionKind,
@@ -197,6 +198,7 @@ export interface QuestionBankStatus {
 const SCHOOL_EVENT_LIMIT = 80;
 const ESSAY_REPORT_LIMIT = 100;
 const WALLET_TRANSACTION_LIMIT = 200;
+const STUDENT_POOL_LIMIT = 50;
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -890,6 +892,7 @@ export class RubyHighService extends Service {
         hasSeenIntro: true,
         activePackId: null,
         character: null,
+        studentPool: [],
         schoolEvents: [],
         essayReports: [],
         npcRosters: {},
@@ -2054,6 +2057,7 @@ export class RubyHighService extends Service {
         sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, reward: normalizedReward.kind,
       });
     } else {
+      this.archiveCompletedCharacter(state, ch);
       log.event("player.graduated", {
         sessionId: state.sessionId, character: ch.name, reward: normalizedReward.kind,
       });
@@ -3027,6 +3031,66 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  private studentPoolIdFor(ch: PlayerCharacter): string {
+    const created = Number.isFinite(Number(ch.createdAt)) ? Math.floor(Number(ch.createdAt)) : 0;
+    const firstCompletion = ch.yearbook?.[0]?.completedAt ?? Date.now();
+    const seed = created > 0 ? created : firstCompletion;
+    const name = ch.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "student";
+    const playbook = ch.playbookId.replace(/[^a-z0-9-]+/gi, "-").slice(0, 32) || "playbook";
+    return `student_${seed}_${name}_${playbook}`;
+  }
+
+  private archiveCompletedCharacter(state: QuizState, ch: PlayerCharacter): StudentPoolEntry | null {
+    const yearbook = Array.isArray(ch.yearbook) ? ch.yearbook : [];
+    if (yearbook.length < GRADES.length) return null;
+    const completedTimes = yearbook.map((y) => Number(y.completedAt) || 0);
+    const completedAt = Math.max(...completedTimes) || Date.now();
+    const entry: StudentPoolEntry = {
+      id: this.studentPoolIdFor(ch),
+      name: ch.name,
+      playbookId: ch.playbookId,
+      stats: { ...ch.stats },
+      arcAnswer: ch.arcAnswer,
+      ...(ch.flavorQuote ? { flavorQuote: ch.flavorQuote } : {}),
+      personality: ch.personality,
+      ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
+      ...(ch.diplomaImageDataUrl ? { diplomaImageDataUrl: ch.diplomaImageDataUrl } : {}),
+      yearbook: yearbook.map((y) => ({ ...y, stats: y.stats ? { ...y.stats } : undefined })),
+      ...(ch.levelUps ? { levelUps: ch.levelUps.map((l) => ({ ...l, reward: { ...l.reward } })) } : {}),
+      ...(ch.inheritedFrom ? { inheritedFrom: { ...ch.inheritedFrom } } : {}),
+      ...(ch.mashCard ? { mashCard: ensureMashCard(ch.mashCard) } : {}),
+      createdAt: Number.isFinite(Number(ch.createdAt)) ? Math.floor(Number(ch.createdAt)) : completedAt,
+      completedAt,
+    };
+
+    const pool = Array.isArray(state.studentPool) ? [...state.studentPool] : [];
+    const existing = pool.findIndex((student) => student.id === entry.id);
+    if (existing >= 0) pool[existing] = entry;
+    else pool.push(entry);
+    pool.sort((a, b) => a.completedAt - b.completedAt || a.name.localeCompare(b.name));
+    state.studentPool = pool.slice(-STUDENT_POOL_LIMIT);
+    return entry;
+  }
+
+  private resetActiveCharacterProgress(state: QuizState): void {
+    state.current = null;
+    state.lastReveal = null;
+    state.activeRound = null;
+    state.pendingRoll = null;
+    state.askedQuestionIds = [];
+    state.cardMemory = {};
+    state.roomBoards = {};
+    state.currentGrade = DEFAULT_GRADE;
+    state.completedGrades = [];
+    state.hasSeenIntro = true;
+    state.schoolEvents = [];
+    state.essayReports = [];
+    state.npcRosters = {};
+    state.npcCohort = initialNpcCohort();
+    this.ensureRoster(state, DEFAULT_GRADE);
+    this.transition(state, { kind: "clear-board" });
+  }
+
   /** Create the player's character sheet. Throws if one already exists. */
   createCharacter(
     sessionId: string,
@@ -3056,6 +3120,7 @@ export class RubyHighService extends Service {
       const cell = seed ? mashCard.cells[seed] : undefined;
       if (cell) applyMashTick(cell, 1);
     }
+    this.resetActiveCharacterProgress(state);
     state.character = {
       name,
       playbookId: input.playbookId,
@@ -3085,6 +3150,7 @@ export class RubyHighService extends Service {
     const stored = normalizeStoredImageRef(portraitDataUrl, "portraitDataUrl");
     if (!stored) throw new Error("portraitDataUrl is required.");
     state.character.portraitDataUrl = stored;
+    this.archiveCompletedCharacter(state, state.character);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -3096,6 +3162,7 @@ export class RubyHighService extends Service {
     const stored = normalizeStoredImageRef(diplomaImageDataUrl, "diplomaImageDataUrl");
     if (!stored) throw new Error("diplomaImageDataUrl is required.");
     state.character.diplomaImageDataUrl = stored;
+    this.archiveCompletedCharacter(state, state.character);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -3112,6 +3179,7 @@ export class RubyHighService extends Service {
     // whether the offer was accepted.
     const prev = state.character;
     if (prev && (prev.yearbook ?? []).length >= 4) {
+      this.archiveCompletedCharacter(state, prev);
       const playbook = PLAYBOOKS.find((p) => p.id === prev.playbookId);
       if (playbook) {
         state.mentorOffer = {
@@ -3123,7 +3191,7 @@ export class RubyHighService extends Service {
       }
     }
     state.character = null;
-    state.schoolEvents = [];
+    this.resetActiveCharacterProgress(state);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -3485,6 +3553,66 @@ function normalizeEssayReports(value: unknown): EssayReport[] {
   return out.slice(-ESSAY_REPORT_LIMIT);
 }
 
+function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
+  if (!Array.isArray(value)) return [];
+  const out: StudentPoolEntry[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const name = typeof e.name === "string" && e.name.trim() ? e.name.trim() : "";
+    const playbookId = typeof e.playbookId === "string" && e.playbookId.trim() ? e.playbookId.trim() : "";
+    const id = typeof e.id === "string" && e.id.trim() ? e.id.trim() : "";
+    if (!id || !name || !playbookId) continue;
+    const statsRaw = e.stats && typeof e.stats === "object" ? e.stats as Partial<CharacterStats> : {};
+    const stats: CharacterStats = {
+      head: Math.floor(Number(statsRaw.head ?? 0)),
+      heart: Math.floor(Number(statsRaw.heart ?? 0)),
+      hustle: Math.floor(Number(statsRaw.hustle ?? 0)),
+      honor: Math.floor(Number(statsRaw.honor ?? 0)),
+    };
+    const yearbook = Array.isArray(e.yearbook)
+      ? e.yearbook
+        .filter((entry): entry is PlayerCharacter["yearbook"][number] =>
+          !!entry
+          && typeof entry === "object"
+          && typeof (entry as { grade?: unknown }).grade === "string"
+          && (GRADES as string[]).includes((entry as { grade: string }).grade)
+          && typeof (entry as { completedAt?: unknown }).completedAt === "number",
+        )
+        .map((entry) => ({ ...entry, stats: entry.stats ? { ...entry.stats } : undefined }))
+      : [];
+    if (yearbook.length < GRADES.length) continue;
+    const completedAt = typeof e.completedAt === "number" && Number.isFinite(e.completedAt)
+      ? Math.floor(e.completedAt)
+      : Math.max(...yearbook.map((entry) => Number(entry.completedAt) || 0), Date.now());
+    const createdAt = typeof e.createdAt === "number" && Number.isFinite(e.createdAt)
+      ? Math.floor(e.createdAt)
+      : completedAt;
+    const entry: StudentPoolEntry = {
+      id,
+      name,
+      playbookId,
+      stats,
+      arcAnswer: typeof e.arcAnswer === "string" ? e.arcAnswer : "",
+      ...(typeof e.flavorQuote === "string" && e.flavorQuote ? { flavorQuote: e.flavorQuote } : {}),
+      personality: typeof e.personality === "string" ? e.personality : "",
+      ...(typeof e.portraitDataUrl === "string" && e.portraitDataUrl ? { portraitDataUrl: e.portraitDataUrl } : {}),
+      ...(typeof e.diplomaImageDataUrl === "string" && e.diplomaImageDataUrl ? { diplomaImageDataUrl: e.diplomaImageDataUrl } : {}),
+      yearbook,
+      ...(Array.isArray(e.levelUps) ? { levelUps: e.levelUps as StudentPoolEntry["levelUps"] } : {}),
+      ...(e.inheritedFrom && typeof e.inheritedFrom === "object"
+        ? { inheritedFrom: e.inheritedFrom as StudentPoolEntry["inheritedFrom"] }
+        : {}),
+      ...(e.mashCard && typeof e.mashCard === "object" ? { mashCard: ensureMashCard(e.mashCard as MashCard) } : {}),
+      createdAt,
+      completedAt,
+    };
+    out.push(entry);
+  }
+  out.sort((a, b) => a.completedAt - b.completedAt || a.name.localeCompare(b.name));
+  return out.slice(-STUDENT_POOL_LIMIT);
+}
+
 function normalizeLoaded(s: QuizState): QuizState {
   // Migrate stale K-8 grades from previous schema versions to a high-school
   // grade so the player isn't stranded on a grade that no longer exists.
@@ -3512,6 +3640,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     completedGrades: migratedCompleted,
     hasSeenIntro: !!s.hasSeenIntro,
     activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
+    studentPool: normalizeStudentPool((s as { studentPool?: unknown }).studentPool),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},

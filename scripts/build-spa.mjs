@@ -184,6 +184,7 @@ function offlineApiScript(data) {
       hasSeenIntro: true,
       activePackId: "ruby-high-original",
       character: null,
+      studentPool: [],
       schoolEvents: [],
       npcRosters: {
         "9": buildNpcRoster("9"),
@@ -492,6 +493,7 @@ function offlineApiScript(data) {
 
   function createCharacter(state, body) {
     const playbook = DATA.playbooks.find(function(p) { return p.id === body.playbookId; }) || DATA.playbooks[0];
+    resetActiveCharacterProgress(state);
     state.character = {
       name: String(body.name || "Student"),
       playbookId: playbook.id,
@@ -511,11 +513,65 @@ function offlineApiScript(data) {
       mashCard: emptyMashCard(),
       createdAt: now()
     };
+    return state;
+  }
+
+  function studentPoolIdFor(ch) {
+    const seed = Number(ch && ch.createdAt) || (ch && ch.yearbook && ch.yearbook[0] && Number(ch.yearbook[0].completedAt)) || now();
+    const name = String(ch && ch.name || "student").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "student";
+    const playbook = String(ch && ch.playbookId || "playbook").replace(/[^a-z0-9-]+/gi, "-").slice(0, 32) || "playbook";
+    return "student_" + seed + "_" + name + "_" + playbook;
+  }
+
+  function archiveCompletedCharacter(state, ch) {
+    if (!ch || !Array.isArray(ch.yearbook) || ch.yearbook.length < 4) return null;
+    const completedAt = Math.max.apply(null, ch.yearbook.map(function(y) { return Number(y.completedAt) || 0; })) || now();
+    const entry = {
+      id: studentPoolIdFor(ch),
+      name: String(ch.name || "Student"),
+      playbookId: String(ch.playbookId || "overachiever"),
+      stats: clone(ch.stats || { head: 0, heart: 0, hustle: 0, honor: 0 }),
+      arcAnswer: String(ch.arcAnswer || ""),
+      personality: String(ch.personality || ""),
+      yearbook: ch.yearbook.map(function(y) { return Object.assign({}, y, y.stats ? { stats: clone(y.stats) } : {}); }),
+      createdAt: Number(ch.createdAt) || completedAt,
+      completedAt
+    };
+    if (ch.flavorQuote) entry.flavorQuote = String(ch.flavorQuote);
+    if (ch.portraitDataUrl) entry.portraitDataUrl = String(ch.portraitDataUrl);
+    if (ch.diplomaImageDataUrl) entry.diplomaImageDataUrl = String(ch.diplomaImageDataUrl);
+    if (ch.levelUps) entry.levelUps = clone(ch.levelUps);
+    if (ch.inheritedFrom) entry.inheritedFrom = clone(ch.inheritedFrom);
+    if (ch.mashCard) entry.mashCard = clone(ch.mashCard);
+    const pool = Array.isArray(state.studentPool) ? state.studentPool.slice() : [];
+    const existing = pool.findIndex(function(s) { return s.id === entry.id; });
+    if (existing >= 0) pool[existing] = entry;
+    else pool.push(entry);
+    pool.sort(function(a, b) { return Number(a.completedAt || 0) - Number(b.completedAt || 0) || String(a.name || "").localeCompare(String(b.name || "")); });
+    state.studentPool = pool.slice(-50);
+    return entry;
+  }
+
+  function resetActiveCharacterProgress(state) {
+    state.current = null;
+    state.lastReveal = null;
+    state.activeRound = null;
+    state.pendingRoll = null;
+    state.askedQuestionIds = [];
     state.currentGrade = "9";
     state.completedGrades = [];
     state.hasSeenIntro = true;
+    state.schoolEvents = [];
+    state.npcRosters = {
+      "9": buildNpcRoster("9"),
+      "10": buildNpcRoster("10"),
+      "11": buildNpcRoster("11"),
+      "12": buildNpcRoster("12")
+    };
+    state.npcCohort = STUDENT_IDS.map(function(id) {
+      return { id, grade: "9", streak: { grade: "9", count: 0 }, completedGrades: [], graduated: false };
+    });
     transition(state, "in-room");
-    return state;
   }
 
   function handleCommand(body) {
@@ -553,12 +609,10 @@ function offlineApiScript(data) {
       state = createCharacter(state, body || {});
       message = "Character created";
     } else if (type === "clear-character") {
+      archiveCompletedCharacter(state, state.character);
       state.character = null;
-      state.current = null;
-      state.lastReveal = null;
-      state.activeRound = null;
-      transition(state, "in-room");
-      message = "Character cleared";
+      resetActiveCharacterProgress(state);
+      message = "Active slot cleared";
     } else if (type === "set-portrait") {
       if (state.character) state.character.portraitDataUrl = String(body.portraitDataUrl || "");
       message = "Portrait updated";
@@ -727,6 +781,7 @@ function offlineApiScript(data) {
       active_round: activeRoundView(state),
       is_opinion: false,
       character: state.character,
+      student_pool: state.studentPool || [],
       school_events: state.schoolEvents || [],
       playbooks: DATA.playbooks,
       daily: { available: !!state.character, facultyId: state.faculty === "lounge" ? "ruby" : state.faculty, dailyKey: dailyKey() },
