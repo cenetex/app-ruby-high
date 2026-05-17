@@ -742,6 +742,32 @@ describe("RubyHighService Phase 1", () => {
     expect(after.character!.streak).toEqual({ grade: "9", count: 3, lastDate: "2026-05-04" });
   });
 
+  it("lets explicit practice review a completed class even when no card is due", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:post-class-practice-force";
+    const pack = fakeLeveledPack("pack:post-class-practice-force");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "12");
+
+    const answeredIds: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+      answeredIds.push(posed.current!.id);
+      ruby.submitAnswer(sid, posed.current!.correct!);
+      ruby.clearBoard(sid);
+    }
+
+    expect(ruby.courseProgress(sid, "level-test-course").today.status).toBe("complete");
+    expect(ruby.questionBankStatus(sid, "level-test-course").canPick).toBe(false);
+
+    const practice = ruby.pickAndPose(sid, { faculty: "level-test-course", mode: "practice" });
+    expect(practice.current).not.toBeNull();
+    expect(answeredIds).toContain(practice.current!.id);
+    expect(practice.activeRound?.classSession?.mode).toBe("practice");
+  });
+
   it("applies 2x class mastery credit when carrying a two-day streak", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-score-two-day";

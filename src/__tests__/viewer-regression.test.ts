@@ -257,10 +257,14 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
 
     expect(script).toContain("async function startPostClassPractice(postClass)");
-    expect(script).toContain('await command({ type: "pick", mode: "practice" })');
+    expect(script).toContain('type: "pick"');
+    expect(script).toContain('mode: "practice"');
+    expect(script).toContain("faculty: lastTelemetry && lastTelemetry.faculty");
     expect(script).toContain('intent: "advance"');
     expect(script).toContain('runAgentTurn("manual"');
     expect(script).toContain("if (postClass.report)");
+    expect(script).toContain("function subjectDisplayName(fid, progress)");
+    expect(script).toContain("subjectDisplayName(cg.facultyId, cg.progress)");
   });
 
   it("builds the class report with full-body teacher standee art and a score metric", () => {

@@ -1641,7 +1641,7 @@ export class RubyHighService extends Service {
   private pickReviewQuestion(
     state: QuizState,
     facultyId: string,
-    filter: { subject?: string; difficulty?: Difficulty; allowedDifficulties?: Iterable<Difficulty> } = {},
+    filter: { subject?: string; difficulty?: Difficulty; allowedDifficulties?: Iterable<Difficulty>; allowUndue?: boolean } = {},
     now = Date.now(),
   ): BankedQuestion | null {
     const all = this.eligibleCourseQuestions(state, facultyId, {
@@ -1658,6 +1658,7 @@ export class RubyHighService extends Service {
       const legacyDue: BankedQuestion[] = [];
       const fresh: BankedQuestion[] = [];
       const masteredDue: BankedQuestion[] = [];
+      const undue: BankedQuestion[] = [];
       for (const q of pool) {
         const currentUnresolved =
           state.current?.id === q.id &&
@@ -1671,6 +1672,8 @@ export class RubyHighService extends Service {
           if (m.phase === "mastered") masteredDue.push(q);
           else if (m.lastReviewedAt == null) legacyDue.push(q);
           else due.push(q);
+        } else if (filter.allowUndue && m) {
+          undue.push(q);
         }
       }
       due.sort((a, b) => {
@@ -1690,7 +1693,14 @@ export class RubyHighService extends Service {
         const mb = memory[cardMemoryKey(facultyId, b.id)]!;
         return ma.dueAt - mb.dueAt;
       });
-      return masteredDue[0] ?? null;
+      if (masteredDue.length > 0) return masteredDue[0]!;
+      undue.sort((a, b) => {
+        const ma = memory[cardMemoryKey(facultyId, a.id)]!;
+        const mb = memory[cardMemoryKey(facultyId, b.id)]!;
+        return (ma.lastReviewedAt ?? 0) - (mb.lastReviewedAt ?? 0)
+          || ma.dueAt - mb.dueAt;
+      });
+      return undue[0] ?? null;
     };
     return choose(preferred.length > 0 ? preferred : all) ?? (preferred.length > 0 ? choose(all) : null);
   }
@@ -2849,6 +2859,7 @@ export class RubyHighService extends Service {
           subject: filter.subject,
           difficulty,
           allowedDifficulties,
+          allowUndue: filter.mode === "practice",
         }) ?? undefined;
     return { facultyId, cardRole, importedReviewCourse, difficulty, question };
   }

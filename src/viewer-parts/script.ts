@@ -131,6 +131,12 @@ const VIEWER_SCRIPT_SUFFIX = `
   function teacherShortName(faculty, fallback) {
     return (faculty && (faculty.shortName || faculty.displayName)) || fallback || "Teacher";
   }
+  function subjectDisplayName(fid, progress) {
+    const known = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
+    if (known[fid]) return known[fid];
+    const p = progress || subjectProgressForFaculty(fid);
+    return (p && (p.displayName || p.shortName)) || fid || "Subject";
+  }
   function questionsLeftInClass(today) {
     const total = Number(today && today.totalQuestions || 3);
     const done = Number(today && today.questionCount || 0);
@@ -195,12 +201,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     const report = !!(t && activeDailyClassIsComplete(t) && !t.current && !t.graduation_ready);
     const nextRole = (progress && progress.nextCardRole) || "";
     const canPick = scheduledCanPick(t);
+    const hasBank = Number(progress && progress.total || 0) > 0;
     return {
       report,
       nextRole,
       canPick,
       socialReady: report && canPick && nextRole === "social",
-      practiceReady: report && canPick && nextRole !== "social",
+      practiceReady: report && nextRole !== "social" && (canPick || hasBank),
     };
   }
   function nextQuestionButtonLabel(t) {
@@ -3107,12 +3114,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     const manualTurn = turnController.beginManual();
     if (!manualTurn) return true;
     try {
-      if (postClass.canPick) {
-        const data = await command({ type: "pick", mode: "practice" });
-        if (data && !data.noQuestionDue) {
-          lockedFor = null;
-          return true;
-        }
+      const data = await command({
+        type: "pick",
+        mode: "practice",
+        faculty: lastTelemetry && lastTelemetry.faculty,
+      });
+      if (data && !data.noQuestionDue) {
+        lockedFor = null;
+        return true;
       }
       if (teacherChatEnabled()) {
         await runAgentTurn("manual", {
@@ -3790,7 +3799,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         if (Array.isArray(r.classProgress)) {
           for (const cp of r.classProgress) {
             const meta = SUBJECT_GATE_META.find((m) => m.facultyId === cp.facultyId)
-              || { label: cp.facultyId, icon: "□" };
+              || { label: subjectDisplayName(cp.facultyId, cp.progress), icon: "□" };
             const met = cp.progress
               ? Number(cp.progress.completedClasses || 0) >= Number(cp.progress.requiredClasses || 0) && letterGradePasses(cp.grade)
               : letterGradePasses(cp.grade);
@@ -4301,8 +4310,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     const streakLastDate = c.streak && c.streak.grade === grade ? c.streak.lastDate : "";
     const todayKey = (t.daily && t.daily.dailyKey) || "";
     const todayDone = !!(c.streak && c.streak.grade === grade && c.streak.lastDate === todayKey);
-    const ROOM_LABEL = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
-
     const streakNeeded = Math.max(0, streakReq - streakHere);
     const subjectGaps = subjectClearSummary().grades
       .filter((x) => !letterGradePasses(x.grade));
@@ -4314,7 +4321,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       parts.push("Daily class counted — " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
     if (subjectGaps.length > 0) {
-      const segs = subjectGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + subjectProgressShortLabel(cg.progress) + ")");
+      const segs = subjectGaps.map((cg) => subjectDisplayName(cg.facultyId, cg.progress) + " (" + subjectProgressShortLabel(cg.progress) + ")");
       parts.push("Clear each subject at C or better: " + segs.join(", "));
     }
 
