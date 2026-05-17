@@ -324,19 +324,26 @@ export const VIEWER_CSS = `
     padding: 2px 7px;
     border-radius: 999px;
   }
-  .channel-row .subject-status-pill {
-    margin-left: auto;
-    flex: 0 0 auto;
-    color: #f0b441;
-    font-size: 10px;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: rgba(240,180,65,0.12);
-    border: 1px solid rgba(240,180,65,0.22);
-    border-radius: 7px;
-    padding: 3px 6px;
-    line-height: 1;
+  .channel-row.room-row {
+    min-height: 52px;
+    align-items: center;
+  }
+  .room-row-meta {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .room-row-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+    line-height: 1.1;
+  }
+  .room-completion-meter {
+    margin-top: 1px;
   }
   .room-student-stack {
     margin-left: 8px;

@@ -113,6 +113,17 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('" Merit Stars · "');
   });
 
+  it("keeps answer reveals until player advance and uses room completion dots", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(script).not.toContain("clearResolvedBoardAfterTeacherTurn");
+    expect(script).toContain("function buildRoomCompletionMeter(fac)");
+    expect(script).toContain("if (phase === \"revealed\")");
+    expect(script).not.toContain("subjectMark.textContent = fac.courseGrade");
+    expect(cssRule(".channel-row.room-row")).toContain("min-height: 52px");
+    expect(cssRule(".room-row-meta")).toContain("flex-direction: column");
+  });
+
   it("routes bug reports through the first-party issue endpoint", () => {
     const html = renderedViewer();
     const script = inlineScript(html);

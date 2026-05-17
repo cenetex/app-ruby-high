@@ -2440,18 +2440,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     runAgentTurn("room-idle", { grade: t.current_grade, questionId: round.questionId }, { force: true });
   }
 
-  async function clearResolvedBoardAfterTeacherTurn(trigger, streamGuard) {
-    if (trigger !== "answer-graded" && trigger !== "room-idle") return;
-    if (!chatStreamStillCurrent(streamGuard)) return;
-    const t = lastTelemetry;
-    if (!t || t.faculty === LOUNGE_ID) return;
-    if (t.graduation_ready || (t.character && t.character.pendingGraduation) || (t.character && graduatedFor(t.character))) return;
-    if (!currentRevealMatches(t)) return;
-    if (currentRevealCompletedClass(t)) return;
-    await command({ type: "clear" });
-    lockedFor = null;
-  }
-
   function recentRelationshipEvents() {
     const events = (lastTelemetry && Array.isArray(lastTelemetry.school_events))
       ? lastTelemetry.school_events
@@ -2701,6 +2689,32 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     return meter;
   }
+  function roomCompletionProgress(fac) {
+    if (!fac) return null;
+    const total = Math.max(0, Math.floor(Number(fac.requiredClasses || 0)));
+    if (total <= 0) return null;
+    const value = Math.max(0, Math.min(Math.floor(Number(fac.completedClasses || 0)), total));
+    return { value, total };
+  }
+  function roomCompletionLabel(fac, progress) {
+    const roomName = (fac && (fac.shortName || fac.displayName)) || "Room";
+    return roomName + " daily classes " + progress.value + " of " + progress.total;
+  }
+  function buildRoomCompletionMeter(fac) {
+    const progress = roomCompletionProgress(fac);
+    if (!progress) return null;
+    const meter = document.createElement("span");
+    meter.className = "student-year-meter room-completion-meter";
+    const label = roomCompletionLabel(fac, progress);
+    meter.title = label;
+    meter.setAttribute("aria-label", label);
+    for (let i = 0; i < progress.total; i += 1) {
+      const segment = document.createElement("span");
+      segment.className = "student-year-segment" + (i < progress.value ? " is-filled" : "");
+      meter.appendChild(segment);
+    }
+    return meter;
+  }
   function buildStudentFaceChip(studentId, className) {
     const s = STUDENTS.find((x) => x.id === studentId);
     const chip = document.createElement("span");
@@ -2779,9 +2793,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     const cohort = t.room_cohort || {};
     rooms.forEach((room) => {
       const fac = roster.find((f) => f.id === room.teacherId);
-      const row = document.createElement("button");
       const isActive = !!(fac && t.faculty === fac.id);
-      row.className = "channel-row" + (isActive ? " is-active" : "");
+      const row = document.createElement("button");
+      row.className = "channel-row room-row" + (isActive ? " is-active" : "");
       row.dataset.faculty = fac ? fac.id : "";
       if (fac) {
         const thumb = document.createElement("span");
@@ -2810,10 +2824,17 @@ const VIEWER_SCRIPT_SUFFIX = `
       hash.className = "hash";
       hash.textContent = "#";
       row.appendChild(hash);
+      const meta = document.createElement("span");
+      meta.className = "room-row-meta";
       const name = document.createElement("span");
-      name.style.flex = "1 1 auto";
+      name.className = "room-row-name";
       name.textContent = room.channelName;
-      row.appendChild(name);
+      meta.appendChild(name);
+      if (fac) {
+        const meter = buildRoomCompletionMeter(fac);
+        if (meter) meta.appendChild(meter);
+      }
+      row.appendChild(meta);
       const cohortIds = (cohort[room.id] || []).filter((sid) => shouldShowStudentId(sid));
       if (cohortIds.length > 0) {
         const students = document.createElement("span");
@@ -2830,15 +2851,6 @@ const VIEWER_SCRIPT_SUFFIX = `
           students.appendChild(buildStudentFaceChip(sid, "room-student-chip"));
         });
         row.appendChild(students);
-      }
-      if (fac && fac.courseGrade) {
-        const subjectMark = document.createElement("span");
-        subjectMark.className = "subject-status-pill";
-        const done = Number(fac.completedClasses || 0);
-        const required = Number(fac.requiredClasses || 0);
-        subjectMark.title = done + "/" + required + " daily classes passed";
-        subjectMark.textContent = fac.courseGrade;
-        row.appendChild(subjectMark);
       }
       row.addEventListener("click", () => fac && setFaculty(fac.id));
       els.channelsList.appendChild(row);
@@ -3145,7 +3157,8 @@ const VIEWER_SCRIPT_SUFFIX = `
           await runPlayerChatTurn("report");
           return;
         }
-        await runPlayerChatTurn("report");
+        await command({ type: "clear" });
+        lockedFor = null;
         return;
       }
       await runPlayerChatTurn("class");
@@ -7687,7 +7700,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (chatStreamStillCurrent(streamGuard)) appendSystem("teacher offline · " + (err && err.message ? err.message : "error"));
     } finally {
       agentTurn.finish();
-      await clearResolvedBoardAfterTeacherTurn(trigger, streamGuard);
     }
   }
 

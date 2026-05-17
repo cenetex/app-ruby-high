@@ -1882,14 +1882,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         directive = `React in ONE short sentence to the round that just resolved: ${resolved.pickedLine}.${classGrade} The class report is on the blackboard now; do not call tools or put another question on the board.`;
       } else {
         const pickedLine = resolved.pickedLine;
-        // The scheduler may have already auto-posted the next question by
-        // the time we compose. The teacher should react to the round that
-        // just resolved (described in RECENT EVENTS), not to whatever new
-        // question the BOARD context shows. Both cases below say so
-        // explicitly so the model isn't reconciling two boards.
-        directive = schedulerControlsBoard
-          ? `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). The scheduler handles the next question on its own; if a new question already shows on the board, ignore it for this turn — you'll be fired again when the player engages with it. ${schedulerBoundaryInstruction(bank)}`
-          : `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). ${nextBoardInstruction(bank, "Then call pick_from_bank to put the next question on the board.")}`;
+        disableToolsForTurn = true;
+        directive = `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). Do not call tools or put another question on the board; the player will continue when ready.`;
       }
     } else if (trigger === "room-idle") {
       // disableToolsForTurn is already correct: shouldDisableTools() lets
@@ -1977,7 +1971,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // when available or asking it once for a custom practice challenge.
       const manualAdvanceNeedsFreshQuestion = trigger === "manual" && contextIntent === "advance" && !classReportBlocksBoard;
       const needsFreshQuestion = manualAdvanceNeedsFreshQuestion
-        || (!disableToolsForTurn && (trigger === "channel-enter" || trigger === "answer-graded" || trigger === "room-idle"));
+        || (!disableToolsForTurn && (trigger === "channel-enter" || trigger === "room-idle"));
       if (needsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         const latestBank = ruby.questionBankStatus(agentSessionId, faculty);
