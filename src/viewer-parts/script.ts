@@ -5085,7 +5085,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const tile = document.createElement("button");
       tile.type = "button";
       tile.className = "comic-page-tile" + (unlock ? " is-unlocked" : " is-locked");
-      tile.setAttribute("aria-label", unlock ? "Open " + pageTitle : pageTitle + " locked");
+      tile.setAttribute("aria-label", unlock ? "Open " + pageTitle : "Comic page " + pageNumber + " locked");
       if (!unlock) tile.disabled = true;
 
       if (unlock) {
