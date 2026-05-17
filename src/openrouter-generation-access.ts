@@ -77,5 +77,5 @@ export function hasOpenRouterGenerationAccess(args: {
 }
 
 export function openRouterGenerationRequiredMessage(action: string): string {
-  return `Enable OpenRouter AI before ${action}.`;
+  return `Connect OpenRouter before ${action}.`;
 }

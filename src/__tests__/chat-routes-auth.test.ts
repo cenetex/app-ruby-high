@@ -6,7 +6,7 @@ import { handleChatRoutes, type ChatRouteContext } from "../chat-routes.js";
 import { AuthService } from "../services/auth-service.js";
 import { ChatService } from "../services/chat-service.js";
 import { FacultyService } from "../services/faculty-service.js";
-import { RubyHighService } from "../services/ruby-high-service.js";
+import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
 import { setPrivyAuthVerifierForTest } from "../services/privy-auth.js";
@@ -99,6 +99,14 @@ function makeCtx(url: URL, res: TestResponse, opts: {
     },
     readJsonBody: async () => opts.body ?? {},
   };
+}
+
+function emptyWelcomeHallPasses(stateKey: string): void {
+  ruby.revokeHallPasses(stateKey, {
+    amount: WELCOME_HALL_PASS_GRANT,
+    idempotencyKey: `test:empty-welcome:${stateKey}`,
+    source: "admin",
+  });
 }
 
 function buildSseChunk(text: string): Uint8Array {
@@ -319,8 +327,8 @@ describe("hosted AI day pass auth", () => {
     expect(me.entitlements.hosted_images.portrait).toMatchObject({
       configured: true,
       cost: 1,
-      affordable: false,
-      canUseHosted: false,
+      affordable: true,
+      canUseHosted: true,
     });
 
     const chatRes = new TestResponse();
@@ -369,10 +377,10 @@ describe("hosted AI day pass auth", () => {
     expect(body.hosted_ai.active).toBe(true);
     expect(body.hosted_ai.expiresAt).toBeGreaterThan(Date.now());
     expect(body.entitlements).toMatchObject({
-      hallPasses: 0,
-      hosted_ai: { configured: true, active: true, affordable: false, canActivate: false },
+      hallPasses: 5,
+      hosted_ai: { configured: true, active: true, affordable: true, canActivate: false },
       hosted_images: {
-        portrait: { configured: true, affordable: false },
+        portrait: { configured: true, affordable: true },
       },
     });
   });
@@ -406,7 +414,7 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(401);
-    expect(JSON.parse(res.body).error).toContain("Enable OpenRouter AI");
+    expect(JSON.parse(res.body).error).toContain("Connect OpenRouter");
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -419,6 +427,7 @@ describe("hosted image Hall Passes", () => {
       expiresAt: Date.now() + 60_000,
       label: "Hosted Portrait",
     });
+    emptyWelcomeHallPasses("rh:user:hosted-portrait-empty-wallet-user");
     (globalThis.fetch as any).mockClear();
 
     const res = new TestResponse();
@@ -488,16 +497,16 @@ describe("hosted image Hall Passes", () => {
       ok: true,
       portraitDataUrl: "data:image/png;base64,AAAA",
       hallPassCost: 1,
-      hallPasses: 1,
+      hallPasses: 6,
       entitlements: {
-        hallPasses: 1,
+        hallPasses: 6,
         hosted_images: {
           portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
-          diploma: { configured: true, cost: 3, affordable: false, canUseHosted: false },
+          diploma: { configured: true, cost: 3, affordable: true, canUseHosted: true },
         },
       },
     });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
   });
 
   it("refunds hosted portrait spend when generation fails", async () => {
@@ -540,7 +549,7 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(502);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
     const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
     expect(transactions.some((tx) =>
       tx.kind === "hall-pass-spend" &&
@@ -600,7 +609,7 @@ describe("hosted image Hall Passes", () => {
     expect(firstRes.statusCode).toBe(200);
     expect(JSON.parse(firstRes.body)).toMatchObject({
       portraitDataUrl: "data:image/png;base64,REPLAY",
-      hallPasses: 1,
+      hallPasses: 6,
     });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 
@@ -619,7 +628,7 @@ describe("hosted image Hall Passes", () => {
     expect(secondRes.statusCode).toBe(200);
     expect(JSON.parse(secondRes.body)).toMatchObject({
       portraitDataUrl: "data:image/png;base64,REPLAY",
-      hallPasses: 1,
+      hallPasses: 6,
     });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
@@ -628,7 +637,7 @@ describe("hosted image Hall Passes", () => {
       tx.source === "hosted-image" &&
       tx.metadata?.requestId === "portrait-replay-1"
     )).toHaveLength(1);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
   });
 });
 

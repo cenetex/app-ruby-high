@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleBillingRoutes } from "../routes/billing.js";
 import type { RouteContext } from "../routes/context.js";
 import { AuthService } from "../services/auth-service.js";
-import { RubyHighService } from "../services/ruby-high-service.js";
+import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
 
@@ -73,6 +73,14 @@ function signInUser(token: string): string {
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
   });
   return `rh:user:${userId}`;
+}
+
+function emptyWelcomeHallPasses(stateKey: string): void {
+  ruby.revokeHallPasses(stateKey, {
+    amount: WELCOME_HALL_PASS_GRANT,
+    idempotencyKey: `test:empty-welcome:${stateKey}`,
+    source: "admin",
+  });
 }
 
 function stripeSignature(rawBody: string, secret: string, timestamp = Math.floor(Date.now() / 1000)): string {
@@ -149,11 +157,11 @@ describe("billing products", () => {
     expect(handled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.entitlements).toMatchObject({
-      hallPasses: 2,
+      hallPasses: 7,
       hosted_ai: { configured: true, active: false, affordable: true, canActivate: true, cost: 1 },
       hosted_images: {
         portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
-        diploma: { configured: true, cost: 3, affordable: false, canUseHosted: false },
+        diploma: { configured: true, cost: 3, affordable: true, canUseHosted: true },
       },
     });
     expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: true, active: false, cost: 1 });
@@ -177,13 +185,13 @@ describe("AI Day Pass", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body).toMatchObject({ ok: true, applied: true, hallPassCost: 1, hallPasses: 1 });
+    expect(lastResponse?.body).toMatchObject({ ok: true, applied: true, hallPassCost: 1, hallPasses: 6 });
     expect(lastResponse?.body.entitlements).toMatchObject({
-      hallPasses: 1,
+      hallPasses: 6,
       hosted_ai: { configured: true, active: true, affordable: true, canActivate: false },
       hosted_images: {
         portrait: { configured: true, affordable: true },
-        diploma: { configured: true, affordable: false },
+        diploma: { configured: true, affordable: true },
       },
     });
     const firstExpiry = Number(lastResponse?.body.expiresAt);
@@ -196,10 +204,10 @@ describe("AI Day Pass", () => {
       cookie: "rh_session=ai-pass-alice",
     }), deps());
 
-    expect(lastResponse?.body).toMatchObject({ ok: true, applied: false, hallPassCost: 1, hallPasses: 1 });
+    expect(lastResponse?.body).toMatchObject({ ok: true, applied: false, hallPassCost: 1, hallPasses: 6 });
     expect(lastResponse?.body.hosted_ai).toMatchObject({ configured: true, active: true });
     expect(lastResponse?.body.expiresAt).toBe(firstExpiry);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
   });
 
   it("returns authenticated hosted entitlement status", async () => {
@@ -221,10 +229,10 @@ describe("AI Day Pass", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       ok: true,
-      hallPasses: 3,
+      hallPasses: 8,
       hosted_ai: { configured: true, active: false, affordable: true, canActivate: true },
       entitlements: {
-        hallPasses: 3,
+        hallPasses: 8,
         hosted_images: {
           portrait: { canUseHosted: true },
           diploma: { canUseHosted: true },
@@ -235,7 +243,8 @@ describe("AI Day Pass", () => {
 
   it("rejects hosted AI activation without enough Hall Passes", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
-    signInUser("ai-pass-empty");
+    const stateKey = signInUser("ai-pass-empty");
+    emptyWelcomeHallPasses(stateKey);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
@@ -310,8 +319,8 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 20 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(20);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 25 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
@@ -320,8 +329,8 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 20 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(20);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 25 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
   });
 
   it("rejects invalid Stripe signatures without mutating a wallet", async () => {
@@ -347,7 +356,7 @@ describe("Stripe webhook", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(400);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
   });
 });
 
@@ -390,9 +399,9 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 20 },
+      body: { received: true, applied: true, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 25 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(20);
+    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(25);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
@@ -403,9 +412,9 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: false, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 20 },
+      body: { received: true, applied: false, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 25 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(20);
+    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(25);
   });
 
   it("reverses Hall Passes when RevenueCat reports a refund cancellation", async () => {
@@ -437,9 +446,9 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: "rh:user:rc-refund", amount: -20, hallPasses: 30 },
+      body: { received: true, applied: true, sessionId: "rh:user:rc-refund", amount: -20, hallPasses: 35 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-refund").wallet.hallPasses).toBe(30);
+    expect(ruby.getOrCreate("rh:user:rc-refund").wallet.hallPasses).toBe(35);
   });
 
   it("can fulfill RevenueCat virtual currency transaction events", async () => {
@@ -470,8 +479,8 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: "rh:user:rc-vc", amount: 5, hallPasses: 5 },
+      body: { received: true, applied: true, sessionId: "rh:user:rc-vc", amount: 5, hallPasses: 10 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-vc").wallet.hallPasses).toBe(5);
+    expect(ruby.getOrCreate("rh:user:rc-vc").wallet.hallPasses).toBe(10);
   });
 });

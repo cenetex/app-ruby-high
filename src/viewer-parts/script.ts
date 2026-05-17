@@ -391,6 +391,9 @@ const VIEWER_SCRIPT_SUFFIX = `
   // never persists it; server-side auth stores only an opaque app session.
   const AUTH_KEY = "rh_openrouter_key";
   const AUTH_LABEL = "rh_openrouter_label";
+  const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
+  const WELCOME_HALL_PASS_POPUP_KEY_PREFIX = "rh_welcome_hall_passes_seen:";
+  const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png";
   function getStoredApiKey() {
     try { return localStorage.getItem(AUTH_KEY) || null; } catch (e) { return null; }
   }
@@ -476,6 +479,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     teacherFigure: $("teacher-figure"),
     blackboardEmpty: $("blackboard-empty"),
     blackboardEmptyText: $("blackboard-empty-text"),
+    blackboardEmptyAction: $("blackboard-empty-action"),
     // (Today's-challenge banner removed — bonus path is no longer
     //  surfaced as a chrome banner. The bonus endpoint stays alive
     //  on the server for future re-introduction.)
@@ -575,7 +579,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     return !!authed && (!!getStoredApiKey() || (!!aiEnabled && !localAiEnabled && hostedAiActive));
   }
   function openRouterGenerationMessage(action) {
-    return "Enable OpenRouter AI before " + action + ".";
+    return "Connect OpenRouter before " + action + ".";
   }
   let lockedFor = null;
   let renderedHistorySig = null;
@@ -743,11 +747,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
   let sheetOverlayOpen = false;
   let returnToAccountAfterSheet = false;
-  let sheetAutoShown = false;
 
   // Track scroll-to-bottom intent: only auto-scroll if user is near bottom.
   // The player's display name in chat + race UI. Falls back to "You" only
-  // when there's no character yet (rare — the welcome modal auto-rolls one).
+  // while the player is still creating their first character.
   function playerDisplayName() {
     const fullName = lastTelemetry && lastTelemetry.character && lastTelemetry.character.name;
     if (!fullName) return "You";
@@ -1803,7 +1806,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       disabled = true;
     } else if (activeTeacherUsesServerAi()) {
       status = "Teacher AI connected";
-      meta = "This server can speak for teachers. Enable OpenRouter for browser-owned AI features.";
+      meta = "This server can speak for teachers. Connect OpenRouter for browser-owned AI features.";
       label = "Connect OpenRouter";
     }
     els.accountAiStatus.textContent = status;
@@ -2037,6 +2040,110 @@ const VIEWER_SCRIPT_SUFFIX = `
   function walletTransactionSource(tx) {
     const source = String((tx && tx.source) || "system").replace(/-/g, " ");
     return source.charAt(0).toUpperCase() + source.slice(1);
+  }
+
+  function welcomeHallPassGrant(t) {
+    const wallet = t && t.wallet && typeof t.wallet === "object" ? t.wallet : null;
+    if (!wallet) return null;
+    const transactions = Array.isArray(wallet.transactions) ? wallet.transactions : [];
+    const tx = transactions.find((entry) => entry && entry.id === WELCOME_HALL_PASS_GRANT_ID) || null;
+    const grantedAt = Math.floor(Number(wallet.welcomeHallPassesGrantedAt || (tx && tx.at) || 0));
+    if (!grantedAt) return null;
+    const amount = Math.max(1, Math.floor(Number((tx && tx.hallPasses) || 5)));
+    return { at: grantedAt, amount };
+  }
+
+  function welcomeHallPassSeenKey(grant) {
+    return WELCOME_HALL_PASS_POPUP_KEY_PREFIX + sessionId + ":" + String(grant && grant.at || 0);
+  }
+
+  function hasSeenWelcomeHallPassPopup(grant) {
+    try { return !!localStorage.getItem(welcomeHallPassSeenKey(grant)); } catch (_err) { return false; }
+  }
+
+  function markWelcomeHallPassPopupSeen(grant) {
+    try { localStorage.setItem(welcomeHallPassSeenKey(grant), "1"); } catch (_err) {}
+  }
+
+  let welcomeHallPassPopupOpen = false;
+  function maybeShowWelcomeHallPassPopup(t) {
+    const grant = welcomeHallPassGrant(t);
+    if (!authed || !grant || welcomeHallPassPopupOpen || hasSeenWelcomeHallPassPopup(grant)) return;
+    showWelcomeHallPassPopup(grant);
+  }
+
+  function showWelcomeHallPassPopup(grant) {
+    welcomeHallPassPopupOpen = true;
+    const overlay = document.createElement("div");
+    overlay.className = "welcome-hall-pass-popup";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+
+    const panel = document.createElement("div");
+    panel.className = "welcome-hall-pass-panel";
+    const art = document.createElement("img");
+    art.className = "welcome-hall-pass-art";
+    art.alt = "";
+    art.hidden = true;
+    art.addEventListener("load", () => {
+      art.hidden = false;
+      panel.classList.add("has-art");
+    });
+    art.addEventListener("error", () => {
+      art.remove();
+    }, { once: true });
+    art.src = WELCOME_HALL_PASS_ART_URL;
+    const copy = document.createElement("div");
+    copy.className = "welcome-hall-pass-copy";
+    const title = document.createElement("h2");
+    title.textContent = formatWholeNumber(grant.amount) + " Hall Passes added";
+    const body = document.createElement("p");
+    const portraitEntitlement = hostedImageEntitlement("portrait");
+    const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
+    body.textContent = portraitConfigured
+      ? "Roll your first student and try a custom portrait, or save them for AI days and extra character slots."
+      : "Roll your first student now, or save these for AI days, images, and extra character slots when OpenRouter is connected.";
+    const actions = document.createElement("div");
+    actions.className = "welcome-hall-pass-actions";
+    const later = document.createElement("button");
+    later.type = "button";
+    later.className = "secondary";
+    later.textContent = "Later";
+    const create = document.createElement("button");
+    create.type = "button";
+    create.textContent = lastTelemetry && lastTelemetry.character ? "Open Account" : "Create Character";
+    actions.appendChild(later);
+    actions.appendChild(create);
+    copy.appendChild(title);
+    copy.appendChild(body);
+    copy.appendChild(actions);
+    panel.appendChild(art);
+    panel.appendChild(copy);
+    overlay.appendChild(panel);
+
+    const close = () => {
+      markWelcomeHallPassPopupSeen(grant);
+      welcomeHallPassPopupOpen = false;
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") close();
+    };
+    later.addEventListener("click", close);
+    create.addEventListener("click", () => {
+      close();
+      if (lastTelemetry && lastTelemetry.character) {
+        void openPrivyAccount();
+      } else {
+        openCharacterCreationFromAccount();
+      }
+    });
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close();
+    });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
   }
 
   function formatAccountDate(ts) {
@@ -2487,12 +2594,19 @@ const VIEWER_SCRIPT_SUFFIX = `
       // when to write the next question.
       if (!authed) {
         els.blackboardEmptyText.textContent = "Starting Ruby High…";
+        if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (!lastTelemetry?.character) {
-        els.blackboardEmptyText.textContent = "Open Account to create your first character.";
+        els.blackboardEmptyText.textContent = "Create your first Ruby High student.";
+        if (els.blackboardEmptyAction) {
+          els.blackboardEmptyAction.textContent = "Create Character";
+          els.blackboardEmptyAction.hidden = false;
+        }
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
+        if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
         els.blackboardEmptyText.textContent = "Requirements complete. Pick a level-up reward to seal the year.";
+        if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else {
         // Surface the "what you need" hint here too so the empty board
         // is informative instead of "the teacher will be with you in a
@@ -2509,6 +2623,7 @@ const VIEWER_SCRIPT_SUFFIX = `
             ? "Continue today's class — tap " + advanceLabel + " to start."
             : "Start today's graded class — tap " + advanceLabel + " to start.";
         els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
+        if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       }
       // Below the lead text: a sleeker on-board subject-grade chip row, so the
       // player can read class standing without opening the sheet.
@@ -3386,12 +3501,18 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   // ── primary actions ──────────────────────────────────────────────────────
-  function greetingFor(fac, grade) {
-    const g = grade ? "Grade " + grade : "class";
-    if (fac.id === "ruby") return "Welcome to " + g + ". I'll put something on the board.";
-    if (fac.id === "sally-science") return "Sally here. " + g + " STEM — let's see what you've got.";
-    if (fac.id === "professor-edward") return "You've found my " + g + " literature room. Take a seat.";
-    return "Class is in session. The teacher will put something on the board.";
+  function greetingFor(fac, grade, hasCharacter) {
+    const year = grade ? (GRADE_LABELS[grade] || ("Grade " + grade)) : "Ruby High";
+    if (!hasCharacter) {
+      if (fac.id === "ruby") return "Welcome to Ruby High. Make your first student, then I’ll put the first question on the board.";
+      if (fac.id === "sally-science") return "Science starts better with a lab partner. Create your student, then bring them by the lab.";
+      if (fac.id === "professor-edward") return "No protagonist, no literature. Create your student first; then we can talk motives.";
+      return "Create your first student, then class can begin.";
+    }
+    if (fac.id === "ruby") return "Welcome to " + year + " homeroom. First bell is simple: read the board, make the call, learn from the miss.";
+    if (fac.id === "sally-science") return year + " science means evidence first. I’ll ask for the pattern; you bring the nerve.";
+    if (fac.id === "professor-edward") return year + " literature starts with attention. The question is usually hiding in the sentence everyone skips.";
+    return "Class is in session. Your teacher is ready when you are.";
   }
   async function setFaculty(facultyId) {
     const prev = lastTelemetry && lastTelemetry.faculty;
@@ -3408,7 +3529,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         loadHistory(actualFaculty);
         runAgentTurn("channel-enter", { grade }, { force: true });
       } else if (fac) {
-        appendMsg({ kind: "teacher", name: fac.displayName, body: greetingFor(fac, grade), color: fac.accent, facultyId: fac.id });
+        appendMsg({ kind: "teacher", name: fac.displayName, body: greetingFor(fac, grade, !!(lastTelemetry && lastTelemetry.character)), color: fac.accent, facultyId: fac.id });
       }
     }
     closeRails();
@@ -3739,6 +3860,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     lastTelemetry = t;
     syncBillingWallet(t);
     renderAccountPage();
+    maybeShowWelcomeHallPassPopup(t);
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
@@ -3860,17 +3982,10 @@ const VIEWER_SCRIPT_SUFFIX = `
         });
       } else {
         const f = (t.faculty_roster || []).find((x) => x.id === t.faculty);
-        if (f) appendMsg({ kind: "teacher", name: f.displayName, body: greetingFor(f, t.current_grade), color: f.accent, facultyId: f.id });
+        if (f) appendMsg({ kind: "teacher", name: f.displayName, body: greetingFor(f, t.current_grade, !!t.character), color: f.accent, facultyId: f.id });
       }
     }
 
-    // First launch lands in Account, where Characters is the first section.
-    // Character creation is still the dedicated sheet, but Account owns the
-    // entry point so new players aren't stranded on an empty classroom.
-    if (authed === true && !t.character && !sheetAutoShown && !sheetOverlayOpen) {
-      sheetAutoShown = true;
-      void openPrivyAccount();
-    }
     if (!t.character) {
       if (els.youName) els.youName.textContent = "Create character";
       if (els.youAvatar) {
@@ -5845,11 +5960,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     controlsBody.appendChild(controlsName);
     const controlsSub = document.createElement("div");
     controlsSub.className = "ccg-subtitle";
-    controlsSub.textContent = localAiEnabled
-      ? "Reroll any field. Local AI can refresh the voice."
-      : aiEnabled
-        ? "Reroll any field. AI can refresh the voice and portrait."
-        : "Reroll any field. Connect OpenRouter later for a custom portrait.";
+    const hostedPortrait = hostedImageEntitlement("portrait");
+    controlsSub.textContent = hostedPortrait && hostedPortrait.canUseHosted
+      ? "Reroll any field. Hall Passes can make a custom portrait."
+      : localAiEnabled
+        ? "Reroll any field. Local AI can refresh the voice."
+        : aiEnabled
+          ? "Reroll any field. AI can refresh the voice and portrait."
+          : "Reroll any field. Connect OpenRouter later for a custom portrait.";
     controlsBody.appendChild(controlsSub);
 
     // Control rows: one per component. Each row has a reroll button that
@@ -5974,8 +6092,26 @@ const VIEWER_SCRIPT_SUFFIX = `
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
       });
-      portraitBtn.hidden = !aiEnabled || localAiEnabled;
-      portraitBtn.disabled = !rolled || !aiEnabled || localAiEnabled || inFlight.portrait;
+      const portraitReason = portraitGenerationStatusReason();
+      portraitBtn.hidden = !portraitGenerationVisible();
+      portraitBtn.disabled = !rolled || inFlight.portrait || !!portraitReason;
+      portraitBtn.title = portraitReason || "";
+    }
+
+    function portraitGenerationVisible() {
+      const entitlement = hostedImageEntitlement("portrait");
+      return !!getStoredApiKey() || !!(entitlement && entitlement.configured);
+    }
+
+    function portraitGenerationStatusReason() {
+      if (getStoredApiKey()) return "";
+      const entitlement = hostedImageEntitlement("portrait");
+      if (entitlement && entitlement.configured) {
+        if (entitlement.affordable) return "";
+        const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
+        return "Need " + cost + " Hall Pass" + (cost === 1 ? "" : "es") + ".";
+      }
+      return "Connect OpenRouter for a custom portrait.";
     }
 
     function renderCreationStatsInto(parent, stats) {
@@ -6100,8 +6236,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     // ships with the create-character command. On failure, leaves the
     // default in place and shows an inline error.
     portraitBtn.addEventListener("click", async () => {
-      if (!aiEnabled || localAiEnabled) {
-        portraitStatus.textContent = localAiEnabled ? "Custom portraits require OpenRouter." : "Connect OpenRouter for a custom portrait.";
+      const portraitReason = portraitGenerationStatusReason();
+      if (portraitReason) {
+        portraitStatus.textContent = portraitReason;
         portraitStatus.classList.add("is-invalid");
         return;
       }
@@ -6131,6 +6268,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         if (!data || !data.portraitDataUrl) throw new Error("no image returned");
         aiPortraitDataUrl = data.portraitDataUrl;
         portraitImg.src = aiPortraitDataUrl;
+        if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements);
         portraitBtn.textContent = "✨ Try again";
         portraitStatus.textContent = "AI portrait ready.";
       } catch (err) {
@@ -8198,10 +8336,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
     if (sheetOverlayOpen) renderSheet();
-    if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
-      sheetAutoShown = true;
-      void openPrivyAccount();
-    }
   }
   // Auth is split: the OpenRouter key stays in localStorage, while the
   // server owns an opaque Ruby High session cookie that maps to the
@@ -8798,6 +8932,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountAiAction) els.accountAiAction.addEventListener("click", handleAccountAiAction);
+  if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", openCharacterCreationFromAccount);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
   if (els.billingOverlay) els.billingOverlay.addEventListener("click", (e) => {
     if (e.target === els.billingOverlay) closeBilling();

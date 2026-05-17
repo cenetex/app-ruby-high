@@ -207,6 +207,8 @@ const STUDENT_POOL_LIMIT = 50;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
 export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
+export const WELCOME_HALL_PASS_GRANT = 5;
+export const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -778,9 +780,11 @@ export class RubyHighService extends Service {
         throw err;
       });
     }
-    return save.catch((err) => {
+    const handled = save.catch((err) => {
       log.error("ruby-high.persist-failed", err, { sessionId });
     });
+    this.trackBackgroundWrite(handled);
+    return handled;
   }
 
   /** Persist all sessions at once. Used by stop() and flush() for safety;
@@ -986,16 +990,42 @@ export class RubyHighService extends Service {
       this.ensureRoster(state, DEFAULT_GRADE);
       this.sessions.set(sessionId, state);
     }
+    const repairedWelcomeGrant = this.ensureWelcomeHallPasses(state);
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
     const repairedMemory = this.backfillCardMemory(state);
     const repairedComicCollection = this.unlockStudentInsertPagesForCircledSocialCard(state);
     const repairedTeacherPages = this.unlockTeacherStoryPagesForAClasses(state);
-    if (this.maybeMarkGradeReady(state) || repairedMemory || repairedComicCollection || repairedTeacherPages) {
+    if (this.maybeMarkGradeReady(state) || repairedWelcomeGrant || repairedMemory || repairedComicCollection || repairedTeacherPages) {
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
     }
     return state;
+  }
+
+  private ensureWelcomeHallPasses(state: QuizState): boolean {
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    if (state.wallet.welcomeHallPassesGrantedAt) return false;
+    const existing = state.wallet.transactions?.find((tx) => tx.id === WELCOME_HALL_PASS_GRANT_ID) ?? null;
+    if (existing) {
+      state.wallet.welcomeHallPassesGrantedAt = existing.at;
+      return true;
+    }
+    const at = Date.now();
+    const transaction: RubyHighWalletTransaction = {
+      id: WELCOME_HALL_PASS_GRANT_ID,
+      kind: "hall-pass-grant",
+      at,
+      hallPasses: WELCOME_HALL_PASS_GRANT,
+      source: "system",
+      description: "Welcome Hall Passes",
+      metadata: { reason: "account-welcome" },
+    };
+    state.wallet.hallPasses = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0))) + WELCOME_HALL_PASS_GRANT;
+    state.wallet.welcomeHallPassesGrantedAt = at;
+    state.wallet.transactions = [...(state.wallet.transactions ?? []), transaction].slice(-WALLET_TRANSACTION_LIMIT);
+    state.updatedAt = at;
+    return true;
   }
 
   private appendSchoolEvent(state: QuizState, event: SchoolEvent): void {
@@ -3445,8 +3475,14 @@ export class RubyHighService extends Service {
   }
 
   resetSession(sessionId: string): QuizState {
+    const current = this.sessions.get(sessionId) ?? null;
+    const wallet = current ? normalizeWallet(current.wallet, current.score.points ?? 0) : null;
+    const characterSlots = current ? normalizeCharacterSlots(current.characterSlots) : null;
     this.sessions.delete(sessionId);
     const state = this.getOrCreate(sessionId);
+    if (wallet) state.wallet = { ...wallet, meritStars: Math.max(0, Math.floor(Number(state.score.points ?? 0))) };
+    if (characterSlots) state.characterSlots = characterSlots;
+    if (wallet && this.ensureWelcomeHallPasses(state)) state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
   }
@@ -3659,9 +3695,13 @@ function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[
 function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState["wallet"] {
   const src = wallet && typeof wallet === "object" ? wallet as Partial<QuizState["wallet"]> : {};
   const transactions = normalizeWalletTransactions(src.transactions);
+  const welcomeHallPassesGrantedAt = Math.floor(Number(src.welcomeHallPassesGrantedAt ?? 0));
   return {
     meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
     hallPasses: Math.max(0, Math.floor(Number(src.hallPasses ?? 0))),
+    ...(Number.isFinite(welcomeHallPassesGrantedAt) && welcomeHallPassesGrantedAt > 0
+      ? { welcomeHallPassesGrantedAt }
+      : {}),
     ...(Number.isFinite(Number(src.hostedAiAccessExpiresAt))
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(src.hostedAiAccessExpiresAt))) }
       : {}),

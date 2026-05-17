@@ -73,21 +73,28 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("loginWithEmailCode");
   });
 
-  it("makes Account the character home before wallet, history, and AI access", () => {
+  it("makes Account the character home before wallet, history, comics, and AI access", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
     const script = inlineScript(html);
     const characters = html.indexOf('class="account-section account-character-section"');
     const wallet = html.indexOf('class="account-section account-wallet-section"');
     const history = html.indexOf('id="account-history-list"');
+    const comics = html.indexOf('class="account-section account-comics-section"');
     const ai = html.indexOf('class="account-section account-ai-section"');
 
     expect(characters).toBeGreaterThan(-1);
     expect(wallet).toBeGreaterThan(characters);
     expect(history).toBeGreaterThan(wallet);
-    expect(ai).toBeGreaterThan(history);
+    expect(comics).toBeGreaterThan(history);
+    expect(ai).toBeGreaterThan(comics);
     expect(script).toContain("function openCharacterCreationFromAccount()");
-    expect(script).toContain("Open Account to create your first character.");
-    expect(script).toContain("void openPrivyAccount();");
+    expect(html).toContain('id="blackboard-empty-action"');
+    expect(script).toContain("Create your first Ruby High student.");
+    expect(script).toContain('els.blackboardEmptyAction.addEventListener("click", openCharacterCreationFromAccount)');
+    expect(script).toContain("function maybeShowWelcomeHallPassPopup");
+    expect(script).toContain('const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');
+    expect(VIEWER_CSS).toContain(".welcome-hall-pass-art");
+    expect(script).toContain("Roll your first student and try a custom portrait");
     expect(script).not.toContain("Roll your character to start today's class.");
   });
 

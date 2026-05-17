@@ -409,6 +409,9 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
   return {
     meritStars: Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0))),
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
+    ...(Number.isFinite(Number(state.wallet?.welcomeHallPassesGrantedAt)) && Number(state.wallet?.welcomeHallPassesGrantedAt) > 0
+      ? { welcomeHallPassesGrantedAt: Math.floor(Number(state.wallet?.welcomeHallPassesGrantedAt)) }
+      : {}),
     ...(Number.isFinite(Number(state.wallet?.hostedAiAccessExpiresAt))
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(state.wallet?.hostedAiAccessExpiresAt))) }
       : {}),

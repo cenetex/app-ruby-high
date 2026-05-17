@@ -151,7 +151,7 @@ describe("/teachers creator catalog", () => {
     }), makeDeps());
 
     expect(lastResponse?.status).toBe(401);
-    expect(lastResponse?.body.error).toContain("Enable OpenRouter AI");
+    expect(lastResponse?.body.error).toContain("Connect OpenRouter");
   });
 
   it("creates a local pack teacher draft without wallet-linked RATi avatars", async () => {

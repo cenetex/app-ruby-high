@@ -96,6 +96,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
         <div id="blackboard-empty-text">Starting Ruby High…</div>
+        <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
       </div>
 
       <div class="blackboard-meta" id="blackboard-meta" hidden></div>
@@ -197,15 +198,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
       </div>
       <div class="account-character-grid" id="account-character-grid"></div>
-      <div class="account-comics-block">
-        <div class="account-section-head">
-          <div>
-            <div class="account-section-title">Comics</div>
-            <div class="account-section-sub" id="account-comic-summary"></div>
-          </div>
-        </div>
-        <div id="account-comics"></div>
-      </div>
     </section>
     <section class="account-section account-wallet-section">
       <div class="account-section-title">Wallet</div>
@@ -218,6 +210,15 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <section class="account-section">
       <div class="account-section-title">Purchase History</div>
       <div class="account-history-list" id="account-history-list"></div>
+    </section>
+    <section class="account-section account-comics-section">
+      <div class="account-section-head">
+        <div>
+          <div class="account-section-title">Comics</div>
+          <div class="account-section-sub" id="account-comic-summary"></div>
+        </div>
+      </div>
+      <div id="account-comics"></div>
     </section>
     <section class="account-section account-ai-section">
       <div class="account-section-title">AI Access</div>

@@ -99,6 +99,8 @@ function offlineApiScript(data) {
   const APP_BASE = "/api/apps/ruby-high";
   const SESSION_ID = "rh:offline";
   const STORAGE_KEY = "ruby-high:offline-state:v1";
+  const WELCOME_HALL_PASS_GRANT = 5;
+  const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
   const LOCAL_LLM_BASE_KEY = "ruby-high:local-llm-base";
   const LOCAL_LLM_MODEL_KEY = "ruby-high:local-llm-model";
   const LOCAL_LLM_API_KEY = "ruby-high:local-llm-api-key";
@@ -291,11 +293,30 @@ function offlineApiScript(data) {
     const transactions = Array.isArray(raw.transactions) ? raw.transactions.filter(function(tx) {
       return tx && typeof tx === "object" && typeof tx.id === "string" && typeof tx.kind === "string";
     }).slice(-200) : [];
+    const existingWelcome = transactions.find(function(tx) { return tx.id === WELCOME_HALL_PASS_GRANT_ID; }) || null;
+    const welcomeAt = Math.floor(Number(raw.welcomeHallPassesGrantedAt || 0));
+    const hasWelcome = welcomeAt > 0 || !!existingWelcome;
     state.wallet = {
       meritStars: Math.max(0, Math.floor(Number(raw.meritStars != null ? raw.meritStars : scorePoints))),
       hallPasses: Math.max(0, Math.floor(Number(raw.hallPasses || 0))),
+      ...(hasWelcome ? { welcomeHallPassesGrantedAt: welcomeAt > 0 ? welcomeAt : Number(existingWelcome.at || now()) } : {}),
       ...(transactions.length > 0 ? { transactions } : {})
     };
+    if (!hasWelcome) {
+      const grantedAt = now();
+      const tx = {
+        id: WELCOME_HALL_PASS_GRANT_ID,
+        kind: "hall-pass-grant",
+        at: grantedAt,
+        hallPasses: WELCOME_HALL_PASS_GRANT,
+        source: "system",
+        description: "Welcome Hall Passes",
+        metadata: { reason: "account-welcome" }
+      };
+      state.wallet.hallPasses += WELCOME_HALL_PASS_GRANT;
+      state.wallet.welcomeHallPassesGrantedAt = grantedAt;
+      state.wallet.transactions = transactions.concat([tx]).slice(-200);
+    }
     return state;
   }
 

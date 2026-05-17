@@ -6,7 +6,7 @@ import { handlePackLibraryRoutes, type PackLibraryRouteContext } from "../pack-l
 import { ORIGINAL_PACK_ID, getActivePack, getPackByIdForSession, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { AuthService } from "../services/auth-service.js";
-import { RubyHighService } from "../services/ruby-high-service.js";
+import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 
 let tmpDir: string;
@@ -53,6 +53,14 @@ function signInUser(token: string): string {
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
   });
   return `rh:user:${userId}`;
+}
+
+function emptyWelcomeHallPasses(stateKey: string): void {
+  ruby.revokeHallPasses(stateKey, {
+    amount: WELCOME_HALL_PASS_GRANT,
+    idempotencyKey: `test:empty-welcome:${stateKey}`,
+    source: "admin",
+  });
 }
 
 function fakePack(id: string): ContentPack {
@@ -291,7 +299,7 @@ describe("/pack-library", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.hallPassCost).toBe(3);
-    expect(response.body.hallPasses).toBe(7);
+    expect(response.body.hallPasses).toBe(12);
     expect(response.body.draft.name).toBe("Signals Seminar");
     expect(response.body.teacher).toMatchObject({
       displayName: "Dr. Signal",
@@ -305,12 +313,13 @@ describe("/pack-library", () => {
       subject: "sampling",
       difficulty: "easy",
     });
-    expect(ruby.hallPassBalance(aliceSessionId)).toBe(7);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(12);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("rejects paid course generation without enough Hall Passes", async () => {
-    signInUser("alice");
+    const aliceSessionId = signInUser("alice");
+    emptyWelcomeHallPasses(aliceSessionId);
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -470,7 +479,7 @@ describe("/pack-library", () => {
       cookie: "rh_session=alice",
     });
     expect(response.status).toBe(401);
-    expect(response.body.error).toContain("Enable OpenRouter AI");
+    expect(response.body.error).toContain("Connect OpenRouter");
 
     response = await route({
       method: "POST",

@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { BankedQuestion, CharacterStats, QuizState } from "../types.js";
 import type { ContentPack, PackSourceCard } from "../content/types.js";
@@ -540,19 +540,31 @@ export class StateStore implements StateStoreLike {
   }
 
   private async writeCurrentSnapshot(): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    const tmp = `${this.path}.tmp`;
-    await writeFile(tmp, JSON.stringify({
-      sessions: Array.from(this.snapshot.values()),
-      authUsers: Array.from(this.authUsers.values()),
-      authSessions: Array.from(this.authSessions.values()),
-      packs: Array.from(this.importedPacks.values()),
-      teachers: Array.from(this.teachers.values()),
-      draftPacks: Array.from(this.draftPacks.values()),
-      packInstallations: Array.from(this.packInstallations.values()),
-    }, null, 2), "utf8");
-    await rename(tmp, this.path);
+    const dir = dirname(this.path);
+    await mkdir(dir, { recursive: true });
+    const tmp = resolve(dir, `.${basename(this.path)}.${process.pid}.${nextStateStoreWriteSeq()}.tmp`);
+    try {
+      await writeFile(tmp, JSON.stringify({
+        sessions: Array.from(this.snapshot.values()),
+        authUsers: Array.from(this.authUsers.values()),
+        authSessions: Array.from(this.authSessions.values()),
+        packs: Array.from(this.importedPacks.values()),
+        teachers: Array.from(this.teachers.values()),
+        draftPacks: Array.from(this.draftPacks.values()),
+        packInstallations: Array.from(this.packInstallations.values()),
+      }, null, 2), "utf8");
+      await rename(tmp, this.path);
+    } catch (err) {
+      try { await unlink(tmp); } catch {}
+      throw err;
+    }
   }
+}
+
+let stateStoreWriteSeq = 0;
+function nextStateStoreWriteSeq(): number {
+  stateStoreWriteSeq = (stateStoreWriteSeq + 1) % Number.MAX_SAFE_INTEGER;
+  return stateStoreWriteSeq;
 }
 
 function readDebounceMsFromEnv(): number {

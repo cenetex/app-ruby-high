@@ -1595,6 +1595,36 @@ export const VIEWER_CSS = `
     color: var(--text-soft);
     font-size: 14px;
   }
+  .blackboard-panel[data-mode="needs-character"] .blackboard-empty {
+    flex: 1;
+    min-height: 190px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    font-size: 16px;
+  }
+  .blackboard-empty-action {
+    appearance: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 60%, rgba(255,255,255,0.2));
+    border-radius: 14px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 86%, #fff 8%), var(--accent));
+    color: #fff;
+    min-width: 180px;
+    min-height: 46px;
+    padding: 0 20px;
+    font-size: 15px;
+    font-weight: 900;
+    letter-spacing: 0;
+    box-shadow: var(--shadow);
+  }
+  .blackboard-empty-action:hover {
+    filter: brightness(1.06);
+  }
+  .blackboard-empty-action:disabled {
+    opacity: 0.55;
+  }
   /* Block under the empty-board lead text. Hosts the subject-grade chip row;
    * graduation now renders inside the chalkboard frame itself. */
   .blackboard-empty-extras {
@@ -2938,11 +2968,6 @@ export const VIEWER_CSS = `
   .account-section-head button.secondary {
     background: rgba(255,255,255,0.07);
     color: var(--text-soft);
-  }
-  .account-comics-block {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255,255,255,0.08);
   }
   .account-character-grid {
     display: grid;
@@ -5200,6 +5225,91 @@ export const VIEWER_CSS = `
   .congrats-toast.is-correct { background: rgba(31, 124, 42, 0.95); }
   .congrats-toast.is-wrong { background: rgba(160, 24, 24, 0.95); }
   .congrats-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+  .welcome-hall-pass-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: grid;
+    place-items: center;
+    padding: 22px;
+    background: rgba(8, 10, 16, 0.58);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .welcome-hall-pass-panel {
+    width: min(360px, 100%);
+    border: 1px solid color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,0.18));
+    border-radius: 8px;
+    background: rgba(25, 29, 38, 0.98);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    padding: 20px;
+    text-align: left;
+  }
+  .welcome-hall-pass-panel.has-art {
+    width: min(780px, 100%);
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: center;
+  }
+  .welcome-hall-pass-art {
+    display: block;
+    width: 100%;
+    max-height: min(62vh, 460px);
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    object-fit: contain;
+  }
+  .welcome-hall-pass-copy {
+    min-width: 0;
+  }
+  .welcome-hall-pass-panel h2 {
+    margin: 0 0 8px;
+    font-size: 22px;
+    line-height: 1.12;
+    letter-spacing: 0;
+  }
+  .welcome-hall-pass-panel p {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.45;
+  }
+  .welcome-hall-pass-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .welcome-hall-pass-actions button {
+    appearance: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 56%, rgba(255,255,255,0.2));
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    min-height: 40px;
+    padding: 0 14px;
+    font-weight: 850;
+    letter-spacing: 0;
+  }
+  .welcome-hall-pass-actions button.secondary {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-soft);
+    border-color: rgba(255,255,255,0.16);
+  }
+
+  @media (max-width: 720px) {
+    .welcome-hall-pass-panel.has-art {
+      width: min(420px, 100%);
+      display: block;
+    }
+    .welcome-hall-pass-art {
+      max-height: 42vh;
+      margin-bottom: 14px;
+    }
+  }
 
   /* ── phone fit pass ─────────────────────────────────────────────────────
      Keep the active question playable on narrow screens: the board and

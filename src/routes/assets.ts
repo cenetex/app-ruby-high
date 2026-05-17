@@ -28,6 +28,7 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
   "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache" },
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby.png": { file: "ruby-classroom.png", mime: "image/png" },
+  "welcome-hall-passes.png": { file: "welcome-hall-passes.png", mime: "image/png" },
   "teachers/ruby.png": { file: "teachers/ruby.png", mime: "image/png" },
   "teachers/ruby-sticker.png": { file: "teachers/ruby-sticker.png", mime: "image/png" },
   "teachers/sally-science.png": { file: "teachers/sally-science.png", mime: "image/png" },
