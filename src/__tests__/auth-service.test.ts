@@ -152,4 +152,41 @@ describe("AuthService.gcSessions", () => {
     expect(upgraded.record.userId).toBe(guest.record.userId);
     expect(auth.stateKeyForToken(upgraded.token)).toBe(`rh:user:${guest.record.userId}`);
   });
+
+  it("upgrades a guest session to Privy and persists the verified wallet", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ruby-high-auth-privy-"));
+    tmpDirs.push(dir);
+    const statePath = join(dir, "state.json");
+    const wallet = "0x1111111111111111111111111111111111111111";
+    const authA = await AuthService.start({} as never, new StateStore(statePath));
+    auths.push(authA);
+    const guest = await authA.createGuestSession();
+    const upgraded = await authA.completePrivyLogin({
+      privyUserId: "did:privy:alice",
+      label: "alice@example.test",
+      walletAddress: wallet,
+      walletChainType: "ethereum",
+    }, guest.token);
+
+    expect(upgraded.token).not.toBe(guest.token);
+    expect(upgraded.record.userId).toBe(guest.record.userId);
+    expect(upgraded.record.provider).toBe("privy");
+    expect(upgraded.record.label).toBe("alice@example.test");
+    expect(authA.stateKeyForToken(upgraded.token)).toBe(`rh:user:${guest.record.userId}`);
+    expect(authA.walletAddressForRecord(upgraded.record)).toBe(wallet);
+
+    await authA.stop();
+    const authB = await AuthService.start({} as never, new StateStore(statePath));
+    auths.push(authB);
+    const hydrated = authB.resolve(upgraded.token);
+
+    expect(hydrated).toMatchObject({
+      userId: guest.record.userId,
+      provider: "privy",
+      label: "alice@example.test",
+      walletAddress: wallet,
+      walletChainType: "ethereum",
+    });
+    expect(authB.walletAddressForRecord(hydrated)).toBe(wallet);
+  });
 });

@@ -17,7 +17,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Sign in with OpenRouter (PKCE, your own key, no card). The API key lives in your browser's localStorage; the server never holds it. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in by email, creates or reuses an embedded wallet, and stores only the verified Privy user/wallet identity server-side. Browser-owned OpenRouter keys still live in localStorage; the server never holds them. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
 
 The standalone viewer is installable as a PWA from `/api/apps/ruby-high/viewer`. The service worker is scoped to `/api/apps/ruby-high/`, caches the shell and core assets, and keeps auth, chat, pack management, and session state requests network-only. Full offline gameplay still requires the Ruby High server because the authoritative school state lives there.
 
@@ -104,6 +104,10 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `PORT` | `8080` | HTTP port. |
 | `HOST` | `0.0.0.0` | Bind address. |
 | `RUBY_HIGH_PUBLIC_BASE` | `http://localhost:3000` | Public URL the app is reachable at. **Must be HTTPS in production** — OpenRouter rejects HTTP callbacks. |
+| `RUBY_HIGH_PRIVY_APP_ID` | — | Enables Privy account sign-in when set with `RUBY_HIGH_PRIVY_CLIENT_ID` and one server verifier secret. |
+| `RUBY_HIGH_PRIVY_CLIENT_ID` | — | Public Privy client id embedded in the viewer so the browser SDK can initialize. |
+| `RUBY_HIGH_PRIVY_APP_SECRET` | — | Preferred server-side Privy secret for verifying tokens and fetching linked wallet/user details. Set via secrets only. |
+| `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | — | Optional JWT verification-key fallback for deployments that do not use `RUBY_HIGH_PRIVY_APP_SECRET`. |
 | `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `dynamodb` for production. |
 | `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | JSON-backend file path. |
 | `RUBY_HIGH_DYNAMO_TABLE` | — | Required when backend is `dynamodb`. |
@@ -139,7 +143,7 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
-No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on an AI Day Pass, and enables hosted image generation with per-image Hall Pass costs. Edit Pack no longer lists/imports live RATi models from a server key; new local teacher drafts become OpenRouter-backed packs, while existing RATi-backed packs use `RUBY_HIGH_RATI_INTERNAL_API_KEY` only for server-to-server runtime calls.
+No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. Privy wallets are verified on the server before they are used for RATi avatar ownership; legacy request wallet headers are only a fallback when the session has no verified wallet. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on an AI Day Pass, and enables hosted image generation with per-image Hall Pass costs. Edit Pack no longer lists/imports live RATi models from a server key; new local teacher drafts become OpenRouter-backed packs, while existing RATi-backed packs use `RUBY_HIGH_RATI_INTERNAL_API_KEY` only for server-to-server runtime calls.
 
 ## Billing and Hall Passes
 

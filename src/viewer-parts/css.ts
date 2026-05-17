@@ -579,6 +579,9 @@ export const VIEWER_CSS = `
     border-radius: 999px;
     flex: 0 0 auto;
   }
+  .channels-footer .account-action {
+    border-color: rgba(255,255,255,0.18);
+  }
   .channels-rail .report-bug-link {
     appearance: none;
     background: transparent;
@@ -2666,6 +2669,9 @@ export const VIEWER_CSS = `
     font-size: 15px;
   }
   .signin-card .secondary-link {
+    appearance: none;
+    border: none;
+    background: transparent;
     display: inline-block;
     color: var(--text-soft);
     text-decoration: none;
@@ -2675,6 +2681,28 @@ export const VIEWER_CSS = `
     font-size: 15px;
   }
   .signin-card .secondary-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
+  .privy-card { max-width: 460px; }
+  .privy-form {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .privy-form button {
+    justify-self: end;
+    appearance: none;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 18px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+  .privy-form button:disabled,
+  #privy-signout:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
   .sheet-card {
     background: var(--bg);
     border: 1px solid var(--line);

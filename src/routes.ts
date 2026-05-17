@@ -32,6 +32,7 @@ import { handleBugReportRoute } from "./routes/bug-report.js";
 import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import type { RouteContext } from "./routes/context.js";
+import { getPrivyPublicConfigFromEnv } from "./services/privy-auth.js";
 
 export type { RouteContext } from "./routes/context.js";
 
@@ -131,6 +132,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       res: ctx.res,
       cookieHeader: ctx.cookieHeader,
       apiKeyHeader: ctx.apiKeyHeader,
+      authorizationHeader: ctx.authorizationHeader,
       callbackUrlBuilder: ctx.callbackUrlBuilder,
       isSecure: ctx.isSecure,
       clientIp: ctx.clientIp,
@@ -168,6 +170,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         auth,
         ruby,
         sessionIdFor: (cookieHeader) => getSessionId(runtime, cookieHeader),
+        walletAddressForRecord: (record) => auth.walletAddressForRecord(record),
       },
     );
   }
@@ -237,6 +240,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         sessionId: getSessionId(runtime, ctx.cookieHeader),
         apiBase: APP_ROUTE_PREFIX,
         role,
+        privy: getPrivyPublicConfigFromEnv() ?? undefined,
       }),
       ctx.acceptEncoding,
     );

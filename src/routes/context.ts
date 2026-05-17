@@ -29,9 +29,8 @@ export interface RouteContext {
   originHeader?: string | string[] | null;
   /** Raw Authorization request header, when present. */
   authorizationHeader?: string | string[] | null;
-  /** Temporary Privy/RATi bridge: wallet verified by the client integration.
-   *  Server-side Privy verification should replace this header once Ruby High
-   *  owns the Privy login flow. */
+  /** Legacy wallet bridge for older clients. New Ruby High clients use
+   *  server-verified Privy wallet data from AuthService instead. */
   walletAddressHeader?: string | string[] | null;
   /** Raw Stripe-Signature request header, when present. */
   stripeSignatureHeader?: string | string[] | null;

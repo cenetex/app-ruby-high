@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { renderViewerHtml } from "../viewer.js";
 import { VIEWER_CSS } from "../viewer-parts/css.js";
 
-function renderedViewer(): string {
+function renderedViewer(opts: Partial<Parameters<typeof renderViewerHtml>[0]> = {}): string {
   return renderViewerHtml({
     agentName: "Ruby",
     sessionId: "rh:test-viewer",
     apiBase: "/api/apps/ruby-high",
     role: "human",
+    ...opts,
   });
 }
 
@@ -44,6 +45,23 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)');
     expect(script).toContain("navigator.serviceWorker.getRegistrations()");
     expect(script).toContain('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
+  });
+
+  it("wires the Privy account UI through the lazy client bundle", () => {
+    const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
+    const script = inlineScript(html);
+
+    expect(() => new Function(script)).not.toThrow();
+    expect(html).toContain('id="privy-action"');
+    expect(html).toContain('id="signin-privy"');
+    expect(html).toContain('id="privy-overlay"');
+    expect(html).toContain('id="privy-email-form"');
+    expect(script).toContain('const privyConfig = {"appId":"privy-app-test","clientId":"privy-client-test"};');
+    expect(script).toContain('const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js"');
+    expect(script).toContain("import(PRIVY_CLIENT_URL)");
+    expect(script).toContain("createRubyHighPrivyClient(privyConfig)");
+    expect(script).toContain('apiBase + "/auth/privy"');
+    expect(script).toContain("initializePrivyFromStoredSession();");
   });
 
   it("keeps opinion submit, waiting refresh, and force-grade paths wired in the client", () => {

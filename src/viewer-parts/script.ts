@@ -18,11 +18,15 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const safeSession = encodeURIComponent(opts.sessionId);
   const safeApiBase = encodeURIComponent(opts.apiBase);
   const role = opts.role === "agent" ? "agent" : "human";
+  const privyConfig = opts.privy
+    ? JSON.stringify({ appId: opts.privy.appId, clientId: opts.privy.clientId }).replace(/<\//g, "<\\/")
+    : "null";
   return `
 (() => {
   const apiBase = decodeURIComponent("${safeApiBase}");
   const sessionId = decodeURIComponent("${safeSession}");
   const role = "${role}";
+  const privyConfig = ${privyConfig};
   if ("serviceWorker" in navigator && window.isSecureContext) {
     window.addEventListener("load", () => {
       const isLocalDev = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
@@ -363,6 +367,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     try { localStorage.removeItem(AUTH_LABEL); } catch (e) {}
     try { localStorage.removeItem("rh_openrouter_at"); } catch (e) {}
   }
+  const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js";
   const COMMAND_TIMEOUT_MS = 15000;
   const PLAYER_LINE_TIMEOUT_MS = 12000;
   const STREAM_CONNECT_TIMEOUT_MS = 15000;
@@ -418,6 +423,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     youName: $("you-name"),
     youState: $("you-state"),
     footerAction: $("footer-action"),
+    privyAction: $("privy-action"),
     hamburger: $("hamburger"),
     channelTitle: $("channel-title"),
     channelSub: $("channel-sub"),
@@ -471,7 +477,19 @@ const VIEWER_SCRIPT_SUFFIX = `
     chatInput: $("chat-input"),
     chatSend: $("chat-send"),
     signinGuest: $("signin-guest"),
+    signinPrivy: $("signin-privy"),
     signinStatus: $("signin-status"),
+    privyOverlay: $("privy-overlay"),
+    privyClose: $("privy-close"),
+    privyWallet: $("privy-wallet"),
+    privyEmailForm: $("privy-email-form"),
+    privyEmail: $("privy-email"),
+    privyCodeForm: $("privy-code-form"),
+    privyCode: $("privy-code"),
+    privySendCode: $("privy-send-code"),
+    privyLogin: $("privy-login"),
+    privySignout: $("privy-signout"),
+    privyStatus: $("privy-status"),
     checking: $("checking"),
     scrim: $("scrim"),
     congrats: $("congrats-toast"),
@@ -493,6 +511,16 @@ const VIEWER_SCRIPT_SUFFIX = `
   let aiEnabled = false; // Local/OpenRouter text AI + Ruby High session present
   let localAiEnabled = false;
   let hostedAiActive = false;
+  let privyClient = null;
+  let privyClientPromise = null;
+  let privyState = {
+    configured: !!privyConfig,
+    authenticated: false,
+    ready: !privyConfig,
+    walletAddress: null,
+    walletChainType: null,
+    label: null,
+  };
   function activeTeacherUsesServerAi() {
     const provider = lastTelemetry && lastTelemetry.active_teacher_provider;
     return !!(provider && provider.requiresBrowserKey === false);
@@ -7295,6 +7323,180 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.signinStatus.textContent = text || "";
     els.signinStatus.classList.toggle("is-invalid", !!invalid);
   }
+  function setPrivyStatus(text, invalid) {
+    if (!els.privyStatus) return;
+    els.privyStatus.textContent = text || "";
+    els.privyStatus.classList.toggle("is-invalid", !!invalid);
+  }
+  function shortWallet(address) {
+    const raw = String(address || "");
+    return raw.length > 12 ? raw.slice(0, 6) + "..." + raw.slice(-4) : raw;
+  }
+  function applyPrivyState(next) {
+    if (next && typeof next === "object") {
+      privyState = {
+        configured: !!(next.configured != null ? next.configured : privyState.configured),
+        authenticated: !!next.authenticated,
+        ready: next.ready != null ? !!next.ready : true,
+        walletAddress: next.walletAddress || null,
+        walletChainType: next.walletChainType || null,
+        label: next.label || null,
+      };
+    }
+    if (els.privyWallet) {
+      els.privyWallet.textContent = privyState.walletAddress
+        ? shortWallet(privyState.walletAddress) + " · " + (privyState.walletChainType || "wallet")
+        : privyState.authenticated
+          ? "Signed in"
+          : privyState.configured
+            ? "Not connected"
+            : "Privy not configured";
+    }
+    if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
+    if (els.privyEmailForm) els.privyEmailForm.hidden = !privyState.configured || privyState.authenticated;
+    if (els.privyCodeForm && privyState.authenticated) els.privyCodeForm.hidden = true;
+    if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
+    applyAuthUI();
+  }
+  async function getPrivyClient() {
+    if (!privyConfig) return null;
+    if (privyClient) return privyClient;
+    if (!privyClientPromise) {
+      privyClientPromise = import(PRIVY_CLIENT_URL)
+        .then((mod) => mod.createRubyHighPrivyClient(privyConfig))
+        .then((client) => {
+          privyClient = client;
+          return client;
+        })
+        .finally(() => {
+          privyClientPromise = null;
+        });
+    }
+    return privyClientPromise;
+  }
+  async function syncPrivyServerSession(snapshot) {
+    const session = snapshot || (privyClient ? await privyClient.current() : null);
+    if (!session || (!session.accessToken && !session.identityToken)) return null;
+    const r = await fetch(apiBase + "/auth/privy", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken: session.accessToken || undefined,
+        identityToken: session.identityToken || undefined,
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.session) throw new Error(data.error || "Privy sign-in failed");
+    if (data.privy) applyPrivyState({ ...data.privy, ready: true });
+    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, privy: data.privy });
+    return data;
+  }
+  async function initializePrivyFromStoredSession() {
+    if (!privyConfig) {
+      applyPrivyState({ configured: false, authenticated: false, ready: true });
+      return;
+    }
+    try {
+      const client = await getPrivyClient();
+      if (!client) return;
+      const snapshot = await client.current();
+      applyPrivyState({ ...snapshot, configured: true, ready: true });
+      if (snapshot.authenticated) await syncPrivyServerSession(snapshot);
+    } catch (err) {
+      applyPrivyState({ configured: true, authenticated: false, ready: true });
+      if (els.privyOverlay && els.privyOverlay.classList.contains("is-open")) {
+        setPrivyStatus("Privy unavailable · " + (err && err.message ? err.message : "error"), true);
+      }
+    }
+  }
+  async function openPrivyAccount() {
+    if (!privyConfig) return;
+    if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
+    setPrivyStatus("Checking account...", false);
+    try {
+      await initializePrivyFromStoredSession();
+      setPrivyStatus(privyState.authenticated ? "Account connected." : "", false);
+      setTimeout(() => {
+        if (!privyState.authenticated && els.privyEmail) els.privyEmail.focus();
+      }, 0);
+    } catch (err) {
+      setPrivyStatus(err && err.message ? err.message : "Privy error", true);
+    }
+  }
+  function closePrivyAccount() {
+    if (!els.privyOverlay) return;
+    els.privyOverlay.classList.remove("is-open");
+    setPrivyStatus("", false);
+  }
+  function setPrivyBusy(busy) {
+    if (els.privySendCode) els.privySendCode.disabled = !!busy;
+    if (els.privyLogin) els.privyLogin.disabled = !!busy;
+    if (els.privySignout) els.privySignout.disabled = !!busy;
+    if (els.privyEmail) els.privyEmail.disabled = !!busy;
+    if (els.privyCode) els.privyCode.disabled = !!busy;
+  }
+  async function submitPrivyEmail(e) {
+    if (e) e.preventDefault();
+    const email = els.privyEmail ? els.privyEmail.value.trim() : "";
+    if (!email) {
+      setPrivyStatus("Enter an email address.", true);
+      return;
+    }
+    setPrivyBusy(true);
+    setPrivyStatus("Sending code...", false);
+    try {
+      const client = await getPrivyClient();
+      if (!client) throw new Error("Privy is not configured.");
+      await client.sendEmailCode(email);
+      if (els.privyCodeForm) els.privyCodeForm.hidden = false;
+      setPrivyStatus("Code sent.", false);
+      setTimeout(() => { if (els.privyCode) els.privyCode.focus(); }, 0);
+    } catch (err) {
+      setPrivyStatus(err && err.message ? err.message : "Could not send code", true);
+    } finally {
+      setPrivyBusy(false);
+    }
+  }
+  async function submitPrivyCode(e) {
+    if (e) e.preventDefault();
+    const email = els.privyEmail ? els.privyEmail.value.trim() : "";
+    const code = els.privyCode ? els.privyCode.value.trim() : "";
+    if (!email || !code) {
+      setPrivyStatus("Enter the email and code.", true);
+      return;
+    }
+    setPrivyBusy(true);
+    setPrivyStatus("Verifying...", false);
+    try {
+      const client = await getPrivyClient();
+      if (!client) throw new Error("Privy is not configured.");
+      const snapshot = await client.loginWithEmailCode(email, code);
+      applyPrivyState({ ...snapshot, configured: true, ready: true });
+      await syncPrivyServerSession(snapshot);
+      setPrivyStatus("Account connected.", false);
+      await fetchSession();
+    } catch (err) {
+      setPrivyStatus(err && err.message ? err.message : "Could not verify code", true);
+    } finally {
+      setPrivyBusy(false);
+    }
+  }
+  async function signOutPrivy() {
+    setPrivyBusy(true);
+    setPrivyStatus("Signing out...", false);
+    try {
+      const client = await getPrivyClient();
+      if (client) await client.logout();
+      applyPrivyState({ configured: !!privyConfig, authenticated: false, ready: true });
+      await logout();
+      setPrivyStatus("Signed out.", false);
+    } catch (err) {
+      setPrivyStatus(err && err.message ? err.message : "Could not sign out", true);
+    } finally {
+      setPrivyBusy(false);
+    }
+  }
   function setAuthState(next, opts) {
     const nextAi = !!(opts && opts.ai);
     const nextLocalAi = !!(opts && opts.local_ai);
@@ -7308,6 +7510,7 @@ const VIEWER_SCRIPT_SUFFIX = `
           hosted_ai: opts.entitlements.hosted_ai || lastTelemetry.hosted_ai,
         };
       }
+      if (opts && opts.privy) applyPrivyState({ ...opts.privy, ready: true });
       return;
     }
     const wasSignedIn = lastAuthState === true;
@@ -7323,6 +7526,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         hosted_ai: opts.entitlements.hosted_ai || lastTelemetry.hosted_ai,
       };
     }
+    if (opts && opts.privy) applyPrivyState({ ...opts.privy, ready: true });
     applyAuthUI();
     // OpenRouter is optional. The overlay is now only a fallback if the app
     // cannot establish even a guest Ruby High session.
@@ -7358,7 +7562,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");
-    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements });
+    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, privy: data.privy });
   }
   async function retryGuestSession() {
     if (els.signinGuest) els.signinGuest.disabled = true;
@@ -7385,7 +7589,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const data = await r.json().catch(() => ({}));
       if (seq !== authCheckSeq) return;
       if (r.ok && data && data.session) {
-        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements });
+        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, privy: data.privy });
       } else {
         await ensureGuestSession();
       }
@@ -7407,12 +7611,21 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.checking.hidden = false;
       els.youState.textContent = "checking…";
       els.footerAction.hidden = true;
+      if (els.privyAction) els.privyAction.hidden = true;
       return;
     }
     if (authed) {
-      els.youState.textContent = aiEnabled ? (localAiEnabled ? "local AI" : "AI enabled") : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
+      els.youState.textContent = privyState.authenticated && privyState.walletAddress
+        ? shortWallet(privyState.walletAddress)
+        : aiEnabled
+          ? (localAiEnabled ? "local AI" : "AI enabled")
+          : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
       els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
       els.footerAction.hidden = localAiEnabled;
+      if (els.privyAction) {
+        els.privyAction.textContent = privyState.authenticated ? "Account" : "Sign in";
+        els.privyAction.hidden = !privyState.configured;
+      }
       if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
@@ -7421,6 +7634,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       // sign-in overlay is the only thing the user can see.
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
+      if (els.privyAction) els.privyAction.hidden = true;
       if (els.hallPassBtn) els.hallPassBtn.hidden = true;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
@@ -7817,6 +8031,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       window.location.href = "/api/apps/ruby-high/auth/start";
     }
   });
+  if (els.privyAction) els.privyAction.addEventListener("click", openPrivyAccount);
+  if (els.signinPrivy) els.signinPrivy.addEventListener("click", openPrivyAccount);
 
   // ── bug-report surface ─────────────────────────────────────────────────
   // Capture the last few console errors + unhandled rejections so the
@@ -7926,6 +8142,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (e.target === els.billingOverlay) closeBilling();
   });
   if (els.signinGuest) els.signinGuest.addEventListener("click", retryGuestSession);
+  if (els.privyClose) els.privyClose.addEventListener("click", closePrivyAccount);
+  if (els.privyOverlay) els.privyOverlay.addEventListener("click", (e) => {
+    if (e.target === els.privyOverlay) closePrivyAccount();
+  });
+  if (els.privyEmailForm) els.privyEmailForm.addEventListener("submit", submitPrivyEmail);
+  if (els.privyCodeForm) els.privyCodeForm.addEventListener("submit", submitPrivyCode);
+  if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 
   // Click your name/avatar to open the character sheet.
   const youCardBlock = document.querySelector(".channels-footer .you-meta");
@@ -7960,6 +8183,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   // to this tab from elsewhere (focus). No periodic polling: the only
   // server state we need here is the session cookie's current validity.
   deriveAuth();
+  initializePrivyFromStoredSession();
   window.addEventListener("storage", (e) => {
     if (e.key === AUTH_KEY || e.key === null) deriveAuth();
   });
@@ -7968,10 +8192,13 @@ const VIEWER_SCRIPT_SUFFIX = `
   // edge where the user returns from a separate-tab flow (a stray
   // target=_blank link, a back-forward cache hit, a tab-switch on iOS
   // Safari which does not fire focus reliably between same-window tabs).
-  window.addEventListener("focus", deriveAuth);
-  window.addEventListener("pageshow", deriveAuth);
+  window.addEventListener("focus", () => { deriveAuth(); initializePrivyFromStoredSession(); });
+  window.addEventListener("pageshow", () => { deriveAuth(); initializePrivyFromStoredSession(); });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") deriveAuth();
+    if (document.visibilityState === "visible") {
+      deriveAuth();
+      initializePrivyFromStoredSession();
+    }
   });
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.

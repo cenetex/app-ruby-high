@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleTeacherCatalogRoutes, type TeacherCatalogRouteContext } from "../teacher-catalog-routes.js";
-import { AuthService } from "../services/auth-service.js";
+import { AuthService, type AuthRecord } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import type { RatiTeacherAvatarProvider, RatiUserAvatar } from "../services/rati-avatar-provider.js";
@@ -13,6 +13,7 @@ import { getActivePack, packForSession, resetActivePack } from "../content/regis
 
 class FakeAvatarProvider implements RatiTeacherAvatarProvider {
   grants: Array<{ walletAddress: string; avatarId: string; visibility: "public" | "unlisted" }> = [];
+  listWallets: string[] = [];
   readonly avatar: RatiUserAvatar = {
     id: "spartan",
     model: "avatar:spartan",
@@ -26,7 +27,8 @@ class FakeAvatarProvider implements RatiTeacherAvatarProvider {
     return true;
   }
 
-  async listUserAvatars(_walletAddress: string): Promise<RatiUserAvatar[]> {
+  async listUserAvatars(walletAddress: string): Promise<RatiUserAvatar[]> {
+    this.listWallets.push(walletAddress);
     return [this.avatar];
   }
 
@@ -99,16 +101,19 @@ function makeDeps() {
         faculty: "rati-spartan",
       }));
     },
+    walletAddressForRecord: (record: AuthRecord) => auth.walletAddressForRecord(record),
   };
 }
 
-function signInUser(token: string): string {
+function signInUser(token: string, opts: { walletAddress?: string; walletChainType?: "ethereum" | "solana" } = {}): string {
   const userId = `test-${token}`;
   const now = Date.now();
   auth.injectSessionForTest(token, {
     userId,
     createdAt: now,
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
+    ...(opts.walletAddress ? { provider: "privy" as const, walletAddress: opts.walletAddress } : {}),
+    ...(opts.walletChainType ? { walletChainType: opts.walletChainType } : {}),
   });
   return `rh:user:${userId}`;
 }
@@ -222,6 +227,38 @@ describe("/teachers creator catalog", () => {
     }), makeDeps());
     expect(lastResponse?.body.teachers).toHaveLength(1);
     expect(lastResponse?.body.teachers[0].owner).toBe(true);
+  });
+
+  it("uses the verified Privy wallet for avatar drafts without request wallet fields", async () => {
+    const wallet = "0x2222222222222222222222222222222222222222";
+    const aliceSessionId = signInUser("alice-privy", { walletAddress: wallet, walletChainType: "ethereum" });
+
+    await handleTeacherCatalogRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/teachers/drafts",
+      cookie: "rh_session=alice-privy",
+      apiKeyHeader: "sk-test",
+      body: {
+        avatarId: "spartan",
+        materials: "# Agent visibility\nCreators submit curriculum.",
+        questionCount: 4,
+      },
+    }), makeDeps());
+
+    expect(lastResponse?.status).toBe(201);
+    expect(lastResponse?.body.teacher).toMatchObject({
+      displayName: "Spartan",
+      status: "draft",
+      visibility: "private",
+      owner: true,
+    });
+    const state = ruby.getOrCreate(aliceSessionId);
+    expect(state.activePackId).toBe(lastResponse?.body.teacher.packId);
+    expect(packForSession(state).faculty[0]?.provider).toMatchObject({
+      kind: "rati-openai-compatible",
+      model: "avatar:spartan",
+    });
+    expect(provider.listWallets).toContain(wallet);
   });
 
   it("publishes a custom teacher globally and lets another user activate it", async () => {

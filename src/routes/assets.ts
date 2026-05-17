@@ -24,7 +24,8 @@ const FIRST_BELL_PAGE_FILES = Object.fromEntries(
   }),
 ) as Record<string, { file: string; mime: string }>;
 
-const ASSET_FILES: Record<string, { file: string; mime: string }> = {
+const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string }> = {
+  "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache" },
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby.png": { file: "ruby-classroom.png", mime: "image/png" },
   "teachers/ruby.png": { file: "teachers/ruby.png", mime: "image/png" },
@@ -136,10 +137,15 @@ async function loadAsset(name: string): Promise<CachedAsset | null> {
   if (!entry) return null;
   const promise = (async () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const candidates = [
-      resolve(here, "..", "..", "assets", entry.file),
-      resolve(here, "..", "assets", entry.file),
-    ];
+    const candidates = entry.source === "dist"
+      ? [
+          resolve(here, "..", entry.file),
+          resolve(here, entry.file),
+        ]
+      : [
+          resolve(here, "..", "..", "assets", entry.file),
+          resolve(here, "..", "assets", entry.file),
+        ];
     for (const path of candidates) {
       try {
         const body = await readFile(path);
@@ -168,7 +174,7 @@ export async function sendAsset(res: unknown, name: string, ifNoneMatch?: string
   };
   response.setHeader("Content-Type", asset.mime);
   response.setHeader("ETag", asset.etag);
-  response.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  response.setHeader("Cache-Control", ASSET_FILES[name]?.cacheControl ?? "public, max-age=86400, stale-while-revalidate=604800");
   if (ifNoneMatch && ifNoneMatch === asset.etag) {
     response.statusCode = 304;
     response.end();

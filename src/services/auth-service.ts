@@ -17,8 +17,11 @@ export interface AuthRecord {
   userId: string;
   createdAt: number;
   expiresAt: number;
+  provider?: AuthUserRecord["provider"];
   /** OpenRouter username if returned by the token exchange. Cosmetic. */
   label?: string;
+  walletAddress?: string;
+  walletChainType?: "ethereum" | "solana";
 }
 
 interface PendingPkce {
@@ -155,6 +158,7 @@ export class AuthService extends Service {
       userId: user.userId,
       createdAt: now,
       expiresAt: now + SESSION_TTL_MS,
+      provider: user.provider,
       label: user.label,
     };
     this.sessions.set(token, record);
@@ -221,6 +225,7 @@ export class AuthService extends Service {
       userId: user.userId,
       createdAt: now,
       expiresAt: now + SESSION_TTL_MS,
+      provider: user.provider,
       label: user.label,
     };
     this.sessions.set(token, record);
@@ -236,6 +241,65 @@ export class AuthService extends Service {
       isReturning: !!existing,
     });
     return { token, record, apiKey };
+  }
+
+  /** Complete a server-verified Privy login by minting a Ruby High session
+   *  for the verified Privy user. If the browser already had a guest session,
+   *  keep the same Ruby High user id so the character bucket does not move. */
+  async completePrivyLogin(
+    identity: {
+      privyUserId: string;
+      label?: string;
+      walletAddress?: string;
+      walletChainType?: "ethereum" | "solana";
+    },
+    existingToken?: string | null,
+  ): Promise<{ token: string; record: AuthRecord; isReturning: boolean }> {
+    const now = Date.now();
+    const providerUserHash = providerIdentityHash(identity.privyUserId, "privy");
+    const providerKey = authUserKey("privy", providerUserHash);
+    const existing = this.usersByProviderHash.get(providerKey);
+    const existingSession = this.resolve(existingToken ?? null);
+    const sessionUser = existingSession ? this.usersById.get(existingSession.userId) : undefined;
+    const label = identity.label || sessionUser?.label || existing?.label || "Privy";
+    const user: AuthUserRecord = existing
+      ? {
+          ...existing,
+          lastLoginAt: now,
+          label,
+          ...(identity.walletAddress ? { walletAddress: identity.walletAddress } : {}),
+          ...(identity.walletChainType ? { walletChainType: identity.walletChainType } : {}),
+        }
+      : {
+          userId: sessionUser?.userId ?? `usr_${base64url(randomBytes(18))}`,
+          provider: "privy",
+          providerUserHash,
+          createdAt: sessionUser?.createdAt ?? now,
+          lastLoginAt: now,
+          label,
+          ...(identity.walletAddress ? { walletAddress: identity.walletAddress } : {}),
+          ...(identity.walletChainType ? { walletChainType: identity.walletChainType } : {}),
+        };
+    this.usersByProviderHash.set(providerKey, user);
+    this.usersById.set(user.userId, user);
+    await this.store.saveAuthUser(user);
+
+    const token = base64url(randomBytes(24));
+    const record = this.recordForUser(user, now);
+    this.sessions.set(token, record);
+    await this.store.saveAuthSession({
+      token,
+      userId: record.userId,
+      createdAt: record.createdAt,
+      expiresAt: record.expiresAt,
+    });
+    log.event("auth.signed-in", {
+      userId: user.userId,
+      provider: user.provider,
+      isReturning: !!existing,
+      wallet: !!user.walletAddress,
+    });
+    return { token, record, isReturning: !!existing };
   }
 
   /** Read cookie value from a raw Cookie header. */
@@ -294,6 +358,11 @@ export class AuthService extends Service {
     return `rh:user:${record.userId}`;
   }
 
+  walletAddressForRecord(record: AuthRecord | null | undefined): string {
+    if (!record) return "";
+    return record.walletAddress ?? this.usersById.get(record.userId)?.walletAddress ?? "";
+  }
+
   buildSessionCookie(token: string, opts: { secure: boolean }): string {
     const parts = [
       `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
@@ -345,13 +414,28 @@ export class AuthService extends Service {
         userId: session.userId,
         createdAt: session.createdAt,
         expiresAt: session.expiresAt,
+        provider: user?.provider,
         label: user?.label,
+        ...(user?.walletAddress ? { walletAddress: user.walletAddress } : {}),
+        ...(user?.walletChainType ? { walletChainType: user.walletChainType } : {}),
       });
     }
   }
 
   private isExpired(record: AuthRecord, now: number): boolean {
     return now - record.createdAt > SESSION_TTL_MS || record.expiresAt < now;
+  }
+
+  private recordForUser(user: AuthUserRecord, now: number): AuthRecord {
+    return {
+      userId: user.userId,
+      createdAt: now,
+      expiresAt: now + SESSION_TTL_MS,
+      provider: user.provider,
+      label: user.label,
+      ...(user.walletAddress ? { walletAddress: user.walletAddress } : {}),
+      ...(user.walletChainType ? { walletChainType: user.walletChainType } : {}),
+    };
   }
 }
 
@@ -374,7 +458,12 @@ function base64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function providerIdentityHash(value: string, source: "user" | "key" | "guest"): string {
+function providerIdentityHash(value: string, source: "user" | "key" | "guest" | "privy"): string {
+  if (source === "privy") {
+    return createHash("sha256")
+      .update(`privy:user:${value}`)
+      .digest("hex");
+  }
   return createHash("sha256")
     .update(`${source === "guest" ? "guest" : "openrouter"}:${source}:${value}`)
     .digest("hex");

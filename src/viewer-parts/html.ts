@@ -47,6 +47,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
            mode, "Sign out" when an OpenRouter key is active. Hidden when
            a configured local LLM already provides text AI. -->
       <button class="footer-action" id="footer-action" type="button" hidden></button>
+      <button class="footer-action account-action" id="privy-action" type="button" hidden>Account</button>
     </div>
     <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Send a bug report.">Report a bug</button>
   </aside>
@@ -165,9 +166,38 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <p class="sub">Play without AI, use a Hall Pass for a hosted AI day, or bring your own OpenRouter key.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
+      <button id="signin-privy" class="secondary-link" type="button" hidden>Sign in</button>
       <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use OpenRouter</a>
     </div>
     <div id="signin-status" class="stat-budget" aria-live="polite"></div>
+  </div>
+</div>
+
+<!-- Privy account overlay -->
+<div class="sheet-overlay" id="privy-overlay">
+  <button class="sheet-close" id="privy-close" type="button" aria-label="Close">×</button>
+  <div class="sheet-card privy-card">
+    <h2>Ruby High Account</h2>
+    <p class="sub">Sign in to connect your Ruby High character to your Privy wallet.</p>
+    <div class="wallet-panel" id="privy-wallet">Not connected</div>
+    <form class="privy-form" id="privy-email-form">
+      <div class="field">
+        <label for="privy-email">Email</label>
+        <input id="privy-email" type="email" autocomplete="email" placeholder="you@example.com" />
+      </div>
+      <button type="submit" id="privy-send-code">Send code</button>
+    </form>
+    <form class="privy-form" id="privy-code-form" hidden>
+      <div class="field">
+        <label for="privy-code">Code</label>
+        <input id="privy-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" />
+      </div>
+      <button type="submit" id="privy-login">Verify</button>
+    </form>
+    <div class="sheet-actions">
+      <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
+    </div>
+    <div id="privy-status" class="stat-budget" aria-live="polite"></div>
   </div>
 </div>
 

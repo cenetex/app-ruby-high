@@ -6,11 +6,13 @@ import type { ContentPack, PackSourceCard } from "../content/types.js";
 
 export interface AuthUserRecord {
   userId: string;
-  provider: "openrouter" | "guest";
+  provider: "openrouter" | "guest" | "privy";
   providerUserHash: string;
   createdAt: number;
   lastLoginAt: number;
   label?: string;
+  walletAddress?: string;
+  walletChainType?: "ethereum" | "solana";
 }
 
 export interface AuthSessionRecord {
@@ -292,7 +294,7 @@ export class StateStore implements StateStoreLike {
     for (const u of parsed.authUsers ?? []) {
       if (
         u &&
-        (u.provider === "openrouter" || u.provider === "guest") &&
+        (u.provider === "openrouter" || u.provider === "guest" || u.provider === "privy") &&
         typeof u.providerUserHash === "string" &&
         typeof u.userId === "string"
       ) {

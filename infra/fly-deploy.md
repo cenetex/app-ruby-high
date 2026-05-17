@@ -104,6 +104,26 @@ image until the next `flyctl deploy`.
 
 In your OpenRouter settings, add `https://ruby-high.fly.dev/api/apps/ruby-high/auth/callback` to the allowed redirect URIs (or replace the existing App Runner one if you're cutting over rather than running both).
 
+### 6. Configure Privy account sign-in
+
+In the Privy dashboard, configure the Ruby High app for email login and embedded wallet creation. Add these app domains/origins:
+
+- `https://ruby-high.fly.dev`
+- `https://rubyhighai.com`
+- `https://www.rubyhighai.com`
+- `http://localhost:3000` for local development, preferably in a separate dev Privy app
+
+Then set the app credentials on Fly:
+
+```sh
+flyctl secrets set --app ruby-high \
+  RUBY_HIGH_PRIVY_APP_ID=<privy app id> \
+  RUBY_HIGH_PRIVY_CLIENT_ID=<privy client id> \
+  RUBY_HIGH_PRIVY_APP_SECRET=<privy app secret>
+```
+
+`RUBY_HIGH_PRIVY_APP_SECRET` is the preferred server verifier because the API can also fetch linked user/wallet details. `RUBY_HIGH_PRIVY_VERIFICATION_KEY` is supported as a fallback verifier, but the identity token then needs to include enough linked account detail for wallet display.
+
 ## Day-to-day
 
 ```sh
@@ -123,6 +143,8 @@ flyctl secrets set --app ruby-high KEY=value   # update one
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credentials. |
 | `RUBY_HIGH_DYNAMO_TABLE` | Not strictly secret, but tied to the AWS environment so it lives with the AWS creds. |
 | `RUBY_HIGH_PUBLIC_BASE` | Tied to the deploy URL; staging vs. prod differ. |
+| `RUBY_HIGH_PRIVY_APP_ID` / `RUBY_HIGH_PRIVY_CLIENT_ID` | Privy app identifiers; stored with secrets so staging/prod can differ without editing `fly.toml`. |
+| `RUBY_HIGH_PRIVY_APP_SECRET` / `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | Server-side Privy token verification. |
 | `RUBY_HIGH_OPENROUTER_API_KEY` | Enables hosted AI Day Passes and hosted image generation. |
 | `RUBY_HIGH_STRIPE_SECRET_KEY` / `RUBY_HIGH_STRIPE_WEBHOOK_SECRET` | Enables web Hall Pass checkout and webhook fulfillment. |
 | `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | Enables mobile/IAP Hall Pass webhook fulfillment. |

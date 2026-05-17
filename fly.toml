@@ -16,7 +16,8 @@
 #
 # Things deliberately NOT in this file:
 #  - Secrets (RUBY_HIGH_DYNAMO_TABLE, AWS_ACCESS_KEY_ID,
-#    RUBY_HIGH_GITHUB_ISSUES_TOKEN, etc.). Those go in `flyctl secrets set`
+#    RUBY_HIGH_PRIVY_APP_SECRET, RUBY_HIGH_GITHUB_ISSUES_TOKEN, etc.).
+#    Those go in `flyctl secrets set`
 #    per the runbook in infra/fly-deploy.md.
 #  - Docker health-check command. Fly's public readiness check is below.
 

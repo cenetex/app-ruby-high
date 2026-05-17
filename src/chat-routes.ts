@@ -19,6 +19,11 @@ import {
   throwLlmResponseError,
 } from "./services/llm-provider.js";
 import {
+  getPrivyPublicConfigFromEnv,
+  privyServerConfigured,
+  verifyPrivyAuth,
+} from "./services/privy-auth.js";
+import {
   highestScoringFaculty,
   maybeUploadPortrait,
   renderCharacterPortrait,
@@ -953,6 +958,8 @@ export interface ChatRouteContext {
   clientIp?: string | null;
   /** Raw Origin request header, when present. Used to reject cross-site auth POSTs. */
   originHeader?: string | string[] | null;
+  /** Raw Authorization request header, when present. Privy uses Bearer access tokens. */
+  authorizationHeader?: string | string[] | null;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
@@ -1489,6 +1496,32 @@ function rejectBadAuthOrigin(ctx: ChatRouteContext, buildCallback: (path: string
   return true;
 }
 
+async function readPrivyAuthBody(ctx: ChatRouteContext): Promise<{ accessToken?: string; identityToken?: string }> {
+  const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object") return {};
+  return {
+    ...(typeof body.accessToken === "string" ? { accessToken: body.accessToken.trim() } : {}),
+    ...(typeof body.identityToken === "string" ? { identityToken: body.identityToken.trim() } : {}),
+  };
+}
+
+function bearerToken(value: string | string[] | null | undefined): string {
+  const raw = firstHeader(value).trim();
+  const match = raw.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : "";
+}
+
+function privySessionStatus(auth: AuthService, record: AuthRecord): Record<string, unknown> {
+  const walletAddress = auth.walletAddressForRecord(record);
+  return {
+    configured: !!getPrivyPublicConfigFromEnv(),
+    authenticated: record.provider === "privy",
+    walletAddress: walletAddress || null,
+    walletChainType: record.walletChainType ?? null,
+    label: record.label ?? null,
+  };
+}
+
 /**
  * Returns true if the route was handled. Otherwise the host should try other handlers.
  */
@@ -1534,9 +1567,49 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements.hosted_ai,
       entitlements,
+      privy: privySessionStatus(auth, record),
+      privy_configured: !!getPrivyPublicConfigFromEnv(),
       since: record.createdAt,
       label: record.label ?? "Guest",
     });
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/privy`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    if (!privyServerConfigured()) {
+      ctx.error(ctx.res, "Privy is not configured on this Ruby High server.", 503);
+      return true;
+    }
+    try {
+      const body = await readPrivyAuthBody(ctx);
+      const verified = await verifyPrivyAuth({
+        accessToken: body.accessToken ?? bearerToken(ctx.authorizationHeader),
+        identityToken: body.identityToken,
+      });
+      const existingToken = auth.parseSessionToken(ctx.cookieHeader);
+      const { token, record } = await auth.completePrivyLogin(verified, existingToken);
+      if (token !== existingToken) {
+        setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
+      }
+      const stateKey = auth.stateKeyForRecord(record);
+      const apiKey = readApiKey(ctx, ruby, stateKey);
+      const entitlements = hostedEntitlementStatus({ ruby, sessionId: stateKey });
+      ctx.json(ctx.res, {
+        ok: true,
+        session: true,
+        ai: !!apiKey,
+        ai_provider: llmProviderName(),
+        local_ai: isLocalLlmProvider(),
+        hosted_ai: entitlements.hosted_ai,
+        entitlements,
+        privy: privySessionStatus(auth, record),
+        since: record.createdAt,
+        label: record.label ?? verified.label ?? "Privy",
+      });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
     return true;
   }
 
@@ -1583,6 +1656,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements?.hosted_ai ?? null,
       entitlements,
+      privy: record ? privySessionStatus(auth, record) : {
+        configured: !!getPrivyPublicConfigFromEnv(),
+        authenticated: false,
+        walletAddress: null,
+        walletChainType: null,
+      },
       since: record?.createdAt ?? null,
       label: record?.label ?? null,
     });

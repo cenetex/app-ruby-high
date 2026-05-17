@@ -9,6 +9,7 @@ import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
+import { setPrivyAuthVerifierForTest } from "../services/privy-auth.js";
 
 let tmpDir: string;
 let auth: AuthService;
@@ -18,6 +19,10 @@ let ruby: RubyHighService;
 let capturedChatRequest: any | null = null;
 const originalHostedOpenRouterKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY;
 const originalPortraitBucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
+const originalPrivyAppId = process.env.RUBY_HIGH_PRIVY_APP_ID;
+const originalPrivyClientId = process.env.RUBY_HIGH_PRIVY_CLIENT_ID;
+const originalPrivyAppSecret = process.env.RUBY_HIGH_PRIVY_APP_SECRET;
+const originalPrivyVerificationKey = process.env.RUBY_HIGH_PRIVY_VERIFICATION_KEY;
 
 class TestResponse {
   statusCode = 0;
@@ -70,6 +75,7 @@ function makeCtx(url: URL, res: TestResponse, opts: {
   method?: string;
   cookieHeader?: string | null;
   apiKeyHeader?: string | null;
+  authorizationHeader?: string | string[] | null;
   originHeader?: string | string[] | null;
   body?: unknown;
 } = {}): ChatRouteContext {
@@ -81,6 +87,7 @@ function makeCtx(url: URL, res: TestResponse, opts: {
     res,
     cookieHeader: opts.cookieHeader ?? null,
     apiKeyHeader: opts.apiKeyHeader ?? null,
+    authorizationHeader: opts.authorizationHeader ?? null,
     originHeader: opts.originHeader ?? null,
     error: (_res, message, status = 500) => {
       res.statusCode = status;
@@ -114,6 +121,10 @@ async function callbackUrl(redirect: string): Promise<URL> {
 beforeEach(async () => {
   delete process.env.RUBY_HIGH_OPENROUTER_API_KEY;
   delete process.env.RUBY_HIGH_PORTRAITS_BUCKET;
+  delete process.env.RUBY_HIGH_PRIVY_APP_ID;
+  delete process.env.RUBY_HIGH_PRIVY_CLIENT_ID;
+  delete process.env.RUBY_HIGH_PRIVY_APP_SECRET;
+  delete process.env.RUBY_HIGH_PRIVY_VERIFICATION_KEY;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-routes-auth-"));
   capturedChatRequest = null;
   await getActivePack();
@@ -132,6 +143,11 @@ beforeEach(async () => {
 afterEach(async () => {
   restoreEnv("RUBY_HIGH_OPENROUTER_API_KEY", originalHostedOpenRouterKey);
   restoreEnv("RUBY_HIGH_PORTRAITS_BUCKET", originalPortraitBucket);
+  restoreEnv("RUBY_HIGH_PRIVY_APP_ID", originalPrivyAppId);
+  restoreEnv("RUBY_HIGH_PRIVY_CLIENT_ID", originalPrivyClientId);
+  restoreEnv("RUBY_HIGH_PRIVY_APP_SECRET", originalPrivyAppSecret);
+  restoreEnv("RUBY_HIGH_PRIVY_VERIFICATION_KEY", originalPrivyVerificationKey);
+  setPrivyAuthVerifierForTest(null);
   vi.restoreAllMocks();
   await auth.stop();
   await chat.stop();
@@ -213,6 +229,69 @@ describe("auth origin guard", () => {
     expect(logoutRes.statusCode).toBe(403);
     expect(logoutRes.getHeader("set-cookie")).toBeUndefined();
     expect(auth.resolve(token)).not.toBeNull();
+  });
+});
+
+describe("Privy auth", () => {
+  it("verifies the Privy token and upgrades the current session to a wallet account", async () => {
+    process.env.RUBY_HIGH_PRIVY_APP_ID = "privy-app-test";
+    process.env.RUBY_HIGH_PRIVY_CLIENT_ID = "privy-client-test";
+    process.env.RUBY_HIGH_PRIVY_APP_SECRET = "privy-secret-test";
+    const wallet = "0x1111111111111111111111111111111111111111";
+    const guest = await auth.createGuestSession();
+    const restoreVerifier = setPrivyAuthVerifierForTest(async (input) => {
+      expect(input.accessToken).toBe("access-token-test");
+      expect(input.identityToken).toBe("identity-token-test");
+      return {
+        privyUserId: "did:privy:alice",
+        label: "alice@example.test",
+        walletAddress: wallet,
+        walletChainType: "ethereum",
+      };
+    });
+
+    try {
+      const res = new TestResponse();
+      const handled = await handleChatRoutes(makeCtx(
+        new URL("http://localhost:3000/api/apps/ruby-high/auth/privy"),
+        res,
+        {
+          method: "POST",
+          cookieHeader: `rh_session=${guest.token}`,
+          originHeader: "http://localhost:3000",
+          authorizationHeader: "Bearer access-token-test",
+          body: { identityToken: "identity-token-test" },
+        },
+      ));
+
+      expect(handled).toBe(true);
+      expect(res.statusCode).toBe(200);
+      expect(res.getHeader("set-cookie")).toBeDefined();
+      const body = JSON.parse(res.body);
+      expect(body.session).toBe(true);
+      expect(body.label).toBe("alice@example.test");
+      expect(body.privy).toMatchObject({
+        configured: true,
+        authenticated: true,
+        walletAddress: wallet,
+        walletChainType: "ethereum",
+        label: "alice@example.test",
+      });
+      const cookie = String(res.getHeader("set-cookie"));
+      const nextToken = cookie.match(/rh_session=([^;]+)/)?.[1];
+      expect(nextToken).toBeTruthy();
+      expect(nextToken).not.toBe(guest.token);
+      const record = auth.resolve(decodeURIComponent(nextToken!));
+      expect(record).toMatchObject({
+        userId: guest.record.userId,
+        provider: "privy",
+        label: "alice@example.test",
+        walletAddress: wallet,
+        walletChainType: "ethereum",
+      });
+    } finally {
+      restoreVerifier();
+    }
   });
 });
 

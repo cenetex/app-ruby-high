@@ -47,6 +47,7 @@ export interface TeacherCatalogRouteDeps {
   auth: AuthService;
   ruby: RubyHighService;
   sessionIdFor: (cookieHeader?: string | null) => string;
+  walletAddressForRecord?: (record: AuthRecord) => string;
   avatarProvider?: RatiTeacherAvatarProvider;
   generateQuestions?: (
     candidate: ConnectedTeacherCandidate,
@@ -70,6 +71,7 @@ export async function handleTeacherCatalogRoutes(
   const token = deps.auth.parseSessionToken(ctx.cookieHeader);
   const authRecord = deps.auth.resolve(token);
   const sessionId = deps.sessionIdFor(ctx.cookieHeader);
+  const verifiedWalletAddress = authRecord ? (deps.walletAddressForRecord?.(authRecord) ?? "") : "";
 
   if (ctx.method === "GET" && sub === "/") {
     const teachers = await deps.ruby.listTeacherRecords();
@@ -103,7 +105,7 @@ export async function handleTeacherCatalogRoutes(
       return true;
     }
     try {
-      const walletAddress = walletAddressFromRequest(ctx, null);
+      const walletAddress = walletAddressFromRequest(ctx, null, verifiedWalletAddress);
       const avatars = await provider.listUserAvatars(walletAddress);
       ctx.json(ctx.res, {
         walletAddress,
@@ -136,7 +138,7 @@ export async function handleTeacherCatalogRoutes(
       }
       const teacherId = newTeacherId();
       const questionCount = questionCountFrom(bodyValue(body, "questionCount"));
-      const requestedWalletAddress = optionalWalletAddressFromRequest(ctx, body);
+      const requestedWalletAddress = optionalWalletAddressFromRequest(ctx, body, verifiedWalletAddress);
       const requestedAvatarId = bodyString(body, "avatarId") || bodyString(body, "ratiAvatarId");
       const useRatiAvatar = !!requestedWalletAddress || !!requestedAvatarId;
       let pack: ContentPack;
@@ -154,7 +156,7 @@ export async function handleTeacherCatalogRoutes(
           ctx.error(ctx.res, "RATi avatar provider is not configured.", 503);
           return true;
         }
-        const walletAddress = walletAddressFromRequest(ctx, body);
+        const walletAddress = walletAddressFromRequest(ctx, body, verifiedWalletAddress);
         const avatar = await avatarForDraft(provider, walletAddress, body);
         const candidate = candidateWithDraftOverrides(ratiAvatarToConnectedTeacherCandidate(avatar), body);
         const questions = await generateQuestions(candidate, materials, { questionCount });
@@ -655,19 +657,20 @@ function packSummary(pack: ContentPack) {
   };
 }
 
-function walletAddressFromRequest(ctx: TeacherCatalogRouteContext, body: Record<string, unknown> | null): string {
-  const raw = rawWalletAddressFromRequest(ctx, body);
+function walletAddressFromRequest(ctx: TeacherCatalogRouteContext, body: Record<string, unknown> | null, verifiedWalletAddress = ""): string {
+  const raw = rawWalletAddressFromRequest(ctx, body, verifiedWalletAddress);
   return normalizeWalletAddress(raw);
 }
 
-function optionalWalletAddressFromRequest(ctx: TeacherCatalogRouteContext, body: Record<string, unknown> | null): string {
-  const raw = rawWalletAddressFromRequest(ctx, body);
+function optionalWalletAddressFromRequest(ctx: TeacherCatalogRouteContext, body: Record<string, unknown> | null, verifiedWalletAddress = ""): string {
+  const raw = rawWalletAddressFromRequest(ctx, body, verifiedWalletAddress);
   return raw ? normalizeWalletAddress(raw) : "";
 }
 
-function rawWalletAddressFromRequest(ctx: TeacherCatalogRouteContext, body: Record<string, unknown> | null): string {
+function rawWalletAddressFromRequest(ctx: TeacherCatalogRouteContext, body: Record<string, unknown> | null, verifiedWalletAddress = ""): string {
   const header = firstHeader(ctx.walletAddressHeader);
   return (
+    verifiedWalletAddress ||
     header ||
     bodyString(body, "walletAddress") ||
     bodyString(body, "wallet") ||
