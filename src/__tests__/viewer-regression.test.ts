@@ -220,17 +220,28 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("mailto:hello@ratimics.com");
   });
 
-  it("keeps the pack library as one-click rows without install vocabulary", () => {
+  it("keeps installed packs as one-click rows and searches creator packs separately", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
-    expect(html).toContain("Click a pack to use it in the classroom.");
+    expect(html).toContain("Official and installed packs stay here.");
+    expect(html).toContain('id="pack-search-input"');
+    expect(html).toContain('id="pack-search-btn"');
+    expect(html).toContain('id="pack-search-list"');
+    expect(html).toContain("Find creator packs");
     expect(cssRule(".pack-grid")).toContain("display: flex");
     expect(cssRule(".pack-grid")).toContain("flex-direction: column");
     expect(cssRule(".pack-grid")).not.toContain("grid-template-columns");
+    expect(cssRule(".pack-search-row")).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(cssRule(".pack-card-item")).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(script).toContain('card.addEventListener("click", () => {');
-    expect(script).toContain('state.textContent = pack.active ? "Using now" : "Use"');
+    expect(script).toContain("state.textContent = isSearch");
+    expect(script).toContain(': pack.active ? "Using now" : "Use"');
+    expect(script).toContain("async searchCreatorPacks(query)");
+    expect(script).toContain('"/api/apps/ruby-high/pack-library/search?q="');
+    expect(script).toContain("async function installCreatorPack(pack)");
+    expect(script).toContain('installBtn.textContent = pack.installed ? (pack.active ? "Using" : "Use") : "Install"');
+    expect(script).toContain('packSearchBtn.addEventListener("click", searchCreatorPacks)');
     expect(script).toContain('"Switching classroom pack..."');
     expect(script).toContain("async function deleteLibraryPack");
     expect(script).toContain("deleteDraftPack");
@@ -245,39 +256,23 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('"Active pack switched. Reloading..."');
   });
 
-  it("opens New Teacher as a card-based teacher roll before saving", () => {
-    const script = inlineScript(renderedViewer());
+  it("keeps new content pack setup focused on pasted course materials", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
 
-    expect(script).toContain("function startDraftTeacherCreation()");
-    expect(script).toContain("Teacher Roll");
-    expect(script).toContain("teacher-image-preset");
-    expect(script).toContain("Custom");
-    expect(script).toContain('saveBtn.textContent = "Save"');
-    expect(script).toContain("teacher-button-spinner");
-    expect(script).toContain("function cancelTeacherImageGeneration");
-    expect(script).toContain("confirmHostedCreditSpend");
-    expect(script).toContain("Hosted image generation spends");
-    expect(script).toContain("Cancel generation");
-    expect(script).toContain("function updatePendingTeacherRollField");
-    expect(script).toContain("profileImageUrl = regen.has(\"image\") ? \"\" : (prev.profileImageUrl || \"\")");
-    expect(script).toContain("function openRouterAiEnabled()");
-    expect(script).toContain('openRouterGenerationMessage("generating teacher images")');
-    expect(script).toContain("/api/apps/ruby-high/chat/teacher/portrait");
-    expect(script).toContain('requestId: imageRequestId("teacher-portrait")');
-    expect(script).toContain('requestId: imageRequestId("character-portrait")');
-    expect(script).toContain('requestId: imageRequestId("diploma")');
-    expect(script).toContain("stats: pendingTeacherRoll.stats");
-    expect(script).toContain("subject: pendingTeacherRoll.subject");
-    expect(script).toContain("quote: pendingTeacherRoll.quote");
-    expect(script).toContain('makeRow("Stats", "stats", buildTeacherStatPills(roll.stats)');
-    expect(script).toContain("input.disabled = packImportBusy");
-    expect(script).toContain("saveBtn.disabled = packImportBusy || pendingTeacherImageBusy || packQuestionGenerationBusy");
-    expect(script).toContain("clientRequestId: prev.clientRequestId || newPackClientRequestId(\"teacher\")");
-    expect(script).toContain("retryPackNetworkWrite(\"Adding teacher\"");
-    expect(script).toContain("friendlyFetchFailureMessage(err)");
-    expect(script).not.toContain('addBtn.textContent = "Add Teacher"');
-    expect(script).not.toContain('cancelBtn.textContent = "Cancel"');
-    expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');
+    expect(html).toContain('id="course-materials-input"');
+    expect(html).toContain("Add course materials here");
+    expect(html).toContain("Generate Course");
+    expect(html).not.toContain('id="pack-name-input"');
+    expect(html).not.toContain('id="pack-description-input"');
+    expect(html).not.toContain('id="pack-add-teacher-btn"');
+    expect(html).not.toContain('<span class="pack-teacher-title">New Teacher</span>');
+    expect(html).not.toContain('<span class="pack-teacher-subtitle">Create manually</span>');
+    expect(script).toContain('packEditTitleEl.textContent = emptyDraft ? "Create content pack" : "Edit pack"');
+    expect(script).toContain('packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here."');
+    expect(script).toContain('if (teacherSidebar) teacherSidebar.hidden = emptyDraft');
+    expect(script).toContain("if (Object.keys(patch).length === 0) return;");
+    expect(script).not.toContain('packAddTeacherBtn.addEventListener("click", addDraftTeacher)');
   });
 
   it("uses BYOK course generation and paid publish slots for draft pack setup", () => {
@@ -292,8 +287,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain("Generate Course");
     expect(html).toContain("Publish Course (3 Hall Passes)");
     expect(html).toContain('id="course-generate-btn"');
-    expect(html).toContain('class="pack-teacher-tab pack-new-teacher-tab"');
-    expect(html).toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');
+    expect(html).not.toContain('class="pack-teacher-tab pack-new-teacher-tab"');
+    expect(html).not.toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');
     expect(script).toContain("async generateCourse(draftId, payload, options)");
     expect(script).toContain('"/course/generate"');
     expect(script).toContain("COURSE_SLOT_HALL_PASS_COST = 3");

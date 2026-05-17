@@ -228,6 +228,8 @@ describe("/pack-library", () => {
     expect(response.body.drafts).toEqual([]);
     expect(response.body.packs[0]).toMatchObject({
       id: ORIGINAL_PACK_ID,
+      source: "official",
+      installed: true,
       readOnly: true,
       builtIn: true,
       enabled: true,
@@ -235,6 +237,79 @@ describe("/pack-library", () => {
       canEdit: false,
       canDelete: false,
       status: "published",
+    });
+  });
+
+  it("keeps creator packs in search until a user installs them", async () => {
+    signInUser("alice");
+    const bobSessionId = signInUser("bob");
+    const pack = fakePack("pack:shared-signals");
+    pack.name = "Signals Shared";
+    pack.description = "Creator lessons about sampling and controls.";
+    pack.faculty[0]!.displayName = "Signal Coach";
+    pack.faculty[0]!.subjects = ["sampling", "controls"];
+    await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+
+    let response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library",
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.packs.some((entry: { id: string }) => entry.id === pack.id)).toBe(false);
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library/search?q=signals",
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.packs).toHaveLength(1);
+    expect(response.body.packs[0]).toMatchObject({
+      id: pack.id,
+      source: "creator",
+      installed: false,
+      enabled: false,
+      active: false,
+      owner: false,
+    });
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(pack.id)}/install`,
+      cookie: "rh_session=bob",
+      body: { enabled: true },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.packs.find((entry: { id: string }) => entry.id === pack.id)).toMatchObject({
+      source: "creator",
+      installed: true,
+      enabled: true,
+      active: false,
+    });
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library/search?q=coach",
+      cookie: "rh_session=bob",
+    });
+    expect(response.body.packs[0]).toMatchObject({
+      id: pack.id,
+      installed: true,
+      enabled: true,
+    });
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(pack.id)}/active`,
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(200);
+    expect(ruby.getOrCreate(bobSessionId).activePackId).toBe(pack.id);
+    expect(response.body.packs.find((entry: { id: string }) => entry.id === pack.id)).toMatchObject({
+      installed: true,
+      enabled: true,
+      active: true,
     });
   });
 
@@ -540,6 +615,8 @@ describe("/pack-library", () => {
     });
     expect(response.body.pack).toMatchObject({
       name: "Signals Pack",
+      source: "creator",
+      installed: true,
       enabled: true,
       active: false,
       owner: true,
@@ -566,6 +643,8 @@ describe("/pack-library", () => {
     });
     const published = response.body.packs.find((pack: { id: string }) => pack.id === packId);
     expect(published).toMatchObject({
+      source: "creator",
+      installed: true,
       enabled: true,
       active: false,
       owner: true,

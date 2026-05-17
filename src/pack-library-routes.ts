@@ -59,6 +59,8 @@ const MAX_MATERIAL_CHARS = 80_000;
 const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY, 5);
 const COURSE_SLOT_HALL_PASS_COST = courseSlotCost();
 const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 18);
+const PACK_SEARCH_LIMIT = 24;
+type PackLibrarySource = "official" | "creator" | "imported";
 
 export async function handlePackLibraryRoutes(
   ctx: PackLibraryRouteContext,
@@ -81,6 +83,12 @@ export async function handlePackLibraryRoutes(
     if (ctx.method === "GET" && sub === "/") {
       await migrateExistingTeacherInstalls(deps.ruby, record);
       ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
+      return true;
+    }
+
+    if (ctx.method === "GET" && sub === "/search") {
+      const query = ctx.url?.searchParams.get("q") ?? "";
+      ctx.json(ctx.res, await creatorPackSearchPayload(deps.ruby, record, sessionId, query));
       return true;
     }
 
@@ -423,6 +431,8 @@ export async function handlePackLibraryRoutes(
           owner: true,
           readOnly: false,
           editDraftId: publishedDraft.id,
+          source: "creator",
+          installed: true,
         }),
         draft: draftDetail(publishedDraft),
         courseSlot: courseSlotDetail(publishedSlot),
@@ -458,20 +468,24 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
       .filter((teacher) => teacher.creatorUserId === record.userId && teacher.status === "published")
       .map((teacher) => teacher.packId),
   );
-  const packs = visiblePacks.map((pack) => {
+  const packs = visiblePacks.flatMap((pack) => {
     const install = installByPack.get(pack.id);
     const builtIn = pack.id === ORIGINAL_PACK_ID;
     const persistedRecords = persistedPackRecords.filter((entry) => entry.pack.id === pack.id);
+    const source = packLibrarySource(pack, persistedRecords);
     const owner = publishedOwnedPackIds.has(pack.id) || persistedRecords.some((entry) =>
       entry.creatorUserId === record.userId || entry.ownerSessionId === sessionId);
+    if (!builtIn && !owner && !install && source === "creator") return [];
     const backingDraft = owner ? backingDraftForPack(userDrafts, pack.id) : null;
-    return packLibrarySummary(pack, {
+    return [packLibrarySummary(pack, {
       enabled: install ? install.enabled : builtIn,
       active: pack.id === activePackId || !!install?.active,
       owner,
       readOnly: builtIn,
       editDraftId: backingDraft?.id,
-    });
+      source,
+      installed: !!install || owner || builtIn,
+    })];
   });
   const visiblePackIds = new Set(visiblePacks.map((pack) => pack.id));
   const drafts = userDrafts
@@ -481,6 +495,51 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
     activePackId,
     packs: packs.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name)),
     drafts,
+  };
+}
+
+async function creatorPackSearchPayload(
+  ruby: RubyHighService,
+  record: AuthRecord,
+  sessionId: string,
+  rawQuery: string,
+) {
+  const query = rawQuery.trim();
+  const normalized = normalizeSearchQuery(query);
+  const activePackId = currentActivePackId(ruby, sessionId);
+  const installs = await ruby.listPackInstallationRecords();
+  const userInstalls = installs.filter((install) => install.userId === record.userId);
+  const installByPack = new Map(userInstalls.map((install) => [install.packId, install]));
+  const userDrafts = (await ruby.listDraftPackRecords())
+    .filter((draft) => draft.ownerUserId === record.userId);
+  const records = uniquePackRecords(await ruby.listPersistedPackRecords())
+    .filter((entry) => entry.ownerSessionId === null && packLibrarySource(entry.pack, [entry]) === "creator");
+
+  const packs = normalized.length === 0
+    ? []
+    : records
+      .filter((entry) => packMatchesSearch(entry.pack, normalized))
+      .sort((a, b) => packSearchRank(b.pack, normalized) - packSearchRank(a.pack, normalized) || a.pack.name.localeCompare(b.pack.name))
+      .slice(0, PACK_SEARCH_LIMIT)
+      .map((entry) => {
+        const install = installByPack.get(entry.pack.id);
+        const owner = entry.creatorUserId === record.userId || entry.ownerSessionId === sessionId;
+        const backingDraft = owner ? backingDraftForPack(userDrafts, entry.pack.id) : null;
+        return packLibrarySummary(entry.pack, {
+          enabled: !!install?.enabled,
+          active: entry.pack.id === activePackId || !!install?.active,
+          owner,
+          readOnly: false,
+          editDraftId: backingDraft?.id,
+          source: "creator",
+          installed: !!install || owner,
+        });
+      });
+
+  return {
+    query,
+    packs,
+    limit: PACK_SEARCH_LIMIT,
   };
 }
 
@@ -620,16 +679,26 @@ function currentActivePackId(ruby: RubyHighService, sessionId: string): string {
 
 function packLibrarySummary(
   pack: ContentPack,
-  opts: { enabled: boolean; active: boolean; owner: boolean; readOnly: boolean; editDraftId?: string },
+  opts: {
+    enabled: boolean;
+    active: boolean;
+    owner: boolean;
+    readOnly: boolean;
+    editDraftId?: string;
+    source: PackLibrarySource;
+    installed?: boolean;
+  },
 ) {
   const questionCount = countPackQuestions(pack);
   return {
     id: pack.id,
     name: pack.name,
     description: pack.description,
+    source: opts.source,
     readOnly: opts.readOnly,
     builtIn: pack.id === ORIGINAL_PACK_ID,
     owner: opts.owner,
+    installed: !!opts.installed,
     enabled: opts.enabled,
     active: opts.active,
     canEdit: opts.owner && !opts.readOnly && !!opts.editDraftId,
@@ -640,6 +709,61 @@ function packLibrarySummary(
     questionCount,
     courses: coursesForPack(pack),
   };
+}
+
+function packLibrarySource(pack: ContentPack, records: Array<{ creatorUserId?: string; courseSlot?: StoredCourseSlotRecord }>): PackLibrarySource {
+  if (pack.id === ORIGINAL_PACK_ID) return "official";
+  if (records.some((entry) => entry.creatorUserId || entry.courseSlot) || pack.id.startsWith("pack:") || pack.id.startsWith("teacher:")) {
+    return "creator";
+  }
+  return "imported";
+}
+
+function uniquePackRecords(records: Awaited<ReturnType<RubyHighService["listPersistedPackRecords"]>>) {
+  const out = new Map<string, (typeof records)[number]>();
+  for (const record of records) {
+    if (!out.has(record.pack.id) || (out.get(record.pack.id)?.touchedAt ?? 0) < record.touchedAt) {
+      out.set(record.pack.id, record);
+    }
+  }
+  return Array.from(out.values());
+}
+
+function normalizeSearchQuery(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).map((part) => part.trim()).filter(Boolean).slice(0, 8);
+}
+
+function packMatchesSearch(pack: ContentPack, terms: string[]): boolean {
+  const text = searchablePackText(pack);
+  return terms.every((term) => text.includes(term));
+}
+
+function packSearchRank(pack: ContentPack, terms: string[]): number {
+  const name = (pack.name || "").toLowerCase();
+  const faculty = pack.faculty.map((entry) => entry.displayName.toLowerCase()).join(" ");
+  return terms.reduce((score, term) => {
+    if (name === term) return score + 100;
+    if (name.includes(term)) return score + 40;
+    if (faculty.includes(term)) return score + 20;
+    return score + 1;
+  }, 0);
+}
+
+function searchablePackText(pack: ContentPack): string {
+  return [
+    pack.name,
+    pack.description,
+    ...pack.faculty.flatMap((faculty) => [
+      faculty.displayName,
+      faculty.shortName,
+      faculty.bio,
+      ...faculty.subjects,
+    ]),
+    ...(pack.courses ?? []).flatMap((course) => [
+      course.title,
+      ...course.subjects,
+    ]),
+  ].filter(Boolean).join(" ").toLowerCase();
 }
 
 function backingDraftForPack(

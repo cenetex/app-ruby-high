@@ -6400,6 +6400,9 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packEl = $("pack-overlay");
   const packListEl = $("pack-list");
   const packDraftListEl = $("pack-draft-list");
+  const packSearchInputEl = $("pack-search-input");
+  const packSearchBtn = $("pack-search-btn");
+  const packSearchListEl = $("pack-search-list");
   const packCreateBtn = $("pack-create-btn");
   const packEditEl = $("pack-edit-overlay");
   const packEditTitleEl = $("pack-edit-title");
@@ -6417,7 +6420,6 @@ const VIEWER_SCRIPT_SUFFIX = `
   const courseGenerationChecklistEl = $("course-generation-checklist");
   const packTeacherListEl = $("pack-teacher-list");
   const packTeacherDetailEl = $("pack-teacher-detail");
-  const packAddTeacherBtn = $("pack-add-teacher-btn");
   const teacherMaterialUrlInputEl = $("teacher-material-url-input");
   const teacherLoadUrlBtn = $("teacher-load-url-btn");
   const teacherGenerateQuestionsBtn = $("teacher-generate-questions-btn");
@@ -6442,6 +6444,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   let packImportBusy = false;
   let packImportTimer = null;
   let packLibraryState = null;
+  let packSearchState = { query: "", packs: [], searched: false };
+  let packSearchRunId = 0;
   let currentDraft = null;
   let selectedPackTeacherId = null;
   let selectedPackTab = "materials";
@@ -6499,6 +6503,12 @@ const VIEWER_SCRIPT_SUFFIX = `
       const r = await apiFetch("/api/apps/ruby-high/pack-library");
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "pack library " + r.status);
+      return data;
+    },
+    async searchCreatorPacks(query) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library/search?q=" + encodeURIComponent(query || ""));
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "pack search " + r.status);
       return data;
     },
     async createDraftPack() {
@@ -6718,9 +6728,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (packEditCloseBtn) packEditCloseBtn.disabled = packImportBusy;
     if (packBtn) packBtn.disabled = packImportBusy;
     packEl.querySelectorAll("button.pack-action").forEach((btn) => { btn.disabled = packImportBusy; });
-    packEditEl.querySelectorAll("button.pack-action, button.secondary, button.pack-teacher-row-action, button.pack-teacher-select, button.pack-teacher-tab").forEach((btn) => { btn.disabled = packImportBusy; });
+    packEditEl.querySelectorAll("button.pack-action, button.secondary, button.pack-teacher-row-action, button.pack-teacher-select").forEach((btn) => { btn.disabled = packImportBusy; });
     if (packCreateBtn) packCreateBtn.disabled = packImportBusy;
-    if (packAddTeacherBtn) packAddTeacherBtn.disabled = packImportBusy;
+    if (packSearchInputEl) packSearchInputEl.disabled = packImportBusy;
+    if (packSearchBtn) packSearchBtn.disabled = packImportBusy;
     syncPackEditorGuardControls();
     packEditEl.querySelectorAll("input, textarea").forEach((field) => {
       field.disabled = packImportBusy;
@@ -6894,6 +6905,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       packLibraryState = await packStudioClient.listPacks();
       renderPackList();
+      renderPackSearchList();
       renderDraftPackList();
     } catch (err) {
       packListEl.innerHTML = "";
@@ -6914,6 +6926,23 @@ const VIEWER_SCRIPT_SUFFIX = `
     });
   }
 
+  function renderPackSearchList() {
+    if (!packSearchListEl) return;
+    const packs = packSearchState && Array.isArray(packSearchState.packs) ? packSearchState.packs : [];
+    packSearchListEl.innerHTML = "";
+    if (!packSearchState.searched) {
+      packSearchListEl.innerHTML = '<div class="sub">Search to find public creator packs.</div>';
+      return;
+    }
+    if (packs.length === 0) {
+      packSearchListEl.innerHTML = '<div class="sub">No creator packs found.</div>';
+      return;
+    }
+    packs.forEach((pack) => {
+      packSearchListEl.appendChild(packCard(pack, { draft: false, search: true }));
+    });
+  }
+
   function renderDraftPackList() {
     const drafts = packLibraryState && Array.isArray(packLibraryState.drafts) ? packLibraryState.drafts : [];
     packDraftListEl.innerHTML = "";
@@ -6929,17 +6958,18 @@ const VIEWER_SCRIPT_SUFFIX = `
   function packCard(pack, opts) {
     const card = document.createElement("div");
     const isDraft = !!opts.draft;
-    const canSwitch = !isDraft && !pack.active;
-    card.className = "pack-card-item" + (pack.active ? " is-active" : "") + (!isDraft ? " is-clickable" : "");
-    if (!isDraft) {
+    const isSearch = !!opts.search;
+    const canSwitch = !isDraft && !isSearch && !pack.active;
+    card.className = "pack-card-item" + (pack.active ? " is-active" : "") + (canSwitch ? " is-clickable" : "");
+    if (canSwitch) {
       card.setAttribute("role", "button");
       card.tabIndex = packImportBusy ? -1 : 0;
       card.setAttribute("aria-label", (pack.active ? "Using " : "Use ") + (pack.name || "Untitled Pack"));
       card.addEventListener("click", () => {
-        if (canSwitch) activateLibraryPack(pack);
+        activateLibraryPack(pack);
       });
       card.addEventListener("keydown", (event) => {
-        if (!canSwitch || (event.key !== "Enter" && event.key !== " ")) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         activateLibraryPack(pack);
       });
@@ -6961,8 +6991,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     const meta = document.createElement("div");
     meta.className = "pack-card-meta";
     [
-      pack.builtIn ? "built-in" : pack.status || "pack",
+      pack.source === "official" ? "official" : pack.source === "creator" ? "creator" : pack.builtIn ? "built-in" : pack.status || "pack",
       pack.readOnly ? "read only" : pack.owner ? "yours" : "",
+      isSearch && pack.installed ? "installed" : "",
       (pack.facultyCount || pack.teacherCount || 0) + " teachers",
       (pack.questionCount || 0) + " cards",
     ].filter(Boolean).forEach((text) => {
@@ -6978,8 +7009,27 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!isDraft) {
       const state = document.createElement("div");
       state.className = "pack-row-state";
-      state.textContent = pack.active ? "Using now" : "Use";
+      state.textContent = isSearch
+        ? pack.active ? "Using now" : pack.installed ? "Installed" : "Not installed"
+        : pack.active ? "Using now" : "Use";
       actions.appendChild(state);
+    }
+
+    if (isSearch) {
+      const installBtn = document.createElement("button");
+      installBtn.type = "button";
+      installBtn.className = "pack-action";
+      installBtn.textContent = pack.installed ? (pack.active ? "Using" : "Use") : "Install";
+      installBtn.disabled = packImportBusy || pack.active;
+      installBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (pack.installed) {
+          activateLibraryPack(pack);
+        } else {
+          installCreatorPack(pack);
+        }
+      });
+      actions.appendChild(installBtn);
     }
 
     if (isDraft || pack.canEdit) {
@@ -7046,6 +7096,63 @@ const VIEWER_SCRIPT_SUFFIX = `
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
       packStatusEl.textContent = "Could not switch pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function searchCreatorPacks() {
+    if (!packSearchInputEl || !packSearchListEl || packImportBusy) return;
+    const query = packSearchInputEl.value.trim();
+    const runId = ++packSearchRunId;
+    if (!query) {
+      packSearchState = { query: "", packs: [], searched: false };
+      renderPackSearchList();
+      return;
+    }
+    packSearchState = { query, packs: [], searched: true };
+    packSearchListEl.innerHTML = '<div class="sub">Searching creator packs...</div>';
+    packStatusEl.textContent = "";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const data = await packStudioClient.searchCreatorPacks(query);
+      if (runId !== packSearchRunId) return;
+      packSearchState = {
+        query: data && typeof data.query === "string" ? data.query : query,
+        packs: data && Array.isArray(data.packs) ? data.packs : [],
+        searched: true,
+      };
+      renderPackSearchList();
+    } catch (err) {
+      if (runId !== packSearchRunId) return;
+      packSearchListEl.innerHTML = "";
+      packStatusEl.textContent = "Could not search packs · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    }
+  }
+
+  async function installCreatorPack(pack) {
+    if (!pack || packImportBusy) return;
+    setPackBusy(true);
+    packStatusEl.textContent = "Installing pack...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      packLibraryState = await packStudioClient.installPack(pack.id, true);
+      renderPackList();
+      renderDraftPackList();
+      if (packSearchState.searched && packSearchState.query) {
+        const data = await packStudioClient.searchCreatorPacks(packSearchState.query);
+        packSearchState = {
+          query: data && typeof data.query === "string" ? data.query : packSearchState.query,
+          packs: data && Array.isArray(data.packs) ? data.packs : [],
+          searched: true,
+        };
+        renderPackSearchList();
+      }
+      packStatusEl.textContent = "Pack installed.";
+    } catch (err) {
+      packStatusEl.textContent = "Could not install pack · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);
@@ -7624,9 +7731,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!packTeacherDetailEl) return;
     packTeacherDetailEl.innerHTML = "";
     const emptyDraft = !packTeacherCreateMode && teachers.length === 0;
+    const teacherSidebar = packTeacherListEl ? packTeacherListEl.closest(".pack-teacher-sidebar") : null;
+    if (teacherSidebar) teacherSidebar.hidden = emptyDraft;
     if (packCourseGeneratorEl) packCourseGeneratorEl.hidden = !emptyDraft;
     if (packTeacherCreateMode) {
       if (packCourseGeneratorEl) packCourseGeneratorEl.hidden = true;
+      if (teacherSidebar) teacherSidebar.hidden = false;
       packTeacherDetailEl.hidden = false;
       setPackEditorTabsHidden(true);
       renderNewTeacherCreation();
@@ -7784,8 +7894,9 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function renderPackEditor() {
     if (!currentDraft) return;
-    if (packEditTitleEl) packEditTitleEl.textContent = "Edit pack";
-    if (packEditSubtitleEl) packEditSubtitleEl.textContent = currentDraft.name || "Draft content pack";
+    const emptyDraft = Array.isArray(currentDraft.teachers) && currentDraft.teachers.length === 0;
+    if (packEditTitleEl) packEditTitleEl.textContent = emptyDraft ? "Create content pack" : "Edit pack";
+    if (packEditSubtitleEl) packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here." : (currentDraft.name || "Draft content pack");
     if (packNameInputEl) packNameInputEl.value = currentDraft.name || "";
     if (packDescriptionInputEl) packDescriptionInputEl.value = currentDraft.description || "";
     renderPackTeacherEditor();
@@ -7851,11 +7962,12 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   async function saveDraftPackFields() {
     if (!currentDraft) return;
+    const patch = {};
+    if (packNameInputEl) patch.name = String(packNameInputEl.value || "").trim();
+    if (packDescriptionInputEl) patch.description = String(packDescriptionInputEl.value || "").trim();
+    if (Object.keys(patch).length === 0) return;
     try {
-      currentDraft = await packStudioClient.updateDraftPack(currentDraft.id, {
-        name: String((packNameInputEl && packNameInputEl.value) || "").trim(),
-        description: String((packDescriptionInputEl && packDescriptionInputEl.value) || "").trim(),
-      });
+      currentDraft = await packStudioClient.updateDraftPack(currentDraft.id, patch);
       if (packEditStatusEl) {
         packEditStatusEl.textContent = "Draft saved.";
         packEditStatusEl.classList.remove("is-invalid");
@@ -8124,7 +8236,12 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (packEditEl) packEditEl.addEventListener("click", (e) => { if (e.target === packEditEl) closePackEditor(); });
   packBtn.addEventListener("click", openPackStore);
   if (packCreateBtn) packCreateBtn.addEventListener("click", createDraftPack);
-  if (packAddTeacherBtn) packAddTeacherBtn.addEventListener("click", addDraftTeacher);
+  if (packSearchBtn) packSearchBtn.addEventListener("click", searchCreatorPacks);
+  if (packSearchInputEl) packSearchInputEl.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    searchCreatorPacks();
+  });
   if (packPublishBtn) packPublishBtn.addEventListener("click", publishCurrentDraft);
   if (teacherLoadUrlBtn) teacherLoadUrlBtn.addEventListener("click", loadTeacherMaterialsFromUrl);
   if (teacherGenerateQuestionsBtn) teacherGenerateQuestionsBtn.addEventListener("click", generateDraftQuestions);

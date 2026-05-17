@@ -278,12 +278,18 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay" id="pack-overlay">
   <div class="sheet-card" id="pack-card">
     <h2>Pack Library</h2>
-    <p class="sub">Click a pack to use it in the classroom. Create or edit draft packs below.</p>
+    <p class="sub">Official and installed packs stay here. Search creator packs to add more.</p>
     <div class="pack-library-actions">
       <button type="button" class="pack-action" id="pack-create-btn">+ Create New Content Pack</button>
     </div>
-    <div class="pack-section-title">Available packs</div>
+    <div class="pack-section-title">Your packs</div>
     <div class="pack-grid" id="pack-list"></div>
+    <div class="pack-section-title">Find creator packs</div>
+    <div class="pack-search-row">
+      <input type="search" id="pack-search-input" placeholder="Search by topic or teacher" autocomplete="off" />
+      <button type="button" class="pack-action" id="pack-search-btn">Search</button>
+    </div>
+    <div class="pack-grid" id="pack-search-list"></div>
     <div class="pack-section-title">Draft packs</div>
     <div class="pack-grid" id="pack-draft-list"></div>
     <div class="pack-import-panel" id="pack-import-panel" hidden>
@@ -304,10 +310,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <div class="sheet-card pack-edit-card" id="pack-edit-card">
     <h2 id="pack-edit-title">Edit pack</h2>
     <p class="sub" id="pack-edit-subtitle">Draft content pack.</p>
-    <div class="pack-draft-fields">
-      <input id="pack-name-input" type="text" placeholder="Pack name">
-      <input id="pack-description-input" type="text" placeholder="Pack description">
-    </div>
     <div class="pack-editor">
       <section class="pack-course-generator" id="pack-course-generator" hidden>
         <textarea id="course-materials-input" rows="10" maxlength="80000" placeholder="Add course materials here"></textarea>
@@ -326,13 +328,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <aside class="pack-teacher-sidebar">
         <div class="pack-section-title">Teachers</div>
         <div class="pack-list pack-teacher-list" id="pack-teacher-list"></div>
-        <button type="button" class="pack-teacher-tab pack-new-teacher-tab" id="pack-add-teacher-btn">
-          <span class="pack-teacher-avatar pack-new-teacher-avatar">+</span>
-          <span class="pack-teacher-copy">
-            <span class="pack-teacher-title">New Teacher</span>
-            <span class="pack-teacher-subtitle">Create manually</span>
-          </span>
-        </button>
       </aside>
       <section class="pack-editor-main">
         <div class="pack-teacher-detail" id="pack-teacher-detail"></div>

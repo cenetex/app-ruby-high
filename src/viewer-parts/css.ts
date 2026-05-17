@@ -755,6 +755,16 @@ export const VIEWER_CSS = `
     justify-content: flex-end;
     margin: 8px 0 2px;
   }
+  .pack-search-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .pack-search-row input {
+    width: 100%;
+    min-width: 0;
+  }
   .pack-card-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -871,23 +881,6 @@ export const VIEWER_CSS = `
   .sheet-card.pack-edit-card {
     width: min(1100px, calc(100vw - 28px));
     max-width: min(1100px, calc(100vw - 28px));
-  }
-  .pack-draft-fields {
-    display: grid;
-    grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr);
-    gap: 8px;
-    margin: 10px 0 6px;
-  }
-  .pack-draft-fields input {
-    width: 100%;
-    box-sizing: border-box;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    background: var(--bg-elev);
-    color: var(--text);
-    padding: 9px 10px;
-    font: inherit;
-    font-size: 13px;
   }
   .pack-editor {
     display: grid;
@@ -1013,8 +1006,7 @@ export const VIEWER_CSS = `
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
   }
-  .pack-teacher-select,
-  .pack-teacher-tab {
+  .pack-teacher-select {
     appearance: none;
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr);
@@ -1030,14 +1022,10 @@ export const VIEWER_CSS = `
     text-align: left;
     cursor: pointer;
   }
-  .pack-teacher-tab {
-    background: var(--bg-elev);
-  }
   .pack-teacher-select {
     background: transparent;
   }
-  .pack-teacher-select:hover,
-  .pack-teacher-tab:hover {
+  .pack-teacher-select:hover {
     background: var(--bg-elev-2);
   }
   .pack-teacher-avatar {
@@ -1051,10 +1039,6 @@ export const VIEWER_CSS = `
     font-weight: 850;
     font-size: 13px;
     overflow: hidden;
-  }
-  .pack-new-teacher-avatar {
-    font-size: 18px;
-    line-height: 1;
   }
   .pack-teacher-avatar img {
     width: 100%;
@@ -1106,10 +1090,6 @@ export const VIEWER_CSS = `
   .pack-teacher-row-action.danger:not(:disabled):hover {
     background: rgba(210, 42, 42, 0.16);
     color: #fff;
-  }
-  .pack-add-teacher-btn {
-    width: 100%;
-    margin-top: 8px;
   }
   .pack-editor-main {
     min-width: 0;
@@ -1313,8 +1293,7 @@ export const VIEWER_CSS = `
     line-height: 1.35;
   }
   @media (max-width: 760px) {
-    .pack-grid,
-    .pack-draft-fields {
+    .pack-grid {
       grid-template-columns: 1fr;
     }
     .pack-editor {
