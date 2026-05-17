@@ -175,55 +175,57 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <div class="sheet-overlay" id="privy-overlay">
     <button class="sheet-close" id="privy-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card privy-card account-card">
-    <h2>Ruby High Account</h2>
-    <div class="account-summary-grid">
-      <section class="account-section account-identity-section">
-        <div class="account-section-title">Identity</div>
+    <div class="account-header-row">
+      <h2>Ruby High Account</h2>
+      <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
           <button type="button" id="privy-login-widget">Sign in with Privy</button>
           <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
         </div>
-      </section>
-      <section class="account-section account-ai-section">
-        <div class="account-section-title">AI Access</div>
-        <div class="account-ai-status" id="account-ai-status">Checking...</div>
-        <div class="account-ai-meta" id="account-ai-meta"></div>
-        <div class="sheet-actions">
-          <button type="button" id="account-ai-action">Enable AI</button>
-        </div>
-      </section>
-      <section class="account-section account-wallet-section">
-        <div class="account-section-title">Wallet</div>
-        <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
-        <div class="account-wallet-meta" id="account-wallet-meta"></div>
-        <div class="sheet-actions">
-          <button type="button" id="account-buy-passes">Buy Hall Passes</button>
-        </div>
-      </section>
+      </div>
     </div>
-    <section class="account-section">
+    <section class="account-section account-character-section">
       <div class="account-section-head">
         <div>
           <div class="account-section-title">Characters</div>
           <div class="account-section-sub" id="account-character-summary"></div>
         </div>
-        <button type="button" class="secondary" id="account-unlock-slot">Unlock Slot</button>
-      </div>
-      <div class="account-character-grid" id="account-character-grid"></div>
-    </section>
-    <section class="account-section">
-      <div class="account-section-head">
-        <div>
-          <div class="account-section-title">Comics</div>
-          <div class="account-section-sub" id="account-comic-summary"></div>
+        <div class="account-section-actions">
+          <button type="button" id="account-create-character">Create Character</button>
+          <button type="button" class="secondary" id="account-unlock-slot">Unlock Slot</button>
         </div>
       </div>
-      <div id="account-comics"></div>
+      <div class="account-character-grid" id="account-character-grid"></div>
+      <div class="account-comics-block">
+        <div class="account-section-head">
+          <div>
+            <div class="account-section-title">Comics</div>
+            <div class="account-section-sub" id="account-comic-summary"></div>
+          </div>
+        </div>
+        <div id="account-comics"></div>
+      </div>
+    </section>
+    <section class="account-section account-wallet-section">
+      <div class="account-section-title">Wallet</div>
+      <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
+      <div class="account-wallet-meta" id="account-wallet-meta"></div>
+      <div class="sheet-actions">
+        <button type="button" id="account-buy-passes">Buy Hall Passes</button>
+      </div>
     </section>
     <section class="account-section">
       <div class="account-section-title">Purchase History</div>
       <div class="account-history-list" id="account-history-list"></div>
+    </section>
+    <section class="account-section account-ai-section">
+      <div class="account-section-title">AI Access</div>
+      <div class="account-ai-status" id="account-ai-status">Checking...</div>
+      <div class="account-ai-meta" id="account-ai-meta"></div>
+      <div class="sheet-actions">
+        <button type="button" id="account-ai-action">Connect OpenRouter</button>
+      </div>
     </section>
     <div id="privy-status" class="stat-budget" aria-live="polite"></div>
     </div>

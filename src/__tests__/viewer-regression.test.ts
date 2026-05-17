@@ -57,6 +57,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="privy-overlay"');
     expect(html).toContain('id="privy-login-widget"');
     expect(html).toContain('id="account-ai-action"');
+    expect(html).toContain("Connect OpenRouter");
+    expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
     expect(script).toContain('const privyConfig = {"appId":"privy-app-test","clientId":"privy-client-test"};');
@@ -69,6 +71,33 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("initializePrivyFromStoredSession();");
     expect(script).not.toContain("sendEmailCode");
     expect(script).not.toContain("loginWithEmailCode");
+  });
+
+  it("makes Account the character home before wallet, history, and AI access", () => {
+    const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
+    const script = inlineScript(html);
+    const characters = html.indexOf('class="account-section account-character-section"');
+    const wallet = html.indexOf('class="account-section account-wallet-section"');
+    const history = html.indexOf('id="account-history-list"');
+    const ai = html.indexOf('class="account-section account-ai-section"');
+
+    expect(characters).toBeGreaterThan(-1);
+    expect(wallet).toBeGreaterThan(characters);
+    expect(history).toBeGreaterThan(wallet);
+    expect(ai).toBeGreaterThan(history);
+    expect(script).toContain("function openCharacterCreationFromAccount()");
+    expect(script).toContain("Open Account to create your first character.");
+    expect(script).toContain("void openPrivyAccount();");
+    expect(script).not.toContain("Roll your character to start today's class.");
+  });
+
+  it("labels offline classroom advance as Continue instead of Chat", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(script).toContain('offlineClassroom ? "Continue" : "Chat"');
+    expect(script).toContain('const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";');
+    expect(script).toContain("Connect OpenRouter for hints.");
+    expect(script).not.toContain("Connect or enable AI for hints.");
   });
 
   it("keeps opinion submit, waiting refresh, and force-grade paths wired in the client", () => {

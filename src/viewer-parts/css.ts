@@ -2844,14 +2844,33 @@ export const VIEWER_CSS = `
     width: min(860px, calc(100vw - 28px));
     max-width: 860px;
   }
+  .account-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+  .account-header-row h2 {
+    margin: 0;
+  }
+  .account-identity-inline {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .account-identity-inline .wallet-panel {
+    margin: 0;
+    min-height: 34px;
+    padding: 7px 10px;
+  }
+  .account-identity-inline .sheet-actions {
+    margin-top: 0;
+  }
   .privy-card .sheet-actions {
     justify-content: space-between;
-  }
-  .account-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    margin: 12px 0;
   }
   .account-section {
     border: 1px solid var(--line);
@@ -2861,13 +2880,19 @@ export const VIEWER_CSS = `
     margin-top: 10px;
     min-width: 0;
   }
-  .account-summary-grid .account-section { margin-top: 0; }
   .account-section-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 10px;
+  }
+  .account-section-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .account-section-title {
     color: var(--text);
@@ -2914,6 +2939,11 @@ export const VIEWER_CSS = `
     background: rgba(255,255,255,0.07);
     color: var(--text-soft);
   }
+  .account-comics-block {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
   .account-character-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -2939,6 +2969,15 @@ export const VIEWER_CSS = `
   .account-character-card.is-empty {
     border-style: dashed;
     color: var(--text-mute);
+  }
+  .account-character-card.is-create {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 48%, rgba(255,255,255,0.18));
+    background: color-mix(in srgb, var(--accent) 14%, rgba(255,255,255,0.04));
+    cursor: pointer;
+  }
+  .account-character-card.is-create:hover {
+    border-color: var(--accent);
   }
   .account-character-portrait {
     width: 48px;
@@ -3017,14 +3056,20 @@ export const VIEWER_CSS = `
     margin-top: 0;
   }
   @media (max-width: 760px) {
-    .account-summary-grid {
-      grid-template-columns: 1fr;
+    .account-header-row {
+      flex-direction: column;
+    }
+    .account-identity-inline,
+    .account-identity-inline .sheet-actions,
+    .account-identity-inline .wallet-panel {
+      width: 100%;
     }
     .account-section-head {
       align-items: flex-start;
       flex-direction: column;
     }
-    .account-section-head button {
+    .account-section-head button,
+    .account-section-actions {
       width: 100%;
     }
   }
@@ -3032,6 +3077,7 @@ export const VIEWER_CSS = `
   #privy-signout:disabled,
   #account-ai-action:disabled,
   #account-buy-passes:disabled,
+  #account-create-character:disabled,
   #account-unlock-slot:disabled {
     opacity: 0.45;
     cursor: not-allowed;

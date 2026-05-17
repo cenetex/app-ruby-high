@@ -215,12 +215,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (t && t.graduation_ready && !t.current) return "Ceremony";
     const round = t && t.active_round;
     const cur = t && t.current;
-    if (round && !round.resolved && cur) return "Chat";
+    const offlineClassroom = !!(authed && !teacherChatEnabled() && t && t.character && t.faculty !== LOUNGE_ID);
+    if (round && !round.resolved && cur) return offlineClassroom ? "Continue" : "Chat";
     if (cur && (currentRevealMatches(t) || t.status === "revealed")) return "Continue";
     const postClass = postClassState(t);
     if (postClass.socialReady) return "Start Social Card";
     if (postClass.report) return "Practice";
-    return "Chat";
+    return offlineClassroom ? "Continue" : "Chat";
   }
   function updateChatAction(mode) {
     if (!els.nextBtn) return;
@@ -241,7 +242,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const live = !!(round && !round.resolved && cur);
     const postClass = postClassState(t);
     els.nextBtn.title = live
-      ? "Ask for a hint"
+      ? (teacherChatEnabled() ? "Ask for a hint" : "Answer the board to continue")
       : cur && currentRevealCompletedClass(t)
         ? "Show the class report"
         : cur
@@ -527,6 +528,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     accountBuyPasses: $("account-buy-passes"),
     accountCharacterSummary: $("account-character-summary"),
     accountCharacterGrid: $("account-character-grid"),
+    accountCreateCharacter: $("account-create-character"),
     accountUnlockSlot: $("account-unlock-slot"),
     accountComicSummary: $("account-comic-summary"),
     accountComics: $("account-comics"),
@@ -740,6 +742,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
   let sheetOverlayOpen = false;
+  let returnToAccountAfterSheet = false;
   let sheetAutoShown = false;
 
   // Track scroll-to-bottom intent: only auto-scroll if user is near bottom.
@@ -935,7 +938,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (teacherChatEnabled()) {
         await runAgentTurn("manual", context, { force: true });
       } else {
-        appendSystem(intent === "hint" ? "Answer the board to continue. Enable AI for teacher hints." : "Enable AI for teacher replies.");
+        appendSystem(intent === "hint" ? "Answer the board to continue. Connect OpenRouter for teacher hints." : "Connect OpenRouter for teacher replies.");
       }
     } finally {
       manualTurn.finish();
@@ -1780,8 +1783,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     const ai = hostedAiTelemetry(lastTelemetry);
     const hasBrowserKey = !!getStoredApiKey();
     let status = "Offline mode";
-    let meta = "Class still works with local fallbacks. Connect OpenRouter or use an AI Day Pass for live teacher chat.";
-    let label = "Enable AI";
+    let meta = "Use Continue for deterministic class play. Connect OpenRouter or use an AI Day Pass for live teacher chat.";
+    let label = "Connect OpenRouter";
     let disabled = false;
     let hidden = false;
     if (localAiEnabled) {
@@ -1801,7 +1804,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     } else if (activeTeacherUsesServerAi()) {
       status = "Teacher AI connected";
       meta = "This server can speak for teachers. Enable OpenRouter for browser-owned AI features.";
-      label = "Enable AI";
+      label = "Connect OpenRouter";
     }
     els.accountAiStatus.textContent = status;
     if (els.accountAiMeta) els.accountAiMeta.textContent = meta;
@@ -1850,13 +1853,21 @@ const VIEWER_SCRIPT_SUFFIX = `
     const slots = characterSlotTelemetry();
     const wallet = walletNumbers(lastTelemetry);
     const entries = ownedCharacterEntries();
+    const hasActiveCharacter = !!(lastTelemetry && lastTelemetry.character);
     const displaySlots = Math.max(slots.unlockedSlots, entries.length, 1);
     const emptySlots = Math.max(0, displaySlots - entries.length);
+    const canCreateCharacter = !!authed && !hasActiveCharacter && entries.length < displaySlots;
     if (els.accountCharacterSummary) {
-      els.accountCharacterSummary.textContent = displaySlots + " unlocked "
-        + (displaySlots === 1 ? "slot" : "slots") + " · "
-        + slots.photoDayCredits + " Photo Day "
-        + (slots.photoDayCredits === 1 ? "credit" : "credits");
+      els.accountCharacterSummary.textContent = entries.length === 0
+        ? "Create your first student to start class."
+        : displaySlots + " unlocked "
+          + (displaySlots === 1 ? "slot" : "slots") + " · "
+          + slots.photoDayCredits + " Photo Day "
+          + (slots.photoDayCredits === 1 ? "credit" : "credits");
+    }
+    if (els.accountCreateCharacter) {
+      els.accountCreateCharacter.hidden = !canCreateCharacter;
+      els.accountCreateCharacter.disabled = !canCreateCharacter;
     }
     if (els.accountUnlockSlot) {
       els.accountUnlockSlot.textContent = "Unlock Slot (" + slots.costHallPasses + " Hall Pass)";
@@ -1870,7 +1881,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.accountCharacterGrid.appendChild(buildAccountCharacterCard(entry, idx + 1));
     });
     for (let i = 0; i < emptySlots; i++) {
-      els.accountCharacterGrid.appendChild(buildEmptyCharacterSlot(entries.length + i + 1));
+      els.accountCharacterGrid.appendChild(buildEmptyCharacterSlot(entries.length + i + 1, canCreateCharacter));
     }
     if (entries.length === 0 && emptySlots === 0) {
       const empty = document.createElement("div");
@@ -1916,16 +1927,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     card.appendChild(copy);
     card.addEventListener("click", () => {
       if (entry.kind === "active") {
-        closePrivyAccount();
-        openSheet();
+        openCharacterSheetFromAccount();
       }
     });
     return card;
   }
 
-  function buildEmptyCharacterSlot(slotNumber) {
-    const card = document.createElement("div");
+  function buildEmptyCharacterSlot(slotNumber, canCreateCharacter) {
+    const card = document.createElement(canCreateCharacter ? "button" : "div");
+    if (canCreateCharacter) card.type = "button";
     card.className = "account-character-card is-empty";
+    if (canCreateCharacter) card.classList.add("is-create");
     const portrait = document.createElement("span");
     portrait.className = "account-character-portrait";
     portrait.textContent = "+";
@@ -1934,14 +1946,27 @@ const VIEWER_SCRIPT_SUFFIX = `
     copy.className = "account-character-copy";
     const name = document.createElement("span");
     name.className = "account-character-name";
-    name.textContent = "Empty Slot";
+    name.textContent = canCreateCharacter ? "Create Character" : "Empty Slot";
     const meta = document.createElement("span");
     meta.className = "account-character-meta";
-    meta.textContent = "Slot " + slotNumber + " · ready for a future student";
+    meta.textContent = canCreateCharacter
+      ? "Slot " + slotNumber + " · start today's class"
+      : "Slot " + slotNumber + " · ready for a future student";
     copy.appendChild(name);
     copy.appendChild(meta);
     card.appendChild(copy);
+    if (canCreateCharacter) card.addEventListener("click", openCharacterCreationFromAccount);
     return card;
+  }
+
+  function openCharacterSheetFromAccount() {
+    returnToAccountAfterSheet = true;
+    closePrivyAccount();
+    openSheet({ returnToAccount: true });
+  }
+
+  function openCharacterCreationFromAccount() {
+    openCharacterSheetFromAccount();
   }
 
   function renderAccountComics() {
@@ -2463,7 +2488,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!authed) {
         els.blackboardEmptyText.textContent = "Starting Ruby High…";
       } else if (!lastTelemetry?.character) {
-        els.blackboardEmptyText.textContent = "Roll your character to start today's class.";
+        els.blackboardEmptyText.textContent = "Open Account to create your first character.";
       } else if (faculty && faculty.id === LOUNGE_ID) {
         els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -2477,11 +2502,12 @@ const VIEWER_SCRIPT_SUFFIX = `
         const progress = lastTelemetry && lastTelemetry.active_course_progress;
         const todayDone = progress && progress.today && progress.today.status === "complete";
         const todayActive = progress && progress.today && progress.today.status === "active";
+        const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";
         const lead = todayDone
           ? "Today's graded class is complete. Practice is open."
           : todayActive
-            ? "Continue today's class — tap Chat to start."
-            : "Start today's graded class — tap Chat to start.";
+            ? "Continue today's class — tap " + advanceLabel + " to start."
+            : "Start today's graded class — tap " + advanceLabel + " to start.";
         els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
       }
       // Below the lead text: a sleeker on-board subject-grade chip row, so the
@@ -2601,7 +2627,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
       ? "Generate multiple-choice distractors for this card"
-      : "Enable AI to generate multiple-choice distractors";
+      : "Connect OpenRouter to generate multiple-choice distractors";
     // Long-answer mode flips the grid to single-column on narrow
     // viewports (handled in CSS). Threshold tuned so a 4-line
     // explanation-style answer triggers it but a regular MC option
@@ -3399,7 +3425,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (aiEnabled) {
         runAgentTurn("lounge-enter", { }, { force: true });
       } else {
-        appendSystem("Enable AI to eavesdrop on the faculty.");
+        appendSystem("Connect OpenRouter to eavesdrop on the faculty.");
       }
     }
     closeRails();
@@ -3460,11 +3486,11 @@ const VIEWER_SCRIPT_SUFFIX = `
       const phase = telemetryPhase(lastTelemetry);
       if (!teacherChatEnabled()) {
         if (phase === "asking") {
-          appendSystem("Answer the board to continue. Connect or enable AI for hints.");
+          appendSystem("Answer the board to continue. Connect OpenRouter for hints.");
           return;
         }
         if (phase === "lounge") {
-          appendSystem("Enable AI to hear the lounge conversation continue.");
+          appendSystem("Connect OpenRouter to hear the lounge conversation continue.");
           return;
         }
         if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -3838,11 +3864,19 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
     }
 
-    // First-launch character creation: open sheet overlay automatically once
-    // the player has a Ruby High session. Offline mode can roll locally.
+    // First launch lands in Account, where Characters is the first section.
+    // Character creation is still the dedicated sheet, but Account owns the
+    // entry point so new players aren't stranded on an empty classroom.
     if (authed === true && !t.character && !sheetAutoShown && !sheetOverlayOpen) {
       sheetAutoShown = true;
-      openSheet();
+      void openPrivyAccount();
+    }
+    if (!t.character) {
+      if (els.youName) els.youName.textContent = "Create character";
+      if (els.youAvatar) {
+        els.youAvatar.innerHTML = "";
+        els.youAvatar.textContent = "+";
+      }
     }
     if (t.character) {
       const youName = els.youName;
@@ -4540,14 +4574,20 @@ const VIEWER_SCRIPT_SUFFIX = `
   // this; it only opens if the app cannot establish a playable Ruby High
   // session.
   const signinEl = $("signin-overlay");
-  function openSheet() {
+  function openSheet(options) {
+    if (options && options.returnToAccount) returnToAccountAfterSheet = true;
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
     renderSheet();
   }
   function closeSheet() {
+    const shouldReturnToAccount = returnToAccountAfterSheet;
+    returnToAccountAfterSheet = false;
     sheetOverlayOpen = false;
     sheetEl.classList.remove("is-open");
+    if (shouldReturnToAccount && authed) {
+      setTimeout(() => { void openPrivyAccount(); }, 0);
+    }
   }
   function renderSheet() {
     const t = lastTelemetry || {};
@@ -5809,7 +5849,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       ? "Reroll any field. Local AI can refresh the voice."
       : aiEnabled
         ? "Reroll any field. AI can refresh the voice and portrait."
-        : "Reroll any field. Enable AI later for a custom portrait.";
+        : "Reroll any field. Connect OpenRouter later for a custom portrait.";
     controlsBody.appendChild(controlsSub);
 
     // Control rows: one per component. Each row has a reroll button that
@@ -6061,7 +6101,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     // default in place and shows an inline error.
     portraitBtn.addEventListener("click", async () => {
       if (!aiEnabled || localAiEnabled) {
-        portraitStatus.textContent = localAiEnabled ? "Custom portraits require OpenRouter." : "Enable AI for a custom portrait.";
+        portraitStatus.textContent = localAiEnabled ? "Custom portraits require OpenRouter." : "Connect OpenRouter for a custom portrait.";
         portraitStatus.classList.add("is-invalid");
         return;
       }
@@ -8160,7 +8200,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (sheetOverlayOpen) renderSheet();
     if (authed && !wasSignedIn && lastTelemetry && !lastTelemetry.character && !sheetOverlayOpen) {
       sheetAutoShown = true;
-      openSheet();
+      void openPrivyAccount();
     }
   }
   // Auth is split: the OpenRouter key stays in localStorage, while the
@@ -8755,6 +8795,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   });
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
   if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", openBilling);
+  if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountAiAction) els.accountAiAction.addEventListener("click", handleAccountAiAction);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
