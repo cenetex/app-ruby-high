@@ -1196,7 +1196,7 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     : "Today's class status is unavailable.";
   const standing = status.courseGrade
     ? `Subject standing: ${status.courseGrade} (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`
-    : `Subject standing: no completed daily class yet (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`;
+    : `Subject standing: no course grade yet (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`;
   if (status.mode === "srs") {
     const mastered = status.masteredCount ?? 0;
     const shaky = status.shakyCount ?? 0;

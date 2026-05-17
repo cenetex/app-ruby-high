@@ -146,23 +146,49 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (left <= 0) return "Daily class complete";
     return (left === 1 ? "There is " : "There are ") + questionsLeftText(today);
   }
+  function earnedCourseGrade(progress) {
+    if (!progress) return "";
+    const grade = progress.courseGrade || progress.grade || "";
+    if (!grade || grade === "—") return "";
+    const completed = Number(progress.completedClasses || 0);
+    const required = Number(progress.requiredClasses || 0);
+    if (required > 0 && completed < required) return "";
+    return grade;
+  }
+  function subjectProgressShortLabel(progress) {
+    if (!progress) return "—";
+    const required = Math.max(0, Math.floor(Number(progress.requiredClasses || 0)));
+    const completed = Math.max(0, Math.floor(Number(progress.completedClasses || 0)));
+    if (required > 0) return Math.min(completed, required) + "/" + required;
+    return earnedCourseGrade(progress) || "—";
+  }
+  function subjectProgressLongLabel(progress) {
+    if (!progress) return "course pending";
+    const required = Math.max(0, Math.floor(Number(progress.requiredClasses || 0)));
+    if (required > 0) return subjectProgressShortLabel(progress) + " daily classes";
+    return "course pending";
+  }
+  function subjectStandingLabel(progress) {
+    return earnedCourseGrade(progress) || subjectProgressLongLabel(progress);
+  }
   function classGradeForFaculty(fid) {
     const progress = subjectProgressForFaculty(fid);
-    return (progress && progress.courseGrade) || "—";
+    return earnedCourseGrade(progress) || "—";
   }
   function subjectStatusText(progress) {
     if (!progress) return "settling in";
-    const grade = progress.grade || "—";
+    const standing = subjectStandingLabel(progress);
     const done = Number(progress.completedClasses || 0);
     const required = Number(progress.requiredClasses || 0);
     const today = progress.today || {};
     if (today.status === "complete") {
-      return "daily class complete" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + grade;
+      return "daily class complete" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + standing;
     }
     if (today.status === "active") {
-      return questionsLeftText(today) + " · " + grade;
+      return questionsLeftText(today) + " · " + standing;
     }
-    return done + "/" + required + " daily classes · " + grade;
+    if (required > 0) return Math.min(done, required) + "/" + required + " daily classes";
+    return standing;
   }
   function postClassState(t) {
     const progress = t && t.active_course_progress;
@@ -251,7 +277,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       return {
         facultyId: fid,
         score: Number.isFinite(score) ? score : null,
-        grade: progress.courseGrade || progress.grade || classGradeForFaculty(fid),
+        grade: earnedCourseGrade(progress) || classGradeForFaculty(fid),
       };
     });
     const scored = rows.filter((row) => row.score != null);
@@ -313,9 +339,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     return String(Math.round(n)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
   }
 
-  // Build the chalkboard's subject-grade row — three pills (Homeroom /
-  // Science / Literature) showing the player's letter standing in each
-  // subject for the active grade. Rendered into the empty-board state so
+  // Build the chalkboard's subject-progress row — three pills (Homeroom /
+  // Science / Literature) showing progress until a course grade is earned.
+  // Rendered into the empty-board state so
   // the player can see where they stand without opening the School Career
   // sheet. SUBJECT_GATE_META and makeSubjectGradeChip are defined further
   // down (function declarations are hoisted within the IIFE).
@@ -341,8 +367,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       row.appendChild(makeSubjectGradeChip({
         label: meta.label,
         icon: meta.icon,
-        grade: g.grade || "—",
+        grade: met ? g.grade : subjectProgressShortLabel(p),
         met,
+        pending: !met,
       }));
     }
     wrap.appendChild(row);
@@ -3678,11 +3705,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     { facultyId: "professor-edward", label: "Literature", icon: "✎" },
   ];
   function makeSubjectGradeChip(spec) {
-    const grade = spec.grade || "F";
+    const grade = spec.grade || "—";
     const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
+    const pending = !!spec.pending && !met;
     const chip = document.createElement("span");
-    chip.className = "subject-grade-chip" + (met ? " is-met" : "");
-    chip.title = grade === "—"
+    chip.className = "subject-grade-chip" + (met ? " is-met" : "") + (pending ? " is-pending" : "");
+    chip.title = pending
+      ? spec.label + ": " + grade + " daily classes toward course grade"
+      : grade === "—"
       ? spec.label + ": no subject grade yet"
       : spec.label + ": " + grade + (met ? " subject cleared" : " needs C and daily classes");
     chip.setAttribute("aria-label", chip.title);
@@ -3761,13 +3791,15 @@ const VIEWER_SCRIPT_SUFFIX = `
           for (const cp of r.classProgress) {
             const meta = SUBJECT_GATE_META.find((m) => m.facultyId === cp.facultyId)
               || { label: cp.facultyId, icon: "□" };
+            const met = cp.progress
+              ? Number(cp.progress.completedClasses || 0) >= Number(cp.progress.requiredClasses || 0) && letterGradePasses(cp.grade)
+              : letterGradePasses(cp.grade);
             gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
-              grade: cp.grade,
-              met: cp.progress
-                ? Number(cp.progress.completedClasses || 0) >= Number(cp.progress.requiredClasses || 0) && letterGradePasses(cp.grade)
-                : letterGradePasses(cp.grade),
+              grade: met ? cp.grade : subjectProgressShortLabel(cp.progress),
+              met,
+              pending: !met,
             }));
           }
         } else {
@@ -4282,7 +4314,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       parts.push("Daily class counted — " + streakHere + "/" + streakReq + ", come back tomorrow");
     }
     if (subjectGaps.length > 0) {
-      const segs = subjectGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + cg.grade + ")");
+      const segs = subjectGaps.map((cg) => (ROOM_LABEL[cg.facultyId] || cg.facultyId) + " (" + subjectProgressShortLabel(cg.progress) + ")");
       parts.push("Clear each subject at C or better: " + segs.join(", "));
     }
 
@@ -5004,7 +5036,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     const sub = document.createElement("div");
     sub.className = "ccg-subtitle";
     const subjects = subjectClearSummary();
-    const gradeLine = subjects.grades.map((g) => g.grade).join(" ");
+    const gradeLine = subjects.grades
+      .map((g) => letterGradePasses(g.grade) ? g.grade : subjectProgressShortLabel(g.progress))
+      .join(" ");
     sub.textContent = graduated ? "Arc complete" : gradeLabel + " · " + gradeLine;
     body.appendChild(sub);
 

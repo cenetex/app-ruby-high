@@ -3,7 +3,6 @@ import {
   dailyKey,
   daysBetween,
   facultyForDay,
-  requiredStreakForGrade,
   streakScoreMultiplier,
   type CardMemory,
   type CardReviewRating,
@@ -156,7 +155,10 @@ export function classRecordKey(grade: Grade, facultyId: string, date: string): s
 }
 
 export function requiredClassCompletionsForGrade(grade: Grade): number {
-  return requiredStreakForGrade(grade);
+  void grade;
+  // Course grades are withheld until a room has three C-or-better daily
+  // classes in a row; the per-year streak gate still scales separately.
+  return 3;
 }
 
 export function letterGradeForClassScore(score: number | undefined): string | undefined {

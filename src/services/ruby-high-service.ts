@@ -1337,22 +1337,40 @@ export class RubyHighService extends Service {
     }
 
     const completed = Object.values(ch.dailyClasses ?? {})
-      .filter((r) => r.grade === grade && r.facultyId === facultyId && r.status === "complete");
-    const scores = completed
-      .map((r) => classAverage(r))
-      .filter((n): n is number => typeof n === "number");
-    const averageScore = scores.length > 0
-      ? Math.round(scores.reduce((sum, n) => sum + n, 0) / scores.length)
+      .filter((r) => r.grade === grade && r.facultyId === facultyId && r.status === "complete")
+      .sort((a, b) => a.date.localeCompare(b.date));
+    let currentPassCount = 0;
+    let currentPassScores: number[] = [];
+    let clearedPassScores: number[] | null = null;
+    let clearedPassCount = 0;
+    for (const record of completed) {
+      const score = classAverage(record);
+      const recordLetter = record.letterGrade ?? letterGradeForClassScore(score);
+      if (letterGradePasses(recordLetter)) {
+        currentPassCount += 1;
+        if (typeof score === "number") currentPassScores.push(score);
+        if (currentPassCount >= required) {
+          clearedPassCount = currentPassCount;
+          clearedPassScores = currentPassScores.slice();
+        }
+      } else {
+        currentPassCount = 0;
+        currentPassScores = [];
+      }
+    }
+    const scoreSet = clearedPassScores && clearedPassScores.length > 0 ? clearedPassScores : null;
+    const averageScore = scoreSet
+      ? Math.round(scoreSet.reduce((sum, n) => sum + n, 0) / scoreSet.length)
       : undefined;
-    const letterGrade = letterGradeForClassScore(averageScore);
+    const letterGrade = clearedPassCount >= required ? letterGradeForClassScore(averageScore) : undefined;
     return {
       facultyId,
       grade,
-      completed: completed.length,
+      completed: Math.min(clearedPassCount >= required ? clearedPassCount : currentPassCount, required),
       required,
       averageScore,
       letterGrade,
-      passed: completed.length >= required && letterGradePasses(letterGrade),
+      passed: clearedPassCount >= required && letterGradePasses(letterGrade),
       today,
     };
   }

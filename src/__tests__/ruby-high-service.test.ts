@@ -51,6 +51,28 @@ function attachTestCharacter(ruby: RubyHighService, sid: string, streakCount = 0
   return state;
 }
 
+function completedClassRecord(
+  grade: "9" | "10" | "11" | "12",
+  facultyId: string,
+  date: string,
+  letterGrade: string,
+  scoreTotal: number,
+) {
+  return {
+    grade,
+    facultyId,
+    date,
+    status: "complete" as const,
+    questionCount: 3,
+    correctCount: letterGrade === "F" ? 0 : 3,
+    scoreTotal,
+    scoreMax: 300,
+    letterGrade,
+    completedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
 describe("Hall Pass wallet", () => {
   it("applies grants and spends idempotently", async () => {
     const { ruby } = await makeServices();
@@ -601,7 +623,7 @@ describe("RubyHighService Phase 1", () => {
     expect(ruby.pickAndPose(sid, { faculty: "sally-science" }).current?.id).toBe("vocab-due-q1");
   });
 
-  it("reports an imported deck class grade after daily class completion", async () => {
+  it("withholds an imported deck course grade before the three-class streak", async () => {
     const { ruby } = await makeServices();
     const sid = "test:anki-srs-grade";
     const pack = fakeAnkiPackWithSally("anki:vocab-srs-grade", "vocab-grade-q1");
@@ -618,10 +640,49 @@ describe("RubyHighService Phase 1", () => {
     }
 
     const bank = ruby.questionBankStatus(sid, "sally-science");
-    expect(bank.grade).toBe("A");
+    expect(bank.grade).toBeUndefined();
+    expect(bank.courseGrade).toBeUndefined();
     expect(bank.completedClasses).toBe(1);
+    expect(bank.requiredClasses).toBe(3);
     expect(bank.masteredCount).toBe(1);
     expect(bank.remaining).toBe(1);
+  });
+
+  it("reports a course grade only after three C-or-better classes in a row", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:course-grade-streak";
+    const state = attachTestCharacter(ruby, sid);
+    const facultyId = "sally-science";
+    state.character!.dailyClasses = {
+      "9:sally-science:2026-05-01": completedClassRecord("9", facultyId, "2026-05-01", "A", 270),
+      "9:sally-science:2026-05-02": completedClassRecord("9", facultyId, "2026-05-02", "B", 240),
+    };
+
+    let bank = ruby.questionBankStatus(sid, facultyId);
+    expect(bank.grade).toBeUndefined();
+    expect(bank.courseGrade).toBeUndefined();
+    expect(bank.completedClasses).toBe(2);
+    expect(bank.requiredClasses).toBe(3);
+
+    state.character!.dailyClasses["9:sally-science:2026-05-03"] =
+      completedClassRecord("9", facultyId, "2026-05-03", "F", 0);
+    bank = ruby.questionBankStatus(sid, facultyId);
+    expect(bank.grade).toBeUndefined();
+    expect(bank.courseGrade).toBeUndefined();
+    expect(bank.completedClasses).toBe(0);
+
+    state.character!.dailyClasses["9:sally-science:2026-05-04"] =
+      completedClassRecord("9", facultyId, "2026-05-04", "A", 270);
+    state.character!.dailyClasses["9:sally-science:2026-05-05"] =
+      completedClassRecord("9", facultyId, "2026-05-05", "B", 240);
+    state.character!.dailyClasses["9:sally-science:2026-05-06"] =
+      completedClassRecord("9", facultyId, "2026-05-06", "C", 210);
+    bank = ruby.questionBankStatus(sid, facultyId);
+    expect(bank.grade).toBe("B");
+    expect(bank.courseGrade).toBe("B");
+    expect(bank.completedClasses).toBe(3);
+    expect(bank.requiredClasses).toBe(3);
+    expect(bank.averageScore).toBe(80);
   });
 
   it("keeps successful class mastery credit normal while carrying a one-day streak", async () => {
@@ -771,7 +832,7 @@ describe("RubyHighService Phase 1", () => {
     expect(memory.lastScoreMultiplier).toBe(5);
   });
 
-  it("uses the same subject-grade model for Ruby High packs", async () => {
+  it("uses the same in-progress course-grade model for Ruby High packs", async () => {
     const { ruby } = await makeServices();
     const sid = "test:ruby-bank-mastery-grade";
     const pack = fakeLeveledPack("pack:ruby-bank-mastery-grade");
@@ -789,8 +850,9 @@ describe("RubyHighService Phase 1", () => {
 
     const bank = ruby.questionBankStatus(sid, "level-test-course");
     expect(bank.mode).toBe("bank");
-    expect(bank.grade).toBe("A");
+    expect(bank.grade).toBeUndefined();
     expect(bank.completedClasses).toBe(1);
+    expect(bank.requiredClasses).toBe(3);
     expect(bank.masteredCount).toBe(1);
   });
 

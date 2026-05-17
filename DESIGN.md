@@ -187,12 +187,12 @@ To advance out of a year, two gates must both hold:
 
 | Year | Streak in a row | Daily classes per room |
 |---|:---:|:---:|
-| Freshman | 1 | 1 completed class, C or better average |
-| Sophomore | 2 | 2 completed classes, C or better average |
-| Junior | 3 | 3 completed classes, C or better average |
-| Senior | 4 → graduate | 4 completed classes, C or better average |
+| Freshman | 1 | 3 C-or-better classes in a row |
+| Sophomore | 2 | 3 C-or-better classes in a row |
+| Junior | 3 | 3 C-or-better classes in a row |
+| Senior | 4 → graduate | 3 C-or-better classes in a row |
 
-Per-room letter grade is derived from completed daily classes. All three teaching rooms — Homeroom (Ruby), Science (Sally), Library (Edward) — must be passing at the same time. A streak alone is not enough; ducking a room means you do not advance, no matter how many Mondays you've strung together.
+Per-room letter grade is only awarded after the room has a three-class C-or-better streak. Before that point, the UI shows course progress such as 0/3 or 2/3 instead of a provisional F. All three teaching rooms — Homeroom (Ruby), Science (Sally), Library (Edward) — must be cleared for the current year. A streak alone is not enough; ducking a room means you do not advance, no matter how many Mondays you've strung together.
 
 ### 1.6.7 The Daily Class
 

@@ -21,7 +21,7 @@ let storePath: string;
 let activeRuby: RubyHighService | null = null;
 
 const TEACHING_FACULTY_IDS = ["ruby", "sally-science", "professor-edward"] as const;
-const REQUIRED_CLASSES_BY_GRADE: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
+const REQUIRED_CLASSES_BY_GRADE: Record<Grade, number> = { "9": 3, "10": 3, "11": 3, "12": 3 };
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-daily-"));
@@ -499,6 +499,8 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
 
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
+    markFacultyMastered(ruby, faculty, sid, "sally-science");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
     ruby.completeGraduation(sid, { kind: "advantage" });
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");

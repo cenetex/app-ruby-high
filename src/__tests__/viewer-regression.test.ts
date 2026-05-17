@@ -136,8 +136,12 @@ describe("viewer regression guardrails", () => {
 
     expect(script).not.toContain("clearResolvedBoardAfterTeacherTurn");
     expect(script).toContain("function buildRoomCompletionMeter(fac)");
+    expect(script).toContain("function earnedCourseGrade(progress)");
+    expect(script).toContain("function subjectProgressShortLabel(progress)");
     expect(script).toContain("if (phase === \"revealed\")");
     expect(script).not.toContain("subjectMark.textContent = fac.courseGrade");
+    expect(script).not.toContain("const grade = spec.grade || \"F\"");
+    expect(script).not.toContain("(\" + cg.grade + \")");
     expect(cssRule(".channel-row.room-row")).toContain("min-height: 52px");
     expect(cssRule(".room-row-meta")).toContain("flex-direction: column");
   });
