@@ -492,9 +492,14 @@ describe("/pack-library", () => {
       enabled: true,
       active: false,
       owner: true,
-      canEdit: false,
+      canEdit: true,
+      draftId,
       canDelete: true,
       readOnly: false,
+    });
+    expect(response.body.draft).toMatchObject({
+      id: draftId,
+      derivedFrom: packId,
     });
     expect(ruby.getOrCreate(aliceSessionId).activePackId).not.toBe(packId);
 
@@ -508,7 +513,21 @@ describe("/pack-library", () => {
       enabled: true,
       active: false,
       owner: true,
-      canEdit: false,
+      canEdit: true,
+      draftId,
+    });
+    expect(response.body.drafts.some((draft: { id: string }) => draft.id === draftId)).toBe(false);
+
+    response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.draft).toMatchObject({
+      id: draftId,
+      derivedFrom: packId,
+      name: "Signals Pack",
     });
 
     response = await route({
@@ -549,6 +568,7 @@ describe("/pack-library", () => {
     expect(response.status).toBe(200);
     expect(response.body.packs.some((pack: { id: string }) => pack.id === packId)).toBe(false);
     expect((await ruby.listPersistedPackRecords()).some((entry) => entry.pack.id === packId)).toBe(false);
+    expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
     expect((await ruby.listPackInstallationRecords()).some((entry) => entry.packId === packId)).toBe(false);
     expect(getPackByIdForSession(packId, aliceSessionId)).toBeNull();
     expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(ORIGINAL_PACK_ID);

@@ -174,6 +174,7 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("deleteDraftPack");
     expect(script).toContain("deletePublishedPack");
     expect(script).toContain("pack.canDelete");
+    expect(script).toContain("pack.draftId || pack.id");
     expect(cssRule(".pack-card-actions .pack-action.danger")).toContain("#ff8c8c");
     expect(script).not.toContain('document.createTextNode("Enabled")');
     expect(script).not.toContain("togglePackInstall");
@@ -238,6 +239,8 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("applyHallPassBalance(data.hallPasses, data.entitlements)");
     expect(script).toContain("function deleteDraftTeacher(teacherId)");
     expect(script).toContain("packStudioClient.deleteTeacher");
+    expect(script).toContain("function editDraftTeacher(teacherId)");
+    expect(script).toContain('selectDraftTeacher(teacherId, { tab: "settings", focus: true })');
     expect(script).toContain('edit.textContent = "Edit"');
     expect(script).toContain('del.textContent = "Delete"');
     expect(script).toContain("Cancel generation before closing.");

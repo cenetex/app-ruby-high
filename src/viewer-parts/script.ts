@@ -6048,7 +6048,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "publish " + r.status);
-      return data.pack;
+      return data;
     },
     async installPack(packId, enabled) {
       const r = await apiFetch("/api/apps/ruby-high/pack-library/" + encodeURIComponent(packId) + "/install", {
@@ -6336,7 +6336,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       editBtn.disabled = packImportBusy;
       editBtn.addEventListener("click", (event) => {
         event.stopPropagation();
-        editDraftPack(pack.id);
+        editDraftPack(isDraft ? pack.id : (pack.draftId || pack.id));
       });
       actions.appendChild(editBtn);
     }
@@ -6933,7 +6933,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         edit.className = "pack-teacher-row-action";
         edit.textContent = "Edit";
         edit.disabled = packImportBusy;
-        edit.addEventListener("click", () => selectDraftTeacher(teacher.id));
+        edit.addEventListener("click", () => editDraftTeacher(teacher.id));
         const del = document.createElement("button");
         del.type = "button";
         del.className = "pack-teacher-row-action danger";
@@ -6948,14 +6948,23 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
     renderSelectedPackTeacher(teachers);
   }
-  function selectDraftTeacher(teacherId) {
+  function selectDraftTeacher(teacherId, opts) {
     if (packImportBusy) return;
     if (pendingTeacherImageBusy) cancelTeacherImageGeneration();
     packTeacherCreateMode = false;
     pendingTeacherRoll = null;
     pendingTeacherImageStatus = "";
+    if (opts && opts.tab) selectedPackTab = opts.tab;
     selectedPackTeacherId = teacherId;
     renderPackTeacherEditor();
+    if (opts && opts.focus) {
+      setTimeout(() => {
+        if (teacherDisplayNameInputEl && !teacherDisplayNameInputEl.disabled) teacherDisplayNameInputEl.focus();
+      }, 0);
+    }
+  }
+  function editDraftTeacher(teacherId) {
+    selectDraftTeacher(teacherId, { tab: "settings", focus: true });
   }
   function renderSelectedPackTeacher(teachers) {
     if (!packTeacherDetailEl) return;
@@ -7425,7 +7434,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     setPackBusy(true);
     if (packEditStatusEl) packEditStatusEl.textContent = "Publishing pack...";
     try {
-      await packStudioClient.publishDraft(currentDraft.id);
+      const data = await packStudioClient.publishDraft(currentDraft.id);
+      if (data && data.draft) currentDraft = data.draft;
       if (packEditStatusEl) packEditStatusEl.textContent = "Pack published.";
       await refreshPackLibrary();
     } catch (err) {

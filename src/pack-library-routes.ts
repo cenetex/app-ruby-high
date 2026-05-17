@@ -414,12 +414,24 @@ export async function handlePackLibraryRoutes(
     try {
       const pack = packFromDraft(draft);
       await deps.ruby.persistPublicTeacherPack(pack, { creatorUserId: record.userId });
+      const publishedDraft = touchDraft({ ...draft, derivedFrom: pack.id });
+      await deps.ruby.saveDraftPackRecord(publishedDraft);
       await saveInstallationSet(deps.ruby, record.userId, [{
         packId: pack.id,
         enabled: true,
         active: false,
       }]);
-      ctx.json(ctx.res, { ok: true, pack: packLibrarySummary(pack, { enabled: true, active: false, owner: true, readOnly: false }) });
+      ctx.json(ctx.res, {
+        ok: true,
+        pack: packLibrarySummary(pack, {
+          enabled: true,
+          active: false,
+          owner: true,
+          readOnly: false,
+          editDraftId: publishedDraft.id,
+        }),
+        draft: draftDetail(publishedDraft),
+      });
     } catch (err) {
       log.error("pack-draft.publish-failed", err, { userId: record.userId, draftId: draft.id });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
@@ -440,6 +452,9 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
     await getActivePack(),
     ...availablePacksForSession(sessionId),
   ]);
+  const userDrafts = (await ruby.listDraftPackRecords())
+    .filter((draft) => draft.ownerUserId === record.userId)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
   const publishedOwnedPackIds = new Set(
     (await ruby.listTeacherRecords())
       .filter((teacher) => teacher.creatorUserId === record.userId && teacher.status === "published")
@@ -451,16 +466,18 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
     const persistedRecords = persistedPackRecords.filter((entry) => entry.pack.id === pack.id);
     const owner = publishedOwnedPackIds.has(pack.id) || persistedRecords.some((entry) =>
       entry.creatorUserId === record.userId || entry.ownerSessionId === sessionId);
+    const backingDraft = owner ? backingDraftForPack(userDrafts, pack.id) : null;
     return packLibrarySummary(pack, {
       enabled: install ? install.enabled : builtIn,
       active: pack.id === activePackId || !!install?.active,
       owner,
       readOnly: builtIn,
+      editDraftId: backingDraft?.id,
     });
   });
-  const drafts = (await ruby.listDraftPackRecords())
-    .filter((draft) => draft.ownerUserId === record.userId)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const visiblePackIds = new Set(visiblePacks.map((pack) => pack.id));
+  const drafts = userDrafts
+    .filter((draft) => !isPublishedBackingDraft(draft, visiblePackIds))
     .map(draftSummary);
   return {
     activePackId,
@@ -563,6 +580,9 @@ async function deleteOwnedPublishedPack(args: {
   if (persisted.length === 0 && ownedLegacyTeachers.length > 0) {
     await args.ruby.deletePersistedPackRecord(null, args.packId);
   }
+  const backingDrafts = (await args.ruby.listDraftPackRecords()).filter((draft) =>
+    draft.ownerUserId === args.record.userId && draftBacksPack(draft, args.packId));
+  await Promise.all(backingDrafts.map((draft) => args.ruby.deleteDraftPackRecord(draft.id)));
   await Promise.all(ownedLegacyTeachers.map((teacher) => args.ruby.deleteTeacherRecord(teacher.id)));
   const installs = await args.ruby.listPackInstallationRecords();
   await Promise.all(installs
@@ -602,7 +622,7 @@ function currentActivePackId(ruby: RubyHighService, sessionId: string): string {
 
 function packLibrarySummary(
   pack: ContentPack,
-  opts: { enabled: boolean; active: boolean; owner: boolean; readOnly: boolean },
+  opts: { enabled: boolean; active: boolean; owner: boolean; readOnly: boolean; editDraftId?: string },
 ) {
   const questionCount = countPackQuestions(pack);
   return {
@@ -614,13 +634,30 @@ function packLibrarySummary(
     owner: opts.owner,
     enabled: opts.enabled,
     active: opts.active,
-    canEdit: false,
+    canEdit: opts.owner && !opts.readOnly && !!opts.editDraftId,
+    ...(opts.editDraftId ? { draftId: opts.editDraftId } : {}),
     canDelete: opts.owner && !opts.readOnly,
     status: "published",
     facultyCount: pack.faculty.length,
     questionCount,
     courses: coursesForPack(pack),
   };
+}
+
+function backingDraftForPack(
+  drafts: StoredDraftContentPackRecord[],
+  packId: string,
+): StoredDraftContentPackRecord | null {
+  return drafts.find((draft) => draftBacksPack(draft, packId)) ?? null;
+}
+
+function isPublishedBackingDraft(draft: StoredDraftContentPackRecord, visiblePackIds: Set<string>): boolean {
+  if (draft.derivedFrom && visiblePackIds.has(draft.derivedFrom)) return true;
+  return visiblePackIds.has(`pack:${draft.id}`);
+}
+
+function draftBacksPack(draft: StoredDraftContentPackRecord, packId: string): boolean {
+  return draft.derivedFrom === packId || `pack:${draft.id}` === packId;
 }
 
 function countPackQuestions(pack: ContentPack): number {
@@ -641,6 +678,7 @@ function draftSummary(draft: StoredDraftContentPackRecord) {
     canEdit: true,
     canDelete: true,
     readOnly: false,
+    ...(draft.derivedFrom ? { derivedFrom: draft.derivedFrom } : {}),
     teacherCount: draft.teachers.length,
     questionCount: draft.teachers.reduce((sum, teacher) => sum + teacher.sourceCards.length + teacher.questions.length, 0),
     updatedAt: draft.updatedAt,
