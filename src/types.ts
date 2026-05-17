@@ -476,7 +476,7 @@ export interface RubyHighWalletTransaction {
   meritStars?: number;
   /** Positive for grants/refunds, negative for spends. */
   hallPasses?: number;
-  source?: "stripe" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "admin" | "system";
+  source?: "stripe" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "character-slot" | "admin" | "system";
   description?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }
@@ -490,6 +490,13 @@ export interface RubyHighWallet {
   hostedAiAccessExpiresAt?: number;
   /** Idempotency ledger for paid currency grants/spends. */
   transactions?: RubyHighWalletTransaction[];
+}
+
+export interface CharacterSlotEntitlements {
+  /** Number of player-level student slots unlocked on this account. Slot 1 is free. */
+  unlockedSlots: number;
+  /** Slot purchases grant a free hosted portrait/diploma-sized image credit. */
+  photoDayCredits: number;
 }
 
 export interface QuizState {
@@ -545,6 +552,9 @@ export interface QuizState {
    *  character graduates, that sealed student is copied here so the player can
    *  start a new active run without losing their old class history. */
   studentPool?: StudentPoolEntry[];
+  /** Player-level slot economy. Existing run state is still stored on the
+   *  active character until multi-active-character switching lands. */
+  characterSlots?: CharacterSlotEntitlements;
   /** Cross-character collection of found First Bell comic pages. */
   comicCollection: ComicCollection;
   /** Engine-owned facts that changed in the school world. This is the durable

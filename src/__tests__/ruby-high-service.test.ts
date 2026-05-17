@@ -115,6 +115,33 @@ describe("Hall Pass wallet", () => {
       source: "hosted-image",
     })).toThrow(/Not enough Hall Passes/);
   });
+
+  it("unlocks character slots for one Hall Pass and grants a Photo Day credit", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:slots";
+
+    ruby.grantHallPasses(sid, {
+      amount: 2,
+      idempotencyKey: "admin:slot-funding",
+      source: "admin",
+    });
+
+    const unlock = ruby.unlockCharacterSlot(sid, { requestId: "slot-2", now: 1_700_000_000_000 });
+    expect(unlock.applied).toBe(true);
+    expect(unlock.state.wallet.hallPasses).toBe(1);
+    expect(unlock.slots).toEqual({ unlockedSlots: 2, photoDayCredits: 1 });
+    expect(unlock.transaction).toMatchObject({
+      kind: "hall-pass-spend",
+      hallPasses: -1,
+      source: "character-slot",
+      description: "Character slot 2",
+    });
+
+    const repeat = ruby.unlockCharacterSlot(sid, { requestId: "slot-2", now: 1_700_000_000_000 });
+    expect(repeat.applied).toBe(false);
+    expect(repeat.state.wallet.hallPasses).toBe(1);
+    expect(repeat.slots).toEqual({ unlockedSlots: 2, photoDayCredits: 1 });
+  });
 });
 
 function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"): ContentPack {

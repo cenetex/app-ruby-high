@@ -2840,11 +2840,199 @@ export const VIEWER_CSS = `
   }
   .signin-card .secondary-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
   .privy-card { max-width: 460px; }
+  .privy-card.account-card {
+    width: min(860px, calc(100vw - 28px));
+    max-width: 860px;
+  }
   .privy-card .sheet-actions {
     justify-content: space-between;
   }
+  .account-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .account-section {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    padding: 12px;
+    margin-top: 10px;
+    min-width: 0;
+  }
+  .account-summary-grid .account-section { margin-top: 0; }
+  .account-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .account-section-title {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .account-section-sub,
+  .account-ai-meta,
+  .account-wallet-meta {
+    margin-top: 4px;
+    color: var(--text-mute);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .account-ai-status,
+  .account-wallet-balance {
+    margin-top: 8px;
+    color: #ffe08a;
+    font-weight: 900;
+    font-size: 15px;
+  }
+  .account-card .sheet-actions {
+    margin-top: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .account-card .sheet-actions button,
+  .account-section-head button,
+  .account-history-row button {
+    appearance: none;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 850;
+    padding: 8px 13px;
+    min-height: 34px;
+  }
+  .account-section-head button.secondary {
+    background: rgba(255,255,255,0.07);
+    color: var(--text-soft);
+  }
+  .account-character-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 8px;
+  }
+  .account-character-card {
+    appearance: none;
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    text-align: left;
+  }
+  button.account-character-card { cursor: pointer; }
+  button.account-character-card:hover { border-color: var(--account-character-accent, var(--accent)); }
+  .account-character-card.is-empty {
+    border-style: dashed;
+    color: var(--text-mute);
+  }
+  .account-character-portrait {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: var(--account-character-accent, var(--accent));
+    color: #fff;
+    font-weight: 900;
+    font-size: 22px;
+  }
+  .account-character-portrait img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #fff;
+  }
+  .account-character-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .account-character-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 900;
+  }
+  .account-character-meta {
+    color: var(--text-mute);
+    font-size: 12px;
+  }
+  .account-history-list {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .account-history-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .account-history-title {
+    font-weight: 850;
+    color: var(--text);
+  }
+  .account-history-meta {
+    margin-top: 2px;
+    color: var(--text-mute);
+    font-size: 12px;
+  }
+  .account-history-delta {
+    color: var(--text-soft);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+  }
+  .account-history-row.is-credit .account-history-delta { color: #8fdc9b; }
+  .account-history-row.is-debit .account-history-delta { color: #f2b26d; }
+  .account-empty {
+    color: var(--text-mute);
+    font-size: 13px;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.035);
+  }
+  .account-card #account-comics .comic-locker {
+    margin-top: 0;
+  }
+  @media (max-width: 760px) {
+    .account-summary-grid {
+      grid-template-columns: 1fr;
+    }
+    .account-section-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .account-section-head button {
+      width: 100%;
+    }
+  }
   #privy-login-widget:disabled,
-  #privy-signout:disabled {
+  #privy-signout:disabled,
+  #account-ai-action:disabled,
+  #account-buy-passes:disabled,
+  #account-unlock-slot:disabled {
     opacity: 0.45;
     cursor: not-allowed;
   }

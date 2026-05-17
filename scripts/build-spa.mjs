@@ -186,6 +186,7 @@ function offlineApiScript(data) {
       activePackId: "ruby-high-original",
       character: null,
       studentPool: [],
+      characterSlots: { unlockedSlots: 1, photoDayCredits: 0 },
       comicCollection: defaultComicCollection(),
       schoolEvents: [],
       npcRosters: {
@@ -264,17 +265,20 @@ function offlineApiScript(data) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const loaded = ensureWallet(Object.assign(defaultState(), JSON.parse(raw)));
+        ensureCharacterSlots(loaded);
         ensureComicCollection(loaded);
         return loaded;
       }
     } catch (_err) {}
     const state = ensureWallet(defaultState());
+    ensureCharacterSlots(state);
     ensureComicCollection(state);
     return state;
   }
 
   function saveState(state) {
     ensureWallet(state);
+    ensureCharacterSlots(state);
     ensureComicCollection(state);
     state.updatedAt = now();
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_err) {}
@@ -284,11 +288,24 @@ function offlineApiScript(data) {
   function ensureWallet(state) {
     const scorePoints = state && state.score ? Math.max(0, Math.floor(Number(state.score.points || 0))) : 0;
     const raw = state && state.wallet && typeof state.wallet === "object" ? state.wallet : {};
+    const transactions = Array.isArray(raw.transactions) ? raw.transactions.filter(function(tx) {
+      return tx && typeof tx === "object" && typeof tx.id === "string" && typeof tx.kind === "string";
+    }).slice(-200) : [];
     state.wallet = {
       meritStars: Math.max(0, Math.floor(Number(raw.meritStars != null ? raw.meritStars : scorePoints))),
-      hallPasses: Math.max(0, Math.floor(Number(raw.hallPasses || 0)))
+      hallPasses: Math.max(0, Math.floor(Number(raw.hallPasses || 0))),
+      ...(transactions.length > 0 ? { transactions } : {})
     };
     return state;
+  }
+
+  function ensureCharacterSlots(state) {
+    const raw = state && state.characterSlots && typeof state.characterSlots === "object" ? state.characterSlots : {};
+    state.characterSlots = {
+      unlockedSlots: Math.max(1, Math.floor(Number(raw.unlockedSlots || 1))),
+      photoDayCredits: Math.max(0, Math.floor(Number(raw.photoDayCredits || 0)))
+    };
+    return state.characterSlots;
   }
 
   function facultyById(id) {
@@ -659,6 +676,29 @@ function offlineApiScript(data) {
       state.character = null;
       resetActiveCharacterProgress(state);
       message = "Active slot cleared";
+    } else if (type === "unlock-character-slot") {
+      const slots = ensureCharacterSlots(state);
+      const wallet = ensureWallet(state);
+      if (wallet.hallPasses < 1) throw new Error("Not enough Hall Passes. Need 1, have " + wallet.hallPasses + ".");
+      const requestId = String(body.requestId || now()).replace(/[^a-zA-Z0-9:_-]+/g, "-").slice(0, 80);
+      const txId = "character-slot:" + SESSION_ID + ":" + requestId;
+      const existing = wallet.transactions && wallet.transactions.find(function(tx) { return tx.id === txId; });
+      if (!existing) {
+        const nextSlot = slots.unlockedSlots + 1;
+        wallet.hallPasses -= 1;
+        wallet.transactions = (wallet.transactions || []).concat([{
+          id: txId,
+          kind: "hall-pass-spend",
+          at: now(),
+          hallPasses: -1,
+          source: "character-slot",
+          description: "Character slot " + nextSlot,
+          metadata: { slotNumber: nextSlot, photoDayCredits: 1 }
+        }]).slice(-200);
+        slots.unlockedSlots += 1;
+        slots.photoDayCredits += 1;
+      }
+      message = "Character slot unlocked";
     } else if (type === "set-portrait") {
       if (state.character) state.character.portraitDataUrl = String(body.portraitDataUrl || "");
       message = "Portrait updated";
@@ -828,6 +868,7 @@ function offlineApiScript(data) {
       is_opinion: false,
       character: state.character,
       student_pool: state.studentPool || [],
+      character_slots: Object.assign({}, ensureCharacterSlots(state), { costHallPasses: 1, photoDayCreditsPerSlot: 1 }),
       comic_collection: ensureComicCollection(state),
       school_events: state.schoolEvents || [],
       playbooks: DATA.playbooks,

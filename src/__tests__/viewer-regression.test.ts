@@ -56,7 +56,9 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
     expect(html).toContain('id="privy-login-widget"');
-    expect(html).toContain("Privy handles sign-in and wallet creation.");
+    expect(html).toContain('id="account-ai-action"');
+    expect(html).toContain('id="account-history-list"');
+    expect(html).toContain('id="account-comics"');
     expect(script).toContain('const privyConfig = {"appId":"privy-app-test","clientId":"privy-client-test"};');
     expect(script).toContain('const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js"');
     expect(script).toContain("import(PRIVY_CLIENT_URL)");

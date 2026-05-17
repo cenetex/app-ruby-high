@@ -58,6 +58,7 @@ type CommandBody = {
   portraitDataUrl?: string;
   mentorAccepted?: boolean;
   grade?: string;
+  requestId?: string;
 } | null;
 
 async function sendPersistedCommandState(
@@ -254,6 +255,12 @@ export async function handleCommandRoute(args: {
     "clear-character": async () => {
       const state = ruby.clearCharacter(stateKey);
       return await persist(state, "Active character slot cleared");
+    },
+    "unlock-character-slot": async () => {
+      const result = ruby.unlockCharacterSlot(stateKey, {
+        requestId: typeof body?.requestId === "string" ? body.requestId : undefined,
+      });
+      return await persist(result.state, result.applied ? "Character slot unlocked" : "Character slot already unlocked");
     },
     "set-portrait": async () => {
       const url = String(body?.portraitDataUrl ?? "");
