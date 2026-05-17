@@ -891,19 +891,70 @@ export const VIEWER_CSS = `
   }
   .pack-editor {
     display: grid;
-    grid-template-columns: minmax(150px, 0.34fr) minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 12px;
     align-items: start;
     margin-top: 10px;
+  }
+  .pack-course-generator {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+  }
+  .pack-course-generator[hidden] {
+    display: none;
+  }
+  .pack-course-generator textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 220px;
+    resize: vertical;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    padding: 10px 11px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .pack-course-generator-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
   .pack-teacher-sidebar {
     min-width: 0;
   }
   .pack-teacher-list {
-    max-height: 312px;
+    display: grid;
+    gap: 8px;
+    max-height: 360px;
     overflow: auto;
     padding-right: 2px;
   }
+  .pack-teacher-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-height: 54px;
+    padding: 6px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: var(--bg-elev);
+  }
+  .pack-teacher-row.is-selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+  }
+  .pack-teacher-select,
   .pack-teacher-tab {
     appearance: none;
     display: grid;
@@ -920,10 +971,15 @@ export const VIEWER_CSS = `
     text-align: left;
     cursor: pointer;
   }
-  .pack-teacher-tab:hover { background: var(--bg-elev-2); }
-  .pack-teacher-tab.is-selected {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+  .pack-teacher-tab {
+    background: var(--bg-elev);
+  }
+  .pack-teacher-select {
+    background: transparent;
+  }
+  .pack-teacher-select:hover,
+  .pack-teacher-tab:hover {
+    background: var(--bg-elev-2);
   }
   .pack-teacher-avatar {
     width: 28px;
@@ -936,6 +992,10 @@ export const VIEWER_CSS = `
     font-weight: 850;
     font-size: 13px;
     overflow: hidden;
+  }
+  .pack-new-teacher-avatar {
+    font-size: 18px;
+    line-height: 1;
   }
   .pack-teacher-avatar img {
     width: 100%;
@@ -960,9 +1020,37 @@ export const VIEWER_CSS = `
     font-size: 10px;
     color: var(--text-mute);
   }
+  .pack-teacher-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .pack-teacher-row-action {
+    appearance: none;
+    min-height: 34px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev-2);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 850;
+    cursor: pointer;
+  }
+  .pack-teacher-row-action:not(:disabled):hover {
+    border-color: var(--accent);
+  }
+  .pack-teacher-row-action.danger {
+    border-color: rgba(210, 42, 42, 0.55);
+    color: #ff8c8c;
+  }
+  .pack-teacher-row-action.danger:not(:disabled):hover {
+    background: rgba(210, 42, 42, 0.16);
+    color: #fff;
+  }
   .pack-add-teacher-btn {
     width: 100%;
-    margin-top: 2px;
+    margin-top: 8px;
   }
   .pack-editor-main {
     min-width: 0;
@@ -1093,6 +1181,7 @@ export const VIEWER_CSS = `
     justify-content: space-between;
     margin-bottom: 8px;
   }
+  .pack-course-generator-actions .pack-action,
   .pack-question-toolbar .pack-action {
     appearance: none;
     display: inline-flex;
@@ -1109,17 +1198,21 @@ export const VIEWER_CSS = `
     font-weight: 850;
     cursor: pointer;
   }
+  .pack-course-generator-actions .pack-action:not(:disabled):hover,
   .pack-question-toolbar .pack-action:not(:disabled):hover {
     border-color: var(--accent);
   }
+  .pack-course-generator-actions .pack-action:disabled,
   .pack-question-toolbar .pack-action:disabled {
     opacity: 0.68;
     cursor: not-allowed;
   }
+  .pack-course-generator-actions .pack-action.danger,
   .pack-question-toolbar .pack-action.danger {
     border-color: rgba(210, 42, 42, 0.55);
     color: #ff8c8c;
   }
+  .pack-course-generator-actions .pack-action.danger:not(:disabled):hover,
   .pack-question-toolbar .pack-action.danger:not(:disabled):hover {
     background: rgba(210, 42, 42, 0.16);
     color: #fff;
@@ -1176,9 +1269,15 @@ export const VIEWER_CSS = `
     }
     .pack-teacher-list {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       max-height: none;
       overflow: visible;
+    }
+    .pack-teacher-row {
+      grid-template-columns: 1fr;
+    }
+    .pack-teacher-actions {
+      justify-content: flex-end;
     }
   }
   .billing-card {

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { log } from "./services/logger.js";
+import { hostedEntitlementStatus, hostedOpenRouterApiKey } from "./hosted-entitlements.js";
 import {
   ORIGINAL_PACK_ID,
   availablePacksForSession,
@@ -10,7 +11,7 @@ import {
   getPackByIdForSession,
 } from "./content/registry.js";
 import type { ContentPack, PackSourceCard } from "./content/types.js";
-import type { BankedQuestion, CharacterStats, Difficulty } from "./types.js";
+import type { BankedQuestion, CharacterStats, Choice, Difficulty } from "./types.js";
 import type {
   StoredDraftContentPackRecord,
   StoredDraftTeacherRecord,
@@ -19,8 +20,15 @@ import type {
 } from "./services/state-store.js";
 import {
   hasOpenRouterGenerationAccess,
+  resolveTextLlmCredential,
   openRouterGenerationRequiredMessage,
 } from "./openrouter-generation-access.js";
+import {
+  fetchLlmChatCompletions,
+  llmProviderName,
+  resolveStudentModel,
+} from "./services/llm-provider.js";
+import { classifyQuestionStat } from "./question-stats.js";
 
 export interface PackLibraryRouteContext {
   method: string;
@@ -44,6 +52,8 @@ const PREFIX = "/api/apps/ruby-high/pack-library";
 const DRAFT_PREFIX = "/api/apps/ruby-high/pack-drafts";
 const MAX_MATERIAL_CHARS = 80_000;
 const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY, 5);
+const COURSE_GENERATION_HALL_PASS_COST = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST, 3);
+const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 18);
 
 export async function handlePackLibraryRoutes(
   ctx: PackLibraryRouteContext,
@@ -211,6 +221,102 @@ export async function handlePackLibraryRoutes(
     return true;
   }
 
+  const courseGeneratePath = sub.match(/^\/([^/]+)\/course\/generate$/);
+  if (ctx.method === "POST" && courseGeneratePath?.[1]) {
+    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(courseGeneratePath[1]), ctx);
+    if (!draft) return true;
+    const body = await readBody(ctx);
+    const materials = bodyString(body, "materials") || bodyString(body, "courseMaterials") || bodyString(body, "markdown") || bodyString(body, "text");
+    if (!materials.trim()) {
+      ctx.error(ctx.res, "Course materials are required.", 400);
+      return true;
+    }
+    if (materials.length > MAX_MATERIAL_CHARS) {
+      ctx.error(ctx.res, `Course materials must be ${MAX_MATERIAL_CHARS} characters or less.`, 413);
+      return true;
+    }
+    const credential = resolveCourseGenerationCredential(ctx, deps.ruby, sessionId);
+    if (!credential.apiKey) {
+      ctx.error(ctx.res, "Hosted AI is not configured on this server.", 503);
+      return true;
+    }
+    const targetTeacherId = bodyString(body, "teacherId");
+    const targetTeacher = targetTeacherId ? draft.teachers.find((entry) => entry.id === targetTeacherId) ?? null : null;
+    if (targetTeacherId && !targetTeacher) {
+      ctx.error(ctx.res, "Unknown teacher.", 400);
+      return true;
+    }
+    if (targetTeacher && generationCountToday(targetTeacher) >= MAX_GENERATIONS_PER_DAY) {
+      ctx.error(ctx.res, `Question generation is limited to ${MAX_GENERATIONS_PER_DAY} runs per teacher per day.`, 400);
+      return true;
+    }
+    let charge: CourseGenerationCharge | null = null;
+    try {
+      charge = await prepareCourseGenerationCharge({
+        ruby: deps.ruby,
+        sessionId,
+        draftId: draft.id,
+        body,
+        materials,
+      });
+      if (charge.replay) {
+        ctx.json(ctx.res, {
+          ok: true,
+          draft: draftDetail(draft),
+          teacher: null,
+          hallPassCost: charge.hallPassCost,
+          hallPasses: charge.hallPasses,
+          entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
+        });
+        return true;
+      }
+      const generated = await generateCourseSpecWithAi({
+        apiKey: credential.apiKey,
+        draft,
+        teacher: targetTeacher,
+        materials,
+        questionCount: questionCountFrom(bodyValue(body, "questionCount")),
+      });
+      const updated = applyGeneratedCourseSpec(draft, {
+        teacherId: targetTeacherId,
+        materials,
+        materialSourceUrl: bodyString(body, "materialSourceUrl"),
+        generated,
+      });
+      await deps.ruby.saveDraftPackRecord(updated);
+      if (charge.spendKey) {
+        deps.ruby.annotateWalletTransaction(sessionId, charge.spendKey, {
+          status: "completed",
+          draftId: updated.id,
+          teacherId: generated.teacherId,
+        });
+        await deps.ruby.flushSession(sessionId);
+      }
+      const teacher = updated.teachers.find((entry) => entry.id === generated.teacherId);
+      ctx.json(ctx.res, {
+        ok: true,
+        draft: draftDetail(updated),
+        teacher: teacher ? teacherDetail(updated, teacher) : null,
+        hallPassCost: charge.hallPassCost,
+        hallPasses: deps.ruby.hallPassBalance(sessionId),
+        entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
+      });
+    } catch (err) {
+      if (charge) {
+        await refundCourseGenerationCharge({
+          ruby: deps.ruby,
+          sessionId,
+          charge,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+      const status = clientErrorStatus(err);
+      if (status >= 500) log.error("pack-draft.course-generate-failed", err, { userId: record.userId, draftId: draft.id });
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), status);
+    }
+    return true;
+  }
+
   const teacherPath = sub.match(/^\/([^/]+)\/teachers\/([^/]+)$/);
   if (ctx.method === "PATCH" && teacherPath?.[1] && teacherPath?.[2]) {
     const draft = await requireDraft(deps.ruby, record, decodeURIComponent(teacherPath[1]), ctx);
@@ -221,6 +327,19 @@ export async function handlePackLibraryRoutes(
       await deps.ruby.saveDraftPackRecord(updated);
       const teacher = updated.teachers.find((entry) => entry.id === decodeURIComponent(teacherPath[2]));
       ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(updated, teacher) : null });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
+    }
+    return true;
+  }
+
+  if (ctx.method === "DELETE" && teacherPath?.[1] && teacherPath?.[2]) {
+    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(teacherPath[1]), ctx);
+    if (!draft) return true;
+    try {
+      const updated = deleteDraftTeacher(draft, decodeURIComponent(teacherPath[2]));
+      await deps.ruby.saveDraftPackRecord(updated);
+      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated) });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
     }
@@ -593,6 +712,146 @@ async function requireDraft(
   return draft;
 }
 
+interface CourseGenerationCredential {
+  apiKey: string | null;
+}
+
+interface CourseGenerationCharge {
+  hallPassCost: number;
+  hallPasses: number;
+  requestId: string;
+  spendKey: string | null;
+  replay: boolean;
+}
+
+class CourseGenerationChargeError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "CourseGenerationChargeError";
+  }
+}
+
+interface GeneratedCourseSpec {
+  teacherId: string;
+  displayName: string;
+  subject: string;
+  description: string;
+  quote: string;
+  courseTitle: string;
+  courseDescription: string;
+  questions: BankedQuestion[];
+}
+
+function resolveCourseGenerationCredential(
+  ctx: Pick<PackLibraryRouteContext, "apiKeyHeader">,
+  ruby: RubyHighService,
+  sessionId: string,
+): CourseGenerationCredential {
+  const textCredential = resolveTextLlmCredential({
+    apiKeyHeader: ctx.apiKeyHeader,
+    ruby,
+    sessionId,
+  });
+  if (textCredential.apiKey) return { apiKey: textCredential.apiKey };
+  return { apiKey: hostedOpenRouterApiKey() };
+}
+
+function courseGenerationRequestId(body: Record<string, unknown>): string {
+  const raw = bodyString(body, "requestId") || bodyString(body, "idempotencyKey");
+  if (/^[A-Za-z0-9:_-]{8,128}$/.test(raw)) return raw;
+  return `course-${Date.now().toString(36)}-${randomBytes(4).toString("hex")}`;
+}
+
+function courseGenerationSpendKey(draftId: string, requestId: string): string {
+  return `course-generation:${slugForText(draftId)}:${slugForText(requestId)}`;
+}
+
+async function prepareCourseGenerationCharge(args: {
+  ruby: RubyHighService;
+  sessionId: string;
+  draftId: string;
+  body: Record<string, unknown>;
+  materials: string;
+}): Promise<CourseGenerationCharge> {
+  const requestId = courseGenerationRequestId(args.body);
+  const spendKey = courseGenerationSpendKey(args.draftId, requestId);
+  const existing = args.ruby.walletTransaction(args.sessionId, spendKey);
+  const hallPassCost = COURSE_GENERATION_HALL_PASS_COST;
+  if (existing) {
+    const status = existing.metadata?.status;
+    if (status === "completed") {
+      return {
+        hallPassCost,
+        hallPasses: args.ruby.hallPassBalance(args.sessionId),
+        requestId,
+        spendKey,
+        replay: true,
+      };
+    }
+    throw new CourseGenerationChargeError("Course generation request is already in progress. Start a new generation request.", 409);
+  }
+  const affordable = args.ruby.hallPassBalance(args.sessionId) >= hallPassCost;
+  if (!affordable) {
+    throw new CourseGenerationChargeError(
+      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for course generation.`,
+      402,
+    );
+  }
+  const spend = args.ruby.spendHallPasses(args.sessionId, {
+    amount: hallPassCost,
+    idempotencyKey: spendKey,
+    source: "hosted-ai",
+    description: "AI course generation",
+    metadata: {
+      status: "pending",
+      route: "course-generation",
+      requestId,
+      draftId: args.draftId,
+      materialsLength: args.materials.length,
+    },
+  });
+  await args.ruby.flushSession(args.sessionId);
+  return {
+    hallPassCost,
+    hallPasses: spend.state.wallet.hallPasses,
+    requestId,
+    spendKey,
+    replay: false,
+  };
+}
+
+async function refundCourseGenerationCharge(args: {
+  ruby: RubyHighService;
+  sessionId: string;
+  charge: CourseGenerationCharge;
+  reason: string;
+}): Promise<void> {
+  if (!args.charge.spendKey || args.charge.replay) return;
+  try {
+    args.ruby.annotateWalletTransaction(args.sessionId, args.charge.spendKey, {
+      status: "failed",
+      error: args.reason.slice(0, 160),
+    });
+    args.ruby.refundHallPasses(args.sessionId, {
+      amount: args.charge.hallPassCost,
+      idempotencyKey: `${args.charge.spendKey}:refund`,
+      source: "hosted-ai",
+      description: "AI course generation refund",
+      metadata: {
+        spendKey: args.charge.spendKey,
+        requestId: args.charge.requestId,
+        reason: args.reason.slice(0, 160),
+      },
+    });
+    await args.ruby.flushSession(args.sessionId);
+  } catch (err) {
+    log.error("pack-draft.course-generate-refund-failed", err, {
+      sessionId: args.sessionId,
+      spendKey: args.charge.spendKey,
+    });
+  }
+}
+
 function updateDraftTeacher(
   draft: StoredDraftContentPackRecord,
   teacherId: string,
@@ -658,6 +917,119 @@ function generateQuestionsForTeacher(draft: StoredDraftContentPackRecord, teache
   });
 }
 
+async function generateCourseSpecWithAi(args: {
+  apiKey: string;
+  draft: StoredDraftContentPackRecord;
+  teacher: StoredDraftTeacherRecord | null;
+  materials: string;
+  questionCount: number;
+}): Promise<GeneratedCourseSpec> {
+  const teacherId = args.teacher?.id ?? newTeacherId();
+  const facultyId = draftTeacherFacultyIdForId(teacherId);
+  const requestedCount = Math.max(4, Math.min(24, args.questionCount || COURSE_GENERATION_QUESTION_COUNT));
+  const materials = args.materials.trim();
+  const prompt = [
+    `Draft pack: ${args.draft.name || "Untitled Content Pack"}`,
+    args.draft.description ? `Draft description: ${args.draft.description}` : "",
+    args.teacher ? `Existing teacher name: ${args.teacher.displayName}` : "Create one teacher for this course.",
+    args.teacher?.description ? `Existing teacher style: ${args.teacher.description}` : "",
+    `Create a Ruby High course teacher and exactly ${requestedCount} multiple-choice study questions from the course materials.`,
+    "Return only JSON. Do not include markdown fences.",
+    "Use this exact shape:",
+    `{"courseTitle":"...","courseDescription":"...","teacher":{"displayName":"...","subject":"...","description":"...","quote":"..."},"questions":[{"prompt":"...","subject":"...","difficulty":"easy","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    "Questions must be answerable from the materials. Difficulty must be easy, medium, or hard. correct must be A, B, C, or D.",
+    "Course materials:",
+    materials.slice(0, 24_000),
+  ].filter(Boolean).join("\n\n");
+  const response = await fetchLlmChatCompletions({
+    apiKey: args.apiKey,
+    title: "Ruby High Course Generator",
+    timeoutMs: 45_000,
+    body: {
+      model: resolveStudentModel(),
+      messages: [
+        {
+          role: "system",
+          content: "You design concise Ruby High course packs. You always return valid JSON and no prose.",
+        },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 5200,
+      temperature: 0.45,
+    },
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`${llmProviderName()} ${response.status}: ${detail || response.statusText}`);
+  }
+  const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const text = body.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!text) throw new Error("Course generator returned an empty response.");
+  const parsed = parseJsonObject(text);
+  return normalizeGeneratedCourseSpec(parsed, {
+    teacherId,
+    facultyId,
+    existingTeacher: args.teacher,
+    fallbackSubject: subjectFromHeading(args.draft.name || args.teacher?.displayName || "course"),
+    questionCount: requestedCount,
+  });
+}
+
+function applyGeneratedCourseSpec(
+  draft: StoredDraftContentPackRecord,
+  args: {
+    teacherId: string;
+    materials: string;
+    materialSourceUrl: string;
+    generated: GeneratedCourseSpec;
+  },
+): StoredDraftContentPackRecord {
+  const existing = args.teacherId ? draft.teachers.find((entry) => entry.id === args.teacherId) ?? null : null;
+  if (args.teacherId && !existing) throw new Error("Unknown teacher.");
+  const now = Date.now();
+  const day = new Date(now).toISOString().slice(0, 10);
+  const countToday = existing && existing.generationDay === day ? existing.generationCount : 0;
+  if (existing && countToday >= MAX_GENERATIONS_PER_DAY) {
+    throw new Error(`Question generation is limited to ${MAX_GENERATIONS_PER_DAY} runs per teacher per day.`);
+  }
+  const generatedTeacher: StoredDraftTeacherRecord = {
+    ...(existing ?? {
+      id: args.generated.teacherId,
+      displayName: args.generated.displayName,
+      description: args.generated.description,
+      materials: "",
+      sourceCards: [],
+      questions: [],
+      generationCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    }),
+    displayName: args.generated.displayName,
+    subject: args.generated.subject,
+    description: args.generated.description,
+    quote: args.generated.quote,
+    materials: args.materials.trim(),
+    ...(args.materialSourceUrl ? { materialSourceUrl: args.materialSourceUrl } : {}),
+    sourceCards: [],
+    questions: args.generated.questions,
+    generationDay: day,
+    generationCount: countToday + 1,
+    generatedAt: now,
+    updatedAt: now,
+  };
+  if (!generatedTeacher.materialSourceUrl) delete generatedTeacher.materialSourceUrl;
+  const teachers = existing
+    ? draft.teachers.map((entry) => entry.id === existing.id ? generatedTeacher : entry)
+    : [...draft.teachers, generatedTeacher];
+  const defaultDraftName = !draft.name || /^Untitled Content Pack$/i.test(draft.name.trim());
+  return touchDraft({
+    ...draft,
+    name: defaultDraftName ? (args.generated.courseTitle || `${args.generated.displayName} Course`) : draft.name,
+    description: draft.description || args.generated.courseDescription || args.generated.description,
+    teachers,
+  });
+}
+
 function deleteDraftQuestion(
   draft: StoredDraftContentPackRecord,
   teacherId: string,
@@ -674,6 +1046,17 @@ function deleteDraftQuestion(
   return touchDraft({
     ...draft,
     teachers: draft.teachers.map((entry) => entry.id === teacherId ? updatedTeacher : entry),
+  });
+}
+
+function deleteDraftTeacher(
+  draft: StoredDraftContentPackRecord,
+  teacherId: string,
+): StoredDraftContentPackRecord {
+  if (!draft.teachers.some((entry) => entry.id === teacherId)) throw new Error("Unknown teacher.");
+  return touchDraft({
+    ...draft,
+    teachers: draft.teachers.filter((entry) => entry.id !== teacherId),
   });
 }
 
@@ -820,6 +1203,183 @@ function difficultyForText(value: string): Difficulty {
   return "easy";
 }
 
+function normalizeGeneratedCourseSpec(
+  value: unknown,
+  opts: {
+    teacherId: string;
+    facultyId: string;
+    existingTeacher: StoredDraftTeacherRecord | null;
+    fallbackSubject: string;
+    questionCount: number;
+  },
+): GeneratedCourseSpec {
+  const root = asRecord(value);
+  if (!root) throw new Error("Course generator response was not a JSON object.");
+  const teacher = asRecord(root.teacher) ?? root;
+  const displayName = cleanGeneratedText(
+    firstString(teacher, ["displayName", "name", "teacherName"]) || opts.existingTeacher?.displayName || "Ruby High Teacher",
+    64,
+  ) || "Ruby High Teacher";
+  const subject = cleanGeneratedText(
+    firstString(teacher, ["subject", "class", "courseSubject"]) || firstString(root, ["subject"]) || opts.fallbackSubject,
+    80,
+  ) || "open study";
+  const description = cleanGeneratedText(
+    firstString(teacher, ["description", "persona", "bio"]) || opts.existingTeacher?.description || "A focused Ruby High teacher.",
+    700,
+  ) || "A focused Ruby High teacher.";
+  const quote = cleanGeneratedText(firstString(teacher, ["quote", "signatureLine"]), 160);
+  const questions = normalizeGeneratedQuestions(root.questions, {
+    facultyId: opts.facultyId,
+    subject,
+    limit: opts.questionCount,
+  });
+  if (questions.length === 0) throw new Error("Course generator did not return usable questions.");
+  return {
+    teacherId: opts.teacherId,
+    displayName,
+    subject,
+    description,
+    quote,
+    courseTitle: cleanGeneratedText(firstString(root, ["courseTitle", "title", "packName"]), 80) || `${displayName} Course`,
+    courseDescription: cleanGeneratedText(firstString(root, ["courseDescription", "description"]), 180) || description,
+    questions,
+  };
+}
+
+function normalizeGeneratedQuestions(
+  value: unknown,
+  opts: { facultyId: string; subject: string; limit: number },
+): BankedQuestion[] {
+  const rawQuestions = Array.isArray(value) ? value : [];
+  const questions: BankedQuestion[] = [];
+  rawQuestions.slice(0, Math.max(1, opts.limit)).forEach((entry, index) => {
+    const record = asRecord(entry);
+    if (!record) return;
+    const prompt = cleanGeneratedText(firstString(record, ["prompt", "question"]), 420);
+    const optionSet = generatedQuestionOptions(record);
+    if (!prompt || !optionSet) return;
+    const subject = cleanGeneratedText(firstString(record, ["subject", "topic"]), 80) || opts.subject || "open study";
+    const difficulty = cleanDifficulty(firstString(record, ["difficulty", "level"]));
+    const explanation = cleanGeneratedText(
+      firstString(record, ["explanation", "rationale", "answer"]),
+      800,
+    ) || optionSet.options[optionSet.correct];
+    questions.push({
+      id: `${opts.facultyId}-ai-${index + 1}`,
+      type: "multiple-choice",
+      prompt,
+      options: optionSet.options,
+      correct: optionSet.correct,
+      explanation,
+      subject,
+      difficulty,
+      faculty: opts.facultyId,
+      stat: classifyQuestionStat({
+        prompt,
+        subject,
+        correctAnswer: optionSet.options[optionSet.correct],
+        explanation,
+      }),
+    });
+  });
+  return questions;
+}
+
+function generatedQuestionOptions(record: Record<string, unknown>): { options: Record<Choice, string>; correct: Choice } | null {
+  const answer = cleanGeneratedText(firstString(record, ["answer", "correctAnswer"]), 220);
+  const rawOptions = record.options;
+  let values: string[] = [];
+  if (Array.isArray(rawOptions)) {
+    values = rawOptions.map((entry) => cleanGeneratedText(typeof entry === "string" ? entry : "", 220));
+  } else {
+    const optionRecord = asRecord(rawOptions);
+    if (optionRecord) {
+      values = ["A", "B", "C", "D"].map((key) => cleanGeneratedText(typeof optionRecord[key] === "string" ? optionRecord[key] : "", 220));
+    }
+  }
+  if (values.filter(Boolean).length < 4 && answer) {
+    const distractors = Array.isArray(record.distractors)
+      ? record.distractors.map((entry) => cleanGeneratedText(typeof entry === "string" ? entry : "", 220)).filter(Boolean)
+      : [];
+    values = [answer, ...distractors].slice(0, 4);
+  }
+  values = values.slice(0, 4).map((entry) => cleanGeneratedText(entry, 220));
+  if (values.length < 4 || values.some((entry) => !entry)) return null;
+  const options: Record<Choice, string> = {
+    A: values[0]!,
+    B: values[1]!,
+    C: values[2]!,
+    D: values[3]!,
+  };
+  const correct = cleanChoice(record.correct)
+    ?? correctChoiceFromAnswer(options, answer)
+    ?? "A";
+  return { options, correct };
+}
+
+function parseJsonObject(text: string): unknown {
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
+    throw new Error("Course generator returned invalid JSON.");
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function firstString(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function cleanGeneratedText(value: unknown, max: number): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function cleanChoice(value: unknown): Choice | null {
+  if (typeof value === "number") return (["A", "B", "C", "D"] as Choice[])[value] ?? null;
+  if (typeof value !== "string") return null;
+  const upper = value.trim().toUpperCase();
+  return upper === "A" || upper === "B" || upper === "C" || upper === "D" ? upper : null;
+}
+
+function correctChoiceFromAnswer(options: Record<Choice, string>, answer: string): Choice | null {
+  const normalized = normalizeGeneratedAnswer(answer);
+  if (!normalized) return null;
+  return (["A", "B", "C", "D"] as Choice[]).find((choice) => normalizeGeneratedAnswer(options[choice]) === normalized) ?? null;
+}
+
+function normalizeGeneratedAnswer(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function cleanDifficulty(value: string): Difficulty {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "easy" || normalized === "medium" || normalized === "hard" ? normalized : "medium";
+}
+
+function questionCountFrom(value: unknown): number {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return COURSE_GENERATION_QUESTION_COUNT;
+  return Math.max(4, Math.min(24, Math.floor(n)));
+}
+
+function generationCountToday(teacher: StoredDraftTeacherRecord): number {
+  const day = new Date().toISOString().slice(0, 10);
+  return teacher.generationDay === day ? teacher.generationCount : 0;
+}
+
 async function fetchMarkdownMaterials(url: string): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 12_000);
@@ -941,7 +1501,11 @@ function subjectsFromSourceCards(cards: PackSourceCard[], questions: BankedQuest
 }
 
 function draftTeacherFacultyId(teacher: StoredDraftTeacherRecord): string {
-  return `draft-${slugForText(teacher.id)}`;
+  return draftTeacherFacultyIdForId(teacher.id);
+}
+
+function draftTeacherFacultyIdForId(teacherId: string): string {
+  return `draft-${slugForText(teacherId)}`;
 }
 
 function cleanHttpUrl(value: string): string {
@@ -998,15 +1562,19 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
 }
 
 function clientErrorStatus(err: unknown): number {
+  if (err instanceof CourseGenerationChargeError) return err.status;
   const message = err instanceof Error ? err.message : String(err);
   if (
     message.includes("Unknown") ||
     message.includes("URL required") ||
     message.includes("materials") ||
+    message.includes("Course materials") ||
     message.includes("Generate questions") ||
     message.includes("Add at least") ||
     message.includes("read only") ||
-    message.includes("limited")
+    message.includes("limited") ||
+    message.includes("usable questions")
   ) return 400;
+  if (message.startsWith("Need ") && message.includes("Hall Pass")) return 402;
   return 500;
 }

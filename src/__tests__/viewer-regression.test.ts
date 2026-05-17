@@ -217,15 +217,31 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');
   });
 
-  it("gates pack question generation on OpenRouter AI", () => {
-    const script = inlineScript(renderedViewer());
+  it("uses paid course generation for draft pack setup", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
 
-    expect(script).toContain('openRouterGenerationMessage("generating questions")');
-    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerate");
-    expect(script).toContain("function cancelQuestionGeneration");
-    expect(script).toContain("Cancel generation");
+    expect(html).toContain('id="pack-course-generator"');
+    expect(html).toContain('id="course-materials-input"');
+    expect(html).toContain("Add course materials here");
+    expect(html).toContain("Generate (3 Hall Passes)");
+    expect(html).toContain('id="course-generate-btn"');
+    expect(html).toContain('class="pack-teacher-tab pack-new-teacher-tab"');
+    expect(html).toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');
+    expect(script).toContain("async generateCourse(draftId, payload, options)");
+    expect(script).toContain('"/course/generate"');
+    expect(script).toContain("COURSE_GENERATION_HALL_PASS_COST = 3");
+    expect(script).toContain("function generateCourseFromMaterials()");
+    expect(script).toContain("function runCourseGeneration(teacher)");
+    expect(script).toContain('label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate (3 Hall Passes)"');
+    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateCourse");
+    expect(script).toContain("applyHallPassBalance(data.hallPasses, data.entitlements)");
+    expect(script).toContain("function deleteDraftTeacher(teacherId)");
+    expect(script).toContain("packStudioClient.deleteTeacher");
+    expect(script).toContain('edit.textContent = "Edit"');
+    expect(script).toContain('del.textContent = "Delete"');
     expect(script).toContain("Cancel generation before closing.");
-    expect(script).toContain("if (!openRouterAiEnabled())");
+    expect(script).not.toContain("Generate Questions");
   });
 
   it("routes the post-class Practice button to a practice board or teacher advance", () => {

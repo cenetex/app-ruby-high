@@ -5847,6 +5847,11 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packEditSubtitleEl = $("pack-edit-subtitle");
   const packNameInputEl = $("pack-name-input");
   const packDescriptionInputEl = $("pack-description-input");
+  const packCourseGeneratorEl = $("pack-course-generator");
+  const courseMaterialsInputEl = $("course-materials-input");
+  const courseGenerateBtn = $("course-generate-btn");
+  const courseCancelGenerationBtn = $("course-cancel-generation-btn");
+  const courseGenerationStatusEl = $("course-generation-status");
   const packTeacherListEl = $("pack-teacher-list");
   const packTeacherDetailEl = $("pack-teacher-detail");
   const packAddTeacherBtn = $("pack-add-teacher-btn");
@@ -5887,8 +5892,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   let packQuestionGenerationBusy = false;
   let packQuestionGenerationAbortController = null;
   let packQuestionGenerationRunId = 0;
+  let packQuestionGenerationKind = "";
   let packAutosaveTimer = null;
   let teacherAutosaveTimer = null;
+  const COURSE_GENERATION_HALL_PASS_COST = 3;
   const PREGENERATED_TEACHER_ASSETS = [
     { id: "ruby", name: "Ruby", subject: "Homeroom", description: "Warm, direct, and good at turning scattered questions into a useful classroom thread.", quote: "We start where the room actually is." },
     { id: "sally-science", name: "Sally Science", subject: "Science Lab", description: "Evidence-first, experimental, and happiest when a wrong answer exposes a better hypothesis.", quote: "Be wrong with reasons. Then we can work." },
@@ -5969,6 +5976,14 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!r.ok) throw new Error(data.error || "save teacher " + r.status);
       return data.draft;
     },
+    async deleteTeacher(draftId, teacherId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId), {
+        method: "DELETE",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "delete teacher " + r.status);
+      return data.draft;
+    },
     async loadMaterialsFromUrl(draftId, teacherId, url) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId) + "/materials/from-url", {
         method: "POST",
@@ -5989,6 +6004,17 @@ const VIEWER_SCRIPT_SUFFIX = `
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "generate " + r.status);
       return data.draft;
+    },
+    async generateCourse(draftId, payload, options) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/course/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: options && options.signal,
+        body: JSON.stringify(payload || {}),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "generate course " + r.status);
+      return data;
     },
     async deleteQuestion(draftId, teacherId, questionId) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId) + "/questions/" + encodeURIComponent(questionId), {
@@ -6073,6 +6099,12 @@ const VIEWER_SCRIPT_SUFFIX = `
     pendingTeacherImageAbortController = null;
     packQuestionGenerationBusy = false;
     packQuestionGenerationAbortController = null;
+    packQuestionGenerationKind = "";
+    if (courseMaterialsInputEl) courseMaterialsInputEl.value = "";
+    if (courseGenerationStatusEl) {
+      courseGenerationStatusEl.textContent = "";
+      courseGenerationStatusEl.classList.remove("is-invalid");
+    }
     packEditEl.classList.add("is-open");
     renderPackEditor();
   }
@@ -6094,9 +6126,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     pendingTeacherImageAbortController = null;
     packQuestionGenerationBusy = false;
     packQuestionGenerationAbortController = null;
+    packQuestionGenerationKind = "";
     if (packEditStatusEl) {
       packEditStatusEl.textContent = "";
       packEditStatusEl.classList.remove("is-invalid");
+    }
+    if (courseGenerationStatusEl) {
+      courseGenerationStatusEl.textContent = "";
+      courseGenerationStatusEl.classList.remove("is-invalid");
     }
     refreshPackLibrary();
   }
@@ -6108,7 +6145,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (packEditCloseBtn) packEditCloseBtn.disabled = packImportBusy;
     if (packBtn) packBtn.disabled = packImportBusy;
     packEl.querySelectorAll("button.pack-action").forEach((btn) => { btn.disabled = packImportBusy; });
-    packEditEl.querySelectorAll("button.pack-action, button.secondary").forEach((btn) => { btn.disabled = packImportBusy; });
+    packEditEl.querySelectorAll("button.pack-action, button.secondary, button.pack-teacher-row-action, button.pack-teacher-select, button.pack-teacher-tab").forEach((btn) => { btn.disabled = packImportBusy; });
     if (packCreateBtn) packCreateBtn.disabled = packImportBusy;
     if (packAddTeacherBtn) packAddTeacherBtn.disabled = packImportBusy;
     syncPackEditorGuardControls();
@@ -6168,6 +6205,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function packGenerationLabel() {
     if (pendingTeacherImageBusy) return "teacher image generation";
+    if (packQuestionGenerationBusy && packQuestionGenerationKind === "course") return "course generation";
     if (packQuestionGenerationBusy) return "question generation";
     return "generation";
   }
@@ -6857,17 +6895,13 @@ const VIEWER_SCRIPT_SUFFIX = `
       selectedPackTeacherId = teachers[0] ? teachers[0].id : null;
     }
     packTeacherListEl.innerHTML = "";
-    if (teachers.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "sub";
-      empty.textContent = "No teachers in this pack.";
-      packTeacherListEl.appendChild(empty);
-    } else {
-      teachers.forEach((teacher) => {
-        const tab = document.createElement("button");
-        tab.type = "button";
-        tab.className = "pack-teacher-tab" + (teacher.id === selectedPackTeacherId ? " is-selected" : "");
-        tab.disabled = packImportBusy;
+    teachers.forEach((teacher) => {
+        const row = document.createElement("div");
+        row.className = "pack-teacher-row" + (teacher.id === selectedPackTeacherId ? " is-selected" : "");
+        const select = document.createElement("button");
+        select.type = "button";
+        select.className = "pack-teacher-select";
+        select.disabled = packImportBusy;
         const avatar = document.createElement("span");
         avatar.className = "pack-teacher-avatar";
         const avatarUrl = draftTeacherImageUrl(teacher, "face");
@@ -6886,33 +6920,69 @@ const VIEWER_SCRIPT_SUFFIX = `
         title.textContent = teacher.displayName || teacher.id;
         const subtitle = document.createElement("span");
         subtitle.className = "pack-teacher-subtitle";
-        subtitle.textContent = (teacher.questionCount || 0) + " cards · " + packTeacherSubjectsText(teacher);
+        subtitle.textContent = packTeacherSubjectsText(teacher) + (teacher.subject ? " · " + teacher.subject : "");
         copy.appendChild(title);
         copy.appendChild(subtitle);
-        tab.appendChild(avatar);
-        tab.appendChild(copy);
-        tab.addEventListener("click", () => {
-          if (packImportBusy) return;
-          if (pendingTeacherImageBusy) cancelTeacherImageGeneration();
-          packTeacherCreateMode = false;
-          pendingTeacherRoll = null;
-          pendingTeacherImageStatus = "";
-          selectedPackTeacherId = teacher.id;
-          renderPackTeacherEditor();
-        });
-        packTeacherListEl.appendChild(tab);
+        select.appendChild(avatar);
+        select.appendChild(copy);
+        select.addEventListener("click", () => selectDraftTeacher(teacher.id));
+        const actions = document.createElement("div");
+        actions.className = "pack-teacher-actions";
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "pack-teacher-row-action";
+        edit.textContent = "Edit";
+        edit.disabled = packImportBusy;
+        edit.addEventListener("click", () => selectDraftTeacher(teacher.id));
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "pack-teacher-row-action danger";
+        del.textContent = "Delete";
+        del.disabled = packImportBusy;
+        del.addEventListener("click", () => deleteDraftTeacher(teacher.id));
+        actions.appendChild(edit);
+        actions.appendChild(del);
+        row.appendChild(select);
+        row.appendChild(actions);
+        packTeacherListEl.appendChild(row);
       });
-    }
     renderSelectedPackTeacher(teachers);
+  }
+  function selectDraftTeacher(teacherId) {
+    if (packImportBusy) return;
+    if (pendingTeacherImageBusy) cancelTeacherImageGeneration();
+    packTeacherCreateMode = false;
+    pendingTeacherRoll = null;
+    pendingTeacherImageStatus = "";
+    selectedPackTeacherId = teacherId;
+    renderPackTeacherEditor();
   }
   function renderSelectedPackTeacher(teachers) {
     if (!packTeacherDetailEl) return;
     packTeacherDetailEl.innerHTML = "";
+    const emptyDraft = !packTeacherCreateMode && teachers.length === 0;
+    if (packCourseGeneratorEl) packCourseGeneratorEl.hidden = !emptyDraft;
     if (packTeacherCreateMode) {
+      if (packCourseGeneratorEl) packCourseGeneratorEl.hidden = true;
+      packTeacherDetailEl.hidden = false;
       setPackEditorTabsHidden(true);
       renderNewTeacherCreation();
       return;
     }
+    if (emptyDraft) {
+      packTeacherDetailEl.hidden = true;
+      setPackEditorTabsHidden(true);
+      fillTeacherDraftForm(null);
+      renderQuestionList(null);
+      if (courseGenerationStatusEl) {
+        const reason = courseGenerationStatusReason();
+        courseGenerationStatusEl.textContent = reason;
+        courseGenerationStatusEl.classList.toggle("is-invalid", !!reason);
+      }
+      syncPackGenerationControls();
+      return;
+    }
+    packTeacherDetailEl.hidden = false;
     setPackEditorTabsHidden(false);
     const selected = teachers.find((teacher) => teacher.id === selectedPackTeacherId) || null;
     const head = document.createElement("div");
@@ -6950,20 +7020,56 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (teacherMaterialsInputEl) teacherMaterialsInputEl.value = teacher && teacher.materials ? teacher.materials : "";
     if (teacherMaterialUrlInputEl) teacherMaterialUrlInputEl.value = teacher && teacher.materialSourceUrl ? teacher.materialSourceUrl : "";
     if (teacherGenerationStatusEl) {
+      const reason = courseGenerationStatusReason();
       teacherGenerationStatusEl.textContent = teacher
         ? (packQuestionGenerationBusy
-          ? "Generating questions... You can keep editing, but cancel before closing or publishing."
-          : openRouterAiEnabled()
+          ? "Generating course... You can keep editing, but cancel before closing or publishing."
+          : !reason
           ? "Generated " + (teacher.generationCount || 0) + " time" + ((teacher.generationCount || 0) === 1 ? "" : "s") + " today"
-          : openRouterGenerationMessage("generating questions"))
+          : reason)
         : "";
-      teacherGenerationStatusEl.classList.toggle("is-invalid", !!teacher && !openRouterAiEnabled());
+      teacherGenerationStatusEl.classList.toggle("is-invalid", !!teacher && !!reason);
     }
     syncPackGenerationControls();
   }
 
+  function hostedCourseGenerationConfigured() {
+    if (getStoredApiKey() || localAiEnabled) return true;
+    const entitlements = hostedEntitlements();
+    const hostedAi = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
+      ? entitlements.hosted_ai
+      : null;
+    return !!(hostedAi && hostedAi.configured);
+  }
+
+  function courseGenerationStatusReason() {
+    if (!authed) return "Sign in before generating a course.";
+    if (!hostedCourseGenerationConfigured()) return "Hosted AI is not configured on this server.";
+    const wallet = walletNumbers(lastTelemetry);
+    if (wallet.hallPasses < COURSE_GENERATION_HALL_PASS_COST) {
+      return "Need " + COURSE_GENERATION_HALL_PASS_COST + " Hall Passes to generate.";
+    }
+    return "";
+  }
+
+  function courseGenerationPayload(teacher) {
+    const materials = teacher
+      ? String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || teacher.materials || "").trim()
+      : String((courseMaterialsInputEl && courseMaterialsInputEl.value) || "").trim();
+    const payload = {
+      requestId: newPackClientRequestId("course"),
+      materials,
+      questionCount: 18,
+    };
+    if (teacher) {
+      payload.teacherId = teacher.id;
+      payload.materialSourceUrl = String((teacherMaterialUrlInputEl && teacherMaterialUrlInputEl.value) || teacher.materialSourceUrl || "").trim();
+    }
+    return payload;
+  }
+
   function syncPackGenerationControls() {
-    const canGenerate = openRouterAiEnabled();
+    const canGenerateCourse = !courseGenerationStatusReason();
     syncPackEditorGuardControls();
     if (teacherGenerateQuestionsBtn) {
       teacherGenerateQuestionsBtn.replaceChildren();
@@ -6974,20 +7080,41 @@ const VIEWER_SCRIPT_SUFFIX = `
         teacherGenerateQuestionsBtn.appendChild(spinner);
       }
       const label = document.createElement("span");
-      label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate Questions";
+      label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate (3 Hall Passes)";
       teacherGenerateQuestionsBtn.appendChild(label);
       teacherGenerateQuestionsBtn.classList.toggle("is-loading", packQuestionGenerationBusy);
       teacherGenerateQuestionsBtn.setAttribute("aria-busy", packQuestionGenerationBusy ? "true" : "false");
-      teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerate;
-      teacherGenerateQuestionsBtn.title = canGenerate ? "" : openRouterGenerationMessage("generating questions");
+      teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateCourse;
+      teacherGenerateQuestionsBtn.title = canGenerateCourse ? "" : courseGenerationStatusReason();
+    }
+    if (courseGenerateBtn) {
+      courseGenerateBtn.replaceChildren();
+      if (packQuestionGenerationBusy && packQuestionGenerationKind === "course") {
+        const spinner = document.createElement("span");
+        spinner.className = "teacher-button-spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        courseGenerateBtn.appendChild(spinner);
+      }
+      const label = document.createElement("span");
+      label.textContent = packQuestionGenerationBusy && packQuestionGenerationKind === "course" ? "Generating" : "Generate (3 Hall Passes)";
+      courseGenerateBtn.appendChild(label);
+      courseGenerateBtn.classList.toggle("is-loading", packQuestionGenerationBusy && packQuestionGenerationKind === "course");
+      courseGenerateBtn.setAttribute("aria-busy", packQuestionGenerationBusy && packQuestionGenerationKind === "course" ? "true" : "false");
+      courseGenerateBtn.disabled = packImportBusy || packQuestionGenerationBusy || !currentDraft || !canGenerateCourse;
+      courseGenerateBtn.title = canGenerateCourse ? "" : courseGenerationStatusReason();
     }
     if (teacherCancelGenerationBtn) {
       teacherCancelGenerationBtn.hidden = !packQuestionGenerationBusy;
       teacherCancelGenerationBtn.disabled = packImportBusy;
     }
+    if (courseCancelGenerationBtn) {
+      courseCancelGenerationBtn.hidden = !(packQuestionGenerationBusy && packQuestionGenerationKind === "course");
+      courseCancelGenerationBtn.disabled = packImportBusy;
+    }
     packEditEl.querySelectorAll("[data-requires-openrouter]").forEach((btn) => {
-      btn.disabled = packImportBusy || pendingTeacherImageBusy || !canGenerate;
-      btn.title = canGenerate ? "" : openRouterGenerationMessage("generating teacher images");
+      const canGenerateImages = openRouterAiEnabled();
+      btn.disabled = packImportBusy || pendingTeacherImageBusy || !canGenerateImages;
+      btn.title = canGenerateImages ? "" : openRouterGenerationMessage("generating teacher images");
     });
   }
 
@@ -7134,54 +7261,88 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function generateDraftQuestions() {
     const teacher = selectedDraftTeacher();
     if (!currentDraft || !teacher || packQuestionGenerationBusy) return;
-    if (!openRouterAiEnabled()) {
-      if (packEditStatusEl) {
-        packEditStatusEl.textContent = openRouterGenerationMessage("generating questions");
-        packEditStatusEl.classList.add("is-invalid");
+    await saveSelectedTeacher();
+    await runCourseGeneration(teacher);
+  }
+
+  async function generateCourseFromMaterials() {
+    if (!currentDraft || packQuestionGenerationBusy) return;
+    await runCourseGeneration(null);
+  }
+
+  async function runCourseGeneration(teacher) {
+    if (!currentDraft || packQuestionGenerationBusy) return;
+    const reason = courseGenerationStatusReason();
+    if (reason) {
+      const status = teacher ? teacherGenerationStatusEl : courseGenerationStatusEl;
+      if (status) {
+        status.textContent = reason;
+        status.classList.add("is-invalid");
       }
-      if (teacherGenerationStatusEl) {
-        teacherGenerationStatusEl.textContent = openRouterGenerationMessage("generating questions");
-        teacherGenerationStatusEl.classList.add("is-invalid");
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = reason;
+        packEditStatusEl.classList.add("is-invalid");
       }
       syncPackGenerationControls();
       return;
     }
-    await saveSelectedTeacher();
+    const payload = courseGenerationPayload(teacher);
+    if (!payload.materials) {
+      const status = teacher ? teacherGenerationStatusEl : courseGenerationStatusEl;
+      if (status) {
+        status.textContent = "Course materials are required.";
+        status.classList.add("is-invalid");
+      }
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Course materials are required.";
+        packEditStatusEl.classList.add("is-invalid");
+      }
+      return;
+    }
     const runId = ++packQuestionGenerationRunId;
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     packQuestionGenerationAbortController = controller;
     packQuestionGenerationBusy = true;
+    packQuestionGenerationKind = "course";
     syncPackGenerationControls();
     if (packEditStatusEl) {
-      packEditStatusEl.textContent = "Generating questions. Keep editing, or cancel before closing/publishing.";
+      packEditStatusEl.textContent = "Generating course. Keep editing, or cancel before closing/publishing.";
       packEditStatusEl.classList.remove("is-invalid");
     }
-    if (teacherGenerationStatusEl) {
-      teacherGenerationStatusEl.textContent = "Generating questions...";
-      teacherGenerationStatusEl.classList.remove("is-invalid");
+    const statusEl = teacher ? teacherGenerationStatusEl : courseGenerationStatusEl;
+    if (statusEl) {
+      statusEl.textContent = "Generating...";
+      statusEl.classList.remove("is-invalid");
     }
     try {
-      const updatedDraft = await packStudioClient.generateQuestionsForDraftTeacher(currentDraft.id, teacher.id, {
+      const data = await packStudioClient.generateCourse(currentDraft.id, payload, {
         signal: controller ? controller.signal : undefined,
       });
       if (runId !== packQuestionGenerationRunId) return;
-      currentDraft = updatedDraft;
+      currentDraft = data.draft;
+      if (data && typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements);
+      selectedPackTeacherId = data.teacher && data.teacher.id ? data.teacher.id : (teacher ? teacher.id : selectedPackTeacherId);
       selectedPackTab = "questions";
       renderPackEditor();
-      if (packEditStatusEl) packEditStatusEl.textContent = "Questions generated.";
+      if (packEditStatusEl) packEditStatusEl.textContent = "Course generated.";
     } catch (err) {
       if (runId !== packQuestionGenerationRunId) return;
       const aborted = err && err.name === "AbortError";
       if (packEditStatusEl) {
         packEditStatusEl.textContent = aborted
-          ? "Question generation canceled."
-          : "Could not generate questions · " + (err && err.message ? err.message : "error");
+          ? "Course generation canceled."
+          : "Could not generate course · " + (err && err.message ? err.message : "error");
         packEditStatusEl.classList.toggle("is-invalid", !aborted);
+      }
+      if (statusEl) {
+        statusEl.textContent = aborted ? "Generation canceled." : "Could not generate course.";
+        statusEl.classList.toggle("is-invalid", !aborted);
       }
     } finally {
       if (runId === packQuestionGenerationRunId) {
         packQuestionGenerationBusy = false;
         packQuestionGenerationAbortController = null;
+        packQuestionGenerationKind = "";
         syncPackGenerationControls();
       }
     }
@@ -7197,15 +7358,46 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     packQuestionGenerationAbortController = null;
     packQuestionGenerationBusy = false;
+    packQuestionGenerationKind = "";
     if (packEditStatusEl) {
-      packEditStatusEl.textContent = "Question generation canceled.";
+      packEditStatusEl.textContent = "Course generation canceled.";
       packEditStatusEl.classList.remove("is-invalid");
     }
     if (teacherGenerationStatusEl) {
       teacherGenerationStatusEl.textContent = "Generation canceled. Questions are unchanged.";
       teacherGenerationStatusEl.classList.remove("is-invalid");
     }
+    if (courseGenerationStatusEl) {
+      courseGenerationStatusEl.textContent = "Generation canceled.";
+      courseGenerationStatusEl.classList.remove("is-invalid");
+    }
     syncPackGenerationControls();
+  }
+
+  async function deleteDraftTeacher(teacherId) {
+    if (!currentDraft || !teacherId || packImportBusy || packQuestionGenerationBusy) return;
+    const teacher = currentDraft.teachers.find((entry) => entry.id === teacherId);
+    const name = teacher ? (teacher.displayName || "this teacher") : "this teacher";
+    if (!window.confirm("Delete " + name + "? This removes the teacher and their cards from the draft.")) return;
+    setPackBusy(true);
+    if (packEditStatusEl) {
+      packEditStatusEl.textContent = "Deleting teacher...";
+      packEditStatusEl.classList.remove("is-invalid");
+    }
+    try {
+      currentDraft = await packStudioClient.deleteTeacher(currentDraft.id, teacherId);
+      if (selectedPackTeacherId === teacherId) selectedPackTeacherId = currentDraft.teachers[0] ? currentDraft.teachers[0].id : null;
+      packTeacherCreateMode = false;
+      renderPackEditor();
+      if (packEditStatusEl) packEditStatusEl.textContent = "Teacher deleted.";
+    } catch (err) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Could not delete teacher · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.add("is-invalid");
+      }
+    } finally {
+      setPackBusy(false);
+    }
   }
 
   async function deleteDraftQuestion(questionId) {
@@ -7257,6 +7449,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (teacherLoadUrlBtn) teacherLoadUrlBtn.addEventListener("click", loadTeacherMaterialsFromUrl);
   if (teacherGenerateQuestionsBtn) teacherGenerateQuestionsBtn.addEventListener("click", generateDraftQuestions);
   if (teacherCancelGenerationBtn) teacherCancelGenerationBtn.addEventListener("click", cancelQuestionGeneration);
+  if (courseGenerateBtn) courseGenerateBtn.addEventListener("click", generateCourseFromMaterials);
+  if (courseCancelGenerationBtn) courseCancelGenerationBtn.addEventListener("click", cancelQuestionGeneration);
   if (packNameInputEl) packNameInputEl.addEventListener("input", schedulePackAutosave);
   if (packDescriptionInputEl) packDescriptionInputEl.addEventListener("input", schedulePackAutosave);
   [teacherDisplayNameInputEl, teacherSocialsInputEl, teacherProfileImageInputEl, teacherPersonaInputEl, teacherMaterialsInputEl].forEach((field) => {

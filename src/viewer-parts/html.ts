@@ -276,10 +276,24 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <input id="pack-description-input" type="text" placeholder="Pack description">
     </div>
     <div class="pack-editor">
+      <section class="pack-course-generator" id="pack-course-generator" hidden>
+        <textarea id="course-materials-input" rows="10" maxlength="80000" placeholder="Add course materials here"></textarea>
+        <div class="pack-course-generator-actions">
+          <button type="button" class="pack-action" id="course-generate-btn">Generate (3 Hall Passes)</button>
+          <button type="button" class="pack-action danger" id="course-cancel-generation-btn" hidden>Cancel</button>
+          <span class="pack-question-status" id="course-generation-status"></span>
+        </div>
+      </section>
       <aside class="pack-teacher-sidebar">
         <div class="pack-section-title">Teachers</div>
         <div class="pack-list pack-teacher-list" id="pack-teacher-list"></div>
-        <button type="button" class="secondary pack-add-teacher-btn" id="pack-add-teacher-btn">+ New Teacher</button>
+        <button type="button" class="pack-teacher-tab pack-new-teacher-tab" id="pack-add-teacher-btn">
+          <span class="pack-teacher-avatar pack-new-teacher-avatar">+</span>
+          <span class="pack-teacher-copy">
+            <span class="pack-teacher-title">New Teacher</span>
+            <span class="pack-teacher-subtitle">Create manually</span>
+          </span>
+        </button>
       </aside>
       <section class="pack-editor-main">
         <div class="pack-teacher-detail" id="pack-teacher-detail"></div>
@@ -297,7 +311,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
         <div class="pack-tab-panel" id="pack-tab-questions">
           <div class="pack-question-toolbar">
-            <button type="button" class="pack-action" id="teacher-generate-questions-btn">Generate Questions</button>
+            <button type="button" class="pack-action" id="teacher-generate-questions-btn">Generate (3 Hall Passes)</button>
             <button type="button" class="pack-action danger" id="teacher-cancel-generation-btn" hidden>Cancel</button>
             <span class="pack-question-status" id="teacher-generation-status"></span>
           </div>

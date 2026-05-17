@@ -83,6 +83,82 @@ function fakePack(id: string): ContentPack {
   };
 }
 
+function stubCourseGeneratorFetch() {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          courseTitle: "Signals Seminar",
+          courseDescription: "A generated course on reading signals.",
+          teacher: {
+            displayName: "Dr. Signal",
+            subject: "Signal Reading",
+            description: "Turns noisy inputs into clear evidence questions.",
+            quote: "Every signal needs a control.",
+          },
+          questions: [
+            {
+              prompt: "What does sampling bias change?",
+              subject: "sampling",
+              difficulty: "easy",
+              options: {
+                A: "What the signal can prove",
+                B: "The name of the teacher",
+                C: "The number of Hall Passes",
+                D: "The classroom wallpaper",
+              },
+              correct: "A",
+              explanation: "Sampling bias changes what a signal can prove.",
+            },
+            {
+              prompt: "Why use a control group?",
+              subject: "controls",
+              difficulty: "medium",
+              options: {
+                A: "To remove all uncertainty",
+                B: "To keep noisy explanations from winning too early",
+                C: "To make the course shorter",
+                D: "To avoid reading the materials",
+              },
+              correct: "B",
+              explanation: "A control group helps test competing explanations.",
+            },
+            {
+              prompt: "What does replication separate?",
+              subject: "replication",
+              difficulty: "medium",
+              options: {
+                A: "Rooms from teachers",
+                B: "Patterns from luck",
+                C: "Questions from answers",
+                D: "Drafts from published packs",
+              },
+              correct: "B",
+              explanation: "Replication checks whether a pattern survives another run.",
+            },
+            {
+              prompt: "Which habit improves signal interpretation?",
+              subject: "evidence",
+              difficulty: "hard",
+              options: {
+                A: "Ignoring base rates",
+                B: "Separating evidence from inference",
+                C: "Deleting all controls",
+                D: "Changing the answer after grading",
+              },
+              correct: "B",
+              explanation: "Signal work improves when evidence and inference stay separate.",
+            },
+          ],
+        }),
+      },
+    }],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })));
+}
+
 async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: number; body: any }> {
   const handled = await handlePackLibraryRoutes(makeCtx(opts), makeDeps());
   expect(handled).toBe(true);
@@ -162,6 +238,118 @@ describe("/pack-library", () => {
     expect(response.status).toBe(200);
     expect(response.body.drafts.some((draft: { id: string }) => draft.id === draftId)).toBe(false);
     expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
+  });
+
+  it("generates a draft course teacher and questions for three Hall Passes", async () => {
+    const aliceSessionId = signInUser("alice");
+    ruby.grantHallPasses(aliceSessionId, {
+      amount: 10,
+      idempotencyKey: "test:course-generation:grant",
+      source: "admin",
+    });
+    stubCourseGeneratorFetch();
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Untitled Content Pack" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate`,
+      cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
+      body: {
+        requestId: "course-generate-test-1",
+        materials: [
+          "# Sampling",
+          "Sampling bias changes what a signal can prove.",
+          "# Controls",
+          "A control group keeps noisy explanations from winning too early.",
+          "# Replication",
+          "Replication separates patterns from luck.",
+        ].join("\n"),
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.hallPassCost).toBe(3);
+    expect(response.body.hallPasses).toBe(7);
+    expect(response.body.draft.name).toBe("Signals Seminar");
+    expect(response.body.teacher).toMatchObject({
+      displayName: "Dr. Signal",
+      subject: "Signal Reading",
+      generationCount: 1,
+    });
+    expect(response.body.teacher.questions).toHaveLength(4);
+    expect(response.body.teacher.questions[0]).toMatchObject({
+      prompt: "What does sampling bias change?",
+      subject: "sampling",
+      difficulty: "easy",
+    });
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(7);
+  });
+
+  it("rejects paid course generation without enough Hall Passes", async () => {
+    signInUser("alice");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const created = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Empty Wallet Course" },
+    });
+    const draftId = created.body.draft.id as string;
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate`,
+      cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
+      body: {
+        requestId: "course-generate-empty-wallet",
+        materials: "Course materials.",
+      },
+    });
+
+    expect(response.status).toBe(402);
+    expect(response.body.error).toContain("Need 3 Hall Passes");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("deletes teachers from draft packs", async () => {
+    signInUser("alice");
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Teacher Delete Draft" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+      cookie: "rh_session=alice",
+      body: { displayName: "Delete Me", description: "Temporary teacher." },
+    });
+    const teacherId = response.body.teacher.id as string;
+
+    response = await route({
+      method: "DELETE",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}`,
+      cookie: "rh_session=alice",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.draft.teachers).toEqual([]);
+    expect((await ruby.listDraftPackRecords()).find((draft) => draft.id === draftId)?.teachers).toEqual([]);
   });
 
   it("deletes session-imported packs owned by the signed-in user", async () => {
