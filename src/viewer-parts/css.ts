@@ -5122,34 +5122,6 @@ export const VIEWER_CSS = `
       #f0e7da;
     opacity: 0.72;
   }
-  .comic-page-number {
-    position: absolute;
-    z-index: 2;
-    left: 5px;
-    top: 5px;
-    padding: 2px 4px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.86);
-    color: #321f1b;
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 1;
-  }
-  .comic-page-found {
-    position: absolute;
-    z-index: 2;
-    left: 5px;
-    right: 5px;
-    bottom: 5px;
-    padding: 3px 4px;
-    border-radius: 4px;
-    background: rgba(50, 31, 27, 0.78);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 800;
-    line-height: 1.1;
-    text-align: left;
-  }
   .comic-page-locked-mark {
     position: absolute;
     inset: 0;
