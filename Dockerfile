@@ -2,7 +2,8 @@ FROM node:22-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --include=dev
-COPY tsconfig.json ./
+COPY tsconfig.json tsup.config.ts ./
+COPY scripts/check-privy-client-bundle.mjs ./scripts/check-privy-client-bundle.mjs
 COPY src ./src
 COPY assets ./assets
 COPY elizaos.plugin.json ./
