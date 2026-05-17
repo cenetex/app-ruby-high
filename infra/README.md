@@ -99,7 +99,8 @@ from the ECR access role). Add to its policy:
     "dynamodb:Scan",
     "dynamodb:GetItem",
     "dynamodb:PutItem",
-    "dynamodb:BatchWriteItem"
+    "dynamodb:BatchWriteItem",
+    "dynamodb:DeleteItem"
   ],
   "Resource": "arn:aws:dynamodb:us-east-1:*:table/ruby-high-state"
 }

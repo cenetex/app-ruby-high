@@ -15,8 +15,8 @@ the same DynamoDB table that App Runner uses (`ruby-high-state` in
 
 The Fly app authenticates to AWS with static access keys. Use a
 dedicated IAM user with least-privilege scope (the policy in
-[`iam-fly-policy.json`](./iam-fly-policy.json) allows the four
-DynamoDB operations the `DynamoStateStore` performs on the one
+[`iam-fly-policy.json`](./iam-fly-policy.json) allows the DynamoDB
+operations the `DynamoStateStore` performs on the one
 state table, plus `s3:PutObject` on the portraits bucket).
 
 ```sh

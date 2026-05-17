@@ -14,7 +14,8 @@ import { DynamoStateStore } from "./dynamo-state-store.js";
  *   RUBY_HIGH_STATE_TTL_SECONDS=7776000       (optional; default 90 days)
  *
  * Required IAM permissions for the AWS principal used by the app:
- *   dynamodb:Scan, dynamodb:GetItem, dynamodb:PutItem, dynamodb:BatchWriteItem
+ *   dynamodb:Scan, dynamodb:GetItem, dynamodb:PutItem, dynamodb:BatchWriteItem,
+ *   dynamodb:DeleteItem
  */
 export interface CreateStateStoreOptions {
   /** Override env-var detection. "json" or "dynamodb". */
