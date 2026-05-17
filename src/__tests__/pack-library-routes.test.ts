@@ -91,6 +91,27 @@ function fakePack(id: string): ContentPack {
   };
 }
 
+function fakeQuestionPack(id: string): ContentPack {
+  const pack = fakePack(id);
+  const faculty = pack.faculty[0]!;
+  faculty.questions = [{
+    id: `${id}-q1`,
+    faculty: faculty.id,
+    prompt: "What makes this published pack editable?",
+    subject: "creator-tools",
+    difficulty: "easy",
+    options: {
+      A: "An owner edit draft",
+      B: "A read-only system pack",
+      C: "A hidden lounge room",
+      D: "A stale install record",
+    },
+    correct: "A",
+    explanation: "Published creator packs can be opened through an owner edit draft.",
+  }];
+  return pack;
+}
+
 function stubCourseGeneratorFetch() {
   const courseSpec = {
     choices: [{
@@ -666,6 +687,31 @@ describe("/pack-library", () => {
     });
 
     response = await route({
+      method: "PATCH",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}`,
+      cookie: "rh_session=alice",
+      body: { name: "Updated Signals Pack" },
+    });
+    expect(response.status).toBe(200);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/publish`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.pack).toMatchObject({
+      id: packId,
+      name: "Updated Signals Pack",
+      draftId,
+      canEdit: true,
+      canDelete: true,
+    });
+    expect(response.body.hallPassCost).toBe(0);
+    expect(response.body.hallPasses).toBe(2);
+    expect((await ruby.listPersistedPackRecords()).find((entry) => entry.pack.id === packId)?.pack.name).toBe("Updated Signals Pack");
+
+    response = await route({
       method: "POST",
       path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(packId)}/active`,
       cookie: "rh_session=alice",
@@ -707,6 +753,84 @@ describe("/pack-library", () => {
     expect((await ruby.listPackInstallationRecords()).some((entry) => entry.packId === packId)).toBe(false);
     expect(getPackByIdForSession(packId, aliceSessionId)).toBeNull();
     expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(ORIGINAL_PACK_ID);
+  });
+
+  it("creates an edit draft for owned published packs that no longer have a backing draft", async () => {
+    const aliceSessionId = signInUser("alice");
+    const pack = fakeQuestionPack("pack:legacy-published-edit");
+    await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+
+    let response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library",
+      cookie: "rh_session=alice",
+    });
+    const listed = response.body.packs.find((entry: { id: string }) => entry.id === pack.id);
+    expect(listed).toMatchObject({
+      id: pack.id,
+      owner: true,
+      canEdit: true,
+      canDelete: true,
+    });
+    expect(listed.draftId).toBeUndefined();
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(pack.id)}/edit-draft`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(200);
+    const draftId = response.body.draft.id as string;
+    expect(response.body.draft).toMatchObject({
+      id: draftId,
+      name: pack.name,
+      derivedFrom: pack.id,
+      canEdit: true,
+      canDelete: true,
+      courseSlot: {
+        status: "published",
+        packId: pack.id,
+      },
+    });
+    expect(response.body.draft.teachers[0]).toMatchObject({
+      displayName: pack.faculty[0]!.displayName,
+      questionCount: 1,
+    });
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library",
+      cookie: "rh_session=alice",
+    });
+    expect(response.body.packs.find((entry: { id: string }) => entry.id === pack.id)).toMatchObject({
+      draftId,
+      canEdit: true,
+    });
+    expect(response.body.drafts.some((draft: { id: string }) => draft.id === draftId)).toBe(false);
+
+    response = await route({
+      method: "PATCH",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}`,
+      cookie: "rh_session=alice",
+      body: { name: "Legacy Published Updated" },
+    });
+    expect(response.status).toBe(200);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/publish`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.pack).toMatchObject({
+      id: pack.id,
+      name: "Legacy Published Updated",
+      canEdit: true,
+      canDelete: true,
+    });
+    expect(response.body.hallPassCost).toBe(0);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(5);
+    expect((await ruby.listPersistedPackRecords()).find((entry) => entry.pack.id === pack.id)?.pack.name).toBe("Legacy Published Updated");
   });
 
   it("does not delete read-only or other users' packs", async () => {

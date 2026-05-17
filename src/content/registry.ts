@@ -168,7 +168,7 @@ export function registerPack(pack: ContentPack, ownerSessionId: string, touchedA
 export function registerPublicPack(
   pack: ContentPack,
   touchedAt = Date.now(),
-  opts: { ownerSessionId?: string | null } = {},
+  opts: { ownerSessionId?: string | null; allowGlobalOverwrite?: boolean } = {},
 ): void {
   const existing = packs.get(pack.id);
   if (existing) {
@@ -178,7 +178,7 @@ export function registerPublicPack(
     if (existing.ownerSessionId === null && pack.id === ORIGINAL_PACK_ID) {
       throw new Error(`Cannot overwrite pinned built-in pack: ${pack.id}`);
     }
-    if (existing.ownerSessionId === null && !pack.id.startsWith("teacher:")) {
+    if (existing.ownerSessionId === null && !pack.id.startsWith("teacher:") && !opts.allowGlobalOverwrite) {
       throw new Error(`Cannot overwrite global pack: ${pack.id}`);
     }
   }

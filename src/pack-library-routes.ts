@@ -92,6 +92,20 @@ export async function handlePackLibraryRoutes(
       return true;
     }
 
+    const editDraftMatch = sub.match(/^\/([^/]+)\/edit-draft$/);
+    if (ctx.method === "POST" && editDraftMatch?.[1]) {
+      const packId = decodeURIComponent(editDraftMatch[1]);
+      try {
+        const draft = await ensurePublishedEditDraft({ ruby: deps.ruby, record, sessionId, packId });
+        ctx.json(ctx.res, { ok: true, draft: draftDetail(draft) });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const status = message.includes("Only the owner") ? 403 : clientErrorStatus(err);
+        ctx.error(ctx.res, message, status);
+      }
+      return true;
+    }
+
     const installMatch = sub.match(/^\/([^/]+)\/install$/);
     if (ctx.method === "POST" && installMatch?.[1]) {
       const packId = decodeURIComponent(installMatch[1]);
@@ -408,7 +422,11 @@ export async function handlePackLibraryRoutes(
         packId: pack.id,
       });
       const publishedSlot = publishCourseSlot(reserved.slot, pack.id);
-      await deps.ruby.persistPublicTeacherPack(pack, { creatorUserId: record.userId, courseSlot: publishedSlot });
+      await deps.ruby.persistPublicTeacherPack(pack, {
+        creatorUserId: record.userId,
+        courseSlot: publishedSlot,
+        allowGlobalOverwrite: !!draft.derivedFrom,
+      });
       const publishedDraft = touchDraft({ ...reserved.draft, derivedFrom: pack.id, courseSlot: publishedSlot });
       await deps.ruby.saveDraftPackRecord(publishedDraft);
       deps.ruby.annotateWalletTransaction(sessionId, publishedSlot.walletTransactionId, {
@@ -652,6 +670,36 @@ async function deleteOwnedPublishedPack(args: {
   }
 }
 
+async function ensurePublishedEditDraft(args: {
+  ruby: RubyHighService;
+  record: AuthRecord;
+  sessionId: string;
+  packId: string;
+}): Promise<StoredDraftContentPackRecord> {
+  if (args.packId === ORIGINAL_PACK_ID) throw new Error("Ruby High Original is read only.");
+  const userDrafts = (await args.ruby.listDraftPackRecords())
+    .filter((draft) => draft.ownerUserId === args.record.userId);
+  const existingDraft = backingDraftForPack(userDrafts, args.packId);
+  if (existingDraft) return existingDraft;
+
+  const persisted = (await args.ruby.listPersistedPackRecords()).filter((entry) => entry.pack.id === args.packId);
+  const ownedPersisted = persisted.find((entry) =>
+    entry.creatorUserId === args.record.userId || entry.ownerSessionId === args.sessionId);
+  const ownedLegacyTeacher = (await args.ruby.listTeacherRecords())
+    .find((teacher) => teacher.creatorUserId === args.record.userId && teacher.packId === args.packId);
+  const pack = ownedPersisted?.pack ?? ownedLegacyTeacher?.pack ?? getPackByIdForSession(args.packId, args.sessionId);
+  if (!pack) throw new Error("Unknown pack.");
+  if (!ownedPersisted && !ownedLegacyTeacher) throw new Error("Only the owner can edit this pack.");
+
+  const draft = draftFromPublishedPack(pack, {
+    record: args.record,
+    sessionId: args.sessionId,
+    courseSlot: ownedPersisted?.courseSlot,
+  });
+  await args.ruby.saveDraftPackRecord(draft);
+  return draft;
+}
+
 async function saveInstallationSet(
   ruby: RubyHighService,
   userId: string,
@@ -701,7 +749,7 @@ function packLibrarySummary(
     installed: !!opts.installed,
     enabled: opts.enabled,
     active: opts.active,
-    canEdit: opts.owner && !opts.readOnly && !!opts.editDraftId,
+    canEdit: opts.owner && !opts.readOnly,
     ...(opts.editDraftId ? { draftId: opts.editDraftId } : {}),
     canDelete: opts.owner && !opts.readOnly,
     status: "published",
@@ -813,6 +861,116 @@ function draftDetail(draft: StoredDraftContentPackRecord) {
     ...draftSummary(draft),
     teachers: draft.teachers.map((teacher) => teacherDetail(draft, teacher)),
   };
+}
+
+function draftFromPublishedPack(
+  pack: ContentPack,
+  opts: { record: AuthRecord; sessionId: string; courseSlot?: StoredCourseSlotRecord },
+): StoredDraftContentPackRecord {
+  const now = Date.now();
+  const draftId = newDraftId();
+  const teachers = pack.faculty.map((faculty) => {
+    const teacherId = newTeacherId();
+    const draftFacultyId = draftTeacherFacultyIdForId(teacherId);
+    return {
+      id: teacherId,
+      displayName: faculty.displayName,
+      subject: faculty.subjects[0] ?? "",
+      description: faculty.bio || "A custom Ruby High teacher.",
+      quote: "",
+      ...(faculty.assetTeacherId ? { assetTeacherId: faculty.assetTeacherId } : {}),
+      ...(faculty.profileImageUrl ? { profileImageUrl: faculty.profileImageUrl } : {}),
+      ...(faculty.stats ? { stats: faculty.stats } : {}),
+      materials: materialsFromPublishedFaculty(faculty),
+      sourceCards: (faculty.sourceCards ?? []).map((card) => ({ ...card, faculty: draftFacultyId })),
+      questions: faculty.questions.map((question) => ({ ...question, faculty: draftFacultyId })),
+      generationCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+  const visibility = opts.courseSlot?.visibility ?? "public";
+  return {
+    id: draftId,
+    ownerUserId: opts.record.userId,
+    ownerSessionId: opts.sessionId,
+    name: pack.name,
+    description: pack.description,
+    visibility,
+    derivedFrom: pack.id,
+    courseSlot: editCourseSlotForPublishedDraft(pack, {
+      draftId,
+      record: opts.record,
+      sessionId: opts.sessionId,
+      courseSlot: opts.courseSlot,
+      visibility,
+      now,
+    }),
+    teachers,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function editCourseSlotForPublishedDraft(
+  pack: ContentPack,
+  opts: {
+    draftId: string;
+    record: AuthRecord;
+    sessionId: string;
+    courseSlot?: StoredCourseSlotRecord;
+    visibility: StoredPackVisibility;
+    now: number;
+  },
+): StoredCourseSlotRecord {
+  if (opts.courseSlot) {
+    return {
+      ...opts.courseSlot,
+      ownerUserId: opts.record.userId,
+      ownerSessionId: opts.sessionId,
+      draftId: opts.draftId,
+      packId: pack.id,
+      status: "published",
+      visibility: opts.visibility,
+      updatedAt: opts.now,
+      publishedAt: opts.courseSlot.publishedAt ?? opts.now,
+    };
+  }
+  const title = slugForText(pack.name || "course");
+  const suffix = slugForText(opts.draftId).slice(-10);
+  return {
+    id: courseSlotId(opts.draftId),
+    ownerUserId: opts.record.userId,
+    ownerSessionId: opts.sessionId,
+    draftId: opts.draftId,
+    packId: pack.id,
+    shareSlug: `${title}-${suffix}`,
+    visibility: opts.visibility,
+    status: "published",
+    walletTransactionId: `published-edit:${slugForText(pack.id)}`,
+    createdAt: opts.now,
+    updatedAt: opts.now,
+    publishedAt: opts.now,
+  };
+}
+
+function materialsFromPublishedFaculty(faculty: ContentPack["faculty"][number]): string {
+  const sourceCards = (faculty.sourceCards ?? []).map((card) =>
+    [`## ${card.front}`, card.back].filter(Boolean).join("\n\n"));
+  const questions = faculty.questions.map((question) => {
+    const correct = question.correct && question.options ? question.options[question.correct] : "";
+    return [
+      `## ${question.prompt}`,
+      correct ? `Correct answer: ${correct}` : "",
+      question.explanation,
+    ].filter(Boolean).join("\n\n");
+  });
+  return [
+    faculty.bio,
+    faculty.systemPrompt,
+    ...sourceCards,
+    ...questions,
+  ].filter(Boolean).join("\n\n").slice(0, MAX_MATERIAL_CHARS);
 }
 
 function teacherDetail(draft: StoredDraftContentPackRecord, teacher: StoredDraftTeacherRecord) {
@@ -1311,7 +1469,7 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
     teaches: true,
   }));
   return {
-    id: `pack:${draft.id}`,
+    id: draft.derivedFrom || `pack:${draft.id}`,
     name: draft.name,
     description: draft.description || "Custom Ruby High content pack.",
     version: "1.0.0",

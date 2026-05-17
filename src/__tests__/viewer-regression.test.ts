@@ -246,8 +246,11 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("async function deleteLibraryPack");
     expect(script).toContain("deleteDraftPack");
     expect(script).toContain("deletePublishedPack");
+    expect(script).toContain("createEditDraftForPublishedPack");
+    expect(script).toContain("async function editPublishedPack(pack)");
     expect(script).toContain("pack.canDelete");
-    expect(script).toContain("pack.draftId || pack.id");
+    expect(script).toContain("if (isDraft) editDraftPack(pack.id)");
+    expect(script).toContain("await editDraftPack(pack.draftId)");
     expect(cssRule(".pack-card-actions .pack-action.danger")).toContain("#ff8c8c");
     expect(script).not.toContain('document.createTextNode("Enabled")');
     expect(script).not.toContain("togglePackInstall");

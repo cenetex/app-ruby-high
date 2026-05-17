@@ -972,11 +972,14 @@ export class RubyHighService extends Service {
 
   async persistPublicTeacherPack(
     pack: ContentPack,
-    opts: { previousOwnerSessionId?: string | null; creatorUserId?: string; courseSlot?: StoredCourseSlotRecord } = {},
+    opts: { previousOwnerSessionId?: string | null; creatorUserId?: string; courseSlot?: StoredCourseSlotRecord; allowGlobalOverwrite?: boolean } = {},
   ): Promise<void> {
     const touchedAt = Date.now();
     try {
-      registerPublicPack(pack, touchedAt, { ownerSessionId: opts.previousOwnerSessionId ?? null });
+      registerPublicPack(pack, touchedAt, {
+        ownerSessionId: opts.previousOwnerSessionId ?? null,
+        allowGlobalOverwrite: opts.allowGlobalOverwrite,
+      });
       await this.store.savePack({
         pack,
         ownerSessionId: null,

@@ -6621,6 +6621,16 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!r.ok) throw new Error(data.error || "delete pack " + r.status);
       return data;
     },
+    async createEditDraftForPublishedPack(packId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library/" + encodeURIComponent(packId) + "/edit-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "edit published pack " + r.status);
+      return data.draft;
+    },
     async publishDraft(draftId) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/publish", {
         method: "POST",
@@ -7040,7 +7050,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       editBtn.disabled = packImportBusy;
       editBtn.addEventListener("click", (event) => {
         event.stopPropagation();
-        editDraftPack(isDraft ? pack.id : (pack.draftId || pack.id));
+        if (isDraft) editDraftPack(pack.id);
+        else editPublishedPack(pack);
       });
       actions.appendChild(editBtn);
     }
@@ -7184,6 +7195,30 @@ const VIEWER_SCRIPT_SUFFIX = `
       packStatusEl.textContent = "";
     } catch (err) {
       packStatusEl.textContent = "Could not open draft · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function editPublishedPack(pack) {
+    if (!pack || packImportBusy) return;
+    if (pack.draftId) {
+      await editDraftPack(pack.draftId);
+      return;
+    }
+    setPackBusy(true);
+    packStatusEl.textContent = "Preparing published pack for editing...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      const draft = await packStudioClient.createEditDraftForPublishedPack(pack.id);
+      packLibraryState = await packStudioClient.listPacks();
+      renderPackList();
+      renderDraftPackList();
+      packStatusEl.textContent = "";
+      openPackEditor(draft);
+    } catch (err) {
+      packStatusEl.textContent = "Could not edit published pack · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);
