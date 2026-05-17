@@ -214,6 +214,7 @@ async function callOpenRouter(prompt) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${API_KEY}`,
       "HTTP-Referer": REFERER,
+      "X-OpenRouter-Title": TITLE,
       "X-Title": TITLE,
     },
     body: JSON.stringify({

@@ -56,8 +56,11 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
     expect(html).toContain('id="privy-login-widget"');
+    expect(html).toContain('id="account-ai-use-pass"');
     expect(html).toContain('id="account-ai-action"');
+    expect(html).toContain('id="account-use-pass"');
     expect(html).toContain("Connect OpenRouter");
+    expect(html).toContain("Use Hall Pass");
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
@@ -95,6 +98,10 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');
     expect(VIEWER_CSS).toContain(".welcome-hall-pass-art");
     expect(script).toContain("Roll your first student and try a custom portrait");
+    expect(script).toContain('els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
+    expect(script).toContain('els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
+    expect(script).toContain("formatDuration(ai.durationMs || 604_800_000)");
+    expect(script).toContain("AI Access active");
     expect(script).not.toContain("Roll your character to start today's class.");
   });
 
@@ -273,7 +280,7 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('body: JSON.stringify({ displayName: "New Teacher" })');
   });
 
-  it("uses paid course generation for draft pack setup", () => {
+  it("uses BYOK course generation and paid publish slots for draft pack setup", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
@@ -282,20 +289,22 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="course-generation-progress"');
     expect(html).toContain('id="course-generation-checklist"');
     expect(html).toContain("Add course materials here");
-    expect(html).toContain("Generate (3 Hall Passes)");
+    expect(html).toContain("Generate Course");
+    expect(html).toContain("Publish Course (3 Hall Passes)");
     expect(html).toContain('id="course-generate-btn"');
     expect(html).toContain('class="pack-teacher-tab pack-new-teacher-tab"');
     expect(html).toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');
     expect(script).toContain("async generateCourse(draftId, payload, options)");
     expect(script).toContain('"/course/generate"');
-    expect(script).toContain("COURSE_GENERATION_HALL_PASS_COST = 3");
+    expect(script).toContain("COURSE_SLOT_HALL_PASS_COST = 3");
     expect(script).toContain("COURSE_GENERATION_STEPS");
     expect(script).toContain("Generate teacher portrait");
     expect(script).toContain("function startCourseGenerationProgress()");
     expect(script).toContain("function finishCourseGenerationProgress()");
     expect(script).toContain("function generateCourseFromMaterials()");
     expect(script).toContain("function runCourseGeneration(teacher)");
-    expect(script).toContain('label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate (3 Hall Passes)"');
+    expect(script).toContain('label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate"');
+    expect(script).toContain('packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + COURSE_SLOT_HALL_PASS_COST + " Hall Passes)"');
     expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateCourse");
     expect(script).toContain("applyHallPassBalance(data.hallPasses, data.entitlements)");
     expect(script).toContain("function deleteDraftTeacher(teacherId)");

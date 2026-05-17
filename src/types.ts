@@ -466,7 +466,9 @@ export type RubyHighWalletTransactionKind =
   | "hall-pass-grant"
   | "hall-pass-spend"
   | "hall-pass-refund"
-  | "hall-pass-revoke";
+  | "hall-pass-revoke"
+  | "photo-day-spend"
+  | "photo-day-refund";
 
 export interface RubyHighWalletTransaction {
   id: string;
@@ -476,7 +478,9 @@ export interface RubyHighWalletTransaction {
   meritStars?: number;
   /** Positive for grants/refunds, negative for spends. */
   hallPasses?: number;
-  source?: "stripe" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "character-slot" | "admin" | "system";
+  /** Positive for refunds, negative for spends. */
+  photoDayCredits?: number;
+  source?: "stripe" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "character-slot" | "course-slot" | "photo-day" | "admin" | "system";
   description?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }

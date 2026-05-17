@@ -262,13 +262,8 @@ describe("/pack-library", () => {
     expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
   });
 
-  it("generates a draft course teacher and questions for three Hall Passes", async () => {
+  it("generates a draft course teacher and questions without spending Hall Passes", async () => {
     const aliceSessionId = signInUser("alice");
-    ruby.grantHallPasses(aliceSessionId, {
-      amount: 10,
-      idempotencyKey: "test:course-generation:grant",
-      source: "admin",
-    });
     const fetchMock = stubCourseGeneratorFetch();
 
     let response = await route({
@@ -298,8 +293,8 @@ describe("/pack-library", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body.hallPassCost).toBe(3);
-    expect(response.body.hallPasses).toBe(12);
+    expect(response.body.hallPassCost).toBe(0);
+    expect(response.body.hallPasses).toBe(5);
     expect(response.body.draft.name).toBe("Signals Seminar");
     expect(response.body.teacher).toMatchObject({
       displayName: "Dr. Signal",
@@ -313,15 +308,13 @@ describe("/pack-library", () => {
       subject: "sampling",
       difficulty: "easy",
     });
-    expect(ruby.hallPassBalance(aliceSessionId)).toBe(12);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(5);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects paid course generation without enough Hall Passes", async () => {
+  it("rejects publishing a new course slot without enough Hall Passes", async () => {
     const aliceSessionId = signInUser("alice");
     emptyWelcomeHallPasses(aliceSessionId);
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
 
     const created = await route({
       method: "POST",
@@ -331,20 +324,42 @@ describe("/pack-library", () => {
     });
     const draftId = created.body.draft.id as string;
 
-    const response = await route({
+    let response = await route({
       method: "POST",
-      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate`,
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
       cookie: "rh_session=alice",
-      apiKeyHeader: "sk-test",
       body: {
-        requestId: "course-generate-empty-wallet",
-        materials: "Course materials.",
+        displayName: "Budget Coach",
+        description: "Turns budget notes into study cards.",
       },
     });
+    expect(response.status).toBe(201);
+    const teacherId = response.body.teacher.id as string;
 
+    response = await route({
+      method: "PATCH",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}`,
+      cookie: "rh_session=alice",
+      body: { materials: "A course needs enough evidence to publish." },
+    });
+    expect(response.status).toBe(200);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
+      cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
+    });
+    expect(response.status).toBe(200);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/publish`,
+      cookie: "rh_session=alice",
+    });
     expect(response.status).toBe(402);
-    expect(response.body.error).toContain("Need 3 Hall Passes");
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(response.body.error).toContain("Not enough Hall Passes");
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
   });
 
   it("deletes teachers from draft packs", async () => {
@@ -506,9 +521,20 @@ describe("/pack-library", () => {
       cookie: "rh_session=alice",
     });
     expect(response.status).toBe(200);
+    expect(response.body.hallPassCost).toBe(3);
+    expect(response.body.hallPasses).toBe(2);
+    expect(response.body.courseSlot).toMatchObject({
+      draftId,
+      status: "published",
+    });
     const packId = response.body.pack.id as string;
-    const persistedPack = (await ruby.listPersistedPackRecords()).find((entry) => entry.pack.id === packId)?.pack;
-    expect(persistedPack?.faculty[0]).toMatchObject({
+    const persistedPackRecord = (await ruby.listPersistedPackRecords()).find((entry) => entry.pack.id === packId);
+    expect(persistedPackRecord?.courseSlot).toMatchObject({
+      draftId,
+      status: "published",
+      packId,
+    });
+    expect(persistedPackRecord?.pack.faculty[0]).toMatchObject({
       assetTeacherId: "sally-science",
       stats: { head: 3, heart: 1, hustle: 0, honor: 2 },
     });
@@ -525,7 +551,12 @@ describe("/pack-library", () => {
     expect(response.body.draft).toMatchObject({
       id: draftId,
       derivedFrom: packId,
+      courseSlot: {
+        status: "published",
+        packId,
+      },
     });
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(2);
     expect(ruby.getOrCreate(aliceSessionId).activePackId).not.toBe(packId);
 
     response = await route({

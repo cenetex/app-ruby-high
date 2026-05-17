@@ -72,6 +72,7 @@ import { FacultyService, toFacultyMember } from "./faculty-service.js";
 import {
   getDefaultStateStore,
   type StateStoreLike,
+  type StoredCourseSlotRecord,
   type StoredContentPackRecord,
   type StoredDraftContentPackRecord,
   type StoredPackInstallationRecord,
@@ -307,6 +308,22 @@ export interface CharacterSlotUnlockResult {
   transaction: RubyHighWalletTransaction;
 }
 
+export interface PhotoDayCreditMutationInput {
+  amount?: number;
+  idempotencyKey: string;
+  source?: RubyHighWalletTransaction["source"];
+  description?: string;
+  metadata?: RubyHighWalletTransaction["metadata"];
+  at?: number;
+}
+
+export interface PhotoDayCreditMutationResult {
+  state: QuizState;
+  applied: boolean;
+  transaction: RubyHighWalletTransaction;
+  slots: CharacterSlotEntitlements;
+}
+
 interface DailyClassUpdate {
   mode: "class" | "practice";
   cardRole?: DeckCardRole;
@@ -414,6 +431,16 @@ export class RubyHighService extends Service {
     return Math.max(0, Math.floor(Number(this.getOrCreate(sessionId).wallet?.hallPasses ?? 0)));
   }
 
+  characterSlotEntitlements(sessionId: string): CharacterSlotEntitlements {
+    const state = this.getOrCreate(sessionId);
+    state.characterSlots = normalizeCharacterSlots(state.characterSlots);
+    return { ...state.characterSlots };
+  }
+
+  photoDayCreditBalance(sessionId: string): number {
+    return this.characterSlotEntitlements(sessionId).photoDayCredits;
+  }
+
   walletTransaction(sessionId: string, idempotencyKey: string): RubyHighWalletTransaction | null {
     const id = idempotencyKey.trim();
     if (!id) return null;
@@ -483,6 +510,14 @@ export class RubyHighService extends Service {
     };
   }
 
+  consumePhotoDayCredit(sessionId: string, input: PhotoDayCreditMutationInput): PhotoDayCreditMutationResult {
+    return this.applyPhotoDayCreditTransaction(sessionId, "photo-day-spend", input);
+  }
+
+  refundPhotoDayCredit(sessionId: string, input: PhotoDayCreditMutationInput): PhotoDayCreditMutationResult {
+    return this.applyPhotoDayCreditTransaction(sessionId, "photo-day-refund", input);
+  }
+
   activateHostedAiAccess(sessionId: string, input: HostedAiAccessActivationInput): HostedAiAccessActivationResult {
     const now = typeof input.now === "number" && Number.isFinite(input.now) ? Math.floor(input.now) : Date.now();
     const state = this.getOrCreate(sessionId);
@@ -501,9 +536,9 @@ export class RubyHighService extends Service {
     const durationMs = normalizePositiveInteger(input.durationMs, "Hosted AI duration");
     const spend = this.applyHallPassTransaction(sessionId, "hall-pass-spend", {
       amount: hallPassCost,
-      idempotencyKey: `hosted-ai:day-pass:${sessionId}:${now}`,
+      idempotencyKey: `hosted-ai:access:${sessionId}:${now}`,
       source: "hosted-ai",
-      description: "AI Day Pass",
+      description: "AI Access",
       at: now,
       metadata: {
         durationMs,
@@ -572,6 +607,54 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction };
+  }
+
+  private applyPhotoDayCreditTransaction(
+    sessionId: string,
+    kind: Extract<RubyHighWalletTransactionKind, "photo-day-spend" | "photo-day-refund">,
+    input: PhotoDayCreditMutationInput,
+  ): PhotoDayCreditMutationResult {
+    const state = this.getOrCreate(sessionId);
+    const amount = normalizePositiveInteger(input.amount ?? 1, "Photo Day credit amount");
+    const id = input.idempotencyKey.trim();
+    if (!id) throw new Error("Photo Day credit transaction idempotency key is required.");
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    state.characterSlots = normalizeCharacterSlots(state.characterSlots);
+    const existing = state.wallet.transactions?.find((tx) => tx.id === id);
+    if (existing) {
+      return {
+        state,
+        applied: false,
+        transaction: existing,
+        slots: normalizeCharacterSlots(state.characterSlots),
+      };
+    }
+
+    const current = Math.max(0, Math.floor(Number(state.characterSlots.photoDayCredits ?? 0)));
+    if (kind === "photo-day-spend" && current < amount) {
+      throw new Error(`Not enough Photo Day credits. Need ${amount}, have ${current}.`);
+    }
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind,
+      at: typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now(),
+      photoDayCredits: kind === "photo-day-spend" ? -amount : amount,
+      source: input.source ?? "photo-day",
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    };
+    state.characterSlots.photoDayCredits = kind === "photo-day-spend"
+      ? current - amount
+      : current + amount;
+    state.wallet.transactions = [...(state.wallet.transactions ?? []), transaction].slice(-WALLET_TRANSACTION_LIMIT);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return {
+      state,
+      applied: true,
+      transaction,
+      slots: normalizeCharacterSlots(state.characterSlots),
+    };
   }
 
   /** Player taps "Roll for advantage" once per round. The roll is consumed
@@ -889,7 +972,7 @@ export class RubyHighService extends Service {
 
   async persistPublicTeacherPack(
     pack: ContentPack,
-    opts: { previousOwnerSessionId?: string | null; creatorUserId?: string } = {},
+    opts: { previousOwnerSessionId?: string | null; creatorUserId?: string; courseSlot?: StoredCourseSlotRecord } = {},
   ): Promise<void> {
     const touchedAt = Date.now();
     try {
@@ -898,6 +981,7 @@ export class RubyHighService extends Service {
         pack,
         ownerSessionId: null,
         ...(opts.creatorUserId ? { creatorUserId: opts.creatorUserId } : {}),
+        ...(opts.courseSlot ? { courseSlot: opts.courseSlot } : {}),
         touchedAt,
       });
       if (opts.previousOwnerSessionId) {
@@ -3650,7 +3734,14 @@ function normalizeWalletMetadata(value: unknown): RubyHighWalletTransaction["met
 
 function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[] {
   if (!Array.isArray(value)) return [];
-  const kinds: RubyHighWalletTransactionKind[] = ["hall-pass-grant", "hall-pass-spend", "hall-pass-refund", "hall-pass-revoke"];
+  const kinds: RubyHighWalletTransactionKind[] = [
+    "hall-pass-grant",
+    "hall-pass-spend",
+    "hall-pass-refund",
+    "hall-pass-revoke",
+    "photo-day-spend",
+    "photo-day-refund",
+  ];
   const sources: Array<NonNullable<RubyHighWalletTransaction["source"]>> = [
     "stripe",
     "iap",
@@ -3658,6 +3749,8 @@ function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[
     "hosted-image",
     "hosted-ai",
     "character-slot",
+    "course-slot",
+    "photo-day",
     "admin",
     "system",
   ];
@@ -3678,6 +3771,9 @@ function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[
     }
     if (typeof tx.hallPasses === "number" && Number.isFinite(tx.hallPasses)) {
       entry.hallPasses = Math.floor(tx.hallPasses);
+    }
+    if (typeof tx.photoDayCredits === "number" && Number.isFinite(tx.photoDayCredits)) {
+      entry.photoDayCredits = Math.floor(tx.photoDayCredits);
     }
     if (typeof tx.source === "string" && sources.includes(tx.source as NonNullable<RubyHighWalletTransaction["source"]>)) {
       entry.source = tx.source as NonNullable<RubyHighWalletTransaction["source"]>;

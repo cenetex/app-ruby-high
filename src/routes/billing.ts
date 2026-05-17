@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import {
+  courseSlotCost,
   hostedAiAccessCost,
   hostedAiAccessDurationMs,
   hostedEntitlementStatus,
@@ -12,6 +13,7 @@ import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
 export {
+  courseSlotCost,
   hostedAiAccessCost,
   hostedAiAccessDurationMs,
   hostedImageCost,
@@ -380,6 +382,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         portrait: hostedImageCost("portrait"),
         diploma: hostedImageCost("diploma"),
       },
+      courseSlotCost: courseSlotCost(),
       hostedAiAccess: {
         configured: entitlements.hosted_ai.configured,
         cost: hostedAiAccessCost(),

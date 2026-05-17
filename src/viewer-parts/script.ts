@@ -526,9 +526,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     privyStatus: $("privy-status"),
     accountAiStatus: $("account-ai-status"),
     accountAiMeta: $("account-ai-meta"),
+    accountAiUsePass: $("account-ai-use-pass"),
     accountAiAction: $("account-ai-action"),
     accountWalletBalance: $("account-wallet-balance"),
     accountWalletMeta: $("account-wallet-meta"),
+    accountUsePass: $("account-use-pass"),
     accountBuyPasses: $("account-buy-passes"),
     accountCharacterSummary: $("account-character-summary"),
     accountCharacterGrid: $("account-character-grid"),
@@ -1683,9 +1685,15 @@ const VIEWER_SCRIPT_SUFFIX = `
     return billingProductsCache;
   }
 
-  async function confirmHostedCreditSpend(action, kind) {
-    if (!usingHostedImageGeneration(kind)) return true;
+  async function confirmHostedCreditSpend(action, kind, usePhotoDayCredit) {
+    if (!usingHostedImageGeneration(kind) && !usePhotoDayCredit) return true;
     await ensureBillingProductsForCreditWarning();
+    if (usePhotoDayCredit) {
+      return window.confirm(
+        action + " uses hosted OpenRouter image generation and will spend 1 Photo Day credit if the image completes. " +
+        "You can keep editing while it runs, but Save and Close stay locked until it finishes or you cancel."
+      );
+    }
     return window.confirm(
       action + " uses hosted OpenRouter image generation and will spend " + hostedImageCostLabel(kind) + " if the image completes. " +
       "You can keep editing while it runs, but Save and Close stay locked until it finishes or you cancel."
@@ -1698,16 +1706,25 @@ const VIEWER_SCRIPT_SUFFIX = `
     return "Uses your OpenRouter key. No Hall Passes are spent.";
   }
 
-  function applyHallPassBalance(hallPasses, entitlements) {
+  function applyHallPassBalance(hallPasses, entitlements, characterSlots) {
     if (typeof hallPasses !== "number" || !Number.isFinite(hallPasses)) return;
     if (!lastTelemetry) return;
     const wallet = lastTelemetry.wallet && typeof lastTelemetry.wallet === "object" ? lastTelemetry.wallet : {};
+    const currentSlots = lastTelemetry.character_slots && typeof lastTelemetry.character_slots === "object"
+      ? lastTelemetry.character_slots
+      : {};
     lastTelemetry = {
       ...lastTelemetry,
       wallet: {
         ...wallet,
         hallPasses: Math.max(0, Math.round(hallPasses)),
       },
+      ...(characterSlots && typeof characterSlots === "object" ? {
+        character_slots: {
+          ...currentSlots,
+          ...characterSlots,
+        },
+      } : {}),
       ...(entitlements && typeof entitlements === "object" ? {
         entitlements,
         hosted_ai: entitlements.hosted_ai || lastTelemetry.hosted_ai,
@@ -1749,9 +1766,16 @@ const VIEWER_SCRIPT_SUFFIX = `
       ? entitlements.hosted_ai
       : t && t.hosted_ai && typeof t.hosted_ai === "object" ? t.hosted_ai : null;
     const expiresAt = ai && ai.expiresAt != null ? Number(ai.expiresAt) : 0;
+    const cost = ai && ai.cost != null ? Number(ai.cost) : 1;
+    const durationMs = ai && ai.durationMs != null ? Number(ai.durationMs) : 604_800_000;
     return {
       active: !!(ai && ai.active && expiresAt > Date.now()),
       expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
+      configured: !!(ai && ai.configured),
+      affordable: !!(ai && ai.affordable),
+      canActivate: !!(ai && ai.canActivate),
+      cost: Number.isFinite(cost) && cost > 0 ? Math.floor(cost) : 1,
+      durationMs: Number.isFinite(durationMs) && durationMs > 0 ? Math.floor(durationMs) : 604_800_000,
     };
   }
 
@@ -1759,6 +1783,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const hours = Math.max(1, Math.round(Number(ms || 0) / 3600000));
     if (hours % 24 === 0) {
       const days = Math.max(1, Math.round(hours / 24));
+      if (days % 7 === 0) {
+        const weeks = Math.max(1, Math.round(days / 7));
+        return weeks + " week" + (weeks === 1 ? "" : "s");
+      }
       return days + " day" + (days === 1 ? "" : "s");
     }
     return hours + " hour" + (hours === 1 ? "" : "s");
@@ -1781,49 +1809,71 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   function renderAccountAi() {
-    if (!els.accountAiStatus || !els.accountAiAction) return;
+    if (!els.accountAiStatus || !els.accountAiUsePass || !els.accountAiAction) return;
     const ai = hostedAiTelemetry(lastTelemetry);
     const hasBrowserKey = !!getStoredApiKey();
+    const durationLabel = formatDuration(ai.durationMs || 604_800_000);
+    const costLabel = formatWholeNumber(ai.cost || 1) + " Hall Pass" + ((ai.cost || 1) === 1 ? "" : "es");
     let status = "Offline mode";
-    let meta = "Use Continue for deterministic class play. Connect OpenRouter or use an AI Day Pass for live teacher chat.";
-    let label = "Connect OpenRouter";
-    let disabled = false;
-    let hidden = false;
+    let meta = "Use " + costLabel + " for " + durationLabel + " of hosted AI, or connect OpenRouter with your own key.";
+    let primaryLabel = "Use Hall Pass";
+    let primaryTitle = "Spend " + costLabel + " for " + durationLabel + " of hosted AI access.";
+    let primaryDisabled = !authed || billingBusy || localAiEnabled || ai.active || !ai.configured || !ai.affordable;
+    let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect OpenRouter";
+    let secondaryDisabled = !authed || localAiEnabled;
     if (localAiEnabled) {
       status = "Local AI active";
       meta = "This device is already providing text AI.";
-      label = "Local AI";
-      disabled = true;
+      primaryLabel = "Local AI";
+      primaryTitle = "";
+      secondaryLabel = "Connect OpenRouter";
     } else if (hasBrowserKey && aiEnabled) {
       status = "OpenRouter connected";
-      meta = "Teacher chat and character text rerolls use your OpenRouter key.";
-      label = "Disconnect";
+      meta = "Teacher chat and character text rerolls use your OpenRouter key. Hall Pass access is still available for hosted play.";
     } else if (ai.active || hostedAiActive) {
-      status = "AI Day Pass active";
+      status = "AI Access active";
       meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
-      label = "Active";
-      disabled = true;
+      primaryLabel = "Active";
+      primaryTitle = "";
     } else if (activeTeacherUsesServerAi()) {
       status = "Teacher AI connected";
-      meta = "This server can speak for teachers. Connect OpenRouter for browser-owned AI features.";
-      label = "Connect OpenRouter";
+      meta = "This server can speak for teachers. Use Hall Pass access or connect OpenRouter for browser-owned AI features.";
+    } else if (!ai.configured) {
+      meta = "Hosted AI is not configured on this server. Connect OpenRouter with your own key.";
+      primaryTitle = "Hosted AI is not configured on this server.";
+    } else if (!ai.affordable) {
+      primaryTitle = "Need " + costLabel + ".";
     }
     els.accountAiStatus.textContent = status;
     if (els.accountAiMeta) els.accountAiMeta.textContent = meta;
-    els.accountAiAction.textContent = label;
-    els.accountAiAction.disabled = disabled || !authed;
-    els.accountAiAction.hidden = hidden;
+    els.accountAiUsePass.textContent = primaryLabel;
+    els.accountAiUsePass.title = primaryTitle;
+    els.accountAiUsePass.disabled = primaryDisabled;
+    els.accountAiAction.textContent = secondaryLabel;
+    els.accountAiAction.disabled = secondaryDisabled;
   }
 
   function renderAccountWallet() {
     if (!els.accountWalletBalance) return;
     const wallet = walletNumbers(lastTelemetry);
+    const ai = hostedAiTelemetry(lastTelemetry);
     const slots = characterSlotTelemetry();
     els.accountWalletBalance.textContent = walletSummaryText(lastTelemetry || {});
     if (els.accountWalletMeta) {
       els.accountWalletMeta.textContent = slots.photoDayCredits > 0
         ? slots.photoDayCredits + " Photo Day " + (slots.photoDayCredits === 1 ? "credit" : "credits")
-        : "Hall Passes unlock AI days, image generation, and extra student slots.";
+        : "Hall Passes unlock AI access, image generation, and extra student slots.";
+    }
+    if (els.accountUsePass) {
+      const durationLabel = formatDuration(ai.durationMs || 604_800_000);
+      const costLabel = formatWholeNumber(ai.cost || 1) + " Hall Pass" + ((ai.cost || 1) === 1 ? "" : "es");
+      els.accountUsePass.textContent = ai.active || hostedAiActive ? "AI Active" : "Use Hall Pass";
+      els.accountUsePass.title = ai.active || hostedAiActive
+        ? "Hosted AI is already active."
+        : ai.configured
+          ? "Spend " + costLabel + " for " + durationLabel + " of hosted AI access."
+          : "Hosted AI is not configured on this server.";
+      els.accountUsePass.disabled = !authed || billingBusy || localAiEnabled || ai.active || hostedAiActive || !ai.configured || !ai.affordable;
     }
     if (els.accountBuyPasses) els.accountBuyPasses.disabled = !authed;
   }
@@ -2005,8 +2055,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const row = document.createElement("div");
     row.className = "account-history-row";
     const amount = Number(tx.hallPasses || 0);
-    if (amount > 0) row.classList.add("is-credit");
-    if (amount < 0) row.classList.add("is-debit");
+    const photoDayAmount = Number(tx.photoDayCredits || 0);
+    const visibleAmount = amount || photoDayAmount;
+    if (visibleAmount > 0) row.classList.add("is-credit");
+    if (visibleAmount < 0) row.classList.add("is-debit");
     const main = document.createElement("div");
     main.className = "account-history-main";
     const title = document.createElement("div");
@@ -2019,9 +2071,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     main.appendChild(meta);
     const delta = document.createElement("div");
     delta.className = "account-history-delta";
-    delta.textContent = amount === 0
-      ? "0"
-      : (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " HP";
+    delta.textContent = amount !== 0
+      ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " HP"
+      : photoDayAmount !== 0
+        ? (photoDayAmount > 0 ? "+" : "") + formatWholeNumber(photoDayAmount) + " Photo Day"
+        : "0";
     row.appendChild(main);
     row.appendChild(delta);
     return row;
@@ -2033,6 +2087,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (tx.kind === "hall-pass-spend") return "Hall Pass spend";
     if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
     if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
+    if (tx.kind === "photo-day-spend") return "Photo Day credit";
+    if (tx.kind === "photo-day-refund") return "Photo Day refund";
     return "Wallet update";
   }
 
@@ -2100,8 +2156,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     const portraitEntitlement = hostedImageEntitlement("portrait");
     const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
     body.textContent = portraitConfigured
-      ? "Roll your first student and try a custom portrait, or save them for AI days and extra character slots."
-      : "Roll your first student now, or save these for AI days, images, and extra character slots when OpenRouter is connected.";
+      ? "Roll your first student and try a custom portrait, or save them for AI Access and extra character slots."
+      : "Roll your first student now, or save these for AI Access, images, and extra character slots when OpenRouter is connected.";
     const actions = document.createElement("div");
     actions.className = "welcome-hall-pass-actions";
     const later = document.createElement("button");
@@ -2180,7 +2236,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       void logout();
       return;
     }
-    if (hostedAiActive) return;
     window.location.href = "/api/apps/ruby-high/auth/start";
   }
 
@@ -2201,7 +2256,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (els.billingCosts) {
       els.billingCosts.replaceChildren();
       [
-        ["AI Day Pass", hostedAi.cost],
+        ["AI Access", hostedAi.cost],
         ["Portrait", costs.portrait],
         ["Diploma art", costs.diploma],
       ].forEach(([label, cost]) => {
@@ -2216,20 +2271,23 @@ const VIEWER_SCRIPT_SUFFIX = `
     const aiBody = document.createElement("div");
     const aiTitle = document.createElement("div");
     aiTitle.className = "billing-product-title";
-    aiTitle.textContent = "AI Day Pass";
+    aiTitle.textContent = "AI Access";
     const aiMeta = document.createElement("div");
     aiMeta.className = "billing-product-meta";
     aiMeta.textContent = activeAi.active
       ? "Hosted AI active for " + formatRelativeExpiry(activeAi.expiresAt)
-      : formatDuration(hostedAi.durationMs || 86_400_000) + " of hosted AI chat and character rerolls";
+      : "Use " + formatWholeNumber(hostedAi.cost || 1) + " Hall Pass"
+        + (Number(hostedAi.cost || 1) === 1 ? "" : "es")
+        + " for " + formatDuration(hostedAi.durationMs || 604_800_000)
+        + " of hosted AI chat and character rerolls";
     aiBody.appendChild(aiTitle);
     aiBody.appendChild(aiMeta);
     const aiBuy = document.createElement("button");
     aiBuy.type = "button";
     aiBuy.className = "billing-buy";
-    aiBuy.textContent = activeAi.active ? "Active" : "Use " + formatWholeNumber(hostedAi.cost || 1);
-    aiBuy.disabled = activeAi.active || !hostedAi.configured || billingBusy;
-    aiBuy.addEventListener("click", activateAiPass);
+    aiBuy.textContent = activeAi.active ? "Active" : "Use Hall Pass";
+    aiBuy.disabled = activeAi.active || !hostedAi.configured || !hostedAi.affordable || billingBusy;
+    aiBuy.addEventListener("click", () => activateAiPass({ source: "billing" }));
     aiRow.appendChild(aiBody);
     aiRow.appendChild(aiBuy);
     els.billingProducts.appendChild(aiRow);
@@ -2320,11 +2378,23 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
   }
 
-  async function activateAiPass() {
+  function accountAiAccessSuccessText(data) {
+    const hostedAi = data && data.hosted_ai && typeof data.hosted_ai === "object"
+      ? data.hosted_ai
+      : data && data.entitlements && data.entitlements.hosted_ai && typeof data.entitlements.hosted_ai === "object"
+        ? data.entitlements.hosted_ai
+        : null;
+    return "AI access is on for " + formatDuration(hostedAi && hostedAi.durationMs || 604_800_000) + ".";
+  }
+
+  async function activateAiPass(opts) {
     if (billingBusy) return;
+    const fromAccount = !!(opts && opts.source === "account");
     billingBusy = true;
+    renderAccountPage();
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    setBillingStatus("Turning on hosted AI…", false);
+    if (fromAccount) setPrivyStatus("Using Hall Pass for AI access...", false);
+    setBillingStatus("Turning on hosted AI...", false);
     try {
       const r = await apiFetch(apiBase + "/billing/ai-pass", {
         method: "POST",
@@ -2334,14 +2404,20 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) throw new Error(data.error || "AI pass " + r.status);
-      setBillingStatus(data.applied ? "AI is on for the day." : "AI is already active.", false);
+      const message = data.applied ? accountAiAccessSuccessText(data) : "AI access is already active.";
+      setBillingStatus(message, false);
+      if (fromAccount) setPrivyStatus(message, false);
       await fetchSession();
       await deriveAuth();
+      renderAccountPage();
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
     } catch (err) {
-      setBillingStatus("AI pass failed · " + (err && err.message ? err.message : "error"), true);
+      const message = "AI access failed · " + (err && err.message ? err.message : "error");
+      setBillingStatus(message, true);
+      if (fromAccount) setPrivyStatus(message, true);
     } finally {
       billingBusy = false;
+      renderAccountPage();
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
     }
   }
@@ -5961,8 +6037,9 @@ const VIEWER_SCRIPT_SUFFIX = `
     const controlsSub = document.createElement("div");
     controlsSub.className = "ccg-subtitle";
     const hostedPortrait = hostedImageEntitlement("portrait");
-    controlsSub.textContent = hostedPortrait && hostedPortrait.canUseHosted
-      ? "Reroll any field. Hall Passes can make a custom portrait."
+    const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
+    controlsSub.textContent = hostedPortrait && (hostedPortrait.canUseHosted || hasPhotoDayCredit)
+      ? "Reroll any field. Photo Day credits or Hall Passes can make a custom portrait."
       : localAiEnabled
         ? "Reroll any field. Local AI can refresh the voice."
         : aiEnabled
@@ -6107,6 +6184,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (getStoredApiKey()) return "";
       const entitlement = hostedImageEntitlement("portrait");
       if (entitlement && entitlement.configured) {
+        if (characterSlotTelemetry().photoDayCredits > 0) return "";
         if (entitlement.affordable) return "";
         const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
         return "Need " + cost + " Hall Pass" + (cost === 1 ? "" : "es") + ".";
@@ -6243,6 +6321,10 @@ const VIEWER_SCRIPT_SUFFIX = `
         return;
       }
       if (!rolled || inFlight.portrait) return;
+      const usePhotoDayCredit = !getStoredApiKey() &&
+        !!(hostedImageEntitlement("portrait") && hostedImageEntitlement("portrait").configured) &&
+        characterSlotTelemetry().photoDayCredits > 0;
+      if (!(await confirmHostedCreditSpend("Custom character portrait", "portrait", usePhotoDayCredit))) return;
       inFlight.portrait = true;
       portraitBtn.textContent = "✨ Generating…";
       portraitStatus.textContent = "";
@@ -6268,7 +6350,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         if (!data || !data.portraitDataUrl) throw new Error("no image returned");
         aiPortraitDataUrl = data.portraitDataUrl;
         portraitImg.src = aiPortraitDataUrl;
-        if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements);
+        if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
         portraitBtn.textContent = "✨ Try again";
         portraitStatus.textContent = "AI portrait ready.";
       } catch (err) {
@@ -6377,7 +6459,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   let courseGenerationProgressTimer = null;
   let packAutosaveTimer = null;
   let teacherAutosaveTimer = null;
-  const COURSE_GENERATION_HALL_PASS_COST = 3;
+  const COURSE_SLOT_HALL_PASS_COST = 3;
   const PREGENERATED_TEACHER_ASSETS = [
     { id: "ruby", name: "Ruby", subject: "Homeroom", description: "Warm, direct, and good at turning scattered questions into a useful classroom thread.", quote: "We start where the room actually is." },
     { id: "sally-science", name: "Sally Science", subject: "Science Lab", description: "Evidence-first, experimental, and happiest when a wrong answer exposes a better hypothesis.", quote: "Be wrong with reasons. Then we can work." },
@@ -6773,6 +6855,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     packEditStatusEl.textContent = "Cancel " + packGenerationLabel() + " before " + action + ".";
     packEditStatusEl.classList.add("is-invalid");
   }
+  function draftHasCourseSlot() {
+    return !!(currentDraft && currentDraft.courseSlot && currentDraft.courseSlot.id);
+  }
+  function publishCourseSlotStatusReason() {
+    if (!currentDraft || draftHasCourseSlot()) return "";
+    const wallet = walletNumbers(lastTelemetry);
+    if (wallet.hallPasses < COURSE_SLOT_HALL_PASS_COST) {
+      return "Need " + COURSE_SLOT_HALL_PASS_COST + " Hall Passes to publish.";
+    }
+    return "";
+  }
   function syncPackEditorGuardControls() {
     const generationBusy = packGenerationInFlight();
     if (packEditCloseBtn) {
@@ -6780,8 +6873,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       packEditCloseBtn.title = generationBusy ? "Cancel generation before closing." : "";
     }
     if (packPublishBtn) {
-      packPublishBtn.disabled = packImportBusy || generationBusy;
-      packPublishBtn.title = generationBusy ? "Cancel generation before publishing." : "";
+      const publishReason = generationBusy ? "Cancel generation before publishing." : publishCourseSlotStatusReason();
+      packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + COURSE_SLOT_HALL_PASS_COST + " Hall Passes)";
+      packPublishBtn.disabled = packImportBusy || generationBusy || !!publishReason;
+      packPublishBtn.title = publishReason;
     }
   }
   window.addEventListener("beforeunload", (e) => {
@@ -7607,7 +7702,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     const hostedAi = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
       ? entitlements.hosted_ai
       : null;
-    return !!(hostedAi && hostedAi.configured);
+    if (localAiEnabled) return !!(hostedAi && hostedAi.configured);
+    return !!(hostedAi && hostedAi.active);
   }
 
   function courseGenerationStatusReason() {
@@ -7615,11 +7711,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!hostedCourseGenerationConfigured()) {
       return localAiEnabled
         ? "OpenRouter image generation is required for course portraits."
-        : "Hosted AI is not configured on this server.";
-    }
-    const wallet = walletNumbers(lastTelemetry);
-    if (wallet.hallPasses < COURSE_GENERATION_HALL_PASS_COST) {
-      return "Need " + COURSE_GENERATION_HALL_PASS_COST + " Hall Passes to generate.";
+        : "Connect OpenRouter or activate AI Access before generating a course.";
     }
     return "";
   }
@@ -7652,7 +7744,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         teacherGenerateQuestionsBtn.appendChild(spinner);
       }
       const label = document.createElement("span");
-      label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate (3 Hall Passes)";
+      label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate";
       teacherGenerateQuestionsBtn.appendChild(label);
       teacherGenerateQuestionsBtn.classList.toggle("is-loading", packQuestionGenerationBusy);
       teacherGenerateQuestionsBtn.setAttribute("aria-busy", packQuestionGenerationBusy ? "true" : "false");
@@ -7668,7 +7760,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         courseGenerateBtn.appendChild(spinner);
       }
       const label = document.createElement("span");
-      label.textContent = packQuestionGenerationBusy && packQuestionGenerationKind === "course" ? "Generating" : "Generate (3 Hall Passes)";
+      label.textContent = packQuestionGenerationBusy && packQuestionGenerationKind === "course" ? "Generating" : "Generate Course";
       courseGenerateBtn.appendChild(label);
       courseGenerateBtn.classList.toggle("is-loading", packQuestionGenerationBusy && packQuestionGenerationKind === "course");
       courseGenerateBtn.setAttribute("aria-busy", packQuestionGenerationBusy && packQuestionGenerationKind === "course" ? "true" : "false");
@@ -7997,6 +8089,15 @@ const VIEWER_SCRIPT_SUFFIX = `
       warnPackGenerationBlocks("publishing");
       return;
     }
+    const publishReason = publishCourseSlotStatusReason();
+    if (publishReason) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = publishReason;
+        packEditStatusEl.classList.add("is-invalid");
+      }
+      syncPackEditorGuardControls();
+      return;
+    }
     await saveDraftPackFields();
     await saveSelectedTeacher();
     setPackBusy(true);
@@ -8004,7 +8105,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       const data = await packStudioClient.publishDraft(currentDraft.id);
       if (data && data.draft) currentDraft = data.draft;
-      if (packEditStatusEl) packEditStatusEl.textContent = "Pack published.";
+      if (data && typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements);
+      if (packEditStatusEl) packEditStatusEl.textContent = "Course published.";
       await refreshPackLibrary();
     } catch (err) {
       if (packEditStatusEl) {
@@ -8928,9 +9030,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
+  if (els.accountUsePass) els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }));
   if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", openBilling);
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
+  if (els.accountAiUsePass) els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }));
   if (els.accountAiAction) els.accountAiAction.addEventListener("click", handleAccountAiAction);
   if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", openCharacterCreationFromAccount);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);

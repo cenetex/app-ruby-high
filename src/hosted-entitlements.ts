@@ -61,6 +61,12 @@ export function hostedImageCost(kind: HostedImageKind): number {
   );
 }
 
+export function courseSlotCost(): number {
+  const explicit = readPositiveIntEnv("RUBY_HIGH_COURSE_SLOT_HALL_PASS_COST", 0);
+  if (explicit > 0) return explicit;
+  return readPositiveIntEnv("RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST", 3);
+}
+
 export function hostedAiAccessCost(): number {
   return readPositiveIntEnv("RUBY_HIGH_HOSTED_AI_HALL_PASS_COST", 1);
 }
@@ -68,7 +74,7 @@ export function hostedAiAccessCost(): number {
 export function hostedAiAccessDurationMs(): number {
   const explicitMs = readPositiveIntEnv("RUBY_HIGH_HOSTED_AI_DURATION_MS", 0);
   if (explicitMs > 0) return explicitMs;
-  return readPositiveIntEnv("RUBY_HIGH_HOSTED_AI_DURATION_HOURS", 24) * 60 * 60 * 1000;
+  return readPositiveIntEnv("RUBY_HIGH_HOSTED_AI_DURATION_HOURS", 168) * 60 * 60 * 1000;
 }
 
 function stateHallPassBalance(state: QuizState | null | undefined): number {

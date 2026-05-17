@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { log } from "./services/logger.js";
-import { hostedEntitlementStatus, hostedOpenRouterApiKey } from "./hosted-entitlements.js";
+import { courseSlotCost, hostedEntitlementStatus, hostedOpenRouterApiKey } from "./hosted-entitlements.js";
 import {
   ORIGINAL_PACK_ID,
   availablePacksForSession,
@@ -13,6 +13,7 @@ import {
 import type { ContentPack, PackSourceCard } from "./content/types.js";
 import type { BankedQuestion, CharacterStats, Choice, Difficulty } from "./types.js";
 import type {
+  StoredCourseSlotRecord,
   StoredDraftContentPackRecord,
   StoredDraftTeacherRecord,
   StoredPackInstallationRecord,
@@ -56,7 +57,7 @@ const PREFIX = "/api/apps/ruby-high/pack-library";
 const DRAFT_PREFIX = "/api/apps/ruby-high/pack-drafts";
 const MAX_MATERIAL_CHARS = 80_000;
 const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY, 5);
-const COURSE_GENERATION_HALL_PASS_COST = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST, 3);
+const COURSE_SLOT_HALL_PASS_COST = courseSlotCost();
 const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 18);
 
 export async function handlePackLibraryRoutes(
@@ -241,7 +242,7 @@ export async function handlePackLibraryRoutes(
     }
     const credential = resolveCourseGenerationCredential(ctx, deps.ruby, sessionId);
     if (!credential.apiKey) {
-      ctx.error(ctx.res, "Hosted AI is not configured on this server.", 503);
+      ctx.error(ctx.res, openRouterGenerationRequiredMessage("generating a course"), 401);
       return true;
     }
     if (!credential.imageApiKey) {
@@ -258,26 +259,7 @@ export async function handlePackLibraryRoutes(
       ctx.error(ctx.res, `Question generation is limited to ${MAX_GENERATIONS_PER_DAY} runs per teacher per day.`, 400);
       return true;
     }
-    let charge: CourseGenerationCharge | null = null;
     try {
-      charge = await prepareCourseGenerationCharge({
-        ruby: deps.ruby,
-        sessionId,
-        draftId: draft.id,
-        body,
-        materials,
-      });
-      if (charge.replay) {
-        ctx.json(ctx.res, {
-          ok: true,
-          draft: draftDetail(draft),
-          teacher: null,
-          hallPassCost: charge.hallPassCost,
-          hallPasses: charge.hallPasses,
-          entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
-        });
-        return true;
-      }
       const generated = await generateCourseSpecWithAi({
         apiKey: credential.apiKey,
         draft,
@@ -297,32 +279,16 @@ export async function handlePackLibraryRoutes(
         profileImageUrl,
       });
       await deps.ruby.saveDraftPackRecord(updated);
-      if (charge.spendKey) {
-        deps.ruby.annotateWalletTransaction(sessionId, charge.spendKey, {
-          status: "completed",
-          draftId: updated.id,
-          teacherId: generated.teacherId,
-        });
-        await deps.ruby.flushSession(sessionId);
-      }
       const teacher = updated.teachers.find((entry) => entry.id === generated.teacherId);
       ctx.json(ctx.res, {
         ok: true,
         draft: draftDetail(updated),
         teacher: teacher ? teacherDetail(updated, teacher) : null,
-        hallPassCost: charge.hallPassCost,
+        hallPassCost: 0,
         hallPasses: deps.ruby.hallPassBalance(sessionId),
         entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
       });
     } catch (err) {
-      if (charge) {
-        await refundCourseGenerationCharge({
-          ruby: deps.ruby,
-          sessionId,
-          charge,
-          reason: err instanceof Error ? err.message : String(err),
-        });
-      }
       const status = clientErrorStatus(err);
       if (status >= 500) log.error("pack-draft.course-generate-failed", err, { userId: record.userId, draftId: draft.id });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), status);
@@ -426,9 +392,24 @@ export async function handlePackLibraryRoutes(
     if (!draft) return true;
     try {
       const pack = packFromDraft(draft);
-      await deps.ruby.persistPublicTeacherPack(pack, { creatorUserId: record.userId });
-      const publishedDraft = touchDraft({ ...draft, derivedFrom: pack.id });
+      const reserved = await reserveCourseSlotForPublish({
+        ruby: deps.ruby,
+        record,
+        sessionId,
+        draft,
+        packId: pack.id,
+      });
+      const publishedSlot = publishCourseSlot(reserved.slot, pack.id);
+      await deps.ruby.persistPublicTeacherPack(pack, { creatorUserId: record.userId, courseSlot: publishedSlot });
+      const publishedDraft = touchDraft({ ...reserved.draft, derivedFrom: pack.id, courseSlot: publishedSlot });
       await deps.ruby.saveDraftPackRecord(publishedDraft);
+      deps.ruby.annotateWalletTransaction(sessionId, publishedSlot.walletTransactionId, {
+        status: "completed",
+        route: "course-publish",
+        draftId: publishedDraft.id,
+        packId: pack.id,
+      });
+      await deps.ruby.flushSession(sessionId);
       await saveInstallationSet(deps.ruby, record.userId, [{
         packId: pack.id,
         enabled: true,
@@ -444,6 +425,10 @@ export async function handlePackLibraryRoutes(
           editDraftId: publishedDraft.id,
         }),
         draft: draftDetail(publishedDraft),
+        courseSlot: courseSlotDetail(publishedSlot),
+        hallPassCost: reserved.created ? COURSE_SLOT_HALL_PASS_COST : 0,
+        hallPasses: deps.ruby.hallPassBalance(sessionId),
+        entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
       });
     } catch (err) {
       log.error("pack-draft.publish-failed", err, { userId: record.userId, draftId: draft.id });
@@ -692,6 +677,7 @@ function draftSummary(draft: StoredDraftContentPackRecord) {
     canDelete: true,
     readOnly: false,
     ...(draft.derivedFrom ? { derivedFrom: draft.derivedFrom } : {}),
+    ...(draft.courseSlot ? { courseSlot: courseSlotDetail(draft.courseSlot) } : {}),
     teacherCount: draft.teachers.length,
     questionCount: draft.teachers.reduce((sum, teacher) => sum + teacher.sourceCards.length + teacher.questions.length, 0),
     updatedAt: draft.updatedAt,
@@ -745,6 +731,130 @@ function teacherDetail(draft: StoredDraftContentPackRecord, teacher: StoredDraft
   };
 }
 
+function courseSlotDetail(slot: StoredCourseSlotRecord) {
+  return {
+    id: slot.id,
+    draftId: slot.draftId,
+    shareSlug: slot.shareSlug,
+    visibility: slot.visibility,
+    status: slot.status,
+    ...(slot.packId ? { packId: slot.packId } : {}),
+    createdAt: slot.createdAt,
+    updatedAt: slot.updatedAt,
+    ...(slot.publishedAt ? { publishedAt: slot.publishedAt } : {}),
+  };
+}
+
+interface CourseSlotReservation {
+  draft: StoredDraftContentPackRecord;
+  slot: StoredCourseSlotRecord;
+  created: boolean;
+}
+
+async function reserveCourseSlotForPublish(args: {
+  ruby: RubyHighService;
+  record: AuthRecord;
+  sessionId: string;
+  draft: StoredDraftContentPackRecord;
+  packId: string;
+}): Promise<CourseSlotReservation> {
+  const existing = args.draft.courseSlot;
+  if (existing) {
+    const slot: StoredCourseSlotRecord = {
+      ...existing,
+      ownerUserId: args.record.userId,
+      ownerSessionId: args.sessionId,
+      draftId: args.draft.id,
+      packId: existing.packId ?? args.packId,
+      visibility: args.draft.visibility,
+      updatedAt: Date.now(),
+    };
+    const updatedDraft = slot === existing ? args.draft : touchDraft({ ...args.draft, courseSlot: slot });
+    if (updatedDraft !== args.draft) await args.ruby.saveDraftPackRecord(updatedDraft);
+    return { draft: updatedDraft, slot, created: false };
+  }
+
+  const now = Date.now();
+  const spendKey = courseSlotSpendKey(args.draft.id);
+  const prior = args.ruby.walletTransaction(args.sessionId, spendKey);
+  const spend = prior ? null : args.ruby.spendHallPasses(args.sessionId, {
+    amount: COURSE_SLOT_HALL_PASS_COST,
+    idempotencyKey: spendKey,
+    source: "course-slot",
+    description: "Course slot",
+    metadata: {
+      status: "reserved",
+      route: "course-publish",
+      draftId: args.draft.id,
+      packId: args.packId,
+    },
+  });
+  const slot: StoredCourseSlotRecord = {
+    id: courseSlotId(args.draft.id),
+    ownerUserId: args.record.userId,
+    ownerSessionId: args.sessionId,
+    draftId: args.draft.id,
+    packId: args.packId,
+    shareSlug: courseSlotShareSlug(args.draft),
+    visibility: args.draft.visibility,
+    status: "reserved",
+    walletTransactionId: spendKey,
+    createdAt: prior?.at ?? now,
+    updatedAt: now,
+  };
+  const updatedDraft = touchDraft({ ...args.draft, courseSlot: slot });
+  try {
+    await args.ruby.saveDraftPackRecord(updatedDraft);
+    await args.ruby.flushSession(args.sessionId);
+  } catch (err) {
+    if (spend?.applied) {
+      args.ruby.annotateWalletTransaction(args.sessionId, spendKey, {
+        status: "failed",
+        error: err instanceof Error ? err.message.slice(0, 160) : String(err).slice(0, 160),
+      });
+      args.ruby.refundHallPasses(args.sessionId, {
+        amount: COURSE_SLOT_HALL_PASS_COST,
+        idempotencyKey: `${spendKey}:refund`,
+        source: "course-slot",
+        description: "Course slot refund",
+        metadata: {
+          spendKey,
+          draftId: args.draft.id,
+          reason: err instanceof Error ? err.message.slice(0, 160) : String(err).slice(0, 160),
+        },
+      });
+      await args.ruby.flushSession(args.sessionId);
+    }
+    throw err;
+  }
+  return { draft: updatedDraft, slot, created: !!spend?.applied };
+}
+
+function publishCourseSlot(slot: StoredCourseSlotRecord, packId: string): StoredCourseSlotRecord {
+  const now = Date.now();
+  return {
+    ...slot,
+    packId,
+    status: "published",
+    updatedAt: now,
+    publishedAt: slot.publishedAt ?? now,
+  };
+}
+
+function courseSlotId(draftId: string): string {
+  return `course-slot:${slugForText(draftId)}`;
+}
+
+function courseSlotSpendKey(draftId: string): string {
+  return `course-slot:${slugForText(draftId)}`;
+}
+
+function courseSlotShareSlug(draft: StoredDraftContentPackRecord): string {
+  const title = slugForText(draft.name || "course");
+  const suffix = slugForText(draft.id).slice(-10);
+  return `${title}-${suffix}`;
+}
+
 async function requireDraft(
   ruby: RubyHighService,
   record: AuthRecord,
@@ -766,21 +876,6 @@ async function requireDraft(
 interface CourseGenerationCredential {
   apiKey: string | null;
   imageApiKey: string | null;
-}
-
-interface CourseGenerationCharge {
-  hallPassCost: number;
-  hallPasses: number;
-  requestId: string;
-  spendKey: string | null;
-  replay: boolean;
-}
-
-class CourseGenerationChargeError extends Error {
-  constructor(message: string, readonly status: number) {
-    super(message);
-    this.name = "CourseGenerationChargeError";
-  }
 }
 
 interface GeneratedCourseSpec {
@@ -812,103 +907,7 @@ function resolveCourseGenerationCredential(
       imageApiKey: browserImageApiKey || (textCredential.source === "local" ? hostedImageApiKey : textCredential.apiKey),
     };
   }
-  return { apiKey: hostedImageApiKey, imageApiKey: hostedImageApiKey };
-}
-
-function courseGenerationRequestId(body: Record<string, unknown>): string {
-  const raw = bodyString(body, "requestId") || bodyString(body, "idempotencyKey");
-  if (/^[A-Za-z0-9:_-]{8,128}$/.test(raw)) return raw;
-  return `course-${Date.now().toString(36)}-${randomBytes(4).toString("hex")}`;
-}
-
-function courseGenerationSpendKey(draftId: string, requestId: string): string {
-  return `course-generation:${slugForText(draftId)}:${slugForText(requestId)}`;
-}
-
-async function prepareCourseGenerationCharge(args: {
-  ruby: RubyHighService;
-  sessionId: string;
-  draftId: string;
-  body: Record<string, unknown>;
-  materials: string;
-}): Promise<CourseGenerationCharge> {
-  const requestId = courseGenerationRequestId(args.body);
-  const spendKey = courseGenerationSpendKey(args.draftId, requestId);
-  const existing = args.ruby.walletTransaction(args.sessionId, spendKey);
-  const hallPassCost = COURSE_GENERATION_HALL_PASS_COST;
-  if (existing) {
-    const status = existing.metadata?.status;
-    if (status === "completed") {
-      return {
-        hallPassCost,
-        hallPasses: args.ruby.hallPassBalance(args.sessionId),
-        requestId,
-        spendKey,
-        replay: true,
-      };
-    }
-    throw new CourseGenerationChargeError("Course generation request is already in progress. Start a new generation request.", 409);
-  }
-  const affordable = args.ruby.hallPassBalance(args.sessionId) >= hallPassCost;
-  if (!affordable) {
-    throw new CourseGenerationChargeError(
-      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for course generation.`,
-      402,
-    );
-  }
-  const spend = args.ruby.spendHallPasses(args.sessionId, {
-    amount: hallPassCost,
-    idempotencyKey: spendKey,
-    source: "hosted-ai",
-    description: "AI course generation",
-    metadata: {
-      status: "pending",
-      route: "course-generation",
-      requestId,
-      draftId: args.draftId,
-      materialsLength: args.materials.length,
-    },
-  });
-  await args.ruby.flushSession(args.sessionId);
-  return {
-    hallPassCost,
-    hallPasses: spend.state.wallet.hallPasses,
-    requestId,
-    spendKey,
-    replay: false,
-  };
-}
-
-async function refundCourseGenerationCharge(args: {
-  ruby: RubyHighService;
-  sessionId: string;
-  charge: CourseGenerationCharge;
-  reason: string;
-}): Promise<void> {
-  if (!args.charge.spendKey || args.charge.replay) return;
-  try {
-    args.ruby.annotateWalletTransaction(args.sessionId, args.charge.spendKey, {
-      status: "failed",
-      error: args.reason.slice(0, 160),
-    });
-    args.ruby.refundHallPasses(args.sessionId, {
-      amount: args.charge.hallPassCost,
-      idempotencyKey: `${args.charge.spendKey}:refund`,
-      source: "hosted-ai",
-      description: "AI course generation refund",
-      metadata: {
-        spendKey: args.charge.spendKey,
-        requestId: args.charge.requestId,
-        reason: args.reason.slice(0, 160),
-      },
-    });
-    await args.ruby.flushSession(args.sessionId);
-  } catch (err) {
-    log.error("pack-draft.course-generate-refund-failed", err, {
-      sessionId: args.sessionId,
-      spendKey: args.charge.spendKey,
-    });
-  }
+  return { apiKey: null, imageApiKey: null };
 }
 
 function updateDraftTeacher(
@@ -1642,7 +1641,6 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
 }
 
 function clientErrorStatus(err: unknown): number {
-  if (err instanceof CourseGenerationChargeError) return err.status;
   const message = err instanceof Error ? err.message : String(err);
   if (
     message.includes("Unknown") ||
@@ -1655,6 +1653,6 @@ function clientErrorStatus(err: unknown): number {
     message.includes("limited") ||
     message.includes("usable questions")
   ) return 400;
-  if (message.startsWith("Need ") && message.includes("Hall Pass")) return 402;
+  if ((message.startsWith("Need ") && message.includes("Hall Pass")) || message.startsWith("Not enough Hall Passes")) return 402;
   return 500;
 }

@@ -104,6 +104,7 @@ export function openRouterHeaders(apiKey: string, title: string = TITLE): Record
     "Content-Type": "application/json",
     Authorization: `Bearer ${apiKey}`,
     "HTTP-Referer": REFERER,
+    "X-OpenRouter-Title": title,
     "X-Title": title,
   };
 }

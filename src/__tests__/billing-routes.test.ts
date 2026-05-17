@@ -128,7 +128,8 @@ describe("billing products", () => {
     expect(lastResponse?.body.configured).toBe(false);
     expect(lastResponse?.body.products.map((p: any) => p.hallPasses)).toEqual([5, 20, 50, 100]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
-    expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: false, cost: 1, durationMs: 86_400_000 });
+    expect(lastResponse?.body.courseSlotCost).toBe(3);
+    expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: false, cost: 1, durationMs: 604_800_000 });
     expect(lastResponse?.body.entitlements).toMatchObject({
       hallPasses: 0,
       hosted_ai: { configured: false, active: false, affordable: false, canActivate: false },
@@ -168,8 +169,8 @@ describe("billing products", () => {
   });
 });
 
-describe("AI Day Pass", () => {
-  it("spends one Hall Pass to enable hosted AI for 24 hours", async () => {
+describe("AI Access", () => {
+  it("spends one Hall Pass to enable hosted AI for one week", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
     const stateKey = signInUser("ai-pass-alice");
     ruby.grantHallPasses(stateKey, {

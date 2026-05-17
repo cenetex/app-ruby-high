@@ -118,7 +118,7 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
 | `RUBY_HIGH_LLM_API_KEY` | `local` in local mode | Optional bearer token for local servers configured with an API key. |
 | `RUBY_HIGH_STUDENT_MODEL` | `anthropic/claude-haiku-4.5` | Model used for NPC opinion responses. |
-| `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for hosted AI Day Passes and hosted portrait/diploma generation. Server-hosted text AI is available only while the signed-in session has an active AI Day Pass. Browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
+| `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for hosted AI Access and hosted portrait/diploma generation. Server-hosted text AI is available only while the signed-in session has active AI Access. Browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_STRIPE_SECRET_KEY` | — | Enables web Hall Pass purchases via Stripe Checkout. |
@@ -129,10 +129,11 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_HALL_PASS_50_CENTS` | `1499` | Price for 50 Hall Passes. |
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
 | `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Hall Pass cost to activate server-hosted text AI for one timed window. |
-| `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `24` | Hosted AI Day Pass duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
+| `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Hosted AI Access duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Optional exact hosted AI pass duration override. |
 | `RUBY_HIGH_PORTRAIT_HALL_PASS_COST` | `1` | Hall Pass cost for server-hosted custom portraits. |
 | `RUBY_HIGH_DIPLOMA_HALL_PASS_COST` | `3` | Hall Pass cost for server-hosted diploma images. |
+| `RUBY_HIGH_COURSE_SLOT_HALL_PASS_COST` | `3` | Hall Pass cost to reserve/publish one creator course slot. The legacy `RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST` is still honored as a fallback. |
 | `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | — | Required Authorization header value for `/api/apps/ruby-high/billing/revenuecat/webhook`. The route accepts either this exact value or `Bearer <value>`. |
 | `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE` | `HLP` | RevenueCat Virtual Currency code to credit as Hall Passes when using RevenueCat Virtual Currency events. |
 | `RUBY_HIGH_CREATOR_DEFAULT_MODEL` | `anthropic/claude-haiku-4.5` | Default OpenRouter model for local teacher drafts created in Edit Pack. |
@@ -143,19 +144,21 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
-No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. Privy wallets are verified on the server before they are used for RATi avatar ownership; legacy request wallet headers are only a fallback when the session has no verified wallet. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on an AI Day Pass, and enables hosted image generation with per-image Hall Pass costs. Edit Pack no longer lists/imports live RATi models from a server key; new local teacher drafts become OpenRouter-backed packs, while existing RATi-backed packs use `RUBY_HIGH_RATI_INTERNAL_API_KEY` only for server-to-server runtime calls.
+No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. Privy wallets are verified on the server before they are used for RATi avatar ownership; legacy request wallet headers are only a fallback when the session has no verified wallet. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on AI Access, and enables hosted image generation with per-image Hall Pass costs. Edit Pack no longer lists/imports live RATi models from a server key; new local teacher drafts become OpenRouter-backed packs, while existing RATi-backed packs use `RUBY_HIGH_RATI_INTERNAL_API_KEY` only for server-to-server runtime calls.
 
 ## Billing and Hall Passes
 
 Ruby High now has two currencies:
 
 - **Merit Stars** are earned by play and mirror the visible session-score payout.
-- **Hall Passes** are paid/entitlement currency for hosted AI windows and creative generation.
+- **Hall Passes** are paid/entitlement currency for hosted AI windows, creator course slots, extra student slots, and hosted image generation.
 
 Web purchases use Stripe Checkout:
 
-- `GET /api/apps/ruby-high/billing/products` returns Hall Pass packs, AI Day Pass cost/duration, and hosted image costs.
+- `GET /api/apps/ruby-high/billing/products` returns Hall Pass packs, AI Access cost/duration, and hosted image costs.
 - `POST /api/apps/ruby-high/billing/ai-pass` spends Hall Passes to activate server-hosted text AI for the signed-in Ruby High cookie session. A second call while active returns the existing expiry and does not spend again.
+- Publishing a draft course reserves a creator course slot for 3 Hall Passes. BYOK/local course generation does not spend Hall Passes.
+- Unlocking an extra student slot costs 1 Hall Pass and grants a Photo Day credit; hosted character portraits consume that credit before spending a Hall Pass.
 - `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for the signed-in Ruby High cookie session.
 - `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata.
 

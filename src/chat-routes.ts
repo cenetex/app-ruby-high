@@ -1097,8 +1097,8 @@ const AUTH_PREFIX = "/api/apps/ruby-high/auth";
 const DEFAULT_AUTH_REDIRECT = "/api/apps/ruby-high/viewer";
 
 /** Resolve the text LLM credential for this session. Browser BYOK and local
- *  LLMs are free; server-hosted OpenRouter text AI requires an active AI Day
- *  Pass on the Ruby High wallet. */
+ *  LLMs are free; server-hosted OpenRouter text AI requires active AI Access
+ *  on the Ruby High wallet. */
 function readApiKey(ctx: ChatRouteContext, ruby: RubyHighService, sessionId: string): string | null {
   return resolveTextLlmCredential({
     apiKeyHeader: ctx.apiKeyHeader,
@@ -1122,6 +1122,7 @@ interface HostedImageCharge {
   requestId: string | null;
   spendKey: string | null;
   replayUrl: string | null;
+  usedPhotoDayCredit?: boolean;
 }
 
 function hostedImageSpendKey(route: HostedImageChargeRoute, requestId: string): string {
@@ -1173,18 +1174,12 @@ async function prepareHostedImageCharge(args: {
     args.costKind,
   );
   const hallPassCost = imageEntitlement.cost;
-  if (!imageEntitlement.affordable) {
-    throw new HostedImageChargeError(
-      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
-      402,
-    );
-  }
-
   const requestId = hostedImageRequestId(args.body);
   const spendKey = hostedImageSpendKey(args.route, requestId);
   const fingerprint = hostedImageFingerprint(args.route, args.fingerprintPayload);
   const existing = args.ruby.walletTransaction(args.sessionId, spendKey);
   if (existing) {
+    const usedPhotoDayCredit = existing.kind === "photo-day-spend" || Number(existing.photoDayCredits ?? 0) < 0;
     const metadata = existing.metadata ?? {};
     if (metadata.route !== args.route || metadata.requestId !== requestId || metadata.fingerprint !== fingerprint) {
       throw new HostedImageChargeError("Hosted image request id was already used for different image inputs.", 409);
@@ -1192,11 +1187,12 @@ async function prepareHostedImageCharge(args: {
     const imageUrl = walletMetadataString(metadata.imageUrl);
     if (metadata.status === "completed" && imageUrl) {
       return {
-        hallPassCost,
+        hallPassCost: usedPhotoDayCredit ? 0 : hallPassCost,
         hallPasses: args.ruby.hallPassBalance(args.sessionId),
         requestId,
         spendKey,
         replayUrl: imageUrl,
+        usedPhotoDayCredit,
       };
     }
     if (metadata.status === "failed") {
@@ -1205,7 +1201,40 @@ async function prepareHostedImageCharge(args: {
     throw new HostedImageChargeError("Hosted image request is already in progress. Try again in a moment.", 409);
   }
 
+  const usePhotoDayCredit = args.route === "character-portrait" &&
+    args.costKind === "portrait" &&
+    args.ruby.photoDayCreditBalance(args.sessionId) > 0;
+  if (!usePhotoDayCredit && !imageEntitlement.affordable) {
+    throw new HostedImageChargeError(
+      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
+      402,
+    );
+  }
+
   try {
+    if (usePhotoDayCredit) {
+      const spend = args.ruby.consumePhotoDayCredit(args.sessionId, {
+        amount: 1,
+        idempotencyKey: spendKey,
+        source: "photo-day",
+        description: "Photo Day character portrait",
+        metadata: {
+          route: args.route,
+          requestId,
+          fingerprint,
+          status: "pending",
+        },
+      });
+      await args.ruby.flushSession(args.sessionId);
+      return {
+        hallPassCost: 0,
+        hallPasses: spend.state.wallet.hallPasses,
+        requestId,
+        spendKey,
+        replayUrl: null,
+        usedPhotoDayCredit: true,
+      };
+    }
     const spend = args.ruby.spendHallPasses(args.sessionId, {
       amount: hallPassCost,
       idempotencyKey: spendKey,
@@ -1228,7 +1257,10 @@ async function prepareHostedImageCharge(args: {
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new HostedImageChargeError(message, message.startsWith("Not enough Hall Passes") ? 402 : 503);
+    throw new HostedImageChargeError(
+      message,
+      message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Photo Day credits") ? 402 : 503,
+    );
   }
 }
 
@@ -1253,23 +1285,37 @@ async function refundHostedImageCharge(args: {
   charge: HostedImageCharge;
   reason: string;
 }): Promise<void> {
-  if (!args.charge.spendKey || !args.charge.requestId || args.charge.hallPassCost <= 0) return;
+  if (!args.charge.spendKey || !args.charge.requestId) return;
   try {
     args.ruby.annotateWalletTransaction(args.sessionId, args.charge.spendKey, {
       status: "failed",
       error: args.reason.slice(0, 160),
     });
-    args.ruby.refundHallPasses(args.sessionId, {
-      amount: args.charge.hallPassCost,
-      idempotencyKey: `${args.charge.spendKey}:refund`,
-      source: "hosted-image",
-      description: "Hosted image generation refund",
-      metadata: {
-        spendKey: args.charge.spendKey,
-        requestId: args.charge.requestId,
-        reason: args.reason.slice(0, 160),
-      },
-    });
+    if (args.charge.usedPhotoDayCredit) {
+      args.ruby.refundPhotoDayCredit(args.sessionId, {
+        amount: 1,
+        idempotencyKey: `${args.charge.spendKey}:refund`,
+        source: "photo-day",
+        description: "Photo Day credit refund",
+        metadata: {
+          spendKey: args.charge.spendKey,
+          requestId: args.charge.requestId,
+          reason: args.reason.slice(0, 160),
+        },
+      });
+    } else if (args.charge.hallPassCost > 0) {
+      args.ruby.refundHallPasses(args.sessionId, {
+        amount: args.charge.hallPassCost,
+        idempotencyKey: `${args.charge.spendKey}:refund`,
+        source: "hosted-image",
+        description: "Hosted image generation refund",
+        metadata: {
+          spendKey: args.charge.spendKey,
+          requestId: args.charge.requestId,
+          reason: args.reason.slice(0, 160),
+        },
+      });
+    }
     await args.ruby.flushSession(args.sessionId);
   } catch (err) {
     log.error("hosted-image.refund-failed", err, {
@@ -2452,6 +2498,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         portraitDataUrl: charge.replayUrl,
         hallPassCost: charge.hallPassCost,
         hallPasses: charge.hallPasses,
+        photoDayCreditsUsed: !!charge.usedPhotoDayCredit,
+        characterSlots: ruby.characterSlotEntitlements(sessionId),
         entitlements: hostedEntitlementStatus({ ruby, sessionId }),
       });
       return true;
@@ -2486,6 +2534,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ...(imageCredential.hosted ? {
         hallPassCost: charge.hallPassCost,
         hallPasses,
+        photoDayCreditsUsed: !!charge.usedPhotoDayCredit,
+        characterSlots: ruby.characterSlotEntitlements(sessionId),
         entitlements: hostedEntitlementStatus({ ruby, sessionId }),
       } : {}),
     });

@@ -303,7 +303,7 @@ describe("Privy auth", () => {
   });
 });
 
-describe("hosted AI day pass auth", () => {
+describe("hosted AI access auth", () => {
   it("does not expose the hosted OpenRouter key for text AI without an active pass", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
     const token = "hosted-ai-no-pass";
@@ -345,7 +345,7 @@ describe("hosted AI day pass auth", () => {
     expect(JSON.parse(chatRes.body).error).toContain("Sign in with OpenRouter first");
   });
 
-  it("enables text AI while a Hall Pass day window is active", async () => {
+  it("enables text AI while a Hall Pass access window is active", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
     const token = "hosted-ai-pass";
     auth.injectSessionForTest(token, {
@@ -362,7 +362,7 @@ describe("hosted AI day pass auth", () => {
     });
     ruby.activateHostedAiAccess(stateKey, {
       hallPassCost: 1,
-      durationMs: 86_400_000,
+      durationMs: 604_800_000,
       now: Date.now(),
     });
 
@@ -507,6 +507,81 @@ describe("hosted image Hall Passes", () => {
       },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
+  });
+
+  it("uses a Photo Day credit before Hall Passes for hosted character portraits", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-portrait-photo-day";
+    const record = {
+      userId: "hosted-portrait-photo-day-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Portrait Photo Day",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    emptyWelcomeHallPasses(stateKey);
+    ruby.grantHallPasses(stateKey, {
+      amount: 1,
+      idempotencyKey: "test:photo-day-slot-fund",
+      source: "admin",
+    });
+    ruby.unlockCharacterSlot(stateKey, {
+      requestId: "photo-day-slot-2",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
+    expect(ruby.characterSlotEntitlements(stateKey).photoDayCredits).toBe(1);
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            images: [{ image_url: { url: "data:image/png;base64,PHOTO" } }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          requestId: "portrait-photo-day-1",
+          name: "Mina",
+          personality: "Quietly intense and observant.",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      portraitDataUrl: "data:image/png;base64,PHOTO",
+      hallPassCost: 0,
+      hallPasses: 0,
+      photoDayCreditsUsed: true,
+      characterSlots: {
+        photoDayCredits: 0,
+      },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
+    expect(ruby.characterSlotEntitlements(stateKey).photoDayCredits).toBe(0);
+    const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(transactions.some((tx) =>
+      tx.kind === "photo-day-spend" &&
+      tx.source === "photo-day" &&
+      tx.metadata?.requestId === "portrait-photo-day-1" &&
+      tx.metadata?.status === "completed"
+    )).toBe(true);
+    expect(transactions.some((tx) =>
+      tx.kind === "hall-pass-spend" &&
+      tx.source === "hosted-image" &&
+      tx.metadata?.requestId === "portrait-photo-day-1"
+    )).toBe(false);
   });
 
   it("refunds hosted portrait spend when generation fails", async () => {

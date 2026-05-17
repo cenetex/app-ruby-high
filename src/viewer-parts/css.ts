@@ -2965,7 +2965,8 @@ export const VIEWER_CSS = `
     padding: 8px 13px;
     min-height: 34px;
   }
-  .account-section-head button.secondary {
+  .account-section-head button.secondary,
+  .account-card .sheet-actions button.secondary {
     background: rgba(255,255,255,0.07);
     color: var(--text-soft);
   }
@@ -3100,7 +3101,9 @@ export const VIEWER_CSS = `
   }
   #privy-login-widget:disabled,
   #privy-signout:disabled,
+  #account-ai-use-pass:disabled,
   #account-ai-action:disabled,
+  #account-use-pass:disabled,
   #account-buy-passes:disabled,
   #account-create-character:disabled,
   #account-unlock-slot:disabled {

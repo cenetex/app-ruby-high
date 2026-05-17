@@ -333,7 +333,7 @@ describe("command route persistence and scheduler misses", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("allows MC generation with the hosted key after an AI Day Pass is active", async () => {
+  it("allows MC generation with the hosted key after AI Access is active", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const pack = sourceCardPack();
     const faculty = await FacultyService.start({} as never);
@@ -351,7 +351,7 @@ describe("command route persistence and scheduler misses", () => {
     });
     ruby.activateHostedAiAccess(sid, {
       hallPassCost: 1,
-      durationMs: 86_400_000,
+      durationMs: 604_800_000,
       now: Date.now(),
     });
     ruby.createCharacter(sid, {

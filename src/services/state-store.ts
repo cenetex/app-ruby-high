@@ -34,6 +34,9 @@ export interface StoredContentPackRecord {
   ownerSessionId: string | null;
   /** User who authored a globally visible pack, when known. */
   creatorUserId?: string;
+  /** Durable creator slot backing an authored pack, when the pack was
+   *  published through the draft studio. */
+  courseSlot?: StoredCourseSlotRecord;
   touchedAt: number;
 }
 
@@ -64,6 +67,22 @@ export interface StoredTeacherRecord {
 }
 
 export type StoredPackVisibility = "private" | "unlisted" | "public";
+export type StoredCourseSlotStatus = "reserved" | "published";
+
+export interface StoredCourseSlotRecord {
+  id: string;
+  ownerUserId: string;
+  ownerSessionId: string;
+  draftId: string;
+  shareSlug: string;
+  visibility: StoredPackVisibility;
+  status: StoredCourseSlotStatus;
+  walletTransactionId: string;
+  createdAt: number;
+  updatedAt: number;
+  packId?: string;
+  publishedAt?: number;
+}
 
 export interface StoredDraftTeacherRecord {
   id: string;
@@ -95,6 +114,7 @@ export interface StoredDraftContentPackRecord {
   description: string;
   visibility: StoredPackVisibility;
   derivedFrom?: string;
+  courseSlot?: StoredCourseSlotRecord;
   teachers: StoredDraftTeacherRecord[];
   createdAt: number;
   updatedAt: number;

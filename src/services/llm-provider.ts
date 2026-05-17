@@ -93,8 +93,10 @@ export function llmHeaders(userApiKey?: string | null, opts: { title?: string } 
   const apiKey = resolveLlmApiKey(userApiKey);
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (!isLocalLlmProvider()) {
+    const title = opts.title ?? process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
     headers["HTTP-Referer"] = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
-    headers["X-Title"] = opts.title ?? process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";
+    headers["X-OpenRouter-Title"] = title;
+    headers["X-Title"] = title;
   }
   return headers;
 }

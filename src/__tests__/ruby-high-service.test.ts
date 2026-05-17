@@ -162,6 +162,45 @@ describe("Hall Pass wallet", () => {
     expect((afterReset.wallet.transactions ?? []).filter((tx) => tx.id === WELCOME_HALL_PASS_GRANT_ID)).toHaveLength(1);
     expect(afterReset.characterSlots).toEqual({ unlockedSlots: 2, photoDayCredits: 1 });
   });
+
+  it("spends and refunds Photo Day credits idempotently", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:photo-day";
+
+    ruby.unlockCharacterSlot(sid, { requestId: "slot-2", now: 1_700_000_000_000 });
+    const spend = ruby.consumePhotoDayCredit(sid, {
+      idempotencyKey: "photo-day:portrait-1",
+      source: "photo-day",
+      description: "Photo Day character portrait",
+    });
+    expect(spend.applied).toBe(true);
+    expect(spend.slots.photoDayCredits).toBe(0);
+    expect(spend.state.wallet.hallPasses).toBe(4);
+    expect(spend.transaction).toMatchObject({
+      kind: "photo-day-spend",
+      photoDayCredits: -1,
+      source: "photo-day",
+    });
+
+    const repeatSpend = ruby.consumePhotoDayCredit(sid, {
+      idempotencyKey: "photo-day:portrait-1",
+      source: "photo-day",
+    });
+    expect(repeatSpend.applied).toBe(false);
+    expect(repeatSpend.slots.photoDayCredits).toBe(0);
+
+    const refund = ruby.refundPhotoDayCredit(sid, {
+      idempotencyKey: "photo-day:portrait-1:refund",
+      source: "photo-day",
+    });
+    expect(refund.applied).toBe(true);
+    expect(refund.slots.photoDayCredits).toBe(1);
+    expect(refund.transaction).toMatchObject({
+      kind: "photo-day-refund",
+      photoDayCredits: 1,
+      source: "photo-day",
+    });
+  });
 });
 
 function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"): ContentPack {
