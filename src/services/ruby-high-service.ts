@@ -190,6 +190,7 @@ export interface QuestionBankStatus {
     status: "available" | "active" | "complete";
     date?: string;
     questionCount: number;
+    correctCount: number;
     totalQuestions: number;
     practiceCount?: number;
     socialCount?: number;
@@ -228,6 +229,7 @@ export interface CourseProgress {
     status: "available" | "active" | "complete";
     date?: string;
     questionCount: number;
+    correctCount: number;
     totalQuestions: number;
     practiceCount?: number;
     socialCount?: number;
@@ -1479,6 +1481,7 @@ export class RubyHighService extends Service {
           status: "complete",
           date: todayKey,
           questionCount: todayRecord.questionCount,
+          correctCount: todayRecord.correctCount,
           totalQuestions: CLASS_QUESTIONS_PER_DAY,
           practiceCount: todayRecord.practiceCount ?? 0,
           socialCount: todayRecord.socialCount ?? 0,
@@ -1491,6 +1494,7 @@ export class RubyHighService extends Service {
             status: "active",
             date: todayKey,
             questionCount: todayRecord.questionCount,
+            correctCount: todayRecord.correctCount,
             totalQuestions: CLASS_QUESTIONS_PER_DAY,
             practiceCount: todayRecord.practiceCount ?? 0,
             socialCount: todayRecord.socialCount ?? 0,
@@ -1500,6 +1504,7 @@ export class RubyHighService extends Service {
             status: "available",
             date: todayKey,
             questionCount: 0,
+            correctCount: 0,
             totalQuestions: CLASS_QUESTIONS_PER_DAY,
           };
 
@@ -3116,6 +3121,7 @@ export class RubyHighService extends Service {
         status: "available",
         date: dailyKey(),
         questionCount: 0,
+        correctCount: 0,
         totalQuestions: CLASS_QUESTIONS_PER_DAY,
       },
       mastered: status.masteredCount ?? status.asked,

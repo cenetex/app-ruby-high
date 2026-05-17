@@ -341,6 +341,17 @@ const VIEWER_SCRIPT_SUFFIX = `
     const n = Number(score);
     return Number.isFinite(n) ? Math.round(n) + "%" : "—";
   }
+  function todayCorrectSummary(today) {
+    const answered = Math.max(0, Math.floor(Number(today && today.questionCount || 0)));
+    const total = Math.max(answered, Math.floor(Number(today && today.totalQuestions || 3)));
+    const correct = Math.max(0, Math.min(answered, Math.floor(Number(today && today.correctCount || 0))));
+    const answeredText = answered === 1 ? "1 of " + total + " answered" : answered + " of " + total + " answered";
+    return {
+      value: correct + "/" + answered,
+      detail: answered > 0 ? answeredText : "class not started",
+      met: answered > 0 && correct === answered,
+    };
+  }
   function formatWholeNumber(value) {
     const n = Number(value);
     if (!Number.isFinite(n)) return "0";
@@ -1515,6 +1526,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       item.appendChild(d);
       metrics.appendChild(item);
     };
+    const correctSummary = todayCorrectSummary(today);
+    addMetric("correct", correctSummary.value, correctSummary.detail);
     addMetric("score", formatClassScore(today.score), "average");
     wrap.appendChild(metrics);
     return wrap;
@@ -5548,6 +5561,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     const todayKey = (t.daily && t.daily.dailyKey) || "";
     const budget = t.advantage_rolls || { used: 0, cap: 3, remaining: 3 };
     const yearbookCount = Array.isArray(c.yearbook) ? c.yearbook.length : 0;
+    const activeProgress = t.active_course_progress || {};
+    const activeToday = activeProgress.today || {};
+    const activeSubject = subjectDisplayName(activeProgress.facultyId || t.faculty, activeProgress);
+    const todaySummary = todayCorrectSummary(activeToday);
 
     const card = document.createElement("div");
     card.className = "ccg-card is-career-card" + (graduated ? " is-graduated" : "");
@@ -5598,9 +5615,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       addMetric("status", "graduated", "four-year arc complete", true);
       addMetric("yearbook", yearbookCount + "/4", "paper cards sealed", yearbookCount >= 4);
     } else {
-      // The active standing already lives in the subtitle + badge. Keep the
-      // live gates compact: diamonds for daily classes, boost chips for
-      // scoring bonuses, and dice for advantage.
+      addMetric("today", todaySummary.value, activeSubject + " · " + todaySummary.detail, todaySummary.met);
     }
     if (metrics.children.length > 0) body.appendChild(metrics);
     if (!graduated) {

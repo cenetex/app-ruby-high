@@ -530,6 +530,7 @@ function offlineApiScript(data) {
         grade: state.currentGrade || "9",
         date: dailyKey(),
         questionCount: 1,
+        correctCount: wasCorrect ? 1 : 0,
         totalQuestions: 3,
         completed: false,
         letterGrade: wasCorrect ? "B" : "F",
@@ -793,8 +794,8 @@ function offlineApiScript(data) {
     const correct = answered.filter(function(h) { return h.wasCorrect; }).length;
     const avg = answered.length ? Math.round((correct / answered.length) * 100) : undefined;
     const today = state.current && state.faculty === facultyId
-      ? { mode: "class", status: state.activeRound && state.activeRound.resolved ? "complete" : "active", questionCount: state.activeRound && state.activeRound.resolved ? 1 : 0, totalQuestions: 3, letterGrade: avg == null ? undefined : letterGrade(avg), score: avg }
-      : { mode: "class", status: "available", questionCount: 0, totalQuestions: 3 };
+      ? { mode: "class", status: state.activeRound && state.activeRound.resolved ? "complete" : "active", questionCount: state.activeRound && state.activeRound.resolved ? 1 : 0, correctCount: state.activeRound && state.activeRound.resolved ? correct : 0, totalQuestions: 3, letterGrade: avg == null ? undefined : letterGrade(avg), score: avg }
+      : { mode: "class", status: "available", questionCount: 0, correctCount: 0, totalQuestions: 3 };
     return {
       mode: "bank",
       facultyId,

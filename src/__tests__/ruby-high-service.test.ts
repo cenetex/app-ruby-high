@@ -855,6 +855,34 @@ describe("RubyHighService Phase 1", () => {
     expect(practice.activeRound?.classSession?.mode).toBe("practice");
   });
 
+  it("reports today's correct answer count in course progress", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:today-correct-count";
+    const pack = fakeLeveledPack("pack:today-correct-count");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "12");
+
+    for (let i = 0; i < 3; i += 1) {
+      const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+      const correct = posed.current!.correct!;
+      const wrong = correct === "A" ? "B" : "A";
+      ruby.submitAnswer(sid, i === 2 ? wrong : correct);
+      ruby.clearBoard(sid);
+    }
+
+    const progress = ruby.courseProgress(sid, "level-test-course");
+    expect(progress.today).toMatchObject({
+      status: "complete",
+      questionCount: 3,
+      correctCount: 2,
+      totalQuestions: 3,
+      letterGrade: "D",
+      score: 67,
+    });
+  });
+
   it("applies 2x class mastery credit when carrying a two-day streak", async () => {
     const { ruby } = await makeServices();
     const sid = "test:streak-score-two-day";
