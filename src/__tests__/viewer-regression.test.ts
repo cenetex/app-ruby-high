@@ -47,7 +47,7 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
   });
 
-  it("wires the Privy account UI through the lazy client bundle", () => {
+  it("wires the Privy account UI through the lazy widget bundle", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
     const script = inlineScript(html);
 
@@ -55,13 +55,18 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="privy-action"');
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
-    expect(html).toContain('id="privy-email-form"');
+    expect(html).toContain('id="privy-login-widget"');
+    expect(html).toContain("Privy handles sign-in and wallet creation.");
     expect(script).toContain('const privyConfig = {"appId":"privy-app-test","clientId":"privy-client-test"};');
     expect(script).toContain('const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js"');
     expect(script).toContain("import(PRIVY_CLIENT_URL)");
     expect(script).toContain("createRubyHighPrivyClient(privyConfig)");
+    expect(script).toContain("client.login()");
+    expect(script).toContain("startPrivyLogin");
     expect(script).toContain('apiBase + "/auth/privy"');
     expect(script).toContain("initializePrivyFromStoredSession();");
+    expect(script).not.toContain("sendEmailCode");
+    expect(script).not.toContain("loginWithEmailCode");
   });
 
   it("keeps opinion submit, waiting refresh, and force-grade paths wired in the client", () => {

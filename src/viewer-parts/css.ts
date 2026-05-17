@@ -2840,23 +2840,10 @@ export const VIEWER_CSS = `
   }
   .signin-card .secondary-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
   .privy-card { max-width: 460px; }
-  .privy-form {
-    display: grid;
-    gap: 12px;
-    margin-top: 12px;
+  .privy-card .sheet-actions {
+    justify-content: space-between;
   }
-  .privy-form button {
-    justify-self: end;
-    appearance: none;
-    border: none;
-    border-radius: 999px;
-    background: var(--accent);
-    color: #fff;
-    padding: 10px 18px;
-    font-weight: 850;
-    cursor: pointer;
-  }
-  .privy-form button:disabled,
+  #privy-login-widget:disabled,
   #privy-signout:disabled {
     opacity: 0.45;
     cursor: not-allowed;

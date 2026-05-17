@@ -178,23 +178,10 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <button class="sheet-close" id="privy-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card privy-card">
     <h2>Ruby High Account</h2>
-    <p class="sub">Sign in to connect your Ruby High character to your Privy wallet.</p>
+    <p class="sub">Privy handles sign-in and wallet creation. Ruby High only receives a verified session token.</p>
     <div class="wallet-panel" id="privy-wallet">Not connected</div>
-    <form class="privy-form" id="privy-email-form">
-      <div class="field">
-        <label for="privy-email">Email</label>
-        <input id="privy-email" type="email" autocomplete="email" placeholder="you@example.com" />
-      </div>
-      <button type="submit" id="privy-send-code">Send code</button>
-    </form>
-    <form class="privy-form" id="privy-code-form" hidden>
-      <div class="field">
-        <label for="privy-code">Code</label>
-        <input id="privy-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" />
-      </div>
-      <button type="submit" id="privy-login">Verify</button>
-    </form>
     <div class="sheet-actions">
+      <button type="button" id="privy-login-widget">Sign in with Privy</button>
       <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
     </div>
     <div id="privy-status" class="stat-budget" aria-live="polite"></div>

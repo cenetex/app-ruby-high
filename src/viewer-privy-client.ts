@@ -1,8 +1,13 @@
-import Privy, {
-  LocalStorage,
-  getUserEmbeddedEthereumWallet,
-  getUserEmbeddedSolanaWallet,
-} from "@privy-io/js-sdk-core";
+import React, { useCallback, useEffect, useRef } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import {
+  PrivyProvider,
+  useLogin,
+  useModalStatus,
+  usePrivy,
+  type LinkedAccountWithMetadata,
+  type User,
+} from "@privy-io/react-auth";
 
 interface RubyHighPrivyConfig {
   appId: string;
@@ -16,98 +21,212 @@ interface RubyHighPrivySession {
   walletAddress: string | null;
   walletChainType: "ethereum" | "solana" | null;
   accessToken?: string | null;
-  identityToken?: string | null;
 }
 
-type PrivyUser = Record<string, unknown> | null;
+type SessionListener = (session: RubyHighPrivySession) => void | Promise<void>;
 
-export async function createRubyHighPrivyClient(config: RubyHighPrivyConfig): Promise<{
+interface RubyHighPrivyClient {
   current(): Promise<RubyHighPrivySession>;
-  sendEmailCode(email: string): Promise<void>;
-  loginWithEmailCode(email: string, code: string): Promise<RubyHighPrivySession>;
+  login(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
-}> {
-  const privy = new Privy({
-    appId: config.appId,
-    clientId: config.clientId,
-    storage: new LocalStorage(),
-    logger: {
-      level: "ERROR",
-      info: () => {},
-      warn: console.warn.bind(console),
-      error: console.error.bind(console),
-      debug: () => {},
+  onSession(listener: SessionListener): () => void;
+}
+
+interface BridgeApi {
+  current(): Promise<RubyHighPrivySession>;
+  login(): Promise<RubyHighPrivySession | null>;
+  logout(): Promise<void>;
+}
+
+interface PendingLogin {
+  resolve: (session: RubyHighPrivySession | null) => void;
+  reject: (err: unknown) => void;
+}
+
+let mountedRoot: Root | null = null;
+let mountedConfigKey = "";
+let mountedClient: RubyHighPrivyClient | null = null;
+
+export async function createRubyHighPrivyClient(
+  config: RubyHighPrivyConfig,
+): Promise<RubyHighPrivyClient> {
+  const configKey = `${config.appId}:${config.clientId}`;
+  if (mountedClient && mountedConfigKey === configKey) return mountedClient;
+
+  const host = ensureHost();
+  const listeners = new Set<SessionListener>();
+  let bridgeApi: BridgeApi | null = null;
+  let resolveReady!: (client: RubyHighPrivyClient) => void;
+  let rejectReady!: (err: unknown) => void;
+
+  const ready = new Promise<RubyHighPrivyClient>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  const client: RubyHighPrivyClient = {
+    current: () => requireBridge(bridgeApi).current(),
+    login: () => requireBridge(bridgeApi).login(),
+    logout: () => requireBridge(bridgeApi).logout(),
+    onSession(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+
+  const notify = (session: RubyHighPrivySession) => {
+    for (const listener of listeners) {
+      void Promise.resolve(listener(session));
+    }
+  };
+
+  const register = (api: BridgeApi, readyState: boolean) => {
+    bridgeApi = api;
+    if (readyState) resolveReady(client);
+  };
+
+  try {
+    mountedRoot?.unmount();
+    mountedRoot = createRoot(host);
+    mountedConfigKey = configKey;
+    mountedClient = client;
+    const bridge = React.createElement(RubyHighPrivyBridge, { notify, register });
+    mountedRoot.render(
+      React.createElement(
+        PrivyProvider,
+        {
+          appId: config.appId,
+          clientId: config.clientId,
+          config: {
+            embeddedWallets: {
+              ethereum: { createOnLogin: "users-without-wallets" },
+            },
+            appearance: {
+              theme: "dark",
+              accentColor: "#df2f2f",
+              showWalletLoginFirst: false,
+            },
+          },
+          children: bridge,
+        },
+      ),
+    );
+  } catch (err) {
+    mountedClient = null;
+    rejectReady(err);
+  }
+
+  return ready;
+}
+
+function RubyHighPrivyBridge(props: {
+  notify: (session: RubyHighPrivySession) => void;
+  register: (api: BridgeApi, ready: boolean) => void;
+}): null {
+  const privy = usePrivy();
+  const modal = useModalStatus();
+  const pendingLogin = useRef<PendingLogin | null>(null);
+  const modalOpenedForLogin = useRef(false);
+
+  const current = useCallback(async (userOverride?: User | null): Promise<RubyHighPrivySession> => {
+    if (!privy.ready) return emptySession();
+    const user = userOverride ?? privy.user;
+    if (!privy.authenticated || !user) return emptySession();
+    const accessToken = await privy.getAccessToken();
+    return sessionFromUser(user, accessToken);
+  }, [privy]);
+
+  const { login } = useLogin({
+    onComplete: ({ user }) => {
+      void current(user).then(
+        (session) => {
+          props.notify(session);
+          pendingLogin.current?.resolve(session);
+          pendingLogin.current = null;
+          modalOpenedForLogin.current = false;
+        },
+        (err) => {
+          pendingLogin.current?.reject(err);
+          pendingLogin.current = null;
+          modalOpenedForLogin.current = false;
+        },
+      );
+    },
+    onError: (error) => {
+      pendingLogin.current?.reject(new Error(String(error || "Privy login failed")));
+      pendingLogin.current = null;
+      modalOpenedForLogin.current = false;
     },
   });
 
-  await privy.initialize();
-  mountEmbeddedWalletFrame(privy);
-  let lastIdentityToken: string | null = null;
-
-  async function current(): Promise<RubyHighPrivySession> {
-    const { user } = await privy.user.get();
-    if (!user) return emptySession();
-    const [accessToken, identityToken] = await Promise.all([
-      privy.getAccessToken(),
-      privy.getIdentityToken(),
-    ]);
-    lastIdentityToken = identityToken;
-    return sessionFromUser(user as unknown as PrivyUser, accessToken, identityToken);
-  }
-
-  async function sendEmailCode(email: string): Promise<void> {
-    await privy.auth.email.sendCode(email);
-  }
-
-  async function loginWithEmailCode(email: string, code: string): Promise<RubyHighPrivySession> {
-    const session = await privy.auth.email.loginWithCode(
-      email,
-      code,
-      "login-or-sign-up",
-      { embedded: { ethereum: { createOnLogin: "users-without-wallets" } } },
-    );
-    lastIdentityToken = typeof session.identity_token === "string" ? session.identity_token : await privy.getIdentityToken();
-    return sessionFromUser(session.user as unknown as PrivyUser, await privy.getAccessToken(), lastIdentityToken);
-  }
-
-  async function logout(): Promise<void> {
-    const { user } = await privy.user.get();
-    if (user && typeof user.id === "string") {
-      await privy.auth.logout({ userId: user.id });
+  const openLogin = useCallback((): Promise<RubyHighPrivySession | null> => {
+    if (!privy.ready) return Promise.reject(new Error("Privy is still starting."));
+    if (privy.authenticated && privy.user) return current(privy.user);
+    if (pendingLogin.current) {
+      return new Promise((resolve, reject) => {
+        const previous = pendingLogin.current;
+        pendingLogin.current = {
+          resolve: (session) => {
+            previous?.resolve(session);
+            resolve(session);
+          },
+          reject: (err) => {
+            previous?.reject(err);
+            reject(err);
+          },
+        };
+      });
     }
-    lastIdentityToken = null;
-  }
+    return new Promise((resolve, reject) => {
+      pendingLogin.current = { resolve, reject };
+      modalOpenedForLogin.current = true;
+      login();
+    });
+  }, [current, login, privy.authenticated, privy.ready, privy.user]);
 
-  return { current, sendEmailCode, loginWithEmailCode, logout };
+  const logout = useCallback(async () => {
+    await privy.logout();
+    const session = emptySession();
+    props.notify(session);
+    pendingLogin.current?.resolve(null);
+    pendingLogin.current = null;
+    modalOpenedForLogin.current = false;
+  }, [privy, props]);
+
+  useEffect(() => {
+    props.register({ current, login: openLogin, logout }, privy.ready);
+  }, [current, logout, openLogin, privy.ready, props]);
+
+  useEffect(() => {
+    if (modal.isOpen) return;
+    if (!modalOpenedForLogin.current || !pendingLogin.current) return;
+    pendingLogin.current.resolve(null);
+    pendingLogin.current = null;
+    modalOpenedForLogin.current = false;
+  }, [modal.isOpen]);
+
+  useEffect(() => {
+    if (!privy.ready) return;
+    void current().then((session) => {
+      if (session.authenticated) props.notify(session);
+    });
+  }, [current, privy.ready, props]);
+
+  return null;
 }
 
-function mountEmbeddedWalletFrame(privy: Privy): void {
-  const existing = document.getElementById("ruby-high-privy-frame") as HTMLIFrameElement | null;
-  if (existing && existing.contentWindow) {
-    privy.setMessagePoster(existing.contentWindow as never);
-    return;
-  }
-  const iframe = document.createElement("iframe");
-  iframe.id = "ruby-high-privy-frame";
-  iframe.src = privy.embeddedWallet.getURL();
-  iframe.style.display = "none";
-  iframe.setAttribute("aria-hidden", "true");
-  document.body.appendChild(iframe);
-  iframe.addEventListener("load", () => {
-    if (iframe.contentWindow) privy.setMessagePoster(iframe.contentWindow as never);
-  });
-  window.addEventListener("message", (event) => {
-    if (event.source !== iframe.contentWindow) return;
-    let data: unknown = event.data;
-    if (typeof data === "string") {
-      try {
-        data = JSON.parse(data);
-      } catch {
-        return;
-      }
-    }
-    privy.embeddedWallet.onMessage(data as never);
-  });
+function ensureHost(): HTMLElement {
+  const existing = document.getElementById("ruby-high-privy-root");
+  if (existing) return existing;
+  const host = document.createElement("div");
+  host.id = "ruby-high-privy-root";
+  document.body.appendChild(host);
+  return host;
+}
+
+function requireBridge(api: BridgeApi | null): BridgeApi {
+  if (!api) throw new Error("Privy is not ready.");
+  return api;
 }
 
 function emptySession(): RubyHighPrivySession {
@@ -120,31 +239,22 @@ function emptySession(): RubyHighPrivySession {
   };
 }
 
-function sessionFromUser(
-  user: PrivyUser,
-  accessToken: string | null,
-  identityToken: string | null,
-): RubyHighPrivySession {
-  if (!user) return emptySession();
+function sessionFromUser(user: User, accessToken: string | null): RubyHighPrivySession {
   const wallet = walletFromUser(user);
   return {
     authenticated: true,
-    userId: typeof user.id === "string" ? user.id : null,
+    userId: user.id,
     label: labelFromUser(user, wallet?.address ?? null),
     walletAddress: wallet?.address ?? null,
     walletChainType: wallet?.chainType ?? null,
     accessToken,
-    identityToken,
   };
 }
 
-function walletFromUser(user: PrivyUser): { address: string; chainType: "ethereum" | "solana"; rank: number } | null {
-  const embeddedEth = getUserEmbeddedEthereumWallet(user as never);
-  if (embeddedEth?.address) return { address: embeddedEth.address, chainType: "ethereum", rank: 0 };
-  const embeddedSol = getUserEmbeddedSolanaWallet(user as never);
-  if (embeddedSol?.address) return { address: embeddedSol.address, chainType: "solana", rank: 1 };
-  const accounts = Array.isArray(user?.linked_accounts) ? user.linked_accounts : [];
-  const wallets = accounts
+function walletFromUser(user: User): { address: string; chainType: "ethereum" | "solana"; rank: number } | null {
+  const direct = walletCandidate(user.wallet);
+  if (direct) return direct;
+  const wallets = user.linkedAccounts
     .map((account) => walletCandidate(account))
     .filter((wallet): wallet is { address: string; chainType: "ethereum" | "solana"; rank: number } => !!wallet)
     .sort((a, b) => a.rank - b.rank);
@@ -155,19 +265,53 @@ function walletCandidate(account: unknown): { address: string; chainType: "ether
   if (!account || typeof account !== "object") return null;
   const record = account as Record<string, unknown>;
   const address = typeof record.address === "string" ? record.address.trim() : "";
-  const chainType = record.chain_type === "ethereum" || record.chain_type === "solana" ? record.chain_type : null;
-  if (!address || !chainType || (record.type !== "wallet" && record.type !== "smart_wallet")) return null;
-  return { address, chainType, rank: chainType === "ethereum" ? 2 : 3 };
+  const chainType = readChainType(record);
+  if (!address || !chainType) return null;
+  const walletClient = typeof record.walletClientType === "string"
+    ? record.walletClientType
+    : typeof record.wallet_client === "string"
+      ? record.wallet_client
+      : "";
+  const connectorType = typeof record.connectorType === "string"
+    ? record.connectorType
+    : typeof record.connector_type === "string"
+      ? record.connector_type
+      : "";
+  const embedded = walletClient === "privy" || connectorType === "embedded";
+  const rank = chainType === "ethereum"
+    ? (embedded ? 0 : 1)
+    : (embedded ? 2 : 3);
+  return { address, chainType, rank };
 }
 
-function labelFromUser(user: PrivyUser, walletAddress: string | null): string | null {
-  const accounts = Array.isArray(user?.linked_accounts) ? user.linked_accounts : [];
-  for (const account of accounts) {
-    if (!account || typeof account !== "object") continue;
-    const record = account as Record<string, unknown>;
-    if (record.type === "email" && typeof record.address === "string" && record.address.trim()) {
-      return record.address.trim();
-    }
+function readChainType(record: Record<string, unknown>): "ethereum" | "solana" | null {
+  const raw = record.chainType ?? record.chain_type;
+  if (raw === "ethereum" || raw === "solana") return raw;
+  const type = record.type;
+  if (type === "wallet" || type === "smart_wallet") {
+    const walletClient = record.walletClientType ?? record.wallet_client;
+    if (walletClient === "phantom" || walletClient === "solflare") return "solana";
+    return "ethereum";
+  }
+  return null;
+}
+
+function labelFromUser(user: User, walletAddress: string | null): string | null {
+  if (user.email?.address) return user.email.address;
+  for (const account of user.linkedAccounts) {
+    const label = labelFromLinkedAccount(account);
+    if (label) return label;
   }
   return walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : null;
+}
+
+function labelFromLinkedAccount(account: LinkedAccountWithMetadata): string | null {
+  const record = account as unknown as Record<string, unknown>;
+  if (record.type === "email" && typeof record.address === "string" && record.address.trim()) {
+    return record.address.trim();
+  }
+  if (record.type === "google_oauth" && typeof record.email === "string" && record.email.trim()) {
+    return record.email.trim();
+  }
+  return null;
 }

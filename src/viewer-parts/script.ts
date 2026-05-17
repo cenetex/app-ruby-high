@@ -516,12 +516,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     privyOverlay: $("privy-overlay"),
     privyClose: $("privy-close"),
     privyWallet: $("privy-wallet"),
-    privyEmailForm: $("privy-email-form"),
-    privyEmail: $("privy-email"),
-    privyCodeForm: $("privy-code-form"),
-    privyCode: $("privy-code"),
-    privySendCode: $("privy-send-code"),
-    privyLogin: $("privy-login"),
+    privyLoginWidget: $("privy-login-widget"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
     checking: $("checking"),
@@ -7688,9 +7683,8 @@ const VIEWER_SCRIPT_SUFFIX = `
             ? "Not connected"
             : "Privy not configured";
     }
+    if (els.privyLoginWidget) els.privyLoginWidget.hidden = !privyState.configured || privyState.authenticated;
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
-    if (els.privyEmailForm) els.privyEmailForm.hidden = !privyState.configured || privyState.authenticated;
-    if (els.privyCodeForm && privyState.authenticated) els.privyCodeForm.hidden = true;
     if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
     applyAuthUI();
   }
@@ -7702,6 +7696,9 @@ const VIEWER_SCRIPT_SUFFIX = `
         .then((mod) => mod.createRubyHighPrivyClient(privyConfig))
         .then((client) => {
           privyClient = client;
+          if (typeof client.onSession === "function") {
+            client.onSession((snapshot) => handlePrivySession(snapshot, { source: "event" }));
+          }
           return client;
         })
         .finally(() => {
@@ -7709,6 +7706,19 @@ const VIEWER_SCRIPT_SUFFIX = `
         });
     }
     return privyClientPromise;
+  }
+  async function handlePrivySession(snapshot, opts) {
+    if (!snapshot || !snapshot.authenticated) {
+      applyPrivyState({ configured: !!privyConfig, authenticated: false, ready: true });
+      return;
+    }
+    applyPrivyState({ ...snapshot, configured: true, ready: true });
+    await syncPrivyServerSession(snapshot);
+    if (opts && opts.source === "login") {
+      setPrivyStatus("Account connected.", false);
+      closePrivyAccount();
+    }
+    await fetchSession();
   }
   async function syncPrivyServerSession(snapshot) {
     const session = snapshot || (privyClient ? await privyClient.current() : null);
@@ -7746,17 +7756,39 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
     }
   }
+  async function startPrivyLogin() {
+    if (!privyConfig) return;
+    setPrivyBusy(true);
+    setPrivyStatus("Opening Privy sign-in...", false);
+    try {
+      const client = await getPrivyClient();
+      if (!client) throw new Error("Privy is not configured.");
+      const snapshot = await client.login();
+      if (!snapshot) {
+        setPrivyStatus("Privy sign-in closed.", false);
+        return;
+      }
+      await handlePrivySession(snapshot, { source: "login" });
+    } catch (err) {
+      if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
+      setPrivyStatus(err && err.message ? err.message : "Privy sign-in failed", true);
+    } finally {
+      setPrivyBusy(false);
+    }
+  }
   async function openPrivyAccount() {
     if (!privyConfig) return;
-    if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
     setPrivyStatus("Checking account...", false);
     try {
       await initializePrivyFromStoredSession();
-      setPrivyStatus(privyState.authenticated ? "Account connected." : "", false);
-      setTimeout(() => {
-        if (!privyState.authenticated && els.privyEmail) els.privyEmail.focus();
-      }, 0);
+      if (!privyState.authenticated) {
+        await startPrivyLogin();
+        return;
+      }
+      if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
+      setPrivyStatus("Account connected.", false);
     } catch (err) {
+      if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
       setPrivyStatus(err && err.message ? err.message : "Privy error", true);
     }
   }
@@ -7766,57 +7798,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     setPrivyStatus("", false);
   }
   function setPrivyBusy(busy) {
-    if (els.privySendCode) els.privySendCode.disabled = !!busy;
-    if (els.privyLogin) els.privyLogin.disabled = !!busy;
+    if (els.privyLoginWidget) els.privyLoginWidget.disabled = !!busy;
     if (els.privySignout) els.privySignout.disabled = !!busy;
-    if (els.privyEmail) els.privyEmail.disabled = !!busy;
-    if (els.privyCode) els.privyCode.disabled = !!busy;
-  }
-  async function submitPrivyEmail(e) {
-    if (e) e.preventDefault();
-    const email = els.privyEmail ? els.privyEmail.value.trim() : "";
-    if (!email) {
-      setPrivyStatus("Enter an email address.", true);
-      return;
-    }
-    setPrivyBusy(true);
-    setPrivyStatus("Sending code...", false);
-    try {
-      const client = await getPrivyClient();
-      if (!client) throw new Error("Privy is not configured.");
-      await client.sendEmailCode(email);
-      if (els.privyCodeForm) els.privyCodeForm.hidden = false;
-      setPrivyStatus("Code sent.", false);
-      setTimeout(() => { if (els.privyCode) els.privyCode.focus(); }, 0);
-    } catch (err) {
-      setPrivyStatus(err && err.message ? err.message : "Could not send code", true);
-    } finally {
-      setPrivyBusy(false);
-    }
-  }
-  async function submitPrivyCode(e) {
-    if (e) e.preventDefault();
-    const email = els.privyEmail ? els.privyEmail.value.trim() : "";
-    const code = els.privyCode ? els.privyCode.value.trim() : "";
-    if (!email || !code) {
-      setPrivyStatus("Enter the email and code.", true);
-      return;
-    }
-    setPrivyBusy(true);
-    setPrivyStatus("Verifying...", false);
-    try {
-      const client = await getPrivyClient();
-      if (!client) throw new Error("Privy is not configured.");
-      const snapshot = await client.loginWithEmailCode(email, code);
-      applyPrivyState({ ...snapshot, configured: true, ready: true });
-      await syncPrivyServerSession(snapshot);
-      setPrivyStatus("Account connected.", false);
-      await fetchSession();
-    } catch (err) {
-      setPrivyStatus(err && err.message ? err.message : "Could not verify code", true);
-    } finally {
-      setPrivyBusy(false);
-    }
   }
   async function signOutPrivy() {
     setPrivyBusy(true);
@@ -8482,8 +8465,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (els.privyOverlay) els.privyOverlay.addEventListener("click", (e) => {
     if (e.target === els.privyOverlay) closePrivyAccount();
   });
-  if (els.privyEmailForm) els.privyEmailForm.addEventListener("submit", submitPrivyEmail);
-  if (els.privyCodeForm) els.privyCodeForm.addEventListener("submit", submitPrivyCode);
+  if (els.privyLoginWidget) els.privyLoginWidget.addEventListener("click", startPrivyLogin);
   if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 
   // Click your name/avatar to open the character sheet.
