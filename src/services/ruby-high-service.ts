@@ -33,6 +33,7 @@ import {
   type BankedQuestion,
   type CardMemory,
   type CardReviewRating,
+  type CharacterSlotEntitlements,
   type CharacterStats,
   type Choice,
   type ComicCollection,
@@ -203,6 +204,9 @@ const SCHOOL_EVENT_LIMIT = 80;
 const ESSAY_REPORT_LIMIT = 100;
 const WALLET_TRANSACTION_LIMIT = 200;
 const STUDENT_POOL_LIMIT = 50;
+export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
+export const CHARACTER_SLOT_HALL_PASS_COST = 1;
+export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -286,6 +290,19 @@ export interface HostedAiAccessActivationResult {
   hallPassCost: number;
   expiresAt: number;
   transaction: RubyHighWalletTransaction | null;
+}
+
+export interface CharacterSlotUnlockInput {
+  requestId?: string;
+  now?: number;
+}
+
+export interface CharacterSlotUnlockResult {
+  state: QuizState;
+  applied: boolean;
+  hallPassCost: number;
+  slots: CharacterSlotEntitlements;
+  transaction: RubyHighWalletTransaction;
 }
 
 interface DailyClassUpdate {
@@ -429,6 +446,39 @@ export class RubyHighService extends Service {
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
     const expiresAt = Math.floor(Number(state.wallet.hostedAiAccessExpiresAt ?? 0));
     return Number.isFinite(expiresAt) && expiresAt > now ? expiresAt : null;
+  }
+
+  unlockCharacterSlot(sessionId: string, input: CharacterSlotUnlockInput = {}): CharacterSlotUnlockResult {
+    const now = typeof input.now === "number" && Number.isFinite(input.now) ? Math.floor(input.now) : Date.now();
+    const state = this.getOrCreate(sessionId);
+    state.characterSlots = normalizeCharacterSlots(state.characterSlots);
+    const nextSlot = state.characterSlots.unlockedSlots + 1;
+    const requestId = normalizeIdempotencyPart(input.requestId) || String(now);
+    const spend = this.applyHallPassTransaction(sessionId, "hall-pass-spend", {
+      amount: CHARACTER_SLOT_HALL_PASS_COST,
+      idempotencyKey: `character-slot:${sessionId}:${requestId}`,
+      source: "character-slot",
+      description: `Character slot ${nextSlot}`,
+      at: now,
+      metadata: {
+        slotNumber: nextSlot,
+        photoDayCredits: CHARACTER_SLOT_PHOTO_DAY_CREDITS,
+      },
+    });
+    if (spend.applied) {
+      spend.state.characterSlots = normalizeCharacterSlots(spend.state.characterSlots);
+      spend.state.characterSlots.unlockedSlots += 1;
+      spend.state.characterSlots.photoDayCredits += CHARACTER_SLOT_PHOTO_DAY_CREDITS;
+      spend.state.updatedAt = Date.now();
+      void this.persistSession(sessionId);
+    }
+    return {
+      state: spend.state,
+      applied: spend.applied,
+      hallPassCost: CHARACTER_SLOT_HALL_PASS_COST,
+      slots: normalizeCharacterSlots(spend.state.characterSlots),
+      transaction: spend.transaction,
+    };
   }
 
   activateHostedAiAccess(sessionId: string, input: HostedAiAccessActivationInput): HostedAiAccessActivationResult {
@@ -918,6 +968,10 @@ export class RubyHighService extends Service {
         activePackId: null,
         character: null,
         studentPool: [],
+        characterSlots: {
+          unlockedSlots: DEFAULT_CHARACTER_SLOT_COUNT,
+          photoDayCredits: 0,
+        },
         comicCollection: normalizeComicCollection(null),
         schoolEvents: [],
         essayReports: [],
@@ -3533,6 +3587,18 @@ function normalizePositiveInteger(value: number, label: string): number {
   return amount;
 }
 
+function normalizeIdempotencyPart(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/[^a-zA-Z0-9:_-]+/g, "-").slice(0, 80);
+}
+
+function normalizeCharacterSlots(value: unknown): CharacterSlotEntitlements {
+  const src = value && typeof value === "object" ? value as Partial<CharacterSlotEntitlements> : {};
+  const unlockedSlots = Math.max(DEFAULT_CHARACTER_SLOT_COUNT, Math.floor(Number(src.unlockedSlots ?? DEFAULT_CHARACTER_SLOT_COUNT)));
+  const photoDayCredits = Math.max(0, Math.floor(Number(src.photoDayCredits ?? 0)));
+  return { unlockedSlots, photoDayCredits };
+}
+
 function normalizeWalletMetadata(value: unknown): RubyHighWalletTransaction["metadata"] | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const out: NonNullable<RubyHighWalletTransaction["metadata"]> = {};
@@ -3555,6 +3621,7 @@ function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[
     "revenuecat",
     "hosted-image",
     "hosted-ai",
+    "character-slot",
     "admin",
     "system",
   ];
@@ -3860,6 +3927,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     hasSeenIntro: !!s.hasSeenIntro,
     activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
     studentPool: normalizeStudentPool((s as { studentPool?: unknown }).studentPool),
+    characterSlots: normalizeCharacterSlots((s as { characterSlots?: unknown }).characterSlots),
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),

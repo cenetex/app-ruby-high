@@ -519,6 +519,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     privyLoginWidget: $("privy-login-widget"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
+    accountAiStatus: $("account-ai-status"),
+    accountAiMeta: $("account-ai-meta"),
+    accountAiAction: $("account-ai-action"),
+    accountWalletBalance: $("account-wallet-balance"),
+    accountWalletMeta: $("account-wallet-meta"),
+    accountBuyPasses: $("account-buy-passes"),
+    accountCharacterSummary: $("account-character-summary"),
+    accountCharacterGrid: $("account-character-grid"),
+    accountUnlockSlot: $("account-unlock-slot"),
+    accountComicSummary: $("account-comic-summary"),
+    accountComics: $("account-comics"),
+    accountHistoryList: $("account-history-list"),
     checking: $("checking"),
     scrim: $("scrim"),
     congrats: $("congrats-toast"),
@@ -1698,6 +1710,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
     if (els.arcScore) els.arcScore.textContent = walletSummaryText(lastTelemetry);
     syncBillingWallet(lastTelemetry);
+    renderAccountPage();
   }
 
   function syncBillingWallet(t) {
@@ -1706,6 +1719,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const ai = hostedAiTelemetry(t || lastTelemetry);
     els.billingWallet.textContent = formatWholeNumber(wallet.hallPasses) + " Hall Passes"
       + (ai.active ? " · AI active " + formatRelativeExpiry(ai.expiresAt) : "");
+    renderAccountWallet();
   }
 
   function setBillingStatus(text, invalid) {
@@ -1751,6 +1765,292 @@ const VIEWER_SCRIPT_SUFFIX = `
     const hours = Math.ceil(ms / 3600000);
     if (hours >= 24) return Math.ceil(hours / 24) + "d";
     return hours + "h";
+  }
+
+  function renderAccountPage() {
+    renderAccountAi();
+    renderAccountWallet();
+    renderAccountCharacters();
+    renderAccountComics();
+    renderAccountHistory();
+  }
+
+  function renderAccountAi() {
+    if (!els.accountAiStatus || !els.accountAiAction) return;
+    const ai = hostedAiTelemetry(lastTelemetry);
+    const hasBrowserKey = !!getStoredApiKey();
+    let status = "Offline mode";
+    let meta = "Class still works with local fallbacks. Connect OpenRouter or use an AI Day Pass for live teacher chat.";
+    let label = "Enable AI";
+    let disabled = false;
+    let hidden = false;
+    if (localAiEnabled) {
+      status = "Local AI active";
+      meta = "This device is already providing text AI.";
+      label = "Local AI";
+      disabled = true;
+    } else if (hasBrowserKey && aiEnabled) {
+      status = "OpenRouter connected";
+      meta = "Teacher chat and character text rerolls use your OpenRouter key.";
+      label = "Disconnect";
+    } else if (ai.active || hostedAiActive) {
+      status = "AI Day Pass active";
+      meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
+      label = "Active";
+      disabled = true;
+    } else if (activeTeacherUsesServerAi()) {
+      status = "Teacher AI connected";
+      meta = "This server can speak for teachers. Enable OpenRouter for browser-owned AI features.";
+      label = "Enable AI";
+    }
+    els.accountAiStatus.textContent = status;
+    if (els.accountAiMeta) els.accountAiMeta.textContent = meta;
+    els.accountAiAction.textContent = label;
+    els.accountAiAction.disabled = disabled || !authed;
+    els.accountAiAction.hidden = hidden;
+  }
+
+  function renderAccountWallet() {
+    if (!els.accountWalletBalance) return;
+    const wallet = walletNumbers(lastTelemetry);
+    const slots = characterSlotTelemetry();
+    els.accountWalletBalance.textContent = walletSummaryText(lastTelemetry || {});
+    if (els.accountWalletMeta) {
+      els.accountWalletMeta.textContent = slots.photoDayCredits > 0
+        ? slots.photoDayCredits + " Photo Day " + (slots.photoDayCredits === 1 ? "credit" : "credits")
+        : "Hall Passes unlock AI days, image generation, and extra student slots.";
+    }
+    if (els.accountBuyPasses) els.accountBuyPasses.disabled = !authed;
+  }
+
+  function characterSlotTelemetry() {
+    const raw = lastTelemetry && lastTelemetry.character_slots && typeof lastTelemetry.character_slots === "object"
+      ? lastTelemetry.character_slots
+      : {};
+    return {
+      unlockedSlots: Math.max(1, Math.floor(Number(raw.unlockedSlots || 1))),
+      photoDayCredits: Math.max(0, Math.floor(Number(raw.photoDayCredits || 0))),
+      costHallPasses: Math.max(1, Math.floor(Number(raw.costHallPasses || 1))),
+      photoDayCreditsPerSlot: Math.max(0, Math.floor(Number(raw.photoDayCreditsPerSlot || 1))),
+    };
+  }
+
+  function ownedCharacterEntries() {
+    const out = [];
+    const current = lastTelemetry && lastTelemetry.character;
+    if (current) {
+      out.push({ kind: "active", character: current });
+    }
+    studentPoolEntries().forEach((entry) => out.push({ kind: "graduated", character: entry }));
+    return out;
+  }
+
+  function renderAccountCharacters() {
+    if (!els.accountCharacterGrid) return;
+    const slots = characterSlotTelemetry();
+    const wallet = walletNumbers(lastTelemetry);
+    const entries = ownedCharacterEntries();
+    const displaySlots = Math.max(slots.unlockedSlots, entries.length, 1);
+    const emptySlots = Math.max(0, displaySlots - entries.length);
+    if (els.accountCharacterSummary) {
+      els.accountCharacterSummary.textContent = displaySlots + " unlocked "
+        + (displaySlots === 1 ? "slot" : "slots") + " · "
+        + slots.photoDayCredits + " Photo Day "
+        + (slots.photoDayCredits === 1 ? "credit" : "credits");
+    }
+    if (els.accountUnlockSlot) {
+      els.accountUnlockSlot.textContent = "Unlock Slot (" + slots.costHallPasses + " Hall Pass)";
+      els.accountUnlockSlot.disabled = !authed || wallet.hallPasses < slots.costHallPasses || billingBusy;
+      els.accountUnlockSlot.title = wallet.hallPasses < slots.costHallPasses
+        ? "Need " + slots.costHallPasses + " Hall Pass"
+        : "Adds one student slot and " + slots.photoDayCreditsPerSlot + " Photo Day credit";
+    }
+    els.accountCharacterGrid.replaceChildren();
+    entries.forEach((entry, idx) => {
+      els.accountCharacterGrid.appendChild(buildAccountCharacterCard(entry, idx + 1));
+    });
+    for (let i = 0; i < emptySlots; i++) {
+      els.accountCharacterGrid.appendChild(buildEmptyCharacterSlot(entries.length + i + 1));
+    }
+    if (entries.length === 0 && emptySlots === 0) {
+      const empty = document.createElement("div");
+      empty.className = "account-empty";
+      empty.textContent = "Roll your first student to start filling your account.";
+      els.accountCharacterGrid.appendChild(empty);
+    }
+  }
+
+  function buildAccountCharacterCard(entry, slotNumber) {
+    const c = entry.character || {};
+    const pb = (lastTelemetry && Array.isArray(lastTelemetry.playbooks) ? lastTelemetry.playbooks : [])
+      .find((p) => p.id === c.playbookId) || { name: c.playbookId || "Student", accent: "var(--accent)" };
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "account-character-card is-" + entry.kind;
+    card.style.setProperty("--account-character-accent", pb.accent || "var(--accent)");
+    const portrait = document.createElement("span");
+    portrait.className = "account-character-portrait";
+    const imgUrl = c.diplomaImageDataUrl || c.portraitDataUrl || defaultPortraitFor(c.playbookId);
+    if (imgUrl) {
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = imgUrl;
+      portrait.appendChild(img);
+    } else {
+      portrait.textContent = String(c.name || "?").slice(0, 1).toUpperCase();
+    }
+    card.appendChild(portrait);
+    const copy = document.createElement("span");
+    copy.className = "account-character-copy";
+    const name = document.createElement("span");
+    name.className = "account-character-name";
+    name.textContent = c.name || "Student";
+    copy.appendChild(name);
+    const yearbookCount = Array.isArray(c.yearbook) ? c.yearbook.length : 0;
+    const meta = document.createElement("span");
+    meta.className = "account-character-meta";
+    meta.textContent = entry.kind === "active"
+      ? "Slot " + slotNumber + " · active · " + (GRADE_LABELS[lastTelemetry && lastTelemetry.current_grade] || "Freshman")
+      : "Slot " + slotNumber + " · graduated · " + yearbookCount + "/4 years";
+    copy.appendChild(meta);
+    card.appendChild(copy);
+    card.addEventListener("click", () => {
+      if (entry.kind === "active") {
+        closePrivyAccount();
+        openSheet();
+      }
+    });
+    return card;
+  }
+
+  function buildEmptyCharacterSlot(slotNumber) {
+    const card = document.createElement("div");
+    card.className = "account-character-card is-empty";
+    const portrait = document.createElement("span");
+    portrait.className = "account-character-portrait";
+    portrait.textContent = "+";
+    card.appendChild(portrait);
+    const copy = document.createElement("span");
+    copy.className = "account-character-copy";
+    const name = document.createElement("span");
+    name.className = "account-character-name";
+    name.textContent = "Empty Slot";
+    const meta = document.createElement("span");
+    meta.className = "account-character-meta";
+    meta.textContent = "Slot " + slotNumber + " · ready for a future student";
+    copy.appendChild(name);
+    copy.appendChild(meta);
+    card.appendChild(copy);
+    return card;
+  }
+
+  function renderAccountComics() {
+    if (!els.accountComics) return;
+    const collection = comicCollectionForTelemetry();
+    const unlocked = collection ? collection.unlockedPages.length : 0;
+    const pageCount = collection ? collection.pageCount : FIRST_BELL_PAGE_COUNT;
+    if (els.accountComicSummary) {
+      els.accountComicSummary.textContent = unlocked + "/" + pageCount + " pages found";
+    }
+    els.accountComics.replaceChildren();
+    els.accountComics.appendChild(buildComicLocker());
+  }
+
+  function renderAccountHistory() {
+    if (!els.accountHistoryList) return;
+    const wallet = lastTelemetry && lastTelemetry.wallet && typeof lastTelemetry.wallet === "object" ? lastTelemetry.wallet : {};
+    const transactions = Array.isArray(wallet.transactions) ? wallet.transactions.slice() : [];
+    transactions.sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+    els.accountHistoryList.replaceChildren();
+    if (transactions.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "account-empty";
+      empty.textContent = "No Hall Pass purchases or spends yet.";
+      els.accountHistoryList.appendChild(empty);
+      return;
+    }
+    transactions.slice(0, 18).forEach((tx) => {
+      els.accountHistoryList.appendChild(buildAccountHistoryRow(tx));
+    });
+  }
+
+  function buildAccountHistoryRow(tx) {
+    const row = document.createElement("div");
+    row.className = "account-history-row";
+    const amount = Number(tx.hallPasses || 0);
+    if (amount > 0) row.classList.add("is-credit");
+    if (amount < 0) row.classList.add("is-debit");
+    const main = document.createElement("div");
+    main.className = "account-history-main";
+    const title = document.createElement("div");
+    title.className = "account-history-title";
+    title.textContent = tx.description || walletTransactionTitle(tx);
+    const meta = document.createElement("div");
+    meta.className = "account-history-meta";
+    meta.textContent = walletTransactionSource(tx) + " · " + formatAccountDate(tx.at);
+    main.appendChild(title);
+    main.appendChild(meta);
+    const delta = document.createElement("div");
+    delta.className = "account-history-delta";
+    delta.textContent = amount === 0
+      ? "0"
+      : (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " HP";
+    row.appendChild(main);
+    row.appendChild(delta);
+    return row;
+  }
+
+  function walletTransactionTitle(tx) {
+    if (!tx || !tx.kind) return "Wallet update";
+    if (tx.kind === "hall-pass-grant") return "Hall Pass grant";
+    if (tx.kind === "hall-pass-spend") return "Hall Pass spend";
+    if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
+    if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
+    return "Wallet update";
+  }
+
+  function walletTransactionSource(tx) {
+    const source = String((tx && tx.source) || "system").replace(/-/g, " ");
+    return source.charAt(0).toUpperCase() + source.slice(1);
+  }
+
+  function formatAccountDate(ts) {
+    const n = Number(ts || 0);
+    if (!Number.isFinite(n) || n <= 0) return "unknown date";
+    try {
+      return new Date(n).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    } catch (_err) {
+      return "unknown date";
+    }
+  }
+
+  async function unlockCharacterSlotFromAccount() {
+    if (!authed || billingBusy) return;
+    billingBusy = true;
+    renderAccountCharacters();
+    setPrivyStatus("Unlocking character slot...", false);
+    try {
+      const data = await command({ type: "unlock-character-slot", requestId: imageRequestId("character-slot") });
+      if (data && data.session) {
+        setPrivyStatus("Character slot unlocked. Photo Day credit added.", false);
+        renderAccountPage();
+      } else {
+        setPrivyStatus("Could not unlock slot.", true);
+      }
+    } finally {
+      billingBusy = false;
+      renderAccountCharacters();
+    }
+  }
+
+  function handleAccountAiAction() {
+    if (!authed || localAiEnabled) return;
+    if (getStoredApiKey() && aiEnabled) {
+      void logout();
+      return;
+    }
+    if (hostedAiActive) return;
+    window.location.href = "/api/apps/ruby-high/auth/start";
   }
 
   function renderBillingProducts(payload) {
@@ -3412,6 +3712,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const t = s.telemetry;
     lastTelemetry = t;
     syncBillingWallet(t);
+    renderAccountPage();
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
@@ -4561,7 +4862,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     const liveGrade = String(lastTelemetry?.current_grade ?? "9");
     const yearbook = Array.isArray(c.yearbook) ? c.yearbook : [];
     const grad = graduatedFor(c);
-    const pool = studentPoolEntries();
 
     const papers = yearbook.slice()
       .sort((a, b) => Number(a.grade) - Number(b.grade))
@@ -4572,7 +4872,6 @@ const VIEWER_SCRIPT_SUFFIX = `
       buildCareerCard(c, grad),
       buildReportCard(),
     ];
-    if (pool.length > 0) cards.push(buildStudentPoolCard(pool, playbooks));
     renderCardDeck(cards);
   }
 
@@ -5101,8 +5400,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     appendProgression(body, buildProgressionForCharacter(c));
     const mash = buildMashGrid(c, graduated);
     if (mash) body.appendChild(mash);
-    const comicLocker = buildComicLocker();
-    if (comicLocker) body.appendChild(comicLocker);
     card.appendChild(body);
     return card;
   }
@@ -7687,6 +7984,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
     if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
     applyAuthUI();
+    renderAccountPage();
   }
   async function getPrivyClient() {
     if (!privyConfig) return null;
@@ -7777,24 +8075,23 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
   }
   async function openPrivyAccount() {
-    if (!privyConfig) return;
     setPrivyStatus("Checking account...", false);
     try {
       await initializePrivyFromStoredSession();
-      if (!privyState.authenticated) {
-        await startPrivyLogin();
-        return;
-      }
       if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
-      setPrivyStatus("Account connected.", false);
+      els.privyOverlay?.setAttribute("aria-hidden", "false");
+      setPrivyStatus(privyState.authenticated ? "Account connected." : "", false);
+      renderAccountPage();
     } catch (err) {
       if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
+      els.privyOverlay?.setAttribute("aria-hidden", "false");
       setPrivyStatus(err && err.message ? err.message : "Privy error", true);
     }
   }
   function closePrivyAccount() {
     if (!els.privyOverlay) return;
     els.privyOverlay.classList.remove("is-open");
+    els.privyOverlay.setAttribute("aria-hidden", "true");
     setPrivyStatus("", false);
   }
   function setPrivyBusy(busy) {
@@ -7931,6 +8228,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       els.youState.textContent = "checking…";
       els.footerAction.hidden = true;
       if (els.privyAction) els.privyAction.hidden = true;
+      renderAccountPage();
       return;
     }
     if (authed) {
@@ -7939,11 +8237,10 @@ const VIEWER_SCRIPT_SUFFIX = `
         : aiEnabled
           ? (localAiEnabled ? "local AI" : "AI enabled")
           : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
-      els.footerAction.textContent = aiEnabled ? "Sign out" : "Enable AI";
-      els.footerAction.hidden = localAiEnabled;
+      els.footerAction.hidden = true;
       if (els.privyAction) {
-        els.privyAction.textContent = privyState.authenticated ? "Account" : "Sign in";
-        els.privyAction.hidden = !privyState.configured;
+        els.privyAction.textContent = "Account";
+        els.privyAction.hidden = false;
       }
       if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
@@ -7967,6 +8264,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       renderRaceStrip(lastTelemetry);
     }
     syncPackGenerationControls();
+    renderAccountPage();
   }
   async function logout() {
     // Clear the credential first so any in-flight refresh sees us as
@@ -8455,7 +8753,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (els.bugReportOverlay) els.bugReportOverlay.addEventListener("click", (e) => {
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
-  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openBilling);
+  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
+  if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", openBilling);
+  if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
+  if (els.accountAiAction) els.accountAiAction.addEventListener("click", handleAccountAiAction);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
   if (els.billingOverlay) els.billingOverlay.addEventListener("click", (e) => {
     if (e.target === els.billingOverlay) closeBilling();

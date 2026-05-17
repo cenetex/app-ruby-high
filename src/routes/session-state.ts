@@ -3,6 +3,8 @@ import type {
   PluginAppSessionState,
 } from "@elizaos/core";
 import {
+  CHARACTER_SLOT_HALL_PASS_COST,
+  CHARACTER_SLOT_PHOTO_DAY_CREDITS,
   RubyHighService,
   advantageRollsForState,
   dailyStatusForState,
@@ -11,6 +13,7 @@ import {
 import { FacultyService, toFacultyMember } from "../services/faculty-service.js";
 import {
   type CharacterStats,
+  type CharacterSlotEntitlements,
   type Choice,
   type Difficulty,
   type EssayReport,
@@ -115,6 +118,10 @@ interface SessionTelemetry extends Record<string, unknown> {
   is_opinion: boolean;
   character: PlayerCharacter | null;
   student_pool: StudentPoolEntry[];
+  character_slots: CharacterSlotEntitlements & {
+    costHallPasses: number;
+    photoDayCreditsPerSlot: number;
+  };
   comic_collection: QuizState["comicCollection"];
   school_events: QuizState["schoolEvents"];
   essay_reports: EssayReport[];
@@ -287,6 +294,7 @@ export function buildSessionState(args: {
     ?? facultyForSession(state)[0]
     ?? null;
   const wallet = normalizeWalletForTelemetry(state);
+  const characterSlots = normalizeCharacterSlotsForTelemetry(state);
   const entitlements = hostedEntitlementStatus({ ruby, sessionId, state });
 
   const telemetry: SessionTelemetry = {
@@ -353,6 +361,7 @@ export function buildSessionState(args: {
     is_opinion: state.current?.type === "opinion",
     character: state.character,
     student_pool: state.studentPool ?? [],
+    character_slots: characterSlots,
     comic_collection: state.comicCollection,
     school_events: (state.schoolEvents ?? []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
@@ -403,5 +412,18 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
     ...(Number.isFinite(Number(state.wallet?.hostedAiAccessExpiresAt))
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(state.wallet?.hostedAiAccessExpiresAt))) }
       : {}),
+    ...(Array.isArray(state.wallet?.transactions) && state.wallet.transactions.length > 0
+      ? { transactions: state.wallet.transactions.slice(-80) }
+      : {}),
+  };
+}
+
+function normalizeCharacterSlotsForTelemetry(state: QuizState): SessionTelemetry["character_slots"] {
+  const src: Partial<CharacterSlotEntitlements> = state.characterSlots && typeof state.characterSlots === "object" ? state.characterSlots : {};
+  return {
+    unlockedSlots: Math.max(1, Math.floor(Number(src.unlockedSlots ?? 1))),
+    photoDayCredits: Math.max(0, Math.floor(Number(src.photoDayCredits ?? 0))),
+    costHallPasses: CHARACTER_SLOT_HALL_PASS_COST,
+    photoDayCreditsPerSlot: CHARACTER_SLOT_PHOTO_DAY_CREDITS,
   };
 }
