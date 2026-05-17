@@ -84,7 +84,7 @@ function fakePack(id: string): ContentPack {
 }
 
 function stubCourseGeneratorFetch() {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+  const courseSpec = {
     choices: [{
       message: {
         content: JSON.stringify({
@@ -153,10 +153,24 @@ function stubCourseGeneratorFetch() {
         }),
       },
     }],
-  }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  })));
+  };
+  const teacherPortrait = {
+    choices: [{
+      message: {
+        images: [{ image_url: { url: "data:image/png;base64,VEVBQ0hFUg==" } }],
+      },
+    }],
+  };
+  const responses = [courseSpec, teacherPortrait];
+  const fetchMock = vi.fn(async () => {
+    const body = responses.shift() ?? teacherPortrait;
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: number; body: any }> {
@@ -247,7 +261,7 @@ describe("/pack-library", () => {
       idempotencyKey: "test:course-generation:grant",
       source: "admin",
     });
-    stubCourseGeneratorFetch();
+    const fetchMock = stubCourseGeneratorFetch();
 
     let response = await route({
       method: "POST",
@@ -282,6 +296,7 @@ describe("/pack-library", () => {
     expect(response.body.teacher).toMatchObject({
       displayName: "Dr. Signal",
       subject: "Signal Reading",
+      profileImageUrl: "data:image/png;base64,VEVBQ0hFUg==",
       generationCount: 1,
     });
     expect(response.body.teacher.questions).toHaveLength(4);
@@ -291,6 +306,7 @@ describe("/pack-library", () => {
       difficulty: "easy",
     });
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(7);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("rejects paid course generation without enough Hall Passes", async () => {

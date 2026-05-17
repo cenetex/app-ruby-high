@@ -28,6 +28,10 @@ import {
   llmProviderName,
   resolveStudentModel,
 } from "./services/llm-provider.js";
+import {
+  maybeUploadPortrait,
+  renderTeacherPortrait,
+} from "./services/character-generation.js";
 import { classifyQuestionStat } from "./question-stats.js";
 
 export interface PackLibraryRouteContext {
@@ -240,6 +244,10 @@ export async function handlePackLibraryRoutes(
       ctx.error(ctx.res, "Hosted AI is not configured on this server.", 503);
       return true;
     }
+    if (!credential.imageApiKey) {
+      ctx.error(ctx.res, "Course generation needs OpenRouter image generation for the teacher portrait.", 503);
+      return true;
+    }
     const targetTeacherId = bodyString(body, "teacherId");
     const targetTeacher = targetTeacherId ? draft.teachers.find((entry) => entry.id === targetTeacherId) ?? null : null;
     if (targetTeacherId && !targetTeacher) {
@@ -277,11 +285,16 @@ export async function handlePackLibraryRoutes(
         materials,
         questionCount: questionCountFrom(bodyValue(body, "questionCount")),
       });
+      const profileImageUrl = await generateCourseTeacherPortrait({
+        apiKey: credential.imageApiKey,
+        generated,
+      });
       const updated = applyGeneratedCourseSpec(draft, {
         teacherId: targetTeacherId,
         materials,
         materialSourceUrl: bodyString(body, "materialSourceUrl"),
         generated,
+        profileImageUrl,
       });
       await deps.ruby.saveDraftPackRecord(updated);
       if (charge.spendKey) {
@@ -752,6 +765,7 @@ async function requireDraft(
 
 interface CourseGenerationCredential {
   apiKey: string | null;
+  imageApiKey: string | null;
 }
 
 interface CourseGenerationCharge {
@@ -790,8 +804,15 @@ function resolveCourseGenerationCredential(
     ruby,
     sessionId,
   });
-  if (textCredential.apiKey) return { apiKey: textCredential.apiKey };
-  return { apiKey: hostedOpenRouterApiKey() };
+  const browserImageApiKey = ctx.apiKeyHeader?.trim() || null;
+  const hostedImageApiKey = hostedOpenRouterApiKey();
+  if (textCredential.apiKey) {
+    return {
+      apiKey: textCredential.apiKey,
+      imageApiKey: browserImageApiKey || (textCredential.source === "local" ? hostedImageApiKey : textCredential.apiKey),
+    };
+  }
+  return { apiKey: hostedImageApiKey, imageApiKey: hostedImageApiKey };
 }
 
 function courseGenerationRequestId(body: Record<string, unknown>): string {
@@ -1013,6 +1034,24 @@ async function generateCourseSpecWithAi(args: {
   });
 }
 
+async function generateCourseTeacherPortrait(args: {
+  apiKey: string;
+  generated: GeneratedCourseSpec;
+}): Promise<string> {
+  const personality = [
+    args.generated.subject,
+    args.generated.description,
+    args.generated.quote,
+    args.generated.courseTitle ? `Course: ${args.generated.courseTitle}` : "",
+  ].filter(Boolean).join(" ");
+  const dataUrl = await renderTeacherPortrait({
+    apiKey: args.apiKey,
+    name: args.generated.displayName,
+    personality,
+  });
+  return cleanImageRef(await maybeUploadPortrait(dataUrl, "portrait"));
+}
+
 function applyGeneratedCourseSpec(
   draft: StoredDraftContentPackRecord,
   args: {
@@ -1020,6 +1059,7 @@ function applyGeneratedCourseSpec(
     materials: string;
     materialSourceUrl: string;
     generated: GeneratedCourseSpec;
+    profileImageUrl: string;
   },
 ): StoredDraftContentPackRecord {
   const existing = args.teacherId ? draft.teachers.find((entry) => entry.id === args.teacherId) ?? null : null;
@@ -1046,6 +1086,7 @@ function applyGeneratedCourseSpec(
     subject: args.generated.subject,
     description: args.generated.description,
     quote: args.generated.quote,
+    profileImageUrl: args.profileImageUrl || existing?.profileImageUrl,
     materials: args.materials.trim(),
     ...(args.materialSourceUrl ? { materialSourceUrl: args.materialSourceUrl } : {}),
     sourceCards: [],
@@ -1056,6 +1097,7 @@ function applyGeneratedCourseSpec(
     updatedAt: now,
   };
   if (!generatedTeacher.materialSourceUrl) delete generatedTeacher.materialSourceUrl;
+  if (!generatedTeacher.profileImageUrl) delete generatedTeacher.profileImageUrl;
   const teachers = existing
     ? draft.teachers.map((entry) => entry.id === existing.id ? generatedTeacher : entry)
     : [...draft.teachers, generatedTeacher];

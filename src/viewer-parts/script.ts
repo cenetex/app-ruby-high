@@ -5852,6 +5852,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   const courseGenerateBtn = $("course-generate-btn");
   const courseCancelGenerationBtn = $("course-cancel-generation-btn");
   const courseGenerationStatusEl = $("course-generation-status");
+  const courseGenerationProgressEl = $("course-generation-progress");
+  const courseProgressBarEl = $("course-progress-bar");
+  const courseProgressFillEl = $("course-progress-fill");
+  const courseGenerationChecklistEl = $("course-generation-checklist");
   const packTeacherListEl = $("pack-teacher-list");
   const packTeacherDetailEl = $("pack-teacher-detail");
   const packAddTeacherBtn = $("pack-add-teacher-btn");
@@ -5893,6 +5897,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   let packQuestionGenerationAbortController = null;
   let packQuestionGenerationRunId = 0;
   let packQuestionGenerationKind = "";
+  let courseGenerationProgressTimer = null;
   let packAutosaveTimer = null;
   let teacherAutosaveTimer = null;
   const COURSE_GENERATION_HALL_PASS_COST = 3;
@@ -5921,6 +5926,13 @@ const VIEWER_SCRIPT_SUFFIX = `
     { pct: 42, title: "Preparing materials", detail: "Checking markdown and size limits." },
     { pct: 68, title: "Generating cards", detail: "Building the teacher question set." },
     { pct: 88, title: "Updating library", detail: "Refreshing pack availability." },
+  ];
+  const COURSE_GENERATION_STEPS = [
+    { key: "materials", pct: 12, label: "Read course materials" },
+    { key: "teacher", pct: 34, label: "Create teacher name and voice" },
+    { key: "portrait", pct: 58, label: "Generate teacher portrait" },
+    { key: "questions", pct: 78, label: "Write class questions" },
+    { key: "saving", pct: 94, label: "Save the pack" },
   ];
 
   const packStudioClient = {
@@ -6105,6 +6117,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       courseGenerationStatusEl.textContent = "";
       courseGenerationStatusEl.classList.remove("is-invalid");
     }
+    resetCourseGenerationProgress();
     packEditEl.classList.add("is-open");
     renderPackEditor();
   }
@@ -6135,6 +6148,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       courseGenerationStatusEl.textContent = "";
       courseGenerationStatusEl.classList.remove("is-invalid");
     }
+    resetCourseGenerationProgress();
     refreshPackLibrary();
   }
   function setPackBusy(busy) {
@@ -6199,6 +6213,74 @@ const VIEWER_SCRIPT_SUFFIX = `
       packImportPanelEl.classList.remove("is-error");
     }
     if (packProgressFillEl) packProgressFillEl.style.width = "0%";
+  }
+  function renderCourseGenerationChecklist(pct, activeKey, isError) {
+    if (!courseGenerationChecklistEl) return;
+    courseGenerationChecklistEl.textContent = "";
+    const activeIndex = Math.max(0, COURSE_GENERATION_STEPS.findIndex((step) => step.key === activeKey));
+    COURSE_GENERATION_STEPS.forEach((step, index) => {
+      const row = document.createElement("div");
+      const isComplete = pct >= 100 || index < activeIndex;
+      const isActive = !isError && !isComplete && step.key === activeKey;
+      const isFailed = !!isError && step.key === activeKey;
+      row.className = "course-generation-step"
+        + (isComplete ? " is-complete" : "")
+        + (isActive ? " is-active" : "")
+        + (isFailed ? " is-error" : "");
+      const state = document.createElement("span");
+      state.className = "course-generation-step-state";
+      state.textContent = isFailed ? "Error" : isComplete ? "Done" : isActive ? "Now" : "Waiting";
+      const label = document.createElement("span");
+      label.textContent = step.label;
+      row.append(state, label);
+      courseGenerationChecklistEl.append(row);
+    });
+  }
+  function courseGenerationStepForPct(pct) {
+    return COURSE_GENERATION_STEPS.reduce((best, entry) => entry.pct <= pct ? entry : best, COURSE_GENERATION_STEPS[0]);
+  }
+  function updateCourseGenerationProgress(pct, activeKey, isError) {
+    if (!courseGenerationProgressEl) return;
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    const step = COURSE_GENERATION_STEPS.find((entry) => entry.key === activeKey) || courseGenerationStepForPct(clamped);
+    courseGenerationProgressEl.hidden = false;
+    courseGenerationProgressEl.classList.toggle("is-error", !!isError);
+    if (courseProgressBarEl) courseProgressBarEl.setAttribute("aria-valuenow", String(clamped));
+    if (courseProgressFillEl) courseProgressFillEl.style.width = clamped + "%";
+    renderCourseGenerationChecklist(clamped, step.key, !!isError);
+  }
+  function startCourseGenerationProgress() {
+    clearInterval(courseGenerationProgressTimer);
+    const startedAt = Date.now();
+    updateCourseGenerationProgress(4, "materials", false);
+    courseGenerationProgressTimer = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const pct = Math.min(92, 4 + Math.floor(elapsed / 800) * 5);
+      updateCourseGenerationProgress(pct, courseGenerationStepForPct(pct).key, false);
+    }, 800);
+  }
+  function finishCourseGenerationProgress() {
+    clearInterval(courseGenerationProgressTimer);
+    courseGenerationProgressTimer = null;
+    updateCourseGenerationProgress(100, "saving", false);
+  }
+  function failCourseGenerationProgress() {
+    clearInterval(courseGenerationProgressTimer);
+    courseGenerationProgressTimer = null;
+    const current = Number(courseProgressBarEl && courseProgressBarEl.getAttribute("aria-valuenow")) || 4;
+    const pct = Math.max(4, Math.min(100, current));
+    updateCourseGenerationProgress(pct, courseGenerationStepForPct(pct).key, true);
+  }
+  function resetCourseGenerationProgress() {
+    clearInterval(courseGenerationProgressTimer);
+    courseGenerationProgressTimer = null;
+    if (courseGenerationProgressEl) {
+      courseGenerationProgressEl.hidden = true;
+      courseGenerationProgressEl.classList.remove("is-error");
+    }
+    if (courseProgressBarEl) courseProgressBarEl.setAttribute("aria-valuenow", "0");
+    if (courseProgressFillEl) courseProgressFillEl.style.width = "0%";
+    if (courseGenerationChecklistEl) courseGenerationChecklistEl.textContent = "";
   }
   function packGenerationInFlight() {
     return !!(pendingTeacherImageBusy || packQuestionGenerationBusy);
@@ -7043,7 +7125,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
 
   function hostedCourseGenerationConfigured() {
-    if (getStoredApiKey() || localAiEnabled) return true;
+    if (getStoredApiKey()) return true;
     const entitlements = hostedEntitlements();
     const hostedAi = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
       ? entitlements.hosted_ai
@@ -7053,7 +7135,11 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function courseGenerationStatusReason() {
     if (!authed) return "Sign in before generating a course.";
-    if (!hostedCourseGenerationConfigured()) return "Hosted AI is not configured on this server.";
+    if (!hostedCourseGenerationConfigured()) {
+      return localAiEnabled
+        ? "OpenRouter image generation is required for course portraits."
+        : "Hosted AI is not configured on this server.";
+    }
     const wallet = walletNumbers(lastTelemetry);
     if (wallet.hallPasses < COURSE_GENERATION_HALL_PASS_COST) {
       return "Need " + COURSE_GENERATION_HALL_PASS_COST + " Hall Passes to generate.";
@@ -7313,14 +7399,15 @@ const VIEWER_SCRIPT_SUFFIX = `
     packQuestionGenerationAbortController = controller;
     packQuestionGenerationBusy = true;
     packQuestionGenerationKind = "course";
+    startCourseGenerationProgress();
     syncPackGenerationControls();
     if (packEditStatusEl) {
-      packEditStatusEl.textContent = "Generating course. Keep editing, or cancel before closing/publishing.";
+      packEditStatusEl.textContent = "Generating course, teacher portrait, and questions. Keep editing, or cancel before closing/publishing.";
       packEditStatusEl.classList.remove("is-invalid");
     }
     const statusEl = teacher ? teacherGenerationStatusEl : courseGenerationStatusEl;
     if (statusEl) {
-      statusEl.textContent = "Generating...";
+      statusEl.textContent = "Generating course, portrait, and questions...";
       statusEl.classList.remove("is-invalid");
     }
     try {
@@ -7332,11 +7419,14 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (data && typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements);
       selectedPackTeacherId = data.teacher && data.teacher.id ? data.teacher.id : (teacher ? teacher.id : selectedPackTeacherId);
       selectedPackTab = "questions";
+      finishCourseGenerationProgress();
       renderPackEditor();
-      if (packEditStatusEl) packEditStatusEl.textContent = "Course generated.";
+      if (packEditStatusEl) packEditStatusEl.textContent = "Course generated with teacher portrait.";
     } catch (err) {
       if (runId !== packQuestionGenerationRunId) return;
       const aborted = err && err.name === "AbortError";
+      if (aborted) resetCourseGenerationProgress();
+      else failCourseGenerationProgress();
       if (packEditStatusEl) {
         packEditStatusEl.textContent = aborted
           ? "Course generation canceled."
@@ -7372,6 +7462,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       packEditStatusEl.textContent = "Course generation canceled.";
       packEditStatusEl.classList.remove("is-invalid");
     }
+    resetCourseGenerationProgress();
     if (teacherGenerationStatusEl) {
       teacherGenerationStatusEl.textContent = "Generation canceled. Questions are unchanged.";
       teacherGenerationStatusEl.classList.remove("is-invalid");

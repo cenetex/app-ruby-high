@@ -284,6 +284,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <span class="pack-question-status" id="course-generation-status"></span>
         </div>
       </section>
+      <div class="course-generation-progress" id="course-generation-progress" hidden>
+        <div class="pack-progress" id="course-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Course generation progress">
+          <div class="pack-progress-fill" id="course-progress-fill"></div>
+        </div>
+        <div class="course-generation-checklist" id="course-generation-checklist"></div>
+      </div>
       <aside class="pack-teacher-sidebar">
         <div class="pack-section-title">Teachers</div>
         <div class="pack-list pack-teacher-list" id="pack-teacher-list"></div>

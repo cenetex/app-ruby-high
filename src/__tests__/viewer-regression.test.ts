@@ -224,6 +224,8 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('id="pack-course-generator"');
     expect(html).toContain('id="course-materials-input"');
+    expect(html).toContain('id="course-generation-progress"');
+    expect(html).toContain('id="course-generation-checklist"');
     expect(html).toContain("Add course materials here");
     expect(html).toContain("Generate (3 Hall Passes)");
     expect(html).toContain('id="course-generate-btn"');
@@ -232,6 +234,10 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("async generateCourse(draftId, payload, options)");
     expect(script).toContain('"/course/generate"');
     expect(script).toContain("COURSE_GENERATION_HALL_PASS_COST = 3");
+    expect(script).toContain("COURSE_GENERATION_STEPS");
+    expect(script).toContain("Generate teacher portrait");
+    expect(script).toContain("function startCourseGenerationProgress()");
+    expect(script).toContain("function finishCourseGenerationProgress()");
     expect(script).toContain("function generateCourseFromMaterials()");
     expect(script).toContain("function runCourseGeneration(teacher)");
     expect(script).toContain('label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate (3 Hall Passes)"');
