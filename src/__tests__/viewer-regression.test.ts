@@ -189,6 +189,18 @@ describe("viewer regression guardrails", () => {
     expect(cssRule(".room-row-meta")).toContain("flex-direction: column");
   });
 
+  it("uses one teacher pfp source for channel thumbs and class chat bubbles", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(script).toContain("function teacherSmallAvatarUrl(facultyOrId)");
+    expect(script).toContain('return teacherPortraitUrl(facultyOrId, "face");');
+    expect(script).toContain("avatarImgSrc = teacherSmallAvatarUrl(facultyId)");
+    expect(script).toContain("const thumbUrl = teacherSmallAvatarUrl(fac);");
+    expect(script).toContain('+ ":" + (f.assetTeacherId || "") + ":" + (f.profileImageUrl || "")');
+    expect(script).not.toContain("function teacherStickerUrl");
+    expect(script).not.toContain('avatarImgSrc = teacherPortraitUrl(facultyId, "")');
+  });
+
   it("routes bug reports through the first-party issue endpoint", () => {
     const html = renderedViewer();
     const script = inlineScript(html);

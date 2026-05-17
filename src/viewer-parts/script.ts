@@ -1123,9 +1123,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   function teacherPortraitUrl(facultyOrId, variant) {
     return teacherAssetUrl(facultyOrId, variant) || facultyProfileImageUrl(facultyOrId) || null;
   }
-  function teacherStickerUrl(facultyId) {
-    if (!facultyId) return null;
-    return teacherPortraitUrl(facultyId, "");
+  function teacherSmallAvatarUrl(facultyOrId) {
+    return teacherPortraitUrl(facultyOrId, "face");
   }
   function studentStickerUrl(studentId) {
     if (!studentId) return null;
@@ -1137,7 +1136,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const avatar = document.createElement("div");
     avatar.className = "avatar" + (kind === "teacher" ? " is-teacher" : "");
     let avatarImgSrc = null;
-    if (kind === "teacher" && facultyId) avatarImgSrc = teacherStickerUrl(facultyId);
+    if (kind === "teacher" && facultyId) avatarImgSrc = teacherSmallAvatarUrl(facultyId);
     else if (kind === "student" && studentId) avatarImgSrc = studentStickerUrl(studentId);
     else if (kind === "you" && lastTelemetry?.character?.portraitDataUrl) avatarImgSrc = lastTelemetry.character.portraitDataUrl;
     if (avatarImgSrc) {
@@ -3260,6 +3259,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       f.id + ":" + f.available + ":" + f.questionCount + ":" + (f.courseGrade || "")
         + ":" + (f.completedClasses ?? "") + "/" + (f.requiredClasses ?? "")
         + ":" + ((f.todayClass && f.todayClass.status) || "")
+        + ":" + (f.assetTeacherId || "") + ":" + (f.profileImageUrl || "")
     ).join("|") + "::rooms=" + roomsSig + "::" + t.faculty + "::" + (!!t.character ? "1" : "0") + "::" + (unlocked ? "1" : "0")
       + "::students=" + studentRailSignature(t);
     if (sig === lastRosterSig) return;
@@ -3301,7 +3301,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         thumb.title = "Open " + fac.displayName + "'s card";
         thumb.style.cursor = "pointer";
         thumb.addEventListener("click", (e) => { e.stopPropagation(); openTeacherProfile(fac.id); });
-        const thumbUrl = teacherAssetUrl(fac, "face");
+        const thumbUrl = teacherSmallAvatarUrl(fac);
         if (thumbUrl) {
           const img = document.createElement("img");
           img.src = thumbUrl;
