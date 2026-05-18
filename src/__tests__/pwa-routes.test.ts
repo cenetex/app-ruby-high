@@ -101,6 +101,12 @@ describe("PWA surface", () => {
     expect(response.res.statusCode).toBe(200);
     expect(response.headers.get("content-encoding")).toBe("gzip");
     expect(response.headers.get("vary")).toBe("Accept-Encoding");
+    const csp = response.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).toContain("frame-ancestors 'self'");
     expect(Buffer.isBuffer(response.raw)).toBe(true);
 
     const text = gunzipSync(response.raw as Buffer).toString("utf8");

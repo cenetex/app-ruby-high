@@ -193,8 +193,6 @@ export class DynamoStateStore implements StateStoreLike {
         typeof record.id === "string" &&
         typeof record.creatorUserId === "string" &&
         typeof record.creatorSessionId === "string" &&
-        typeof record.ratiAvatarId === "string" &&
-        typeof record.ratiModel === "string" &&
         typeof record.displayName === "string" &&
         typeof record.packId === "string" &&
         record.pack &&
@@ -383,19 +381,6 @@ export class DynamoStateStore implements StateStoreLike {
     if (this.ttlSeconds > 0) {
       item.expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
     }
-    await this.client.send(new PutCommand({
-      TableName: this.tableName,
-      Item: item,
-    }));
-  }
-
-  async saveTeacher(record: StoredTeacherRecord): Promise<void> {
-    this.invalidateScanCache();
-    const item: Record<string, unknown> = {
-      pk: `teacher:${encodeURIComponent(record.id)}`,
-      teacherRecord: record,
-      updatedAt: record.updatedAt,
-    };
     await this.client.send(new PutCommand({
       TableName: this.tableName,
       Item: item,

@@ -47,9 +47,6 @@ export interface StoredTeacherRecord {
   id: string;
   creatorUserId: string;
   creatorSessionId: string;
-  creatorWallet?: string;
-  ratiAvatarId: string;
-  ratiModel: string;
   displayName: string;
   description: string;
   profileImageUrl?: string;
@@ -160,7 +157,6 @@ export interface StateStoreLike {
   saveAuthUser(user: AuthUserRecord): Promise<void>;
   saveAuthSession(session: AuthSessionRecord): Promise<void>;
   savePack(record: StoredContentPackRecord): Promise<void>;
-  saveTeacher(record: StoredTeacherRecord): Promise<void>;
   saveDraftPack(record: StoredDraftContentPackRecord): Promise<void>;
   savePackInstallation(record: StoredPackInstallationRecord): Promise<void>;
   deletePack(ownerSessionId: string | null, packId: string): Promise<void>;
@@ -352,8 +348,6 @@ export class StateStore implements StateStoreLike {
         typeof r.id === "string" &&
         typeof r.creatorUserId === "string" &&
         typeof r.creatorSessionId === "string" &&
-        typeof r.ratiAvatarId === "string" &&
-        typeof r.ratiModel === "string" &&
         typeof r.displayName === "string" &&
         typeof r.packId === "string" &&
         r.pack &&
@@ -444,11 +438,6 @@ export class StateStore implements StateStoreLike {
 
   savePack(record: StoredContentPackRecord): Promise<void> {
     this.importedPacks.set(packRecordKey(record.ownerSessionId, record.pack.id), record);
-    return this.scheduleWrite();
-  }
-
-  saveTeacher(record: StoredTeacherRecord): Promise<void> {
-    this.teachers.set(record.id, record);
     return this.scheduleWrite();
   }
 

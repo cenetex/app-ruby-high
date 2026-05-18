@@ -186,8 +186,6 @@ class FailingSaveSessionStore implements StateStoreLike {
 
   async savePack(_record: StoredContentPackRecord): Promise<void> {}
 
-  async saveTeacher(_record: StoredTeacherRecord): Promise<void> {}
-
   async saveDraftPack(_record: StoredDraftContentPackRecord): Promise<void> {}
 
   async savePackInstallation(_record: StoredPackInstallationRecord): Promise<void> {}
@@ -287,10 +285,10 @@ describe("ChatService.send — message composition", () => {
       ...pack.faculty[0]!,
       id: "rati-rati",
       displayName: "RATi",
-      defaultModel: "avatar:rati",
+      defaultModel: "rati:rati",
       provider: {
         kind: "rati-openai-compatible",
-        model: "avatar:rati",
+        model: "rati:rati",
         externalId: "rati",
         supportsTools: false,
       },
@@ -313,7 +311,7 @@ describe("ChatService.send — message composition", () => {
 
     expect(events.some((ev) => ev.type === "delta" && ev.text === "RATi here.")).toBe(true);
     expect(captured?.url).toBe("https://swarm.test/api/v1/chat/completions");
-    expect(captured?.body.model).toBe("avatar:rati");
+    expect(captured?.body.model).toBe("rati:rati");
     const toolNames = captured?.body.tools.map((tool: any) => tool.function.name);
     expect(toolNames).toContain("pose_question");
     expect(toolNames).not.toContain("pick_from_bank");
@@ -337,10 +335,10 @@ describe("ChatService.send — message composition", () => {
       ...pack.faculty[0]!,
       id: "rati-fallback",
       displayName: "Opus",
-      defaultModel: "avatar:opus",
+      defaultModel: "rati:opus",
       provider: {
         kind: "rati-openai-compatible",
-        model: "avatar:opus",
+        model: "rati:opus",
         externalId: "opus",
         supportsTools: true,
       },
@@ -383,10 +381,10 @@ describe("ChatService.send — message composition", () => {
       ...pack.faculty[0]!,
       id: "rati-chat-only",
       displayName: "RATi",
-      defaultModel: "avatar:rati",
+      defaultModel: "rati:rati",
       provider: {
         kind: "rati-openai-compatible",
-        model: "avatar:rati",
+        model: "rati:rati",
         externalId: "rati",
         supportsTools: true,
       },

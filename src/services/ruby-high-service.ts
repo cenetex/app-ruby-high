@@ -1013,15 +1013,6 @@ export class RubyHighService extends Service {
     return this.store.loadTeachers();
   }
 
-  async saveTeacherRecord(record: StoredTeacherRecord): Promise<void> {
-    try {
-      await this.store.saveTeacher(record);
-    } catch (err) {
-      log.error("ruby-high.persist-teacher-failed", err, { teacherId: record.id });
-      throw err;
-    }
-  }
-
   async listDraftPackRecords(): Promise<StoredDraftContentPackRecord[]> {
     return this.store.loadDraftPacks();
   }

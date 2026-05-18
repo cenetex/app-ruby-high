@@ -72,6 +72,7 @@ const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_C
 const MORE_QUESTIONS_COUNT = moreQuestionsCount();
 const PACK_SEARCH_LIMIT = 24;
 const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
+const MAX_MATERIAL_URL_REDIRECTS = 5;
 type PackLibrarySource = "official" | "creator" | "imported";
 
 export async function handlePackLibraryRoutes(
@@ -2010,28 +2011,56 @@ function generationCountToday(teacher: StoredDraftTeacherRecord): number {
 }
 
 async function fetchMarkdownMaterials(url: string): Promise<string> {
-  await assertSafeMaterialsUrl(url);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 12_000);
+  let currentUrl = url;
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "text/markdown,text/plain,*/*" },
-      signal: ctrl.signal,
-    });
-    if (!response.ok) throw new Error(`Could not fetch materials (${response.status}).`);
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType && !/text|markdown|json|octet-stream/i.test(contentType)) {
-      throw new Error("Materials URL must return markdown or plain text.");
+    for (let redirects = 0; redirects <= MAX_MATERIAL_URL_REDIRECTS; redirects++) {
+      await assertSafeMaterialsUrl(currentUrl);
+      const response = await fetch(currentUrl, {
+        method: "GET",
+        headers: { Accept: "text/markdown,text/plain,*/*" },
+        redirect: "manual",
+        signal: ctrl.signal,
+      });
+      if (isRedirectStatus(response.status)) {
+        if (redirects >= MAX_MATERIAL_URL_REDIRECTS) {
+          throw new Error("Materials URL redirected too many times.");
+        }
+        currentUrl = nextMaterialsRedirectUrl(currentUrl, response);
+        continue;
+      }
+      if (!response.ok) throw new Error(`Could not fetch materials (${response.status}).`);
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType && !/text|markdown|json|octet-stream/i.test(contentType)) {
+        throw new Error("Materials URL must return markdown or plain text.");
+      }
+      const text = await readLimitedResponseText(response, MAX_MATERIAL_CHARS);
+      if (text.length > MAX_MATERIAL_CHARS) {
+        throw new Error(`Course materials must be ${MAX_MATERIAL_CHARS} characters or less.`);
+      }
+      return text;
     }
-    const text = await readLimitedResponseText(response, MAX_MATERIAL_CHARS);
-    if (text.length > MAX_MATERIAL_CHARS) {
-      throw new Error(`Course materials must be ${MAX_MATERIAL_CHARS} characters or less.`);
-    }
-    return text;
+    throw new Error("Materials URL redirected too many times.");
   } finally {
     clearTimeout(timer);
   }
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+function nextMaterialsRedirectUrl(currentUrl: string, response: Response): string {
+  const location = response.headers.get("location")?.trim();
+  if (!location) throw new Error("Materials URL redirected without a location.");
+  let next: URL;
+  try {
+    next = new URL(location, currentUrl);
+  } catch {
+    throw new Error("Materials URL redirect is invalid.");
+  }
+  return normalizeMarkdownSourceUrl(next.toString());
 }
 
 function normalizeMarkdownSourceUrl(raw: string): string {
@@ -2268,7 +2297,6 @@ function cleanImageRef(value: string): string {
 function slugForText(value: string): string {
   const slug = value
     .toLowerCase()
-    .replace(/^avatar:/, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);

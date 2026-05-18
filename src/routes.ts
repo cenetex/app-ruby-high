@@ -10,7 +10,6 @@ import { renderViewerHtml } from "./viewer.js";
 import { handleChatRoutes } from "./chat-routes.js";
 import { handlePackRoutes } from "./pack-routes.js";
 import { handlePackLibraryRoutes } from "./pack-library-routes.js";
-import { handleTeacherCatalogRoutes } from "./teacher-catalog-routes.js";
 import { AuthService } from "./services/auth-service.js";
 import { getRuntime, getSessionId, tryGetService } from "./services/session-identity.js";
 import {
@@ -162,38 +161,6 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       json: ctx.json,
       readJsonBody: ctx.readJsonBody,
     });
-  }
-
-  // Creator teacher catalog: wallet-linked RATi avatars become Ruby High
-  // teachers, optionally published into the global roster.
-  if (ctx.pathname.startsWith("/api/apps/ruby-high/teachers")) {
-    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
-    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
-    if (!auth || !ruby) {
-      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
-      return true;
-    }
-    return handleTeacherCatalogRoutes(
-      {
-        method: ctx.method,
-        pathname: ctx.pathname,
-        url: ctx.url,
-        res: ctx.res,
-        cookieHeader: ctx.cookieHeader,
-        authorizationHeader: ctx.authorizationHeader,
-        walletAddressHeader: ctx.walletAddressHeader,
-        apiKeyHeader: ctx.apiKeyHeader,
-        error: ctx.error,
-        json: ctx.json,
-        readJsonBody: ctx.readJsonBody,
-      },
-      {
-        auth,
-        ruby,
-        sessionIdFor: (cookieHeader) => getSessionId(runtime, cookieHeader),
-        walletAddressForRecord: (record) => auth.walletAddressForRecord(record),
-      },
-    );
   }
 
   if (
