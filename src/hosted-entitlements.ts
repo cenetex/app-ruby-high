@@ -25,6 +25,11 @@ export interface HostedEntitlementStatus {
   hallPasses: number;
   hosted_ai: HostedAiEntitlementStatus;
   hosted_images: Record<HostedImageKind, HostedImageEntitlementStatus>;
+  creator: {
+    courseSlotCost: number;
+    questionGenerationCost: number;
+    moreQuestionsCount: number;
+  };
 }
 
 type EntitlementInput = {
@@ -65,6 +70,14 @@ export function courseSlotCost(): number {
   const explicit = readPositiveIntEnv("RUBY_HIGH_COURSE_SLOT_HALL_PASS_COST", 0);
   if (explicit > 0) return explicit;
   return readPositiveIntEnv("RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST", 3);
+}
+
+export function questionGenerationCost(): number {
+  return readPositiveIntEnv("RUBY_HIGH_QUESTION_GENERATION_HALL_PASS_COST", 1);
+}
+
+export function moreQuestionsCount(): number {
+  return readPositiveIntEnv("RUBY_HIGH_MORE_QUESTIONS_COUNT", 6);
 }
 
 export function hostedAiAccessCost(): number {
@@ -134,6 +147,11 @@ export function hostedEntitlementStatus(input: EntitlementInput = {}): HostedEnt
     hosted_images: {
       portrait: hostedImageEntitlementStatus(input, "portrait"),
       diploma: hostedImageEntitlementStatus(input, "diploma"),
+    },
+    creator: {
+      courseSlotCost: courseSlotCost(),
+      questionGenerationCost: questionGenerationCost(),
+      moreQuestionsCount: moreQuestionsCount(),
     },
   };
 }

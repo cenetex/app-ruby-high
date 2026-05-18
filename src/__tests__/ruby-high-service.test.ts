@@ -136,6 +136,39 @@ describe("Hall Pass wallet", () => {
     })).toThrow(/Not enough Hall Passes/);
   });
 
+  it("keeps wallet idempotency after the visible transaction list rotates", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:wallet-ledger";
+
+    ruby.grantHallPasses(sid, {
+      amount: 20,
+      idempotencyKey: "stripe:checkout:old",
+      source: "stripe",
+    });
+    for (let i = 0; i < 205; i++) {
+      ruby.grantHallPasses(sid, {
+        amount: 1,
+        idempotencyKey: `admin:grant:${i}`,
+        source: "admin",
+      });
+    }
+    expect(ruby.getOrCreate(sid).wallet.transactions?.some((tx) => tx.id === "stripe:checkout:old")).toBe(false);
+    expect(ruby.hallPassBalance(sid)).toBe(230);
+
+    await ruby.flush();
+    const rehydrated = new RubyHighService({} as never, new StateStore(storePath));
+    await rehydrated["hydrate"]();
+    activeRuby = rehydrated;
+    const repeat = rehydrated.grantHallPasses(sid, {
+      amount: 20,
+      idempotencyKey: "stripe:checkout:old",
+      source: "stripe",
+    });
+
+    expect(repeat.applied).toBe(false);
+    expect(repeat.state.wallet.hallPasses).toBe(230);
+  });
+
   it("unlocks character slots for one Hall Pass and grants a Photo Day credit", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:slots";

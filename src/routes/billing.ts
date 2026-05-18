@@ -8,6 +8,8 @@ import {
   hostedEntitlementStatus,
   hostedImageCost,
   hostedOpenRouterConfigured,
+  moreQuestionsCount,
+  questionGenerationCost,
 } from "../hosted-entitlements.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
@@ -17,6 +19,8 @@ export {
   hostedAiAccessCost,
   hostedAiAccessDurationMs,
   hostedImageCost,
+  moreQuestionsCount,
+  questionGenerationCost,
 } from "../hosted-entitlements.js";
 
 export const BILLING_PREFIX = `${APP_ROUTE_PREFIX}/billing`;
@@ -383,6 +387,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         diploma: hostedImageCost("diploma"),
       },
       courseSlotCost: courseSlotCost(),
+      questionGenerationCost: questionGenerationCost(),
+      moreQuestionsCount: moreQuestionsCount(),
       hostedAiAccess: {
         configured: entitlements.hosted_ai.configured,
         cost: hostedAiAccessCost(),

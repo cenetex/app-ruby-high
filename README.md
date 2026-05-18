@@ -141,6 +141,7 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_MORE_QUESTIONS_COUNT` | `6` | Default number of cards requested by Generate More Questions. |
 | `RUBY_HIGH_PORTRAIT_HALL_PASS_COST` | `1` | Hall Pass cost for server-hosted custom portraits. |
 | `RUBY_HIGH_DIPLOMA_HALL_PASS_COST` | `3` | Hall Pass cost for server-hosted diploma images. |
+| `RUBY_HIGH_HOSTED_IMAGE_PENDING_TTL_MS` | `900000` | Timeout before a stuck pending hosted-image charge is failed and refunded. |
 | `RUBY_HIGH_COURSE_SLOT_HALL_PASS_COST` | `3` | Hall Pass cost to reserve/publish one creator course slot. The legacy `RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST` is still honored as a fallback. |
 | `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | — | Required Authorization header value for `/api/apps/ruby-high/billing/revenuecat/webhook`. The route accepts either this exact value or `Bearer <value>`. |
 | `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE` | `HLP` | RevenueCat Virtual Currency code to credit as Hall Passes when using RevenueCat Virtual Currency events. |

@@ -496,6 +496,8 @@ export interface RubyHighWallet {
   hostedAiAccessExpiresAt?: number;
   /** Idempotency ledger for paid currency grants/spends. */
   transactions?: RubyHighWalletTransaction[];
+  /** Durable operation ledger. Kept out of telemetry; used for idempotency after display history rotates. */
+  operationLedger?: Record<string, RubyHighWalletTransaction>;
 }
 
 export interface CharacterSlotEntitlements {

@@ -68,6 +68,7 @@ function readNonNegativeMs(value: string | undefined, fallback: number): number 
 
 const OPINION_SUBMIT_READY_GRACE_MS = readNonNegativeMs(process.env.RUBY_HIGH_OPINION_SUBMIT_READY_GRACE_MS, 1_500);
 const OPINION_SUBMIT_READY_POLL_MS = 75;
+const HOSTED_IMAGE_PENDING_TTL_MS = readNonNegativeMs(process.env.RUBY_HIGH_HOSTED_IMAGE_PENDING_TTL_MS, 15 * 60 * 1000);
 
 async function llmJson<T = OpenRouterChatCompletion>(args: {
   apiKey: string;
@@ -1197,6 +1198,28 @@ async function prepareHostedImageCharge(args: {
     }
     if (metadata.status === "failed") {
       throw new HostedImageChargeError("Hosted image request failed previously. Start a new image request.", 409);
+    }
+    const pendingAgeMs = Date.now() - Math.floor(Number(existing.at ?? 0));
+    if (
+      (metadata.status === "pending" || metadata.status == null) &&
+      HOSTED_IMAGE_PENDING_TTL_MS > 0 &&
+      Number.isFinite(pendingAgeMs) &&
+      pendingAgeMs > HOSTED_IMAGE_PENDING_TTL_MS
+    ) {
+      await refundHostedImageCharge({
+        ruby: args.ruby,
+        sessionId: args.sessionId,
+        charge: {
+          hallPassCost: usedPhotoDayCredit ? 0 : hallPassCost,
+          hallPasses: args.ruby.hallPassBalance(args.sessionId),
+          requestId,
+          spendKey,
+          replayUrl: null,
+          usedPhotoDayCredit,
+        },
+        reason: "Hosted image request timed out before completion.",
+      });
+      throw new HostedImageChargeError("Hosted image request timed out. Start a new image request.", 409);
     }
     throw new HostedImageChargeError("Hosted image request is already in progress. Try again in a moment.", 409);
   }
@@ -2550,10 +2573,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const sessionId = auth.stateKeyForRecord(record);
-    const imageCredential = resolveOpenRouterGenerationCredential({
+    const imageCredential = resolveOpenRouterImageCredential({
       apiKeyHeader: ctx.apiKeyHeader,
-      ruby,
-      sessionId,
     });
     const apiKey = imageCredential.apiKey;
     if (!apiKey) {

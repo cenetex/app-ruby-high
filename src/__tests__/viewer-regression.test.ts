@@ -304,7 +304,7 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');
     expect(script).toContain("async generateCourse(draftId, payload, options)");
     expect(script).toContain('"/course/generate"');
-    expect(script).toContain("COURSE_SLOT_HALL_PASS_COST = 3");
+    expect(script).toContain("function creatorPricing(t)");
     expect(script).toContain("COURSE_GENERATION_STEPS");
     expect(script).toContain("Generate teacher portrait");
     expect(script).toContain("function startCourseGenerationProgress()");
@@ -312,8 +312,8 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("function generateCourseFromMaterials()");
     expect(script).toContain("function runCourseGeneration(teacher)");
     expect(script).toContain('label.textContent = packQuestionGenerationBusy');
-    expect(script).toContain('"Generate More Questions (1 Hall Pass)" : "Generate More Questions"');
-    expect(script).toContain('packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + COURSE_SLOT_HALL_PASS_COST + " Hall Passes)"');
+    expect(script).toContain('"Generate More Questions (" + questionCostLabel + ")" : "Generate More Questions"');
+    expect(script).toContain('packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + hallPassCostLabel(cost) + ")"');
     expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateQuestions");
     expect(script).toContain("applyHallPassBalance(data.hallPasses, data.entitlements)");
     expect(script).toContain("function deleteDraftTeacher(teacherId)");

@@ -5,7 +5,13 @@ import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { log } from "./services/logger.js";
 import { TokenBucket } from "./services/rate-limit.js";
-import { courseSlotCost, hostedEntitlementStatus, hostedOpenRouterApiKey } from "./hosted-entitlements.js";
+import {
+  courseSlotCost,
+  hostedEntitlementStatus,
+  hostedOpenRouterApiKey,
+  moreQuestionsCount,
+  questionGenerationCost,
+} from "./hosted-entitlements.js";
 import {
   ORIGINAL_PACK_ID,
   availablePacksForSession,
@@ -61,9 +67,9 @@ const DRAFT_PREFIX = "/api/apps/ruby-high/pack-drafts";
 const MAX_MATERIAL_CHARS = 80_000;
 const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY, 5);
 const COURSE_SLOT_HALL_PASS_COST = courseSlotCost();
-const QUESTION_GENERATION_HALL_PASS_COST = readPositiveInt(process.env.RUBY_HIGH_QUESTION_GENERATION_HALL_PASS_COST, 1);
+const QUESTION_GENERATION_HALL_PASS_COST = questionGenerationCost();
 const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 18);
-const MORE_QUESTIONS_COUNT = readPositiveInt(process.env.RUBY_HIGH_MORE_QUESTIONS_COUNT, 6);
+const MORE_QUESTIONS_COUNT = moreQuestionsCount();
 const PACK_SEARCH_LIMIT = 24;
 const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
 type PackLibrarySource = "official" | "creator" | "imported";
@@ -404,39 +410,77 @@ export async function handlePackLibraryRoutes(
     }
     const teacherId = decodeURIComponent(generatePath[2]);
     const hallPassCost = credential.hosted ? QUESTION_GENERATION_HALL_PASS_COST : 0;
-    if (hallPassCost > 0 && deps.ruby.hallPassBalance(sessionId) < hallPassCost) {
-      ctx.error(ctx.res, `Not enough Hall Passes. Need ${hallPassCost}, have ${deps.ruby.hallPassBalance(sessionId)}.`, 402);
-      return true;
-    }
+    const requestId = cleanClientRequestId(bodyString(body, "requestId")) || String(Date.now());
+    const spendKey = `question-generation:${sessionId}:${draft.id}:${teacherId}:${requestId}`;
     try {
       const teacher = draft.teachers.find((entry) => entry.id === teacherId);
       if (!teacher) throw new Error("Unknown teacher.");
+      let spend: ReturnType<RubyHighService["spendHallPasses"]> | null = null;
+      if (hallPassCost > 0) {
+        const existing = deps.ruby.walletTransaction(sessionId, spendKey);
+        if (existing) {
+          const metadata = existing.metadata ?? {};
+          if (
+            metadata.route !== "question-generation" ||
+            metadata.requestId !== requestId ||
+            metadata.draftId !== draft.id ||
+            metadata.teacherId !== teacherId
+          ) {
+            ctx.error(ctx.res, "Question generation request id was already used for different inputs.", 409);
+            return true;
+          }
+          if (metadata.status === "completed") {
+            ctx.json(ctx.res, {
+              ok: true,
+              draft: draftDetail(draft),
+              teacher: teacherDetail(draft, teacher),
+              hallPassCost,
+              hallPasses: deps.ruby.hallPassBalance(sessionId),
+              entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
+              replay: true,
+            });
+            return true;
+          }
+          if (metadata.status === "failed") {
+            ctx.error(ctx.res, "Question generation request failed previously. Start a new request.", 409);
+            return true;
+          }
+          ctx.error(ctx.res, "Question generation request is already in progress. Try again in a moment.", 409);
+          return true;
+        }
+        if (deps.ruby.hallPassBalance(sessionId) < hallPassCost) {
+          ctx.error(ctx.res, `Not enough Hall Passes. Need ${hallPassCost}, have ${deps.ruby.hallPassBalance(sessionId)}.`, 402);
+          return true;
+        }
+        spend = deps.ruby.spendHallPasses(sessionId, {
+          amount: hallPassCost,
+          idempotencyKey: spendKey,
+          source: "question-generation",
+          description: "Generate more questions",
+          metadata: {
+            route: "question-generation",
+            status: "pending",
+            requestId,
+            draftId: draft.id,
+            teacherId,
+          },
+        });
+        await deps.ruby.flushSession(sessionId);
+      }
       const questions = await generateAdditionalQuestionsWithAi({
         apiKey: credential.apiKey,
         draft,
         teacher,
         questionCount: questionCountFrom(bodyValue(body, "questionCount"), MORE_QUESTIONS_COUNT),
       });
-      const requestId = cleanClientRequestId(bodyString(body, "requestId")) || String(Date.now());
-      const spendKey = `question-generation:${sessionId}:${draft.id}:${teacherId}:${requestId}`;
-      const spend = hallPassCost > 0
-        ? deps.ruby.spendHallPasses(sessionId, {
-            amount: hallPassCost,
-            idempotencyKey: spendKey,
-            source: "question-generation",
-            description: "Generate more questions",
-            metadata: {
-              draftId: draft.id,
-              teacherId,
-              questionCount: questions.length,
-            },
-          })
-        : null;
       const updated = appendGeneratedQuestionsForTeacher(draft, teacherId, questions);
       try {
         await deps.ruby.saveDraftPackRecord(updated);
         if (spend?.transaction) {
-          deps.ruby.annotateWalletTransaction(sessionId, spendKey, { status: "completed" });
+          deps.ruby.annotateWalletTransaction(sessionId, spendKey, {
+            status: "completed",
+            questionCount: questions.length,
+          });
           await deps.ruby.flushSession(sessionId);
         }
       } catch (err) {
@@ -472,6 +516,21 @@ export async function handlePackLibraryRoutes(
         entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
       });
     } catch (err) {
+      // If the external generator failed after a hosted charge was reserved,
+      // refund here. Save failures are refunded in the narrower block above.
+      const tx = hallPassCost > 0 ? deps.ruby.walletTransaction(sessionId, spendKey) : null;
+      if (tx?.metadata?.status === "pending" && Number(tx.hallPasses ?? 0) < 0) {
+        const reason = err instanceof Error ? err.message.slice(0, 160) : String(err).slice(0, 160);
+        deps.ruby.annotateWalletTransaction(sessionId, spendKey, { status: "failed", error: reason });
+        deps.ruby.refundHallPasses(sessionId, {
+          amount: hallPassCost,
+          idempotencyKey: `${spendKey}:refund`,
+          source: "question-generation",
+          description: "Generate more questions refund",
+          metadata: { spendKey, draftId: draft.id, teacherId, reason },
+        });
+        await deps.ruby.flushSession(sessionId);
+      }
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
     }
     return true;
@@ -1156,9 +1215,15 @@ async function reserveCourseSlotForPublish(args: {
   }
 
   const now = Date.now();
-  const spendKey = courseSlotSpendKey(args.draft.id);
-  const prior = args.ruby.walletTransaction(args.sessionId, spendKey);
-  const spend = prior ? null : args.ruby.spendHallPasses(args.sessionId, {
+  const baseSpendKey = courseSlotSpendKey(args.draft.id);
+  const prior = args.ruby.walletTransaction(args.sessionId, baseSpendKey);
+  const priorUsable = !!prior && prior.metadata?.status !== "failed";
+  const spendKey = priorUsable
+    ? baseSpendKey
+    : prior
+      ? courseSlotSpendKey(args.draft.id, `${now}-${randomBytes(4).toString("hex")}`)
+      : baseSpendKey;
+  const spend = priorUsable ? null : args.ruby.spendHallPasses(args.sessionId, {
     amount: COURSE_SLOT_HALL_PASS_COST,
     idempotencyKey: spendKey,
     source: "course-slot",
@@ -1180,7 +1245,7 @@ async function reserveCourseSlotForPublish(args: {
     visibility: args.draft.visibility,
     status: "reserved",
     walletTransactionId: spendKey,
-    createdAt: prior?.at ?? now,
+    createdAt: priorUsable ? prior.at : now,
     updatedAt: now,
   };
   const updatedDraft = touchDraft({ ...args.draft, courseSlot: slot });
@@ -1226,8 +1291,9 @@ function courseSlotId(draftId: string): string {
   return `course-slot:${slugForText(draftId)}`;
 }
 
-function courseSlotSpendKey(draftId: string): string {
-  return `course-slot:${slugForText(draftId)}`;
+function courseSlotSpendKey(draftId: string, attemptId?: string): string {
+  const base = `course-slot:${slugForText(draftId)}`;
+  return attemptId ? `${base}:${slugForText(attemptId).slice(0, 24)}` : base;
 }
 
 function courseSlotShareSlug(draft: StoredDraftContentPackRecord): string {

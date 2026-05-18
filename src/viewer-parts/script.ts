@@ -1655,10 +1655,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
   }
 
-  function usingHostedOpenRouterGeneration() {
-    return !!authed && !getStoredApiKey() && !!hostedAiActive;
-  }
-
   function hostedEntitlements(t) {
     const src = t || lastTelemetry;
     return src && src.entitlements && typeof src.entitlements === "object" ? src.entitlements : null;
@@ -1683,6 +1679,29 @@ const VIEWER_SCRIPT_SUFFIX = `
     const raw = entitlement && entitlement.cost != null ? entitlement.cost : costs && costs[kind];
     const cost = Math.max(1, Math.round(Number(raw || 1)));
     return formatWholeNumber(cost) + " Hall Pass" + (cost === 1 ? "" : "es");
+  }
+
+  function positiveWholeNumber(value, fallback) {
+    const parsed = Math.round(Number(value));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  function hallPassCostLabel(cost) {
+    const normalized = positiveWholeNumber(cost, 1);
+    return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
+  }
+
+  function creatorPricing(t) {
+    const entitlements = hostedEntitlements(t);
+    const creator = entitlements && entitlements.creator && typeof entitlements.creator === "object"
+      ? entitlements.creator
+      : {};
+    const products = billingProductsCache || {};
+    return {
+      courseSlotCost: positiveWholeNumber(creator.courseSlotCost ?? products.courseSlotCost, 3),
+      questionGenerationCost: positiveWholeNumber(creator.questionGenerationCost ?? products.questionGenerationCost, 1),
+      moreQuestionsCount: positiveWholeNumber(creator.moreQuestionsCount ?? products.moreQuestionsCount, 6),
+    };
   }
 
   async function ensureBillingProductsForCreditWarning() {
@@ -1713,9 +1732,20 @@ const VIEWER_SCRIPT_SUFFIX = `
     );
   }
 
+  function teacherImageGenerationStatusReason() {
+    if (!authed) return "Sign in before generating teacher images.";
+    if (getStoredApiKey()) return "";
+    const entitlement = hostedImageEntitlement("portrait");
+    if (entitlement && entitlement.configured) {
+      return entitlement.affordable ? "" : "Need " + hostedImageCostLabel("portrait") + ".";
+    }
+    return openRouterGenerationMessage("generating teacher images");
+  }
+
   function teacherImageCreditHint() {
-    if (!openRouterAiEnabled()) return openRouterGenerationMessage("generating teacher images");
-    if (usingHostedOpenRouterGeneration()) return "Hosted image generation spends " + hostedImageCostLabel("portrait") + " when it completes.";
+    const reason = teacherImageGenerationStatusReason();
+    if (reason) return reason;
+    if (!getStoredApiKey()) return "Hosted image generation spends " + hostedImageCostLabel("portrait") + " when it completes.";
     return "Uses your OpenRouter key. No Hall Passes are spent.";
   }
 
@@ -2273,6 +2303,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       diploma: hostedImages && hostedImages.diploma ? hostedImages.diploma.cost : payload && payload.imageCosts ? payload.imageCosts.diploma : undefined,
     };
     const hostedAi = entitlements && entitlements.hosted_ai ? entitlements.hosted_ai : payload && payload.hostedAiAccess ? payload.hostedAiAccess : {};
+    const creator = creatorPricing(payload);
     const activeAi = hostedAiTelemetry(lastTelemetry);
     if (els.billingCosts) {
       els.billingCosts.replaceChildren();
@@ -2280,6 +2311,8 @@ const VIEWER_SCRIPT_SUFFIX = `
         ["AI Access", hostedAi.cost],
         ["Portrait", costs.portrait],
         ["Diploma art", costs.diploma],
+        ["Course publish", creator.courseSlotCost],
+        ["More questions", creator.questionGenerationCost],
       ].forEach(([label, cost]) => {
         const chip = document.createElement("span");
         chip.className = "cost-chip";
@@ -6574,7 +6607,6 @@ const VIEWER_SCRIPT_SUFFIX = `
   let courseGenerationProgressTimer = null;
   let packAutosaveTimer = null;
   let teacherAutosaveTimer = null;
-  const COURSE_SLOT_HALL_PASS_COST = 3;
   const PREGENERATED_TEACHER_ASSETS = [
     { id: "ruby", name: "Ruby", subject: "Homeroom", description: "Warm, direct, and good at turning scattered questions into a useful classroom thread.", quote: "We start where the room actually is." },
     { id: "sally-science", name: "Sally Science", subject: "Science Lab", description: "Evidence-first, experimental, and happiest when a wrong answer exposes a better hypothesis.", quote: "Be wrong with reasons. Then we can work." },
@@ -6693,7 +6725,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         signal: options && options.signal,
         body: JSON.stringify({
           requestId: newPackClientRequestId("questions"),
-          questionCount: 6,
+          questionCount: creatorPricing().moreQuestionsCount,
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -7004,8 +7036,9 @@ const VIEWER_SCRIPT_SUFFIX = `
   function publishCourseSlotStatusReason() {
     if (!currentDraft || draftHasCourseSlot()) return "";
     const wallet = walletNumbers(lastTelemetry);
-    if (wallet.hallPasses < COURSE_SLOT_HALL_PASS_COST) {
-      return "Need " + COURSE_SLOT_HALL_PASS_COST + " Hall Passes to publish.";
+    const cost = creatorPricing().courseSlotCost;
+    if (wallet.hallPasses < cost) {
+      return "Need " + hallPassCostLabel(cost) + " to publish.";
     }
     return "";
   }
@@ -7017,7 +7050,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
     if (packPublishBtn) {
       const publishReason = generationBusy ? "Cancel generation before publishing." : publishCourseSlotStatusReason();
-      packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + COURSE_SLOT_HALL_PASS_COST + " Hall Passes)";
+      const cost = creatorPricing().courseSlotCost;
+      packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + hallPassCostLabel(cost) + ")";
       packPublishBtn.disabled = packImportBusy || generationBusy || !!publishReason;
       packPublishBtn.title = publishReason;
     }
@@ -7662,8 +7696,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       const generateLabel = document.createElement("span");
       generateLabel.textContent = pendingTeacherImageBusy ? "Generating" : (roll.profileImageUrl ? "Generate again" : "Generate");
       generateBtn.appendChild(generateLabel);
-      generateBtn.disabled = packImportBusy || pendingTeacherImageBusy || !openRouterAiEnabled();
-      generateBtn.title = openRouterAiEnabled() ? "" : openRouterGenerationMessage("generating teacher images");
+      const imageReason = teacherImageGenerationStatusReason();
+      generateBtn.disabled = packImportBusy || pendingTeacherImageBusy || !!imageReason;
+      generateBtn.title = imageReason;
       generateBtn.addEventListener("click", generateTeacherImageForPendingRoll);
       custom.appendChild(generateBtn);
       if (pendingTeacherImageBusy) {
@@ -7731,8 +7766,9 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   async function generateTeacherImageForPendingRoll() {
     if (!pendingTeacherRoll || pendingTeacherImageBusy) return;
-    if (!openRouterAiEnabled()) {
-      pendingTeacherImageStatus = openRouterGenerationMessage("generating teacher images");
+    const imageReason = teacherImageGenerationStatusReason();
+    if (imageReason) {
+      pendingTeacherImageStatus = imageReason;
       pendingTeacherImageInvalid = true;
       renderPackTeacherEditor();
       return;
@@ -8025,7 +8061,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       : null;
     if (!hostedAi || !hostedAi.configured) return "Connect OpenRouter before generating more questions.";
     const wallet = walletNumbers(lastTelemetry);
-    return wallet.hallPasses >= 1 ? "" : "Need 1 Hall Pass to generate more questions.";
+    const cost = creatorPricing().questionGenerationCost;
+    return wallet.hallPasses >= cost ? "" : "Need " + hallPassCostLabel(cost) + " to generate more questions.";
   }
 
   function courseGenerationPayload(teacher) {
@@ -8058,9 +8095,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       }
       const label = document.createElement("span");
       const hostedQuestionCost = !getStoredApiKey() && !localAiEnabled;
+      const questionCostLabel = hallPassCostLabel(creatorPricing().questionGenerationCost);
       label.textContent = packQuestionGenerationBusy
         ? "Generating"
-        : hostedQuestionCost ? "Generate More Questions (1 Hall Pass)" : "Generate More Questions";
+        : hostedQuestionCost ? "Generate More Questions (" + questionCostLabel + ")" : "Generate More Questions";
       teacherGenerateQuestionsBtn.appendChild(label);
       teacherGenerateQuestionsBtn.classList.toggle("is-loading", packQuestionGenerationBusy);
       teacherGenerateQuestionsBtn.setAttribute("aria-busy", packQuestionGenerationBusy ? "true" : "false");
@@ -8092,9 +8130,10 @@ const VIEWER_SCRIPT_SUFFIX = `
       courseCancelGenerationBtn.disabled = packImportBusy;
     }
     packEditEl.querySelectorAll("[data-requires-openrouter]").forEach((btn) => {
-      const canGenerateImages = openRouterAiEnabled();
+      const imageReason = teacherImageGenerationStatusReason();
+      const canGenerateImages = !imageReason;
       btn.disabled = packImportBusy || pendingTeacherImageBusy || !canGenerateImages;
-      btn.title = canGenerateImages ? "" : openRouterGenerationMessage("generating teacher images");
+      btn.title = canGenerateImages ? "" : imageReason;
     });
   }
 

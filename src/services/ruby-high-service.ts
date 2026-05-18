@@ -554,7 +554,7 @@ export class RubyHighService extends Service {
     if (!id) return null;
     const state = this.getOrCreate(sessionId);
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
-    return state.wallet.transactions?.find((tx) => tx.id === id) ?? null;
+    return state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id) ?? null;
   }
 
   annotateWalletTransaction(
@@ -567,15 +567,18 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
     const tx = state.wallet.transactions?.find((entry) => entry.id === id) ?? null;
-    if (!tx) return null;
+    const ledgerTx = state.wallet.operationLedger?.[id] ?? null;
+    if (!tx && !ledgerTx) return null;
     const normalized = normalizeWalletMetadata(metadata);
-    tx.metadata = {
-      ...(tx.metadata ?? {}),
+    const nextMetadata = {
+      ...((tx ?? ledgerTx)?.metadata ?? {}),
       ...(normalized ?? {}),
     };
+    if (tx) tx.metadata = nextMetadata;
+    if (ledgerTx) ledgerTx.metadata = nextMetadata;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
-    return tx;
+    return ledgerTx ?? tx;
   }
 
   hostedAiAccessExpiresAt(sessionId: string, now = Date.now()): number | null {
@@ -691,7 +694,7 @@ export class RubyHighService extends Service {
     const id = input.idempotencyKey.trim();
     if (!id) throw new Error("Hall Pass transaction idempotency key is required.");
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
-    const existing = state.wallet.transactions?.find((tx) => tx.id === id);
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
     if (existing) return { state, applied: false, transaction: existing };
 
     const current = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0)));
@@ -711,7 +714,7 @@ export class RubyHighService extends Service {
     state.wallet.hallPasses = kind === "hall-pass-spend" || kind === "hall-pass-revoke"
       ? current - appliedAmount
       : current + appliedAmount;
-    state.wallet.transactions = [...(state.wallet.transactions ?? []), transaction].slice(-WALLET_TRANSACTION_LIMIT);
+    recordWalletTransaction(state, transaction);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction };
@@ -728,7 +731,7 @@ export class RubyHighService extends Service {
     if (!id) throw new Error("Photo Day credit transaction idempotency key is required.");
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
     state.characterSlots = normalizeCharacterSlots(state.characterSlots);
-    const existing = state.wallet.transactions?.find((tx) => tx.id === id);
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
     if (existing) {
       return {
         state,
@@ -754,7 +757,7 @@ export class RubyHighService extends Service {
     state.characterSlots.photoDayCredits = kind === "photo-day-spend"
       ? current - amount
       : current + amount;
-    state.wallet.transactions = [...(state.wallet.transactions ?? []), transaction].slice(-WALLET_TRANSACTION_LIMIT);
+    recordWalletTransaction(state, transaction);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return {
@@ -1201,7 +1204,9 @@ export class RubyHighService extends Service {
   private ensureWelcomeHallPasses(state: QuizState): boolean {
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
     if (state.wallet.welcomeHallPassesGrantedAt) return false;
-    const existing = state.wallet.transactions?.find((tx) => tx.id === WELCOME_HALL_PASS_GRANT_ID) ?? null;
+    const existing = state.wallet.operationLedger?.[WELCOME_HALL_PASS_GRANT_ID] ??
+      state.wallet.transactions?.find((tx) => tx.id === WELCOME_HALL_PASS_GRANT_ID) ??
+      null;
     if (existing) {
       state.wallet.welcomeHallPassesGrantedAt = existing.at;
       return true;
@@ -1218,7 +1223,7 @@ export class RubyHighService extends Service {
     };
     state.wallet.hallPasses = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0))) + WELCOME_HALL_PASS_GRANT;
     state.wallet.welcomeHallPassesGrantedAt = at;
-    state.wallet.transactions = [...(state.wallet.transactions ?? []), transaction].slice(-WALLET_TRANSACTION_LIMIT);
+    recordWalletTransaction(state, transaction);
     state.updatedAt = at;
     return true;
   }
@@ -3895,8 +3900,8 @@ function normalizeWalletMetadata(value: unknown): RubyHighWalletTransaction["met
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[] {
-  if (!Array.isArray(value)) return [];
+function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | null {
+  if (!raw || typeof raw !== "object") return null;
   const kinds: RubyHighWalletTransactionKind[] = [
     "hall-pass-grant",
     "hall-pass-spend",
@@ -3918,43 +3923,70 @@ function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[
     "admin",
     "system",
   ];
+  const tx = raw as Record<string, unknown>;
+  if (typeof tx.id !== "string" || !tx.id) return null;
+  if (typeof tx.kind !== "string" || !kinds.includes(tx.kind as RubyHighWalletTransactionKind)) return null;
+  const at = typeof tx.at === "number" && Number.isFinite(tx.at) ? Math.floor(tx.at) : Date.now();
+  const entry: RubyHighWalletTransaction = {
+    id: tx.id,
+    kind: tx.kind as RubyHighWalletTransactionKind,
+    at,
+  };
+  if (typeof tx.meritStars === "number" && Number.isFinite(tx.meritStars)) {
+    entry.meritStars = Math.floor(tx.meritStars);
+  }
+  if (typeof tx.hallPasses === "number" && Number.isFinite(tx.hallPasses)) {
+    entry.hallPasses = Math.floor(tx.hallPasses);
+  }
+  if (typeof tx.photoDayCredits === "number" && Number.isFinite(tx.photoDayCredits)) {
+    entry.photoDayCredits = Math.floor(tx.photoDayCredits);
+  }
+  if (typeof tx.source === "string" && sources.includes(tx.source as NonNullable<RubyHighWalletTransaction["source"]>)) {
+    entry.source = tx.source as NonNullable<RubyHighWalletTransaction["source"]>;
+  }
+  if (typeof tx.description === "string" && tx.description.trim()) {
+    entry.description = tx.description.trim().slice(0, 240);
+  }
+  const metadata = normalizeWalletMetadata(tx.metadata);
+  if (metadata) entry.metadata = metadata;
+  return entry;
+}
+
+function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[] {
+  if (!Array.isArray(value)) return [];
   const out: RubyHighWalletTransaction[] = [];
   for (const raw of value) {
-    if (!raw || typeof raw !== "object") continue;
-    const tx = raw as Record<string, unknown>;
-    if (typeof tx.id !== "string" || !tx.id) continue;
-    if (typeof tx.kind !== "string" || !kinds.includes(tx.kind as RubyHighWalletTransactionKind)) continue;
-    const at = typeof tx.at === "number" && Number.isFinite(tx.at) ? Math.floor(tx.at) : Date.now();
-    const entry: RubyHighWalletTransaction = {
-      id: tx.id,
-      kind: tx.kind as RubyHighWalletTransactionKind,
-      at,
-    };
-    if (typeof tx.meritStars === "number" && Number.isFinite(tx.meritStars)) {
-      entry.meritStars = Math.floor(tx.meritStars);
-    }
-    if (typeof tx.hallPasses === "number" && Number.isFinite(tx.hallPasses)) {
-      entry.hallPasses = Math.floor(tx.hallPasses);
-    }
-    if (typeof tx.photoDayCredits === "number" && Number.isFinite(tx.photoDayCredits)) {
-      entry.photoDayCredits = Math.floor(tx.photoDayCredits);
-    }
-    if (typeof tx.source === "string" && sources.includes(tx.source as NonNullable<RubyHighWalletTransaction["source"]>)) {
-      entry.source = tx.source as NonNullable<RubyHighWalletTransaction["source"]>;
-    }
-    if (typeof tx.description === "string" && tx.description.trim()) {
-      entry.description = tx.description.trim().slice(0, 240);
-    }
-    const metadata = normalizeWalletMetadata(tx.metadata);
-    if (metadata) entry.metadata = metadata;
-    out.push(entry);
+    const entry = normalizeWalletTransaction(raw);
+    if (entry) out.push(entry);
   }
   return out.slice(-WALLET_TRANSACTION_LIMIT);
+}
+
+function normalizeWalletOperationLedger(value: unknown, transactions: RubyHighWalletTransaction[]): Record<string, RubyHighWalletTransaction> | undefined {
+  const out: Record<string, RubyHighWalletTransaction> = {};
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const raw of Object.values(value as Record<string, unknown>)) {
+      const entry = normalizeWalletTransaction(raw);
+      if (entry) out[entry.id] = entry;
+    }
+  }
+  for (const tx of transactions) {
+    if (!out[tx.id]) out[tx.id] = { ...tx, ...(tx.metadata ? { metadata: { ...tx.metadata } } : {}) };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function recordWalletTransaction(state: QuizState, transaction: RubyHighWalletTransaction): void {
+  const ledger = state.wallet.operationLedger ?? {};
+  ledger[transaction.id] = { ...transaction, ...(transaction.metadata ? { metadata: { ...transaction.metadata } } : {}) };
+  state.wallet.operationLedger = ledger;
+  state.wallet.transactions = [...(state.wallet.transactions ?? []), transaction].slice(-WALLET_TRANSACTION_LIMIT);
 }
 
 function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState["wallet"] {
   const src = wallet && typeof wallet === "object" ? wallet as Partial<QuizState["wallet"]> : {};
   const transactions = normalizeWalletTransactions(src.transactions);
+  const operationLedger = normalizeWalletOperationLedger(src.operationLedger, transactions);
   const welcomeHallPassesGrantedAt = Math.floor(Number(src.welcomeHallPassesGrantedAt ?? 0));
   return {
     meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
@@ -3966,6 +3998,7 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(src.hostedAiAccessExpiresAt))) }
       : {}),
     ...(transactions.length > 0 ? { transactions } : {}),
+    ...(operationLedger ? { operationLedger } : {}),
   };
 }
 

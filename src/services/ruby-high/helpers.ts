@@ -196,9 +196,9 @@ export function awardSessionScore(
   state.score.points = currentScorePoints + points;
   state.score.possible = Math.max(0, Math.floor(Number(state.score.possible ?? 0))) + possible;
   state.wallet = {
+    ...(state.wallet ?? {}),
     meritStars: currentMeritStars + points,
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
-    ...(state.wallet?.transactions ? { transactions: state.wallet.transactions } : {}),
   };
   return { base, multiplier, points, possible };
 }

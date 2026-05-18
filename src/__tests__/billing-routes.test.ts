@@ -129,6 +129,8 @@ describe("billing products", () => {
     expect(lastResponse?.body.products.map((p: any) => p.hallPasses)).toEqual([5, 20, 50, 100]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
     expect(lastResponse?.body.courseSlotCost).toBe(3);
+    expect(lastResponse?.body.questionGenerationCost).toBe(1);
+    expect(lastResponse?.body.moreQuestionsCount).toBe(6);
     expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: false, cost: 1, durationMs: 604_800_000 });
     expect(lastResponse?.body.entitlements).toMatchObject({
       hallPasses: 0,
@@ -137,6 +139,7 @@ describe("billing products", () => {
         portrait: { configured: false, cost: 1, affordable: false, canUseHosted: false },
         diploma: { configured: false, cost: 3, affordable: false, canUseHosted: false },
       },
+      creator: { courseSlotCost: 3, questionGenerationCost: 1, moreQuestionsCount: 6 },
     });
   });
 
@@ -164,6 +167,7 @@ describe("billing products", () => {
         portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
         diploma: { configured: true, cost: 3, affordable: true, canUseHosted: true },
       },
+      creator: { courseSlotCost: 3, questionGenerationCost: 1, moreQuestionsCount: 6 },
     });
     expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: true, active: false, cost: 1 });
   });

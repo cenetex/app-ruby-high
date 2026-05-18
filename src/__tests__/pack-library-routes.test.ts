@@ -623,6 +623,81 @@ describe("/pack-library", () => {
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
   });
 
+  it("charges a fresh course slot spend after a refunded reservation failure", async () => {
+    const aliceSessionId = signInUser("alice");
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Retry Course Slot" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+      cookie: "rh_session=alice",
+      body: {
+        displayName: "Retry Coach",
+        description: "Turns retry notes into cards.",
+      },
+    });
+    const teacherId = response.body.teacher.id as string;
+
+    response = await route({
+      method: "PATCH",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}`,
+      cookie: "rh_session=alice",
+      body: { materials: "A course needs enough evidence to publish after a failed reservation." },
+    });
+    expect(response.status).toBe(200);
+
+    stubQuestionGeneratorFetch();
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
+      cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
+    });
+    expect(response.status).toBe(200);
+
+    const saveDraftPackRecord = ruby.saveDraftPackRecord.bind(ruby);
+    let failOnce = true;
+    vi.spyOn(ruby, "saveDraftPackRecord").mockImplementation(async (record) => {
+      if (failOnce && record.courseSlot?.status === "reserved") {
+        failOnce = false;
+        throw new Error("storage down");
+      }
+      return saveDraftPackRecord(record);
+    });
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/publish`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(500);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(5);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/publish`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.hallPassCost).toBe(3);
+    expect(response.body.hallPasses).toBe(2);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(2);
+
+    const transactions = ruby.getOrCreate(aliceSessionId).wallet.transactions ?? [];
+    const courseSlotSpends = transactions.filter((tx) => tx.kind === "hall-pass-spend" && tx.source === "course-slot");
+    expect(courseSlotSpends).toHaveLength(2);
+    expect(courseSlotSpends.some((tx) => tx.metadata?.status === "failed")).toBe(true);
+    expect(courseSlotSpends.some((tx) => tx.metadata?.status === "completed")).toBe(true);
+    expect(transactions.some((tx) => tx.kind === "hall-pass-refund" && tx.source === "course-slot")).toBe(true);
+  });
+
   it("deletes teachers from draft packs", async () => {
     signInUser("alice");
 
@@ -983,6 +1058,26 @@ describe("/pack-library", () => {
       hallPasses: -1,
       source: "question-generation",
     });
+    ruby.revokeHallPasses(aliceSessionId, {
+      amount: 4,
+      idempotencyKey: "test:drain-after-hosted-more-questions",
+      source: "admin",
+    });
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
+      cookie: "rh_session=alice",
+      body: { requestId: "hosted-more-questions-1", questionCount: 6 },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.replay).toBe(true);
+    expect(response.body.hallPasses).toBe(0);
+    expect(response.body.teacher.questions).toHaveLength(2);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
+    expect(questionFetch).toHaveBeenCalledTimes(1);
   });
 
   it("creates an edit draft for owned published packs that no longer have a backing draft", async () => {

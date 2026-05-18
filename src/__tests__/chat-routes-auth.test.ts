@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -115,6 +116,18 @@ function buildSseChunk(text: string): Uint8Array {
     `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`,
     "data: [DONE]\n\n",
   ].join(""));
+}
+
+function hostedImageSpendKey(route: string, requestId: string): string {
+  const digest = createHash("sha256").update(`${route}:${requestId}`).digest("hex").slice(0, 32);
+  return `hosted-image:${route}:${digest}`;
+}
+
+function hostedImageFingerprint(route: string, payload: Record<string, unknown>): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ route, payload }))
+    .digest("hex")
+    .slice(0, 32);
 }
 
 async function callbackUrl(redirect: string): Promise<URL> {
@@ -387,16 +400,26 @@ describe("hosted AI access auth", () => {
 });
 
 describe("hosted image Hall Passes", () => {
-  it("rejects hosted teacher image generation until OpenRouter AI is enabled", async () => {
+  it("spends Hall Passes for hosted teacher images without requiring AI Access", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
-    const token = "hosted-teacher-image-no-ai-pass";
-    auth.injectSessionForTest(token, {
+    const token = "hosted-teacher-image-funded";
+    const record = {
       userId: "hosted-teacher-image-no-ai-pass-user",
       createdAt: Date.now(),
       expiresAt: Date.now() + 60_000,
       label: "Hosted Teacher Image",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            images: [{ image_url: { url: "data:image/png;base64,TEACHER" } }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
-    (globalThis.fetch as any).mockClear();
 
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(
@@ -406,6 +429,7 @@ describe("hosted image Hall Passes", () => {
         method: "POST",
         cookieHeader: `rh_session=${token}`,
         body: {
+          requestId: "teacher-image-funded-1",
           name: "Signal Coach",
           personality: "Turns signal notes into study cards.",
         },
@@ -413,9 +437,23 @@ describe("hosted image Hall Passes", () => {
     ));
 
     expect(handled).toBe(true);
-    expect(res.statusCode).toBe(401);
-    expect(JSON.parse(res.body).error).toContain("Connect OpenRouter");
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      profileImageUrl: "data:image/png;base64,TEACHER",
+      hallPassCost: 1,
+      hallPasses: 4,
+    });
+    expect(ruby.hallPassBalance(stateKey)).toBe(4);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(transactions.some((tx) =>
+      tx.kind === "hall-pass-spend" &&
+      tx.source === "hosted-image" &&
+      tx.metadata?.route === "teacher-portrait" &&
+      tx.metadata?.requestId === "teacher-image-funded-1" &&
+      tx.metadata?.status === "completed"
+    )).toBe(true);
   });
 
   it("rejects hosted portraits when the wallet has no Hall Passes", async () => {
@@ -713,6 +751,74 @@ describe("hosted image Hall Passes", () => {
       tx.metadata?.requestId === "portrait-replay-1"
     )).toHaveLength(1);
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
+  });
+
+  it("refunds stale pending hosted image spends before rejecting the replay", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-portrait-stale-pending";
+    const record = {
+      userId: "hosted-portrait-stale-pending-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Portrait Stale Pending",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    const requestId = "portrait-stale-1";
+    const fingerprintPayload = {
+      name: "Mina",
+      personality: "Quietly intense and observant.",
+      playbookId: null,
+      stats: null,
+    };
+    const spendKey = hostedImageSpendKey("character-portrait", requestId);
+    ruby.spendHallPasses(stateKey, {
+      amount: 1,
+      idempotencyKey: spendKey,
+      source: "hosted-image",
+      description: "Custom character portrait",
+      at: Date.now() - 20 * 60 * 1000,
+      metadata: {
+        route: "character-portrait",
+        requestId,
+        fingerprint: hostedImageFingerprint("character-portrait", fingerprintPayload),
+        status: "pending",
+      },
+    });
+    expect(ruby.hallPassBalance(stateKey)).toBe(4);
+    (globalThis.fetch as any).mockClear();
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          requestId,
+          name: fingerprintPayload.name,
+          personality: fingerprintPayload.personality,
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toContain("timed out");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(ruby.hallPassBalance(stateKey)).toBe(5);
+    const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(transactions.some((tx) =>
+      tx.id === spendKey &&
+      tx.kind === "hall-pass-spend" &&
+      tx.metadata?.status === "failed"
+    )).toBe(true);
+    expect(transactions.some((tx) =>
+      tx.id === `${spendKey}:refund` &&
+      tx.kind === "hall-pass-refund" &&
+      tx.source === "hosted-image"
+    )).toBe(true);
   });
 });
 
