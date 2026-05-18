@@ -178,7 +178,7 @@ describe("/packs/import-* removal", () => {
       method: "POST",
       path: "/api/apps/ruby-high/packs/connect-agent",
       cookie: "rh_session=alice",
-      body: { modelId: "avatar:rati" },
+      body: { modelId: "rati:rati" },
     });
     const handled = await handlePackRoutes(ctx, makeDeps());
     expect(handled).toBe(false);

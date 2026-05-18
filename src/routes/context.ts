@@ -29,9 +29,6 @@ export interface RouteContext {
   originHeader?: string | string[] | null;
   /** Raw Authorization request header, when present. */
   authorizationHeader?: string | string[] | null;
-  /** Legacy wallet bridge for older clients. New Ruby High clients use
-   *  server-verified Privy wallet data from AuthService instead. */
-  walletAddressHeader?: string | string[] | null;
   /** Raw Stripe-Signature request header, when present. */
   stripeSignatureHeader?: string | string[] | null;
   /** Raw If-None-Match request header. Static asset routes use it to return

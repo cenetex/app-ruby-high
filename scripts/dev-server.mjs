@@ -106,7 +106,6 @@ function makeRouteContext(req, res, url) {
     contentTypeHeader: req.headers["content-type"] ?? null,
     originHeader: req.headers.origin ?? null,
     authorizationHeader: req.headers.authorization ?? null,
-    walletAddressHeader: req.headers["x-ruby-high-wallet"] ?? null,
     stripeSignatureHeader: req.headers["stripe-signature"] ?? null,
     ifNoneMatch: req.headers["if-none-match"] ?? null,
     acceptEncoding: req.headers["accept-encoding"] ?? null,

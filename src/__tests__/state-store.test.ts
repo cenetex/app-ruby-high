@@ -165,30 +165,28 @@ describe("StateStore", () => {
     expect(await new StateStore(storePath).loadPacks()).toHaveLength(0);
   });
 
-  it("round-trips teacher records separately from sessions", async () => {
+  it("loads and deletes legacy teacher records separately from sessions", async () => {
     const pack = fakePack("teacher:stored");
-    const store = new StateStore(storePath);
-    await store.save([blankState("a")]);
-    await store.saveTeacher({
-      id: "teacher_1",
-      creatorUserId: "usr_1",
-      creatorSessionId: "rh:user:usr_1",
-      creatorWallet: "0x1111111111111111111111111111111111111111",
-      ratiAvatarId: "avatar-1",
-      ratiModel: "avatar:avatar-1",
-      displayName: "Stored Teacher",
-      description: "A persisted teacher.",
-      materials: "# Unit",
-      subjects: ["systems"],
-      questionCount: 1,
-      packId: pack.id,
-      visibility: "public",
-      status: "published",
-      createdAt: 10,
-      updatedAt: 20,
-      publishedAt: 20,
-      pack,
-    });
+    await writeFile(storePath, JSON.stringify({
+      sessions: [blankState("a")],
+      teachers: [{
+        id: "teacher_1",
+        creatorUserId: "usr_1",
+        creatorSessionId: "rh:user:usr_1",
+        displayName: "Stored Teacher",
+        description: "A persisted teacher.",
+        materials: "# Unit",
+        subjects: ["systems"],
+        questionCount: 1,
+        packId: pack.id,
+        visibility: "public",
+        status: "published",
+        createdAt: 10,
+        updatedAt: 20,
+        publishedAt: 20,
+        pack,
+      }],
+    }, null, 2));
 
     const fresh = new StateStore(storePath);
     const teachers = await fresh.loadTeachers();
@@ -196,7 +194,6 @@ describe("StateStore", () => {
     expect(teachers[0]).toMatchObject({
       id: "teacher_1",
       creatorUserId: "usr_1",
-      ratiAvatarId: "avatar-1",
       packId: "teacher:stored",
       status: "published",
     });

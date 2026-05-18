@@ -642,6 +642,47 @@ describe("/pack-library", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects material URL redirects to private-network hosts", async () => {
+    signInUser("alice");
+    const fetchMock = vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => new Response("", {
+      status: 302,
+      headers: { location: "https://127.0.0.1/private.md" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Redirect Guard" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+      cookie: "rh_session=alice",
+      body: {
+        displayName: "Redirect Guard",
+        description: "Rejects redirected lesson URLs.",
+      },
+    });
+    const teacherId = response.body.teacher.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/materials/from-url`,
+      cookie: "rh_session=alice",
+      clientIp: "203.0.113.22",
+      body: { url: "https://93.184.216.34/materials.md" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("private or reserved");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" });
+  });
+
   it("rejects publishing a new course slot without enough Hall Passes", async () => {
     const aliceSessionId = signInUser("alice");
     emptyWelcomeHallPasses(aliceSessionId);

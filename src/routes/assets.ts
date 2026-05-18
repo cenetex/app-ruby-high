@@ -13,6 +13,21 @@ import {
 } from "./constants.js";
 
 const SERVICE_WORKER_CACHE = "ruby-high-pwa-v2";
+const VIEWER_SECURITY_CSP_DIRECTIVES = [
+  "default-src 'self'",
+  "base-uri 'none'",
+  "object-src 'none'",
+  "form-action 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline'",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "font-src 'self' data:",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:* ws://localhost:* ws://127.0.0.1:* ws://[::1]:* wss:",
+  "frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:* capacitor: capacitor-electron: app: tauri: file:",
+  VIEWER_FRAME_ANCESTORS_DIRECTIVE,
+] as const;
 
 const FIRST_BELL_PAGE_FILES = Object.fromEntries(
   Array.from({ length: 12 }, (_, index) => {
@@ -107,18 +122,28 @@ export function sendHtmlResponse(
       : Array.isArray(existingCsp)
         ? existingCsp.join("; ").trim()
         : "";
-  const nextCsp = /\bframe-ancestors\b/i.test(normalized)
-    ? normalized
-    : normalized.length > 0
-      ? `${normalized}; ${VIEWER_FRAME_ANCESTORS_DIRECTIVE}`
-      : VIEWER_FRAME_ANCESTORS_DIRECTIVE;
-  response.setHeader("Content-Security-Policy", nextCsp);
+  response.setHeader("Content-Security-Policy", mergeViewerCsp(normalized));
   if (headerIncludes(acceptEncoding, "gzip")) {
     response.setHeader("Content-Encoding", "gzip");
     response.end(gzipSync(Buffer.from(html, "utf8"), { level: 6 }));
     return;
   }
   response.end(html);
+}
+
+function mergeViewerCsp(existing: string): string {
+  const directives = existing
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const seen = new Set(directives.map((part) => part.split(/\s+/, 1)[0]?.toLowerCase()).filter(Boolean));
+  for (const directive of VIEWER_SECURITY_CSP_DIRECTIVES) {
+    const name = directive.split(/\s+/, 1)[0]?.toLowerCase();
+    if (!name || seen.has(name)) continue;
+    directives.push(directive);
+    seen.add(name);
+  }
+  return directives.join("; ");
 }
 
 interface CachedAsset {
