@@ -8,7 +8,6 @@ import {
   APP_ROUTE_PREFIX,
   ASSETS_PREFIX,
   MANIFEST_PATH,
-  SERVICE_WORKER_PATH,
   VIEWER_PATH,
 } from "./constants.js";
 

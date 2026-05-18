@@ -25,7 +25,6 @@ import type {
   StoredCourseSlotRecord,
   StoredDraftContentPackRecord,
   StoredDraftTeacherRecord,
-  StoredPackInstallationRecord,
   StoredPackVisibility,
 } from "./services/state-store.js";
 import {
@@ -238,7 +237,7 @@ export async function handlePackLibraryRoutes(
       if (clientRequestId) {
         const existing = draft.teachers.find((entry) => entry.clientRequestId === clientRequestId);
         if (existing) {
-          ctx.json(ctx.res, { ok: true, draft: draftDetail(draft), teacher: teacherDetail(draft, existing) }, 200);
+          ctx.json(ctx.res, { ok: true, draft: draftDetail(draft), teacher: teacherDetail(existing) }, 200);
           return true;
         }
       }
@@ -266,7 +265,7 @@ export async function handlePackLibraryRoutes(
       };
       const updated = touchDraft({ ...draft, teachers: [...draft.teachers, teacher] });
       await deps.ruby.saveDraftPackRecord(updated);
-      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacherDetail(updated, teacher) }, 201);
+      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacherDetail(teacher) }, 201);
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
     }
@@ -330,7 +329,7 @@ export async function handlePackLibraryRoutes(
       ctx.json(ctx.res, {
         ok: true,
         draft: draftDetail(updated),
-        teacher: teacher ? teacherDetail(updated, teacher) : null,
+        teacher: teacher ? teacherDetail(teacher) : null,
         hallPassCost: 0,
         hallPasses: deps.ruby.hallPassBalance(sessionId),
         entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
@@ -352,7 +351,7 @@ export async function handlePackLibraryRoutes(
       const updated = updateDraftTeacher(draft, decodeURIComponent(teacherPath[2]), body);
       await deps.ruby.saveDraftPackRecord(updated);
       const teacher = updated.teachers.find((entry) => entry.id === decodeURIComponent(teacherPath[2]));
-      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(updated, teacher) : null });
+      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(teacher) : null });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
     }
@@ -391,7 +390,7 @@ export async function handlePackLibraryRoutes(
       });
       await deps.ruby.saveDraftPackRecord(updated);
       const teacher = updated.teachers.find((entry) => entry.id === decodeURIComponent(materialsUrlPath[2]));
-      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(updated, teacher) : null });
+      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(teacher) : null });
     } catch (err) {
       log.error("pack-draft.materials-from-url-failed", err, { userId: record.userId });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
@@ -434,7 +433,7 @@ export async function handlePackLibraryRoutes(
             ctx.json(ctx.res, {
               ok: true,
               draft: draftDetail(draft),
-              teacher: teacherDetail(draft, teacher),
+              teacher: teacherDetail(teacher),
               hallPassCost,
               hallPasses: deps.ruby.hallPassBalance(sessionId),
               entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
@@ -511,7 +510,7 @@ export async function handlePackLibraryRoutes(
       ctx.json(ctx.res, {
         ok: true,
         draft: draftDetail(updated),
-        teacher: updatedTeacher ? teacherDetail(updated, updatedTeacher) : null,
+        teacher: updatedTeacher ? teacherDetail(updatedTeacher) : null,
         hallPassCost,
         hallPasses: deps.ruby.hallPassBalance(sessionId),
         entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
@@ -549,7 +548,7 @@ export async function handlePackLibraryRoutes(
       );
       await deps.ruby.saveDraftPackRecord(updated);
       const teacher = updated.teachers.find((entry) => entry.id === decodeURIComponent(questionDeletePath[2]));
-      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(updated, teacher) : null });
+      ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(teacher) : null });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
     }
@@ -1040,7 +1039,7 @@ function draftSummary(draft: StoredDraftContentPackRecord) {
 function draftDetail(draft: StoredDraftContentPackRecord) {
   return {
     ...draftSummary(draft),
-    teachers: draft.teachers.map((teacher) => teacherDetail(draft, teacher)),
+    teachers: draft.teachers.map((teacher) => teacherDetail(teacher)),
   };
 }
 
@@ -1154,7 +1153,7 @@ function materialsFromPublishedFaculty(faculty: ContentPack["faculty"][number]):
   ].filter(Boolean).join("\n\n").slice(0, MAX_MATERIAL_CHARS);
 }
 
-function teacherDetail(draft: StoredDraftContentPackRecord, teacher: StoredDraftTeacherRecord) {
+function teacherDetail(teacher: StoredDraftTeacherRecord) {
   const facultyId = draftTeacherFacultyId(teacher);
   return {
     id: teacher.id,
@@ -1753,64 +1752,6 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
   };
 }
 
-function sourceCardsFromMaterials(
-  materials: string,
-  opts: { facultyId: string; teacherName: string; questionCount: number },
-): PackSourceCard[] {
-  const chunks = materialChunks(materials);
-  const limit = Math.max(0, Math.min(40, opts.questionCount));
-  return chunks.slice(0, limit).map((chunk, index) => {
-    const subject = subjectFromHeading(chunk.heading || opts.teacherName);
-    const back = chunk.text.slice(0, 1200);
-    return {
-      id: `${opts.facultyId}-source-${index + 1}`,
-      kind: "basic",
-      front: chunk.heading ? `What matters in ${chunk.heading}?` : `Review card ${index + 1}: ${chunk.text.split(/\s+/).slice(0, 8).join(" ")}`,
-      back,
-      acceptedAnswers: [back],
-      deckName: `${opts.teacherName} materials`,
-      tags: ["creator-pack", slugForText(subject)],
-      subject,
-      difficulty: difficultyForText(chunk.text),
-      faculty: opts.facultyId,
-    };
-  });
-}
-
-function materialChunks(materials: string): Array<{ heading: string; text: string }> {
-  const lines = materials.replace(/\r/g, "").split("\n");
-  const chunks: Array<{ heading: string; text: string }> = [];
-  let heading = "";
-  let buffer: string[] = [];
-  const flush = () => {
-    const text = buffer.join(" ").replace(/\s+/g, " ").trim();
-    if (text) chunks.push({ heading, text });
-    buffer = [];
-  };
-  for (const raw of lines) {
-    const line = raw.trim();
-    const headingMatch = line.match(/^#{1,6}\s+(.+)$/);
-    if (headingMatch?.[1]) {
-      flush();
-      heading = cleanMarkdownText(headingMatch[1]);
-      continue;
-    }
-    if (!line) {
-      flush();
-      continue;
-    }
-    buffer.push(cleanMarkdownText(line));
-  }
-  flush();
-  if (chunks.length > 0) return chunks;
-  const compact = cleanMarkdownText(materials).replace(/\s+/g, " ").trim();
-  if (!compact) return [];
-  return compact
-    .split(/(?<=[.!?])\s+/)
-    .filter((part) => part.trim().length > 0)
-    .map((text) => ({ heading: "", text: text.trim() }));
-}
-
 function cleanMarkdownText(value: string): string {
   return value
     .replace(/!\[[^\]]*]\([^)]*\)/g, "")
@@ -1823,13 +1764,6 @@ function cleanMarkdownText(value: string): string {
 function subjectFromHeading(value: string): string {
   const words = cleanMarkdownText(value).split(/\s+/).filter(Boolean);
   return words.slice(0, 3).join(" ").toLowerCase() || "open study";
-}
-
-function difficultyForText(value: string): Difficulty {
-  const wordCount = value.split(/\s+/).filter(Boolean).length;
-  if (wordCount > 95) return "hard";
-  if (wordCount > 45) return "medium";
-  return "easy";
 }
 
 function normalizeGeneratedCourseSpec(

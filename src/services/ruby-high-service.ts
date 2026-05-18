@@ -51,10 +51,8 @@ import {
   type MashCard,
   type MashTickReason,
   type NpcRoundEntry,
-  type NpcArcState,
   type NpcStudentState,
   type OpinionGrade,
-  type OpinionResponse,
   type Phase,
   type PlayerCharacter,
   type Question,
@@ -1772,10 +1770,6 @@ export class RubyHighService extends Service {
     };
   }
 
-  private cardMemoryFor(state: QuizState, courseId: string, questionId: string): CardMemory | null {
-    return this.ensureCardMemory(state)[cardMemoryKey(courseId, questionId)] ?? null;
-  }
-
   private mediaForQuestion(card: PackSourceCard): QuestionMediaAsset[] | undefined {
     const media = (card.media ?? [])
       .filter((asset) =>
@@ -2442,7 +2436,7 @@ export class RubyHighService extends Service {
 
     const advance = nextGradeAfter(grade);
     const targetGrade = advance ?? grade;
-    const normalizedReward = this.normalizeGraduationReward(state, ch, reward, targetGrade);
+    const normalizedReward = this.normalizeGraduationReward(state, ch, reward);
 
     // Resolve any MASH axis whose grade just completed (and the Senior
     // bonus axes at grade 12). The full superlative list snapshots onto
@@ -2522,7 +2516,7 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  private normalizeGraduationReward(state: QuizState, ch: PlayerCharacter, reward: GraduationReward, targetGrade: Grade): GraduationReward {
+  private normalizeGraduationReward(state: QuizState, ch: PlayerCharacter, reward: GraduationReward): GraduationReward {
     if (reward.kind === "stat") {
       if (!["head", "heart", "hustle", "honor"].includes(reward.stat)) {
         throw new Error("Pick a valid stat.");

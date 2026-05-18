@@ -38,7 +38,6 @@ import {
   GRADE_LABELS,
   PLAYER_CHAT_INTENTS,
   type CharacterStats,
-  type Grade,
   type PlayerChatIntent,
   type Question,
   type QuizState,
@@ -56,7 +55,6 @@ import {
 import {
   openRouterGenerationRequiredMessage,
   resolveOpenRouterImageCredential,
-  resolveOpenRouterGenerationCredential,
   resolveTextLlmCredential,
 } from "./openrouter-generation-access.js";
 
@@ -459,92 +457,6 @@ function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string 
     }
   }
   return "ruby";
-}
-
-/** Build the per-NPC social context bundle handed to opinion calls. The
- *  student sees who's teaching them, who they're sitting next to, what
- *  grade they're in, and the player's first name. */
-function buildOpinionContext(args: {
-  student: StudentCharacter;
-  npcStats: { head: number; heart: number; hustle: number; honor: number };
-  teacherId: string | null;
-  classmates: StudentCharacter[];
-  playerName: string;
-  grade: string | null;
-  question: string;
-  rubric?: string;
-}): string {
-  const t = args.teacherId ? teacherById(args.teacherId) : null;
-  const teacherLine = t ? `Class: ${t.displayName} (${args.teacherId === "ruby" ? "homeroom" : args.teacherId === "sally-science" ? "science" : "literature"}).` : "Class: independent study.";
-  const classmateLines = args.classmates
-    .filter((c) => c.id !== args.student.id)
-    .map((c) => `- ${c.name}: ${oneLineVibe(c.id)}`)
-    .join("\n");
-  const stats = args.npcStats;
-  return [
-    `You are ${args.student.name}, a ${args.grade ? gradeLabel(args.grade) : "junior"} at Ruby High.`,
-    teacherLine,
-    `Your stats — HEAD ${stats.head >= 0 ? "+" : ""}${stats.head}, HEART ${stats.heart >= 0 ? "+" : ""}${stats.heart}, HUSTLE ${stats.hustle >= 0 ? "+" : ""}${stats.hustle}, HONOR ${stats.honor >= 0 ? "+" : ""}${stats.honor}. Let your higher stats shape what you notice.`,
-    `In the room with you:`,
-    classmateLines || "- (empty)",
-    `Player at the next desk: ${args.playerName}.`,
-    "",
-    `Question: ${args.question}`,
-    args.rubric ? `Rubric: ${args.rubric}` : "",
-    "",
-    "Write 2-3 sentences in your voice. Make it specific, have an opinion, engage the question. Reference a classmate or the teacher by name when it fits. Lowercase and casual where it lands.",
-  ].filter(Boolean).join("\n");
-}
-
-function oneLineVibe(id: string): string {
-  switch (id) {
-    case "lyra": return "anxious overachiever, sweats every wrong answer";
-    case "sami": return "dry sarcastic, pretends not to care";
-    case "ravi": return "loud, drops weirdly specific facts";
-    case "indra": return "quiet sniper, drops one perfect line a day";
-    case "mika": return "bright supportive jock energy";
-    case "noor": return "deadpan one-liner master";
-    default: return "classmate";
-  }
-}
-
-/** Generate one NPC's opinion response (1 OpenRouter call). Returns the text. */
-async function generateOpinionResponse(args: {
-  apiKey: string;
-  student: StudentCharacter;
-  npcStats: { head: number; heart: number; hustle: number; honor: number };
-  teacherId: string | null;
-  classmates: StudentCharacter[];
-  playerName: string;
-  grade: string | null;
-  question: string;
-  rubric?: string;
-}): Promise<string> {
-  const userPrompt = buildOpinionContext({
-    student: args.student,
-    npcStats: args.npcStats,
-    teacherId: args.teacherId,
-    classmates: args.classmates,
-    playerName: args.playerName,
-    grade: args.grade,
-    question: args.question,
-    rubric: args.rubric,
-  });
-  const body = await llmJson<OpenRouterChatCompletion>({
-    apiKey: args.apiKey,
-    label: "chat",
-    body: {
-      model: resolveStudentModel(),
-      messages: [
-        { role: "system", content: args.student.systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: 220,
-      temperature: 0.9,
-    },
-  });
-  const text = (body.choices?.[0]?.message?.content ?? "").trim();
-  return text.replace(/^["'\s]+|["'\s]+$/g, "");
 }
 
 /** Have the teacher grade all opinion responses in one call. Returns
