@@ -96,9 +96,12 @@ import {
   SRS_AGAIN_MS,
   SRS_ONE_DAY_MS,
   awardSessionScore,
+  applyClassRollGradeModifier,
   cardMemoryKey,
   classAverage,
+  classGradeQuestionScore,
   classQuestionScore,
+  classRollGradeModifier,
   classRecordKey,
   clamp,
   dailyFacultyForQuizState,
@@ -106,6 +109,7 @@ import {
   dueKnownCard,
   intervalForCorrect,
   judgeTypedAnswer,
+  letterGradeForClassRecord,
   letterGradeForClassScore,
   normalizeStoredImageRef,
   requiredClassCompletionsForGrade,
@@ -1299,7 +1303,7 @@ export class RubyHighService extends Service {
   }
 
   private unlockTeacherStoryPageForAClass(state: QuizState, record: DailyClassRecord, now = Date.now()): ComicPageUnlock | null {
-    if (record.status !== "complete" || record.letterGrade !== "A") return null;
+    if (record.status !== "complete" || !/^A/.test(record.letterGrade ?? "")) return null;
     const pageNumber = TEACHER_STORY_COMIC_PAGES[record.facultyId]?.[record.grade];
     if (!pageNumber) return null;
     const room = COMIC_CLASS_LABELS[record.facultyId] ?? record.facultyId;
@@ -1628,28 +1632,41 @@ export class RubyHighService extends Service {
       .sort((a, b) => a.date.localeCompare(b.date));
     let currentPassCount = 0;
     let currentPassScores: number[] = [];
+    let currentPassRecords: DailyClassRecord[] = [];
     let clearedPassScores: number[] | null = null;
+    let clearedPassRecords: DailyClassRecord[] | null = null;
     let clearedPassCount = 0;
     for (const record of completed) {
       const score = classAverage(record);
-      const recordLetter = record.letterGrade ?? letterGradeForClassScore(score);
+      const recordLetter = record.letterGrade ?? letterGradeForClassRecord(record);
       if (letterGradePasses(recordLetter)) {
         currentPassCount += 1;
+        currentPassRecords.push(record);
         if (typeof score === "number") currentPassScores.push(score);
         if (currentPassCount >= required) {
           clearedPassCount = currentPassCount;
           clearedPassScores = currentPassScores.slice();
+          clearedPassRecords = currentPassRecords.slice();
         }
       } else {
         currentPassCount = 0;
         currentPassScores = [];
+        currentPassRecords = [];
       }
     }
     const scoreSet = clearedPassScores && clearedPassScores.length > 0 ? clearedPassScores : null;
     const averageScore = scoreSet
       ? Math.round(scoreSet.reduce((sum, n) => sum + n, 0) / scoreSet.length)
       : undefined;
-    const letterGrade = clearedPassCount >= required ? letterGradeForClassScore(averageScore) : undefined;
+    const rollModifier = clearedPassRecords
+      ? classRollGradeModifier(
+          clearedPassRecords.reduce((sum, record) => sum + Math.max(0, Math.floor(Number(record.rollHitCount ?? 0))), 0),
+          clearedPassRecords.reduce((sum, record) => sum + Math.max(0, Math.floor(Number(record.rollMissCount ?? 0))), 0),
+        )
+      : "";
+    const letterGrade = clearedPassCount >= required
+      ? applyClassRollGradeModifier(letterGradeForClassScore(averageScore), rollModifier)
+      : undefined;
     return {
       facultyId,
       grade,
@@ -1696,6 +1713,7 @@ export class RubyHighService extends Service {
     wasCorrect: boolean,
     score: number,
     now = Date.now(),
+    rollOutcome?: "hit" | "mixed" | "miss" | null,
   ): DailyClassUpdate {
     const round = state.activeRound;
     const session = round?.classSession;
@@ -1727,12 +1745,15 @@ export class RubyHighService extends Service {
     if (wasCorrect) record.correctCount += 1;
     record.scoreTotal += score;
     record.scoreMax += 100;
+    if (rollOutcome === "hit") record.rollHitCount = (record.rollHitCount ?? 0) + 1;
+    else if (rollOutcome === "mixed") record.rollMixedCount = (record.rollMixedCount ?? 0) + 1;
+    else if (rollOutcome === "miss") record.rollMissCount = (record.rollMissCount ?? 0) + 1;
     record.updatedAt = now;
     if (record.questionCount >= CLASS_QUESTIONS_PER_DAY) {
       record.status = "complete";
       record.completedAt = now;
       const avg = classAverage(record);
-      record.letterGrade = letterGradeForClassScore(avg);
+      record.letterGrade = letterGradeForClassRecord(record);
       log.event("class.completed", {
         sessionId: state.sessionId,
         faculty: session.facultyId,
@@ -2224,8 +2245,9 @@ export class RubyHighService extends Service {
     const classProgress = this.recordDailyClassQuestion(
       state,
       wasCorrect,
-      rawQuestionScore,
+      classGradeQuestionScore(wasCorrect),
       reviewAt,
+      picked == null || forfeit ? null : playerRoll?.outcome ?? null,
     );
 
     // Player progression. Card mastery updates above; class grades are derived
@@ -3009,7 +3031,7 @@ export class RubyHighService extends Service {
       const classProgress = this.recordDailyClassQuestion(
         state,
         passed,
-        rawQuestionScore,
+        classGradeQuestionScore(passed),
         record.at,
       );
       const reportFaculty = q.faculty ?? round.classSession?.facultyId ?? state.faculty;

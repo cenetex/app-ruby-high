@@ -113,8 +113,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!Number.isFinite(n)) return "—";
     if (n >= 90) return "A";
     if (n >= 80) return "B";
-    if (n >= 70) return "C";
-    if (n >= 60) return "D";
+    if (n >= 67) return "C";
+    if (n > 0) return "D";
     return "F";
   }
   function streakScoreMultiplier(count) {
@@ -319,7 +319,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function shouldShowClassReport(t) {
     const key = classReportKey(t);
-    return !!(key && !t.current && !t.graduation_ready && key !== shownClassReportKey);
+    return !!(key && !t.current && !t.graduation_ready && key !== dismissedClassReportKey);
   }
   function currentRevealMatches(t) {
     return !!(t && t.current && t.lastReveal && t.lastReveal.questionId === t.current.id);
@@ -599,7 +599,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   let activeQuestionId = null; // currently displayed question id on the blackboard
   let questionCounter = 0;     // session-local question count for "Question N" label
   let lastShownGrade = null;
-  let shownClassReportKey = null;
+  let dismissedClassReportKey = null;
   // Tracks the yearbook's length on the previous telemetry tick so we
   // can detect Senior completion (the only grade transition that
   // doesn't change current_grade). null on first boot — same suppress-
@@ -1528,7 +1528,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
     const correctSummary = todayCorrectSummary(today);
     addMetric("correct", correctSummary.value, correctSummary.detail);
-    addMetric("score", formatClassScore(today.score), "average");
+    addMetric("score", formatClassScore(today.score), "grade score");
     wrap.appendChild(metrics);
     return wrap;
   }
@@ -1577,8 +1577,6 @@ const VIEWER_SCRIPT_SUFFIX = `
     els.blackboardPanel.dataset.questionType = "class-report";
     els.blackboardPanel.dataset.cardRole = "report";
     activeQuestionId = null;
-    shownClassReportKey = classReportKey(lastTelemetry) || shownClassReportKey;
-
     els.blackboardMeta.replaceChildren();
     if (faculty) {
       const f = document.createElement("span");
@@ -3685,6 +3683,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!postClass || !postClass.report) return false;
     const manualTurn = turnController.beginManual();
     if (!manualTurn) return true;
+    const reportKey = classReportKey(lastTelemetry);
+    if (reportKey) dismissedClassReportKey = reportKey;
     try {
       const data = await command({
         type: "pick",

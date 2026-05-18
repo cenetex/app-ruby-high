@@ -1142,6 +1142,9 @@ export interface DailyClassRecord {
   correctCount: number;
   scoreTotal: number;
   scoreMax: number;
+  rollHitCount?: number;
+  rollMixedCount?: number;
+  rollMissCount?: number;
   letterGrade?: string;
   completedAt?: number;
   updatedAt: number;

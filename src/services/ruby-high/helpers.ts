@@ -163,23 +163,55 @@ export function requiredClassCompletionsForGrade(grade: Grade): number {
 
 export function letterGradeForClassScore(score: number | undefined): string | undefined {
   if (score == null || Number.isNaN(score)) return undefined;
+  // Daily class score is the correctness percentage: 3/3 A, 2/3 C,
+  // 1/3 D, 0/3 F. Dice rolls are applied separately as + / - suffixes.
   if (score >= 90) return "A";
   if (score >= 80) return "B";
-  if (score >= 70) return "C";
-  if (score >= 60) return "D";
+  if (score >= 67) return "C";
+  if (score > 0) return "D";
   return "F";
+}
+
+export type ClassRollGradeModifier = "" | "+" | "-";
+
+export function classRollGradeModifier(hitCount: number | undefined, missCount: number | undefined): ClassRollGradeModifier {
+  const hits = Math.max(0, Math.floor(Number(hitCount ?? 0)));
+  const misses = Math.max(0, Math.floor(Number(missCount ?? 0)));
+  if (hits > misses) return "+";
+  if (misses > hits) return "-";
+  return "";
+}
+
+export function applyClassRollGradeModifier(
+  baseLetter: string | undefined,
+  modifier: ClassRollGradeModifier,
+): string | undefined {
+  if (!baseLetter) return undefined;
+  if (!modifier || baseLetter === "F") return baseLetter;
+  return `${baseLetter}${modifier}`;
+}
+
+export function letterGradeForClassRecord(record: DailyClassRecord): string | undefined {
+  return applyClassRollGradeModifier(
+    letterGradeForClassScore(classAverage(record)),
+    classRollGradeModifier(record.rollHitCount, record.rollMissCount),
+  );
 }
 
 export function classQuestionScore(
   wasCorrect: boolean,
   playerRoll: NonNullable<NonNullable<QuizState["lastReveal"]>["playerRoll"]> | null,
 ): number {
-  // Wrong answers earn no class score. Per DESIGN.md 1.6.4 the dice
-  // classify the round, but rolls only ever upgrade a correct outcome.
+  // Wrong answers earn no Merit Stars. Per DESIGN.md 1.6.4 the dice classify
+  // the round, but rolls only ever upgrade a correct outcome's reward score.
   if (!wasCorrect) return 0;
   const outcome = playerRoll?.outcome ?? "miss";
   const base = outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80;
   return clamp(base, 0, 100);
+}
+
+export function classGradeQuestionScore(wasCorrect: boolean): number {
+  return wasCorrect ? 100 : 0;
 }
 
 export function awardSessionScore(

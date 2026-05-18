@@ -350,10 +350,13 @@ describe("viewer regression guardrails", () => {
 
     expect(script).toContain("function buildClassReportCard");
     expect(script).toContain("function shouldShowClassReport");
-    expect(script).toContain("shownClassReportKey = classReportKey(lastTelemetry)");
+    expect(script).toContain("let dismissedClassReportKey = null");
+    expect(script).toContain("key !== dismissedClassReportKey");
+    expect(script).toContain("dismissedClassReportKey = reportKey");
     expect(script).toContain("class-report-teacher-art");
     expect(script).toContain('teacherAssetUrl(artAssetId, "full-sticker")');
     expect(script).toContain('addMetric("score"');
+    expect(script).toContain('"grade score"');
     expect(script).not.toContain('addMetric("score / grade"');
     expect(script).not.toContain('addMetric("questions"');
   });

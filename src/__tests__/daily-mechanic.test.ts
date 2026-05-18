@@ -749,11 +749,11 @@ describe("Streak + grade advancement", () => {
         e.sourceId === "teacher:sally-science:grade:9"
       )).toBe(true);
 
-      const freshmanBSid = "test:first-bell-freshman-b-no-page";
-      attachCharacter(ruby, freshmanBSid, "9", false);
+      const freshmanMissSid = "test:first-bell-freshman-missed-no-page";
+      attachCharacter(ruby, freshmanMissSid, "9", false);
       Math.random = () => 0;
-      completeClassOnDate(ruby, freshmanBSid, "sally-science", "2026-05-05T18:00:00Z");
-      expect(ruby.getOrCreate(freshmanBSid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([]);
+      completeClassOnDate(ruby, freshmanMissSid, "sally-science", "2026-05-05T18:00:00Z", "B");
+      expect(ruby.getOrCreate(freshmanMissSid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([]);
 
       const sophomoreSid = "test:first-bell-sophomore-a-no-page";
       attachCharacter(ruby, sophomoreSid, "10", false);

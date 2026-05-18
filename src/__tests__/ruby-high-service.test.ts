@@ -896,6 +896,7 @@ describe("RubyHighService Phase 1", () => {
     ruby.setActivePackForSession(sid, pack.id);
     attachTestCharacter(ruby, sid);
     ruby.selectGrade(sid, "12");
+    ruby.getOrCreate(sid).character!.stats = { head: -99, heart: -99, hustle: -99, honor: -99 };
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
@@ -911,7 +912,35 @@ describe("RubyHighService Phase 1", () => {
       questionCount: 3,
       correctCount: 2,
       totalQuestions: 3,
-      letterGrade: "D",
+      letterGrade: "C-",
+      score: 67,
+    });
+  });
+
+  it("uses rolls only for the class grade suffix", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:roll-suffix-correctness-grade";
+    const pack = fakeLeveledPack("pack:roll-suffix-correctness-grade");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "12");
+    ruby.getOrCreate(sid).character!.stats = { head: 99, heart: 99, hustle: 99, honor: 99 };
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+
+    for (let i = 0; i < 3; i += 1) {
+      const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+      const correct = posed.current!.correct!;
+      const wrong = correct === "A" ? "B" : "A";
+      ruby.submitAnswer(sid, i === 2 ? wrong : correct);
+      ruby.clearBoard(sid);
+    }
+
+    const progress = ruby.courseProgress(sid, "level-test-course");
+    expect(progress.today).toMatchObject({
+      correctCount: 2,
+      totalQuestions: 3,
+      letterGrade: "C+",
       score: 67,
     });
   });
