@@ -248,8 +248,10 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("state.textContent = isSearch");
     expect(script).toContain(': pack.active ? "Using now" : "Use"');
     expect(script).toContain("async searchCreatorPacks(query)");
+    expect(script).toContain("async function refreshPackSearchResults()");
     expect(script).toContain('"/api/apps/ruby-high/pack-library/search?q="');
     expect(script).toContain("async function installCreatorPack(pack)");
+    expect((script.match(/await refreshPackSearchResults\(\);/g) ?? []).length).toBe(2);
     expect(script).toContain('installBtn.textContent = pack.installed ? (pack.active ? "Using" : "Use") : "Install"');
     expect(script).toContain('packSearchBtn.addEventListener("click", searchCreatorPacks)');
     expect(script).toContain('"Switching classroom pack..."');

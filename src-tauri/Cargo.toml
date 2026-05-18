@@ -16,3 +16,6 @@ tauri = { version = "2", features = [] }
 [features]
 default = []
 custom-protocol = ["tauri/custom-protocol"]
+
+[patch.crates-io]
+glib = { path = "../vendor/glib-0.18.5-rustsec-2024-0429" }

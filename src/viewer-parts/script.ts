@@ -7275,6 +7275,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       packLibraryState = await packStudioClient.uninstallPack(pack.id);
       renderPackList();
       renderDraftPackList();
+      await refreshPackSearchResults();
       packStatusEl.textContent = "Pack uninstalled.";
       await fetchSession();
     } catch (err) {
@@ -7329,6 +7330,23 @@ const VIEWER_SCRIPT_SUFFIX = `
     }
   }
 
+  async function refreshPackSearchResults() {
+    if (!packSearchState.searched) {
+      renderPackSearchList();
+      return;
+    }
+    const query = packSearchState.query || "";
+    const runId = ++packSearchRunId;
+    const data = await packStudioClient.searchCreatorPacks(query);
+    if (runId !== packSearchRunId) return;
+    packSearchState = {
+      query: data && typeof data.query === "string" ? data.query : query,
+      packs: data && Array.isArray(data.packs) ? data.packs : [],
+      searched: true,
+    };
+    renderPackSearchList();
+  }
+
   async function installCreatorPack(pack) {
     if (!pack || packImportBusy) return;
     setPackBusy(true);
@@ -7338,15 +7356,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       packLibraryState = await packStudioClient.installPack(pack.id, true);
       renderPackList();
       renderDraftPackList();
-      if (packSearchState.searched) {
-        const data = await packStudioClient.searchCreatorPacks(packSearchState.query);
-        packSearchState = {
-          query: data && typeof data.query === "string" ? data.query : packSearchState.query,
-          packs: data && Array.isArray(data.packs) ? data.packs : [],
-          searched: true,
-        };
-        renderPackSearchList();
-      }
+      await refreshPackSearchResults();
       packStatusEl.textContent = "Pack installed.";
     } catch (err) {
       packStatusEl.textContent = "Could not install pack · " + (err && err.message ? err.message : "error");
