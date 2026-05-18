@@ -559,6 +559,57 @@ export class RubyHighService extends Service {
     return state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id) ?? null;
   }
 
+  recordWalletMarker(
+    sessionId: string,
+    input: {
+      idempotencyKey: string;
+      kind: RubyHighWalletTransactionKind;
+      meritStars?: number;
+      hallPasses?: number;
+      photoDayCredits?: number;
+      source?: RubyHighWalletTransaction["source"];
+      description?: string;
+      metadata?: RubyHighWalletTransaction["metadata"];
+      at?: number;
+      display?: boolean;
+    },
+  ): { state: QuizState; applied: boolean; transaction: RubyHighWalletTransaction } {
+    const id = input.idempotencyKey.trim();
+    if (!id) throw new Error("Wallet marker idempotency key is required.");
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
+    if (existing) return { state, applied: false, transaction: existing };
+
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind: input.kind,
+      at: typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now(),
+      ...(typeof input.meritStars === "number" && Number.isFinite(input.meritStars)
+        ? { meritStars: Math.floor(input.meritStars) }
+        : {}),
+      ...(typeof input.hallPasses === "number" && Number.isFinite(input.hallPasses)
+        ? { hallPasses: Math.floor(input.hallPasses) }
+        : {}),
+      ...(typeof input.photoDayCredits === "number" && Number.isFinite(input.photoDayCredits)
+        ? { photoDayCredits: Math.floor(input.photoDayCredits) }
+        : {}),
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    };
+    if (input.display === false) {
+      const ledger = state.wallet.operationLedger ?? {};
+      ledger[transaction.id] = { ...transaction, ...(transaction.metadata ? { metadata: { ...transaction.metadata } } : {}) };
+      state.wallet.operationLedger = ledger;
+    } else {
+      recordWalletTransaction(state, transaction);
+    }
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction };
+  }
+
   annotateWalletTransaction(
     sessionId: string,
     idempotencyKey: string,

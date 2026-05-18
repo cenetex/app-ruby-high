@@ -186,7 +186,7 @@ RevenueCat setup:
 - Use one Offering for the shop, for example `hall_passes`, with consumable packages for `hall_pass_5`, `hall_pass_20`, `hall_pass_50`, and `hall_pass_100`. Product IDs with app prefixes are okay if they end in those IDs.
 - Set the RevenueCat app user ID to the Ruby High state key (`rh:user:<userId>`). If the app sends just `<userId>`, the server prefixes it to `rh:user:<userId>`. Anonymous RevenueCat IDs are ignored for wallet fulfillment.
 - Add a webhook pointing at `/api/apps/ruby-high/billing/revenuecat/webhook` and set its Authorization header to `Bearer <RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH>` or exactly the configured value.
-- Send `NON_RENEWING_PURCHASE` events to grant Hall Passes and `CANCELLATION` events to revoke refunded Hall Passes. If using RevenueCat Virtual Currency, send `VIRTUAL_CURRENCY_TRANSACTION` events and set the currency code to `HLP` or configure `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE`.
+- Send `NON_RENEWING_PURCHASE` events to grant Hall Passes and `CANCELLATION` events to revoke refunded Hall Passes. Refund events only debit a wallet when they match a previously recorded RevenueCat transaction; refund-first events are marked so a delayed purchase webhook for the same transaction cannot credit a refunded purchase. If using RevenueCat Virtual Currency, send `VIRTUAL_CURRENCY_TRANSACTION` events and set the currency code to `HLP` or configure `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE`.
 
 ## Tests
 

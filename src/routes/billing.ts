@@ -297,9 +297,46 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
   return { sessionId, amount: product.hallPasses, productId: product.id, applied: result.applied };
 }
 
-function revenueCatTransactionKey(prefix: "grant" | "reversal", event: RevenueCatWebhookEvent): string {
-  const transaction = event.transaction_id || event.original_transaction_id || event.virtual_currency_transaction_id || event.id || "unknown";
-  return `revenuecat:${prefix}:${transaction}:${revenueCatCurrencyCode()}`;
+function compactRevenueCatIds(values: Array<string | undefined>): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const id = value?.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+function revenueCatProductTransactionIds(event: RevenueCatWebhookEvent): string[] {
+  return compactRevenueCatIds([event.transaction_id, event.original_transaction_id]);
+}
+
+function revenueCatVirtualCurrencyTransactionId(event: RevenueCatWebhookEvent): string | null {
+  return compactRevenueCatIds([
+    event.virtual_currency_transaction_id,
+    event.transaction_id,
+    event.original_transaction_id,
+    event.id,
+  ])[0] ?? null;
+}
+
+function revenueCatTransactionKey(prefix: "grant" | "reversal", transactionId: string): string {
+  return `revenuecat:${prefix}:${transactionId}:${revenueCatCurrencyCode()}`;
+}
+
+function revenueCatWalletTransaction(
+  ruby: RubyHighService,
+  sessionId: string,
+  prefix: "grant" | "reversal",
+  transactionIds: string[],
+) {
+  for (const transactionId of transactionIds) {
+    const transaction = ruby.walletTransaction(sessionId, revenueCatTransactionKey(prefix, transactionId));
+    if (transaction) return { transactionId, transaction };
+  }
+  return null;
 }
 
 function hallPassDeltaFromResult(result: { transaction: { hallPasses?: number } }): number {
@@ -330,9 +367,11 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
       return Number.isFinite(value) ? sum + value : sum;
     }, 0);
     if (amount === 0) return { applied: false, sessionId, reason: "no-hall-pass-adjustment" };
+    const transactionId = revenueCatVirtualCurrencyTransactionId(event);
+    if (!transactionId) return { applied: false, sessionId, reason: "missing-transaction-id" };
     const input = {
       amount: Math.abs(amount),
-      idempotencyKey: revenueCatTransactionKey(amount > 0 ? "grant" : "reversal", event),
+      idempotencyKey: revenueCatTransactionKey(amount > 0 ? "grant" : "reversal", transactionId),
       source: "revenuecat" as const,
       description: `${Math.abs(amount)} Hall Pass${Math.abs(amount) === 1 ? "" : "es"} via RevenueCat`,
       at: event.event_timestamp_ms,
@@ -363,16 +402,132 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
   if (event.type === "NON_RENEWING_PURCHASE" || event.type === "CANCELLATION") {
     const amount = hallPassesForProductId(event.product_id);
     if (!amount) return { applied: false, sessionId, productId: event.product_id, reason: "unknown-product" };
+    const transactionIds = revenueCatProductTransactionIds(event);
+    const transactionId = transactionIds[0];
+    if (!transactionId) {
+      return { applied: false, sessionId, productId: event.product_id, reason: "missing-transaction-id" };
+    }
     const reversal = event.type === "CANCELLATION";
+    const existingReversal = revenueCatWalletTransaction(ruby, sessionId, "reversal", transactionIds);
+    if (existingReversal) {
+      if (!reversal) {
+        return {
+          applied: false,
+          sessionId,
+          amount: 0,
+          requestedAmount: amount,
+          productId: event.product_id,
+          hallPasses: ruby.hallPassBalance(sessionId),
+          reason: "transaction-already-refunded",
+        };
+      }
+      const actualAmount = hallPassDeltaFromResult({ transaction: existingReversal.transaction });
+      const requestedAmount = -amount;
+      return {
+        applied: false,
+        sessionId,
+        amount: actualAmount,
+        ...(actualAmount !== requestedAmount ? { requestedAmount } : {}),
+        productId: event.product_id,
+        hallPasses: ruby.hallPassBalance(sessionId),
+        reason: "already-reversed",
+      };
+    }
+    if (reversal) {
+      const originalGrant = revenueCatWalletTransaction(ruby, sessionId, "grant", transactionIds);
+      if (!originalGrant) {
+        let markerApplied = false;
+        let hallPasses = ruby.hallPassBalance(sessionId);
+        for (const candidateId of transactionIds) {
+          const marker = ruby.recordWalletMarker(sessionId, {
+            idempotencyKey: revenueCatTransactionKey("reversal", candidateId),
+            kind: "hall-pass-revoke",
+            hallPasses: 0,
+            source: "revenuecat",
+            description: `${amount} Hall Pass${amount === 1 ? "" : "es"} RevenueCat refund marker`,
+            at: event.event_timestamp_ms,
+            display: false,
+            metadata: {
+              revenueCatEventId: event.id ?? null,
+              revenueCatTransactionId: event.transaction_id ?? null,
+              revenueCatOriginalTransactionId: event.original_transaction_id ?? null,
+              revenueCatMatchedTransactionId: candidateId,
+              productId: event.product_id ?? null,
+              store: event.store ?? null,
+              environment: event.environment ?? event.purchase_environment ?? null,
+              cancelReason: event.cancel_reason ?? null,
+              requestedHallPasses: -amount,
+              reversalStatus: "missing-original-grant",
+            },
+          });
+          markerApplied = markerApplied || marker.applied;
+          hallPasses = marker.state.wallet.hallPasses;
+        }
+        await ruby.flushSession(sessionId);
+        return {
+          applied: false,
+          sessionId,
+          amount: 0,
+          requestedAmount: -amount,
+          productId: event.product_id,
+          hallPasses,
+          reason: markerApplied ? "missing-original-grant" : "already-reversed",
+        };
+      }
+      const originalAmount = Math.max(0, Math.floor(Number(originalGrant.transaction.hallPasses ?? 0)));
+      if (originalAmount <= 0) {
+        return {
+          applied: false,
+          sessionId,
+          amount: 0,
+          requestedAmount: -amount,
+          productId: event.product_id,
+          hallPasses: ruby.hallPassBalance(sessionId),
+          reason: "missing-original-grant",
+        };
+      }
+      const input = {
+        amount: originalAmount,
+        idempotencyKey: revenueCatTransactionKey("reversal", originalGrant.transactionId),
+        source: "revenuecat" as const,
+        description: `${originalAmount} Hall Pass${originalAmount === 1 ? "" : "es"} via RevenueCat`,
+        at: event.event_timestamp_ms,
+        metadata: {
+          revenueCatEventId: event.id ?? null,
+          revenueCatTransactionId: event.transaction_id ?? null,
+          revenueCatOriginalTransactionId: event.original_transaction_id ?? null,
+          revenueCatMatchedTransactionId: originalGrant.transactionId,
+          productId: event.product_id ?? null,
+          store: event.store ?? null,
+          environment: event.environment ?? event.purchase_environment ?? null,
+          cancelReason: event.cancel_reason ?? null,
+          price: event.price ?? null,
+          currency: event.currency ?? null,
+        },
+      };
+      const result = ruby.revokeHallPasses(sessionId, input);
+      await ruby.flushSession(sessionId);
+      const requestedAmount = -originalAmount;
+      const actualAmount = hallPassDeltaFromResult(result);
+      return {
+        applied: result.applied,
+        sessionId,
+        amount: actualAmount,
+        ...(actualAmount !== requestedAmount ? { requestedAmount } : {}),
+        productId: event.product_id,
+        hallPasses: result.state.wallet.hallPasses,
+      };
+    }
     const input = {
       amount,
-      idempotencyKey: revenueCatTransactionKey(reversal ? "reversal" : "grant", event),
+      idempotencyKey: revenueCatTransactionKey("grant", transactionId),
       source: "revenuecat" as const,
       description: `${amount} Hall Pass${amount === 1 ? "" : "es"} via RevenueCat`,
       at: event.event_timestamp_ms,
       metadata: {
         revenueCatEventId: event.id ?? null,
         revenueCatTransactionId: event.transaction_id ?? null,
+        revenueCatOriginalTransactionId: event.original_transaction_id ?? null,
         productId: event.product_id ?? null,
         store: event.store ?? null,
         environment: event.environment ?? event.purchase_environment ?? null,
@@ -381,11 +536,9 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
         currency: event.currency ?? null,
       },
     };
-    const result = reversal
-      ? ruby.revokeHallPasses(sessionId, input)
-      : ruby.grantHallPasses(sessionId, input);
+    const result = ruby.grantHallPasses(sessionId, input);
     await ruby.flushSession(sessionId);
-    const requestedAmount = reversal ? -amount : amount;
+    const requestedAmount = amount;
     const actualAmount = hallPassDeltaFromResult(result);
     return {
       applied: result.applied,

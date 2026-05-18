@@ -459,12 +459,31 @@ describe("RevenueCat webhook", () => {
     expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(25);
   });
 
-  it("reverses Hall Passes when RevenueCat reports a refund cancellation", async () => {
+  it("reverses Hall Passes only for a matching RevenueCat purchase", async () => {
     process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
-    ruby.grantHallPasses("rh:user:rc-refund", {
-      amount: 50,
-      idempotencyKey: "test:rc-refund-seed",
-      source: "admin",
+    const stateKey = "rh:user:rc-refund";
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/revenuecat/webhook",
+      authorization: "Bearer rc-secret",
+      body: {
+        api_version: "1.0",
+        event: {
+          id: "evt_rc_refund_purchase",
+          type: "NON_RENEWING_PURCHASE",
+          app_user_id: stateKey,
+          product_id: "hall_pass_20",
+          transaction_id: "tx_rc_refund_20",
+          store: "PLAY_STORE",
+          environment: "PRODUCTION",
+        },
+      },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { received: true, applied: true, sessionId: stateKey, amount: 20, hallPasses: 25 },
     });
 
     await handleBillingRoutes(makeCtx({
@@ -476,7 +495,7 @@ describe("RevenueCat webhook", () => {
         event: {
           id: "evt_rc_refund",
           type: "CANCELLATION",
-          app_user_id: "rh:user:rc-refund",
+          app_user_id: stateKey,
           product_id: "hall_pass_20",
           transaction_id: "tx_rc_refund_20",
           cancel_reason: "CUSTOMER_SUPPORT",
@@ -488,14 +507,157 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: "rh:user:rc-refund", amount: -20, hallPasses: 35 },
+      body: { received: true, applied: true, sessionId: stateKey, amount: -20, hallPasses: 5 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-refund").wallet.hallPasses).toBe(35);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+  });
+
+  it("does not debit unrelated Hall Passes for an unmatched RevenueCat cancellation", async () => {
+    process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
+    const stateKey = "rh:user:rc-orphan-refund";
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/revenuecat/webhook",
+      authorization: "Bearer rc-secret",
+      body: {
+        api_version: "1.0",
+        event: {
+          id: "evt_rc_orphan_refund",
+          type: "CANCELLATION",
+          app_user_id: stateKey,
+          product_id: "hall_pass_20",
+          transaction_id: "tx_rc_orphan_refund_20",
+          cancel_reason: "CUSTOMER_SUPPORT",
+          store: "PLAY_STORE",
+          environment: "PRODUCTION",
+        },
+      },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        received: true,
+        applied: false,
+        sessionId: stateKey,
+        amount: 0,
+        requestedAmount: -20,
+        hallPasses: 5,
+        reason: "missing-original-grant",
+      },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+    expect(ruby.walletTransaction(stateKey, "revenuecat:reversal:tx_rc_orphan_refund_20:HLP")).toMatchObject({
+      kind: "hall-pass-revoke",
+      hallPasses: 0,
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.transactions ?? []).not.toContainEqual(expect.objectContaining({
+      id: "revenuecat:reversal:tx_rc_orphan_refund_20:HLP",
+    }));
+  });
+
+  it("does not grant a RevenueCat purchase after a refund marker for the same transaction", async () => {
+    process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
+    const stateKey = "rh:user:rc-refund-first";
+    const eventBase = {
+      app_user_id: stateKey,
+      product_id: "hall_pass_20",
+      store: "PLAY_STORE",
+      environment: "PRODUCTION",
+    };
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/revenuecat/webhook",
+      authorization: "Bearer rc-secret",
+      body: {
+        api_version: "1.0",
+        event: {
+          ...eventBase,
+          id: "evt_rc_refund_first",
+          type: "CANCELLATION",
+          transaction_id: "tx_rc_refund_first_webhook_20",
+          original_transaction_id: "tx_rc_refund_first_20",
+          cancel_reason: "CUSTOMER_SUPPORT",
+        },
+      },
+    }), deps());
+
+    expect(lastResponse?.body).toMatchObject({
+      received: true,
+      applied: false,
+      amount: 0,
+      requestedAmount: -20,
+      hallPasses: 5,
+      reason: "missing-original-grant",
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/revenuecat/webhook",
+      authorization: "Bearer rc-secret",
+      body: {
+        api_version: "1.0",
+        event: {
+          ...eventBase,
+          id: "evt_rc_refund_first_purchase",
+          type: "NON_RENEWING_PURCHASE",
+          transaction_id: "tx_rc_refund_first_20",
+        },
+      },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        received: true,
+        applied: false,
+        sessionId: stateKey,
+        amount: 0,
+        requestedAmount: 20,
+        hallPasses: 5,
+        reason: "transaction-already-refunded",
+      },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+    expect(ruby.walletTransaction(stateKey, "revenuecat:reversal:tx_rc_refund_first_20:HLP")).toMatchObject({
+      kind: "hall-pass-revoke",
+      hallPasses: 0,
+    });
+    expect(ruby.walletTransaction(stateKey, "revenuecat:grant:tx_rc_refund_first_20:HLP")).toBeNull();
   });
 
   it("reports the actual RevenueCat reversal delta when the wallet has fewer Hall Passes than the refund", async () => {
     process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
     const stateKey = "rh:user:rc-partial-refund";
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/revenuecat/webhook",
+      authorization: "Bearer rc-secret",
+      body: {
+        api_version: "1.0",
+        event: {
+          id: "evt_rc_partial_refund_purchase",
+          type: "NON_RENEWING_PURCHASE",
+          app_user_id: stateKey,
+          product_id: "hall_pass_20",
+          transaction_id: "tx_rc_partial_refund_20",
+          store: "PLAY_STORE",
+          environment: "PRODUCTION",
+        },
+      },
+    }), deps());
+    expect(lastResponse?.body).toMatchObject({ applied: true, amount: 20, hallPasses: 25 });
+
+    ruby.spendHallPasses(stateKey, {
+      amount: 20,
+      idempotencyKey: "test:spend-before-partial-refund",
+      source: "admin",
+    });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
 
     await handleBillingRoutes(makeCtx({
