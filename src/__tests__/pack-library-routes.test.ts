@@ -204,6 +204,51 @@ function stubCourseGeneratorFetch() {
   return fetchMock;
 }
 
+function stubQuestionGeneratorFetch() {
+  const questionSpec = {
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          questions: [
+            {
+              prompt: "What does sampling bias change?",
+              subject: "sampling",
+              difficulty: "easy",
+              options: {
+                A: "What the signal can prove",
+                B: "The school mascot",
+                C: "The color of the classroom",
+                D: "The number of lockers",
+              },
+              correct: "A",
+              explanation: "Sampling bias changes what a signal can prove.",
+            },
+            {
+              prompt: "Why use a control group?",
+              subject: "controls",
+              difficulty: "medium",
+              options: {
+                A: "To avoid all evidence",
+                B: "To compare explanations",
+                C: "To skip replication",
+                D: "To rename the teacher",
+              },
+              correct: "B",
+              explanation: "A control group keeps noisy explanations from winning too early.",
+            },
+          ],
+        }),
+      },
+    }],
+  };
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify(questionSpec), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: number; body: any }> {
   const handled = await handlePackLibraryRoutes(makeCtx(opts), makeDeps());
   expect(handled).toBe(true);
@@ -335,6 +380,54 @@ describe("/pack-library", () => {
       enabled: true,
       active: true,
     });
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(pack.id)}/uninstall`,
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(200);
+    expect(ruby.getOrCreate(bobSessionId).activePackId).toBe(ORIGINAL_PACK_ID);
+    expect((await ruby.listPackInstallationRecords()).some((entry) =>
+      entry.userId === "test-bob" && entry.packId === pack.id
+    )).toBe(false);
+    expect(response.body.packs.some((entry: { id: string }) => entry.id === pack.id)).toBe(false);
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library/search?q=coach",
+      cookie: "rh_session=bob",
+    });
+    expect(response.body.packs[0]).toMatchObject({
+      id: pack.id,
+      installed: false,
+      enabled: false,
+      active: false,
+    });
+  });
+
+  it("keeps account-level hosted AI access when switching packs", async () => {
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
+    const aliceSessionId = signInUser("alice");
+    ruby.activateHostedAiAccess(aliceSessionId, {
+      hallPassCost: 1,
+      durationMs: 604_800_000,
+      now: Date.now(),
+    });
+    const expiresAt = ruby.hostedAiAccessExpiresAt(aliceSessionId);
+    const pack = fakePack("pack:ai-pass-switch");
+    await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(pack.id)}/active`,
+      cookie: "rh_session=alice",
+    });
+
+    expect(response.status).toBe(200);
+    expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(pack.id);
+    expect(ruby.hostedAiAccessExpiresAt(aliceSessionId)).toBe(expiresAt);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(4);
   });
 
   it("deletes draft packs owned by the signed-in user", async () => {
@@ -510,6 +603,7 @@ describe("/pack-library", () => {
     });
     expect(response.status).toBe(200);
 
+    const questionFetch = stubQuestionGeneratorFetch();
     response = await route({
       method: "POST",
       path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
@@ -517,6 +611,7 @@ describe("/pack-library", () => {
       apiKeyHeader: "sk-test",
     });
     expect(response.status).toBe(200);
+    expect(questionFetch).toHaveBeenCalledTimes(1);
 
     response = await route({
       method: "POST",
@@ -654,6 +749,7 @@ describe("/pack-library", () => {
     });
     expect(response.status).toBe(200);
 
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "");
     response = await route({
       method: "POST",
       path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
@@ -662,6 +758,7 @@ describe("/pack-library", () => {
     expect(response.status).toBe(401);
     expect(response.body.error).toContain("Connect OpenRouter");
 
+    const questionFetch = stubQuestionGeneratorFetch();
     response = await route({
       method: "POST",
       path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
@@ -669,8 +766,11 @@ describe("/pack-library", () => {
       apiKeyHeader: "sk-test",
     });
     expect(response.status).toBe(200);
+    expect(response.body.hallPassCost).toBe(0);
+    expect(response.body.hallPasses).toBe(5);
     expect(response.body.teacher.generationCount).toBe(1);
     expect(response.body.teacher.questions.length).toBeGreaterThan(1);
+    expect(questionFetch).toHaveBeenCalledTimes(1);
     const firstQuestionId = response.body.teacher.questions[0].id as string;
 
     response = await route({
@@ -825,6 +925,66 @@ describe("/pack-library", () => {
     expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(ORIGINAL_PACK_ID);
   });
 
+  it("spends one Hall Pass for hosted generate-more-questions without browser OpenRouter", async () => {
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
+    const aliceSessionId = signInUser("alice");
+    const questionFetch = stubQuestionGeneratorFetch();
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Hosted Questions" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+      cookie: "rh_session=alice",
+      body: {
+        displayName: "Hosted Coach",
+        description: "Generates hosted study cards.",
+      },
+    });
+    const teacherId = response.body.teacher.id as string;
+
+    response = await route({
+      method: "PATCH",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}`,
+      cookie: "rh_session=alice",
+      body: {
+        materials: [
+          "# Sampling",
+          "Sampling bias changes what a signal can prove.",
+          "# Controls",
+          "A control group keeps noisy explanations from winning too early.",
+        ].join("\n"),
+      },
+    });
+    expect(response.status).toBe(200);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
+      cookie: "rh_session=alice",
+      body: { requestId: "hosted-more-questions-1", questionCount: 6 },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.hallPassCost).toBe(1);
+    expect(response.body.hallPasses).toBe(4);
+    expect(response.body.entitlements.hallPasses).toBe(4);
+    expect(response.body.teacher.generationCount).toBe(1);
+    expect(response.body.teacher.questions).toHaveLength(2);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(4);
+    expect(questionFetch).toHaveBeenCalledTimes(1);
+    expect(ruby.walletTransaction(aliceSessionId, `question-generation:${aliceSessionId}:${draftId}:${teacherId}:hosted-more-questions-1`)).toMatchObject({
+      hallPasses: -1,
+      source: "question-generation",
+    });
+  });
+
   it("creates an edit draft for owned published packs that no longer have a backing draft", async () => {
     const aliceSessionId = signInUser("alice");
     const pack = fakeQuestionPack("pack:legacy-published-edit");
@@ -839,8 +999,10 @@ describe("/pack-library", () => {
     expect(listed).toMatchObject({
       id: pack.id,
       owner: true,
+      installed: false,
       canEdit: true,
       canDelete: true,
+      canUninstall: false,
     });
     expect(listed.draftId).toBeUndefined();
 

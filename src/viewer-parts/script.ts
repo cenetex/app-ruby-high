@@ -1792,6 +1792,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     };
   }
 
+  function syncAiStateFromTelemetry(t) {
+    const ai = hostedAiTelemetry(t);
+    hostedAiActive = !!ai.active;
+    if (authed && !getStoredApiKey() && !localAiEnabled) {
+      aiEnabled = hostedAiActive;
+    }
+  }
+
   function formatDuration(ms) {
     const hours = Math.max(1, Math.round(Number(ms || 0) / 3600000));
     if (hours % 24 === 0) {
@@ -3947,6 +3955,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
     lastTelemetry = t;
+    syncAiStateFromTelemetry(t);
     syncBillingWallet(t);
     renderAccountPage();
     maybeShowWelcomeHallPassPopup(t);
@@ -6682,11 +6691,14 @@ const VIEWER_SCRIPT_SUFFIX = `
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: options && options.signal,
-        body: "{}",
+        body: JSON.stringify({
+          requestId: newPackClientRequestId("questions"),
+          questionCount: 6,
+        }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "generate " + r.status);
-      return data.draft;
+      return data;
     },
     async generateCourse(draftId, payload, options) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/course/generate", {
@@ -6721,6 +6733,14 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "delete pack " + r.status);
+      return data;
+    },
+    async uninstallPack(packId) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library/" + encodeURIComponent(packId) + "/uninstall", {
+        method: "POST",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "uninstall pack " + r.status);
       return data;
     },
     async createEditDraftForPublishedPack(packId) {
@@ -7157,6 +7177,18 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       actions.appendChild(editBtn);
     }
+    if (!isDraft && pack.canUninstall) {
+      const uninstallBtn = document.createElement("button");
+      uninstallBtn.type = "button";
+      uninstallBtn.className = "pack-action";
+      uninstallBtn.textContent = "Uninstall";
+      uninstallBtn.disabled = packImportBusy;
+      uninstallBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        uninstallLibraryPack(pack);
+      });
+      actions.appendChild(uninstallBtn);
+    }
     if (pack.canDelete) {
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
@@ -7190,6 +7222,27 @@ const VIEWER_SCRIPT_SUFFIX = `
       packStatusEl.textContent = "Pack deleted.";
     } catch (err) {
       packStatusEl.textContent = "Could not delete pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function uninstallLibraryPack(pack) {
+    if (!pack || packImportBusy) return;
+    const name = pack.name || "Untitled Pack";
+    if (!window.confirm("Uninstall " + name + "? You can install it again from search or keep editing it if you own it.")) return;
+    setPackBusy(true);
+    packStatusEl.textContent = "Uninstalling pack...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      packLibraryState = await packStudioClient.uninstallPack(pack.id);
+      renderPackList();
+      renderDraftPackList();
+      packStatusEl.textContent = "Pack uninstalled.";
+      await fetchSession();
+    } catch (err) {
+      packStatusEl.textContent = "Could not uninstall pack · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);
@@ -7963,6 +8016,18 @@ const VIEWER_SCRIPT_SUFFIX = `
     return "";
   }
 
+  function questionGenerationStatusReason() {
+    if (!authed) return "Sign in before generating more questions.";
+    if (getStoredApiKey() || localAiEnabled) return "";
+    const entitlements = hostedEntitlements();
+    const hostedAi = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
+      ? entitlements.hosted_ai
+      : null;
+    if (!hostedAi || !hostedAi.configured) return "Connect OpenRouter before generating more questions.";
+    const wallet = walletNumbers(lastTelemetry);
+    return wallet.hallPasses >= 1 ? "" : "Need 1 Hall Pass to generate more questions.";
+  }
+
   function courseGenerationPayload(teacher) {
     const materials = teacher
       ? String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || teacher.materials || "").trim()
@@ -7981,6 +8046,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function syncPackGenerationControls() {
     const canGenerateCourse = !courseGenerationStatusReason();
+    const canGenerateQuestions = !questionGenerationStatusReason();
     syncPackEditorGuardControls();
     if (teacherGenerateQuestionsBtn) {
       teacherGenerateQuestionsBtn.replaceChildren();
@@ -7991,12 +8057,15 @@ const VIEWER_SCRIPT_SUFFIX = `
         teacherGenerateQuestionsBtn.appendChild(spinner);
       }
       const label = document.createElement("span");
-      label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate";
+      const hostedQuestionCost = !getStoredApiKey() && !localAiEnabled;
+      label.textContent = packQuestionGenerationBusy
+        ? "Generating"
+        : hostedQuestionCost ? "Generate More Questions (1 Hall Pass)" : "Generate More Questions";
       teacherGenerateQuestionsBtn.appendChild(label);
       teacherGenerateQuestionsBtn.classList.toggle("is-loading", packQuestionGenerationBusy);
       teacherGenerateQuestionsBtn.setAttribute("aria-busy", packQuestionGenerationBusy ? "true" : "false");
-      teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateCourse;
-      teacherGenerateQuestionsBtn.title = canGenerateCourse ? "" : courseGenerationStatusReason();
+      teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateQuestions;
+      teacherGenerateQuestionsBtn.title = canGenerateQuestions ? "" : questionGenerationStatusReason();
     }
     if (courseGenerateBtn) {
       courseGenerateBtn.replaceChildren();
@@ -8175,12 +8244,93 @@ const VIEWER_SCRIPT_SUFFIX = `
     const teacher = selectedDraftTeacher();
     if (!currentDraft || !teacher || packQuestionGenerationBusy) return;
     await saveSelectedTeacher();
-    await runCourseGeneration(teacher);
+    await runQuestionGeneration(teacher);
   }
 
   async function generateCourseFromMaterials() {
     if (!currentDraft || packQuestionGenerationBusy) return;
     await runCourseGeneration(null);
+  }
+
+  async function runQuestionGeneration(teacher) {
+    if (!currentDraft || !teacher || packQuestionGenerationBusy) return;
+    const reason = questionGenerationStatusReason();
+    if (reason) {
+      if (teacherGenerationStatusEl) {
+        teacherGenerationStatusEl.textContent = reason;
+        teacherGenerationStatusEl.classList.add("is-invalid");
+      }
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = reason;
+        packEditStatusEl.classList.add("is-invalid");
+      }
+      syncPackGenerationControls();
+      return;
+    }
+    const materials = String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || teacher.materials || "").trim();
+    if (!materials) {
+      if (teacherGenerationStatusEl) {
+        teacherGenerationStatusEl.textContent = "Course materials are required.";
+        teacherGenerationStatusEl.classList.add("is-invalid");
+      }
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Course materials are required.";
+        packEditStatusEl.classList.add("is-invalid");
+      }
+      return;
+    }
+    const runId = ++packQuestionGenerationRunId;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    packQuestionGenerationAbortController = controller;
+    packQuestionGenerationBusy = true;
+    packQuestionGenerationKind = "questions";
+    syncPackGenerationControls();
+    if (packEditStatusEl) {
+      packEditStatusEl.textContent = "Generating more questions...";
+      packEditStatusEl.classList.remove("is-invalid");
+    }
+    if (teacherGenerationStatusEl) {
+      teacherGenerationStatusEl.textContent = "Generating more questions...";
+      teacherGenerationStatusEl.classList.remove("is-invalid");
+    }
+    try {
+      const data = await packStudioClient.generateQuestionsForDraftTeacher(currentDraft.id, teacher.id, {
+        signal: controller ? controller.signal : undefined,
+      });
+      if (runId !== packQuestionGenerationRunId) return;
+      currentDraft = data.draft;
+      if (data && typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements);
+      selectedPackTeacherId = teacher.id;
+      selectedPackTab = "questions";
+      renderPackEditor();
+      if (packEditStatusEl) {
+        const cost = Math.max(0, Math.round(Number(data.hallPassCost || 0)));
+        packEditStatusEl.textContent = cost > 0
+          ? "Generated more questions for " + cost + " Hall Pass."
+          : "Generated more questions.";
+        packEditStatusEl.classList.remove("is-invalid");
+      }
+    } catch (err) {
+      if (runId !== packQuestionGenerationRunId) return;
+      const aborted = err && err.name === "AbortError";
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = aborted
+          ? "Question generation canceled."
+          : "Could not generate questions · " + (err && err.message ? err.message : "error");
+        packEditStatusEl.classList.toggle("is-invalid", !aborted);
+      }
+      if (teacherGenerationStatusEl) {
+        teacherGenerationStatusEl.textContent = aborted ? "Generation canceled." : "Could not generate questions.";
+        teacherGenerationStatusEl.classList.toggle("is-invalid", !aborted);
+      }
+    } finally {
+      if (runId === packQuestionGenerationRunId) {
+        packQuestionGenerationBusy = false;
+        packQuestionGenerationAbortController = null;
+        packQuestionGenerationKind = "";
+        syncPackGenerationControls();
+      }
+    }
   }
 
   async function runCourseGeneration(teacher) {

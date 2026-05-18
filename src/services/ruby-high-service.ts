@@ -3911,6 +3911,7 @@ function normalizeWalletTransactions(value: unknown): RubyHighWalletTransaction[
     "revenuecat",
     "hosted-image",
     "hosted-ai",
+    "question-generation",
     "character-slot",
     "course-slot",
     "photo-day",

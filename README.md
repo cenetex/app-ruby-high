@@ -137,6 +137,8 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Hall Pass cost to activate server-hosted text AI for one timed window. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Hosted AI Access duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Optional exact hosted AI pass duration override. |
+| `RUBY_HIGH_QUESTION_GENERATION_HALL_PASS_COST` | `1` | Hall Pass cost for server-hosted Generate More Questions when the browser has no OpenRouter key. |
+| `RUBY_HIGH_MORE_QUESTIONS_COUNT` | `6` | Default number of cards requested by Generate More Questions. |
 | `RUBY_HIGH_PORTRAIT_HALL_PASS_COST` | `1` | Hall Pass cost for server-hosted custom portraits. |
 | `RUBY_HIGH_DIPLOMA_HALL_PASS_COST` | `3` | Hall Pass cost for server-hosted diploma images. |
 | `RUBY_HIGH_COURSE_SLOT_HALL_PASS_COST` | `3` | Hall Pass cost to reserve/publish one creator course slot. The legacy `RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST` is still honored as a fallback. |
@@ -169,6 +171,7 @@ Web purchases use Stripe Checkout:
 - `GET /api/apps/ruby-high/billing/products` returns Hall Pass packs, AI Access cost/duration, and hosted image costs.
 - `POST /api/apps/ruby-high/billing/ai-pass` spends Hall Passes to activate server-hosted text AI for the signed-in Ruby High cookie session. A second call while active returns the existing expiry and does not spend again.
 - Publishing a draft course reserves a creator course slot for 3 Hall Passes. BYOK/local course generation does not spend Hall Passes.
+- Generate More Questions is free with browser OpenRouter or local LLM access; when it uses the server-hosted OpenRouter key, it spends 1 Hall Pass per run.
 - Unlocking an extra student slot costs 1 Hall Pass and grants a Photo Day credit; hosted character portraits consume that credit before spending a Hall Pass.
 - `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for the signed-in Ruby High cookie session.
 - `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata.

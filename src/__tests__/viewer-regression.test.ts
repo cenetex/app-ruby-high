@@ -311,9 +311,10 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("function finishCourseGenerationProgress()");
     expect(script).toContain("function generateCourseFromMaterials()");
     expect(script).toContain("function runCourseGeneration(teacher)");
-    expect(script).toContain('label.textContent = packQuestionGenerationBusy ? "Generating" : "Generate"');
+    expect(script).toContain('label.textContent = packQuestionGenerationBusy');
+    expect(script).toContain('"Generate More Questions (1 Hall Pass)" : "Generate More Questions"');
     expect(script).toContain('packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + COURSE_SLOT_HALL_PASS_COST + " Hall Passes)"');
-    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateCourse");
+    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateQuestions");
     expect(script).toContain("applyHallPassBalance(data.hallPasses, data.entitlements)");
     expect(script).toContain("function deleteDraftTeacher(teacherId)");
     expect(script).toContain("packStudioClient.deleteTeacher");
