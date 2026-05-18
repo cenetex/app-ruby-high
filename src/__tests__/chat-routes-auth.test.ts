@@ -20,6 +20,7 @@ let ruby: RubyHighService;
 let capturedChatRequest: any | null = null;
 const originalHostedOpenRouterKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY;
 const originalPortraitBucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
+const originalPortraitCost = process.env.RUBY_HIGH_PORTRAIT_HALL_PASS_COST;
 const originalPrivyAppId = process.env.RUBY_HIGH_PRIVY_APP_ID;
 const originalPrivyClientId = process.env.RUBY_HIGH_PRIVY_CLIENT_ID;
 const originalPrivyAppSecret = process.env.RUBY_HIGH_PRIVY_APP_SECRET;
@@ -142,6 +143,7 @@ async function callbackUrl(redirect: string): Promise<URL> {
 beforeEach(async () => {
   delete process.env.RUBY_HIGH_OPENROUTER_API_KEY;
   delete process.env.RUBY_HIGH_PORTRAITS_BUCKET;
+  delete process.env.RUBY_HIGH_PORTRAIT_HALL_PASS_COST;
   delete process.env.RUBY_HIGH_PRIVY_APP_ID;
   delete process.env.RUBY_HIGH_PRIVY_CLIENT_ID;
   delete process.env.RUBY_HIGH_PRIVY_APP_SECRET;
@@ -164,6 +166,7 @@ beforeEach(async () => {
 afterEach(async () => {
   restoreEnv("RUBY_HIGH_OPENROUTER_API_KEY", originalHostedOpenRouterKey);
   restoreEnv("RUBY_HIGH_PORTRAITS_BUCKET", originalPortraitBucket);
+  restoreEnv("RUBY_HIGH_PORTRAIT_HALL_PASS_COST", originalPortraitCost);
   restoreEnv("RUBY_HIGH_PRIVY_APP_ID", originalPrivyAppId);
   restoreEnv("RUBY_HIGH_PRIVY_CLIENT_ID", originalPrivyClientId);
   restoreEnv("RUBY_HIGH_PRIVY_APP_SECRET", originalPrivyAppSecret);
@@ -787,6 +790,7 @@ describe("hosted image Hall Passes", () => {
     });
     expect(ruby.hallPassBalance(stateKey)).toBe(4);
     (globalThis.fetch as any).mockClear();
+    process.env.RUBY_HIGH_PORTRAIT_HALL_PASS_COST = "2";
 
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(
@@ -817,7 +821,8 @@ describe("hosted image Hall Passes", () => {
     expect(transactions.some((tx) =>
       tx.id === `${spendKey}:refund` &&
       tx.kind === "hall-pass-refund" &&
-      tx.source === "hosted-image"
+      tx.source === "hosted-image" &&
+      tx.hallPasses === 1
     )).toBe(true);
   });
 });

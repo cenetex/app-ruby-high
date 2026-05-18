@@ -1151,6 +1151,13 @@ function walletMetadataString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function walletHallPassDebit(transaction: { hallPasses?: number } | null | undefined, fallback: number): number {
+  const delta = Math.floor(Number(transaction?.hallPasses ?? 0));
+  if (Number.isFinite(delta) && delta < 0) return Math.abs(delta);
+  const fallbackAmount = Math.floor(Number(fallback));
+  return Number.isFinite(fallbackAmount) && fallbackAmount > 0 ? fallbackAmount : 0;
+}
+
 async function prepareHostedImageCharge(args: {
   ruby: RubyHighService;
   sessionId: string;
@@ -1185,10 +1192,11 @@ async function prepareHostedImageCharge(args: {
     if (metadata.route !== args.route || metadata.requestId !== requestId || metadata.fingerprint !== fingerprint) {
       throw new HostedImageChargeError("Hosted image request id was already used for different image inputs.", 409);
     }
+    const spentHallPasses = walletHallPassDebit(existing, hallPassCost);
     const imageUrl = walletMetadataString(metadata.imageUrl);
     if (metadata.status === "completed" && imageUrl) {
       return {
-        hallPassCost: usedPhotoDayCredit ? 0 : hallPassCost,
+        hallPassCost: usedPhotoDayCredit ? 0 : spentHallPasses,
         hallPasses: args.ruby.hallPassBalance(args.sessionId),
         requestId,
         spendKey,
@@ -1210,7 +1218,7 @@ async function prepareHostedImageCharge(args: {
         ruby: args.ruby,
         sessionId: args.sessionId,
         charge: {
-          hallPassCost: usedPhotoDayCredit ? 0 : hallPassCost,
+          hallPassCost: usedPhotoDayCredit ? 0 : spentHallPasses,
           hallPasses: args.ruby.hallPassBalance(args.sessionId),
           requestId,
           spendKey,

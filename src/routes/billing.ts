@@ -206,6 +206,35 @@ function stripeMetadata(session: StripeCheckoutSession): Record<string, string |
   return session.metadata && typeof session.metadata === "object" ? session.metadata : {};
 }
 
+function billingProductById(productId: string | undefined | null): BillingProduct | null {
+  const id = productId?.trim();
+  if (!id) return null;
+  return billingProducts().find((product) => product.id === id) ?? null;
+}
+
+function integerField(value: unknown): number | null {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function validateStripeCheckoutPack(session: StripeCheckoutSession, metadata: Record<string, string | undefined>): BillingProduct {
+  const product = billingProductById(metadata.hall_pass_pack_id);
+  if (!product) throw new Error("Stripe checkout session references an unknown Hall Pass pack.");
+  const metadataHallPasses = integerField(metadata.hall_passes);
+  if (metadataHallPasses !== product.hallPasses) {
+    throw new Error("Stripe checkout session Hall Pass metadata does not match its pack.");
+  }
+  const amountTotal = integerField(session.amount_total);
+  if (amountTotal !== product.unitAmount) {
+    throw new Error("Stripe checkout session amount does not match its pack.");
+  }
+  const currency = typeof session.currency === "string" ? session.currency.trim().toLowerCase() : "";
+  if (currency !== product.currency) {
+    throw new Error("Stripe checkout session currency does not match its pack.");
+  }
+  return product;
+}
+
 function hallPassesForProductId(productId: string | undefined | null): number | null {
   if (!productId) return null;
   const normalized = productId.trim().toLowerCase();
@@ -250,24 +279,22 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
 } {
   const metadata = stripeMetadata(session);
   const sessionId = metadata.ruby_high_session_id || session.client_reference_id || "";
-  const amount = Math.floor(Number(metadata.hall_passes));
-  const productId = metadata.hall_pass_pack_id || "unknown";
   if (!session.id) throw new Error("Stripe checkout session is missing an id.");
   if (!sessionId) throw new Error("Stripe checkout session is missing a Ruby High session id.");
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Stripe checkout session is missing Hall Pass metadata.");
+  const product = validateStripeCheckoutPack(session, metadata);
   const result = ruby.grantHallPasses(sessionId, {
-    amount,
+    amount: product.hallPasses,
     idempotencyKey: `stripe:checkout:${session.id}`,
     source: "stripe",
-    description: `${amount} Hall Passes`,
+    description: `${product.hallPasses} Hall Passes`,
     metadata: {
       stripeCheckoutSessionId: session.id,
-      hallPassPackId: productId,
+      hallPassPackId: product.id,
       amountTotal: session.amount_total ?? null,
       currency: session.currency ?? null,
     },
   });
-  return { sessionId, amount, productId, applied: result.applied };
+  return { sessionId, amount: product.hallPasses, productId: product.id, applied: result.applied };
 }
 
 function revenueCatTransactionKey(prefix: "grant" | "reversal", event: RevenueCatWebhookEvent): string {
@@ -275,10 +302,16 @@ function revenueCatTransactionKey(prefix: "grant" | "reversal", event: RevenueCa
   return `revenuecat:${prefix}:${transaction}:${revenueCatCurrencyCode()}`;
 }
 
+function hallPassDeltaFromResult(result: { transaction: { hallPasses?: number } }): number {
+  const delta = Math.floor(Number(result.transaction.hallPasses ?? 0));
+  return Number.isFinite(delta) ? delta : 0;
+}
+
 async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCatWebhookEvent): Promise<{
   applied: boolean;
   sessionId?: string;
   amount?: number;
+  requestedAmount?: number;
   productId?: string;
   hallPasses?: number;
   reason?: string;
@@ -316,10 +349,12 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
       ? ruby.grantHallPasses(sessionId, input)
       : ruby.revokeHallPasses(sessionId, input);
     await ruby.flushSession(sessionId);
+    const actualAmount = hallPassDeltaFromResult(result);
     return {
       applied: result.applied,
       sessionId,
-      amount,
+      amount: actualAmount,
+      ...(actualAmount !== amount ? { requestedAmount: amount } : {}),
       productId: event.product_id,
       hallPasses: result.state.wallet.hallPasses,
     };
@@ -350,10 +385,13 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
       ? ruby.revokeHallPasses(sessionId, input)
       : ruby.grantHallPasses(sessionId, input);
     await ruby.flushSession(sessionId);
+    const requestedAmount = reversal ? -amount : amount;
+    const actualAmount = hallPassDeltaFromResult(result);
     return {
       applied: result.applied,
       sessionId,
-      amount: reversal ? -amount : amount,
+      amount: actualAmount,
+      ...(actualAmount !== requestedAmount ? { requestedAmount } : {}),
       productId: event.product_id,
       hallPasses: result.state.wallet.hallPasses,
     };
@@ -496,6 +534,9 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     params.set("metadata[ruby_high_session_id]", stateKey);
     params.set("metadata[hall_pass_pack_id]", product.id);
     params.set("metadata[hall_passes]", String(product.hallPasses));
+    params.set("payment_intent_data[metadata][ruby_high_session_id]", stateKey);
+    params.set("payment_intent_data[metadata][hall_pass_pack_id]", product.id);
+    params.set("payment_intent_data[metadata][hall_passes]", String(product.hallPasses));
 
     const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
       method: "POST",
@@ -553,7 +594,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       session &&
       (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded")
     ) {
-      if (event.type === "checkout.session.completed" && session.payment_status !== "paid") {
+      if (session.payment_status !== "paid") {
         ctx.json(ctx.res, { received: true, applied: false, reason: "payment-not-paid" });
         return true;
       }

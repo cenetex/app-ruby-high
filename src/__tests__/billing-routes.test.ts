@@ -289,6 +289,9 @@ describe("Stripe Checkout", () => {
     expect(params.get("metadata[ruby_high_session_id]")).toBe(stateKey);
     expect(params.get("metadata[hall_pass_pack_id]")).toBe("hall-pass-20");
     expect(params.get("metadata[hall_passes]")).toBe("20");
+    expect(params.get("payment_intent_data[metadata][ruby_high_session_id]")).toBe(stateKey);
+    expect(params.get("payment_intent_data[metadata][hall_pass_pack_id]")).toBe("hall-pass-20");
+    expect(params.get("payment_intent_data[metadata][hall_passes]")).toBe("20");
     expect(params.get("line_items[0][price_data][unit_amount]")).toBe("699");
   });
 });
@@ -336,6 +339,40 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 25 } });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+  });
+
+  it("rejects signed Checkout webhooks when pack metadata does not match the paid amount", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    const stateKey = "rh:user:stripe-tampered";
+    const rawBody = JSON.stringify({
+      id: "evt_tampered",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_tampered",
+          payment_status: "paid",
+          client_reference_id: stateKey,
+          amount_total: 199,
+          currency: "usd",
+          metadata: {
+            ruby_high_session_id: stateKey,
+            hall_pass_pack_id: "hall-pass-20",
+            hall_passes: "20",
+          },
+        },
+      },
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/stripe/webhook",
+      rawBody,
+      stripeSignature: stripeSignature(rawBody, "whsec_ruby"),
+    }), deps());
+
+    expect(lastResponse?.status).toBe(400);
+    expect(lastResponse?.body.error).toContain("amount does not match");
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
   });
 
   it("rejects invalid Stripe signatures without mutating a wallet", async () => {
@@ -454,6 +491,49 @@ describe("RevenueCat webhook", () => {
       body: { received: true, applied: true, sessionId: "rh:user:rc-refund", amount: -20, hallPasses: 35 },
     });
     expect(ruby.getOrCreate("rh:user:rc-refund").wallet.hallPasses).toBe(35);
+  });
+
+  it("reports the actual RevenueCat reversal delta when the wallet has fewer Hall Passes than the refund", async () => {
+    process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
+    const stateKey = "rh:user:rc-partial-refund";
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/revenuecat/webhook",
+      authorization: "Bearer rc-secret",
+      body: {
+        api_version: "1.0",
+        event: {
+          id: "evt_rc_partial_refund",
+          type: "CANCELLATION",
+          app_user_id: stateKey,
+          product_id: "hall_pass_20",
+          transaction_id: "tx_rc_partial_refund_20",
+          cancel_reason: "CUSTOMER_SUPPORT",
+          store: "PLAY_STORE",
+          environment: "PRODUCTION",
+        },
+      },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        received: true,
+        applied: true,
+        sessionId: stateKey,
+        amount: -5,
+        requestedAmount: -20,
+        hallPasses: 0,
+      },
+    });
+    const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(transactions).toContainEqual(expect.objectContaining({
+      id: "revenuecat:reversal:tx_rc_partial_refund_20:HLP",
+      kind: "hall-pass-revoke",
+      hallPasses: -5,
+    }));
   });
 
   it("can fulfill RevenueCat virtual currency transaction events", async () => {

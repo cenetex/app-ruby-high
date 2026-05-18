@@ -476,7 +476,7 @@ export interface RubyHighWalletTransaction {
   at: number;
   /** Positive when a transaction grants earned currency. */
   meritStars?: number;
-  /** Positive for grants/refunds, negative for spends. */
+  /** Positive for grants/refunds, negative for spends/revocations. */
   hallPasses?: number;
   /** Positive for refunds, negative for spends. */
   photoDayCredits?: number;
