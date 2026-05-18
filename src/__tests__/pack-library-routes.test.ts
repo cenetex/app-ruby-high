@@ -406,6 +406,77 @@ describe("/pack-library", () => {
     });
   });
 
+  it("searches across course content and falls back to available creator packs", async () => {
+    signInUser("alice");
+    signInUser("bob");
+    const chemistryPack = fakePack("pack:chem-lab");
+    chemistryPack.name = "Formula Lab";
+    chemistryPack.description = "Creator course for careful lab work.";
+    chemistryPack.faculty[0]!.displayName = "Dr. Beaker";
+    chemistryPack.faculty[0]!.subjects = ["science"];
+    chemistryPack.faculty[0]!.questions = [{
+      id: "chem-lab-q1",
+      faculty: chemistryPack.faculty[0]!.id,
+      prompt: "How does titration reveal concentration?",
+      subject: "chemistry",
+      difficulty: "medium",
+      options: {
+        A: "By comparing a known reagent volume against the sample",
+        B: "By deleting all controls",
+        C: "By renaming the teacher",
+        D: "By changing the classroom",
+      },
+      correct: "A",
+      explanation: "Molarity follows from the measured reaction ratio.",
+    }];
+    chemistryPack.faculty[0]!.sourceCards = [{
+      id: "chem-lab-card-1",
+      kind: "basic",
+      front: "Endpoint color change",
+      back: "The indicator marks when the analyte is consumed.",
+      acceptedAnswers: ["endpoint", "indicator endpoint"],
+      deckName: "Wet Lab Cards",
+      tags: ["stoichiometry", "molarity"],
+      subject: "chemistry",
+      difficulty: "medium",
+      faculty: chemistryPack.faculty[0]!.id,
+    }];
+    const civicsPack = fakePack("pack:civic-room");
+    civicsPack.name = "Civic Room";
+    civicsPack.description = "Creator course on committees and public records.";
+
+    await ruby.persistPublicTeacherPack(chemistryPack, { creatorUserId: "test-alice" });
+    await ruby.persistPublicTeacherPack(civicsPack, { creatorUserId: "test-alice" });
+
+    let response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library/search?q=molarity%3F",
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.packs[0]).toMatchObject({ id: chemistryPack.id });
+    expect(response.body.packs.map((pack: { id: string }) => pack.id)).toContain(civicsPack.id);
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library/search?q=zzzzquark",
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.packs.map((pack: { id: string }) => pack.id).sort()).toEqual([
+      chemistryPack.id,
+      civicsPack.id,
+    ].sort());
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library/search?q=",
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.packs.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("keeps account-level hosted AI access when switching packs", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const aliceSessionId = signInUser("alice");

@@ -6607,6 +6607,8 @@ const VIEWER_SCRIPT_SUFFIX = `
   let courseGenerationProgressTimer = null;
   let packAutosaveTimer = null;
   let teacherAutosaveTimer = null;
+  let teacherAutosaveRunId = 0;
+  let teacherFormVersion = 0;
   const PREGENERATED_TEACHER_ASSETS = [
     { id: "ruby", name: "Ruby", subject: "Homeroom", description: "Warm, direct, and good at turning scattered questions into a useful classroom thread.", quote: "We start where the room actually is." },
     { id: "sally-science", name: "Sally Science", subject: "Science Lab", description: "Evidence-first, experimental, and happiest when a wrong answer exposes a better hypothesis.", quote: "Be wrong with reasons. Then we can work." },
@@ -7097,11 +7099,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     const packs = packSearchState && Array.isArray(packSearchState.packs) ? packSearchState.packs : [];
     packSearchListEl.innerHTML = "";
     if (!packSearchState.searched) {
-      packSearchListEl.innerHTML = '<div class="sub">Search to find public creator packs.</div>';
+      packSearchListEl.innerHTML = '<div class="sub">Search or press Search to browse public creator packs.</div>';
       return;
     }
     if (packs.length === 0) {
-      packSearchListEl.innerHTML = '<div class="sub">No creator packs found.</div>';
+      packSearchListEl.innerHTML = '<div class="sub">No public creator packs are available yet.</div>';
       return;
     }
     packs.forEach((pack) => {
@@ -7306,13 +7308,8 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (!packSearchInputEl || !packSearchListEl || packImportBusy) return;
     const query = packSearchInputEl.value.trim();
     const runId = ++packSearchRunId;
-    if (!query) {
-      packSearchState = { query: "", packs: [], searched: false };
-      renderPackSearchList();
-      return;
-    }
     packSearchState = { query, packs: [], searched: true };
-    packSearchListEl.innerHTML = '<div class="sub">Searching creator packs...</div>';
+    packSearchListEl.innerHTML = '<div class="sub">' + (query ? "Searching creator packs..." : "Loading creator packs...") + '</div>';
     packStatusEl.textContent = "";
     packStatusEl.classList.remove("is-invalid");
     try {
@@ -7341,7 +7338,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       packLibraryState = await packStudioClient.installPack(pack.id, true);
       renderPackList();
       renderDraftPackList();
-      if (packSearchState.searched && packSearchState.query) {
+      if (packSearchState.searched) {
         const data = await packStudioClient.searchCreatorPacks(packSearchState.query);
         packSearchState = {
           query: data && typeof data.query === "string" ? data.query : packSearchState.query,
@@ -8164,6 +8161,34 @@ const VIEWER_SCRIPT_SUFFIX = `
       : null;
   }
 
+  function selectedTeacherFormPatch() {
+    return {
+      displayName: String((teacherDisplayNameInputEl && teacherDisplayNameInputEl.value) || "").trim(),
+      description: String((teacherPersonaInputEl && teacherPersonaInputEl.value) || "").trim(),
+      socialsUrl: String((teacherSocialsInputEl && teacherSocialsInputEl.value) || "").trim(),
+      profileImageUrl: String((teacherProfileImageInputEl && teacherProfileImageInputEl.value) || "").trim(),
+      materials: String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || "").trim(),
+    };
+  }
+
+  function mergeTeacherPatchIntoDraft(draft, teacherId, patch) {
+    if (!draft || !Array.isArray(draft.teachers) || !teacherId) return draft;
+    return {
+      ...draft,
+      teachers: draft.teachers.map((teacher) => teacher.id === teacherId ? { ...teacher, ...patch } : teacher),
+    };
+  }
+
+  function refreshSelectedTeacherLabels() {
+    const teacher = selectedDraftTeacher();
+    if (!teacher) return;
+    const displayName = teacher.displayName || teacher.id;
+    const selectedRowTitle = packTeacherListEl && packTeacherListEl.querySelector(".pack-teacher-row.is-selected .pack-teacher-title");
+    if (selectedRowTitle) selectedRowTitle.textContent = displayName;
+    const detailName = packTeacherDetailEl && packTeacherDetailEl.querySelector(".pack-teacher-detail-name");
+    if (detailName) detailName.textContent = displayName;
+  }
+
   function renderQuestionList(teacher) {
     if (!teacherQuestionListEl) return;
     teacherQuestionListEl.innerHTML = "";
@@ -8227,21 +8252,35 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function scheduleTeacherAutosave() {
     if (!currentDraft || !selectedPackTeacherId) return;
+    teacherFormVersion += 1;
+    currentDraft = mergeTeacherPatchIntoDraft(currentDraft, selectedPackTeacherId, selectedTeacherFormPatch());
+    refreshSelectedTeacherLabels();
     clearTimeout(teacherAutosaveTimer);
     teacherAutosaveTimer = setTimeout(saveSelectedTeacher, 550);
   }
 
   async function saveSelectedTeacher() {
     if (!currentDraft || !selectedPackTeacherId) return;
+    const draftId = currentDraft.id;
+    const teacherId = selectedPackTeacherId;
+    const runId = ++teacherAutosaveRunId;
+    const formVersion = teacherFormVersion;
+    const patch = selectedTeacherFormPatch();
+    currentDraft = mergeTeacherPatchIntoDraft(currentDraft, teacherId, patch);
+    refreshSelectedTeacherLabels();
     try {
-      currentDraft = await packStudioClient.updateTeacher(currentDraft.id, selectedPackTeacherId, {
-        displayName: String((teacherDisplayNameInputEl && teacherDisplayNameInputEl.value) || "").trim(),
-        description: String((teacherPersonaInputEl && teacherPersonaInputEl.value) || "").trim(),
-        socialsUrl: String((teacherSocialsInputEl && teacherSocialsInputEl.value) || "").trim(),
-        profileImageUrl: String((teacherProfileImageInputEl && teacherProfileImageInputEl.value) || "").trim(),
-        materials: String((teacherMaterialsInputEl && teacherMaterialsInputEl.value) || "").trim(),
-      });
-      renderPackTeacherEditor();
+      const savedDraft = await packStudioClient.updateTeacher(draftId, teacherId, patch);
+      if (
+        runId !== teacherAutosaveRunId ||
+        formVersion !== teacherFormVersion ||
+        !currentDraft ||
+        currentDraft.id !== draftId ||
+        selectedPackTeacherId !== teacherId
+      ) {
+        return;
+      }
+      currentDraft = savedDraft;
+      refreshSelectedTeacherLabels();
       if (packEditStatusEl) {
         packEditStatusEl.textContent = "Teacher saved.";
         packEditStatusEl.classList.remove("is-invalid");

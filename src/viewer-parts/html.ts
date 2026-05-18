@@ -286,7 +286,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div class="pack-grid" id="pack-list"></div>
     <div class="pack-section-title">Find creator packs</div>
     <div class="pack-search-row">
-      <input type="search" id="pack-search-input" placeholder="Search by topic or teacher" autocomplete="off" />
+      <input type="search" id="pack-search-input" placeholder="Search any course content" autocomplete="off" />
       <button type="button" class="pack-action" id="pack-search-btn">Search</button>
     </div>
     <div class="pack-grid" id="pack-search-list"></div>

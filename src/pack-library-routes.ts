@@ -689,26 +689,31 @@ async function creatorPackSearchPayload(
   const records = uniquePackRecords(await ruby.listPersistedPackRecords())
     .filter((entry) => entry.ownerSessionId === null && packLibrarySource(entry.pack, [entry]) === "creator");
 
-  const packs = normalized.length === 0
-    ? []
-    : records
-      .filter((entry) => packMatchesSearch(entry.pack, normalized))
-      .sort((a, b) => packSearchRank(b.pack, normalized) - packSearchRank(a.pack, normalized) || a.pack.name.localeCompare(b.pack.name))
-      .slice(0, PACK_SEARCH_LIMIT)
-      .map((entry) => {
-        const install = installByPack.get(entry.pack.id);
-        const owner = entry.creatorUserId === record.userId || entry.ownerSessionId === sessionId;
-        const backingDraft = owner ? backingDraftForPack(userDrafts, entry.pack.id) : null;
-        return packLibrarySummary(entry.pack, {
-          enabled: !!install?.enabled,
-          active: entry.pack.id === activePackId,
-          owner,
-          readOnly: false,
-          editDraftId: backingDraft?.id,
-          source: "creator",
-          installed: !!install || entry.pack.id === activePackId,
-        });
+  const packs = records
+    .map((entry) => ({
+      entry,
+      rank: packSearchRank(entry.pack, normalized),
+    }))
+    .sort((a, b) =>
+      b.rank - a.rank ||
+      b.entry.touchedAt - a.entry.touchedAt ||
+      a.entry.pack.name.localeCompare(b.entry.pack.name)
+    )
+    .slice(0, PACK_SEARCH_LIMIT)
+    .map(({ entry }) => {
+      const install = installByPack.get(entry.pack.id);
+      const owner = entry.creatorUserId === record.userId || entry.ownerSessionId === sessionId;
+      const backingDraft = owner ? backingDraftForPack(userDrafts, entry.pack.id) : null;
+      return packLibrarySummary(entry.pack, {
+        enabled: !!install?.enabled,
+        active: entry.pack.id === activePackId,
+        owner,
+        readOnly: false,
+        editDraftId: backingDraft?.id,
+        source: "creator",
+        installed: !!install || entry.pack.id === activePackId,
       });
+    });
 
   return {
     query,
@@ -936,40 +941,57 @@ function uniquePackRecords(records: Awaited<ReturnType<RubyHighService["listPers
 }
 
 function normalizeSearchQuery(query: string): string[] {
-  return query.toLowerCase().split(/\s+/).map((part) => part.trim()).filter(Boolean).slice(0, 8);
-}
-
-function packMatchesSearch(pack: ContentPack, terms: string[]): boolean {
-  const text = searchablePackText(pack);
-  return terms.every((term) => text.includes(term));
+  return query.toLowerCase().split(/[^a-z0-9]+/).map((part) => part.trim()).filter(Boolean).slice(0, 8);
 }
 
 function packSearchRank(pack: ContentPack, terms: string[]): number {
-  const name = (pack.name || "").toLowerCase();
-  const faculty = pack.faculty.map((entry) => entry.displayName.toLowerCase()).join(" ");
-  return terms.reduce((score, term) => {
-    if (name === term) return score + 100;
-    if (name.includes(term)) return score + 40;
-    if (faculty.includes(term)) return score + 20;
-    return score + 1;
+  if (terms.length === 0) return 0;
+  const fields = searchablePackFields(pack);
+  let matchedTerms = 0;
+  const score = terms.reduce((total, term) => {
+    let termScore = 0;
+    for (const field of fields) {
+      if (field.text === term) termScore += field.weight * 2;
+      else if (field.text.includes(term)) termScore += field.weight;
+    }
+    if (termScore > 0) matchedTerms += 1;
+    return total + termScore;
   }, 0);
+  return score + matchedTerms * 50 + (matchedTerms === terms.length ? 250 : 0);
 }
 
-function searchablePackText(pack: ContentPack): string {
-  return [
-    pack.name,
-    pack.description,
-    ...pack.faculty.flatMap((faculty) => [
-      faculty.displayName,
-      faculty.shortName,
-      faculty.bio,
-      ...faculty.subjects,
-    ]),
-    ...(pack.courses ?? []).flatMap((course) => [
-      course.title,
-      ...course.subjects,
-    ]),
-  ].filter(Boolean).join(" ").toLowerCase();
+function searchablePackFields(pack: ContentPack): Array<{ text: string; weight: number }> {
+  const fields: Array<{ text: string; weight: number }> = [];
+  const add = (weight: number, ...values: unknown[]) => {
+    const text = values
+      .flatMap((value) => Array.isArray(value) ? value : [value])
+      .filter((value) => value != null && String(value).trim())
+      .map((value) => String(value).toLowerCase())
+      .join(" ");
+    if (text) fields.push({ text, weight });
+  };
+  add(80, pack.name);
+  add(35, pack.description);
+  for (const course of pack.courses ?? []) {
+    add(55, course.title, course.subjects);
+  }
+  for (const room of pack.rooms ?? []) {
+    add(20, room.name, room.channelName, room.description);
+  }
+  for (const faculty of pack.faculty) {
+    add(50, faculty.displayName, faculty.shortName);
+    add(30, faculty.subjects, faculty.bio);
+    add(10, faculty.systemPrompt);
+    for (const question of faculty.questions) {
+      add(25, question.prompt, question.subject, question.explanation, question.rubric, question.acceptedAnswers);
+      add(15, Object.values(question.options ?? {}));
+    }
+    for (const card of faculty.sourceCards ?? []) {
+      add(25, card.front, card.back, card.subject);
+      add(15, card.deckName, card.tags, card.acceptedAnswers);
+    }
+  }
+  return fields;
 }
 
 function backingDraftForPack(

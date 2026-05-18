@@ -258,6 +258,9 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("deletePublishedPack");
     expect(script).toContain("createEditDraftForPublishedPack");
     expect(script).toContain("async function editPublishedPack(pack)");
+    expect(script).toContain("teacherFormVersion += 1");
+    expect(script).toContain("mergeTeacherPatchIntoDraft(currentDraft, selectedPackTeacherId, selectedTeacherFormPatch())");
+    expect(script).toContain("formVersion !== teacherFormVersion");
     expect(script).toContain("pack.canDelete");
     expect(script).toContain("if (isDraft) editDraftPack(pack.id)");
     expect(script).toContain("await editDraftPack(pack.draftId)");
