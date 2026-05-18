@@ -3,12 +3,48 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthService } from "../services/auth-service.js";
-import { StateStore } from "../services/state-store.js";
+import { StateStore, type AuthStoreSnapshot, type AuthSessionRecord, type AuthUserRecord, type StateStoreLike } from "../services/state-store.js";
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const tmpDirs: string[] = [];
 const auths: AuthService[] = [];
+
+class AuthOnlyStore implements StateStoreLike {
+  constructor(private snapshot: AuthStoreSnapshot) {}
+
+  async load(): Promise<Map<string, any>> { return new Map(); }
+  async loadAuth(): Promise<AuthStoreSnapshot> { return this.snapshot; }
+  async loadPacks(): Promise<any[]> { return []; }
+  async loadTeachers(): Promise<any[]> { return []; }
+  async loadDraftPacks(): Promise<any[]> { return []; }
+  async loadPackInstallations(): Promise<any[]> { return []; }
+  async saveSession(_state: any): Promise<void> {}
+  async saveAuthUser(user: AuthUserRecord): Promise<void> {
+    const index = this.snapshot.users.findIndex((entry) =>
+      entry.provider === user.provider && entry.providerUserHash === user.providerUserHash
+    );
+    if (index >= 0) this.snapshot.users[index] = user;
+    else this.snapshot.users.push(user);
+  }
+  async saveAuthSession(session: AuthSessionRecord): Promise<void> {
+    const index = this.snapshot.sessions.findIndex((entry) => entry.token === session.token);
+    if (index >= 0) this.snapshot.sessions[index] = session;
+    else this.snapshot.sessions.push(session);
+  }
+  async savePack(_record: any): Promise<void> {}
+  async saveDraftPack(_record: any): Promise<void> {}
+  async savePackInstallation(_record: any): Promise<void> {}
+  async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
+  async deleteTeacher(_teacherId: string): Promise<void> {}
+  async deleteDraftPack(_draftId: string): Promise<void> {}
+  async deletePackInstallation(_userId: string, _packId: string): Promise<void> {}
+  async deleteAuthSession(token: string): Promise<void> {
+    this.snapshot.sessions = this.snapshot.sessions.filter((session) => session.token !== token);
+  }
+  async save(_states: Iterable<any>): Promise<void> {}
+  describe(): string { return "auth-only-test-store"; }
+}
 
 async function freshAuth(): Promise<AuthService> {
   const dir = await mkdtemp(join(tmpdir(), "ruby-high-auth-"));
@@ -188,5 +224,107 @@ describe("AuthService.gcSessions", () => {
       walletChainType: "ethereum",
     });
     expect(authB.walletAddressForRecord(hydrated)).toBe(wallet);
+  });
+
+  it("hydrates linked provider records with wallet metadata regardless of store order", async () => {
+    const now = Date.now();
+    const userId = "usr_linked_wallet";
+    const wallet = "0x2222222222222222222222222222222222222222";
+    const store = new AuthOnlyStore({
+      users: [
+        {
+          userId,
+          provider: "privy",
+          providerUserHash: "privy-hash",
+          createdAt: now - 20_000,
+          lastLoginAt: now - 1_000,
+          label: "alice@example.test",
+          walletAddress: wallet,
+          walletChainType: "ethereum",
+        },
+        {
+          userId,
+          provider: "guest",
+          providerUserHash: "guest-hash",
+          createdAt: now - 30_000,
+          lastLoginAt: now - 10_000,
+          label: "Guest",
+        },
+      ],
+      sessions: [
+        {
+          token: "linked-session-token",
+          userId,
+          createdAt: now - 1_000,
+          expiresAt: now + 60_000,
+        },
+      ],
+    });
+
+    const auth = await AuthService.start({} as never, store);
+    auths.push(auth);
+    const hydrated = auth.resolve("linked-session-token");
+
+    expect(hydrated).toMatchObject({
+      userId,
+      provider: "privy",
+      walletAddress: wallet,
+      walletChainType: "ethereum",
+    });
+    expect(auth.walletAddressForRecord(hydrated)).toBe(wallet);
+  });
+
+  it("keeps Privy wallet metadata when OpenRouter is added to the same account", async () => {
+    const auth = await freshAuth();
+    const wallet = "0x3333333333333333333333333333333333333333";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(JSON.stringify({ key: "sk-test", user_id: "openrouter-wallet-link" }), { status: 200 });
+    });
+
+    const guest = await auth.createGuestSession();
+    const privy = await auth.completePrivyLogin({
+      privyUserId: "did:privy:wallet-link",
+      label: "wallet-link@example.test",
+      walletAddress: wallet,
+      walletChainType: "ethereum",
+    }, guest.token);
+    const pkce = auth.startPkce("http://localhost/callback");
+    const openrouter = await auth.completePkce(pkce.state, "code-1", privy.token);
+
+    expect(openrouter.record).toMatchObject({
+      userId: guest.record.userId,
+      provider: "openrouter",
+      walletAddress: wallet,
+      walletChainType: "ethereum",
+    });
+    expect(auth.walletAddressForRecord(openrouter.record)).toBe(wallet);
+  });
+
+  it("keeps wallet metadata when returning to a previously linked OpenRouter account", async () => {
+    const auth = await freshAuth();
+    const wallet = "0x4444444444444444444444444444444444444444";
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(JSON.stringify({ key: "sk-test", user_id: "openrouter-returning-link" }), { status: 200 });
+    });
+
+    const guest = await auth.createGuestSession();
+    const firstPkce = auth.startPkce("http://localhost/callback");
+    const firstOpenrouter = await auth.completePkce(firstPkce.state, "code-1", guest.token);
+    const privy = await auth.completePrivyLogin({
+      privyUserId: "did:privy:returning-link",
+      label: "returning-link@example.test",
+      walletAddress: wallet,
+      walletChainType: "ethereum",
+    }, firstOpenrouter.token);
+    const secondPkce = auth.startPkce("http://localhost/callback");
+    const secondOpenrouter = await auth.completePkce(secondPkce.state, "code-2", privy.token);
+
+    expect(secondOpenrouter.record).toMatchObject({
+      userId: guest.record.userId,
+      provider: "openrouter",
+      walletAddress: wallet,
+      walletChainType: "ethereum",
+    });
+    expect(auth.walletAddressForRecord(secondOpenrouter.record)).toBe(wallet);
   });
 });

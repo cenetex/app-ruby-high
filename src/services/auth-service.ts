@@ -203,8 +203,7 @@ export class AuthService extends Service {
       lastLoginAt: now,
       label: "Guest",
     };
-    this.usersByProviderHash.set(authUserKey(user.provider, user.providerUserHash), user);
-    this.usersById.set(user.userId, user);
+    this.rememberAuthUser(user);
     await this.store.saveAuthUser(user);
 
     const token = base64url(randomBytes(24));
@@ -270,18 +269,11 @@ export class AuthService extends Service {
           lastLoginAt: now,
           ...(sessionUser?.label && sessionUser.label !== "Guest" ? { label: sessionUser.label } : {}),
         };
-    this.usersByProviderHash.set(providerKey, user);
-    this.usersById.set(user.userId, user);
+    this.rememberAuthUser(user);
     await this.store.saveAuthUser(user);
 
     const token = base64url(randomBytes(24));
-    const record: AuthRecord = {
-      userId: user.userId,
-      createdAt: now,
-      expiresAt: now + SESSION_TTL_MS,
-      provider: user.provider,
-      label: user.label,
-    };
+    const record = this.recordForUser(user, now);
     this.sessions.set(token, record);
     await this.store.saveAuthSession({
       token,
@@ -334,8 +326,7 @@ export class AuthService extends Service {
           ...(identity.walletAddress ? { walletAddress: identity.walletAddress } : {}),
           ...(identity.walletChainType ? { walletChainType: identity.walletChainType } : {}),
         };
-    this.usersByProviderHash.set(providerKey, user);
-    this.usersById.set(user.userId, user);
+    this.rememberAuthUser(user);
     await this.store.saveAuthUser(user);
 
     const token = base64url(randomBytes(24));
@@ -386,7 +377,7 @@ export class AuthService extends Service {
       });
       return null;
     }
-    return r;
+    return this.enrichRecord(r);
   }
 
   destroy(token: string | null): boolean {
@@ -414,7 +405,7 @@ export class AuthService extends Service {
 
   walletAddressForRecord(record: AuthRecord | null | undefined): string {
     if (!record) return "";
-    return record.walletAddress ?? this.usersById.get(record.userId)?.walletAddress ?? "";
+    return record.walletAddress ?? this.userProfileForId(record.userId)?.walletAddress ?? "";
   }
 
   buildSessionCookie(token: string, opts: { secure: boolean }): string {
@@ -452,8 +443,7 @@ export class AuthService extends Service {
     const now = Date.now();
     const auth = await this.store.loadAuth();
     for (const user of auth.users) {
-      this.usersByProviderHash.set(authUserKey(user.provider, user.providerUserHash), user);
-      this.usersById.set(user.userId, user);
+      this.rememberAuthUser(user);
     }
     for (const session of auth.sessions) {
       if (session.expiresAt < now || !this.usersById.has(session.userId)) {
@@ -463,8 +453,8 @@ export class AuthService extends Service {
         });
         continue;
       }
-      const user = this.usersById.get(session.userId);
-      this.sessions.set(session.token, {
+      const user = this.userProfileForId(session.userId);
+      this.sessions.set(session.token, this.enrichRecord({
         userId: session.userId,
         createdAt: session.createdAt,
         expiresAt: session.expiresAt,
@@ -472,7 +462,7 @@ export class AuthService extends Service {
         label: user?.label,
         ...(user?.walletAddress ? { walletAddress: user.walletAddress } : {}),
         ...(user?.walletChainType ? { walletChainType: user.walletChainType } : {}),
-      });
+      }));
     }
   }
 
@@ -481,16 +471,81 @@ export class AuthService extends Service {
   }
 
   private recordForUser(user: AuthUserRecord, now: number): AuthRecord {
+    const profile = this.userProfileForId(user.userId) ?? user;
     return {
       userId: user.userId,
       createdAt: now,
       expiresAt: now + SESSION_TTL_MS,
       provider: user.provider,
-      label: user.label,
-      ...(user.walletAddress ? { walletAddress: user.walletAddress } : {}),
-      ...(user.walletChainType ? { walletChainType: user.walletChainType } : {}),
+      label: user.label ?? profile.label,
+      ...(profile.walletAddress ? { walletAddress: profile.walletAddress } : {}),
+      ...(profile.walletChainType ? { walletChainType: profile.walletChainType } : {}),
     };
   }
+
+  private rememberAuthUser(user: AuthUserRecord): AuthUserRecord {
+    this.usersByProviderHash.set(authUserKey(user.provider, user.providerUserHash), user);
+    const merged = mergeAuthUserProfile(this.usersById.get(user.userId), user);
+    this.usersById.set(user.userId, merged);
+    return merged;
+  }
+
+  private userProfileForId(userId: string): AuthUserRecord | undefined {
+    const direct = this.usersById.get(userId);
+    let profile = direct;
+    for (const user of this.usersByProviderHash.values()) {
+      if (user.userId === userId) profile = mergeAuthUserProfile(profile, user);
+    }
+    if (profile) this.usersById.set(userId, profile);
+    return profile;
+  }
+
+  private enrichRecord(record: AuthRecord): AuthRecord {
+    const profile = this.userProfileForId(record.userId);
+    if (!profile) return record;
+    return {
+      ...record,
+      provider: record.provider ?? profile.provider,
+      label: record.label ?? profile.label,
+      ...(record.walletAddress ?? profile.walletAddress
+        ? { walletAddress: record.walletAddress ?? profile.walletAddress }
+        : {}),
+      ...(record.walletChainType ?? profile.walletChainType
+        ? { walletChainType: record.walletChainType ?? profile.walletChainType }
+        : {}),
+    };
+  }
+}
+
+function authProviderRank(provider: AuthUserRecord["provider"]): number {
+  if (provider === "privy") return 3;
+  if (provider === "openrouter") return 2;
+  return 1;
+}
+
+function preferredAuthUserRecord(a: AuthUserRecord, b: AuthUserRecord): AuthUserRecord {
+  if (b.lastLoginAt !== a.lastLoginAt) return b.lastLoginAt > a.lastLoginAt ? b : a;
+  const rankDelta = authProviderRank(b.provider) - authProviderRank(a.provider);
+  if (rankDelta !== 0) return rankDelta > 0 ? b : a;
+  return b.createdAt >= a.createdAt ? b : a;
+}
+
+function mergeAuthUserProfile(current: AuthUserRecord | undefined, next: AuthUserRecord): AuthUserRecord {
+  if (!current) return next;
+  const primary = preferredAuthUserRecord(current, next);
+  const secondary = primary === current ? next : current;
+  return {
+    ...primary,
+    createdAt: Math.min(current.createdAt, next.createdAt),
+    lastLoginAt: Math.max(current.lastLoginAt, next.lastLoginAt),
+    label: primary.label ?? secondary.label,
+    ...(primary.walletAddress ?? secondary.walletAddress
+      ? { walletAddress: primary.walletAddress ?? secondary.walletAddress }
+      : {}),
+    ...(primary.walletChainType ?? secondary.walletChainType
+      ? { walletChainType: primary.walletChainType ?? secondary.walletChainType }
+      : {}),
+  };
 }
 
 async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<{ key: string; userId?: string }> {
