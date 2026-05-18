@@ -24,6 +24,21 @@ export interface AuthRecord {
   walletChainType?: "ethereum" | "solana";
 }
 
+export interface AuthAnalyticsSnapshot {
+  users: number;
+  activeSessions: number;
+  pendingAuth: number;
+  providers: Record<AuthUserRecord["provider"], number>;
+  createdLast24h: number;
+  signedInLast24h: number;
+  returningUsers: number;
+  d1Retention: {
+    eligibleUsers: number;
+    returnedUsers: number;
+    rate: number | null;
+  };
+}
+
 interface PendingPkce {
   verifier: string;
   createdAt: number;
@@ -122,6 +137,45 @@ export class AuthService extends Service {
   /** Test hook: how many sessions are currently tracked. */
   sessionCount(): number {
     return this.sessions.size;
+  }
+
+  analyticsSnapshot(now: number = Date.now()): AuthAnalyticsSnapshot {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const users = Array.from(this.usersById.values());
+    const providers: Record<AuthUserRecord["provider"], number> = {
+      guest: 0,
+      openrouter: 0,
+      privy: 0,
+    };
+    let createdLast24h = 0;
+    let signedInLast24h = 0;
+    let returningUsers = 0;
+    let eligibleUsers = 0;
+    let returnedUsers = 0;
+    for (const user of users) {
+      providers[user.provider] += 1;
+      if (now - user.createdAt <= dayMs) createdLast24h += 1;
+      if (now - user.lastLoginAt <= dayMs) signedInLast24h += 1;
+      if (user.lastLoginAt > user.createdAt) returningUsers += 1;
+      if (now - user.createdAt >= dayMs) {
+        eligibleUsers += 1;
+        if (user.lastLoginAt - user.createdAt >= dayMs) returnedUsers += 1;
+      }
+    }
+    return {
+      users: users.length,
+      activeSessions: this.sessions.size,
+      pendingAuth: this.pending.size,
+      providers,
+      createdLast24h,
+      signedInLast24h,
+      returningUsers,
+      d1Retention: {
+        eligibleUsers,
+        returnedUsers,
+        rate: eligibleUsers > 0 ? returnedUsers / eligibleUsers : null,
+      },
+    };
   }
 
   /** Test hook: inject a session record so tests don't have to mock the full

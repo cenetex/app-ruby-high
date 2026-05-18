@@ -124,6 +124,16 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("opinionGradeFired = true");
   });
 
+  it("wires sealed yearbook share controls in the character sheet", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(script).toContain("function buildYearbookShareActions");
+    expect(script).toContain("yearbook_shares");
+    expect(script).toContain("Open yearbook card");
+    expect(script).toContain("Copy yearbook card link");
+    expect(VIEWER_CSS).toContain(".paper-archive-action");
+  });
+
   it("keeps stream refreshes from holding the Chat/Practice busy lock", () => {
     const script = inlineScript(renderedViewer());
     const consumeStart = script.indexOf("async function consumeSseStream");

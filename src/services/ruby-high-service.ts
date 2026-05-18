@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Service, type IAgentRuntime } from "@elizaos/core";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
@@ -297,6 +298,44 @@ export interface HostedAiAccessActivationResult {
   transaction: RubyHighWalletTransaction | null;
 }
 
+export interface RubyHighAnalyticsSnapshot {
+  store: string;
+  loaded: boolean;
+  sessions: number;
+  updatedLast24h: number;
+  characters: number;
+  graduatedCharacters: number;
+  activeRounds: number;
+  completedGrades: number;
+  essayReports: number;
+  questions: {
+    correct: number;
+    total: number;
+    accuracy: number | null;
+  };
+  wallet: {
+    meritStars: number;
+    hallPasses: number;
+  };
+}
+
+export interface YearbookShareCard {
+  shareId: string;
+  grade: Grade;
+  completedAt: number;
+  characterName: string;
+  playbookId: string | null;
+  summary: { correct: number; total: number };
+  stats?: CharacterStats;
+  portraitDataUrl?: string;
+  flavorQuote?: string;
+  arcAnswer?: string;
+  subjectScores?: Record<string, { correct: number; total: number }>;
+  graduationReward?: GraduationReward;
+  superlatives: string[];
+  source: "current-character" | "student-pool";
+}
+
 export interface CharacterSlotUnlockInput {
   requestId?: string;
   now?: number;
@@ -427,6 +466,73 @@ export class RubyHighService extends Service {
     const promise = this.persistSession(sessionId, { surfaceErrors: true });
     if (typeof this.store.flush === "function") await this.store.flush();
     await promise;
+  }
+
+  analyticsSnapshot(now: number = Date.now()): RubyHighAnalyticsSnapshot {
+    const dayMs = 24 * 60 * 60 * 1000;
+    let updatedLast24h = 0;
+    let characters = 0;
+    let graduatedCharacters = 0;
+    let activeRounds = 0;
+    let completedGrades = 0;
+    let essayReports = 0;
+    let correct = 0;
+    let total = 0;
+    let meritStars = 0;
+    let hallPasses = 0;
+    for (const state of this.sessions.values()) {
+      if (now - Number(state.updatedAt ?? 0) <= dayMs) updatedLast24h += 1;
+      if (state.character) {
+        characters += 1;
+        const yearbookCount = Array.isArray(state.character.yearbook) ? state.character.yearbook.length : 0;
+        completedGrades += yearbookCount;
+        if (yearbookCount >= GRADES.length) graduatedCharacters += 1;
+      }
+      if (state.activeRound && !state.activeRound.resolved) activeRounds += 1;
+      essayReports += Array.isArray(state.essayReports) ? state.essayReports.length : 0;
+      correct += Math.max(0, Math.floor(Number(state.score?.correct ?? 0)));
+      total += Math.max(0, Math.floor(Number(state.score?.total ?? 0)));
+      const wallet = normalizeWallet(state.wallet, state.score?.points ?? 0);
+      meritStars += wallet.meritStars;
+      hallPasses += wallet.hallPasses;
+    }
+    return {
+      store: this.store.describe(),
+      loaded: this.loaded,
+      sessions: this.sessions.size,
+      updatedLast24h,
+      characters,
+      graduatedCharacters,
+      activeRounds,
+      completedGrades,
+      essayReports,
+      questions: {
+        correct,
+        total,
+        accuracy: total > 0 ? correct / total : null,
+      },
+      wallet: {
+        meritStars,
+        hallPasses,
+      },
+    };
+  }
+
+  yearbookSharesForSession(sessionId: string): YearbookShareCard[] {
+    const state = this.getOrCreate(sessionId);
+    return yearbookShareCardsForState(state);
+  }
+
+  findYearbookShare(shareId: string, grade: Grade): YearbookShareCard | null {
+    const clean = shareId.trim();
+    if (!clean) return null;
+    for (const state of this.sessions.values()) {
+      const hit = yearbookShareCardsForState(state).find((card) =>
+        card.shareId === clean && card.grade === grade
+      );
+      if (hit) return hit;
+    }
+    return null;
   }
 
   hallPassBalance(sessionId: string): number {
@@ -3714,6 +3820,54 @@ function normalizePositiveInteger(value: number, label: string): number {
     throw new Error(`${label} must be a positive integer.`);
   }
   return amount;
+}
+
+function yearbookShareId(parts: {
+  sessionId: string;
+  source: "current-character" | "student-pool";
+  name: string;
+  createdAt: number;
+}): string {
+  return createHash("sha256")
+    .update(`${parts.sessionId}:${parts.source}:${parts.name}:${parts.createdAt}`)
+    .digest("hex")
+    .slice(0, 20);
+}
+
+function yearbookShareCardsForState(state: QuizState): YearbookShareCard[] {
+  const cards: YearbookShareCard[] = [];
+  const addCards = (
+    source: "current-character" | "student-pool",
+    owner: Pick<PlayerCharacter, "name" | "playbookId" | "createdAt" | "yearbook">,
+  ) => {
+    const shareId = yearbookShareId({
+      sessionId: state.sessionId,
+      source,
+      name: owner.name,
+      createdAt: owner.createdAt,
+    });
+    for (const entry of owner.yearbook ?? []) {
+      cards.push({
+        shareId,
+        grade: entry.grade,
+        completedAt: entry.completedAt,
+        characterName: entry.name || owner.name,
+        playbookId: entry.playbookId ?? owner.playbookId ?? null,
+        summary: entry.summary,
+        ...(entry.stats ? { stats: { ...entry.stats } } : {}),
+        ...(entry.portraitDataUrl ? { portraitDataUrl: entry.portraitDataUrl } : {}),
+        ...(entry.flavorQuote ? { flavorQuote: entry.flavorQuote } : {}),
+        ...(entry.arcAnswer ? { arcAnswer: entry.arcAnswer } : {}),
+        ...(entry.subjectScores ? { subjectScores: { ...entry.subjectScores } } : {}),
+        ...(entry.graduationReward ? { graduationReward: entry.graduationReward } : {}),
+        superlatives: Array.isArray(entry.superlatives) ? [...entry.superlatives] : [],
+        source,
+      });
+    }
+  };
+  if (state.character) addCards("current-character", state.character);
+  for (const entry of state.studentPool ?? []) addCards("student-pool", entry);
+  return cards.sort((a, b) => a.completedAt - b.completedAt);
 }
 
 function normalizeIdempotencyPart(value: unknown): string {

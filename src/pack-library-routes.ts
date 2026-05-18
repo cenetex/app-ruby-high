@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { log } from "./services/logger.js";
-import { courseSlotCost, hostedEntitlementStatus, hostedOpenRouterApiKey } from "./hosted-entitlements.js";
+import { TokenBucket } from "./services/rate-limit.js";
+import { courseSlotCost, hostedEntitlementStatus } from "./hosted-entitlements.js";
 import {
   ORIGINAL_PACK_ID,
   availablePacksForSession,
@@ -42,6 +45,7 @@ export interface PackLibraryRouteContext {
   res: unknown;
   cookieHeader?: string | null;
   apiKeyHeader?: string | null;
+  clientIp?: string | null;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
@@ -60,6 +64,7 @@ const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENE
 const COURSE_SLOT_HALL_PASS_COST = courseSlotCost();
 const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 18);
 const PACK_SEARCH_LIMIT = 24;
+const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
 type PackLibrarySource = "official" | "creator" | "imported";
 
 export async function handlePackLibraryRoutes(
@@ -351,6 +356,11 @@ export async function handlePackLibraryRoutes(
   if (ctx.method === "POST" && materialsUrlPath?.[1] && materialsUrlPath?.[2]) {
     const draft = await requireDraft(deps.ruby, record, decodeURIComponent(materialsUrlPath[1]), ctx);
     if (!draft) return true;
+    const rlKey = packLibraryRateKey(ctx, token);
+    if (!MATERIALS_URL_LIMITER.take(rlKey)) {
+      reject429(ctx, MATERIALS_URL_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
     const body = await readBody(ctx);
     try {
       const sourceUrl = normalizeMarkdownSourceUrl(bodyString(body, "url"));
@@ -1182,11 +1192,10 @@ function resolveCourseGenerationCredential(
     sessionId,
   });
   const browserImageApiKey = ctx.apiKeyHeader?.trim() || null;
-  const hostedImageApiKey = hostedOpenRouterApiKey();
   if (textCredential.apiKey) {
     return {
       apiKey: textCredential.apiKey,
-      imageApiKey: browserImageApiKey || (textCredential.source === "local" ? hostedImageApiKey : textCredential.apiKey),
+      imageApiKey: browserImageApiKey || (textCredential.source === "hosted" ? textCredential.apiKey : null),
     };
   }
   return { apiKey: null, imageApiKey: null };
@@ -1742,6 +1751,7 @@ function generationCountToday(teacher: StoredDraftTeacherRecord): number {
 }
 
 async function fetchMarkdownMaterials(url: string): Promise<string> {
+  await assertSafeMaterialsUrl(url);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 12_000);
   try {
@@ -1755,7 +1765,7 @@ async function fetchMarkdownMaterials(url: string): Promise<string> {
     if (contentType && !/text|markdown|json|octet-stream/i.test(contentType)) {
       throw new Error("Materials URL must return markdown or plain text.");
     }
-    const text = await response.text();
+    const text = await readLimitedResponseText(response, MAX_MATERIAL_CHARS);
     if (text.length > MAX_MATERIAL_CHARS) {
       throw new Error(`Course materials must be ${MAX_MATERIAL_CHARS} characters or less.`);
     }
@@ -1766,8 +1776,18 @@ async function fetchMarkdownMaterials(url: string): Promise<string> {
 }
 
 function normalizeMarkdownSourceUrl(raw: string): string {
-  if (!raw) throw new Error("URL required.");
-  const url = new URL(raw);
+  const input = raw.trim();
+  if (!input) throw new Error("URL required.");
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new Error("Materials URL is invalid.");
+  }
+  if (url.username || url.password) throw new Error("Materials URL must not contain credentials.");
+  if (url.protocol === "http:" && process.env.RUBY_HIGH_ALLOW_HTTP_MATERIAL_URLS !== "true") {
+    throw new Error("Materials URL must use https.");
+  }
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("Materials URL must be http or https.");
   if (url.hostname === "github.com") {
     const parts = url.pathname.split("/").filter(Boolean);
@@ -1778,6 +1798,91 @@ function normalizeMarkdownSourceUrl(raw: string): string {
     }
   }
   return url.toString();
+}
+
+async function assertSafeMaterialsUrl(raw: string): Promise<void> {
+  const url = new URL(raw);
+  const hostname = url.hostname.toLowerCase();
+  if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost")) {
+    throw new Error("Materials URL host is not allowed.");
+  }
+  let addresses: string[];
+  try {
+    addresses = isIP(hostname)
+      ? [hostname]
+      : (await lookup(hostname, { all: true, verbatim: false })).map((entry) => entry.address);
+  } catch {
+    throw new Error("Materials URL host could not be resolved.");
+  }
+  if (addresses.length === 0 || addresses.some(isBlockedAddress)) {
+    throw new Error("Materials URL host resolves to a private or reserved address.");
+  }
+}
+
+function isBlockedAddress(address: string): boolean {
+  const v = isIP(address);
+  if (v === 4) {
+    const parts = address.split(".").map((part) => Number(part));
+    const [a = 0, b = 0, c = 0] = parts;
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+      (a === 192 && b === 168) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      (a === 198 && b === 51 && c === 100) ||
+      (a === 203 && b === 0 && c === 113) ||
+      a >= 224
+    );
+  }
+  if (v === 6) {
+    const normalized = address.toLowerCase();
+    const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped?.[1]) return isBlockedAddress(mapped[1]);
+    return (
+      normalized === "::" ||
+      normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      /^fe[89ab]/.test(normalized) ||
+      normalized.startsWith("ff") ||
+      normalized === "2001:db8::" ||
+      normalized.startsWith("2001:db8:")
+    );
+  }
+  return true;
+}
+
+async function readLimitedResponseText(response: Response, maxChars: number): Promise<string> {
+  const body = response.body;
+  if (!body || typeof body.getReader !== "function") {
+    const text = await response.text();
+    if (text.length > maxChars) throw new Error(`Course materials must be ${maxChars} characters or less.`);
+    return text;
+  }
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length > maxChars) {
+        await reader.cancel().catch(() => {});
+        throw new Error(`Course materials must be ${maxChars} characters or less.`);
+      }
+    }
+    text += decoder.decode();
+    if (text.length > maxChars) throw new Error(`Course materials must be ${maxChars} characters or less.`);
+    return text;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 function uniquePacks(packs: ContentPack[]): ContentPack[] {
@@ -1793,6 +1898,16 @@ function uniquePacks(packs: ContentPack[]): ContentPack[] {
 
 function touchDraft(draft: StoredDraftContentPackRecord): StoredDraftContentPackRecord {
   return { ...draft, updatedAt: Date.now() };
+}
+
+function packLibraryRateKey(ctx: PackLibraryRouteContext, token: string): string {
+  return `${ctx.clientIp || "no-ip"}:${token || "anon"}`;
+}
+
+function reject429(ctx: PackLibraryRouteContext, retryAfterSeconds: number): void {
+  const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+  res.setHeader?.("Retry-After", String(Math.max(1, retryAfterSeconds)));
+  ctx.error(ctx.res, "Too many requests - slow down a moment.", 429);
 }
 
 async function readBody(ctx: PackLibraryRouteContext): Promise<Record<string, unknown>> {
@@ -1927,6 +2042,7 @@ function clientErrorStatus(err: unknown): number {
   if (
     message.includes("Unknown") ||
     message.includes("URL required") ||
+    message.includes("Materials URL") ||
     message.includes("materials") ||
     message.includes("Course materials") ||
     message.includes("Generate questions") ||

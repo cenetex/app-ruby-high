@@ -5815,6 +5815,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const summary = entry.summary || { correct: 0, total: 0 };
     const gradeIdx = GRADE_ORDER.indexOf(String(entry.grade));
     const diamondCount = Math.max(1, gradeIdx + 1);
+    const share = yearbookShareForEntry(entry, liveChar);
 
     const item = document.createElement("div");
     item.className = "paper-archive-entry";
@@ -5857,7 +5858,93 @@ const VIEWER_SCRIPT_SUFFIX = `
       renderMarkdownInto(quoteEl, "“" + quote + "”", { inline: true });
       item.appendChild(quoteEl);
     }
+    if (share && share.url) {
+      item.appendChild(buildYearbookShareActions(share));
+    }
     return item;
+  }
+
+  function yearbookShareForEntry(entry, liveChar) {
+    const shares = lastTelemetry && Array.isArray(lastTelemetry.yearbook_shares) ? lastTelemetry.yearbook_shares : [];
+    if (!shares.length || !entry) return null;
+    const grade = String(entry.grade || "");
+    const completedAt = Number(entry.completedAt || 0);
+    const name = String(entry.name || liveChar?.name || "");
+    return shares.find((share) =>
+      String(share.grade || "") === grade
+      && Number(share.completedAt || 0) === completedAt
+      && (!name || share.characterName === name)
+    ) || shares.find((share) =>
+      String(share.grade || "") === grade
+      && Number(share.completedAt || 0) === completedAt
+    ) || null;
+  }
+
+  function buildYearbookShareActions(share) {
+    const actions = document.createElement("div");
+    actions.className = "paper-archive-actions";
+    const url = absoluteViewerUrl(share.url);
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "paper-archive-action";
+    open.textContent = "Open";
+    open.title = "Open yearbook card";
+    open.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+    actions.appendChild(open);
+
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "paper-archive-action";
+    copy.textContent = "Copy";
+    copy.title = "Copy yearbook card link";
+    copy.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const original = copy.textContent;
+      try {
+        await copyTextToClipboard(url);
+        copy.textContent = "Copied";
+      } catch {
+        copy.textContent = "Failed";
+      } finally {
+        setTimeout(() => { copy.textContent = original; }, 1200);
+      }
+    });
+    actions.appendChild(copy);
+
+    return actions;
+  }
+
+  function absoluteViewerUrl(path) {
+    try {
+      return new URL(path, window.location.origin).toString();
+    } catch {
+      return String(path || "");
+    }
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    try {
+      if (!document.execCommand("copy")) throw new Error("copy failed");
+    } finally {
+      area.remove();
+    }
   }
 
   // ── Paper Card builder ──────────────────────────────────────────────────

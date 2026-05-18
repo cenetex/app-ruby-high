@@ -30,6 +30,8 @@ import {
 import { handleCommandRoute } from "./routes/commands.js";
 import { handleBugReportRoute } from "./routes/bug-report.js";
 import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
+import { ADMIN_METRICS_PATH, handleAdminMetricsRoute } from "./routes/admin.js";
+import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import type { RouteContext } from "./routes/context.js";
 import { getPrivyPublicConfigFromEnv } from "./services/privy-auth.js";
@@ -108,6 +110,25 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   if (ctx.pathname === BUG_REPORT_PATH) {
     return handleBugReportRoute(ctx);
+  }
+
+  if (ctx.pathname.startsWith("/api/apps/ruby-high/yearbook")) {
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!ruby) {
+      ctx.error(ctx.res, "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleYearbookRoutes(ctx, ruby);
+  }
+
+  if (ctx.pathname === ADMIN_METRICS_PATH) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!auth || !ruby) {
+      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleAdminMetricsRoute(ctx, { auth, ruby });
   }
 
   if (ctx.pathname.startsWith(BILLING_PREFIX)) {
@@ -193,6 +214,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         res: ctx.res,
         cookieHeader: ctx.cookieHeader,
         apiKeyHeader: ctx.apiKeyHeader,
+        clientIp: ctx.clientIp,
         error: ctx.error,
         json: ctx.json,
         readJsonBody: ctx.readJsonBody,

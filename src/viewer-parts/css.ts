@@ -4854,6 +4854,31 @@ export const VIEWER_CSS = `
     line-height: 1.35;
     font-style: italic;
   }
+  .paper-archive-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 7px;
+  }
+  .paper-archive-action {
+    border: 1px solid rgba(240,180,65,0.36);
+    border-radius: 6px;
+    min-height: 28px;
+    padding: 0 9px;
+    background: rgba(240,180,65,0.08);
+    color: #ffd88a;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .paper-archive-action:hover,
+  .paper-archive-action:focus-visible {
+    background: rgba(240,180,65,0.16);
+    outline: none;
+  }
 
   /* Paper Card — frozen, sealed. Paper-stock cream tint, faint grid
      overlay, slight desaturation. The subtitle ("✓ sealed Mon YYYY")

@@ -312,9 +312,9 @@ This depends on §2.2's evaluation harness — voice evaluation is a public-good
 
 ## 2.6 Public yearbook as a default social object
 
-Today the yearbook is private to the player's session. Future state: every yearbook page is a shareable URL with an OG image, opt-in public per character. Senior diplomas are designed to be screenshotted; the page should be designed to be opened.
+The first share surface exists: `GET /api/apps/ruby-high/yearbook/:shareId/:grade` returns a static card page, `?format=json` returns the immutable card data, and `?format=svg` returns the social image used by OG tags. The viewer exposes Open/Copy controls on sealed year cards. Senior diplomas are still designed to be screenshotted; the next product step is explicit privacy controls.
 
-The privacy default is an open question (§3.3).
+The privacy default is still an open question (§3.3). Until that decision is made, share-card IDs are unguessable hashes of session/character identity and are not listed publicly.
 
 ## 2.7 The Lounge as a cadence product
 
@@ -336,6 +336,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 | **Conditions / Strings** | Schema declares both; "currently never written"; aspirational. | Both fields **removed from the schema** in PR #63. | Removed from this doc. They are not future work in the current design. |
 | **Event log canonical list** | The retention dashboard depends on `sign_in`, `character_created`, `question_posed`, `answer_picked`, `essay_submitted`, `essay_graded`, `grade_completed`, `session_end`. | Now emits all eight (in dot-style: `auth.signed-in`, `character.created`, `question.posed`, `answer.picked`, `essay.submitted`, `essay.graded`, `player.grade-advanced` ≈ `grade_completed`, `session.ended`), plus `bonus.posed`, `pack.*`, and the failure events. Existing dot-style names retained — renaming for cosmetic underscore-style consistency would break any downstream sink. Captured in `event-log.test.ts` so a quiet rename is impossible. |
 | **AWS App Runner production** | Cited as the production target. | Production is on **Fly.io**. App Runner workflow is retained as a manual fallback only. | This doc and main's README now say Fly. |
+| **Report Card tab** | Claimed per-essay grade history existed only in state and no UI surfaced it. | The viewer has a Report Card card over `essay_reports`, including count, average, top score, recent entries, comments, and the out-essayed rivalry line. | Treat the report card as shipped; future work is refinement, not first implementation. |
 
 ## 3.2 Missing or partial
 
@@ -343,20 +344,19 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 | Gap | What it is | Size |
 |---|---|---|
-| **Yearbook share-card route** | A `GET /yearbook/:characterId/:grade` route that renders a shareable static page with OG tags + a `?format=png` server-rendered image. The yearbook entry exists in state; it is not exposed outside the session. | Small (1–2 days). |
-| **Per-essay grade history (Report Card tab)** | A read-only viewer panel that surfaces per-essay grades by teacher, with averages and a "Lyra has out-essayed you 3 of the last 5 Tuesdays" line. The data is in state; no UI surfaces it. | Small (1–2 days). |
-| **Faculty-voice evaluation harness** | A `npm run eval:voice` that scores generated questions and grades against hand-curated reference Q/A pairs per teacher. Required before §2.2 (faculty expansion) and §2.5 (community packs). | Medium (3–4 days for v0). |
 | **Curated content beyond ruby-high-original** | The built-in pack ships with 15 questions per teacher. No curated first-party SAT/MCAT/AP/community packs have been ingested and reviewed yet. | Medium (per pack: 1 day to ingest + curate). |
-| **Retention dashboard** | Three numbers: D1 retention, questions per session, grade-completion rate. Logs emit to stdout; the layer above (a sink + queries + a small JSON endpoint) is missing. | Small (1 day on top of P0 in §3.4). |
 | **Legacy rarity/XP compatibility removal** | `Rarity`, `XP_FOR_RARITY`, `xpForRarity`, `rollRarity`, and legacy round fields can be deleted once older persisted states no longer need to hydrate through them. | Trivial once state compatibility is no longer required. |
 
 ### Partial — shipped but incomplete
 
 | Gap | What's there | What's missing |
 |---|---|---|
+| **Retention dashboard** | `/api/apps/ruby-high/admin/metrics` is token-gated and returns auth, Ruby High, and log-counter snapshots. `logMetricsSnapshot()` gives an in-process event/error counter. | A durable queryable sink, saved queries, and trend storage. The JSON route is enough for tuning today but not enough for historical analysis. |
+| **Yearbook share cards** | Public static HTML, JSON, SVG, OG tags, session telemetry share URLs, and viewer Open/Copy controls are wired. | Privacy policy/default and a real PNG renderer for platforms that do not honor SVG OG images. |
+| **Faculty-voice evaluation harness** | `npm run eval:voice` runs a lightweight reference-set smoke harness and optionally calls an OpenRouter judge when a key is present. | A larger hand-curated held-out set, thresholds that fail CI, and generated sample capture from real teacher/course flows. |
 | **Mentor mode mechanical effect** | `inheritedFrom` field captured on the new character; rendered on card. | No code reads `inheritedFrom` during round resolution. The inherited move is lore, not mechanics. |
 | **Playbook moves** | All six moves named, described, rendered on character card, and passed to teacher context as flavor. | None of the six change round resolution. |
-| **Rate-limiter endpoint coverage** | Three buckets cover the LLM-backed chat surface, portrait/diploma generation, and the `/command` game-state mutation surface. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
+| **Rate-limiter endpoint coverage** | Buckets cover LLM-backed chat, portrait/diploma generation, `/command` mutations, and remote course-material URL imports. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
 
 ## 3.3 Open questions
 
@@ -375,12 +375,12 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 ### P0 — unblocks tuning (**event names done; dashboard layer next**)
 
-1. **Build the retention dashboard.** All eight canonical events now emit (see §3.1). Next: ship logs to a queryable sink (CloudWatch on App Runner is free; Fly piping to a small ClickHouse / SQLite-on-Litestream is cheap), add three saved queries — D1 retention, questions/session, grade-completion rate — and a small `/admin/metrics` JSON route gated to a single token. Three numbers in JSON is enough to start tuning.
+1. **Persist the retention dashboard.** All eight canonical events emit and the token-gated `/admin/metrics` JSON route exists. Next: ship logs/metrics to a queryable sink (Fly log drain to ClickHouse, Postgres, or SQLite-on-Litestream is enough), add saved queries for D1 retention, questions/session, and grade-completion rate, then snapshot trends over time.
 
 ### P1 — closes the two real shipped-but-unfinished social gaps
 
-2. **Yearbook share-card route.** `GET /yearbook/:characterId/:grade` → static HTML page with OG tags + a `?format=png` variant rendered server-side. The data exists; this is the social object the product is supposed to produce.
-3. **Report Card tab.** A viewer panel over per-essay grade history. Adds the "Lyra has out-essayed you 3 of the last 5 Tuesdays" line. Pure viewer + read endpoint — data is already in state.
+2. **Finish yearbook sharing policy.** Decide the privacy default and configure a PNG renderer for platforms that need raster OG images. The backend route, SVG card, and viewer Open/Copy controls already exist.
+3. **Tighten the Report Card.** The card exists; next refinement is per-teacher filtering and deeper comparison copy once enough essay history exists.
 
 ### P2 — small mechanical wins
 
@@ -389,13 +389,13 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 ### P3 — content & evaluation (the moat)
 
 5. **Prototype one connected teacher pack** backed by an OpenAI-compatible RATi/aws-swarm agent endpoint. Proves the live-teacher boundary, auth model, and fallback behavior before broadening the UI.
-6. **Faculty-voice eval harness.** Automate the "is this in voice?" check before community faculty become possible. Cheapest version: 20–30 hand-graded reference Q/A pairs per teacher + an LLM-judge prompt, run as `npm run eval:voice`.
+6. **Expand the faculty-voice eval harness.** The script exists. Next: 20–30 hand-graded reference Q/A pairs per teacher, real generated samples from course packs, and a CI threshold.
 
 ### Defer
 
 - Remaining playbook moves wired in — handle one (P2 step 4) before the rest.
 - Faculty expansion, multiplayer co-op, Faculty Cup tournament, and public community packs — premature until the stabilization rule above is satisfied.
-- Public yearbook default policy — answer falls out of P1 step 2 once share-cards exist; design decision then, not now.
+- Public yearbook default policy — answer falls out of P1 step 2 now that share-cards exist; design decision then, not now.
 
 ### Sequencing call
 

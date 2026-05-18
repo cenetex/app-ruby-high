@@ -84,6 +84,11 @@ No eliza runtime needed for these:
 - `GET /dev/clear` — wipe the board (keeps Merit Stars).
 - `GET /dev/reset` — wipe the session (Merit Stars + history).
 
+### Production app endpoints
+
+- `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth users/sessions, Ruby High sessions/progression, and in-process log counters. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
+- `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data and `?format=svg` returns the social image. `?format=png` is intentionally 501 until server-side raster rendering is configured.
+
 ## Wire it into a character
 
 ```ts
@@ -113,6 +118,7 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_DYNAMO_TABLE` | — | Required when backend is `dynamodb`. |
 | `AWS_REGION` | — | Required when backend is `dynamodb`. |
 | `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | DynamoDB TTL for idle sessions. |
+| `RUBY_HIGH_ADMIN_TOKEN` | — | Enables `/api/apps/ruby-high/admin/metrics`. Keep this in secrets only. |
 | `RUBY_HIGH_LLM_PROVIDER` | `openrouter` | Set to `local` to use a local OpenAI-compatible `/v1/chat/completions` endpoint. Also inferred as `local` when `RUBY_HIGH_LLM_BASE_URL` is set. |
 | `RUBY_HIGH_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` in local mode | Local OpenAI-compatible base URL. Values ending in `/v1` or `/chat/completions` are both accepted. |
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
@@ -137,6 +143,11 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | — | Required Authorization header value for `/api/apps/ruby-high/billing/revenuecat/webhook`. The route accepts either this exact value or `Bearer <value>`. |
 | `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE` | `HLP` | RevenueCat Virtual Currency code to credit as Hall Passes when using RevenueCat Virtual Currency events. |
 | `RUBY_HIGH_CREATOR_DEFAULT_MODEL` | `anthropic/claude-haiku-4.5` | Default OpenRouter model for local teacher drafts created in Edit Pack. |
+| `RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY` | `5` | Per-teacher daily cap for draft question/course generation. |
+| `RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT` | `18` | Default number of questions requested by AI course generation, clamped to 4–24. |
+| `RUBY_HIGH_ALLOW_HTTP_MATERIAL_URLS` | — | Set to `true` only in trusted local/dev environments. Remote course-material imports require HTTPS by default and reject localhost/private/reserved hosts. |
+| `RUBY_HIGH_EVAL_MODEL` | `openai/gpt-4.1-mini` | LLM-judge model for `npm run eval:voice` when an OpenRouter key is available. |
+| `RUBY_HIGH_EVAL_REQUIRE_API` | — | Set to `1` to make `npm run eval:voice` fail when no `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
 | `RUBY_HIGH_RATI_BASE_URL` | `https://swarm.rati.chat/api/v1` | OpenAI-compatible RATi/aws-swarm base URL for persisted RATi-backed teacher packs. |
 | `RUBY_HIGH_RATI_INTERNAL_API_KEY` | — | Internal server-to-server RATi credential for RATi-backed teacher packs and avatar publishing. The legacy `RUBY_HIGH_RATI_API_KEY` is no longer read. |
 | `RUBY_HIGH_RATI_SUPPORTS_TOOLS` | `true` | Whether RATi-backed teachers receive Ruby High board tools. Set `false` only for an older chat-only RATi backend. |
@@ -177,9 +188,13 @@ RevenueCat setup:
 
 ```bash
 npm test
+npm run check:full
+npm run eval:voice
 ```
 
-The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, and the content-pack registry.
+`check:full` runs typecheck, the Vitest suite, and the offline SPA build. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
+
+The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, yearbook/admin routes, and the content-pack registry.
 
 ## Deploy
 

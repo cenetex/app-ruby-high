@@ -19,6 +19,7 @@ function makeCtx(opts: {
   path: string;
   cookie?: string | null;
   apiKeyHeader?: string | null;
+  clientIp?: string | null;
   body?: Record<string, unknown>;
 }): PackLibraryRouteContext {
   lastResponse = null;
@@ -30,6 +31,7 @@ function makeCtx(opts: {
     res: {} as never,
     cookieHeader: opts.cookie ?? null,
     apiKeyHeader: opts.apiKeyHeader ?? null,
+    clientIp: opts.clientIp ?? "203.0.113.10",
     error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { lastResponse = { status, body: data }; },
     readJsonBody: async () => opts.body ?? {},
@@ -221,6 +223,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await auth.stop();
   await ruby.flush();
   await rm(tmpDir, { recursive: true, force: true });
@@ -406,6 +409,73 @@ describe("/pack-library", () => {
     });
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(5);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not spend the server OpenRouter key on local-provider course portraits", async () => {
+    signInUser("alice");
+    vi.stubEnv("RUBY_HIGH_LLM_PROVIDER", "local");
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-server-openrouter");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const created = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Local Course" },
+    });
+    const draftId = created.body.draft.id as string;
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate`,
+      cookie: "rh_session=alice",
+      body: {
+        requestId: "course-generate-local-image-guard",
+        materials: "Local course materials need a generated portrait before publishing.",
+      },
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toContain("OpenRouter image generation");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects private-network material URLs before fetching", async () => {
+    signInUser("alice");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "SSRF Guard" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+      cookie: "rh_session=alice",
+      body: {
+        displayName: "Network Guard",
+        description: "Rejects private lesson URLs.",
+      },
+    });
+    const teacherId = response.body.teacher.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/materials/from-url`,
+      cookie: "rh_session=alice",
+      clientIp: "203.0.113.22",
+      body: { url: "https://127.0.0.1/private.md" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("private or reserved");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects publishing a new course slot without enough Hall Passes", async () => {

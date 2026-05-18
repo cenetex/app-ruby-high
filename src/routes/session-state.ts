@@ -42,7 +42,7 @@ import {
   hostedEntitlementStatus,
   type HostedEntitlementStatus,
 } from "../hosted-entitlements.js";
-import { APP_DISPLAY_NAME, APP_NAME } from "./constants.js";
+import { APP_DISPLAY_NAME, APP_NAME, APP_ROUTE_PREFIX } from "./constants.js";
 
 interface FacultyTelemetry extends FacultyMember {
   questionCount: number;
@@ -125,6 +125,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   comic_collection: QuizState["comicCollection"];
   school_events: QuizState["schoolEvents"];
   essay_reports: EssayReport[];
+  yearbook_shares: Array<{ shareId: string; grade: Grade; characterName: string; completedAt: number; url: string }>;
   playbooks: typeof PLAYBOOKS;
   npc_cohort: Array<{
     id: string;
@@ -365,6 +366,15 @@ export function buildSessionState(args: {
     comic_collection: state.comicCollection,
     school_events: (state.schoolEvents ?? []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
+    yearbook_shares: ruby
+      ? ruby.yearbookSharesForSession(sessionId).map((entry) => ({
+          shareId: entry.shareId,
+          grade: entry.grade,
+          characterName: entry.characterName,
+          completedAt: entry.completedAt,
+          url: `${APP_ROUTE_PREFIX}/yearbook/${entry.shareId}/${entry.grade}`,
+        }))
+      : [],
     playbooks: PLAYBOOKS,
     daily: dailyStatusForState(state),
     npc_cohort: state.npcCohort ?? [],
