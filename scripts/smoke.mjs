@@ -256,6 +256,19 @@ async function check2ViewerRenders() {
     } catch (e) {
       return fail(name, `inline <script> failed to parse: ${e?.message || e}`);
     }
+    const requiredHelpers = [
+      "withViewerTimeoutSignal",
+      "createViewerApiClient",
+      "createViewerTurnController",
+      "parseViewerSseFrames",
+      "consumeViewerSseStream",
+      "runViewerClient",
+    ];
+    for (const helper of requiredHelpers) {
+      if (!new RegExp(`\\bconst\\s+${helper}\\s+=\\s+(?:async\\s+)?function\\b`).test(scriptMatch[1])) {
+        return fail(name, `viewer script does not bind ${helper} for runtime use`);
+      }
+    }
     if (!scriptMatch[1].includes("/api/apps/ruby-high/auth/guest")) {
       return fail(name, "viewer script does not contain guest-session boot path");
     }

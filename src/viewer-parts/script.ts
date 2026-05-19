@@ -22,12 +22,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
 (() => {
   const bootstrap = ${bootstrap};
   const loadViewerModule = (url) => import(url);
-  ${withViewerTimeoutSignal.toString()}
-  ${createViewerApiClient.toString()}
-  ${createViewerTurnController.toString()}
-  ${parseViewerSseFrames.toString()}
-  ${consumeViewerSseStream.toString()}
-  (${runViewerClient.toString()})(bootstrap, loadViewerModule);
+  const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
+  const createViewerApiClient = ${createViewerApiClient.toString()};
+  const createViewerTurnController = ${createViewerTurnController.toString()};
+  const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
+  const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
+  const runViewerClient = ${runViewerClient.toString()};
+  runViewerClient(bootstrap, loadViewerModule);
 })();`;
 }
 
