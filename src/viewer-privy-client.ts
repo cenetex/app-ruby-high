@@ -100,6 +100,7 @@ const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvw
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const PRIVY_ACTION_TIMEOUT_MS = 30_000;
 const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;
+const RUBY_HIGH_LOGIN_METHODS: Array<"email" | "google" | "twitter"> = ["email", "google", "twitter"];
 
 let mountedRoot: Root | null = null;
 let mountedConfigKey = "";
@@ -158,6 +159,7 @@ export async function createRubyHighPrivyClient(
           appId: config.appId,
           clientId: config.clientId,
           config: {
+            loginMethods: RUBY_HIGH_LOGIN_METHODS,
             embeddedWallets: {
               ethereum: { createOnLogin: "users-without-wallets" },
               solana: { createOnLogin: "off" },
@@ -331,7 +333,7 @@ function RubyHighPrivyBridge(props: {
       pendingLogin.current = pending;
       modalOpenedForLogin.current = false;
       try {
-        const result = login() as unknown;
+        const result = login({ loginMethods: RUBY_HIGH_LOGIN_METHODS }) as unknown;
         if (result && typeof (result as PromiseLike<unknown>).then === "function") {
           void Promise.resolve(result).catch((err) => rejectPendingLogin(err));
         }
@@ -562,10 +564,7 @@ function sessionFromUser(
   connectedSolanaWalletAddress: string | null,
 ): RubyHighPrivySession {
   const wallet = walletFromUser(user);
-  const linkedSolanaWallet = solanaWalletFromUser(user);
-  const solanaWalletAddress = connectedSolanaWalletAddress
-    ?? linkedSolanaWallet?.address
-    ?? (wallet?.chainType === "solana" ? wallet.address : null);
+  const solanaWalletAddress = connectedSolanaWalletAddress;
   return {
     authenticated: true,
     userId: user.id,
@@ -585,18 +584,6 @@ function walletFromUser(user: User): { address: string; chainType: "ethereum" | 
     .filter((wallet): wallet is { address: string; chainType: "ethereum" | "solana"; rank: number } => !!wallet)
     .sort((a, b) => a.rank - b.rank);
   return wallets[0] ?? null;
-}
-
-function solanaWalletFromUser(user: User): { address: string; chainType: "solana"; rank: number } | null {
-  const direct = walletCandidate(user.wallet);
-  if (direct?.chainType === "solana") {
-    return { address: direct.address, chainType: "solana", rank: direct.rank };
-  }
-  const wallet = user.linkedAccounts
-    .map((account) => walletCandidate(account))
-    .filter((candidate): candidate is { address: string; chainType: "solana"; rank: number } => candidate?.chainType === "solana")
-    .sort((a, b) => a.rank - b.rank)[0];
-  return wallet ?? null;
 }
 
 function firstSolanaWalletAddress(wallets: ConnectedStandardSolanaWallet[]): string | null {

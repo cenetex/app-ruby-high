@@ -9176,16 +9176,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return raw.length > 12 ? raw.slice(0, 6) + "..." + raw.slice(-4) : raw;
   }
   function connectedSolanaWalletAddress() {
-    return privyState.solanaWalletAddress
-      || (privyState.walletChainType === "solana" ? privyState.walletAddress : null)
-      || null;
+    return privyState.solanaWalletAddress || null;
   }
   function applyPrivyState(next) {
     if (next && typeof next === "object") {
       const authenticated = !!next.authenticated;
       const hasSolanaWallet = Object.prototype.hasOwnProperty.call(next, "solanaWalletAddress");
       const nextSolanaWalletAddress = next.solanaWalletAddress
-        || (next.walletChainType === "solana" ? next.walletAddress : null)
         || (authenticated && !hasSolanaWallet ? privyState.solanaWalletAddress : null);
       privyState = {
         configured: !!(next.configured != null ? next.configured : privyState.configured),
