@@ -269,6 +269,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         sessionId: getSessionId(runtime, ctx.cookieHeader),
         apiBase: APP_ROUTE_PREFIX,
         role,
+        build: process.env.RUBY_HIGH_BUILD ?? "dev",
         privy: getPrivyPublicConfigFromEnv() ?? undefined,
       }),
       ctx.acceptEncoding,

@@ -6,6 +6,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   const apiBase = bootstrap.apiBase;
   const sessionId = bootstrap.sessionId;
   const role = bootstrap.role;
+  const buildId = bootstrap.build || "dev";
   const privyConfig = bootstrap.privyConfig;
   if ("serviceWorker" in navigator && window.isSecureContext) {
     window.addEventListener("load", () => {
@@ -479,7 +480,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       return false;
     }
   }
-  const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js";
+  const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js?v=" + encodeURIComponent(buildId);
   const COMMAND_TIMEOUT_MS = 15000;
   const PLAYER_LINE_TIMEOUT_MS = 12000;
   const STREAM_CONNECT_TIMEOUT_MS = 15000;

@@ -25,6 +25,7 @@ export interface ViewerRenderOptions {
   sessionId: string;
   apiBase: string;
   role: "agent" | "human";
+  build?: string;
   privy?: {
     appId: string;
     clientId: string;

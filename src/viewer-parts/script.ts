@@ -13,6 +13,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     apiBase: opts.apiBase,
     sessionId: opts.sessionId,
     role,
+    build: opts.build ?? "dev",
     privyConfig: opts.privy
       ? { appId: opts.privy.appId, clientId: opts.privy.clientId }
       : null,

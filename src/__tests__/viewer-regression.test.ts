@@ -98,8 +98,9 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
+    expectScriptToContain(script, '"build":"dev"');
     expectScriptToContain(script, '"privyConfig":{"appId":"privy-app-test","clientId":"privy-client-test"}');
-    expectScriptToContain(script, 'const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js"');
+    expectScriptToContain(script, 'const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js?v=" + encodeURIComponent(buildId)');
     expectScriptToContain(script, "const loadViewerModule = (url) => import(url)");
     expectScriptToContain(script, "loadViewerModule(PRIVY_CLIENT_URL)");
     expectScriptToContain(script, "createRubyHighPrivyClient(privyConfig)");
