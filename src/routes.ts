@@ -31,14 +31,17 @@ import { handleBugReportRoute } from "./routes/bug-report.js";
 import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
 import {
   ADMIN_METRICS_PATH,
+  ADMIN_METRICS_SCHEMA_PATH,
   ADMIN_OVERVIEW_PATH,
   ADMIN_PATH,
+  handleAdminMetricsSchemaRoute,
   handleAdminOverviewRoute,
   handleAdminMetricsRoute,
   renderAdminDashboardHtml,
 } from "./routes/admin.js";
 import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
+import { handleMetricsEventRoute, METRICS_EVENT_PATH } from "./routes/metrics-events.js";
 import type { RouteContext } from "./routes/context.js";
 import { getPrivyPublicConfigFromEnv } from "./services/privy-auth.js";
 
@@ -137,6 +140,10 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return handleAdminMetricsRoute(ctx, { auth, ruby });
   }
 
+  if (ctx.pathname === ADMIN_METRICS_SCHEMA_PATH) {
+    return handleAdminMetricsSchemaRoute(ctx);
+  }
+
   if (ctx.pathname === ADMIN_OVERVIEW_PATH) {
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
@@ -145,6 +152,18 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     return handleAdminOverviewRoute(ctx, { auth, ruby });
+  }
+
+  if (ctx.pathname === METRICS_EVENT_PATH) {
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!ruby) {
+      ctx.error(ctx.res, "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleMetricsEventRoute(ctx, {
+      ruby,
+      sessionId: getSessionId(runtime, ctx.cookieHeader),
+    });
   }
 
   if (ctx.method === "GET" && ctx.pathname === ADMIN_PATH) {

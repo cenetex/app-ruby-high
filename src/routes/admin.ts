@@ -12,7 +12,10 @@ import type { RouteContext } from "./context.js";
 
 export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
 export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
+export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/schema`;
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v3";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-05-19";
 
 interface AdminDeps {
   auth: AuthService;
@@ -21,10 +24,13 @@ interface AdminDeps {
 
 interface AdminMetricsSnapshot {
   ok: true;
+  schemaVersion: typeof ADMIN_METRICS_SCHEMA_VERSION;
+  schemaPath: typeof ADMIN_METRICS_SCHEMA_PATH;
   generatedAt: string;
   auth: AuthAnalyticsSnapshot;
   ruby: RubyHighAnalyticsSnapshot;
   logs: ReturnType<typeof logMetricsSnapshot>;
+  quality: AdminMetricsQuality;
 }
 
 interface AdminOverview {
@@ -33,6 +39,27 @@ interface AdminOverview {
   highlights: string[];
   risks: string[];
   actions: string[];
+}
+
+interface AdminMetricsQualityIssue {
+  field: string;
+  severity: "info" | "warning";
+  issue: string;
+  recommendedUse: string;
+}
+
+interface AdminMetricsQuality {
+  trustStart: string | null;
+  issues: AdminMetricsQualityIssue[];
+}
+
+interface AdminMetricFieldSchema {
+  path: string;
+  label: string;
+  source: string;
+  semantics: string;
+  reliability: "authoritative" | "proxy" | "legacy" | "volatile" | "missing";
+  caveat?: string;
 }
 
 function firstHeader(value: string | string[] | null | undefined): string {
@@ -64,12 +91,304 @@ function requireAdminAuth(ctx: RouteContext): string | null {
 }
 
 function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
+  const auth = deps.auth.analyticsSnapshot();
+  const ruby = deps.ruby.analyticsSnapshot();
+  const logs = logMetricsSnapshot();
   return {
     ok: true,
+    schemaVersion: ADMIN_METRICS_SCHEMA_VERSION,
+    schemaPath: ADMIN_METRICS_SCHEMA_PATH,
     generatedAt: new Date().toISOString(),
-    auth: deps.auth.analyticsSnapshot(),
-    ruby: deps.ruby.analyticsSnapshot(),
-    logs: logMetricsSnapshot(),
+    auth,
+    ruby,
+    logs,
+    quality: buildAdminMetricsQuality({ auth, ruby, logs }),
+  };
+}
+
+function metricsTrustStart(): string | null {
+  const raw = process.env.RUBY_HIGH_METRICS_TRUST_START?.trim();
+  return raw || null;
+}
+
+function buildAdminMetricsQuality(metrics: {
+  auth: AuthAnalyticsSnapshot;
+  ruby: RubyHighAnalyticsSnapshot;
+  logs: ReturnType<typeof logMetricsSnapshot>;
+}): AdminMetricsQuality {
+  const issues: AdminMetricsQualityIssue[] = [
+    {
+      field: "auth.users",
+      severity: "warning",
+      issue: "Counts auth identity records, not deduped people. Guest records are random cookie-bound identities.",
+      recommendedUse: "Use only as identity-record volume; use ruby.characters and ruby.characterD1Retention for product usage.",
+    },
+    {
+      field: "auth.daily.signedInUsers",
+      severity: "warning",
+      issue: "Derived from each identity's current lastLoginAt. Historical buckets can move when a user returns.",
+      recommendedUse: "Use as a last-seen snapshot, not a durable daily sign-in event count.",
+    },
+    {
+      field: "auth.activeSessions",
+      severity: "warning",
+      issue: "Counts unexpired cookie sessions, not currently active users.",
+      recommendedUse: "Use for cookie/session inventory, not real-time concurrency.",
+    },
+    {
+      field: "logs.counters",
+      severity: "info",
+      issue: "In-memory process counters reset on deploy, restart, and machine replacement.",
+      recommendedUse: "Use for current-process smoke signals only; production trend analysis should use ruby.events.",
+    },
+  ];
+  const guestRecords = metrics.auth.providers.guest;
+  const totalRecords = Math.max(1, metrics.auth.users);
+  if (guestRecords / totalRecords > 0.8) {
+    issues.push({
+      field: "auth.providers.guest",
+      severity: "warning",
+      issue: `${guestRecords} of ${metrics.auth.users} identity records are guest records.`,
+      recommendedUse: "Treat legacy acquisition and retention as suspect until a reset date or durable visitor/session events exist.",
+    });
+  }
+  if (metrics.ruby.characters > 0 && metrics.ruby.completedGrades === 0) {
+    issues.push({
+      field: "ruby.completedGrades",
+      severity: "info",
+      issue: "No completed grades among existing characters.",
+      recommendedUse: "Prioritize progression funnel instrumentation and first-grade completion tuning.",
+    });
+  }
+  if (metrics.ruby.events.total === 0) {
+    issues.push({
+      field: "ruby.events",
+      severity: "info",
+      issue: "No durable metric events have been recorded yet. The v3 streams start accumulating from deployment.",
+      recommendedUse: "Use product-state snapshots until v3 event volume exists; set RUBY_HIGH_METRICS_TRUST_START on deploy.",
+    });
+  }
+  return {
+    trustStart: metricsTrustStart(),
+    issues,
+  };
+}
+
+function buildAdminMetricsSchema(): {
+  ok: true;
+  schemaVersion: typeof ADMIN_METRICS_SCHEMA_VERSION;
+  publishedAt: string;
+  endpoint: typeof ADMIN_METRICS_PATH;
+  schemaPath: typeof ADMIN_METRICS_SCHEMA_PATH;
+  bucketTimezone: "UTC";
+  trustModel: string[];
+  fields: AdminMetricFieldSchema[];
+  missingEvents: AdminMetricFieldSchema[];
+} {
+  return {
+    ok: true,
+    schemaVersion: ADMIN_METRICS_SCHEMA_VERSION,
+    publishedAt: ADMIN_METRICS_SCHEMA_PUBLISHED_AT,
+    endpoint: ADMIN_METRICS_PATH,
+    schemaPath: ADMIN_METRICS_SCHEMA_PATH,
+    bucketTimezone: "UTC",
+    trustModel: [
+      "Durable product-state metrics are authoritative for current state.",
+      "Auth guest identity metrics are legacy/proxy metrics, not unique people.",
+      "Daily buckets are UTC day buckets derived from current records unless a field explicitly says it is event-backed.",
+      "In-process log counters are operational smoke signals only.",
+    ],
+    fields: [
+      {
+        path: "auth.users",
+        label: "Identity records",
+        source: "AuthUserRecord store",
+        semantics: "Total stored auth identity records across guest, OpenRouter, and Privy providers.",
+        reliability: "legacy",
+        caveat: "Guest records are random cookie-bound identities and are not deduped people.",
+      },
+      {
+        path: "auth.providers",
+        label: "Provider mix",
+        source: "AuthUserRecord.provider",
+        semantics: "Counts identity records by guest, OpenRouter, and Privy.",
+        reliability: "authoritative",
+        caveat: "Authoritative for records, not people.",
+      },
+      {
+        path: "auth.createdLast24h",
+        label: "New identity records in 24h",
+        source: "AuthUserRecord.createdAt",
+        semantics: "Identity records created in the last rolling 24 hours.",
+        reliability: "legacy",
+        caveat: "Guest records can represent returning people if their cookie was missing.",
+      },
+      {
+        path: "auth.signedInLast24h",
+        label: "Seen identity records in 24h",
+        source: "AuthUserRecord.lastLoginAt",
+        semantics: "Identity records with lastLoginAt in the last rolling 24 hours.",
+        reliability: "proxy",
+        caveat: "The timestamp is mutable and throttled for returning guest cookies.",
+      },
+      {
+        path: "auth.activeSessions",
+        label: "Unexpired cookie sessions",
+        source: "AuthSessionRecord store",
+        semantics: "Cookie sessions not expired by the 30-day TTL.",
+        reliability: "proxy",
+        caveat: "Not a real-time active-user count.",
+      },
+      {
+        path: "auth.d1Retention",
+        label: "Identity D1 retention",
+        source: "AuthUserRecord.createdAt and lastLoginAt",
+        semantics: "Identity records older than 24h whose lastLoginAt is at least 24h after creation.",
+        reliability: "legacy",
+        caveat: "Guest-heavy populations make this a weak people-retention metric.",
+      },
+      {
+        path: "auth.daily",
+        label: "Auth daily buckets",
+        source: "AuthUserRecord and AuthSessionRecord timestamps",
+        semantics: "14 UTC day buckets for new identity records, last-seen identity records, and cookie session starts.",
+        reliability: "proxy",
+        caveat: "Last-seen buckets are derived from current mutable records, not durable event history.",
+      },
+      {
+        path: "ruby.sessions",
+        label: "Saved game sessions",
+        source: "QuizState store",
+        semantics: "Persisted Ruby High state buckets keyed by Ruby High session id.",
+        reliability: "authoritative",
+        caveat: "One human can still own multiple saved sessions after cookie loss.",
+      },
+      {
+        path: "ruby.updatedLast24h",
+        label: "Saved game sessions updated in 24h",
+        source: "QuizState.updatedAt",
+        semantics: "Saved game sessions whose current updatedAt is in the last rolling 24 hours.",
+        reliability: "proxy",
+        caveat: "Captures current last update only, not all visits.",
+      },
+      {
+        path: "ruby.characterSessionsUpdatedLast24h",
+        label: "Active character sessions in 24h",
+        source: "QuizState.updatedAt plus PlayerCharacter presence",
+        semantics: "Saved game sessions with a character and an update in the last rolling 24 hours.",
+        reliability: "proxy",
+        caveat: "Best current activity proxy until durable app_open/session_resume events exist.",
+      },
+      {
+        path: "ruby.characterD1Retention",
+        label: "Character-session D1 retention",
+        source: "PlayerCharacter.createdAt and QuizState.updatedAt",
+        semantics: "Character sessions older than 24h whose saved game was updated at least 24h after character creation.",
+        reliability: "proxy",
+        caveat: "Better than guest identity retention, but still uses last update rather than explicit return events.",
+      },
+      {
+        path: "ruby.characters",
+        label: "Current characters",
+        source: "QuizState.character",
+        semantics: "Saved game sessions with an active player character.",
+        reliability: "authoritative",
+      },
+      {
+        path: "ruby.completedGrades",
+        label: "Completed grades",
+        source: "PlayerCharacter.yearbook and StudentPoolEntry.yearbook",
+        semantics: "Sealed grade entries across current and pooled characters.",
+        reliability: "authoritative",
+      },
+      {
+        path: "ruby.graduatedCharacters",
+        label: "Graduated characters",
+        source: "PlayerCharacter.yearbook length",
+        semantics: "Current characters with all Ruby High grades sealed.",
+        reliability: "authoritative",
+      },
+      {
+        path: "ruby.questions",
+        label: "Question performance",
+        source: "QuizState.score",
+        semantics: "Aggregate answered-question correct, total, and accuracy.",
+        reliability: "authoritative",
+        caveat: "No per-day historical answer counts until answer events are persisted.",
+      },
+      {
+        path: "ruby.essayReports",
+        label: "Essay reports",
+        source: "QuizState.essayReports",
+        semantics: "Durable graded essay reports stored on saved game sessions.",
+        reliability: "authoritative",
+      },
+      {
+        path: "ruby.daily",
+        label: "Play daily buckets",
+        source: "QuizState, PlayerCharacter, yearbook entries, and EssayReport timestamps",
+        semantics: "14 UTC day buckets for saved-session updates, character creation, grade completion, essays graded, and v3 metric events.",
+        reliability: "proxy",
+        caveat: "Good for durable milestones; appOpens/sessionResumes are event-backed only after schema v3 deployment.",
+      },
+      {
+        path: "ruby.events.appOpen",
+        label: "App opens",
+        source: "StoredMetricEventRecord app_open",
+        semantics: "Durable viewer boot events with session identity from the Ruby High cookie.",
+        reliability: "authoritative",
+        caveat: "Begins only after schema v3 deployment; one human can still appear under multiple cookies.",
+      },
+      {
+        path: "ruby.events.sessionResume",
+        label: "Session resumes",
+        source: "StoredMetricEventRecord session_resume",
+        semantics: "Durable viewer-visible events after the tab returns from at least five minutes inactive.",
+        reliability: "authoritative",
+        caveat: "Browser lifecycle quirks can undercount if the tab is killed before sending.",
+      },
+      {
+        path: "ruby.events.funnel",
+        label: "Activation funnel",
+        source: "StoredMetricEventRecord funnel_step",
+        semantics: "First character created, first question answered, first essay submitted, first daily class passed, and first grade completed.",
+        reliability: "authoritative",
+        caveat: "Dedupe is per Ruby High session id.",
+      },
+      {
+        path: "ruby.events.commerce",
+        label: "Commerce events",
+        source: "StoredMetricEventRecord commerce plus wallet mutation path",
+        semantics: "Durable wallet and entitlement mutations with currency deltas and transaction ids.",
+        reliability: "authoritative",
+        caveat: "Stripe/RevenueCat revenue uses server webhook metadata when present; this is not accounting-grade financial reporting.",
+      },
+      {
+        path: "ruby.events.llm",
+        label: "LLM usage",
+        source: "StoredMetricEventRecord llm_usage plus LLM client wrappers",
+        semantics: "Durable provider/model/status/latency events for server-side text, stream, and image-generation calls.",
+        reliability: "authoritative",
+        caveat: "Browser-owned direct client calls are visible only when they route through the Ruby High server.",
+      },
+      {
+        path: "ruby.events.errors",
+        label: "Durable errors",
+        source: "StoredMetricEventRecord error plus structured logger sink",
+        semantics: "Durable operational error events grouped by feature.",
+        reliability: "authoritative",
+        caveat: "Stores clipped messages and feature names, not full stack traces.",
+      },
+      {
+        path: "logs.counters",
+        label: "Process log counters",
+        source: "In-memory logger map",
+        semantics: "Event/error counts since current process start.",
+        reliability: "volatile",
+        caveat: "Resets on deploy or restart.",
+      },
+    ],
+    missingEvents: [],
   };
 }
 
@@ -81,6 +400,17 @@ export async function handleAdminMetricsRoute(ctx: RouteContext, deps: AdminDeps
   }
   if (!requireAdminAuth(ctx)) return true;
   ctx.json(ctx.res, buildAdminMetricsSnapshot(deps));
+  return true;
+}
+
+export async function handleAdminMetricsSchemaRoute(ctx: RouteContext): Promise<boolean> {
+  if (ctx.pathname !== ADMIN_METRICS_SCHEMA_PATH) return false;
+  if (ctx.method !== "GET" && ctx.method !== "HEAD") {
+    ctx.error(ctx.res, "Method not allowed", 405);
+    return true;
+  }
+  if (!requireAdminAuth(ctx)) return true;
+  ctx.json(ctx.res, buildAdminMetricsSchema());
   return true;
 }
 
@@ -113,6 +443,7 @@ export async function handleAdminOverviewRoute(ctx: RouteContext, deps: AdminDep
 
 async function generateAdminOverview(metrics: AdminMetricsSnapshot): Promise<AdminOverview> {
   const r = await fetchLlmChatCompletions({
+    label: "admin-overview",
     title: "Ruby High Admin",
     timeoutMs: 30_000,
     body: {
@@ -148,15 +479,25 @@ async function generateAdminOverview(metrics: AdminMetricsSnapshot): Promise<Adm
 
 function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string, unknown> {
   return {
+    schemaVersion: metrics.schemaVersion,
     generatedAt: metrics.generatedAt,
+    quality: metrics.quality,
+    interpretationRules: [
+      "Do not call auth identity records unique users.",
+      "Use ruby.events.appOpen and ruby.events.sessionResume for traffic and return-visit claims after the trustStart date.",
+      "Use character-session retention before identity D1 retention when event history is still sparse.",
+    ],
     auth: {
-      users: metrics.auth.users,
+      identityRecords: metrics.auth.users,
+      guestIdentityRecords: metrics.auth.providers.guest,
+      verifiedIdentityRecords: metrics.auth.providers.openrouter + metrics.auth.providers.privy,
+      identityCaveat: "Auth identity records are not deduped people. Guest records can inflate when cookies are lost, tests run, or users return from another browser.",
       activeSessions: metrics.auth.activeSessions,
       pendingAuth: metrics.auth.pendingAuth,
-      createdLast24h: metrics.auth.createdLast24h,
-      signedInLast24h: metrics.auth.signedInLast24h,
+      newIdentityRecordsLast24h: metrics.auth.createdLast24h,
+      seenIdentityRecordsLast24h: metrics.auth.signedInLast24h,
       returningUsers: metrics.auth.returningUsers,
-      d1Retention: metrics.auth.d1Retention,
+      identityD1Retention: metrics.auth.d1Retention,
       providers: metrics.auth.providers,
       daily: metrics.auth.daily,
     },
@@ -164,6 +505,8 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       store: metrics.ruby.store,
       sessions: metrics.ruby.sessions,
       updatedLast24h: metrics.ruby.updatedLast24h,
+      characterSessionsUpdatedLast24h: metrics.ruby.characterSessionsUpdatedLast24h,
+      characterD1Retention: metrics.ruby.characterD1Retention,
       characters: metrics.ruby.characters,
       graduatedCharacters: metrics.ruby.graduatedCharacters,
       activeRounds: metrics.ruby.activeRounds,
@@ -171,6 +514,7 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       essayReports: metrics.ruby.essayReports,
       questions: metrics.ruby.questions,
       wallet: metrics.ruby.wallet,
+      events: metrics.ruby.events,
       daily: metrics.ruby.daily,
     },
     logs: {
@@ -225,6 +569,7 @@ function cleanOverviewList(value: unknown): string[] {
 
 export function renderAdminDashboardHtml(): string {
   const metricsPath = JSON.stringify(ADMIN_METRICS_PATH);
+  const schemaPath = JSON.stringify(ADMIN_METRICS_SCHEMA_PATH);
   const overviewPath = JSON.stringify(ADMIN_OVERVIEW_PATH);
   return `<!doctype html>
 <html lang="en">
@@ -583,6 +928,7 @@ export function renderAdminDashboardHtml(): string {
   </main>
   <script>
     const metricsPath = ${metricsPath};
+    const schemaPath = ${schemaPath};
     const overviewPath = ${overviewPath};
     const tokenKey = "ruby-high-admin-token";
     const tokenEl = document.getElementById("token");
@@ -687,31 +1033,35 @@ export function renderAdminDashboardHtml(): string {
     function render(data) {
       const auth = data.auth || {};
       const ruby = data.ruby || {};
+      const events = ruby.events || {};
       const logs = data.logs || {};
-      status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown"), "");
+      status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
       renderQuick(data);
       renderCharts(data);
       renderOverview(localOverview(data), "local");
       authGrid.innerHTML = [
-        metric("Users", n(auth.users), n(auth.createdLast24h) + " new - " + n(auth.signedInLast24h) + " active in 24h"),
+        metric("Identity records", n(auth.users), n(auth.createdLast24h) + " new records - not unique people"),
         metric("Sessions", n(auth.activeSessions), n(auth.pendingAuth) + " pending auth"),
-        metric("D1 retention", pct(auth.d1Retention && auth.d1Retention.rate), n(auth.d1Retention && auth.d1Retention.returnedUsers) + " / " + n(auth.d1Retention && auth.d1Retention.eligibleUsers)),
+        metric("Identity D1", pct(auth.d1Retention && auth.d1Retention.rate), n(auth.d1Retention && auth.d1Retention.returnedUsers) + " / " + n(auth.d1Retention && auth.d1Retention.eligibleUsers) + " cookie-bound"),
         metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / OpenRouter / Privy"),
       ].join("");
       playGrid.innerHTML = [
         metric("Saved sessions", n(ruby.sessions), n(ruby.updatedLast24h) + " updated in 24h"),
+        metric("Character D1", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
+        metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
-        metric("Wallet", n(ruby.wallet && ruby.wallet.meritStars) + " / " + n(ruby.wallet && ruby.wallet.hallPasses), "Merit Stars / Hall Passes"),
       ].join("");
       creatorGrid.innerHTML = [
         metric("Store", ruby.store || "unknown", ruby.loaded ? "loaded" : "not loaded"),
         metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
-        metric("Log counters", n((logs.counters || []).length), "events and errors"),
+        metric("LLM calls", n(events.llm && events.llm.calls), n(events.llm && events.llm.errors) + " errors"),
+        metric("Durable errors", n(events.errors && events.errors.total), n((logs.counters || []).length) + " process counters"),
         metric("Health", data.ok ? "OK" : "Check", "metrics route"),
       ].join("");
       tablesEl.innerHTML = [
         table("Provider Records", auth.providers || {}),
+        table("Durable Events", events.byName || {}),
         logTable(logs.counters || []),
       ].join("");
     }
@@ -719,9 +1069,10 @@ export function renderAdminDashboardHtml(): string {
     function renderQuick(data) {
       const auth = data.auth || {};
       const ruby = data.ruby || {};
+      const events = ruby.events || {};
       quickStackEl.innerHTML = [
-        metric("24h users", n(auth.signedInLast24h), n(auth.createdLast24h) + " new"),
-        metric("24h sessions", n(ruby.updatedLast24h), n(ruby.sessions) + " total"),
+        metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
+        metric("24h play", n(ruby.characterSessionsUpdatedLast24h || ruby.updatedLast24h), n(ruby.sessions) + " saved sessions"),
         metric("Question accuracy", pct(ruby.questions && ruby.questions.accuracy), n(ruby.questions && ruby.questions.total) + " answered"),
       ].join("");
     }
@@ -740,22 +1091,25 @@ export function renderAdminDashboardHtml(): string {
     function localOverview(data) {
       const auth = data.auth || {};
       const ruby = data.ruby || {};
-      const d1 = auth.d1Retention && auth.d1Retention.rate != null ? pct(auth.d1Retention.rate) : "n/a";
+      const events = ruby.events || {};
+      const d1 = ruby.characterD1Retention && ruby.characterD1Retention.rate != null ? pct(ruby.characterD1Retention.rate) : "n/a";
       const activeShare = ruby.sessions ? Math.round((Number(ruby.updatedLast24h || 0) / Number(ruby.sessions || 1)) * 100) : 0;
       return {
-        headline: n(auth.signedInLast24h) + " signed-in users in the last 24h",
+        headline: n(events.appOpen && events.appOpen.total) + " durable app opens recorded",
         summary: "The current loop has " + n(ruby.characters) + " characters, " + n(ruby.completedGrades) + " sealed grades, and " + pct(ruby.questions && ruby.questions.accuracy) + " answer accuracy.",
         highlights: [
+          n(events.sessionResume && events.sessionResume.total) + " durable session resumes",
           n(ruby.updatedLast24h) + " saved sessions updated in 24h",
           n(ruby.essayReports) + " essay reports generated",
           n(ruby.wallet && ruby.wallet.hallPasses) + " Hall Passes in circulation",
         ],
         risks: [
-          d1 + " D1 retention",
+          d1 + " character-session D1 retention",
+          n(auth.providers && auth.providers.guest) + " guest identity records are not unique people",
           activeShare + "% of saved sessions were active in 24h",
         ],
         actions: [
-          "Tune first-return hooks",
+          "Use v3 events after the trust-start date",
           "Watch grade completion rate",
         ],
       };
@@ -771,21 +1125,29 @@ export function renderAdminDashboardHtml(): string {
       const rubyDaily = (data.ruby && data.ruby.daily) || [];
       chartsEl.innerHTML = [
         chartCard("Auth", authDaily, [
-          { key: "newUsers", label: "New", color: "#9f2338", mode: "bar" },
-          { key: "signedInUsers", label: "Signed in", color: "#0f6f68", mode: "line" },
+          { key: "newUsers", label: "New records", color: "#9f2338", mode: "bar" },
+          { key: "signedInUsers", label: "Seen records", color: "#0f6f68", mode: "line" },
           { key: "sessionStarts", label: "Starts", color: "#665c6d", mode: "line" },
         ]),
         chartCard("Play", rubyDaily, [
+          { key: "appOpens", label: "Opens", color: "#665c6d", mode: "bar" },
+          { key: "sessionResumes", label: "Resumes", color: "#0f6f68", mode: "line" },
           { key: "updatedSessions", label: "Updated", color: "#9f2338", mode: "bar" },
-          { key: "charactersCreated", label: "Characters", color: "#0f6f68", mode: "line" },
-          { key: "gradesCompleted", label: "Grades", color: "#665c6d", mode: "line" },
+          { key: "charactersCreated", label: "Characters", color: "#2f5f91", mode: "line" },
+          { key: "gradesCompleted", label: "Grades", color: "#0f6f68", mode: "line" },
         ]),
         chartCard("Essay Flow", rubyDaily, [
           { key: "essaysGraded", label: "Essays", color: "#9f2338", mode: "bar" },
           { key: "gradesCompleted", label: "Grades", color: "#0f6f68", mode: "line" },
         ]),
+        chartCard("Events", rubyDaily, [
+          { key: "funnelSteps", label: "Funnel", color: "#9f2338", mode: "bar" },
+          { key: "commerceEvents", label: "Commerce", color: "#665c6d", mode: "line" },
+          { key: "llmCalls", label: "LLM", color: "#2f5f91", mode: "line" },
+          { key: "durableErrors", label: "Errors", color: "#0f6f68", mode: "line" },
+        ]),
         chartCard("Activation", mergeDaily(authDaily, rubyDaily), [
-          { key: "signedInUsers", label: "Signed in", color: "#0f6f68", mode: "line" },
+          { key: "signedInUsers", label: "Seen records", color: "#0f6f68", mode: "line" },
           { key: "updatedSessions", label: "Updated", color: "#9f2338", mode: "bar" },
         ]),
       ].join("");

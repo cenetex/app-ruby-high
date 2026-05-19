@@ -11,8 +11,26 @@ interface LogMetric {
   lastAt: string;
 }
 
+export interface LogSinkRecord {
+  ts: string;
+  level: "event" | "error";
+  build: string;
+  name: string;
+  data: Record<string, unknown>;
+}
+
 const startedAt = new Date().toISOString();
 const metrics = new Map<string, LogMetric>();
+let logSink: ((record: LogSinkRecord) => void | Promise<void>) | null = null;
+let emittingToSink = false;
+
+export function setLogSink(sink: ((record: LogSinkRecord) => void | Promise<void>) | null): () => void {
+  const previous = logSink;
+  logSink = sink;
+  return () => {
+    if (logSink === sink) logSink = previous;
+  };
+}
 
 function recordMetric(level: "event" | "error", name: string, ts: string): void {
   const key = `${level}:${name}`;
@@ -31,17 +49,41 @@ function emit(level: "event" | "error", name: string, data: Record<string, unkno
   // Stable field order: ts, level, build, name, ...data. Keeps log lines
   // diffable and easy to scan in a tail.
   const { name: payloadName, ...safeData } = data;
-  const line = JSON.stringify({
+  const payload = {
     ts,
     level,
     build: buildId,
     name,
     ...safeData,
     ...(payloadName === undefined ? {} : { payloadName }),
+  };
+  const line = JSON.stringify({
+    ...payload,
   });
   // Errors → stderr so the platform can split them; events → stdout.
   if (level === "error") process.stderr.write(line + "\n");
   else process.stdout.write(line + "\n");
+  if (!logSink || emittingToSink) return;
+  emittingToSink = true;
+  try {
+    Promise.resolve(logSink({
+      ts,
+      level,
+      build: buildId,
+      name,
+      data: payload,
+    })).catch((err) => {
+      process.stderr.write(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        build: buildId,
+        name: "logger.sink-failed",
+        message: err instanceof Error ? err.message : String(err),
+      }) + "\n");
+    });
+  } finally {
+    emittingToSink = false;
+  }
 }
 
 export const log = {

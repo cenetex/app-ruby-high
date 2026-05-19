@@ -1,3 +1,5 @@
+import { log } from "./logger.js";
+
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
 const DEFAULT_LOCAL_MODEL = "ruby-high-local";
@@ -108,20 +110,46 @@ export async function fetchLlmChatCompletions(
     timeoutMs?: number;
     signal?: AbortSignal;
     title?: string;
+    label?: string;
   },
 ): Promise<Response> {
   const ctrl = args.signal ? null : new AbortController();
   const timer = ctrl && args.timeoutMs ? setTimeout(() => ctrl.abort(), args.timeoutMs) : null;
+  const startedAt = Date.now();
+  const provider = llmProviderInfo();
+  const model = resolveLlmModel(String(args.body.model ?? ""));
   try {
-    return await fetch(llmChatCompletionsUrl(), {
+    const response = await fetch(provider.chatCompletionsUrl, {
       method: "POST",
       headers: llmHeaders(args.apiKey, { title: args.title }),
       body: JSON.stringify({
         ...args.body,
-        model: resolveLlmModel(String(args.body.model ?? "")),
+        model,
       }),
       signal: args.signal ?? ctrl?.signal,
     });
+    log.event("llm.usage", {
+      label: args.label ?? args.title ?? "chat-completions",
+      feature: args.title ?? args.label ?? "llm",
+      provider: provider.name,
+      mode: provider.kind,
+      model,
+      status: response.ok ? "success" : "error",
+      httpStatus: response.status,
+      durationMs: Date.now() - startedAt,
+    });
+    return response;
+  } catch (err) {
+    log.event("llm.usage", {
+      label: args.label ?? args.title ?? "chat-completions",
+      feature: args.title ?? args.label ?? "llm",
+      provider: provider.name,
+      mode: provider.kind,
+      model,
+      status: "error",
+      durationMs: Date.now() - startedAt,
+    });
+    throw err;
   } finally {
     if (timer) clearTimeout(timer);
   }

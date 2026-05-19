@@ -124,6 +124,28 @@ describe("StateStore", () => {
     expect(raw).not.toContain("openrouter-user");
   });
 
+  it("round-trips durable metric events separately from session state", async () => {
+    const store = new StateStore(storePath);
+    await store.saveMetricEvent({
+      id: "evt-1",
+      name: "app_open",
+      occurredAt: 100,
+      day: "1970-01-01",
+      sessionId: "rh:user:test",
+      source: "viewer",
+      feature: "viewer",
+    });
+    await store.save([blankState("a")]);
+
+    const fresh = new StateStore(storePath);
+    const events = await fresh.loadMetricEvents();
+    expect(events).toEqual([expect.objectContaining({
+      id: "evt-1",
+      name: "app_open",
+      sessionId: "rh:user:test",
+    })]);
+  });
+
   it("round-trips imported content packs separately from session state", async () => {
     const store = new StateStore(storePath);
     await store.save([blankState("a")]);

@@ -414,6 +414,38 @@ describe("DynamoStateStore", () => {
     expect(auth.sessions.map((s) => s.token)).toEqual(["token-1"]);
   });
 
+  it("saves and loads durable metric events in separate Dynamo items", async () => {
+    await store.saveSession(blankState("rh:user:state"));
+    await store.saveMetricEvent({
+      id: "evt-1",
+      name: "session_resume",
+      occurredAt: 123_000,
+      day: "1970-01-01",
+      sessionId: "rh:user:state",
+      source: "viewer",
+      feature: "viewer",
+      metadata: { inactiveMs: 600_000 },
+    });
+
+    const snapshot = fake.snapshot();
+    const item = snapshot.get("metric-event:1970-01-01:evt-1")!;
+    expect(item.metricEvent).toMatchObject({
+      id: "evt-1",
+      name: "session_resume",
+      sessionId: "rh:user:state",
+    });
+    expect(item.expiresAt).toBeGreaterThan(0);
+
+    const events = await store.loadMetricEvents();
+    expect(events).toEqual([expect.objectContaining({
+      id: "evt-1",
+      name: "session_resume",
+    })]);
+    const loadedSessions = await store.load();
+    expect(loadedSessions.has("rh:user:state")).toBe(true);
+    expect(loadedSessions.has("metric-event:1970-01-01:evt-1")).toBe(false);
+  });
+
   it("saves and loads imported content packs in separate Dynamo items", async () => {
     await store.saveSession(blankState("rh:user:state"));
     await store.savePack({

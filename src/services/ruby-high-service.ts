@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Service, type IAgentRuntime } from "@elizaos/core";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
@@ -74,10 +74,12 @@ import {
   type StoredCourseSlotRecord,
   type StoredContentPackRecord,
   type StoredDraftContentPackRecord,
+  type StoredMetricEventName,
+  type StoredMetricEventRecord,
   type StoredPackInstallationRecord,
   type StoredTeacherRecord,
 } from "./state-store.js";
-import { log } from "./logger.js";
+import { log, setLogSink, type LogSinkRecord } from "./logger.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
   applyTick as applyMashTick,
@@ -307,6 +309,12 @@ export interface RubyHighAnalyticsSnapshot {
   loaded: boolean;
   sessions: number;
   updatedLast24h: number;
+  characterSessionsUpdatedLast24h: number;
+  characterD1Retention: {
+    eligibleSessions: number;
+    returnedSessions: number;
+    rate: number | null;
+  };
   characters: number;
   graduatedCharacters: number;
   activeRounds: number;
@@ -321,6 +329,7 @@ export interface RubyHighAnalyticsSnapshot {
     meritStars: number;
     hallPasses: number;
   };
+  events: RubyHighMetricEventsSnapshot;
   daily: RubyHighAnalyticsDay[];
 }
 
@@ -330,6 +339,50 @@ export interface RubyHighAnalyticsDay {
   charactersCreated: number;
   gradesCompleted: number;
   essaysGraded: number;
+  appOpens: number;
+  sessionResumes: number;
+  funnelSteps: number;
+  commerceEvents: number;
+  llmCalls: number;
+  llmErrors: number;
+  durableErrors: number;
+}
+
+export interface RubyHighMetricEventsSnapshot {
+  total: number;
+  byName: Record<StoredMetricEventName, number>;
+  appOpen: {
+    total: number;
+    uniqueSessions: number;
+  };
+  sessionResume: {
+    total: number;
+    uniqueSessions: number;
+  };
+  funnel: {
+    firstCharacterCreated: number;
+    firstQuestionAnswered: number;
+    firstEssaySubmitted: number;
+    firstDailyClassPassed: number;
+    firstGradeCompleted: number;
+  };
+  commerce: {
+    events: number;
+    hallPassesDelta: number;
+    meritStarsDelta: number;
+    photoDayCreditsDelta: number;
+    amountCents: number;
+  };
+  llm: {
+    calls: number;
+    successes: number;
+    errors: number;
+    byProvider: Record<string, number>;
+  };
+  errors: {
+    total: number;
+    byFeature: Record<string, number>;
+  };
 }
 
 export interface YearbookShareCard {
@@ -446,12 +499,15 @@ export class RubyHighService extends Service {
   private readonly sessions = new Map<string, QuizState>();
   private readonly store: StateStoreLike;
   private readonly backgroundWrites = new Set<Promise<void>>();
+  private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
+  private readonly disposeLogSink: () => void;
   private faculty: FacultyService | null = null;
   private loaded = false;
 
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
     this.store = store ?? getDefaultStateStore();
+    this.disposeLogSink = setLogSink((record) => this.recordLogSinkMetricEvent(record));
   }
 
   static async start(runtime: IAgentRuntime): Promise<RubyHighService> {
@@ -462,7 +518,9 @@ export class RubyHighService extends Service {
 
   async stop(): Promise<void> {
     await this.persistAll();
+    this.disposeLogSink();
     this.sessions.clear();
+    this.metricEvents.clear();
   }
 
   /** Wait for any in-flight persistence writes to flush. Useful in tests. */
@@ -481,10 +539,130 @@ export class RubyHighService extends Service {
     await promise;
   }
 
+  recordAppOpen(sessionId: string, input: { source?: string; userAgent?: string; referrer?: string; path?: string } = {}): void {
+    this.recordMetricEvent("app_open", {
+      sessionId,
+      source: input.source ?? "viewer",
+      feature: "viewer",
+      metadata: {
+        ...(input.path ? { path: clippedMetricValue(input.path, 180) } : {}),
+        ...(input.referrer ? { referrer: clippedMetricValue(input.referrer, 180) } : {}),
+        ...(input.userAgent ? { userAgent: clippedMetricValue(input.userAgent, 180) } : {}),
+      },
+    });
+  }
+
+  recordSessionResume(sessionId: string, input: { source?: string; inactiveMs?: number; reason?: string } = {}): void {
+    this.recordMetricEvent("session_resume", {
+      sessionId,
+      source: input.source ?? "viewer",
+      feature: "viewer",
+      metadata: {
+        ...(typeof input.inactiveMs === "number" && Number.isFinite(input.inactiveMs)
+          ? { inactiveMs: Math.max(0, Math.floor(input.inactiveMs)) }
+          : {}),
+        ...(input.reason ? { reason: clippedMetricValue(input.reason, 80) } : {}),
+      },
+    });
+  }
+
+  recordMetricEvent(
+    name: StoredMetricEventName,
+    input: Omit<StoredMetricEventRecord, "id" | "name" | "occurredAt" | "day" | "metadata"> & {
+      occurredAt?: number;
+      metadata?: Record<string, unknown>;
+    } = {},
+  ): StoredMetricEventRecord | null {
+    if (!this.store.saveMetricEvent) return null;
+    const occurredAt = normalizeMetricTimestamp(input.occurredAt);
+    const event: StoredMetricEventRecord = {
+      id: metricEventId(name, occurredAt),
+      name,
+      occurredAt,
+      day: isoDate(occurredAt),
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.userId ? { userId: input.userId } : {}),
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.feature ? { feature: input.feature } : {}),
+      ...(input.step ? { step: input.step } : {}),
+      ...(input.provider ? { provider: input.provider } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(typeof input.durationMs === "number" && Number.isFinite(input.durationMs) ? { durationMs: Math.max(0, Math.floor(input.durationMs)) } : {}),
+      ...(typeof input.httpStatus === "number" && Number.isFinite(input.httpStatus) ? { httpStatus: Math.floor(input.httpStatus) } : {}),
+      ...(typeof input.hallPassesDelta === "number" && Number.isFinite(input.hallPassesDelta) ? { hallPassesDelta: Math.floor(input.hallPassesDelta) } : {}),
+      ...(typeof input.meritStarsDelta === "number" && Number.isFinite(input.meritStarsDelta) ? { meritStarsDelta: Math.floor(input.meritStarsDelta) } : {}),
+      ...(typeof input.photoDayCreditsDelta === "number" && Number.isFinite(input.photoDayCreditsDelta) ? { photoDayCreditsDelta: Math.floor(input.photoDayCreditsDelta) } : {}),
+      ...(typeof input.amountCents === "number" && Number.isFinite(input.amountCents) ? { amountCents: Math.floor(input.amountCents) } : {}),
+      ...(input.metadata ? { metadata: normalizeMetricMetadata(input.metadata) } : {}),
+    };
+    this.metricEvents.set(event.id, event);
+    const save = this.store.saveMetricEvent(event).catch((err) => {
+      log.error("metrics.persist-failed", err, { eventName: name });
+    });
+    this.trackBackgroundWrite(save);
+    return event;
+  }
+
+  private recordLogSinkMetricEvent(record: LogSinkRecord): void {
+    if (record.level === "error") {
+      if (record.name === "metrics.persist-failed" || record.name === "logger.sink-failed") return;
+      this.recordMetricEvent("error", {
+        occurredAt: Date.parse(record.ts),
+        source: "logger",
+        feature: record.name,
+        status: "error",
+        metadata: {
+          logName: clippedMetricValue(record.name, 120),
+          message: clippedMetricValue(String(record.data.message ?? ""), 240),
+        },
+      });
+      return;
+    }
+    if (record.name !== "llm.usage") return;
+    this.recordMetricEvent("llm_usage", {
+      occurredAt: Date.parse(record.ts),
+      source: "logger",
+      feature: metricString(record.data.feature) ?? metricString(record.data.label) ?? "llm",
+      provider: metricString(record.data.provider),
+      model: metricString(record.data.model),
+      status: record.data.status === "error" ? "error" : "success",
+      durationMs: metricNumber(record.data.durationMs),
+      httpStatus: metricNumber(record.data.httpStatus),
+      metadata: {
+        label: metricString(record.data.label),
+        mode: metricString(record.data.mode),
+      },
+    });
+  }
+
+  private recordFunnelStep(state: QuizState, step: string, metadata: Record<string, unknown> = {}): void {
+    if (this.hasMetricEventForSession(state.sessionId, "funnel_step", step)) return;
+    this.recordMetricEvent("funnel_step", {
+      sessionId: state.sessionId,
+      feature: "activation",
+      step,
+      status: "success",
+      metadata,
+    });
+  }
+
+  private hasMetricEventForSession(sessionId: string, name: StoredMetricEventName, step?: string): boolean {
+    for (const event of this.metricEvents.values()) {
+      if (event.sessionId !== sessionId || event.name !== name) continue;
+      if (step && event.step !== step) continue;
+      return true;
+    }
+    return false;
+  }
+
   analyticsSnapshot(now: number = Date.now()): RubyHighAnalyticsSnapshot {
     const dayMs = 24 * 60 * 60 * 1000;
     const { days, byDate } = buildRubyHighDailyBuckets(now, 14);
     let updatedLast24h = 0;
+    let characterSessionsUpdatedLast24h = 0;
+    let eligibleCharacterSessions = 0;
+    let returnedCharacterSessions = 0;
     let characters = 0;
     let graduatedCharacters = 0;
     let activeRounds = 0;
@@ -500,10 +678,16 @@ export class RubyHighService extends Service {
       incrementRubyHighDay(byDate, updatedAt, "updatedSessions");
       if (state.character) {
         characters += 1;
+        const characterCreatedAt = Number(state.character.createdAt ?? 0);
+        if (now - updatedAt <= dayMs) characterSessionsUpdatedLast24h += 1;
+        if (Number.isFinite(characterCreatedAt) && characterCreatedAt > 0 && now - characterCreatedAt >= dayMs) {
+          eligibleCharacterSessions += 1;
+          if (updatedAt - characterCreatedAt >= dayMs) returnedCharacterSessions += 1;
+        }
         const yearbookCount = Array.isArray(state.character.yearbook) ? state.character.yearbook.length : 0;
         completedGrades += yearbookCount;
         if (yearbookCount >= GRADES.length) graduatedCharacters += 1;
-        incrementRubyHighDay(byDate, Number(state.character.createdAt), "charactersCreated");
+        incrementRubyHighDay(byDate, characterCreatedAt, "charactersCreated");
         for (const entry of state.character.yearbook ?? []) {
           incrementRubyHighDay(byDate, Number(entry.completedAt), "gradesCompleted");
         }
@@ -526,11 +710,18 @@ export class RubyHighService extends Service {
       meritStars += wallet.meritStars;
       hallPasses += wallet.hallPasses;
     }
+    const events = buildMetricEventsSnapshot(this.metricEvents.values(), byDate);
     return {
       store: this.store.describe(),
       loaded: this.loaded,
       sessions: this.sessions.size,
       updatedLast24h,
+      characterSessionsUpdatedLast24h,
+      characterD1Retention: {
+        eligibleSessions: eligibleCharacterSessions,
+        returnedSessions: returnedCharacterSessions,
+        rate: eligibleCharacterSessions > 0 ? returnedCharacterSessions / eligibleCharacterSessions : null,
+      },
       characters,
       graduatedCharacters,
       activeRounds,
@@ -545,6 +736,7 @@ export class RubyHighService extends Service {
         meritStars,
         hallPasses,
       },
+      events,
       daily: days,
     };
   }
@@ -634,6 +826,16 @@ export class RubyHighService extends Service {
     } else {
       recordWalletTransaction(state, transaction);
     }
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: transaction.source ?? "wallet",
+      feature: transaction.kind,
+      status: "success",
+      hallPassesDelta: Math.floor(Number(transaction.hallPasses ?? 0)),
+      meritStarsDelta: Math.floor(Number(transaction.meritStars ?? 0)),
+      photoDayCreditsDelta: Math.floor(Number(transaction.photoDayCredits ?? 0)),
+      metadata: { transactionId: transaction.id },
+    });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction };
@@ -797,6 +999,14 @@ export class RubyHighService extends Service {
       ? current - appliedAmount
       : current + appliedAmount;
     recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: transaction.source ?? "wallet",
+      feature: transaction.kind,
+      status: "success",
+      hallPassesDelta: transaction.hallPasses ?? 0,
+      metadata: { transactionId: transaction.id },
+    });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction };
@@ -840,6 +1050,14 @@ export class RubyHighService extends Service {
       ? current - amount
       : current + amount;
     recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: transaction.source ?? "photo-day",
+      feature: transaction.kind,
+      status: "success",
+      photoDayCreditsDelta: transaction.photoDayCredits ?? 0,
+      metadata: { transactionId: transaction.id },
+    });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return {
@@ -995,6 +1213,10 @@ export class RubyHighService extends Service {
       const state = normalizeLoaded(v);
       repaired = this.reconcileLoadedPackState(state) || repaired;
       this.sessions.set(k, state);
+    }
+    const storedMetricEvents = await this.store.loadMetricEvents?.();
+    for (const event of storedMetricEvents ?? []) {
+      this.metricEvents.set(event.id, event);
     }
     this.loaded = true;
     if (repaired) await this.persistAll();
@@ -1299,6 +1521,14 @@ export class RubyHighService extends Service {
     state.wallet.hallPasses = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0))) + WELCOME_HALL_PASS_GRANT;
     state.wallet.welcomeHallPassesGrantedAt = at;
     recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId: state.sessionId,
+      source: "system",
+      feature: "hall-pass-grant",
+      status: "success",
+      hallPassesDelta: WELCOME_HALL_PASS_GRANT,
+      metadata: { transactionId: transaction.id, reason: "account-welcome" },
+    });
     state.updatedAt = at;
     return true;
   }
@@ -1835,6 +2065,13 @@ export class RubyHighService extends Service {
         correct: record.correctCount,
         total: record.questionCount,
       });
+      if (letterGradePasses(record.letterGrade)) {
+        this.recordFunnelStep(state, "first_daily_class_passed", {
+          faculty: session.facultyId,
+          grade: session.grade,
+          letterGrade: record.letterGrade,
+        });
+      }
       this.unlockTeacherStoryPageForAClass(state, record, now);
     }
     return {
@@ -2566,6 +2803,11 @@ export class RubyHighService extends Service {
       });
     }
     if (!state.completedGrades.includes(grade)) state.completedGrades.push(grade);
+    this.recordFunnelStep(state, "first_grade_completed", {
+      character: ch.name,
+      grade,
+      reward: normalizedReward.kind,
+    });
 
     this.applyGraduationReward(ch, normalizedReward, targetGrade);
     ch.levelUps = ch.levelUps ?? [];
@@ -3042,6 +3284,12 @@ export class RubyHighService extends Service {
       sessionId, faculty: state.faculty, questionId: round.questionId,
       responder, length: bounded.length,
     });
+    if (responder === "player") {
+      this.recordFunnelStep(state, "first_essay_submitted", {
+        faculty: state.faculty,
+        questionId: round.questionId,
+      });
+    }
     state.updatedAt = now;
     void this.persistSession(sessionId);
     return state;
@@ -3415,6 +3663,11 @@ export class RubyHighService extends Service {
       picked, correct: q.correct, wasCorrect: picked === q.correct,
       rarity: q.rarity,
     });
+    this.recordFunnelStep(state, "first_question_answered", {
+      faculty: state.faculty,
+      questionId: q.id,
+      type: "multiple-choice",
+    });
     // Tick first so any NPCs whose delay HAS already elapsed lock in honestly.
     this.tickRound(state);
     // Once the player has committed, the race is decided — any NPC still
@@ -3459,6 +3712,11 @@ export class RubyHighService extends Service {
       wasCorrect: judge.correct,
       judgeMode: judge.mode,
       judgeScore: judge.score,
+    });
+    this.recordFunnelStep(state, "first_question_answered", {
+      faculty: state.faculty,
+      questionId: q.id,
+      type: q.type,
     });
     this.tickRound(state);
     if (!round.resolved) this.resolveRound(state, false);
@@ -3674,6 +3932,11 @@ export class RubyHighService extends Service {
     void this.persistSession(sessionId);
     log.event("character.created", {
       sessionId, characterName: name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
+    });
+    this.recordFunnelStep(state, "first_character_created", {
+      characterName: name,
+      playbookId: input.playbookId,
+      mentorAccepted: !!inheritedFrom,
     });
     return state;
   }
@@ -4417,11 +4680,122 @@ function buildRubyHighDailyBuckets(now: number, count: number): {
   const byDate = new Map<string, RubyHighAnalyticsDay>();
   for (let i = 0; i < count; i++) {
     const date = isoDate(start + i * 24 * 60 * 60 * 1000);
-    const day = { date, updatedSessions: 0, charactersCreated: 0, gradesCompleted: 0, essaysGraded: 0 };
+    const day: RubyHighAnalyticsDay = {
+      date,
+      updatedSessions: 0,
+      charactersCreated: 0,
+      gradesCompleted: 0,
+      essaysGraded: 0,
+      appOpens: 0,
+      sessionResumes: 0,
+      funnelSteps: 0,
+      commerceEvents: 0,
+      llmCalls: 0,
+      llmErrors: 0,
+      durableErrors: 0,
+    };
     days.push(day);
     byDate.set(date, day);
   }
   return { days, byDate };
+}
+
+function buildMetricEventsSnapshot(
+  events: Iterable<StoredMetricEventRecord>,
+  byDate: Map<string, RubyHighAnalyticsDay>,
+): RubyHighMetricEventsSnapshot {
+  const byName: Record<StoredMetricEventName, number> = {
+    app_open: 0,
+    session_resume: 0,
+    funnel_step: 0,
+    commerce: 0,
+    llm_usage: 0,
+    error: 0,
+  };
+  const appOpenSessions = new Set<string>();
+  const resumeSessions = new Set<string>();
+  const funnel = {
+    firstCharacterCreated: 0,
+    firstQuestionAnswered: 0,
+    firstEssaySubmitted: 0,
+    firstDailyClassPassed: 0,
+    firstGradeCompleted: 0,
+  };
+  const commerce = {
+    events: 0,
+    hallPassesDelta: 0,
+    meritStarsDelta: 0,
+    photoDayCreditsDelta: 0,
+    amountCents: 0,
+  };
+  const llm = {
+    calls: 0,
+    successes: 0,
+    errors: 0,
+    byProvider: {} as Record<string, number>,
+  };
+  const errors = {
+    total: 0,
+    byFeature: {} as Record<string, number>,
+  };
+  let total = 0;
+  for (const event of events) {
+    total += 1;
+    byName[event.name] += 1;
+    const day = byDate.get(event.day);
+    if (event.name === "app_open") {
+      if (event.sessionId) appOpenSessions.add(event.sessionId);
+      if (day) day.appOpens += 1;
+    } else if (event.name === "session_resume") {
+      if (event.sessionId) resumeSessions.add(event.sessionId);
+      if (day) day.sessionResumes += 1;
+    } else if (event.name === "funnel_step") {
+      if (day) day.funnelSteps += 1;
+      if (event.step === "first_character_created") funnel.firstCharacterCreated += 1;
+      else if (event.step === "first_question_answered") funnel.firstQuestionAnswered += 1;
+      else if (event.step === "first_essay_submitted") funnel.firstEssaySubmitted += 1;
+      else if (event.step === "first_daily_class_passed") funnel.firstDailyClassPassed += 1;
+      else if (event.step === "first_grade_completed") funnel.firstGradeCompleted += 1;
+    } else if (event.name === "commerce") {
+      commerce.events += 1;
+      commerce.hallPassesDelta += Math.floor(Number(event.hallPassesDelta ?? 0));
+      commerce.meritStarsDelta += Math.floor(Number(event.meritStarsDelta ?? 0));
+      commerce.photoDayCreditsDelta += Math.floor(Number(event.photoDayCreditsDelta ?? 0));
+      commerce.amountCents += Math.floor(Number(event.amountCents ?? 0));
+      if (day) day.commerceEvents += 1;
+    } else if (event.name === "llm_usage") {
+      llm.calls += 1;
+      if (event.status === "error") llm.errors += 1;
+      else llm.successes += 1;
+      const provider = event.provider || "unknown";
+      llm.byProvider[provider] = (llm.byProvider[provider] ?? 0) + 1;
+      if (day) {
+        day.llmCalls += 1;
+        if (event.status === "error") day.llmErrors += 1;
+      }
+    } else if (event.name === "error") {
+      errors.total += 1;
+      const feature = event.feature || "unknown";
+      errors.byFeature[feature] = (errors.byFeature[feature] ?? 0) + 1;
+      if (day) day.durableErrors += 1;
+    }
+  }
+  return {
+    total,
+    byName,
+    appOpen: {
+      total: byName.app_open,
+      uniqueSessions: appOpenSessions.size,
+    },
+    sessionResume: {
+      total: byName.session_resume,
+      uniqueSessions: resumeSessions.size,
+    },
+    funnel,
+    commerce,
+    llm,
+    errors,
+  };
 }
 
 function incrementRubyHighDay(
@@ -4441,6 +4815,47 @@ function startOfUtcDay(timestamp: number): number {
 
 function isoDate(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function normalizeMetricTimestamp(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : Date.now();
+}
+
+function metricEventId(name: StoredMetricEventName, occurredAt: number): string {
+  return `${name}_${occurredAt.toString(36)}_${randomUUID()}`;
+}
+
+function metricString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? clippedMetricValue(trimmed, 160) : undefined;
+}
+
+function metricNumber(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function clippedMetricValue(value: string, max: number): string {
+  return value.length > max ? value.slice(0, Math.max(0, max - 1)) + "…" : value;
+}
+
+function normalizeMetricMetadata(value: Record<string, unknown>): Record<string, string | number | boolean | null> {
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(key)) continue;
+    if (raw == null) {
+      out[key] = null;
+    } else if (typeof raw === "boolean") {
+      out[key] = raw;
+    } else if (typeof raw === "number" && Number.isFinite(raw)) {
+      out[key] = raw;
+    } else if (typeof raw === "string") {
+      out[key] = clippedMetricValue(raw, 240);
+    }
+  }
+  return out;
 }
 
 /** Backfill Paper Card snapshot on legacy yearbook entries written before

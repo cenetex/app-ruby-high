@@ -87,7 +87,9 @@ No eliza runtime needed for these:
 ### Production app endpoints
 
 - `GET /api/apps/ruby-high/admin` renders a browser dashboard for the token-gated usage snapshot, 14-day charts, and an operator overview. Paste the admin token once; the page stores it locally and calls admin endpoints with a Bearer header.
-- `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth users/sessions, 14-day auth/play series, Ruby High sessions/progression, and in-process log counters. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
+- `POST /api/apps/ruby-high/metrics/event` records first-party viewer events. The bundled viewer sends durable `app_open` on boot and `session_resume` after returning from five-plus minutes inactive.
+- `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth identity records/sessions, 14-day auth/play/event series, Ruby High session progression, character-session retention, durable v3 metric events, and in-process log counters. Guest identity records are cookie-bound and are not deduped people. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
+- `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v3`): field semantics, reliability levels, caveats, and the durable event streams for traffic, retention, funnel, commerce, LLM, and errors.
 - `GET /api/apps/ruby-high/admin/overview` returns a token-gated LLM-generated operator overview built only from aggregate metrics. It requires the normal server LLM credential.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data and `?format=svg` returns the social image. `?format=png` is intentionally 501 until server-side raster rendering is configured.
 
@@ -121,6 +123,7 @@ The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthSe
 | `AWS_REGION` | — | Required when backend is `dynamodb`. |
 | `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | DynamoDB TTL for idle sessions. |
 | `RUBY_HIGH_ADMIN_TOKEN` | — | Enables `/api/apps/ruby-high/admin/metrics`. Keep this in secrets only. |
+| `RUBY_HIGH_METRICS_TRUST_START` | — | Optional ISO date/time shown in admin metric quality notes after a metrics reset or schema migration. |
 | `RUBY_HIGH_LLM_PROVIDER` | `openrouter` | Set to `local` to use a local OpenAI-compatible `/v1/chat/completions` endpoint. Also inferred as `local` when `RUBY_HIGH_LLM_BASE_URL` is set. |
 | `RUBY_HIGH_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` in local mode | Local OpenAI-compatible base URL. Values ending in `/v1` or `/chat/completions` are both accepted. |
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |

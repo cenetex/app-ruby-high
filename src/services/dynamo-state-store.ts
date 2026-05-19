@@ -14,6 +14,7 @@ import type {
   StateStoreLike,
   StoredContentPackRecord,
   StoredDraftContentPackRecord,
+  StoredMetricEventRecord,
   StoredPackInstallationRecord,
   StoredTeacherRecord,
 } from "./state-store.js";
@@ -244,6 +245,24 @@ export class DynamoStateStore implements StateStoreLike {
     return records;
   }
 
+  async loadMetricEvents(): Promise<StoredMetricEventRecord[]> {
+    const records: StoredMetricEventRecord[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const record = item.metricEvent as StoredMetricEventRecord | undefined;
+      if (
+        record &&
+        typeof record.id === "string" &&
+        typeof record.name === "string" &&
+        typeof record.occurredAt === "number" &&
+        typeof record.day === "string"
+      ) {
+        records.push(record);
+      }
+    }
+    return records;
+  }
+
   private async scanAll(): Promise<Array<Record<string, unknown>>> {
     const now = Date.now();
     if (this.scanCache && now - this.scanCache.at <= SCAN_CACHE_MS) {
@@ -412,6 +431,22 @@ export class DynamoStateStore implements StateStoreLike {
         packInstallation: record,
         updatedAt: record.updatedAt,
       },
+    }));
+  }
+
+  async saveMetricEvent(record: StoredMetricEventRecord): Promise<void> {
+    this.invalidateScanCache();
+    const item: Record<string, unknown> = {
+      pk: `metric-event:${record.day}:${encodeURIComponent(record.id)}`,
+      metricEvent: record,
+      updatedAt: record.occurredAt,
+    };
+    if (this.ttlSeconds > 0) {
+      item.expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+    }
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
     }));
   }
 

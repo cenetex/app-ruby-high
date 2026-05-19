@@ -1,3 +1,5 @@
+import { log } from "./logger.js";
+
 export const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
@@ -123,13 +125,40 @@ export async function openRouterFetch(
 }
 
 export async function openRouterJson<T = OpenRouterChatCompletion>(opts: OpenRouterCallOpts): Promise<T> {
-  const r = await openRouterFetch({
-    method: "POST",
-    headers: openRouterHeaders(opts.apiKey, opts.title),
-    body: JSON.stringify(opts.body),
-  }, opts.timeoutMs);
-  if (!r.ok) await throwOpenRouterError(r, opts.label ?? "openrouter");
-  return await r.json() as T;
+  const startedAt = Date.now();
+  const label = opts.label ?? "openrouter";
+  try {
+    const r = await openRouterFetch({
+      method: "POST",
+      headers: openRouterHeaders(opts.apiKey, opts.title),
+      body: JSON.stringify(opts.body),
+    }, opts.timeoutMs);
+    log.event("llm.usage", {
+      label,
+      feature: opts.title ?? label,
+      provider: "OpenRouter",
+      mode: "openrouter",
+      model: opts.body.model,
+      status: r.ok ? "success" : "error",
+      httpStatus: r.status,
+      durationMs: Date.now() - startedAt,
+    });
+    if (!r.ok) await throwOpenRouterError(r, label);
+    return await r.json() as T;
+  } catch (err) {
+    if (!(err instanceof OpenRouterHttpError)) {
+      log.event("llm.usage", {
+        label,
+        feature: opts.title ?? label,
+        provider: "OpenRouter",
+        mode: "openrouter",
+        model: opts.body.model,
+        status: "error",
+        durationMs: Date.now() - startedAt,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function* openRouterStream(opts: OpenRouterCallOpts): AsyncGenerator<OpenRouterStreamChunk> {
@@ -147,6 +176,21 @@ export async function* chatCompletionStream(opts: ChatCompletionStreamOpts): Asy
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? OPENROUTER_STREAM_TIMEOUT_MS);
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  const startedAt = Date.now();
+  const label = opts.label ?? "chat-completion-stream";
+  let emittedUsage = false;
+  const emitUsage = (status: "success" | "error", httpStatus?: number) => {
+    emittedUsage = true;
+    log.event("llm.usage", {
+      label,
+      feature: label,
+      provider: opts.providerName ?? "Provider",
+      model: opts.body.model,
+      status,
+      ...(typeof httpStatus === "number" ? { httpStatus } : {}),
+      durationMs: Date.now() - startedAt,
+    });
+  };
   try {
     const r = await fetch(opts.url, {
       method: "POST",
@@ -154,8 +198,11 @@ export async function* chatCompletionStream(opts: ChatCompletionStreamOpts): Asy
       body: JSON.stringify({ ...opts.body, stream: true }),
       signal: ctrl.signal,
     });
-    if (!r.ok) await throwChatCompletionError(r, opts.label ?? "chat-completion-stream", opts.providerName);
-    if (!r.body) throw new Error(`${opts.label ?? "chat-completion-stream"}: ${opts.providerName ?? "Provider"} response had no stream body`);
+    if (!r.ok) {
+      emitUsage("error", r.status);
+      await throwChatCompletionError(r, label, opts.providerName);
+    }
+    if (!r.body) throw new Error(`${label}: ${opts.providerName ?? "Provider"} response had no stream body`);
 
     reader = r.body.getReader();
     const decoder = new TextDecoder("utf-8");
@@ -195,6 +242,7 @@ export async function* chatCompletionStream(opts: ChatCompletionStreamOpts): Asy
           if (choice.finish_reason) {
             yield* flushToolCalls(toolCalls);
             yield { kind: "finish", reason: typeof choice.finish_reason === "string" ? choice.finish_reason : null };
+            emitUsage("success", r.status);
             return;
           }
         }
@@ -203,6 +251,10 @@ export async function* chatCompletionStream(opts: ChatCompletionStreamOpts): Asy
 
     yield* flushToolCalls(toolCalls);
     yield { kind: "finish", reason: null };
+    emitUsage("success", r.status);
+  } catch (err) {
+    if (!emittedUsage) emitUsage("error");
+    throw err;
   } finally {
     clearTimeout(timer);
     try {

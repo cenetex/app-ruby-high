@@ -65,6 +65,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
+  const metricsEventUrl = apiBase + "/metrics/event";
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
   const GRADE_SHORT_LABELS = { "9": "Fresh", "10": "Soph", "11": "Junior", "12": "Senior" };
   const GRADE_ORDER = ["9", "10", "11", "12"];
@@ -1060,6 +1061,17 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function apiFetch(url, init) {
     return apiClient.apiFetch(url, init);
+  }
+
+  function postViewerMetricEvent(type, payload) {
+    const body = Object.assign({ type: type }, payload || {});
+    apiFetch(metricsEventUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      timeoutMs: 2500,
+      body: JSON.stringify(body),
+    }).catch(() => {});
   }
 
   function imageRequestId(prefix) {
@@ -9622,6 +9634,10 @@ const VIEWER_SCRIPT_SUFFIX = `
   // default). The player progresses Freshman → Sophomore → Junior → Senior
   // → graduate as they clear per-grade daily-class and subject-grade gates. There is no year
   // picker — they walk in, get started, and advance by playing.
+  postViewerMetricEvent("app_open", {
+    path: window.location.pathname,
+    referrer: document.referrer || "",
+  });
   fetchSession();
   // Auth is checked once on boot and again whenever the OAuth tab writes
   // the key (storage event fires in every other tab) or the user returns
@@ -9637,12 +9653,32 @@ const VIEWER_SCRIPT_SUFFIX = `
   // edge where the user returns from a separate-tab flow (a stray
   // target=_blank link, a back-forward cache hit, a tab-switch on iOS
   // Safari which does not fire focus reliably between same-window tabs).
-  window.addEventListener("focus", () => { deriveAuth(); initializePrivyFromStoredSession(); });
-  window.addEventListener("pageshow", () => { deriveAuth(); initializePrivyFromStoredSession(); });
+  let hiddenAt = document.visibilityState === "hidden" ? Date.now() : 0;
+  let lastResumeMetricAt = 0;
+  function maybePostSessionResume(reason) {
+    if (hiddenAt <= 0) return;
+    const now = Date.now();
+    const inactiveMs = now - hiddenAt;
+    if (inactiveMs < 5 * 60 * 1000) return;
+    if (lastResumeMetricAt > 0 && now - lastResumeMetricAt < 5 * 60 * 1000) return;
+    lastResumeMetricAt = now;
+    hiddenAt = 0;
+    postViewerMetricEvent("session_resume", {
+      inactiveMs: Math.max(0, Math.floor(inactiveMs || 0)),
+      reason: reason || "visible",
+    });
+  }
+  window.addEventListener("focus", () => { deriveAuth(); initializePrivyFromStoredSession(); maybePostSessionResume("focus"); });
+  window.addEventListener("pageshow", () => { deriveAuth(); initializePrivyFromStoredSession(); maybePostSessionResume("pageshow"); });
   document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      hiddenAt = Date.now();
+      return;
+    }
     if (document.visibilityState === "visible") {
       deriveAuth();
       initializePrivyFromStoredSession();
+      maybePostSessionResume("visibilitychange");
     }
   });
   // Adaptive poll: tick every second during an active race so NPC picks

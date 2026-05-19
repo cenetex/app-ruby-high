@@ -126,6 +126,36 @@ export interface StoredPackInstallationRecord {
   updatedAt: number;
 }
 
+export type StoredMetricEventName =
+  | "app_open"
+  | "session_resume"
+  | "funnel_step"
+  | "commerce"
+  | "llm_usage"
+  | "error";
+
+export interface StoredMetricEventRecord {
+  id: string;
+  name: StoredMetricEventName;
+  occurredAt: number;
+  day: string;
+  sessionId?: string;
+  userId?: string;
+  source?: string;
+  feature?: string;
+  step?: string;
+  provider?: string;
+  model?: string;
+  status?: "success" | "error" | "started" | "skipped";
+  durationMs?: number;
+  httpStatus?: number;
+  hallPassesDelta?: number;
+  meritStarsDelta?: number;
+  photoDayCreditsDelta?: number;
+  amountCents?: number;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
 /**
  * Common shape every state-store backend implements. RubyHighService talks
  * to this abstraction; the JSON-file backend (this file) and the DynamoDB
@@ -153,12 +183,14 @@ export interface StateStoreLike {
   loadTeachers(): Promise<StoredTeacherRecord[]>;
   loadDraftPacks(): Promise<StoredDraftContentPackRecord[]>;
   loadPackInstallations(): Promise<StoredPackInstallationRecord[]>;
+  loadMetricEvents?(): Promise<StoredMetricEventRecord[]>;
   saveSession(state: QuizState): Promise<void>;
   saveAuthUser(user: AuthUserRecord): Promise<void>;
   saveAuthSession(session: AuthSessionRecord): Promise<void>;
   savePack(record: StoredContentPackRecord): Promise<void>;
   saveDraftPack(record: StoredDraftContentPackRecord): Promise<void>;
   savePackInstallation(record: StoredPackInstallationRecord): Promise<void>;
+  saveMetricEvent?(record: StoredMetricEventRecord): Promise<void>;
   deletePack(ownerSessionId: string | null, packId: string): Promise<void>;
   deleteTeacher(teacherId: string): Promise<void>;
   deleteDraftPack(draftId: string): Promise<void>;
@@ -198,6 +230,7 @@ export class StateStore implements StateStoreLike {
   private teachers = new Map<string, StoredTeacherRecord>();
   private draftPacks = new Map<string, StoredDraftContentPackRecord>();
   private packInstallations = new Map<string, StoredPackInstallationRecord>();
+  private metricEvents = new Map<string, StoredMetricEventRecord>();
 
   // Debounced-write batching. Per-mutation calls (saveSession, saveAuthUser,
   // savePack, deleteAuthSession) all rewrite the same file, so we coalesce
@@ -258,6 +291,12 @@ export class StateStore implements StateStoreLike {
     return Array.from(this.packInstallations.values());
   }
 
+  async loadMetricEvents(): Promise<StoredMetricEventRecord[]> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    return Array.from(this.metricEvents.values());
+  }
+
   private async readFileSnapshot(): Promise<{
     sessions?: QuizState[];
     authUsers?: AuthUserRecord[];
@@ -266,6 +305,7 @@ export class StateStore implements StateStoreLike {
     teachers?: StoredTeacherRecord[];
     draftPacks?: StoredDraftContentPackRecord[];
     packInstallations?: StoredPackInstallationRecord[];
+    metricEvents?: StoredMetricEventRecord[];
   } | null> {
     try {
       const raw = await readFile(this.path, "utf8");
@@ -277,6 +317,7 @@ export class StateStore implements StateStoreLike {
           teachers?: StoredTeacherRecord[];
           draftPacks?: StoredDraftContentPackRecord[];
           packInstallations?: StoredPackInstallationRecord[];
+          metricEvents?: StoredMetricEventRecord[];
         };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -287,6 +328,7 @@ export class StateStore implements StateStoreLike {
         this.teachers = new Map();
         this.draftPacks = new Map();
         this.packInstallations = new Map();
+        this.metricEvents = new Map();
         return null;
       }
       throw err;
@@ -301,6 +343,7 @@ export class StateStore implements StateStoreLike {
     teachers?: StoredTeacherRecord[];
     draftPacks?: StoredDraftContentPackRecord[];
     packInstallations?: StoredPackInstallationRecord[];
+    metricEvents?: StoredMetricEventRecord[];
   }): void {
     const sessions = new Map<string, QuizState>();
     for (const s of parsed.sessions ?? []) {
@@ -384,6 +427,18 @@ export class StateStore implements StateStoreLike {
         packInstallations.set(packInstallationKey(r.userId, r.packId), r);
       }
     }
+    const metricEvents = new Map<string, StoredMetricEventRecord>();
+    for (const r of parsed.metricEvents ?? []) {
+      if (
+        r &&
+        typeof r.id === "string" &&
+        isStoredMetricEventName(r.name) &&
+        typeof r.occurredAt === "number" &&
+        typeof r.day === "string"
+      ) {
+        metricEvents.set(r.id, r);
+      }
+    }
     this.snapshot = sessions;
     this.authUsers = authUsers;
     this.authSessions = authSessions;
@@ -391,6 +446,7 @@ export class StateStore implements StateStoreLike {
     this.teachers = teachers;
     this.draftPacks = draftPacks;
     this.packInstallations = packInstallations;
+    this.metricEvents = metricEvents;
   }
 
   /**
@@ -448,6 +504,11 @@ export class StateStore implements StateStoreLike {
 
   savePackInstallation(record: StoredPackInstallationRecord): Promise<void> {
     this.packInstallations.set(packInstallationKey(record.userId, record.packId), record);
+    return this.scheduleWrite();
+  }
+
+  saveMetricEvent(record: StoredMetricEventRecord): Promise<void> {
+    this.metricEvents.set(record.id, record);
     return this.scheduleWrite();
   }
 
@@ -561,6 +622,7 @@ export class StateStore implements StateStoreLike {
         teachers: Array.from(this.teachers.values()),
         draftPacks: Array.from(this.draftPacks.values()),
         packInstallations: Array.from(this.packInstallations.values()),
+        metricEvents: Array.from(this.metricEvents.values()),
       }, null, 2), "utf8");
       await rename(tmp, this.path);
     } catch (err) {
@@ -585,6 +647,17 @@ function readDebounceMsFromEnv(): number {
 }
 
 const DEFAULT_DEBOUNCE_MS = 25;
+
+function isStoredMetricEventName(value: unknown): value is StoredMetricEventName {
+  return (
+    value === "app_open" ||
+    value === "session_resume" ||
+    value === "funnel_step" ||
+    value === "commerce" ||
+    value === "llm_usage" ||
+    value === "error"
+  );
+}
 
 export function authUserKey(provider: AuthUserRecord["provider"], providerUserHash: string): string {
   return `${provider}:${providerUserHash}`;

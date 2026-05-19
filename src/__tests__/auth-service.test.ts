@@ -167,6 +167,27 @@ describe("AuthService.gcSessions", () => {
     expect(auth.stateKeyForToken(first.token)).toBe(`rh:user:${first.record.userId}`);
   });
 
+  it("counts a returned guest cookie as activity instead of a fresh identity", async () => {
+    const auth = await freshAuth();
+    const base = Date.UTC(2026, 4, 1);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(base);
+
+    const first = await auth.createGuestSession();
+    clock.mockReturnValue(base + 24 * 60 * 60 * 1000 + 1);
+    const again = await auth.createGuestSession(first.token);
+    const snapshot = auth.analyticsSnapshot(Date.now());
+
+    expect(again.token).toBe(first.token);
+    expect(again.record.userId).toBe(first.record.userId);
+    expect(snapshot.users).toBe(1);
+    expect(snapshot.returningUsers).toBe(1);
+    expect(snapshot.d1Retention).toMatchObject({
+      eligibleUsers: 1,
+      returnedUsers: 1,
+    });
+    expect(snapshot.signedInLast24h).toBe(1);
+  });
+
   it("treats malformed session cookie encoding as signed out", async () => {
     const auth = await freshAuth();
 

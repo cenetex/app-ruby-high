@@ -56,6 +56,7 @@ interface PendingPkce {
 const SESSION_COOKIE = "rh_session";
 const PENDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const ACTIVITY_TOUCH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * OpenRouter PKCE auth + opaque cookie sessions.
@@ -205,7 +206,8 @@ export class AuthService extends Service {
   async createGuestSession(existingToken?: string | null): Promise<{ token: string; record: AuthRecord }> {
     const existing = this.resolve(existingToken ?? null);
     if (existing) {
-      return { token: existingToken!, record: existing };
+      const touched = await this.touchUserActivity(existing);
+      return { token: existingToken!, record: touched };
     }
 
     const now = Date.now();
@@ -496,6 +498,14 @@ export class AuthService extends Service {
       ...(profile.walletAddress ? { walletAddress: profile.walletAddress } : {}),
       ...(profile.walletChainType ? { walletChainType: profile.walletChainType } : {}),
     };
+  }
+
+  private async touchUserActivity(record: AuthRecord, now: number = Date.now()): Promise<AuthRecord> {
+    const user = this.usersById.get(record.userId);
+    if (!user || now - user.lastLoginAt < ACTIVITY_TOUCH_INTERVAL_MS) return record;
+    const touched = this.rememberAuthUser({ ...user, lastLoginAt: now });
+    await this.store.saveAuthUser(touched);
+    return this.enrichRecord(record);
   }
 
   private rememberAuthUser(user: AuthUserRecord): AuthUserRecord {
