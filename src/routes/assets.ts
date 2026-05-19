@@ -24,7 +24,7 @@ const VIEWER_SECURITY_CSP_DIRECTIVES = [
   "font-src 'self' data:",
   "img-src 'self' data: blob: https:",
   "connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:* ws://localhost:* ws://127.0.0.1:* ws://[::1]:* wss:",
-  "frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:* capacitor: capacitor-electron: app: tauri: file:",
+  "frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:*",
   VIEWER_FRAME_ANCESTORS_DIRECTIVE,
 ] as const;
 

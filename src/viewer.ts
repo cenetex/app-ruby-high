@@ -16,8 +16,7 @@
 const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* " +
   "http://[::1]:* http://[0:0:0:0:0:0:0:1]:* https://localhost:* " +
-  "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:* " +
-  "electrobun: capacitor: capacitor-electron: app: tauri: file:";
+  "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:*";
 
 export { VIEWER_FRAME_ANCESTORS_DIRECTIVE };
 

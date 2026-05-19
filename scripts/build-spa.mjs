@@ -992,12 +992,6 @@ function offlineApiScript(data) {
     return raw + "/v1/chat/completions";
   }
 
-  function tauriInvoke() {
-    return window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke
-      ? window.__TAURI__.core.invoke
-      : null;
-  }
-
   async function localChatCompletion(messages, opts) {
     const promptMessages = messages.map(function(message, index) {
       if (message && message.role === "user" && typeof message.content === "string") {
@@ -1016,14 +1010,13 @@ function offlineApiScript(data) {
     const payload = JSON.stringify(body);
     const url = normalizeLocalLlmUrl(localLlmBaseUrl());
     const key = localLlmApiKey();
-    const invoke = tauriInvoke();
     let responseBody;
     try {
-      responseBody = await postLocalChat(url, key, payload, invoke);
+      responseBody = await postLocalChat(url, key, payload);
     } catch (err) {
       if (!isOldDefaultLocalLlmBase(localLlmBaseUrl())) throw err;
       try { localStorage.setItem(LOCAL_LLM_BASE_KEY, DEFAULT_LOCAL_LLM_BASE); } catch (_storageErr) {}
-      responseBody = await postLocalChat(normalizeLocalLlmUrl(DEFAULT_LOCAL_LLM_BASE), key, payload, invoke);
+      responseBody = await postLocalChat(normalizeLocalLlmUrl(DEFAULT_LOCAL_LLM_BASE), key, payload);
     }
     const text = responseBody && responseBody.choices && responseBody.choices[0] && responseBody.choices[0].message
       ? String(responseBody.choices[0].message.content || "").trim()
@@ -1032,11 +1025,7 @@ function offlineApiScript(data) {
     return text;
   }
 
-  async function postLocalChat(url, key, payload, invoke) {
-    if (invoke) {
-      const raw = await invoke("local_llm_chat", { url, apiKey: key || null, body: payload });
-      return JSON.parse(String(raw || "{}"));
-    }
+  async function postLocalChat(url, key, payload) {
     const headers = { "Content-Type": "application/json" };
     if (key) headers.Authorization = "Bearer " + key;
     const r = await ORIGINAL_FETCH(url, { method: "POST", headers, body: payload });
