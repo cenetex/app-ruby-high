@@ -17,6 +17,6 @@ export default defineConfig([
     splitting: false,
     target: "es2022",
     platform: "browser",
-    noExternal: [/@privy-io\//, "react", "react-dom", /^react-dom\//],
+    noExternal: [/.*/],
   },
 ]);
