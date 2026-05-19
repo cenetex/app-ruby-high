@@ -319,6 +319,15 @@ export interface RubyHighAnalyticsSnapshot {
     meritStars: number;
     hallPasses: number;
   };
+  daily: RubyHighAnalyticsDay[];
+}
+
+export interface RubyHighAnalyticsDay {
+  date: string;
+  updatedSessions: number;
+  charactersCreated: number;
+  gradesCompleted: number;
+  essaysGraded: number;
 }
 
 export interface YearbookShareCard {
@@ -472,6 +481,7 @@ export class RubyHighService extends Service {
 
   analyticsSnapshot(now: number = Date.now()): RubyHighAnalyticsSnapshot {
     const dayMs = 24 * 60 * 60 * 1000;
+    const { days, byDate } = buildRubyHighDailyBuckets(now, 14);
     let updatedLast24h = 0;
     let characters = 0;
     let graduatedCharacters = 0;
@@ -483,15 +493,31 @@ export class RubyHighService extends Service {
     let meritStars = 0;
     let hallPasses = 0;
     for (const state of this.sessions.values()) {
-      if (now - Number(state.updatedAt ?? 0) <= dayMs) updatedLast24h += 1;
+      const updatedAt = Number(state.updatedAt ?? 0);
+      if (now - updatedAt <= dayMs) updatedLast24h += 1;
+      incrementRubyHighDay(byDate, updatedAt, "updatedSessions");
       if (state.character) {
         characters += 1;
         const yearbookCount = Array.isArray(state.character.yearbook) ? state.character.yearbook.length : 0;
         completedGrades += yearbookCount;
         if (yearbookCount >= GRADES.length) graduatedCharacters += 1;
+        incrementRubyHighDay(byDate, Number(state.character.createdAt), "charactersCreated");
+        for (const entry of state.character.yearbook ?? []) {
+          incrementRubyHighDay(byDate, Number(entry.completedAt), "gradesCompleted");
+        }
+      }
+      for (const pooled of state.studentPool ?? []) {
+        incrementRubyHighDay(byDate, Number(pooled.createdAt), "charactersCreated");
+        for (const entry of pooled.yearbook ?? []) {
+          incrementRubyHighDay(byDate, Number(entry.completedAt), "gradesCompleted");
+        }
       }
       if (state.activeRound && !state.activeRound.resolved) activeRounds += 1;
-      essayReports += Array.isArray(state.essayReports) ? state.essayReports.length : 0;
+      const reports = Array.isArray(state.essayReports) ? state.essayReports : [];
+      essayReports += reports.length;
+      for (const report of reports) {
+        incrementRubyHighDay(byDate, Number(report.gradedAt ?? report.submittedAt), "essaysGraded");
+      }
       correct += Math.max(0, Math.floor(Number(state.score?.correct ?? 0)));
       total += Math.max(0, Math.floor(Number(state.score?.total ?? 0)));
       const wallet = normalizeWallet(state.wallet, state.score?.points ?? 0);
@@ -517,6 +543,7 @@ export class RubyHighService extends Service {
         meritStars,
         hallPasses,
       },
+      daily: days,
     };
   }
 
@@ -4331,6 +4358,41 @@ function normalizeLoaded(s: QuizState): QuizState {
     pendingRoll: s.pendingRoll ?? null,
     character: backfillCharacter(s.character ?? null),
   };
+}
+
+function buildRubyHighDailyBuckets(now: number, count: number): {
+  days: RubyHighAnalyticsDay[];
+  byDate: Map<string, RubyHighAnalyticsDay>;
+} {
+  const start = startOfUtcDay(now) - (count - 1) * 24 * 60 * 60 * 1000;
+  const days: RubyHighAnalyticsDay[] = [];
+  const byDate = new Map<string, RubyHighAnalyticsDay>();
+  for (let i = 0; i < count; i++) {
+    const date = isoDate(start + i * 24 * 60 * 60 * 1000);
+    const day = { date, updatedSessions: 0, charactersCreated: 0, gradesCompleted: 0, essaysGraded: 0 };
+    days.push(day);
+    byDate.set(date, day);
+  }
+  return { days, byDate };
+}
+
+function incrementRubyHighDay(
+  byDate: Map<string, RubyHighAnalyticsDay>,
+  timestamp: number,
+  key: Exclude<keyof RubyHighAnalyticsDay, "date">,
+): void {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+  const day = byDate.get(isoDate(timestamp));
+  if (day) day[key] += 1;
+}
+
+function startOfUtcDay(timestamp: number): number {
+  const d = new Date(timestamp);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+function isoDate(timestamp: number): string {
+  return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 /** Backfill Paper Card snapshot on legacy yearbook entries written before

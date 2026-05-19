@@ -31,7 +31,9 @@ import { handleBugReportRoute } from "./routes/bug-report.js";
 import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
 import {
   ADMIN_METRICS_PATH,
+  ADMIN_OVERVIEW_PATH,
   ADMIN_PATH,
+  handleAdminOverviewRoute,
   handleAdminMetricsRoute,
   renderAdminDashboardHtml,
 } from "./routes/admin.js";
@@ -133,6 +135,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     return handleAdminMetricsRoute(ctx, { auth, ruby });
+  }
+
+  if (ctx.pathname === ADMIN_OVERVIEW_PATH) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!auth || !ruby) {
+      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleAdminOverviewRoute(ctx, { auth, ruby });
   }
 
   if (ctx.method === "GET" && ctx.pathname === ADMIN_PATH) {

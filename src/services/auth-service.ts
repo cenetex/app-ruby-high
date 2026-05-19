@@ -37,6 +37,14 @@ export interface AuthAnalyticsSnapshot {
     returnedUsers: number;
     rate: number | null;
   };
+  daily: AuthAnalyticsDay[];
+}
+
+export interface AuthAnalyticsDay {
+  date: string;
+  newUsers: number;
+  signedInUsers: number;
+  sessionStarts: number;
 }
 
 interface PendingPkce {
@@ -141,6 +149,7 @@ export class AuthService extends Service {
 
   analyticsSnapshot(now: number = Date.now()): AuthAnalyticsSnapshot {
     const dayMs = 24 * 60 * 60 * 1000;
+    const { days, byDate } = buildAuthDailyBuckets(now, 14);
     const users = Array.from(this.usersById.values());
     const providers: Record<AuthUserRecord["provider"], number> = {
       guest: 0,
@@ -156,11 +165,16 @@ export class AuthService extends Service {
       providers[user.provider] += 1;
       if (now - user.createdAt <= dayMs) createdLast24h += 1;
       if (now - user.lastLoginAt <= dayMs) signedInLast24h += 1;
+      incrementAuthDay(byDate, user.createdAt, "newUsers");
+      incrementAuthDay(byDate, user.lastLoginAt, "signedInUsers");
       if (user.lastLoginAt > user.createdAt) returningUsers += 1;
       if (now - user.createdAt >= dayMs) {
         eligibleUsers += 1;
         if (user.lastLoginAt - user.createdAt >= dayMs) returnedUsers += 1;
       }
+    }
+    for (const session of this.sessions.values()) {
+      incrementAuthDay(byDate, session.createdAt, "sessionStarts");
     }
     return {
       users: users.length,
@@ -175,6 +189,7 @@ export class AuthService extends Service {
         returnedUsers,
         rate: eligibleUsers > 0 ? returnedUsers / eligibleUsers : null,
       },
+      daily: days,
     };
   }
 
@@ -546,6 +561,41 @@ function mergeAuthUserProfile(current: AuthUserRecord | undefined, next: AuthUse
       ? { walletChainType: primary.walletChainType ?? secondary.walletChainType }
       : {}),
   };
+}
+
+function buildAuthDailyBuckets(now: number, count: number): {
+  days: AuthAnalyticsDay[];
+  byDate: Map<string, AuthAnalyticsDay>;
+} {
+  const start = startOfUtcDay(now) - (count - 1) * 24 * 60 * 60 * 1000;
+  const days: AuthAnalyticsDay[] = [];
+  const byDate = new Map<string, AuthAnalyticsDay>();
+  for (let i = 0; i < count; i++) {
+    const date = isoDate(start + i * 24 * 60 * 60 * 1000);
+    const day = { date, newUsers: 0, signedInUsers: 0, sessionStarts: 0 };
+    days.push(day);
+    byDate.set(date, day);
+  }
+  return { days, byDate };
+}
+
+function incrementAuthDay(
+  byDate: Map<string, AuthAnalyticsDay>,
+  timestamp: number,
+  key: Exclude<keyof AuthAnalyticsDay, "date">,
+): void {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+  const day = byDate.get(isoDate(timestamp));
+  if (day) day[key] += 1;
+}
+
+function startOfUtcDay(timestamp: number): number {
+  const d = new Date(timestamp);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+function isoDate(timestamp: number): string {
+  return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<{ key: string; userId?: string }> {
