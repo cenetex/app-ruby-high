@@ -251,6 +251,9 @@ describe("admin metrics route", () => {
         reliability: "authoritative",
       }),
     ]));
+    const activityProxy = response.body.fields.find((field: { path: string }) => field.path === "ruby.characterSessionsUpdatedLast24h");
+    expect(activityProxy?.caveat).toContain("prefer ruby.events.appOpen");
+    expect(JSON.stringify(response.body)).not.toContain("until durable app_open/session_resume events exist");
     expect(response.body.missingEvents).toEqual([]);
   });
 
@@ -355,6 +358,12 @@ describe("admin metrics route", () => {
       status: "success",
       durationMs: 42,
     });
+    ruby.recordMetricEvent("llm_usage", {
+      sessionId,
+      provider: "OpenRouter",
+      model: "test-model",
+      status: "skipped",
+    });
     ruby.recordMetricEvent("error", {
       sessionId,
       feature: "test-error",
@@ -383,8 +392,14 @@ describe("admin metrics route", () => {
       essaysGraded: 1,
       appOpens: 1,
       sessionResumes: 1,
-      llmCalls: 1,
+      llmCalls: 2,
       durableErrors: 1,
+    });
+    expect(response.body.ruby.events.llm).toMatchObject({
+      calls: 2,
+      successes: 1,
+      errors: 0,
+      byProvider: { OpenRouter: 2 },
     });
     expect(playYesterday).toMatchObject({
       date: yesterday,
@@ -395,6 +410,36 @@ describe("admin metrics route", () => {
       eligibleSessions: 1,
       returnedSessions: 1,
       rate: 1,
+    });
+  });
+
+  it("keeps malformed persisted commerce deltas from poisoning aggregate metrics", async () => {
+    vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
+    await store.saveMetricEvent({
+      id: "bad-commerce",
+      name: "commerce",
+      occurredAt: Date.UTC(2026, 4, 18),
+      day: "2026-05-18",
+      sessionId: "rh:user:bad-commerce",
+      source: "legacy-import",
+      feature: "hall-pass-grant",
+      status: "success",
+      hallPassesDelta: "not-a-number" as never,
+      amountCents: "also-bad" as never,
+    });
+    ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+
+    const response = await appRoute({
+      path: "/api/apps/ruby-high/admin/metrics",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.ruby.events.commerce).toMatchObject({
+      events: 1,
+      hallPassesDelta: 0,
+      amountCents: 0,
     });
   });
 

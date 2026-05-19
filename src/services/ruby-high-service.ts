@@ -4758,15 +4758,15 @@ function buildMetricEventsSnapshot(
       else if (event.step === "first_grade_completed") funnel.firstGradeCompleted += 1;
     } else if (event.name === "commerce") {
       commerce.events += 1;
-      commerce.hallPassesDelta += Math.floor(Number(event.hallPassesDelta ?? 0));
-      commerce.meritStarsDelta += Math.floor(Number(event.meritStarsDelta ?? 0));
-      commerce.photoDayCreditsDelta += Math.floor(Number(event.photoDayCreditsDelta ?? 0));
-      commerce.amountCents += Math.floor(Number(event.amountCents ?? 0));
+      commerce.hallPassesDelta += metricIntegerOrZero(event.hallPassesDelta);
+      commerce.meritStarsDelta += metricIntegerOrZero(event.meritStarsDelta);
+      commerce.photoDayCreditsDelta += metricIntegerOrZero(event.photoDayCreditsDelta);
+      commerce.amountCents += metricIntegerOrZero(event.amountCents);
       if (day) day.commerceEvents += 1;
     } else if (event.name === "llm_usage") {
       llm.calls += 1;
       if (event.status === "error") llm.errors += 1;
-      else llm.successes += 1;
+      else if (event.status === "success") llm.successes += 1;
       const provider = event.provider || "unknown";
       llm.byProvider[provider] = (llm.byProvider[provider] ?? 0) + 1;
       if (day) {
@@ -4796,6 +4796,11 @@ function buildMetricEventsSnapshot(
     llm,
     errors,
   };
+}
+
+function metricIntegerOrZero(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? Math.floor(n) : 0;
 }
 
 function incrementRubyHighDay(

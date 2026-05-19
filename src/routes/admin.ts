@@ -149,7 +149,7 @@ function buildAdminMetricsQuality(metrics: {
       field: "auth.providers.guest",
       severity: "warning",
       issue: `${guestRecords} of ${metrics.auth.users} identity records are guest records.`,
-      recommendedUse: "Treat legacy acquisition and retention as suspect until a reset date or durable visitor/session events exist.",
+      recommendedUse: "Treat legacy acquisition and identity retention as suspect; use ruby.events app_open/session_resume after the trust start date for traffic claims.",
     });
   }
   if (metrics.ruby.characters > 0 && metrics.ruby.completedGrades === 0) {
@@ -277,7 +277,7 @@ function buildAdminMetricsSchema(): {
         source: "QuizState.updatedAt plus PlayerCharacter presence",
         semantics: "Saved game sessions with a character and an update in the last rolling 24 hours.",
         reliability: "proxy",
-        caveat: "Best current activity proxy until durable app_open/session_resume events exist.",
+        caveat: "Use as a product-state proxy; prefer ruby.events.appOpen and ruby.events.sessionResume for traffic and return-visit claims after schema v3 deployment.",
       },
       {
         path: "ruby.characterD1Retention",
