@@ -38,7 +38,7 @@ jobs:
     needs: verify
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     concurrency:
       group: fly-production
       cancel-in-progress: false
@@ -92,7 +92,7 @@ jobs:
           set -euo pipefail
           SHA="${GITHUB_SHA::12}"
           for attempt in 1 2 3; do
-            if flyctl deploy --app ruby-high --remote-only --depot=false --build-arg RUBY_HIGH_BUILD="$SHA"; then
+            if flyctl deploy --app ruby-high --local-only --build-arg RUBY_HIGH_BUILD="$SHA"; then
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
