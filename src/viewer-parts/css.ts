@@ -3185,6 +3185,226 @@ export const VIEWER_CSS = `
     color: var(--text-mute);
     font-size: 12px;
   }
+  .account-hall-pass-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+    gap: 12px;
+  }
+  .account-hall-pass-card {
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+    border-radius: 14px;
+    border: 2px solid var(--hall-pass-card-color, var(--accent));
+    background:
+      radial-gradient(circle at 50% 12%, color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 18%, transparent), transparent 34%),
+      linear-gradient(180deg, #fff3e2 0%, #f4dfc7 42%, #10182a 42%, #0b1324 100%);
+    color: var(--text);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.20) inset,
+      0 14px 34px rgba(0,0,0,0.36),
+      0 0 22px color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 22%, transparent);
+  }
+  .account-hall-pass-card.rarity-super-rare {
+    background:
+      radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--hall-pass-card-color, #f0b441) 42%, transparent), transparent 36%),
+      radial-gradient(circle at 18% 22%, rgba(255,255,255,0.26), transparent 2px),
+      radial-gradient(circle at 76% 16%, rgba(255,255,255,0.22), transparent 2px),
+      linear-gradient(180deg, #15182f 0%, #221640 42%, #0b1324 42%, #07101f 100%);
+  }
+  .account-hall-pass-card.is-redeemed,
+  .account-hall-pass-card.is-void {
+    opacity: 0.64;
+    filter: grayscale(0.42);
+  }
+  .account-hall-pass-card-top {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    padding: 10px 10px 0;
+  }
+  .account-hall-pass-card-crest {
+    width: 38px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px 8px 12px 12px;
+    background: var(--hall-pass-card-color, var(--accent));
+    border: 2px solid rgba(255,255,255,0.75);
+    color: #fff;
+    font-family: Georgia, serif;
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.35);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.28);
+  }
+  .account-hall-pass-card-role {
+    display: inline-block;
+    width: fit-content;
+    max-width: 100%;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--hall-pass-card-color, var(--accent));
+    color: #fff;
+    font-size: 10px;
+    font-weight: 950;
+    letter-spacing: 0.18em;
+    line-height: 1;
+    text-transform: uppercase;
+    box-shadow: 0 6px 14px color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 36%, transparent);
+  }
+  .account-hall-pass-card-name {
+    margin-top: 5px;
+    color: #111827;
+    font-size: 25px;
+    font-weight: 950;
+    line-height: 0.95;
+    overflow-wrap: anywhere;
+    text-transform: uppercase;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.72);
+  }
+  .rarity-super-rare .account-hall-pass-card-name {
+    color: #fff4cc;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.55);
+  }
+  .account-hall-pass-card-subtitle {
+    margin-top: 4px;
+    display: inline-block;
+    max-width: 100%;
+    padding: 3px 7px;
+    background: color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 82%, #121826);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .account-hall-pass-card-art {
+    height: 188px;
+    margin-top: -10px;
+    display: grid;
+    place-items: end center;
+    overflow: hidden;
+  }
+  .account-hall-pass-card-art img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center bottom;
+    filter: drop-shadow(0 10px 10px rgba(0,0,0,0.35));
+  }
+  .account-hall-pass-card-art.is-fallback {
+    color: color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 70%, #fff);
+    font-size: 76px;
+    font-weight: 950;
+    text-shadow: 0 5px 16px rgba(0,0,0,0.36);
+  }
+  .account-hall-pass-card-body {
+    min-width: 0;
+    position: relative;
+    z-index: 2;
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    background: linear-gradient(180deg, rgba(11,19,36,0.96), rgba(8,14,27,0.98));
+    border-top: 1px solid rgba(255,255,255,0.10);
+  }
+  .account-hall-pass-card-blurb {
+    color: #f4ebdc;
+    min-height: 48px;
+    padding: 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.32;
+    text-align: center;
+  }
+  .account-hall-pass-card-teaches {
+    display: grid;
+    gap: 3px;
+    padding: 7px 8px;
+    border-radius: 7px;
+    background: rgba(255,255,255,0.045);
+  }
+  .account-hall-pass-card-teaches span {
+    color: color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 70%, #fff);
+    font-size: 10px;
+    font-weight: 950;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+  .account-hall-pass-card-teaches strong {
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.28;
+  }
+  .account-hall-pass-card-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .account-hall-pass-card-stat {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.035);
+  }
+  .account-hall-pass-card-stat-label {
+    color: var(--text-mute);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .account-hall-pass-card-stat.is-pos .account-hall-pass-card-stat-label { color: #b7f2bc; }
+  .account-hall-pass-card-stat.is-neg .account-hall-pass-card-stat-label { color: #ffaaa6; }
+  .account-hall-pass-card-dots {
+    display: flex;
+    gap: 2px;
+  }
+  .account-hall-pass-card-dots i {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.36);
+  }
+  .account-hall-pass-card-dots i.is-filled {
+    background: currentColor;
+    border-color: currentColor;
+  }
+  .account-hall-pass-card-quote {
+    min-height: 42px;
+    padding: 8px 9px;
+    border-left: 3px solid var(--hall-pass-card-color, var(--accent));
+    border-radius: 7px;
+    background: rgba(0,0,0,0.22);
+    color: #cdd5e7;
+    font-size: 12px;
+    font-style: italic;
+    line-height: 1.35;
+  }
+  .account-hall-pass-card-foot {
+    padding: 8px 10px 10px;
+    background: #070d1a;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-mute);
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
   .account-history-list {
     display: grid;
     gap: 6px;

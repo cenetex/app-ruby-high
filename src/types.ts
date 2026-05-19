@@ -487,8 +487,39 @@ export type RubyHighWalletTransactionKind =
   | "hall-pass-spend"
   | "hall-pass-refund"
   | "hall-pass-revoke"
+  | "hall-pass-card-mint"
+  | "hall-pass-card-burn"
   | "photo-day-spend"
   | "photo-day-refund";
+
+export type RubyHighHallPassCardStatus = "active" | "redeemed" | "void";
+export type RubyHighHallPassCardRole = "student" | "teacher" | "special";
+export type RubyHighHallPassCardRarity = "common" | "rare" | "super-rare";
+
+export interface RubyHighHallPassCard {
+  id: string;
+  serial: number;
+  title: string;
+  characterId: string;
+  characterName: string;
+  role: RubyHighHallPassCardRole;
+  rarity: RubyHighHallPassCardRarity;
+  blurb: string;
+  color: string;
+  hallPasses: number;
+  status: RubyHighHallPassCardStatus;
+  issuedAt: number;
+  updatedAt: number;
+  source?: RubyHighWalletTransaction["source"];
+  grantTransactionId?: string;
+  redeemTransactionId?: string;
+  ownerWalletAddress?: string;
+  mintAddress?: string;
+  mintSignature?: string;
+  metadataUri?: string;
+  burnSignature?: string;
+  burnedAt?: number;
+}
 
 export interface RubyHighWalletTransaction {
   id: string;
@@ -500,7 +531,7 @@ export interface RubyHighWalletTransaction {
   hallPasses?: number;
   /** Positive for refunds, negative for spends. */
   photoDayCredits?: number;
-  source?: "stripe" | "solana" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "admin" | "system";
+  source?: "stripe" | "solana" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "hall-pass-card" | "admin" | "system";
   description?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }
@@ -514,6 +545,8 @@ export interface RubyHighWallet {
   welcomeHallPassesGrantedAt?: number;
   /** Server-hosted text AI access. Null/expired means BYOK or local AI is required. */
   hostedAiAccessExpiresAt?: number;
+  /** Collectible Hall Pass cards granted in packs. Redeemed cards are kept as recent history. */
+  hallPassCards?: RubyHighHallPassCard[];
   /** Idempotency ledger for paid currency grants/spends. */
   transactions?: RubyHighWalletTransaction[];
   /** Durable operation ledger. Kept out of telemetry; used for idempotency after display history rotates. */

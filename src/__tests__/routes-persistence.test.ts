@@ -327,7 +327,7 @@ describe("command route persistence and scheduler misses", () => {
 
     expect(handled).toBe(true);
     expect(harness.response?.status).toBe(400);
-    expect(harness.response?.body.error).toContain("Connect OpenRouter");
+    expect(harness.response?.body.error).toContain("Connect AI");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

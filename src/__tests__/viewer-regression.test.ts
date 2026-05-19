@@ -92,9 +92,10 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('id="privy-connect-solana"');
     expect(html).toContain('id="account-ai-use-pass"');
     expect(html).toContain('id="account-ai-action"');
-    expect(html).toContain('id="account-use-pass"');
-    expect(html).toContain("Connect OpenRouter");
-    expect(html).toContain("Use Hall Pass");
+    expect(html).not.toContain('id="account-use-pass"');
+    expect(html).not.toContain('id="account-buy-passes"');
+    expect(html).toContain("Connect AI key");
+    expect(html).toContain("Burn Card");
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
@@ -114,11 +115,13 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("loginWithEmailCode");
   });
 
-  it("offers crypto checkout only after a Hall Pass pack is selected", () => {
+  it("offers crypto checkout only after a card pack is selected", () => {
     const script = inlineScript(renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } }));
 
     expectScriptToContain(script, "function connectedSolanaWalletAddress()");
     expectScriptToContain(script, "function selectBillingProduct(productId)");
+    expectScriptToContain(script, "function renderAccountHallPassCards()");
+    expectScriptToContain(script, "accountHallPassCards");
     expectScriptToContain(script, 'buy.addEventListener("click", () => selectBillingProduct(product.id))');
     expectScriptToContain(script, "buildBillingPaymentChoice(payload, product, solana, solanaProduct)");
     expectScriptToContain(script, "prices.push(formatTokenAmount(solanaProduct.tokenAmount, solanaProduct.tokenSymbol || solana.symbol))");
@@ -128,6 +131,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "crypto.disabled = billingBusy || cryptoUnavailable");
     expectScriptToContain(script, "Crypto checkout is not configured in this preview.");
     expect(VIEWER_CSS).toContain(".billing-payment-note");
+    expect(VIEWER_CSS).toContain(".account-hall-pass-card");
     expect(script).not.toContain('"Buy " + formatWholeNumber(product.hallPasses || 0) + " Hall Passes."');
     expectScriptToContain(script, "async function ensureSolanaWalletForBilling()");
     expectScriptToContain(script, "function connectedSolanaWalletAddress() {\n    return privyState.solanaWalletAddress || null;\n  }");
@@ -204,9 +208,9 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain(".welcome-hall-pass-art");
     expectScriptToContain(script, "Roll your first student and try a custom portrait");
     expectScriptToContain(script, 'els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
-    expectScriptToContain(script, 'els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
-    expectScriptToContain(script, "els.accountBuyPasses.disabled = !authed;");
-    expectScriptToContain(script, "els.accountUsePass.disabled = !authed || billingBusy");
+    expect(script).not.toContain('els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
+    expect(script).not.toContain("els.accountBuyPasses.disabled = !authed;");
+    expect(script).not.toContain("els.accountUsePass.disabled = !authed || billingBusy");
     expectScriptToContain(script, "els.accountAiUsePass.disabled = primaryDisabled;");
     expect(script).not.toContain("els.accountBuyPasses.disabled = !unlocked || !authed");
     expect(script).not.toContain("els.accountUsePass.disabled = !unlocked || !authed");
@@ -221,8 +225,8 @@ describe("viewer regression guardrails", () => {
 
     expectScriptToContain(script, 'offlineClassroom ? "Continue" : "Chat"');
     expectScriptToContain(script, 'const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";');
-    expectScriptToContain(script, "Connect OpenRouter for hints.");
-    expect(script).not.toContain("Connect or enable AI for hints.");
+    expectScriptToContain(script, "Connect AI for hints.");
+    expect(script).not.toContain("Connect OpenRouter for hints.");
   });
 
   it("keeps opinion submit, waiting refresh, and force-grade paths wired in the client", () => {
@@ -414,7 +418,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="course-generation-checklist"');
     expect(html).toContain("Add course materials here");
     expect(html).toContain("Generate Course");
-    expect(html).toContain("Publish Course (3 Hall Passes)");
+    expect(html).toContain("Publish Course (3 Cards)");
     expect(html).toContain('id="course-generate-btn"');
     expect(html).not.toContain('class="pack-teacher-tab pack-new-teacher-tab"');
     expect(html).not.toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');

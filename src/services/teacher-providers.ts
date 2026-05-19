@@ -62,7 +62,7 @@ export async function* streamTeacherCompletion(opts: {
     : isLocalLlmProvider()
       ? resolveLlmApiKey(null)
       : null;
-  if (!apiKey) throw new Error("OpenRouter key required for this teacher.");
+  if (!apiKey) throw new Error("AI key required for this teacher.");
   if (isLocalLlmProvider()) {
     yield* chatCompletionStream({
       url: llmChatCompletionsUrl(),

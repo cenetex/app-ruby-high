@@ -449,7 +449,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   }
 
   // ── auth credential (client-owned) ───────────────────────────────────────
-  // The OpenRouter API key lives ONLY in localStorage. The OAuth callback
+  // The browser-owned AI key lives ONLY in localStorage. The OAuth callback
   // tab writes it; same-origin storage events fan it out to other tabs;
   // every API call attaches it via the X-Openrouter-Key header. The server
   // never persists it; server-side auth stores only an opaque app session.
@@ -603,8 +603,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     accountAiAction: $("account-ai-action"),
     accountWalletBalance: $("account-wallet-balance"),
     accountWalletMeta: $("account-wallet-meta"),
-    accountUsePass: $("account-use-pass"),
-    accountBuyPasses: $("account-buy-passes"),
+    accountMintCards: $("account-mint-cards"),
+    accountCardSummary: $("account-card-summary"),
+    accountHallPassCards: $("account-hall-pass-cards"),
     accountCharacterSummary: $("account-character-summary"),
     accountCharacterGrid: $("account-character-grid"),
     accountCreateCharacter: $("account-create-character"),
@@ -722,7 +723,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   let showWelcomeBackCopy = false;
   let firstRunCreationOpened = false;
   let authed = null; // app-owned Ruby High session ready
-  let aiEnabled = false; // Local/OpenRouter text AI + Ruby High session present
+  let aiEnabled = false; // Browser/local/hosted text AI + Ruby High session present
   let localAiEnabled = false;
   let hostedAiActive = false;
   let privyClient = null;
@@ -747,7 +748,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return !!authed && (!!getStoredApiKey() || (!!aiEnabled && !localAiEnabled && hostedAiActive));
   }
   function openRouterGenerationMessage(action) {
-    return "Connect OpenRouter before " + action + ".";
+    return "Connect AI before " + action + ".";
   }
   let lockedFor = null;
   let renderedHistorySig = null;
@@ -1107,7 +1108,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       if (teacherChatEnabled()) {
         await runAgentTurn("manual", context, { force: true });
       } else {
-        appendSystem(intent === "hint" ? "Answer the board to continue. Connect OpenRouter for teacher hints." : "Connect OpenRouter for teacher replies.");
+        appendSystem(intent === "hint" ? "Answer the board to continue. Connect AI for teacher hints." : "Connect AI for teacher replies.");
       }
     } finally {
       manualTurn.finish();
@@ -1805,7 +1806,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function walletSummaryText(t) {
     const wallet = walletNumbers(t);
-    return formatWholeNumber(wallet.meritStars) + " Merit Stars · " + formatWholeNumber(wallet.hallPasses) + " Hall Passes";
+    return formatWholeNumber(wallet.meritStars) + " Merit Stars · " + formatWholeNumber(walletCardCount(t)) + " Cards";
+  }
+
+  function walletCardCount(t) {
+    const cards = hallPassCardsForTelemetry(t);
+    if (cards.length > 0) return cards.filter((card) => card.status === "active").length;
+    return walletNumbers(t).hallPasses;
   }
 
   function walletNumbers(t) {
@@ -1841,7 +1848,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const costs = billingProductsCache && billingProductsCache.imageCosts ? billingProductsCache.imageCosts : {};
     const raw = entitlement && entitlement.cost != null ? entitlement.cost : costs && costs[kind];
     const cost = Math.max(1, Math.round(Number(raw || 1)));
-    return formatWholeNumber(cost) + " Hall Pass" + (cost === 1 ? "" : "es");
+    return formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s");
   }
 
   function positiveWholeNumber(value, fallback) {
@@ -1851,7 +1858,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function hallPassCostLabel(cost) {
     const normalized = positiveWholeNumber(cost, 1);
-    return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
+    return formatWholeNumber(normalized) + " Card" + (normalized === 1 ? "" : "s");
   }
 
   function creatorPricing(t) {
@@ -1884,7 +1891,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (!usingHostedImageGeneration(kind) && !usePhotoDayCredit) return true;
     await ensureBillingProductsForCreditWarning();
     const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : hostedImageCostLabel(kind);
-    const spendKind = usePhotoDayCredit ? "photo-day credit" : "Hall Pass spend";
+    const spendKind = usePhotoDayCredit ? "photo-day credit" : "card burn";
     const isCharacterPortrait = action === "Custom character portrait";
     const detail = isCharacterPortrait
       ? "You can keep editing while it runs. Lock it in unlocks after the request finishes."
@@ -1894,7 +1901,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       return confirmInApp({
         kicker: "Hosted image",
         title: action + "?",
-        copy: "This uses hosted OpenRouter image generation. If the image completes, it will spend " + spendLabel + ".",
+        copy: "If the image completes, Ruby High will spend " + spendLabel + ".",
         detail,
         confirmText,
         focus: "confirm",
@@ -1903,7 +1910,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return confirmInApp({
       kicker: spendKind,
       title: action + "?",
-      copy: "This uses hosted OpenRouter image generation. If the image completes, it will spend " + spendLabel + ".",
+      copy: "If the image completes, Ruby High will burn " + spendLabel + ".",
       detail,
       confirmText,
       focus: "confirm",
@@ -1923,8 +1930,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function teacherImageCreditHint() {
     const reason = teacherImageGenerationStatusReason();
     if (reason) return reason;
-    if (!getStoredApiKey()) return "Hosted image generation spends " + hostedImageCostLabel("portrait") + " when it completes.";
-    return "Uses your OpenRouter key. No Hall Passes are spent.";
+    if (!getStoredApiKey()) return "Hosted image generation burns " + hostedImageCostLabel("portrait") + " when it completes.";
+    return "Uses your AI key. No cards are burned.";
   }
 
   function applyHallPassBalance(hallPasses, entitlements, characterSlots) {
@@ -1958,9 +1965,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function syncBillingWallet(t) {
     if (!els.billingWallet) return;
-    const wallet = walletNumbers(t || lastTelemetry);
+    const cardCount = walletCardCount(t || lastTelemetry);
     const ai = hostedAiTelemetry(t || lastTelemetry);
-    els.billingWallet.textContent = formatWholeNumber(wallet.hallPasses) + " Hall Passes"
+    els.billingWallet.textContent = formatWholeNumber(cardCount) + " Card" + (cardCount === 1 ? "" : "s")
       + (ai.active ? " · AI active " + formatRelativeExpiry(ai.expiresAt) : "");
     renderAccountWallet();
   }
@@ -2040,6 +2047,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function renderAccountPage() {
     renderAccountAi();
     renderAccountWallet();
+    renderAccountHallPassCards();
     renderAccountCharacters();
     renderAccountComics();
     renderAccountHistory();
@@ -2050,23 +2058,23 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const ai = hostedAiTelemetry(lastTelemetry);
     const hasBrowserKey = !!getStoredApiKey();
     const durationLabel = formatDuration(ai.durationMs || 604_800_000);
-    const costLabel = formatWholeNumber(ai.cost || 1) + " Hall Pass" + ((ai.cost || 1) === 1 ? "" : "es");
+    const costLabel = formatWholeNumber(ai.cost || 1) + " Card" + ((ai.cost || 1) === 1 ? "" : "s");
     let status = "Offline mode";
-    let meta = "Use " + costLabel + " for " + durationLabel + " of hosted AI, or connect OpenRouter with your own key.";
-    let primaryLabel = "Use Hall Pass";
-    let primaryTitle = "Spend " + costLabel + " for " + durationLabel + " of hosted AI access.";
+    let meta = "Burn " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
+    let primaryLabel = "Burn Card";
+    let primaryTitle = "Burn " + costLabel + " for " + durationLabel + " of AI access.";
     let primaryDisabled = !authed || billingBusy || localAiEnabled || ai.active || !ai.configured || !ai.affordable;
-    let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect OpenRouter";
+    let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect AI key";
     let secondaryDisabled = !authed || localAiEnabled;
     if (localAiEnabled) {
       status = "Local AI active";
       meta = "This device is already providing text AI.";
       primaryLabel = "Local AI";
       primaryTitle = "";
-      secondaryLabel = "Connect OpenRouter";
+      secondaryLabel = "Connect AI key";
     } else if (hasBrowserKey && aiEnabled) {
-      status = "OpenRouter connected";
-      meta = "Teacher chat and character text rerolls use your OpenRouter key. Hall Pass access is still available for hosted play.";
+      status = "AI key connected";
+      meta = "Teacher chat and character text rerolls use your browser key. Card burns are still available for hosted play.";
     } else if (ai.active || hostedAiActive) {
       status = "AI Access active";
       meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
@@ -2074,9 +2082,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       primaryTitle = "";
     } else if (activeTeacherUsesServerAi()) {
       status = "Teacher AI connected";
-      meta = "This server can speak for teachers. Use Hall Pass access or connect OpenRouter for browser-owned AI features.";
+      meta = "This server can speak for teachers. Burn a card or connect your own AI key for browser-owned AI features.";
     } else if (!ai.configured) {
-      meta = "Hosted AI is not configured on this server. Connect OpenRouter with your own key.";
+      meta = "Hosted AI is not configured on this server. Connect your own AI key.";
       primaryTitle = "Hosted AI is not configured on this server.";
     } else if (!ai.affordable) {
       primaryTitle = "Need " + costLabel + ".";
@@ -2092,27 +2100,260 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function renderAccountWallet() {
     if (!els.accountWalletBalance) return;
-    const wallet = walletNumbers(lastTelemetry);
-    const ai = hostedAiTelemetry(lastTelemetry);
     const slots = characterSlotTelemetry();
     els.accountWalletBalance.textContent = walletSummaryText(lastTelemetry || {});
     if (els.accountWalletMeta) {
       els.accountWalletMeta.textContent = slots.photoDayCredits > 0
         ? slots.photoDayCredits + " Photo Day " + (slots.photoDayCredits === 1 ? "credit" : "credits")
-        : "Hall Passes unlock AI access, image generation, and extra student slots.";
+        : "Cards burn for AI access, image generation, and extra student slots.";
     }
-    if (els.accountUsePass) {
-      const durationLabel = formatDuration(ai.durationMs || 604_800_000);
-      const costLabel = formatWholeNumber(ai.cost || 1) + " Hall Pass" + ((ai.cost || 1) === 1 ? "" : "es");
-      els.accountUsePass.textContent = ai.active || hostedAiActive ? "AI Active" : "Use Hall Pass";
-      els.accountUsePass.title = ai.active || hostedAiActive
-        ? "Hosted AI is already active."
-        : ai.configured
-          ? "Spend " + costLabel + " for " + durationLabel + " of hosted AI access."
-          : "Hosted AI is not configured on this server.";
-      els.accountUsePass.disabled = !authed || billingBusy || localAiEnabled || ai.active || hostedAiActive || !ai.configured || !ai.affordable;
+  }
+
+  function hallPassCardsForTelemetry(t) {
+    const src = t || lastTelemetry;
+    const wallet = src && src.wallet && typeof src.wallet === "object" ? src.wallet : {};
+    const cards = Array.isArray(wallet.hallPassCards) ? wallet.hallPassCards.slice() : [];
+    return cards.filter((card) => card && typeof card === "object" && card.id);
+  }
+
+  function renderAccountHallPassCards() {
+    if (!els.accountHallPassCards) return;
+    const cards = hallPassCardsForTelemetry();
+    const active = cards.filter((card) => card.status === "active");
+    const mintable = active.filter((card) => !card.mintAddress);
+    const minted = cards.filter((card) => card.mintAddress);
+    const shown = cards
+      .slice()
+      .sort((a, b) => {
+        const activeDelta = (b.status === "active" ? 1 : 0) - (a.status === "active" ? 1 : 0);
+        if (activeDelta) return activeDelta;
+        return Number(b.updatedAt || b.issuedAt || 0) - Number(a.updatedAt || a.issuedAt || 0);
+      })
+      .slice(0, 24);
+    if (els.accountCardSummary) {
+      els.accountCardSummary.textContent = cards.length === 0
+        ? "Each pack opens one teacher and three students."
+        : active.length + " active · " + minted.length + " minted · " + cards.length + " total";
     }
-    if (els.accountBuyPasses) els.accountBuyPasses.disabled = !authed;
+    if (els.accountMintCards) {
+      els.accountMintCards.disabled = !authed || billingBusy;
+      els.accountMintCards.textContent = mintable.length > 0 ? "Mint " + mintable.length + " Cards" : "Mint Cards";
+      els.accountMintCards.title = mintable.length > 0
+        ? "Mint unminted cards to your connected Solana wallet."
+        : "Buy a pack or mint pending cards.";
+    }
+    els.accountHallPassCards.replaceChildren();
+    if (shown.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "account-empty";
+      empty.textContent = "Mint a pack to start the stack.";
+      els.accountHallPassCards.appendChild(empty);
+      return;
+    }
+    shown.forEach((card) => {
+      els.accountHallPassCards.appendChild(buildHallPassCard(card));
+    });
+  }
+
+  const HALL_PASS_CARD_PROFILES = {
+    ruby: {
+      subtitle: "Homeroom Teacher",
+      teaches: "Homeroom · General Knowledge · AI Literacy · School Meta",
+      stats: { head: 1, heart: 3, hustle: 2, honor: 2 },
+      quote: "Let's learn together. Ask hard questions. Be kind. Have fun.",
+    },
+    "sally-science": {
+      subtitle: "STEM Teacher",
+      teaches: "Physics · Chemistry · Biology · Earth Science · Lab Thinking",
+      stats: { head: 5, heart: 3, hustle: 3, honor: 4 },
+      quote: "The universe doesn't hide the answer. It just asks better questions.",
+    },
+    "professor-edward": {
+      subtitle: "Literature Teacher",
+      teaches: "Postwar Literature · Literary Theory · Critical Thinking",
+      stats: { head: 5, heart: 3, hustle: 1, honor: 4 },
+      quote: "Context changes meaning. Curiosity finds truth.",
+    },
+    "captain-null": {
+      subtitle: "Observatory",
+      teaches: "Void Theory · Impossible Engines · Page 10",
+      stats: { head: 5, heart: 2, hustle: 3, honor: 4 },
+      quote: "There are stars that watch. Learn to look back.",
+    },
+    eliza: {
+      subtitle: "Systems Lab",
+      teaches: "Agents · Networks · Coordination",
+      stats: { head: 5, heart: 3, hustle: 4, honor: 2 },
+      quote: "Make the system legible, then make it sing.",
+    },
+    rati: {
+      subtitle: "Signal Studies",
+      teaches: "Myth · Tokens · Strange Economics",
+      stats: { head: 4, heart: 3, hustle: 4, honor: 2 },
+      quote: "Hold the signal. Build the world.",
+    },
+    lyra: {
+      subtitle: "Junior · #literature",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      quote: "wait what - i KNEW it was c. ok im rewriting my notes.",
+    },
+    sami: {
+      subtitle: "Sophomore · #homeroom",
+      stats: { head: 0, heart: 1, hustle: 2, honor: -1 },
+      quote: "respectfully, ouch. couldve been you.",
+    },
+    ravi: {
+      subtitle: "Sophomore · #science",
+      stats: { head: 1, heart: 1, hustle: 1, honor: -1 },
+      quote: "OK so technically - wait, sorry, am i shouting again",
+    },
+    indra: {
+      subtitle: "Junior · #literature",
+      stats: { head: 2, heart: -1, hustle: 0, honor: 1 },
+      quote: "the answer was always c.",
+    },
+    mika: {
+      subtitle: "Sophomore · #science",
+      stats: { head: -1, heart: 2, hustle: 1, honor: 0 },
+      quote: "you cooked. for real.",
+    },
+    noor: {
+      subtitle: "Sophomore · #homeroom",
+      stats: { head: 1, heart: 1, hustle: -1, honor: 1 },
+      quote: "the test designer is in this room and is laughing.",
+    },
+  };
+
+  function buildHallPassCard(card) {
+    const item = document.createElement("div");
+    const profile = HALL_PASS_CARD_PROFILES[card.characterId] || {};
+    item.className = "account-hall-pass-card is-" + String(card.status || "active")
+      + " is-" + String(card.role || "student")
+      + " rarity-" + String(card.rarity || "common").replace(/[^a-z0-9-]/gi, "");
+    item.style.setProperty("--hall-pass-card-color", card.color || "var(--accent)");
+
+    const top = document.createElement("div");
+    top.className = "account-hall-pass-card-top";
+    const crest = document.createElement("div");
+    crest.className = "account-hall-pass-card-crest";
+    crest.textContent = "R";
+    const head = document.createElement("div");
+    head.className = "account-hall-pass-card-head";
+    const role = document.createElement("div");
+    role.className = "account-hall-pass-card-role";
+    role.textContent = String(card.role || "student").toUpperCase();
+    const name = document.createElement("div");
+    name.className = "account-hall-pass-card-name";
+    name.textContent = card.characterName || "Ruby High";
+    const subtitle = document.createElement("div");
+    subtitle.className = "account-hall-pass-card-subtitle";
+    subtitle.textContent = profile.subtitle || displayCardText(card.title, "Ruby High Card");
+    head.appendChild(role);
+    head.appendChild(name);
+    head.appendChild(subtitle);
+    top.appendChild(crest);
+    top.appendChild(head);
+    item.appendChild(top);
+
+    const art = document.createElement("div");
+    art.className = "account-hall-pass-card-art";
+    const artUrl = hallPassCardArtUrl(card);
+    if (artUrl) {
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = artUrl;
+      img.onerror = () => {
+        art.innerHTML = "";
+        art.classList.add("is-fallback");
+        art.textContent = String(card.characterName || "R").slice(0, 1).toUpperCase();
+      };
+      art.appendChild(img);
+    } else {
+      art.classList.add("is-fallback");
+      art.textContent = String(card.characterName || "R").slice(0, 1).toUpperCase();
+    }
+    item.appendChild(art);
+
+    const body = document.createElement("div");
+    body.className = "account-hall-pass-card-body";
+    const blurb = document.createElement("div");
+    blurb.className = "account-hall-pass-card-blurb";
+    blurb.textContent = displayCardText(card.blurb, "Good for one burn.");
+    body.appendChild(blurb);
+    if (profile.teaches) {
+      const teaches = document.createElement("div");
+      teaches.className = "account-hall-pass-card-teaches";
+      const label = document.createElement("span");
+      label.textContent = card.role === "student" ? "HANGS OUT" : "TEACHES";
+      const text = document.createElement("strong");
+      text.textContent = profile.teaches;
+      teaches.appendChild(label);
+      teaches.appendChild(text);
+      body.appendChild(teaches);
+    }
+    body.appendChild(buildHallPassStats(profile.stats || { head: 1, heart: 1, hustle: 1, honor: 1 }));
+    const quote = document.createElement("div");
+    quote.className = "account-hall-pass-card-quote";
+    quote.textContent = "\"" + (profile.quote || displayCardText(card.title, "Ruby High card.")) + "\"";
+    body.appendChild(quote);
+    item.appendChild(body);
+
+    const foot = document.createElement("div");
+    foot.className = "account-hall-pass-card-foot";
+    const status = card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
+    const chain = card.mintAddress ? "minted" : "in-app";
+    foot.textContent = status + " · " + chain + " · #" + String(card.serial || card.id || "").slice(-6);
+    item.appendChild(foot);
+    return item;
+  }
+
+  function hallPassCardArtUrl(card) {
+    if (!card || !card.characterId) return "";
+    if (card.role === "student" && STUDENTS.some((s) => s.id === card.characterId)) {
+      return studentFullPortraitUrl(card.characterId);
+    }
+    if (card.characterId === "ruby" || card.characterId === "sally-science" || card.characterId === "professor-edward") {
+      return teacherFullPortraitUrl(card.characterId);
+    }
+    if (card.characterId === "captain-null") {
+      return apiBase + "/assets/comics/first-bell/page-10.jpg";
+    }
+    return "";
+  }
+
+  function buildHallPassStats(stats) {
+    const row = document.createElement("div");
+    row.className = "account-hall-pass-card-stats";
+    [
+      ["HEAD", stats.head],
+      ["HEART", stats.heart],
+      ["HONOR", stats.honor],
+      ["HUSTLE", stats.hustle],
+    ].forEach(([label, raw]) => {
+      const value = Number(raw || 0);
+      const stat = document.createElement("div");
+      stat.className = "account-hall-pass-card-stat" + (value < 0 ? " is-neg" : " is-pos");
+      const text = document.createElement("span");
+      text.className = "account-hall-pass-card-stat-label";
+      text.textContent = label + " " + (value >= 0 ? "+" : "") + value;
+      const dots = document.createElement("span");
+      dots.className = "account-hall-pass-card-dots";
+      const filled = Math.max(0, Math.min(5, Math.round(value) + 2));
+      for (let i = 0; i < 5; i += 1) {
+        const dot = document.createElement("i");
+        if (i < filled) dot.className = "is-filled";
+        dots.appendChild(dot);
+      }
+      stat.appendChild(text);
+      stat.appendChild(dots);
+      row.appendChild(stat);
+    });
+    return row;
+  }
+
+  function displayCardText(value, fallback) {
+    const text = typeof value === "string" && value.trim() ? value.trim() : fallback;
+    return text.replace(/Hall Passes/g, "Cards").replace(/Hall Pass/g, "Card");
   }
 
   function characterSlotTelemetry() {
@@ -2159,10 +2400,10 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       els.accountCreateCharacter.disabled = !canCreateCharacter;
     }
     if (els.accountUnlockSlot) {
-      els.accountUnlockSlot.textContent = "Unlock Slot (" + slots.costHallPasses + " Hall Pass)";
+      els.accountUnlockSlot.textContent = "Unlock Slot (" + slots.costHallPasses + " Card" + (slots.costHallPasses === 1 ? "" : "s") + ")";
       els.accountUnlockSlot.disabled = !authed || wallet.hallPasses < slots.costHallPasses || billingBusy;
       els.accountUnlockSlot.title = wallet.hallPasses < slots.costHallPasses
-        ? "Need " + slots.costHallPasses + " Hall Pass"
+        ? "Need " + slots.costHallPasses + " Card" + (slots.costHallPasses === 1 ? "" : "s")
         : "Adds one student slot and " + slots.photoDayCreditsPerSlot + " Photo Day credit";
     }
     els.accountCharacterGrid.replaceChildren();
@@ -2279,7 +2520,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (transactions.length === 0) {
       const empty = document.createElement("div");
       empty.className = "account-empty";
-      empty.textContent = "No Hall Pass purchases or spends yet.";
+      empty.textContent = "No card purchases or burns yet.";
       els.accountHistoryList.appendChild(empty);
       return;
     }
@@ -2300,7 +2541,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     main.className = "account-history-main";
     const title = document.createElement("div");
     title.className = "account-history-title";
-    title.textContent = tx.description || walletTransactionTitle(tx);
+    title.textContent = walletTransactionDescription(tx);
     const meta = document.createElement("div");
     meta.className = "account-history-meta";
     meta.textContent = walletTransactionSource(tx) + " · " + formatAccountDate(tx.at);
@@ -2309,7 +2550,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const delta = document.createElement("div");
     delta.className = "account-history-delta";
     delta.textContent = amount !== 0
-      ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " HP"
+      ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " Card" + (Math.abs(amount) === 1 ? "" : "s")
       : photoDayAmount !== 0
         ? (photoDayAmount > 0 ? "+" : "") + formatWholeNumber(photoDayAmount) + " Photo Day"
         : "0";
@@ -2320,13 +2561,22 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function walletTransactionTitle(tx) {
     if (!tx || !tx.kind) return "Wallet update";
-    if (tx.kind === "hall-pass-grant") return "Hall Pass grant";
-    if (tx.kind === "hall-pass-spend") return "Hall Pass spend";
-    if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
-    if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
+    if (tx.kind === "hall-pass-grant") return "Card grant";
+    if (tx.kind === "hall-pass-spend") return "Card burn";
+    if (tx.kind === "hall-pass-refund") return "Card refund";
+    if (tx.kind === "hall-pass-revoke") return "Card reversal";
     if (tx.kind === "photo-day-spend") return "Photo Day credit";
     if (tx.kind === "photo-day-refund") return "Photo Day refund";
     return "Wallet update";
+  }
+
+  function walletTransactionDescription(tx) {
+    const raw = tx && typeof tx.description === "string" && tx.description.trim()
+      ? tx.description.trim()
+      : walletTransactionTitle(tx);
+    return raw
+      .replace(/Hall Passes/g, "Cards")
+      .replace(/Hall Pass/g, "Card");
   }
 
   function walletTransactionSource(tx) {
@@ -2388,13 +2638,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const copy = document.createElement("div");
     copy.className = "welcome-hall-pass-copy";
     const title = document.createElement("h2");
-    title.textContent = formatWholeNumber(grant.amount) + " Hall Passes added";
+    title.textContent = "Starter cards added";
     const body = document.createElement("p");
     const portraitEntitlement = hostedImageEntitlement("portrait");
     const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
     body.textContent = portraitConfigured
-      ? "Roll your first student and try a custom portrait, or save them for AI Access and extra character slots."
-      : "Roll your first student now, or save these for AI Access, images, and extra character slots when OpenRouter is connected.";
+      ? "Roll your first student and try a custom portrait, or save your cards for AI Access and extra character slots."
+      : "Roll your first student now, or save your cards for AI Access, images, and extra character slots.";
     const actions = document.createElement("div");
     actions.className = "welcome-hall-pass-actions";
     const later = document.createElement("button");
@@ -2488,13 +2738,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       portrait: hostedImages && hostedImages.portrait ? hostedImages.portrait.cost : payload && payload.imageCosts ? payload.imageCosts.portrait : undefined,
       diploma: hostedImages && hostedImages.diploma ? hostedImages.diploma.cost : payload && payload.imageCosts ? payload.imageCosts.diploma : undefined,
     };
-    const hostedAi = entitlements && entitlements.hosted_ai ? entitlements.hosted_ai : payload && payload.hostedAiAccess ? payload.hostedAiAccess : {};
     const creator = creatorPricing(payload);
-    const activeAi = hostedAiTelemetry(lastTelemetry);
     if (els.billingCosts) {
       els.billingCosts.replaceChildren();
       [
-        ["AI Access", hostedAi.cost],
+        ["AI Access", payload && payload.hostedAiAccess ? payload.hostedAiAccess.cost : undefined],
         ["Portrait", costs.portrait],
         ["Diploma art", costs.diploma],
         ["Course publish", creator.courseSlotCost],
@@ -2502,40 +2750,15 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       ].forEach(([label, cost]) => {
         const chip = document.createElement("span");
         chip.className = "cost-chip";
-        chip.textContent = label + ": " + formatWholeNumber(cost || 0) + " Hall Pass" + (Number(cost || 0) === 1 ? "" : "es");
+        chip.textContent = label + ": " + formatWholeNumber(cost || 0) + " Card" + (Number(cost || 0) === 1 ? "" : "s");
         els.billingCosts.appendChild(chip);
       });
     }
-    const aiRow = document.createElement("div");
-    aiRow.className = "billing-product";
-    const aiBody = document.createElement("div");
-    const aiTitle = document.createElement("div");
-    aiTitle.className = "billing-product-title";
-    aiTitle.textContent = "AI Access";
-    const aiMeta = document.createElement("div");
-    aiMeta.className = "billing-product-meta";
-    aiMeta.textContent = activeAi.active
-      ? "Hosted AI active for " + formatRelativeExpiry(activeAi.expiresAt)
-      : "Use " + formatWholeNumber(hostedAi.cost || 1) + " Hall Pass"
-        + (Number(hostedAi.cost || 1) === 1 ? "" : "es")
-        + " for " + formatDuration(hostedAi.durationMs || 604_800_000)
-        + " of hosted AI chat and character rerolls";
-    aiBody.appendChild(aiTitle);
-    aiBody.appendChild(aiMeta);
-    const aiBuy = document.createElement("button");
-    aiBuy.type = "button";
-    aiBuy.className = "billing-buy";
-    aiBuy.textContent = activeAi.active ? "Active" : "Use Hall Pass";
-    aiBuy.disabled = activeAi.active || !hostedAi.configured || !hostedAi.affordable || billingBusy;
-    aiBuy.addEventListener("click", () => activateAiPass({ source: "billing" }));
-    aiRow.appendChild(aiBody);
-    aiRow.appendChild(aiBuy);
-    els.billingProducts.appendChild(aiRow);
     const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
     const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
     const products = Array.isArray(payload && payload.products) ? payload.products : [];
     if (products.length === 0) {
-      setBillingStatus("No Hall Pass packs are available.", true);
+      setBillingStatus("No card packs are available.", true);
       return;
     }
     if (selectedBillingProductId && !products.some((product) => product.id === selectedBillingProductId)) {
@@ -2548,20 +2771,20 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       const body = document.createElement("div");
       const title = document.createElement("div");
       title.className = "billing-product-title";
-      title.textContent = product.name || "Hall Pass pack";
+      title.textContent = product.name || packCountLabel(productPackCount(product));
       const meta = document.createElement("div");
       meta.className = "billing-product-meta";
       const solanaProduct = matchingSolanaProduct(solanaProducts, product);
       const cryptoPrice = solana && solana.configured && solanaProduct
         ? " or " + formatTokenAmount(solanaProduct.tokenAmount, solanaProduct.tokenSymbol || solana.symbol)
         : "";
-      meta.textContent = formatWholeNumber(product.hallPasses || 0) + " Hall Passes · " + formatMoney(product.unitAmount, product.currency) + cryptoPrice;
+      meta.textContent = formatMoney(product.unitAmount, product.currency) + cryptoPrice + " · " + formatWholeNumber(productCardCount(product)) + " cards inside";
       body.appendChild(title);
       body.appendChild(meta);
       const buy = document.createElement("button");
       buy.type = "button";
       buy.className = "billing-buy";
-      buy.textContent = product.id === selectedBillingProductId ? "Selected" : "Buy";
+      buy.textContent = product.id === selectedBillingProductId ? "Selected" : "Choose";
       buy.disabled = billingBusy;
       buy.addEventListener("click", () => selectBillingProduct(product.id));
       row.appendChild(body);
@@ -2573,7 +2796,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     });
     setBillingStatus(
       payload.configured || (solana && solana.configured) ? "" : "Checkout is not configured on this server.",
-      !payload.configured && !hostedAi.configured,
+      !payload.configured && !(solana && solana.configured),
     );
   }
 
@@ -2585,8 +2808,28 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function matchingSolanaProduct(solanaProducts, product) {
     if (!Array.isArray(solanaProducts) || !product) return null;
     return solanaProducts.find((entry) => entry && entry.id === product.id)
+      || solanaProducts.find((entry) => entry && Number(entry.packCount || 0) === productPackCount(product))
+      || solanaProducts.find((entry) => entry && Number(entry.cardCount || 0) === productCardCount(product))
       || solanaProducts.find((entry) => entry && Number(entry.hallPasses || 0) === Number(product.hallPasses || 0))
       || null;
+  }
+
+  function productPackCount(product) {
+    const explicit = Number(product && product.packCount);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+    const cards = productCardCount(product);
+    return Math.max(1, Math.ceil(cards / 4));
+  }
+
+  function productCardCount(product) {
+    const explicit = Number(product && (product.cardCount || product.hallPasses));
+    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+    return 4;
+  }
+
+  function packCountLabel(count) {
+    const n = Number.isFinite(Number(count)) && Number(count) > 0 ? Math.floor(Number(count)) : 1;
+    return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
   }
 
   function buildBillingPaymentChoice(payload, product, solana, solanaProduct) {
@@ -2594,7 +2837,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     panel.className = "billing-payment-choice";
     const title = document.createElement("div");
     title.className = "billing-payment-title";
-    title.textContent = "Choose payment";
+    title.textContent = "Choose payment for " + packCountLabel(productPackCount(product));
     const meta = document.createElement("div");
     meta.className = "billing-product-meta";
     const prices = [formatMoney(product.unitAmount, product.currency)];
@@ -2638,7 +2881,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   }
 
   async function loadBillingProducts() {
-    setBillingStatus("Loading Hall Pass packs…", false);
+    setBillingStatus("Loading card packs...", false);
     try {
       const r = await apiFetch(apiBase + "/billing/products", { timeoutMs: 8000 });
       const data = await r.json().catch(() => ({}));
@@ -2720,7 +2963,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       const payment = await client.paySolanaQuote(data);
       const signature = payment && payment.signature ? payment.signature : "";
       setBillingStatus("Payment sent. Verifying on-chain...", false);
-      await confirmSolanaPayment(productId, signature);
+      await confirmSolanaPayment(productId, signature, payment && payment.walletAddress);
     } catch (err) {
       setBillingStatus("Crypto payment failed · " + (err && err.message ? err.message : "error"), true);
     } finally {
@@ -2744,7 +2987,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return !!walletSnapshot && !!connectedSolanaWalletAddress();
   }
 
-  async function confirmSolanaPayment(productId, signature) {
+  async function confirmSolanaPayment(productId, signature, ownerWalletAddress) {
     const cleanSignature = String(signature || "").trim();
     if (!productId || !cleanSignature) throw new Error("Wallet did not return a Solana payment confirmation.");
     const maxAttempts = 6;
@@ -2756,7 +2999,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         timeoutMs: 15000,
-        body: JSON.stringify({ productId, signature: cleanSignature }),
+        body: JSON.stringify({ productId, signature: cleanSignature, ownerWalletAddress: ownerWalletAddress || null }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) {
@@ -2764,8 +3007,14 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         if (r.status === 400 && /not found yet|try again|rpc/i.test(lastError.message) && attempt + 1 < maxAttempts) continue;
         throw lastError;
       }
-      setBillingStatus(data.applied ? "Hall Passes added from Solana payment." : "Solana payment was already credited.", false);
+      const packText = data && Number(data.packCount || 0) > 0
+        ? packCountLabel(Number(data.packCount || 0))
+        : "Pack";
+      setBillingStatus(data.applied ? packText + " credited from Solana payment." : "Solana payment was already credited.", false);
       await fetchSession();
+      if (ownerWalletAddress) {
+        await mintPendingHallPassCards(ownerWalletAddress, { source: "billing" });
+      }
       await deriveAuth();
       if (billingProductsCache) await loadBillingProducts();
       return;
@@ -2775,6 +3024,31 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function waitForSolanaConfirmation(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function mintPendingHallPassCards(ownerWalletAddress, opts) {
+    const cleanOwner = String(ownerWalletAddress || connectedSolanaWalletAddress() || "").trim();
+    if (!cleanOwner) throw new Error("Connect a Solana wallet before minting cards.");
+    const fromAccount = !!(opts && opts.source === "account");
+    if (fromAccount) setPrivyStatus("Minting cards...", false);
+    setBillingStatus("Minting cards...", false);
+    const r = await apiFetch(apiBase + "/nft/mint-pending", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      timeoutMs: 90_000,
+      body: JSON.stringify({ ownerWalletAddress: cleanOwner }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data || !data.ok) throw new Error(data.error || "card mint " + r.status);
+    const minted = Array.isArray(data.minted) ? data.minted.length : 0;
+    const message = minted > 0
+      ? "Minted " + minted + " card" + (minted === 1 ? "" : "s") + "."
+      : "No unminted cards.";
+    setBillingStatus(message, false);
+    if (fromAccount) setPrivyStatus(message, false);
+    await fetchSession();
+    renderAccountPage();
+    return data;
   }
 
   function accountAiAccessSuccessText(data) {
@@ -2792,8 +3066,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     billingBusy = true;
     renderAccountPage();
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    if (fromAccount) setPrivyStatus("Using Hall Pass for AI access...", false);
-    setBillingStatus("Turning on hosted AI...", false);
+    if (fromAccount) setPrivyStatus("Burning card for AI access...", false);
+    setBillingStatus("Burning card for AI access...", false);
     try {
       const r = await apiFetch(apiBase + "/billing/ai-pass", {
         method: "POST",
@@ -2811,7 +3085,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       renderAccountPage();
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
     } catch (err) {
-      const message = "AI access failed · " + (err && err.message ? err.message : "error");
+      const message = "Burn failed · " + (err && err.message ? err.message : "error");
       setBillingStatus(message, true);
       if (fromAccount) setPrivyStatus(message, true);
     } finally {
@@ -2826,7 +3100,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       const url = new URL(window.location.href);
       const result = url.searchParams.get("billing");
       if (result === "success") {
-        showCongrats("Hall Pass checkout complete.", true);
+        showCongrats("Pack checkout complete.", true);
       } else if (result === "cancel") {
         showCongrats("Checkout cancelled.", false);
       } else {
@@ -3223,7 +3497,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
       ? "Generate multiple-choice distractors for this card"
-      : "Connect OpenRouter to generate multiple-choice distractors";
+      : "Connect AI to generate multiple-choice distractors";
     // Long-answer mode flips the grid to single-column on narrow
     // viewports (handled in CSS). Threshold tuned so a 4-line
     // explanation-style answer triggers it but a regular MC option
@@ -4028,7 +4302,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       if (aiEnabled) {
         runAgentTurn("lounge-enter", { }, { force: true });
       } else {
-        appendSystem("Connect OpenRouter to eavesdrop on the faculty.");
+        appendSystem("Connect AI to eavesdrop on the faculty.");
       }
     }
     closeRails();
@@ -4091,11 +4365,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       const phase = telemetryPhase(lastTelemetry);
       if (!teacherChatEnabled()) {
         if (phase === "asking") {
-          appendSystem("Answer the board to continue. Connect OpenRouter for hints.");
+          appendSystem("Answer the board to continue. Connect AI for hints.");
           return;
         }
         if (phase === "lounge") {
-          appendSystem("Connect OpenRouter to hear the lounge conversation continue.");
+          appendSystem("Connect AI to hear the lounge conversation continue.");
           return;
         }
         if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -6459,7 +6733,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   // cycle the rest.
   //
   // Auth invariant: this function only runs when authed === true. A guest
-  // Ruby High session is enough; OpenRouter is optional.
+  // Ruby High session is enough; browser-owned AI is optional.
   function renderSheetCreation(playbooks) {
     sheetCard.classList.remove("is-card-deck-sheet");
     sheetCard.classList.remove("is-two-card-deck");
@@ -6555,12 +6829,12 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const hostedPortrait = hostedImageEntitlement("portrait");
     const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
     controlsSub.textContent = hostedPortrait && (hostedPortrait.canUseHosted || hasPhotoDayCredit)
-      ? "Reroll any field. Photo Day credits or Hall Passes can make a custom portrait."
+      ? "Reroll any field. Photo Day credits or cards can make a custom portrait."
       : localAiEnabled
         ? "Reroll any field. Local AI can refresh the voice."
         : aiEnabled
           ? "Reroll any field. AI can refresh the voice and portrait."
-          : "Reroll any field. Connect OpenRouter later for a custom portrait.";
+          : "Reroll any field. Connect AI later for a custom portrait.";
     controlsBody.appendChild(controlsSub);
 
     // Control rows: one per component. Each row has a reroll button that
@@ -6703,9 +6977,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         if (characterSlotTelemetry().photoDayCredits > 0) return "";
         if (entitlement.affordable) return "";
         const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
-        return "Need " + cost + " Hall Pass" + (cost === 1 ? "" : "es") + ".";
+        return "Need " + cost + " Card" + (cost === 1 ? "" : "s") + ".";
       }
-      return "Connect OpenRouter for a custom portrait.";
+      return "Connect AI for a custom portrait.";
     }
 
     function renderCreationStatsInto(parent, stats) {
@@ -8489,8 +8763,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (!authed) return "Sign in before generating a course.";
     if (!hostedCourseGenerationConfigured()) {
       return localAiEnabled
-        ? "OpenRouter image generation is required for course portraits."
-        : "Connect OpenRouter or activate AI Access before generating a course.";
+        ? "Hosted image generation is required for course portraits."
+        : "Connect AI or activate AI Access before generating a course.";
     }
     return "";
   }
@@ -8502,7 +8776,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const hostedAi = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
       ? entitlements.hosted_ai
       : null;
-    if (!hostedAi || !hostedAi.configured) return "Connect OpenRouter before generating more questions.";
+    if (!hostedAi || !hostedAi.configured) return "Connect AI before generating more questions.";
     const wallet = walletNumbers(lastTelemetry);
     const cost = creatorPricing().questionGenerationCost;
     return wallet.hallPasses >= cost ? "" : "Need " + hallPassCostLabel(cost) + " to generate more questions.";
@@ -8830,7 +9104,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       if (packEditStatusEl) {
         const cost = Math.max(0, Math.round(Number(data.hallPassCost || 0)));
         packEditStatusEl.textContent = cost > 0
-          ? "Generated more questions for " + cost + " Hall Pass."
+          ? "Generated more questions for " + cost + " Card" + (cost === 1 ? "" : "s") + "."
           : "Generated more questions.";
         packEditStatusEl.classList.remove("is-invalid");
       }
@@ -9400,12 +9674,12 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     }
     if (opts && opts.privy) applyPrivyState({ ...opts.privy, ready: true });
     applyAuthUI();
-    // OpenRouter is optional. The overlay is now only a fallback if the app
+    // Browser-owned AI is optional. The overlay is now only a fallback if the app
     // cannot establish even a guest Ruby High session.
     if (authed === false) {
       signinEl.classList.add("is-open");
       signinEl.setAttribute("aria-hidden", "false");
-      setSigninStatus("Local session unavailable. Retry, or use OpenRouter.", true);
+      setSigninStatus("Local session unavailable. Retry, or use an AI key.", true);
       if (sheetOverlayOpen) closeSheet();
     } else {
       signinEl.classList.remove("is-open");
@@ -9415,7 +9689,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
     if (sheetOverlayOpen) renderSheet();
   }
-  // Auth is split: the OpenRouter key stays in localStorage, while the
+  // Auth is split: the browser-owned AI key stays in localStorage, while the
   // server owns an opaque Ruby High session cookie that maps to the
   // persistent character. Verify both on boot and whenever OAuth state may
   // have changed.
@@ -10006,8 +10280,31 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
-  if (els.accountUsePass) els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }));
-  if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", openBilling);
+  if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
+    if (billingBusy) return;
+    const mintable = hallPassCardsForTelemetry().filter((card) => card.status === "active" && !card.mintAddress);
+    if (mintable.length === 0) {
+      openBilling();
+      return;
+    }
+    billingBusy = true;
+    renderAccountPage();
+    try {
+      const connected = await ensureSolanaWalletForBilling();
+      if (!connected) {
+        setPrivyStatus("Card mint canceled.", false);
+        return;
+      }
+      await mintPendingHallPassCards(connectedSolanaWalletAddress(), { source: "account" });
+    } catch (err) {
+      const message = "Card mint failed · " + (err && err.message ? err.message : "error");
+      setPrivyStatus(message, true);
+      setBillingStatus(message, true);
+    } finally {
+      billingBusy = false;
+      renderAccountPage();
+    }
+  });
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountAiUsePass) els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }));

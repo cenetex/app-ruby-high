@@ -66,6 +66,10 @@ import {
   type SchoolEvent,
   type StudentPoolEntry,
   type TeachingRoomId,
+  type RubyHighHallPassCard,
+  type RubyHighHallPassCardRarity,
+  type RubyHighHallPassCardRole,
+  type RubyHighHallPassCardStatus,
   type RubyHighWalletTransaction,
   type RubyHighWalletTransactionKind,
 } from "../types.js";
@@ -216,11 +220,139 @@ const SCHOOL_EVENT_LIMIT = 80;
 const ESSAY_REPORT_LIMIT = 100;
 const WALLET_TRANSACTION_LIMIT = 200;
 const STUDENT_POOL_LIMIT = 50;
+const HALL_PASS_REDEEMED_CARD_LIMIT = 160;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
 export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
 export const WELCOME_HALL_PASS_GRANT = 5;
 export const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
+
+type HallPassCardCatalogEntry = {
+  characterId: string;
+  characterName: string;
+  role: RubyHighHallPassCardRole;
+  rarity: RubyHighHallPassCardRarity;
+  title: string;
+  blurb: string;
+  color: string;
+};
+
+const HALL_PASS_CARD_TEACHERS: HallPassCardCatalogEntry[] = [
+  {
+    characterId: "ruby",
+    characterName: "Ruby",
+    role: "teacher",
+    rarity: "common",
+    title: "Homeroom Card",
+    blurb: "Ruby stamped this one before the late bell could object.",
+    color: "#d22a2a",
+  },
+  {
+    characterId: "sally-science",
+    characterName: "Sally Science",
+    role: "teacher",
+    rarity: "common",
+    title: "Lab Sink Shortcut",
+    blurb: "Good for one escape from sloppy variables.",
+    color: "#35b978",
+  },
+  {
+    characterId: "professor-edward",
+    characterName: "Professor Edward",
+    role: "teacher",
+    rarity: "common",
+    title: "Library Corridor Pass",
+    blurb: "Please return before the footnotes start breeding.",
+    color: "#b79243",
+  },
+];
+
+const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
+  {
+    characterId: "lyra",
+    characterName: "Lyra",
+    role: "student",
+    rarity: "common",
+    title: "Color-Coded Spare",
+    blurb: "Lyra made three backups and labeled this one urgent.",
+    color: "#ff6f91",
+  },
+  {
+    characterId: "sami",
+    characterName: "Sami",
+    role: "student",
+    rarity: "common",
+    title: "Side Door Whatever",
+    blurb: "Sami says it works if you look bored enough.",
+    color: "#36c2cc",
+  },
+  {
+    characterId: "ravi",
+    characterName: "Ravi",
+    role: "student",
+    rarity: "common",
+    title: "Field Trip Fact Slip",
+    blurb: "Ravi has a tangent ready for the entire walk.",
+    color: "#ffb05a",
+  },
+  {
+    characterId: "indra",
+    characterName: "Indra",
+    role: "student",
+    rarity: "rare",
+    title: "Quiet Perfect Exit",
+    blurb: "Indra noticed the pattern and left before anyone clapped.",
+    color: "#a06bff",
+  },
+  {
+    characterId: "mika",
+    characterName: "Mika",
+    role: "student",
+    rarity: "common",
+    title: "Locker Room Shortcut",
+    blurb: "Mika says you are absolutely cleared for this.",
+    color: "#52c673",
+  },
+  {
+    characterId: "noor",
+    characterName: "Noor",
+    role: "student",
+    rarity: "rare",
+    title: "Deadpan Detour",
+    blurb: "Noor called it a plot hole and walked through it.",
+    color: "#ec4f9e",
+  },
+];
+
+const HALL_PASS_CARD_SUPER_RARES: HallPassCardCatalogEntry[] = [
+  {
+    characterId: "captain-null",
+    characterName: "Captain Null",
+    role: "special",
+    rarity: "super-rare",
+    title: "Page 10 Shadow Pass",
+    blurb: "Find page 10 and the hallway forgets your name.",
+    color: "#111111",
+  },
+  {
+    characterId: "eliza",
+    characterName: "Eliza",
+    role: "teacher",
+    rarity: "super-rare",
+    title: "Systems Lab Override",
+    blurb: "Eliza makes the system legible, then makes it sing.",
+    color: "#62d3c2",
+  },
+  {
+    characterId: "rati",
+    characterName: "Rati",
+    role: "teacher",
+    rarity: "super-rare",
+    title: "Signal Studies Pass",
+    blurb: "Hold the signal. Build the world.",
+    color: "#f0a12a",
+  },
+];
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -291,6 +423,17 @@ export interface HallPassMutationResult {
   state: QuizState;
   applied: boolean;
   transaction: RubyHighWalletTransaction;
+  cards?: RubyHighHallPassCard[];
+}
+
+export interface HallPassCardMintInput {
+  cardId: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  mintSignature: string;
+  metadataUri: string;
+  idempotencyKey?: string;
+  at?: number;
 }
 
 export interface HostedAiAccessActivationInput {
@@ -1337,22 +1480,83 @@ export class RubyHighService extends Service {
     return this.applyHallPassTransaction(sessionId, "hall-pass-revoke", input);
   }
 
+  mintableHallPassCards(sessionId: string): RubyHighHallPassCard[] {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    return normalizeHallPassCards(state.wallet.hallPassCards)
+      .filter((card) => card.status === "active" && !card.mintAddress && !card.mintSignature);
+  }
+
+  recordHallPassCardMint(sessionId: string, input: HallPassCardMintInput): {
+    state: QuizState;
+    applied: boolean;
+    transaction: RubyHighWalletTransaction;
+    card: RubyHighHallPassCard;
+  } {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const id = (input.idempotencyKey || `hall-pass-card-mint:${input.cardId}:${input.mintAddress}`).trim();
+    if (!id) throw new Error("Card mint idempotency key is required.");
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const card = cards.find((candidate) => candidate.id === input.cardId);
+    if (!card) throw new Error("Card not found.");
+    if (existing) {
+      return { state, applied: false, transaction: existing, card };
+    }
+    if (card.status !== "active") throw new Error("Only active cards can be minted.");
+    if (card.mintAddress || card.mintSignature) throw new Error("Card is already minted.");
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    card.ownerWalletAddress = input.ownerWalletAddress.trim();
+    card.mintAddress = input.mintAddress.trim();
+    card.mintSignature = input.mintSignature.trim();
+    card.metadataUri = input.metadataUri.trim();
+    card.updatedAt = at;
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind: "hall-pass-card-mint",
+      at,
+      source: "hall-pass-card",
+      description: `${card.characterName} card minted`,
+      metadata: {
+        hallPassCardId: card.id,
+        ownerWalletAddress: card.ownerWalletAddress,
+        mintAddress: card.mintAddress,
+        mintSignature: card.mintSignature,
+        metadataUri: card.metadataUri,
+      },
+    };
+    recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: "hall-pass-card",
+      feature: "hall-pass-card-mint",
+      status: "success",
+      hallPassesDelta: 0,
+      metadata: { transactionId: transaction.id, cardId: card.id },
+    });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction, card };
+  }
+
   private applyHallPassTransaction(
     sessionId: string,
     kind: RubyHighWalletTransactionKind,
     input: HallPassMutationInput,
   ): HallPassMutationResult {
     const state = this.getOrCreate(sessionId);
-    const amount = normalizePositiveInteger(input.amount, "Hall Pass amount");
+    const amount = normalizePositiveInteger(input.amount, "Card amount");
     const id = input.idempotencyKey.trim();
-    if (!id) throw new Error("Hall Pass transaction idempotency key is required.");
+    if (!id) throw new Error("Card transaction idempotency key is required.");
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
     const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
     if (existing) return { state, applied: false, transaction: existing };
 
     const current = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0)));
     if (kind === "hall-pass-spend" && current < amount) {
-      throw new Error(`Not enough Hall Passes. Need ${amount}, have ${current}.`);
+      throw new Error(`Not enough Cards. Need ${amount}, have ${current}.`);
     }
     const appliedAmount = kind === "hall-pass-revoke" ? Math.min(current, amount) : amount;
     const transaction: RubyHighWalletTransaction = {
@@ -1367,6 +1571,19 @@ export class RubyHighService extends Service {
     state.wallet.hallPasses = kind === "hall-pass-spend" || kind === "hall-pass-revoke"
       ? current - appliedAmount
       : current + appliedAmount;
+    const cards = kind === "hall-pass-spend" || kind === "hall-pass-revoke"
+      ? redeemHallPassCardsForTransaction(
+        state,
+        transaction,
+        appliedAmount,
+        kind === "hall-pass-revoke" ? "void" : "redeemed",
+      )
+      : issueHallPassCardsForTransaction(state, transaction, appliedAmount);
+    attachHallPassCardMetadata(
+      transaction,
+      cards,
+      kind === "hall-pass-spend" || kind === "hall-pass-revoke" ? Math.max(0, appliedAmount - cards.length) : 0,
+    );
     recordWalletTransaction(state, transaction);
     this.recordMetricEvent("commerce", {
       sessionId,
@@ -1378,7 +1595,7 @@ export class RubyHighService extends Service {
     });
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
-    return { state, applied: true, transaction };
+    return { state, applied: true, transaction, ...(cards.length > 0 ? { cards } : {}) };
   }
 
   private applyPhotoDayCreditTransaction(
@@ -1884,11 +2101,13 @@ export class RubyHighService extends Service {
       at,
       hallPasses: WELCOME_HALL_PASS_GRANT,
       source: "system",
-      description: "Welcome Hall Passes",
+      description: "Welcome Cards",
       metadata: { reason: "account-welcome" },
     };
     state.wallet.hallPasses = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0))) + WELCOME_HALL_PASS_GRANT;
     state.wallet.welcomeHallPassesGrantedAt = at;
+    const cards = issueHallPassCardsForTransaction(state, transaction, WELCOME_HALL_PASS_GRANT);
+    attachHallPassCardMetadata(transaction, cards);
     recordWalletTransaction(state, transaction);
     this.recordMetricEvent("commerce", {
       sessionId: state.sessionId,
@@ -4166,7 +4385,7 @@ export class RubyHighService extends Service {
     if (!mc) {
       const key = apiKey?.trim();
       if (!key) {
-        throw new Error("OpenRouter API key required to generate multiple-choice distractors.");
+        throw new Error("AI key required to generate multiple-choice distractors.");
       }
       const opts: DistractorOpts = {
         apiKey: key,
@@ -4703,16 +4922,7 @@ function normalizeWalletMetadata(value: unknown): RubyHighWalletTransaction["met
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | null {
-  if (!raw || typeof raw !== "object") return null;
-  const kinds: RubyHighWalletTransactionKind[] = [
-    "hall-pass-grant",
-    "hall-pass-spend",
-    "hall-pass-refund",
-    "hall-pass-revoke",
-    "photo-day-spend",
-    "photo-day-refund",
-  ];
+function normalizedWalletSource(value: unknown): NonNullable<RubyHighWalletTransaction["source"]> | null {
   const sources: Array<NonNullable<RubyHighWalletTransaction["source"]>> = [
     "stripe",
     "solana",
@@ -4724,8 +4934,214 @@ function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | n
     "character-slot",
     "course-slot",
     "photo-day",
+    "hall-pass-card",
     "admin",
     "system",
+  ];
+  return typeof value === "string" && sources.includes(value as NonNullable<RubyHighWalletTransaction["source"]>)
+    ? value as NonNullable<RubyHighWalletTransaction["source"]>
+    : null;
+}
+
+function normalizedHallPassCardStatus(value: unknown): RubyHighHallPassCardStatus {
+  return value === "redeemed" || value === "void" ? value : "active";
+}
+
+function normalizedHallPassCardRole(value: unknown): RubyHighHallPassCardRole {
+  return value === "teacher" || value === "special" ? value : "student";
+}
+
+function normalizedHallPassCardRarity(value: unknown): RubyHighHallPassCardRarity {
+  if (value === "super-rare" || value === "legendary") return "super-rare";
+  return value === "rare" ? "rare" : "common";
+}
+
+function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
+  if (!raw || typeof raw !== "object") return null;
+  const card = raw as Record<string, unknown>;
+  const id = typeof card.id === "string" ? card.id.trim().slice(0, 96) : "";
+  if (!id) return null;
+  const issuedAt = Math.max(0, Math.floor(Number(card.issuedAt ?? card.createdAt ?? 0)));
+  const updatedAt = Math.max(issuedAt, Math.floor(Number(card.updatedAt ?? issuedAt)));
+  const hallPasses = Math.max(1, Math.floor(Number(card.hallPasses ?? 1)));
+  const entry: RubyHighHallPassCard = {
+    id,
+    serial: Math.max(1, Math.floor(Number(card.serial ?? 1))),
+    title: typeof card.title === "string" && card.title.trim() ? card.title.trim().slice(0, 80) : "Ruby High Card",
+    characterId: typeof card.characterId === "string" && card.characterId.trim() ? card.characterId.trim().slice(0, 80) : "ruby",
+    characterName: typeof card.characterName === "string" && card.characterName.trim() ? card.characterName.trim().slice(0, 80) : "Ruby High",
+    role: normalizedHallPassCardRole(card.role),
+    rarity: normalizedHallPassCardRarity(card.rarity),
+    blurb: typeof card.blurb === "string" && card.blurb.trim() ? card.blurb.trim().slice(0, 160) : "Good for one burn.",
+    color: typeof card.color === "string" && card.color.trim() ? card.color.trim().slice(0, 32) : "#d22a2a",
+    hallPasses,
+    status: normalizedHallPassCardStatus(card.status),
+    issuedAt: Number.isFinite(issuedAt) && issuedAt > 0 ? issuedAt : Date.now(),
+    updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : Date.now(),
+  };
+  const source = normalizedWalletSource(card.source);
+  if (source) entry.source = source;
+  for (const field of [
+    "grantTransactionId",
+    "redeemTransactionId",
+    "ownerWalletAddress",
+    "mintAddress",
+    "mintSignature",
+    "metadataUri",
+    "burnSignature",
+  ] as const) {
+    const value = card[field];
+    if (typeof value === "string" && value.trim()) entry[field] = value.trim().slice(0, 240);
+  }
+  const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
+  if (Number.isFinite(burnedAt) && burnedAt > 0) entry.burnedAt = burnedAt;
+  return entry;
+}
+
+function normalizeHallPassCards(value: unknown): RubyHighHallPassCard[] {
+  if (!Array.isArray(value)) return [];
+  const byId = new Map<string, RubyHighHallPassCard>();
+  for (const raw of value) {
+    const entry = normalizeHallPassCard(raw);
+    if (entry) byId.set(entry.id, entry);
+  }
+  const cards = [...byId.values()].sort((a, b) => a.issuedAt - b.issuedAt || a.serial - b.serial);
+  const active = cards.filter((card) => card.status === "active");
+  const inactive = cards
+    .filter((card) => card.status !== "active")
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, HALL_PASS_REDEEMED_CARD_LIMIT);
+  return [...active, ...inactive].sort((a, b) => a.issuedAt - b.issuedAt || a.serial - b.serial);
+}
+
+function hashInteger(seed: string): number {
+  return Number.parseInt(createHash("sha256").update(seed).digest("hex").slice(0, 8), 16);
+}
+
+function hallPassCardId(transactionId: string, index: number): string {
+  return `hpc_${createHash("sha256").update(`${transactionId}:${index}`).digest("hex").slice(0, 18)}`;
+}
+
+function pickCatalogEntry(entries: HallPassCardCatalogEntry[], seed: string): HallPassCardCatalogEntry {
+  return entries[hashInteger(seed) % entries.length] ?? entries[0]!;
+}
+
+function hallPassCardPackEntries(seed: string): HallPassCardCatalogEntry[] {
+  const teacher = hashInteger(`${seed}:super-rare`) % 64 === 0
+    ? pickCatalogEntry(HALL_PASS_CARD_SUPER_RARES, `${seed}:super`)
+    : pickCatalogEntry(HALL_PASS_CARD_TEACHERS, `${seed}:teacher`);
+  const students = HALL_PASS_CARD_STUDENTS
+    .slice()
+    .sort((a, b) => hashInteger(`${seed}:student:${a.characterId}`) - hashInteger(`${seed}:student:${b.characterId}`))
+    .slice(0, 3);
+  return [teacher, ...students];
+}
+
+function issueHallPassCardsForTransaction(
+  state: QuizState,
+  transaction: RubyHighWalletTransaction,
+  amount: number,
+): RubyHighHallPassCard[] {
+  const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+  const existingIds = new Set(cards.map((card) => card.id));
+  const created: RubyHighHallPassCard[] = [];
+  const cardCount = Math.max(0, Math.floor(Number(amount || 0)));
+  const packCache = new Map<number, HallPassCardCatalogEntry[]>();
+  for (let i = 0; i < cardCount; i += 1) {
+    const id = hallPassCardId(transaction.id, i);
+    if (existingIds.has(id)) continue;
+    const packIndex = Math.floor(i / 4);
+    let packEntries = packCache.get(packIndex);
+    if (!packEntries) {
+      packEntries = hallPassCardPackEntries(packIndex === 0 ? transaction.id : `${transaction.id}:pack:${packIndex}`);
+      packCache.set(packIndex, packEntries);
+    }
+    const catalog = packEntries[i % packEntries.length]!;
+    const issuedAt = transaction.at;
+    const card: RubyHighHallPassCard = {
+      id,
+      serial: hashInteger(id) % 900000 + 100000,
+      title: catalog.title,
+      characterId: catalog.characterId,
+      characterName: catalog.characterName,
+      role: catalog.role,
+      rarity: catalog.rarity,
+      blurb: catalog.blurb,
+      color: catalog.color,
+      hallPasses: 1,
+      status: "active",
+      issuedAt,
+      updatedAt: issuedAt,
+      ...(transaction.source ? { source: transaction.source } : {}),
+      grantTransactionId: transaction.id,
+      ...(typeof transaction.metadata?.ownerWalletAddress === "string" && transaction.metadata.ownerWalletAddress
+        ? { ownerWalletAddress: transaction.metadata.ownerWalletAddress }
+        : {}),
+      ...(typeof transaction.metadata?.solanaPayer === "string" && transaction.metadata.solanaPayer
+        ? { ownerWalletAddress: transaction.metadata.solanaPayer }
+        : {}),
+    };
+    created.push(card);
+    cards.push(card);
+    existingIds.add(id);
+  }
+  state.wallet.hallPassCards = normalizeHallPassCards(cards);
+  return created;
+}
+
+function redeemHallPassCardsForTransaction(
+  state: QuizState,
+  transaction: RubyHighWalletTransaction,
+  amount: number,
+  status: Extract<RubyHighHallPassCardStatus, "redeemed" | "void">,
+): RubyHighHallPassCard[] {
+  const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+  const redeemable = cards
+    .filter((card) => card.status === "active")
+    .sort((a, b) => a.issuedAt - b.issuedAt || a.serial - b.serial)
+    .slice(0, amount);
+  const ids = new Set(redeemable.map((card) => card.id));
+  for (const card of cards) {
+    if (!ids.has(card.id)) continue;
+    card.status = status;
+    card.updatedAt = transaction.at;
+    card.redeemTransactionId = transaction.id;
+    if (status === "redeemed") card.burnedAt = transaction.at;
+    if (typeof transaction.metadata?.burnSignature === "string" && transaction.metadata.burnSignature) {
+      card.burnSignature = transaction.metadata.burnSignature;
+    }
+  }
+  state.wallet.hallPassCards = normalizeHallPassCards(cards);
+  return redeemable;
+}
+
+function attachHallPassCardMetadata(
+  transaction: RubyHighWalletTransaction,
+  cards: RubyHighHallPassCard[],
+  missingCount = 0,
+): void {
+  if (cards.length <= 0 && missingCount <= 0) return;
+  transaction.metadata = {
+    ...(transaction.metadata ?? {}),
+    ...(cards.length > 0 ? {
+      hallPassCardCount: cards.length,
+      hallPassCardIds: cards.map((card) => card.id).join(","),
+    } : {}),
+    ...(missingCount > 0 ? { legacyHallPassCount: missingCount } : {}),
+  };
+}
+
+function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | null {
+  if (!raw || typeof raw !== "object") return null;
+  const kinds: RubyHighWalletTransactionKind[] = [
+    "hall-pass-grant",
+    "hall-pass-spend",
+    "hall-pass-refund",
+    "hall-pass-revoke",
+    "hall-pass-card-mint",
+    "hall-pass-card-burn",
+    "photo-day-spend",
+    "photo-day-refund",
   ];
   const tx = raw as Record<string, unknown>;
   if (typeof tx.id !== "string" || !tx.id) return null;
@@ -4745,8 +5161,9 @@ function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | n
   if (typeof tx.photoDayCredits === "number" && Number.isFinite(tx.photoDayCredits)) {
     entry.photoDayCredits = Math.floor(tx.photoDayCredits);
   }
-  if (typeof tx.source === "string" && sources.includes(tx.source as NonNullable<RubyHighWalletTransaction["source"]>)) {
-    entry.source = tx.source as NonNullable<RubyHighWalletTransaction["source"]>;
+  const source = normalizedWalletSource(tx.source);
+  if (source) {
+    entry.source = source;
   }
   if (typeof tx.description === "string" && tx.description.trim()) {
     entry.description = tx.description.trim().slice(0, 240);
@@ -4791,19 +5208,83 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
   const src = wallet && typeof wallet === "object" ? wallet as Partial<QuizState["wallet"]> : {};
   const transactions = normalizeWalletTransactions(src.transactions);
   const operationLedger = normalizeWalletOperationLedger(src.operationLedger, transactions);
+  const hallPasses = Math.max(0, Math.floor(Number(src.hallPasses ?? 0)));
+  let hallPassCards = normalizeHallPassCards(src.hallPassCards);
+  const activeCardCount = hallPassCards.filter((card) => card.status === "active").length;
+  if (hallPasses > activeCardCount) {
+    const backfillAt = Math.max(
+      0,
+      Math.floor(Number(src.welcomeHallPassesGrantedAt ?? transactions.find((tx) => tx.kind === "hall-pass-grant")?.at ?? 0)),
+    );
+    hallPassCards = backfillLegacyHallPassCards(
+      hallPassCards,
+      hallPasses - activeCardCount,
+      transactions.map((tx) => tx.id).join(":") || "wallet",
+      backfillAt,
+    );
+  }
   const welcomeHallPassesGrantedAt = Math.floor(Number(src.welcomeHallPassesGrantedAt ?? 0));
   return {
     meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
-    hallPasses: Math.max(0, Math.floor(Number(src.hallPasses ?? 0))),
+    hallPasses,
     ...(Number.isFinite(welcomeHallPassesGrantedAt) && welcomeHallPassesGrantedAt > 0
       ? { welcomeHallPassesGrantedAt }
       : {}),
     ...(Number.isFinite(Number(src.hostedAiAccessExpiresAt))
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(src.hostedAiAccessExpiresAt))) }
       : {}),
+    ...(hallPassCards.length > 0 ? { hallPassCards } : {}),
     ...(transactions.length > 0 ? { transactions } : {}),
     ...(operationLedger ? { operationLedger } : {}),
   };
+}
+
+function backfillLegacyHallPassCards(
+  cards: RubyHighHallPassCard[],
+  missingCount: number,
+  seedBase: string,
+  issuedAt: number,
+): RubyHighHallPassCard[] {
+  if (missingCount <= 0) return cards;
+  const out = cards.slice();
+  const existingIds = new Set(out.map((card) => card.id));
+  const seed = `legacy-card-backfill:${hashInteger(seedBase || "wallet")}`;
+  let created = 0;
+  let index = 0;
+  const packCache = new Map<number, HallPassCardCatalogEntry[]>();
+  while (created < missingCount) {
+    const id = `${seed}:${index}`;
+    index += 1;
+    if (existingIds.has(id)) continue;
+    const packIndex = Math.floor((index - 1) / 4);
+    let packEntries = packCache.get(packIndex);
+    if (!packEntries) {
+      packEntries = hallPassCardPackEntries(`${seed}:pack:${packIndex}`);
+      packCache.set(packIndex, packEntries);
+    }
+    const catalog = packEntries[(index - 1) % packEntries.length]!;
+    const at = Number.isFinite(issuedAt) && issuedAt > 0 ? Math.floor(issuedAt) : 0;
+    out.push({
+      id,
+      serial: hashInteger(id) % 900000 + 100000,
+      title: catalog.title,
+      characterId: catalog.characterId,
+      characterName: catalog.characterName,
+      role: catalog.role,
+      rarity: catalog.rarity,
+      blurb: catalog.blurb,
+      color: catalog.color,
+      hallPasses: 1,
+      status: "active",
+      issuedAt: at,
+      updatedAt: at,
+      source: "system",
+      grantTransactionId: "legacy-card-backfill",
+    });
+    existingIds.add(id);
+    created += 1;
+  }
+  return normalizeHallPassCards(out);
 }
 
 function firstBellComicPageId(pageNumber: number): string {

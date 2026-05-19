@@ -47,7 +47,7 @@ class BoundChatService extends ChatService {
 export const rubyHighApp: RubyHighAppModule = {
   name: "@cenetex/app-ruby-high",
   description:
-    "Ruby High educational app. Ruby hosts the school; specialist faculty teach their domains with persistence, OpenRouter PKCE login, and per-teacher chat with tool-driven blackboard control.",
+    "Ruby High educational app. Ruby hosts the school; specialist faculty teach their domains with persistence, AI key login, and per-teacher chat with tool-driven blackboard control.",
   services: [FacultyService, BoundRubyHighService, AuthService, BoundChatService],
   actions: [
     poseQuestionAction,

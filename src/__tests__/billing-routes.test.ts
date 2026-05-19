@@ -137,7 +137,7 @@ afterEach(async () => {
 });
 
 describe("billing products", () => {
-  it("returns the configured Hall Pass packs and image costs", async () => {
+  it("returns the configured Ruby High packs and image costs", async () => {
     const handled = await handleBillingRoutes(makeCtx({
       method: "GET",
       path: "/api/apps/ruby-high/billing/products",
@@ -146,7 +146,12 @@ describe("billing products", () => {
     expect(handled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.configured).toBe(false);
-    expect(lastResponse?.body.products.map((p: any) => p.hallPasses)).toEqual([5, 20, 50, 100]);
+    expect(lastResponse?.body.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses])).toEqual([
+      [1, 4, 4],
+      [3, 12, 12],
+      [5, 20, 20],
+      [10, 40, 40],
+    ]);
     expect(lastResponse?.body.solana).toMatchObject({
       configured: true,
       mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
@@ -154,11 +159,11 @@ describe("billing products", () => {
       symbol: "RUBY",
       decimals: 6,
     });
-    expect(lastResponse?.body.solana.products.map((p: any) => [p.hallPasses, p.tokenAmount])).toEqual([
-      [5, "100000"],
-      [20, "100000"],
-      [50, "100000"],
-      [100, "100000"],
+    expect(lastResponse?.body.solana.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses, p.tokenAmount])).toEqual([
+      [1, 4, 4, "100000"],
+      [3, 12, 12, "100000"],
+      [5, 20, 20, "100000"],
+      [10, 40, 40, "100000"],
     ]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
     expect(lastResponse?.body.courseSlotCost).toBe(3);
@@ -291,7 +296,7 @@ describe("AI Access", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(402);
-    expect(lastResponse?.body.error).toContain("Not enough Hall Passes");
+    expect(lastResponse?.body.error).toContain("Not enough Cards");
   });
 });
 
@@ -312,7 +317,7 @@ describe("Stripe Checkout", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/checkout",
       cookie: "rh_session=alice",
-      body: { productId: "hall-pass-20" },
+      body: { productId: "card-pack-5" },
     }), deps());
 
     expect(handled).toBe(true);
@@ -320,12 +325,18 @@ describe("Stripe Checkout", () => {
     const params = new URLSearchParams(capturedBody);
     expect(params.get("client_reference_id")).toBe(stateKey);
     expect(params.get("metadata[ruby_high_session_id]")).toBe(stateKey);
-    expect(params.get("metadata[hall_pass_pack_id]")).toBe("hall-pass-20");
+    expect(params.get("metadata[card_pack_id]")).toBe("card-pack-5");
+    expect(params.get("metadata[pack_count]")).toBe("5");
+    expect(params.get("metadata[card_count]")).toBe("20");
+    expect(params.get("metadata[hall_pass_pack_id]")).toBe("card-pack-5");
     expect(params.get("metadata[hall_passes]")).toBe("20");
     expect(params.get("payment_intent_data[metadata][ruby_high_session_id]")).toBe(stateKey);
-    expect(params.get("payment_intent_data[metadata][hall_pass_pack_id]")).toBe("hall-pass-20");
+    expect(params.get("payment_intent_data[metadata][card_pack_id]")).toBe("card-pack-5");
+    expect(params.get("payment_intent_data[metadata][pack_count]")).toBe("5");
+    expect(params.get("payment_intent_data[metadata][card_count]")).toBe("20");
+    expect(params.get("payment_intent_data[metadata][hall_pass_pack_id]")).toBe("card-pack-5");
     expect(params.get("payment_intent_data[metadata][hall_passes]")).toBe("20");
-    expect(params.get("line_items[0][price_data][unit_amount]")).toBe("699");
+    expect(params.get("line_items[0][price_data][unit_amount]")).toBe("1499");
   });
 });
 
@@ -341,11 +352,14 @@ describe("Stripe webhook", () => {
           id: "cs_paid_1",
           payment_status: "paid",
           client_reference_id: stateKey,
-          amount_total: 699,
+          amount_total: 1499,
           currency: "usd",
           metadata: {
             ruby_high_session_id: stateKey,
-            hall_pass_pack_id: "hall-pass-20",
+            card_pack_id: "card-pack-5",
+            pack_count: "5",
+            card_count: "20",
+            hall_pass_pack_id: "card-pack-5",
             hall_passes: "20",
           },
         },
@@ -362,6 +376,7 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 25 } });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(20);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
@@ -372,6 +387,7 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 25 } });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(20);
   });
 
   it("rejects signed Checkout webhooks when pack metadata does not match the paid amount", async () => {
@@ -389,7 +405,10 @@ describe("Stripe webhook", () => {
           currency: "usd",
           metadata: {
             ruby_high_session_id: stateKey,
-            hall_pass_pack_id: "hall-pass-20",
+            card_pack_id: "card-pack-5",
+            pack_count: "5",
+            card_count: "20",
+            hall_pass_pack_id: "card-pack-5",
             hall_passes: "20",
           },
         },
@@ -443,7 +462,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/quote",
       cookie: "rh_session=solana-quote",
-      body: { productId: "hall-pass-50" },
+      body: { productId: "card-pack-5" },
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
@@ -455,8 +474,10 @@ describe("Solana Hall Pass billing", () => {
       decimals: 6,
       rpcUrl: "https://api.mainnet-beta.solana.com",
       product: {
-        id: "hall-pass-50",
-        hallPasses: 50,
+        id: "card-pack-5",
+        packCount: 5,
+        cardCount: 20,
+        hallPasses: 20,
         tokenAmount: "100000",
         tokenAmountBaseUnits: "100000000000",
         tokenSymbol: "RUBY",
@@ -478,7 +499,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/quote",
       cookie: "rh_session=solana-quote-privy-rpc",
-      body: { productId: "hall-pass-100" },
+      body: { productId: "card-pack-10" },
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
@@ -491,7 +512,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/quote",
       cookie: "rh_session=solana-paid",
-      body: { productId: "hall-pass-20" },
+      body: { productId: "card-pack-5" },
     }), deps());
     const reference = lastResponse?.body.reference;
     const signature = "2".repeat(88);
@@ -538,7 +559,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-paid",
-      body: { productId: "hall-pass-20", signature },
+      body: { productId: "card-pack-5", signature },
     }), deps());
 
     expect(lastResponse).toMatchObject({
@@ -549,14 +570,18 @@ describe("Solana Hall Pass billing", () => {
         sessionId: stateKey,
         amount: 20,
         hallPasses: 25,
-        productId: "hall-pass-20",
+        productId: "card-pack-5",
+        packCount: 5,
+        cardCount: 20,
       },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === `solana:spl-token-transfer:${signature}`)).toHaveLength(20);
     expect(ruby.walletTransaction(stateKey, `solana:spl-token-transfer:${signature}`)).toMatchObject({
       source: "solana",
       hallPasses: 20,
       metadata: {
+        hallPassCardCount: 20,
         solanaRequiredBaseUnits: "100000000000",
         solanaReceivedBaseUnits: "100000000000",
         solanaReference: reference,
@@ -567,7 +592,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-paid",
-      body: { productId: "hall-pass-20", signature },
+      body: { productId: "card-pack-5", signature },
     }), deps());
 
     expect(lastResponse).toMatchObject({
@@ -603,7 +628,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-wrong-ref",
-      body: { productId: "hall-pass-20", signature },
+      body: { productId: "card-pack-5", signature },
     }), deps());
 
     expect(lastResponse?.status).toBe(400);

@@ -376,7 +376,7 @@ function RubyHighPrivyBridge(props: {
       try {
         const result = connectWallet({
           walletChainType: "solana-only",
-          description: "Connect a Solana wallet to pay for Hall Passes with Ruby.",
+          description: "Connect a Solana wallet to pay for Ruby High packs.",
         }) as unknown;
         if (result && typeof (result as PromiseLike<unknown>).then === "function") {
           void Promise.resolve(result).catch((err) => rejectPendingWalletConnect(err));

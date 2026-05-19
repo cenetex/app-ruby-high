@@ -637,7 +637,7 @@ describe("/pack-library", () => {
     });
 
     expect(response.status).toBe(503);
-    expect(response.body.error).toContain("OpenRouter image generation");
+    expect(response.body.error).toContain("hosted image generation");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -767,7 +767,7 @@ describe("/pack-library", () => {
       cookie: "rh_session=alice",
     });
     expect(response.status).toBe(402);
-    expect(response.body.error).toContain("Not enough Hall Passes");
+    expect(response.body.error).toContain("Not enough Cards");
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
   });
 
@@ -979,7 +979,7 @@ describe("/pack-library", () => {
       cookie: "rh_session=alice",
     });
     expect(response.status).toBe(401);
-    expect(response.body.error).toContain("Connect OpenRouter");
+    expect(response.body.error).toContain("Connect AI");
 
     const questionFetch = stubQuestionGeneratorFetch();
     response = await route({

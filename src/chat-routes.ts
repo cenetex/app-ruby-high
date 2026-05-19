@@ -1151,7 +1151,7 @@ async function prepareHostedImageCharge(args: {
     args.ruby.photoDayCreditBalance(args.sessionId) > 0;
   if (!usePhotoDayCredit && !imageEntitlement.affordable) {
     throw new HostedImageChargeError(
-      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
+      `Need ${hallPassCost} Card${hallPassCost === 1 ? "" : "s"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
       402,
     );
   }
@@ -1203,8 +1203,8 @@ async function prepareHostedImageCharge(args: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new HostedImageChargeError(
-      message,
-      message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Photo Day credits") ? 402 : 503,
+      message.replace(/Hall Passes/g, "Cards").replace(/Hall Pass/g, "Card"),
+      message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Cards") || message.startsWith("Not enough Photo Day credits") ? 402 : 503,
     );
   }
 }
@@ -1718,7 +1718,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       | null;
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
-      ctx.error(ctx.res, "Sign in with OpenRouter first for this teacher.", 401);
+      ctx.error(ctx.res, "Connect AI first for this teacher.", 401);
       return true;
     }
     const message = (body?.message ?? "").trim();
@@ -1753,7 +1753,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/player-line`) {
     const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
-      ctx.error(ctx.res, "Not authenticated. Sign in with OpenRouter first.", 401);
+      ctx.error(ctx.res, "Not authenticated. Connect AI first.", 401);
       return true;
     }
     const { token, apiKey } = cred;
@@ -1808,7 +1808,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
-      ctx.error(ctx.res, "Sign in with OpenRouter first for this teacher.", 401);
+      ctx.error(ctx.res, "Connect AI first for this teacher.", 401);
       return true;
     }
     const trigger = String(body?.trigger ?? "manual");
@@ -2397,8 +2397,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(
         ctx.res,
         isLocalLlmProvider()
-          ? "Local text AI is enabled, but portrait generation still requires an OpenRouter image model."
-          : "Sign in with OpenRouter first.",
+          ? "Local text AI is enabled, but portrait generation still requires a hosted image model."
+          : "Connect AI first.",
         isLocalLlmProvider() ? 501 : 401,
       );
       return true;
@@ -2592,8 +2592,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(
         ctx.res,
         isLocalLlmProvider()
-          ? "Local text AI is enabled, but diploma image generation still requires an OpenRouter image model."
-          : "Sign in with OpenRouter first.",
+          ? "Local text AI is enabled, but diploma image generation still requires a hosted image model."
+          : "Connect AI first.",
         isLocalLlmProvider() ? 501 : 401,
       );
       return true;
@@ -2686,7 +2686,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/generate`) {
     const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
-      ctx.error(ctx.res, "Sign in with OpenRouter first to roll a character.", 401);
+      ctx.error(ctx.res, "Connect AI first to roll a character.", 401);
       return true;
     }
     const { token, apiKey } = cred;

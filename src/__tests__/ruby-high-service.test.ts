@@ -80,13 +80,18 @@ describe("Hall Pass wallet", () => {
 
     const state = ruby.getOrCreate(sid);
     expect(state.wallet.hallPasses).toBe(WELCOME_HALL_PASS_GRANT);
+    expect(state.wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(WELCOME_HALL_PASS_GRANT);
     expect(state.wallet.welcomeHallPassesGrantedAt).toEqual(expect.any(Number));
     expect(state.wallet.transactions).toContainEqual(expect.objectContaining({
       id: WELCOME_HALL_PASS_GRANT_ID,
       kind: "hall-pass-grant",
       hallPasses: WELCOME_HALL_PASS_GRANT,
       source: "system",
-      description: "Welcome Hall Passes",
+      description: "Welcome Cards",
+      metadata: expect.objectContaining({
+        hallPassCardCount: WELCOME_HALL_PASS_GRANT,
+        reason: "account-welcome",
+      }),
     }));
 
     const repeat = ruby.getOrCreate(sid);
@@ -105,6 +110,14 @@ describe("Hall Pass wallet", () => {
     });
     expect(grant.applied).toBe(true);
     expect(grant.state.wallet.hallPasses).toBe(25);
+    expect(grant.cards).toHaveLength(20);
+    for (let i = 0; i < (grant.cards?.length ?? 0); i += 4) {
+      const pack = grant.cards!.slice(i, i + 4);
+      expect(pack.filter((card) => card.role === "teacher" || card.role === "special")).toHaveLength(1);
+      expect(pack.filter((card) => card.role === "student")).toHaveLength(3);
+    }
+    expect(grant.state.wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(25);
+    expect(new Set(grant.cards?.map((card) => card.id)).size).toBe(20);
 
     const repeatGrant = ruby.grantHallPasses(sid, {
       amount: 20,
@@ -113,6 +126,7 @@ describe("Hall Pass wallet", () => {
     });
     expect(repeatGrant.applied).toBe(false);
     expect(repeatGrant.state.wallet.hallPasses).toBe(25);
+    expect(repeatGrant.cards).toBeUndefined();
 
     const spend = ruby.spendHallPasses(sid, {
       amount: 3,
@@ -121,6 +135,10 @@ describe("Hall Pass wallet", () => {
     });
     expect(spend.applied).toBe(true);
     expect(spend.state.wallet.hallPasses).toBe(22);
+    expect(spend.cards).toHaveLength(3);
+    expect(spend.transaction.metadata).toMatchObject({ hallPassCardCount: 3 });
+    expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(22);
+    expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "redeemed")).toHaveLength(3);
 
     const repeatSpend = ruby.spendHallPasses(sid, {
       amount: 3,
@@ -129,11 +147,12 @@ describe("Hall Pass wallet", () => {
     });
     expect(repeatSpend.applied).toBe(false);
     expect(repeatSpend.state.wallet.hallPasses).toBe(22);
+    expect(repeatSpend.cards).toBeUndefined();
     expect(() => ruby.spendHallPasses(sid, {
       amount: 23,
       idempotencyKey: "hosted-image:portrait:too-many",
       source: "hosted-image",
-    })).toThrow(/Not enough Hall Passes/);
+    })).toThrow(/Not enough Cards/);
   });
 
   it("keeps wallet idempotency after the visible transaction list rotates", async () => {
@@ -167,6 +186,53 @@ describe("Hall Pass wallet", () => {
 
     expect(repeat.applied).toBe(false);
     expect(repeat.state.wallet.hallPasses).toBe(230);
+  });
+
+  it("packs one teacher or super rare and three students into a Hall Pass card set", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:super-rare-cards";
+
+    const grant = ruby.grantHallPasses(sid, {
+      amount: 20,
+      idempotencyKey: "admin:grant:super-2",
+      source: "admin",
+    });
+
+    expect(grant.cards).toHaveLength(20);
+    for (let i = 0; i < (grant.cards?.length ?? 0); i += 4) {
+      const pack = grant.cards!.slice(i, i + 4);
+      expect(pack.filter((card) => card.role === "student")).toHaveLength(3);
+      expect(pack.filter((card) => card.role !== "student")).toHaveLength(1);
+    }
+    expect(grant.cards?.filter((card) => card.rarity === "super-rare").length).toBeGreaterThanOrEqual(1);
+    expect(grant.cards?.some((card) => ["captain-null", "eliza", "rati"].includes(card.characterId))).toBe(true);
+  });
+
+  it("backfills legacy positive card balances into mintable cards", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:legacy-card-balance";
+    const state = ruby.getOrCreate(sid);
+    state.wallet = {
+      meritStars: 0,
+      hallPasses: 7,
+      welcomeHallPassesGrantedAt: 123,
+      transactions: [{
+        id: "legacy:grant",
+        kind: "hall-pass-grant",
+        at: 123,
+        hallPasses: 7,
+        source: "stripe",
+        description: "Legacy card balance",
+      }],
+    };
+    await ruby.flushSession(sid);
+
+    const reloaded = new RubyHighService({} as never, new StateStore(storePath));
+    await reloaded["hydrate"]();
+    const wallet = reloaded.getOrCreate(sid).wallet;
+    expect(wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(7);
+    expect(wallet.hallPassCards?.every((card) => card.grantTransactionId === "legacy-card-backfill")).toBe(true);
+    await reloaded.stop();
   });
 
   it("unlocks character slots for one Hall Pass and grants a Photo Day credit", async () => {

@@ -11,6 +11,7 @@ import {
   moreQuestionsCount,
   questionGenerationCost,
 } from "../hosted-entitlements.js";
+import { publicHallPassNftStatus } from "../services/hall-pass-nfts.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
@@ -28,6 +29,8 @@ export const BILLING_PREFIX = `${APP_ROUTE_PREFIX}/billing`;
 export interface BillingProduct {
   id: string;
   name: string;
+  packCount: number;
+  cardCount: number;
   hallPasses: number;
   unitAmount: number;
   currency: string;
@@ -37,6 +40,8 @@ export interface BillingProduct {
 export interface SolanaBillingProduct {
   id: string;
   name: string;
+  packCount: number;
+  cardCount: number;
   hallPasses: number;
   tokenAmount: string;
   tokenAmountBaseUnits: string;
@@ -141,6 +146,10 @@ const DEFAULT_SOLANA_TREASURY_OWNER = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnH
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BASE58ISH = /^[1-9A-HJ-NP-Za-km-z]+$/;
 const SOLANA_TOKEN_PRICE_ENVS: Record<string, string> = {
+  "card-pack-1": "RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS",
+  "card-pack-3": "RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS",
+  "card-pack-5": "RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS",
+  "card-pack-10": "RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS",
   "hall-pass-5": "RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS",
   "hall-pass-20": "RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS",
   "hall-pass-50": "RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS",
@@ -202,39 +211,28 @@ function solanaMemecoinDecimals(): number {
 
 export function billingProducts(): BillingProduct[] {
   const currency = billingCurrency();
+  const product = (
+    packCount: number,
+    unitAmount: number,
+  ): BillingProduct => {
+    const plural = packCount === 1 ? "Pack" : "Packs";
+    const cardCount = packCount * 4;
+    return {
+      id: `card-pack-${packCount}`,
+      name: `${packCount} ${plural}`,
+      packCount,
+      cardCount,
+      hallPasses: cardCount,
+      unitAmount,
+      currency,
+      description: `${packCount} Ruby High ${plural.toLowerCase()}: one faculty card and three student cards per pack.`,
+    };
+  };
   return [
-    {
-      id: "hall-pass-5",
-      name: "Cafeteria Sampler",
-      hallPasses: 5,
-      unitAmount: readPositiveIntEnv("RUBY_HIGH_HALL_PASS_5_CENTS", 199),
-      currency,
-      description: "5 Hall Passes for custom Ruby High image generation.",
-    },
-    {
-      id: "hall-pass-20",
-      name: "Locker Stash",
-      hallPasses: 20,
-      unitAmount: readPositiveIntEnv("RUBY_HIGH_HALL_PASS_20_CENTS", 699),
-      currency,
-      description: "20 Hall Passes for portraits, diplomas, and future creative drops.",
-    },
-    {
-      id: "hall-pass-50",
-      name: "Honor Roll Bundle",
-      hallPasses: 50,
-      unitAmount: readPositiveIntEnv("RUBY_HIGH_HALL_PASS_50_CENTS", 1499),
-      currency,
-      description: "50 Hall Passes for regular creators.",
-    },
-    {
-      id: "hall-pass-100",
-      name: "Senior Week Stack",
-      hallPasses: 100,
-      unitAmount: readPositiveIntEnv("RUBY_HIGH_HALL_PASS_100_CENTS", 2499),
-      currency,
-      description: "100 Hall Passes for heavy yearbook energy.",
-    },
+    product(1, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_5_CENTS", 199)),
+    product(3, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_20_CENTS", 699)),
+    product(5, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_50_CENTS", 1499)),
+    product(10, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_100_CENTS", 2499)),
   ];
 }
 
@@ -293,6 +291,8 @@ function solanaBillingConfig(): SolanaBillingConfig {
     return [{
       id: product.id,
       name: product.name,
+      packCount: product.packCount,
+      cardCount: product.cardCount,
       hallPasses: product.hallPasses,
       tokenAmount: price.display,
       tokenAmountBaseUnits: price.baseUnits,
@@ -355,7 +355,7 @@ function solanaPayUrl(config: SolanaBillingConfig, product: SolanaBillingProduct
   params.set("spl-token", config.mint);
   params.set("reference", reference);
   params.set("label", "Ruby High");
-  params.set("message", `${product.hallPasses} Hall Passes`);
+  params.set("message", `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"}`);
   return `solana:${config.recipient}?${params.toString()}`;
 }
 
@@ -526,7 +526,32 @@ function stripeMetadata(session: StripeCheckoutSession): Record<string, string |
 function billingProductById(productId: string | undefined | null): BillingProduct | null {
   const id = productId?.trim();
   if (!id) return null;
-  return billingProducts().find((product) => product.id === id) ?? null;
+  const products = billingProducts();
+  const direct = products.find((product) => product.id === id);
+  if (direct) return direct;
+  const normalized = id.toLowerCase();
+  const legacy: Record<string, { cards: number; centsEnv: string; fallbackCents: number }> = {
+    "hall-pass-5": { cards: 5, centsEnv: "RUBY_HIGH_HALL_PASS_5_CENTS", fallbackCents: 199 },
+    "hall_pass_5": { cards: 5, centsEnv: "RUBY_HIGH_HALL_PASS_5_CENTS", fallbackCents: 199 },
+    "hall-pass-20": { cards: 20, centsEnv: "RUBY_HIGH_HALL_PASS_20_CENTS", fallbackCents: 699 },
+    "hall_pass_20": { cards: 20, centsEnv: "RUBY_HIGH_HALL_PASS_20_CENTS", fallbackCents: 699 },
+    "hall-pass-50": { cards: 50, centsEnv: "RUBY_HIGH_HALL_PASS_50_CENTS", fallbackCents: 1499 },
+    "hall_pass_50": { cards: 50, centsEnv: "RUBY_HIGH_HALL_PASS_50_CENTS", fallbackCents: 1499 },
+    "hall-pass-100": { cards: 100, centsEnv: "RUBY_HIGH_HALL_PASS_100_CENTS", fallbackCents: 2499 },
+    "hall_pass_100": { cards: 100, centsEnv: "RUBY_HIGH_HALL_PASS_100_CENTS", fallbackCents: 2499 },
+  };
+  const legacyProduct = legacy[normalized];
+  if (!legacyProduct) return null;
+  return {
+    id,
+    name: `${legacyProduct.cards} Card Legacy Pack`,
+    packCount: Math.ceil(legacyProduct.cards / 4),
+    cardCount: legacyProduct.cards,
+    hallPasses: legacyProduct.cards,
+    unitAmount: readPositiveIntEnv(legacyProduct.centsEnv, legacyProduct.fallbackCents),
+    currency: billingCurrency(),
+    description: `${legacyProduct.cards} Ruby High cards.`,
+  };
 }
 
 function integerField(value: unknown): number | null {
@@ -535,11 +560,15 @@ function integerField(value: unknown): number | null {
 }
 
 function validateStripeCheckoutPack(session: StripeCheckoutSession, metadata: Record<string, string | undefined>): BillingProduct {
-  const product = billingProductById(metadata.hall_pass_pack_id);
-  if (!product) throw new Error("Stripe checkout session references an unknown Hall Pass pack.");
-  const metadataHallPasses = integerField(metadata.hall_passes);
-  if (metadataHallPasses !== product.hallPasses) {
-    throw new Error("Stripe checkout session Hall Pass metadata does not match its pack.");
+  const product = billingProductById(metadata.card_pack_id ?? metadata.hall_pass_pack_id);
+  if (!product) throw new Error("Stripe checkout session references an unknown card pack.");
+  const metadataCardCount = integerField(metadata.card_count ?? metadata.hall_passes);
+  if (metadataCardCount !== product.cardCount) {
+    throw new Error("Stripe checkout session card metadata does not match its pack.");
+  }
+  const metadataPackCount = integerField(metadata.pack_count);
+  if (metadataPackCount != null && metadataPackCount !== product.packCount) {
+    throw new Error("Stripe checkout session pack metadata does not match its pack.");
   }
   const amountTotal = integerField(session.amount_total);
   if (amountTotal !== product.unitAmount) {
@@ -556,6 +585,14 @@ function hallPassesForProductId(productId: string | undefined | null): number | 
   if (!productId) return null;
   const normalized = productId.trim().toLowerCase();
   const exact: Record<string, number> = {
+    "card-pack-1": 4,
+    "card_pack_1": 4,
+    "card-pack-3": 12,
+    "card_pack_3": 12,
+    "card-pack-5": 20,
+    "card_pack_5": 20,
+    "card-pack-10": 40,
+    "card_pack_10": 40,
     "hall-pass-5": 5,
     "hall_pass_5": 5,
     "hall-pass-20": 20,
@@ -566,6 +603,8 @@ function hallPassesForProductId(productId: string | undefined | null): number | 
     "hall_pass_100": 100,
   };
   if (exact[normalized] != null) return exact[normalized];
+  const cardPackMatch = /(?:^|[._-])card[_-]?pack[_-]?(1|3|5|10)$/.exec(normalized);
+  if (cardPackMatch) return Number(cardPackMatch[1]) * 4;
   const match = /(?:^|[._-])hall[_-]?pass[_-]?(5|20|50|100)$/.exec(normalized);
   return match ? Number(match[1]) : null;
 }
@@ -592,6 +631,8 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
   sessionId: string;
   amount: number;
   productId: string;
+  packCount: number;
+  cardCount: number;
   applied: boolean;
 } {
   const metadata = stripeMetadata(session);
@@ -603,15 +644,24 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
     amount: product.hallPasses,
     idempotencyKey: `stripe:checkout:${session.id}`,
     source: "stripe",
-    description: `${product.hallPasses} Hall Passes`,
+    description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"}`,
     metadata: {
       stripeCheckoutSessionId: session.id,
+      packCount: product.packCount,
+      cardCount: product.cardCount,
       hallPassPackId: product.id,
       amountTotal: session.amount_total ?? null,
       currency: session.currency ?? null,
     },
   });
-  return { sessionId, amount: product.hallPasses, productId: product.id, applied: result.applied };
+  return {
+    sessionId,
+    amount: product.hallPasses,
+    productId: product.id,
+    packCount: product.packCount,
+    cardCount: product.cardCount,
+    applied: result.applied,
+  };
 }
 
 function compactRevenueCatIds(values: Array<string | undefined>): string[] {
@@ -690,7 +740,7 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
       amount: Math.abs(amount),
       idempotencyKey: revenueCatTransactionKey(amount > 0 ? "grant" : "reversal", transactionId),
       source: "revenuecat" as const,
-      description: `${Math.abs(amount)} Hall Pass${Math.abs(amount) === 1 ? "" : "es"} via RevenueCat`,
+      description: `${Math.abs(amount)} Ruby High Card${Math.abs(amount) === 1 ? "" : "s"} via RevenueCat`,
       at: event.event_timestamp_ms,
       metadata: {
         revenueCatEventId: event.id ?? null,
@@ -761,7 +811,7 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
             kind: "hall-pass-revoke",
             hallPasses: 0,
             source: "revenuecat",
-            description: `${amount} Hall Pass${amount === 1 ? "" : "es"} RevenueCat refund marker`,
+            description: `${amount} Ruby High Card${amount === 1 ? "" : "s"} RevenueCat refund marker`,
             at: event.event_timestamp_ms,
             display: false,
             metadata: {
@@ -807,7 +857,7 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
         amount: originalAmount,
         idempotencyKey: revenueCatTransactionKey("reversal", originalGrant.transactionId),
         source: "revenuecat" as const,
-        description: `${originalAmount} Hall Pass${originalAmount === 1 ? "" : "es"} via RevenueCat`,
+        description: `${originalAmount} Ruby High Card${originalAmount === 1 ? "" : "s"} via RevenueCat`,
         at: event.event_timestamp_ms,
         metadata: {
           revenueCatEventId: event.id ?? null,
@@ -839,7 +889,7 @@ async function fulfillRevenueCatWebhook(ruby: RubyHighService, event: RevenueCat
       amount,
       idempotencyKey: revenueCatTransactionKey("grant", transactionId),
       source: "revenuecat" as const,
-      description: `${amount} Hall Pass${amount === 1 ? "" : "es"} via RevenueCat`,
+      description: `${amount} Ruby High Card${amount === 1 ? "" : "s"} via RevenueCat`,
       at: event.event_timestamp_ms,
       metadata: {
         revenueCatEventId: event.id ?? null,
@@ -906,6 +956,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         decimals: solana.decimals,
         products: solana.products,
       },
+      nfts: publicHallPassNftStatus(),
       imageCosts: {
         portrait: hostedImageCost("portrait"),
         diploma: hostedImageCost("diploma"),
@@ -929,7 +980,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/quote`) {
     const solana = solanaBillingConfig();
     if (!solana.configured) {
-      ctx.error(ctx.res, "Solana Hall Pass billing is not configured.", 503);
+      ctx.error(ctx.res, "Solana card billing is not configured.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -940,7 +991,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
     const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
     if (!product) {
-      ctx.error(ctx.res, "Unknown Solana Hall Pass pack.", 400);
+      ctx.error(ctx.res, "Unknown Solana card pack.", 400);
       return true;
     }
     const reference = solanaPaymentReference(stateKey, product.id);
@@ -961,7 +1012,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/confirm`) {
     const solana = solanaBillingConfig();
     if (!solana.configured) {
-      ctx.error(ctx.res, "Solana Hall Pass billing is not configured.", 503);
+      ctx.error(ctx.res, "Solana card billing is not configured.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -971,9 +1022,12 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
     const signature = typeof body.signature === "string" ? body.signature.trim() : "";
+    const ownerWalletAddress = typeof body.ownerWalletAddress === "string" && isBase58Address(body.ownerWalletAddress.trim())
+      ? body.ownerWalletAddress.trim()
+      : "";
     const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
     if (!product) {
-      ctx.error(ctx.res, "Unknown Solana Hall Pass pack.", 400);
+      ctx.error(ctx.res, "Unknown Solana card pack.", 400);
       return true;
     }
     if (!signature) {
@@ -995,6 +1049,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         amount: Math.max(0, Math.floor(Number(existing.transaction.hallPasses ?? 0))),
         hallPasses: entitlements.hallPasses,
         productId: existing.transaction.metadata?.hallPassPackId ?? product.id,
+        packCount: product.packCount,
+        cardCount: product.cardCount,
         entitlements,
       });
       return true;
@@ -1005,7 +1061,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         amount: product.hallPasses,
         idempotencyKey,
         source: "solana",
-        description: `${product.hallPasses} Hall Passes via ${solana.symbol}`,
+        description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"} via ${solana.symbol}`,
         metadata: {
           solanaSignature: signature,
           solanaMint: solana.mint,
@@ -1015,7 +1071,10 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
           solanaReceivedBaseUnits: verification.receivedBaseUnits,
           solanaTokenAmount: product.tokenAmount,
           solanaTokenSymbol: solana.symbol,
+          packCount: product.packCount,
+          cardCount: product.cardCount,
           hallPassPackId: product.id,
+          ...(ownerWalletAddress ? { solanaPayer: ownerWalletAddress } : {}),
           ...(verification.slot != null ? { solanaSlot: verification.slot } : {}),
           ...(verification.blockTime != null ? { solanaBlockTime: verification.blockTime } : {}),
         },
@@ -1029,6 +1088,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         amount: product.hallPasses,
         hallPasses: result.state.wallet.hallPasses,
         productId: product.id,
+        packCount: product.packCount,
+        cardCount: product.cardCount,
         entitlements,
       });
     } catch (err) {
@@ -1086,7 +1147,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      ctx.error(ctx.res, message, message.startsWith("Not enough Hall Passes") ? 402 : 500);
+      ctx.error(ctx.res, message.replace(/Hall Passes/g, "Cards").replace(/Hall Pass/g, "Card"), message.startsWith("Not enough Cards") || message.startsWith("Not enough Hall Passes") ? 402 : 500);
     }
     return true;
   }
@@ -1107,7 +1168,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const productId = typeof body.productId === "string" ? body.productId : "";
     const product = billingProducts().find((p) => p.id === productId);
     if (!product) {
-      ctx.error(ctx.res, "Unknown Hall Pass pack.", 400);
+      ctx.error(ctx.res, "Unknown card pack.", 400);
       return true;
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
@@ -1130,9 +1191,15 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     params.set("line_items[0][price_data][product_data][name]", product.name);
     params.set("line_items[0][price_data][product_data][description]", product.description);
     params.set("metadata[ruby_high_session_id]", stateKey);
+    params.set("metadata[card_pack_id]", product.id);
+    params.set("metadata[pack_count]", String(product.packCount));
+    params.set("metadata[card_count]", String(product.cardCount));
     params.set("metadata[hall_pass_pack_id]", product.id);
     params.set("metadata[hall_passes]", String(product.hallPasses));
     params.set("payment_intent_data[metadata][ruby_high_session_id]", stateKey);
+    params.set("payment_intent_data[metadata][card_pack_id]", product.id);
+    params.set("payment_intent_data[metadata][pack_count]", String(product.packCount));
+    params.set("payment_intent_data[metadata][card_count]", String(product.cardCount));
     params.set("payment_intent_data[metadata][hall_pass_pack_id]", product.id);
     params.set("payment_intent_data[metadata][hall_passes]", String(product.hallPasses));
 
@@ -1206,6 +1273,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
           hallPasses: state.wallet.hallPasses,
           productId: grant.productId,
           amount: grant.amount,
+          packCount: grant.packCount,
+          cardCount: grant.cardCount,
         });
       } catch (err) {
         ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);

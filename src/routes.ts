@@ -42,6 +42,7 @@ import {
 import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import { handleMetricsEventRoute, METRICS_EVENT_PATH } from "./routes/metrics-events.js";
+import { handleNftRoutes } from "./routes/nft.js";
 import type { RouteContext } from "./routes/context.js";
 import { getPrivyPublicConfigFromEnv } from "./services/privy-auth.js";
 
@@ -177,6 +178,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     return handleBillingRoutes(ctx, { auth, ruby });
+  }
+
+  if (ctx.pathname.startsWith("/api/apps/ruby-high/nft")) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!auth || !ruby) {
+      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleNftRoutes(ctx, { auth, ruby });
   }
 
   if (

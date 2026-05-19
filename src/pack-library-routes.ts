@@ -313,7 +313,7 @@ export async function handlePackLibraryRoutes(
       return true;
     }
     if (!credential.imageApiKey) {
-      ctx.error(ctx.res, "Course generation needs OpenRouter image generation for the teacher portrait.", 503);
+      ctx.error(ctx.res, "Course generation needs hosted image generation for the teacher portrait.", 503);
       return true;
     }
     const targetTeacherId = bodyString(body, "teacherId");
@@ -470,7 +470,7 @@ export async function handlePackLibraryRoutes(
           return true;
         }
         if (deps.ruby.hallPassBalance(sessionId) < hallPassCost) {
-          ctx.error(ctx.res, `Not enough Hall Passes. Need ${hallPassCost}, have ${deps.ruby.hallPassBalance(sessionId)}.`, 402);
+          ctx.error(ctx.res, `Not enough Cards. Need ${hallPassCost}, have ${deps.ruby.hallPassBalance(sessionId)}.`, 402);
           return true;
         }
         spend = deps.ruby.spendHallPasses(sessionId, {
@@ -2480,6 +2480,6 @@ function clientErrorStatus(err: unknown): number {
     message.includes("limited") ||
     message.includes("usable questions")
   ) return 400;
-  if ((message.startsWith("Need ") && message.includes("Hall Pass")) || message.startsWith("Not enough Hall Passes")) return 402;
+  if ((message.startsWith("Need ") && (message.includes("Hall Pass") || message.includes("Card"))) || message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Cards")) return 402;
   return 500;
 }

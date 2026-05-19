@@ -237,7 +237,7 @@ export class ChatService extends Service {
     const teacherProvider = providerForFaculty(facultyByIdForSession(state, speakerId));
     const teacherSupportsTools = providerSupportsTools(teacherProvider);
     if (providerRequiresBrowserKey(teacherProvider) && !opts.apiKey) {
-      yield { type: "error", message: "OpenRouter key required for this teacher." };
+      yield { type: "error", message: "AI key required for this teacher." };
       return;
     }
     const key: ChatHistoryKey = { sessionToken: opts.sessionToken, faculty: bucketFaculty };

@@ -358,7 +358,7 @@ describe("hosted AI access auth", () => {
       },
     ));
     expect(chatRes.statusCode).toBe(401);
-    expect(JSON.parse(chatRes.body).error).toContain("Sign in with OpenRouter first");
+    expect(JSON.parse(chatRes.body).error).toContain("Connect AI first");
   });
 
   it("enables text AI while a Hall Pass access window is active", async () => {
@@ -488,7 +488,7 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(402);
-    expect(JSON.parse(res.body).error).toContain("Need 1 Hall Pass");
+    expect(JSON.parse(res.body).error).toContain("Need 1 Card");
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 

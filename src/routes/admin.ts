@@ -206,7 +206,7 @@ function buildAdminMetricsSchema(): {
         path: "auth.users",
         label: "Identity records",
         source: "AuthUserRecord store",
-        semantics: "Total stored auth identity records across guest, OpenRouter, and Privy providers.",
+        semantics: "Total stored auth identity records across guest, AI key, and Privy providers.",
         reliability: "legacy",
         caveat: "Legacy guest records can be cookie-bound; v4 visitor metrics are the traffic source.",
       },
@@ -237,7 +237,7 @@ function buildAdminMetricsSchema(): {
         path: "auth.providers",
         label: "Provider mix",
         source: "AuthUserRecord.provider",
-        semantics: "Counts identity records by guest, OpenRouter, and Privy.",
+        semantics: "Counts identity records by guest, AI key, and Privy.",
         reliability: "authoritative",
         caveat: "Authoritative for records, not people.",
       },
@@ -1115,7 +1115,7 @@ export function renderAdminDashboardHtml(): string {
         metric("Identity records", n(auth.users), n(auth.createdLast24h) + " new records - not unique people"),
         metric("Sessions", n(auth.activeSessions), n(auth.pendingAuth) + " pending auth"),
         metric("Identity D1", pct(auth.d1Retention && auth.d1Retention.rate), n(auth.d1Retention && auth.d1Retention.returnedUsers) + " / " + n(auth.d1Retention && auth.d1Retention.eligibleUsers) + " cookie-bound"),
-        metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / OpenRouter / Privy"),
+        metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / AI key / Privy"),
       ].join("");
       playGrid.innerHTML = [
         metric("Saved sessions", n(ruby.sessions), n(ruby.updatedLast24h) + " updated in 24h"),

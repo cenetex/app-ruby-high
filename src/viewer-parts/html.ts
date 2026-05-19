@@ -69,9 +69,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">— subjects cleared</span>
         <span class="arc-sep">·</span>
-        <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">0 Merit Stars · 0 Hall Passes</span>
+        <span class="arc-score" id="arc-score" title="Merit Stars and cards">0 Merit Stars · 0 Cards</span>
       </div>
-      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Buy Hall Passes" aria-label="Buy Hall Passes" hidden>
+      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Cards" aria-label="Cards" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 9a3 3 0 0 0 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
           <path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>
@@ -175,11 +175,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>
-    <p class="sub">Play without AI, use a Hall Pass for hosted AI access, or bring your own OpenRouter key.</p>
+    <p class="sub">Play without AI, burn a card for AI access, or bring your own AI key.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
       <button id="signin-privy" class="secondary-link" type="button" hidden>Sign in</button>
-      <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use OpenRouter</a>
+      <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use AI key</a>
     </div>
     <div id="signin-status" class="stat-budget" aria-live="polite"></div>
   </div>
@@ -214,12 +214,20 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </section>
     <section class="account-section account-wallet-section">
       <div class="account-section-title">Wallet</div>
-      <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
+      <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Cards</div>
       <div class="account-wallet-meta" id="account-wallet-meta"></div>
-      <div class="sheet-actions">
-        <button type="button" id="account-use-pass">Use Hall Pass</button>
-        <button type="button" class="secondary" id="account-buy-passes">Buy Hall Passes</button>
+    </section>
+    <section class="account-section account-hall-pass-card-section">
+      <div class="account-section-head">
+        <div>
+          <div class="account-section-title">Cards</div>
+          <div class="account-section-sub" id="account-card-summary"></div>
+        </div>
+        <div class="account-section-actions">
+          <button type="button" class="secondary" id="account-mint-cards">Mint Cards</button>
+        </div>
       </div>
+      <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>
     </section>
     <section class="account-section">
       <div class="account-section-title">Purchase History</div>
@@ -239,8 +247,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="account-ai-status" id="account-ai-status">Checking...</div>
       <div class="account-ai-meta" id="account-ai-meta"></div>
       <div class="sheet-actions">
-        <button type="button" id="account-ai-use-pass">Use Hall Pass</button>
-        <button type="button" class="secondary" id="account-ai-action">Connect OpenRouter</button>
+        <button type="button" id="account-ai-use-pass">Burn Card</button>
+        <button type="button" class="secondary" id="account-ai-action">Connect AI key</button>
       </div>
     </section>
     <div id="privy-status" class="stat-budget" aria-live="polite"></div>
@@ -255,13 +263,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <div class="sheet-card" id="sheet-card"></div>
 </div>
 
-<!-- Hall Pass store overlay -->
+<!-- Card mint overlay -->
 <div class="sheet-overlay" id="billing-overlay">
   <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card billing-card">
-    <h2>Hall Passes</h2>
-    <p class="sub">Use Hall Passes for AI Access, hosted portraits, diploma art, and future creative rewards.</p>
-    <div class="wallet-panel" id="billing-wallet">0 Hall Passes</div>
+    <h2>Mint Cards</h2>
+    <p class="sub">Buy packs, send cards to your wallet, and burn cards for AI, portraits, and diploma art.</p>
+    <div class="wallet-panel" id="billing-wallet">0 Cards</div>
     <div class="billing-costs" id="billing-costs"></div>
     <div class="billing-products" id="billing-products"></div>
     <div id="billing-status" class="stat-budget" aria-live="polite"></div>
@@ -380,7 +388,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div id="pack-edit-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
     <div class="sheet-actions">
       <button type="button" class="secondary" id="pack-edit-close-btn">Close</button>
-      <button type="button" class="secondary" id="pack-publish-btn">Publish Course (3 Hall Passes)</button>
+      <button type="button" class="secondary" id="pack-publish-btn">Publish Course (3 Cards)</button>
     </div>
   </div>
 </div>

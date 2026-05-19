@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Local Ruby High harness with OpenRouter PKCE login + per-teacher chat.
+// Local Ruby High harness with AI key login + per-teacher chat.
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
@@ -14,8 +14,8 @@ import {
   handleAppRoutes,
 } from "../dist/index.js";
 
-// OpenRouter PKCE only accepts http://localhost:3000 for local dev callbacks
-// (everything else has to be HTTPS on 443). Default accordingly.
+// The AI key callback accepts http://localhost:3000 for local dev callbacks.
+// Production callback bases should be HTTPS. Default accordingly.
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "localhost";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
@@ -250,8 +250,8 @@ server.listen(PORT, HOST, () => {
   console.log(`  Faculty roster:     ${PUBLIC_BASE}/dev/faculty`);
   console.log(`  Session API:        ${PUBLIC_BASE}/api/apps/ruby-high/session/ruby-high%3Alocal-ruby`);
   console.log("");
-  console.log("OpenRouter callback URL is", new URL(PUBLIC_BASE).origin + "/api/apps/ruby-high/auth/callback");
-  console.log("If OpenRouter rejects the callback, set RUBY_HIGH_PUBLIC_BASE to a URL it allows.");
+  console.log("AI key callback URL is", new URL(PUBLIC_BASE).origin + "/api/apps/ruby-high/auth/callback");
+  console.log("If the AI key callback is rejected, set RUBY_HIGH_PUBLIC_BASE to a URL it allows.");
 });
 
 const stop = () => {

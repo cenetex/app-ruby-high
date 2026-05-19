@@ -470,6 +470,9 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
     ...(Number.isFinite(Number(state.wallet?.hostedAiAccessExpiresAt))
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(state.wallet?.hostedAiAccessExpiresAt))) }
       : {}),
+    ...(Array.isArray(state.wallet?.hallPassCards) && state.wallet.hallPassCards.length > 0
+      ? { hallPassCards: state.wallet.hallPassCards }
+      : {}),
     ...(Array.isArray(state.wallet?.transactions) && state.wallet.transactions.length > 0
       ? { transactions: state.wallet.transactions.slice(-80) }
       : {}),
