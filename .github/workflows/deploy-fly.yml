@@ -60,15 +60,16 @@ jobs:
         id: previous-release
         run: |
           set -euo pipefail
-          image="$(
-            flyctl releases --app ruby-high --image --json \
-              | node -e '
-                  const fs = require("fs");
-                  const releases = JSON.parse(fs.readFileSync(0, "utf8"));
-                  const current = releases.find((r) => r.Status === "complete" && r.ImageRef);
-                  process.stdout.write(current?.ImageRef || "");
-                '
-          )"
+          if ! flyctl releases --app ruby-high --image --json > /tmp/fly-releases.json; then
+            echo "Could not read previous Fly image; rollback will be skipped if deploy smoke fails."
+            exit 0
+          fi
+          image="$(node -e '
+            const fs = require("fs");
+            const releases = JSON.parse(fs.readFileSync("/tmp/fly-releases.json", "utf8"));
+            const current = releases.find((r) => r.Status === "complete" && r.ImageRef);
+            process.stdout.write(current?.ImageRef || "");
+          ')"
           if [ -n "$image" ]; then
             echo "image=$image" >> "$GITHUB_OUTPUT"
             echo "Previous Fly image: $image"
@@ -79,7 +80,7 @@ jobs:
       - name: Deploy to Fly
         run: |
           SHA="${GITHUB_SHA::12}"
-          flyctl deploy --app ruby-high --remote-only --build-arg RUBY_HIGH_BUILD="$SHA"
+          flyctl deploy --app ruby-high --remote-only --depot=false --build-arg RUBY_HIGH_BUILD="$SHA"
 
       - name: Smoke production
         run: node scripts/smoke.mjs https://ruby-high.fly.dev
