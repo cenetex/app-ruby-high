@@ -236,6 +236,7 @@ describe("admin metrics route", () => {
       schemaVersion: "ruby-high-admin-metrics.v4",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
+      trustStart: "2026-05-19",
     });
     expect(response.body.fields).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -310,6 +311,8 @@ describe("admin metrics route", () => {
       path: "/api/apps/ruby-high/admin/metrics",
       authorizationHeader: "Bearer admin-test-token",
     });
+    const persistedEvents = await store.loadMetricEvents();
+    expect(persistedEvents.map((event) => event.name).sort()).toEqual(["app_open", "session_resume", "visitor_seen", "visitor_seen"]);
     expect(response.body.ruby.events.appOpen).toMatchObject({
       total: 1,
       uniqueSessions: 1,
@@ -333,7 +336,6 @@ describe("admin metrics route", () => {
     expect(sessionId).toMatch(/^rh:user:/);
     expect(ruby.analyticsSnapshot().events.appOpen.uniqueSessions).toBe(1);
     expect(ruby.analyticsSnapshot().events.appOpen.uniqueVisitors).toBe(1);
-    await ruby.flush();
     const appOpen = (await store.loadMetricEvents()).find((event) => event.name === "app_open");
     expect(appOpen?.metadata).toMatchObject({
       path: "/api/apps/ruby-high/viewer",

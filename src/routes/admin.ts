@@ -16,6 +16,7 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v4";
 const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-05-19";
+const ADMIN_METRICS_DEFAULT_TRUST_START = ADMIN_METRICS_SCHEMA_PUBLISHED_AT;
 
 interface AdminDeps {
   auth: AuthService;
@@ -108,7 +109,7 @@ function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
 
 function metricsTrustStart(): string | null {
   const raw = process.env.RUBY_HIGH_METRICS_TRUST_START?.trim();
-  return raw || null;
+  return raw || ADMIN_METRICS_DEFAULT_TRUST_START;
 }
 
 function buildAdminMetricsQuality(metrics: {
@@ -181,6 +182,7 @@ function buildAdminMetricsSchema(): {
   endpoint: typeof ADMIN_METRICS_PATH;
   schemaPath: typeof ADMIN_METRICS_SCHEMA_PATH;
   bucketTimezone: "UTC";
+  trustStart: string | null;
   trustModel: string[];
   fields: AdminMetricFieldSchema[];
   missingEvents: AdminMetricFieldSchema[];
@@ -192,6 +194,7 @@ function buildAdminMetricsSchema(): {
     endpoint: ADMIN_METRICS_PATH,
     schemaPath: ADMIN_METRICS_SCHEMA_PATH,
     bucketTimezone: "UTC",
+    trustStart: metricsTrustStart(),
     trustModel: [
       "Durable product-state metrics are authoritative for current state.",
       "Auth users are identity records. Visitor metrics use the browser-local visitor id after server-side hashing.",

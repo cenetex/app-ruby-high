@@ -279,7 +279,9 @@ export class AuthService extends Service {
             ? {
                 visitorHash,
                 visitorFirstSeenAt: existingVisitorUser.visitorFirstSeenAt ?? existingVisitorUser.createdAt,
-                visitorLastSeenAt: now,
+                visitorLastSeenAt: shouldTouchVisitorLastSeen(existingVisitorUser, now)
+                  ? now
+                  : existingVisitorUser.visitorLastSeenAt ?? existingVisitorUser.createdAt,
               }
             : {}),
         }
@@ -587,7 +589,7 @@ export class AuthService extends Service {
     if (!user) return record;
     const shouldTouchLogin = now - user.lastLoginAt >= ACTIVITY_TOUCH_INTERVAL_MS;
     const shouldTouchVisitor = !!visitorHash && user.visitorHash !== visitorHash;
-    const shouldTouchVisitorSeen = !!visitorHash && user.visitorHash === visitorHash && user.visitorLastSeenAt !== now;
+    const shouldTouchVisitorSeen = !!visitorHash && user.visitorHash === visitorHash && shouldTouchVisitorLastSeen(user, now);
     if (!shouldTouchLogin && !shouldTouchVisitor && !shouldTouchVisitorSeen) return record;
     const touched = this.rememberAuthUser({
       ...user,
@@ -731,6 +733,15 @@ function isoDate(timestamp: number): string {
 function positiveNumber(value: unknown): number | null {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function shouldTouchVisitorLastSeen(user: AuthUserRecord, now: number): boolean {
+  const lastSeenAt =
+    positiveNumber(user.visitorLastSeenAt) ??
+    positiveNumber(user.visitorFirstSeenAt) ??
+    positiveNumber(user.lastLoginAt) ??
+    user.createdAt;
+  return now - lastSeenAt >= ACTIVITY_TOUCH_INTERVAL_MS;
 }
 
 async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<{ key: string; userId?: string }> {

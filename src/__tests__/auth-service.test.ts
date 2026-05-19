@@ -212,6 +212,21 @@ describe("AuthService.gcSessions", () => {
     expect(snapshot.signedInLast24h).toBe(1);
   });
 
+  it("throttles same-visitor last-seen updates for guest traffic stats", async () => {
+    const auth = await freshAuth();
+    const base = Date.UTC(2026, 4, 1);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(base);
+
+    const first = await auth.createGuestSession(null, "rhv_touch_throttle_visitor");
+    clock.mockReturnValue(base + 60_000);
+    await auth.createGuestSession(first.token, "rhv_touch_throttle_visitor");
+    expect(auth.analyticsSnapshot(Date.now()).visitors.returningLast24h).toBe(0);
+
+    clock.mockReturnValue(base + 5 * 60_000 + 1);
+    await auth.createGuestSession(first.token, "rhv_touch_throttle_visitor");
+    expect(auth.analyticsSnapshot(Date.now()).visitors.returningLast24h).toBe(1);
+  });
+
   it("treats malformed session cookie encoding as signed out", async () => {
     const auth = await freshAuth();
 

@@ -44,69 +44,55 @@ export async function handleMetricsEventRoute(
   const type = typeof body?.type === "string" ? body.type : "";
   const visitorHash = visitorHashFromHeader(ctx.visitorHeader);
   if (type === "app_open") {
-    deps.ruby.recordAppOpen(deps.sessionId, {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordAppOpenDurably(deps.sessionId, {
       source: "viewer",
       visitorHash,
       path: typeof body.path === "string" ? body.path : undefined,
       referrer: typeof body.referrer === "string" ? body.referrer : undefined,
       userAgent: requestHeaderString(ctx.userAgentHeader),
-    });
-    ctx.json(ctx.res, { ok: true });
-    return true;
+    }));
   }
   if (type === "session_resume") {
-    deps.ruby.recordSessionResume(deps.sessionId, {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordSessionResumeDurably(deps.sessionId, {
       source: "viewer",
       visitorHash,
       inactiveMs: typeof body.inactiveMs === "number" ? body.inactiveMs : Number(body.inactiveMs),
       reason: typeof body.reason === "string" ? body.reason : undefined,
-    });
-    ctx.json(ctx.res, { ok: true });
-    return true;
+    }));
   }
   if (type === "yearbook_open") {
-    deps.ruby.recordYearbookOpen(deps.sessionId, {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordYearbookOpenDurably(deps.sessionId, {
       visitorHash,
       shareId: typeof body.shareId === "string" ? body.shareId : undefined,
       grade: typeof body.grade === "string" ? body.grade : undefined,
-    });
-    ctx.json(ctx.res, { ok: true });
-    return true;
+    }));
   }
   if (type === "yearbook_copy") {
-    deps.ruby.recordYearbookCopy(deps.sessionId, {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordYearbookCopyDurably(deps.sessionId, {
       visitorHash,
       shareId: typeof body.shareId === "string" ? body.shareId : undefined,
       grade: typeof body.grade === "string" ? body.grade : undefined,
-    });
-    ctx.json(ctx.res, { ok: true });
-    return true;
+    }));
   }
   if (type === "guest_spotlight_seen") {
-    deps.ruby.recordGuestSpotlightSeen(deps.sessionId, {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordGuestSpotlightSeenDurably(deps.sessionId, {
       visitorHash,
       packId: typeof body.packId === "string" ? body.packId : undefined,
-    });
-    ctx.json(ctx.res, { ok: true });
-    return true;
+    }));
   }
   if (type === "guest_spotlight_started") {
-    deps.ruby.recordGuestSpotlightStarted(deps.sessionId, {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordGuestSpotlightStartedDurably(deps.sessionId, {
       visitorHash,
       packId: typeof body.packId === "string" ? body.packId : undefined,
-    });
-    ctx.json(ctx.res, { ok: true });
-    return true;
+    }));
   }
   if (type === "balance_sample") {
-    deps.ruby.recordBalanceSample({
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordBalanceSampleDurably({
       source: "viewer",
       metadata: {
         ...(Number.isFinite(Number(body.repeatRate)) ? { repeatRate: Number(body.repeatRate) } : {}),
       },
-    });
-    ctx.json(ctx.res, { ok: true });
-    return true;
+    }));
   }
   ctx.error(ctx.res, "Unknown metrics event type.", 400);
   return true;
@@ -120,4 +106,14 @@ function requestHeaderString(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && typeof value[0] === "string") return value[0];
   return undefined;
+}
+
+async function respondAfterMetricPersist(ctx: RouteContext, persist: () => Promise<void>): Promise<true> {
+  try {
+    await persist();
+    ctx.json(ctx.res, { ok: true });
+  } catch {
+    ctx.error(ctx.res, "Could not persist metrics event.", 503);
+  }
+  return true;
 }

@@ -517,6 +517,11 @@ interface DailyClassUpdate {
   passedClass?: boolean;
 }
 
+type MetricEventInput = Omit<StoredMetricEventRecord, "id" | "name" | "occurredAt" | "day" | "metadata"> & {
+  occurredAt?: number;
+  metadata?: Record<string, unknown>;
+};
+
 const GLOBAL_PACK_OWNER = "__ruby_high_global__";
 const CLASS_QUESTIONS_PER_DAY = 3;
 const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [2, 4, 6] as const;
@@ -636,6 +641,31 @@ export class RubyHighService extends Service {
     });
   }
 
+  async recordAppOpenDurably(
+    sessionId: string,
+    input: { source?: string; userAgent?: string; referrer?: string; path?: string; visitorHash?: string | null } = {},
+  ): Promise<void> {
+    if (input.visitorHash) {
+      await this.recordMetricEventDurably("visitor_seen", {
+        sessionId,
+        visitorHash: input.visitorHash,
+        source: input.source ?? "viewer",
+        feature: "viewer",
+      });
+    }
+    await this.recordMetricEventDurably("app_open", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: input.source ?? "viewer",
+      feature: "viewer",
+      metadata: {
+        ...(input.path ? { path: clippedMetricValue(input.path, 180) } : {}),
+        ...(input.referrer ? { referrer: clippedMetricValue(input.referrer, 180) } : {}),
+        ...(input.userAgent ? { userAgent: clippedMetricValue(input.userAgent, 180) } : {}),
+      },
+    });
+  }
+
   recordSessionResume(
     sessionId: string,
     input: { source?: string; inactiveMs?: number; reason?: string; visitorHash?: string | null } = {},
@@ -649,6 +679,32 @@ export class RubyHighService extends Service {
       });
     }
     this.recordMetricEvent("session_resume", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: input.source ?? "viewer",
+      feature: "viewer",
+      metadata: {
+        ...(typeof input.inactiveMs === "number" && Number.isFinite(input.inactiveMs)
+          ? { inactiveMs: Math.max(0, Math.floor(input.inactiveMs)) }
+          : {}),
+        ...(input.reason ? { reason: clippedMetricValue(input.reason, 80) } : {}),
+      },
+    });
+  }
+
+  async recordSessionResumeDurably(
+    sessionId: string,
+    input: { source?: string; inactiveMs?: number; reason?: string; visitorHash?: string | null } = {},
+  ): Promise<void> {
+    if (input.visitorHash) {
+      await this.recordMetricEventDurably("visitor_seen", {
+        sessionId,
+        visitorHash: input.visitorHash,
+        source: input.source ?? "viewer",
+        feature: "viewer",
+      });
+    }
+    await this.recordMetricEventDurably("session_resume", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       source: input.source ?? "viewer",
@@ -676,8 +732,36 @@ export class RubyHighService extends Service {
     });
   }
 
+  async recordYearbookOpenDurably(sessionId: string, input: { visitorHash?: string | null; shareId?: string; grade?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("yearbook_open", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "yearbook",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.grade ? { grade: clippedMetricValue(input.grade, 12) } : {}),
+      },
+    });
+  }
+
   recordYearbookCopy(sessionId: string, input: { visitorHash?: string | null; shareId?: string; grade?: string } = {}): void {
     this.recordMetricEvent("yearbook_copy", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "yearbook",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.grade ? { grade: clippedMetricValue(input.grade, 12) } : {}),
+      },
+    });
+  }
+
+  async recordYearbookCopyDurably(sessionId: string, input: { visitorHash?: string | null; shareId?: string; grade?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("yearbook_copy", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       source: "viewer",
@@ -701,8 +785,30 @@ export class RubyHighService extends Service {
     });
   }
 
+  async recordGuestSpotlightSeenDurably(sessionId: string, input: { visitorHash?: string | null; packId?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("guest_spotlight_seen", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "guest_faculty",
+      status: "success",
+      metadata: input.packId ? { packId: clippedMetricValue(input.packId, 120) } : {},
+    });
+  }
+
   recordGuestSpotlightStarted(sessionId: string, input: { visitorHash?: string | null; packId?: string } = {}): void {
     this.recordMetricEvent("guest_spotlight_started", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "guest_faculty",
+      status: "success",
+      metadata: input.packId ? { packId: clippedMetricValue(input.packId, 120) } : {},
+    });
+  }
+
+  async recordGuestSpotlightStartedDurably(sessionId: string, input: { visitorHash?: string | null; packId?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("guest_spotlight_started", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       source: "viewer",
@@ -723,6 +829,17 @@ export class RubyHighService extends Service {
     });
   }
 
+  async recordGuestPackOverrideSetDurably(sessionId: string, input: { visitorHash?: string | null; packId?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("guest_pack_override_set", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "guest_faculty",
+      status: "success",
+      metadata: input.packId ? { packId: clippedMetricValue(input.packId, 120) } : {},
+    });
+  }
+
   recordBalanceSample(input: { source?: string; metadata?: Record<string, unknown> } = {}): void {
     this.recordMetricEvent("balance_sample", {
       source: input.source ?? "script",
@@ -732,13 +849,41 @@ export class RubyHighService extends Service {
     });
   }
 
+  async recordBalanceSampleDurably(input: { source?: string; metadata?: Record<string, unknown> } = {}): Promise<void> {
+    await this.recordMetricEventDurably("balance_sample", {
+      source: input.source ?? "script",
+      feature: "balance",
+      status: "success",
+      metadata: input.metadata ?? {},
+    });
+  }
+
   recordMetricEvent(
     name: StoredMetricEventName,
-    input: Omit<StoredMetricEventRecord, "id" | "name" | "occurredAt" | "day" | "metadata"> & {
-      occurredAt?: number;
-      metadata?: Record<string, unknown>;
-    } = {},
+    input: MetricEventInput = {},
   ): StoredMetricEventRecord | null {
+    const event = this.buildMetricEvent(name, input);
+    if (!event) return null;
+    void this.persistMetricEvent(event, { surfaceErrors: false });
+    return event;
+  }
+
+  async recordMetricEventDurably(
+    name: StoredMetricEventName,
+    input: MetricEventInput = {},
+  ): Promise<StoredMetricEventRecord | null> {
+    const event = this.buildMetricEvent(name, input);
+    if (!event) return null;
+    try {
+      await this.persistMetricEvent(event, { surfaceErrors: true });
+    } catch (err) {
+      this.metricEvents.delete(event.id);
+      throw err;
+    }
+    return event;
+  }
+
+  private buildMetricEvent(name: StoredMetricEventName, input: MetricEventInput): StoredMetricEventRecord | null {
     if (!this.store.saveMetricEvent) return null;
     const occurredAt = normalizeMetricTimestamp(input.occurredAt);
     const event: StoredMetricEventRecord = {
@@ -764,11 +909,19 @@ export class RubyHighService extends Service {
       ...(input.metadata ? { metadata: normalizeMetricMetadata(input.metadata) } : {}),
     };
     this.metricEvents.set(event.id, event);
-    const save = this.store.saveMetricEvent(event).catch((err) => {
-      log.error("metrics.persist-failed", err, { eventName: name });
-    });
-    this.trackBackgroundWrite(save);
     return event;
+  }
+
+  private persistMetricEvent(event: StoredMetricEventRecord, options: { surfaceErrors: boolean }): Promise<void> {
+    const save = this.store.saveMetricEvent!(event).catch((err) => {
+      log.error("metrics.persist-failed", err, { eventName: event.name });
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    if (options.surfaceErrors && typeof this.store.flush === "function") {
+      return Promise.all([save, this.store.flush()]).then(() => undefined);
+    }
+    return save;
   }
 
   private recordLogSinkMetricEvent(record: LogSinkRecord): void {
