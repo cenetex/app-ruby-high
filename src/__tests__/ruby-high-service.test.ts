@@ -155,6 +155,123 @@ describe("Hall Pass wallet", () => {
     })).toThrow(/Not enough Cards/);
   });
 
+  it("records owner-signed NFT card burns as exact card spends", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:nft-burn";
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const grant = ruby.grantHallPasses(sid, {
+      amount: 4,
+      idempotencyKey: "stripe:checkout:nft-burn",
+      source: "stripe",
+    });
+    const card = grant.cards![0]!;
+    ruby.recordHallPassCardMint(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mMintSignature111111111111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    });
+
+    const spend = ruby.spendBurnedHallPassCards(sid, {
+      burns: [{
+        cardId: card.id,
+        ownerWalletAddress,
+        mintAddress,
+        burnSignature: "4mBurnSignature111111111111111111111111111111111111111111111",
+      }],
+      idempotencyKey: "hosted-ai:nft-burn",
+      source: "hosted-ai",
+      description: "AI Access",
+    });
+
+    expect(spend.applied).toBe(true);
+    expect(spend.state.wallet.hallPasses).toBe(8);
+    expect(spend.cards).toHaveLength(1);
+    expect(spend.transaction).toMatchObject({
+      kind: "hall-pass-spend",
+      hallPasses: -1,
+      source: "hosted-ai",
+    });
+    expect(spend.transaction.metadata).toMatchObject({
+      burnSignature: "4mBurnSignature111111111111111111111111111111111111111111111",
+      hallPassCardIds: card.id,
+    });
+    const burned = spend.state.wallet.hallPassCards?.find((candidate) => candidate.id === card.id);
+    expect(burned).toMatchObject({
+      status: "redeemed",
+      burnSignature: "4mBurnSignature111111111111111111111111111111111111111111111",
+      redeemTransactionId: "hosted-ai:nft-burn",
+    });
+    const repeat = ruby.spendBurnedHallPassCards(sid, {
+      burns: [{
+        cardId: card.id,
+        ownerWalletAddress,
+        mintAddress,
+        burnSignature: "4mBurnSignature111111111111111111111111111111111111111111111",
+      }],
+      idempotencyKey: "hosted-ai:nft-burn",
+      source: "hosted-ai",
+    });
+    expect(repeat.applied).toBe(false);
+    expect(() => ruby.spendBurnedHallPassCards(sid, {
+      burns: [{
+        cardId: card.id,
+        ownerWalletAddress,
+        mintAddress,
+        burnSignature: "5mDifferentBurn111111111111111111111111111111111111111111",
+      }],
+      idempotencyKey: "hosted-ai:nft-burn-again",
+      source: "hosted-ai",
+    })).toThrow(/already burned/);
+  });
+
+  it("records multiple NFT card burns from one owner-signed transaction", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:nft-burn-batch";
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const burnSignature = "4mBatchBurnSignature1111111111111111111111111111111111111111";
+    const grant = ruby.grantHallPasses(sid, {
+      amount: 4,
+      idempotencyKey: "stripe:checkout:nft-burn-batch",
+      source: "stripe",
+    });
+    const cards = grant.cards!.slice(0, 2);
+    const burns = cards.map((card, index) => {
+      const mintAddress = index === 0
+        ? "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump"
+        : "BBoP7Eav3vUrF7kvQRrUMr7BXPr4u4D2nPWn84bWpump";
+      ruby.recordHallPassCardMint(sid, {
+        cardId: card.id,
+        ownerWalletAddress,
+        mintAddress,
+        mintSignature: `5mMintSignatureBatch${index}111111111111111111111111111111111111`,
+        metadataUri: "https://ruby-high.ai/card.json",
+      });
+      return {
+        cardId: card.id,
+        ownerWalletAddress,
+        mintAddress,
+        burnSignature,
+      };
+    });
+    const before = ruby.getOrCreate(sid).wallet.hallPasses;
+
+    const spend = ruby.spendBurnedHallPassCards(sid, {
+      burns,
+      idempotencyKey: "hosted-image:diploma:nft-burn-batch",
+      source: "hosted-image",
+      description: "Diploma Photo",
+    });
+
+    expect(spend.applied).toBe(true);
+    expect(spend.state.wallet.hallPasses).toBe(before - burns.length);
+    expect(spend.cards).toHaveLength(2);
+    expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "redeemed")).toHaveLength(2);
+    expect(spend.transaction.metadata?.burnSignatures).toBe(`${burnSignature},${burnSignature}`);
+  });
+
   it("keeps wallet idempotency after the visible transaction list rotates", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:wallet-ledger";

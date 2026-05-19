@@ -426,6 +426,22 @@ export interface HallPassMutationResult {
   cards?: RubyHighHallPassCard[];
 }
 
+export interface HallPassCardBurnInput {
+  cardId: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  burnSignature: string;
+}
+
+export interface BurnedHallPassCardSpendInput {
+  burns: HallPassCardBurnInput[];
+  idempotencyKey: string;
+  source?: RubyHighWalletTransaction["source"];
+  description?: string;
+  metadata?: RubyHighWalletTransaction["metadata"];
+  at?: number;
+}
+
 export interface HallPassCardMintInput {
   cardId: string;
   ownerWalletAddress: string;
@@ -440,6 +456,7 @@ export interface HostedAiAccessActivationInput {
   hallPassCost: number;
   durationMs: number;
   now?: number;
+  burns?: HallPassCardBurnInput[];
 }
 
 export interface HostedAiAccessActivationResult {
@@ -1441,16 +1458,24 @@ export class RubyHighService extends Service {
       };
     }
     const durationMs = normalizePositiveInteger(input.durationMs, "Hosted AI duration");
-    const spend = this.applyHallPassTransaction(sessionId, "hall-pass-spend", {
-      amount: hallPassCost,
+    if (input.burns && input.burns.length > 0 && input.burns.length !== hallPassCost) {
+      throw new Error(`Hosted AI Access needs ${hallPassCost} burned Card${hallPassCost === 1 ? "" : "s"}.`);
+    }
+    const spendInput = {
       idempotencyKey: `hosted-ai:access:${sessionId}:${now}`,
-      source: "hosted-ai",
+      source: "hosted-ai" as const,
       description: "AI Access",
       at: now,
       metadata: {
         durationMs,
       },
-    });
+    };
+    const spend = input.burns && input.burns.length > 0
+      ? this.spendBurnedHallPassCards(sessionId, { ...spendInput, burns: input.burns })
+      : this.applyHallPassTransaction(sessionId, "hall-pass-spend", {
+        amount: hallPassCost,
+        ...spendInput,
+      });
     const expiresAt = now + durationMs;
     spend.state.wallet.hostedAiAccessExpiresAt = expiresAt;
     spend.state.updatedAt = Date.now();
@@ -1472,6 +1497,72 @@ export class RubyHighService extends Service {
     return this.applyHallPassTransaction(sessionId, "hall-pass-spend", input);
   }
 
+  spendBurnedHallPassCards(sessionId: string, input: BurnedHallPassCardSpendInput): HallPassMutationResult {
+    const burns = normalizeHallPassBurnInputs(input.burns);
+    if (burns.length <= 0) throw new Error("Burned Card payment is required.");
+    const state = this.getOrCreate(sessionId);
+    const id = input.idempotencyKey.trim();
+    if (!id) throw new Error("Card transaction idempotency key is required.");
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
+    if (existing) return { state, applied: false, transaction: existing };
+    const current = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0)));
+    if (current < burns.length) throw new Error(`Not enough Cards. Need ${burns.length}, have ${current}.`);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const byId = new Map(cards.map((card) => [card.id, card]));
+    const spentCards: RubyHighHallPassCard[] = [];
+    for (const burn of burns) {
+      const card = byId.get(burn.cardId);
+      if (!card) throw new Error("Burned Card not found.");
+      if (card.status !== "active") throw new Error(`${card.characterName} card is already burned.`);
+      if (!card.mintAddress || card.mintAddress !== burn.mintAddress) throw new Error(`${card.characterName} card mint does not match.`);
+      if (!card.ownerWalletAddress || card.ownerWalletAddress !== burn.ownerWalletAddress) {
+        throw new Error(`${card.characterName} card belongs to a different wallet.`);
+      }
+      spentCards.push(card);
+    }
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind: "hall-pass-spend",
+      at,
+      hallPasses: -burns.length,
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.description ? { description: input.description } : {}),
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(burns.length === 1 ? { burnSignature: burns[0]!.burnSignature } : {}),
+        burnSignatures: burns.map((burn) => burn.burnSignature).join(","),
+        burnMintAddresses: burns.map((burn) => burn.mintAddress).join(","),
+        ownerWalletAddress: burns[0]!.ownerWalletAddress,
+      },
+    };
+    state.wallet.hallPasses = current - burns.length;
+    for (let i = 0; i < spentCards.length; i += 1) {
+      const card = spentCards[i]!;
+      const burn = burns[i]!;
+      card.status = "redeemed";
+      card.updatedAt = at;
+      card.redeemTransactionId = transaction.id;
+      card.burnedAt = at;
+      card.burnSignature = burn.burnSignature;
+    }
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    attachHallPassCardMetadata(transaction, spentCards);
+    recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: transaction.source ?? "hall-pass-card",
+      feature: "hall-pass-card-burn",
+      status: "success",
+      hallPassesDelta: transaction.hallPasses ?? 0,
+      metadata: { transactionId: transaction.id, cardCount: burns.length },
+    });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction, cards: spentCards };
+  }
+
   refundHallPasses(sessionId: string, input: HallPassMutationInput): HallPassMutationResult {
     return this.applyHallPassTransaction(sessionId, "hall-pass-refund", input);
   }
@@ -1485,6 +1576,19 @@ export class RubyHighService extends Service {
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
     return normalizeHallPassCards(state.wallet.hallPassCards)
       .filter((card) => card.status === "active" && !card.mintAddress && !card.mintSignature);
+  }
+
+  burnableHallPassCards(sessionId: string, ownerWalletAddress?: string): RubyHighHallPassCard[] {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const owner = typeof ownerWalletAddress === "string" ? ownerWalletAddress.trim() : "";
+    return normalizeHallPassCards(state.wallet.hallPassCards)
+      .filter((card) => (
+        card.status === "active" &&
+        !!card.mintAddress &&
+        !!card.mintSignature &&
+        (!owner || card.ownerWalletAddress === owner)
+      ));
   }
 
   recordHallPassCardMint(sessionId: string, input: HallPassCardMintInput): {
@@ -4996,6 +5100,27 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
   if (Number.isFinite(burnedAt) && burnedAt > 0) entry.burnedAt = burnedAt;
   return entry;
+}
+
+function normalizeHallPassBurnInputs(value: HallPassCardBurnInput[] | undefined): HallPassCardBurnInput[] {
+  if (!Array.isArray(value)) return [];
+  const seenCards = new Set<string>();
+  const out: HallPassCardBurnInput[] = [];
+  for (const raw of value) {
+    const cardId = typeof raw?.cardId === "string" ? raw.cardId.trim().slice(0, 96) : "";
+    const ownerWalletAddress = typeof raw?.ownerWalletAddress === "string" ? raw.ownerWalletAddress.trim() : "";
+    const mintAddress = typeof raw?.mintAddress === "string" ? raw.mintAddress.trim() : "";
+    const burnSignature = typeof raw?.burnSignature === "string" ? raw.burnSignature.trim() : "";
+    if (!cardId || !ownerWalletAddress || !mintAddress || !burnSignature) {
+      throw new Error("Burned Card payment is incomplete.");
+    }
+    if (seenCards.has(cardId)) {
+      throw new Error("Burned Card payment contains a duplicate card.");
+    }
+    seenCards.add(cardId);
+    out.push({ cardId, ownerWalletAddress, mintAddress, burnSignature });
+  }
+  return out;
 }
 
 function normalizeHallPassCards(value: unknown): RubyHighHallPassCard[] {

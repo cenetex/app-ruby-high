@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
-import { RubyHighService, type QuestionBankStatus } from "./services/ruby-high-service.js";
+import { RubyHighService, type HallPassCardBurnInput, type QuestionBankStatus } from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import {
@@ -23,6 +23,7 @@ import {
   privyServerConfigured,
   verifyPrivyAuth,
 } from "./services/privy-auth.js";
+import { verifyHallPassCardBurn } from "./services/hall-pass-nfts.js";
 import {
   highestScoringFaculty,
   maybeUploadPortrait,
@@ -1180,6 +1181,36 @@ async function prepareHostedImageCharge(args: {
         usedPhotoDayCredit: true,
       };
     }
+    const burns = hallPassBurnsFromBody(args.body);
+    if (burns.length > 0) {
+      if (burns.length !== hallPassCost) {
+        throw new HostedImageChargeError(
+          `Need ${hallPassCost} burned Card${hallPassCost === 1 ? "" : "s"} for this image.`,
+          402,
+        );
+      }
+      for (const burn of burns) await verifyHallPassCardBurn(burn);
+      const spend = args.ruby.spendBurnedHallPassCards(args.sessionId, {
+        burns,
+        idempotencyKey: spendKey,
+        source: "hosted-image",
+        description: args.description,
+        metadata: {
+          route: args.route,
+          requestId,
+          fingerprint,
+          status: "pending",
+        },
+      });
+      await args.ruby.flushSession(args.sessionId);
+      return {
+        hallPassCost,
+        hallPasses: spend.state.wallet.hallPasses,
+        requestId,
+        spendKey,
+        replayUrl: null,
+      };
+    }
     const spend = args.ruby.spendHallPasses(args.sessionId, {
       amount: hallPassCost,
       idempotencyKey: spendKey,
@@ -1207,6 +1238,24 @@ async function prepareHostedImageCharge(args: {
       message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Cards") || message.startsWith("Not enough Photo Day credits") ? 402 : 503,
     );
   }
+}
+
+function hallPassBurnsFromBody(body: Record<string, unknown> | null | undefined): HallPassCardBurnInput[] {
+  const rawBurns = body && Array.isArray(body.hallPassBurns)
+    ? body.hallPassBurns
+    : body && Array.isArray(body.burns)
+      ? body.burns
+      : [];
+  return rawBurns.flatMap((raw): HallPassCardBurnInput[] => {
+    if (!raw || typeof raw !== "object") return [];
+    const record = raw as Record<string, unknown>;
+    const cardId = typeof record.cardId === "string" ? record.cardId.trim() : "";
+    const ownerWalletAddress = typeof record.ownerWalletAddress === "string" ? record.ownerWalletAddress.trim() : "";
+    const mintAddress = typeof record.mintAddress === "string" ? record.mintAddress.trim() : "";
+    const burnSignature = typeof record.burnSignature === "string" ? record.burnSignature.trim() : "";
+    if (!cardId || !ownerWalletAddress || !mintAddress || !burnSignature) return [];
+    return [{ cardId, ownerWalletAddress, mintAddress, burnSignature }];
+  });
 }
 
 async function completeHostedImageCharge(args: {

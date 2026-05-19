@@ -73,12 +73,19 @@ interface SolanaPaymentResult {
   walletAddress: string;
 }
 
+interface SolanaPreparedTransaction {
+  transaction?: string;
+  transactionBase64?: string;
+  chain?: "solana:mainnet" | "solana:devnet" | "solana:testnet";
+}
+
 interface RubyHighPrivyClient {
   current(): Promise<RubyHighPrivySession>;
   login(): Promise<RubyHighPrivySession | null>;
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
+  signAndSendSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaPaymentResult>;
   onSession(listener: SessionListener): () => void;
 }
 
@@ -88,6 +95,7 @@ interface BridgeApi {
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
+  signAndSendSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaPaymentResult>;
 }
 
 interface PendingLogin {
@@ -129,6 +137,7 @@ export async function createRubyHighPrivyClient(
     connectSolanaWallet: () => requireBridge(bridgeApi).connectSolanaWallet(),
     logout: () => requireBridge(bridgeApi).logout(),
     paySolanaQuote: (quote) => requireBridge(bridgeApi).paySolanaQuote(quote),
+    signAndSendSolanaTransaction: (transaction) => requireBridge(bridgeApi).signAndSendSolanaTransaction(transaction),
     onSession(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -257,6 +266,25 @@ function RubyHighPrivyBridge(props: {
       transaction,
       wallet,
       chain: "solana:mainnet",
+    });
+    return {
+      signature: base58Encode(result.signature),
+      walletAddress: wallet.address,
+    };
+  }, [privy.authenticated, privy.ready, signAndSendTransaction, solanaWallets.ready]);
+
+  const signAndSendSolanaPreparedTransaction = useCallback(async (
+    prepared: SolanaPreparedTransaction,
+  ): Promise<SolanaPaymentResult> => {
+    if (!privy.ready || !privy.authenticated) throw new Error("Connect your Ruby High account first.");
+    if (!solanaWallets.ready) throw new Error("Solana wallets are still starting.");
+    const wallet = selectSolanaWallet(solanaWalletsRef.current);
+    if (!wallet) throw new Error("Connect a Solana wallet first.");
+    const transaction = base64Decode(prepared.transactionBase64 || prepared.transaction || "");
+    const result = await signAndSendTransaction({
+      transaction,
+      wallet,
+      chain: prepared.chain || "solana:mainnet",
     });
     return {
       signature: base58Encode(result.signature),
@@ -396,8 +424,24 @@ function RubyHighPrivyBridge(props: {
   }, [privy, props]);
 
   useEffect(() => {
-    props.register({ current, login: openLogin, connectSolanaWallet, logout, paySolanaQuote }, privy.ready);
-  }, [connectSolanaWallet, current, logout, openLogin, paySolanaQuote, privy.ready, props]);
+    props.register({
+      current,
+      login: openLogin,
+      connectSolanaWallet,
+      logout,
+      paySolanaQuote,
+      signAndSendSolanaTransaction: signAndSendSolanaPreparedTransaction,
+    }, privy.ready);
+  }, [
+    connectSolanaWallet,
+    current,
+    logout,
+    openLogin,
+    paySolanaQuote,
+    privy.ready,
+    props,
+    signAndSendSolanaPreparedTransaction,
+  ]);
 
   useEffect(() => {
     if (modal.isOpen) {
@@ -531,6 +575,15 @@ function base58Encode(bytes: Uint8Array): string {
     out += BASE58_ALPHABET[digits[i]];
   }
   return out || "1";
+}
+
+function base64Decode(value: string): Uint8Array {
+  const clean = value.trim();
+  if (!clean) throw new Error("Solana transaction is missing.");
+  const binary = window.atob(clean);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 function ensureHost(): HTMLElement {

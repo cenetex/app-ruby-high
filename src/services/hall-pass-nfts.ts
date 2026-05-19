@@ -2,17 +2,26 @@ import { createHash } from "node:crypto";
 import {
   address,
   appendTransactionMessageInstructions,
+  compileTransaction,
   createKeyPairSignerFromBytes,
+  createNoopSigner,
   createSolanaRpc,
   createTransactionMessage,
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
+  getTransactionEncoder,
   pipe,
+  setTransactionMessageFeePayer,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { createNft } from "@metaplex-foundation/mpl-token-metadata-kit";
+import type { Instruction } from "@solana/kit";
+import { TokenStandard, createNft, getBurnV1InstructionAsync } from "@metaplex-foundation/mpl-token-metadata-kit";
+import {
+  findAssociatedTokenPda,
+  TOKEN_PROGRAM_ADDRESS,
+} from "@solana-program/token";
 import type { RubyHighHallPassCard } from "../types.js";
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
@@ -49,18 +58,64 @@ export interface HallPassNftMintResult {
   metadataUri: string;
 }
 
+export interface HallPassNftBurnTransaction {
+  ownerWalletAddress: string;
+  mintAddress: string;
+  tokenAccountAddress: string;
+  transaction: string;
+  transactionEncoding: "base64";
+  rpcUrl: string;
+}
+
+export interface HallPassNftBurnVerification {
+  signature: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  slot?: number;
+  blockTime?: number;
+}
+
 type HallPassNftMinter = (
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
 ) => Promise<HallPassNftMintResult>;
+type HallPassNftBurnTransactionBuilder = (
+  card: RubyHighHallPassCard,
+  ownerWalletAddress: string,
+) => Promise<HallPassNftBurnTransaction>;
+type HallPassNftBurnVerifier = (input: {
+  ownerWalletAddress: string;
+  mintAddress: string;
+  burnSignature: string;
+}) => Promise<HallPassNftBurnVerification>;
 
 let minterOverride: HallPassNftMinter | null = null;
+let burnTransactionBuilderOverride: HallPassNftBurnTransactionBuilder | null = null;
+let burnVerifierOverride: HallPassNftBurnVerifier | null = null;
 
 export function setHallPassNftMinterForTest(minter: HallPassNftMinter | null): () => void {
   const previous = minterOverride;
   minterOverride = minter;
   return () => {
     minterOverride = previous;
+  };
+}
+
+export function setHallPassNftBurnTransactionBuilderForTest(
+  builder: HallPassNftBurnTransactionBuilder | null,
+): () => void {
+  const previous = burnTransactionBuilderOverride;
+  burnTransactionBuilderOverride = builder;
+  return () => {
+    burnTransactionBuilderOverride = previous;
+  };
+}
+
+export function setHallPassNftBurnVerifierForTest(verifier: HallPassNftBurnVerifier | null): () => void {
+  const previous = burnVerifierOverride;
+  burnVerifierOverride = verifier;
+  return () => {
+    burnVerifierOverride = previous;
   };
 }
 
@@ -195,6 +250,95 @@ export async function mintHallPassCardNft(
     mintAddress: mint.address,
     mintSignature: String(signature),
     metadataUri,
+  };
+}
+
+export async function buildHallPassCardBurnTransaction(
+  card: RubyHighHallPassCard,
+  ownerWalletAddress: string,
+): Promise<HallPassNftBurnTransaction> {
+  return buildHallPassCardsBurnTransaction([card], ownerWalletAddress);
+}
+
+export async function buildHallPassCardsBurnTransaction(
+  cards: RubyHighHallPassCard[],
+  ownerWalletAddress: string,
+): Promise<HallPassNftBurnTransaction> {
+  const firstCard = cards[0];
+  if (!firstCard) throw new Error("No card was selected for burning.");
+  if (burnTransactionBuilderOverride) return burnTransactionBuilderOverride(firstCard, ownerWalletAddress);
+  const config = readMintConfig();
+  const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
+  const ownerSigner = createNoopSigner(owner);
+  const instructions: Instruction[] = [];
+  let firstMint = "";
+  let firstTokenAccount = "";
+  for (const card of cards) {
+    const mint = address(cleanSolanaAddress(card.mintAddress || "", "Card mint"));
+    if (!firstMint) firstMint = mint;
+    const [tokenAccount] = await findAssociatedTokenPda({
+      owner,
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      mint,
+    });
+    if (!firstTokenAccount) firstTokenAccount = tokenAccount;
+    instructions.push(await getBurnV1InstructionAsync({
+      authority: ownerSigner,
+      mint,
+      token: tokenAccount,
+      tokenOwner: owner,
+      tokenStandard: TokenStandard.NonFungible,
+      amount: 1n,
+    }));
+  }
+  const { value: latestBlockhash } = await createSolanaRpc(config.rpcUrl).getLatestBlockhash().send();
+  const transactionBytes = pipe(
+    createTransactionMessage({ version: 0 }),
+    (tx) => setTransactionMessageFeePayer(owner, tx),
+    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+    (tx) => appendTransactionMessageInstructions(instructions, tx),
+    (tx) => compileTransaction(tx),
+    (tx) => new Uint8Array(getTransactionEncoder().encode(tx)),
+  );
+  return {
+    ownerWalletAddress: owner,
+    mintAddress: firstMint,
+    tokenAccountAddress: firstTokenAccount,
+    transaction: Buffer.from(transactionBytes).toString("base64"),
+    transactionEncoding: "base64",
+    rpcUrl: config.rpcUrl,
+  };
+}
+
+export async function verifyHallPassCardBurn(input: {
+  ownerWalletAddress: string;
+  mintAddress: string;
+  burnSignature: string;
+}): Promise<HallPassNftBurnVerification> {
+  if (burnVerifierOverride) return burnVerifierOverride(input);
+  const config = readMintConfig();
+  const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
+  const mintAddress = cleanSolanaAddress(input.mintAddress, "Card mint");
+  const signature = cleanSignature(input.burnSignature);
+  let transaction: Record<string, any> | null = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt > 0) await sleep(1000 + attempt * 500);
+    transaction = await fetchParsedTransaction(config.rpcUrl, signature);
+    if (transaction) break;
+  }
+  if (!transaction) throw new Error("Solana burn transaction was not found yet. Try again after confirmation.");
+  if (transaction.meta?.err != null) throw new Error("Solana burn transaction failed on-chain.");
+  const signatures = Array.isArray(transaction.transaction?.signatures) ? transaction.transaction.signatures : [];
+  if (!signatures.includes(signature)) throw new Error("Solana RPC returned a different burn transaction.");
+  if (!transactionBurnsMintFromOwner(transaction, mintAddress, ownerWalletAddress)) {
+    throw new Error("Solana transaction does not burn this Ruby High card.");
+  }
+  return {
+    signature,
+    ownerWalletAddress,
+    mintAddress,
+    ...(typeof transaction.slot === "number" ? { slot: transaction.slot } : {}),
+    ...(typeof transaction.blockTime === "number" ? { blockTime: transaction.blockTime } : {}),
   };
 }
 
@@ -341,6 +485,92 @@ function cleanSolanaAddress(value: string, label: string): string {
     throw new Error(`${label} is invalid.`);
   }
   return clean;
+}
+
+function cleanSignature(value: string): string {
+  const clean = value.trim();
+  if (clean.length < 64 || clean.length > 96) throw new Error("Solana burn signature is invalid.");
+  for (const char of clean) {
+    if (!BASE58_INDEX.has(char)) throw new Error("Solana burn signature is invalid.");
+  }
+  return clean;
+}
+
+async function fetchParsedTransaction(rpcUrl: string, signature: string): Promise<Record<string, any> | null> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-card-burn",
+      method: "getTransaction",
+      params: [
+        signature,
+        {
+          encoding: "jsonParsed",
+          maxSupportedTransactionVersion: 0,
+          commitment: "confirmed",
+        },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
+  const payload = await response.json().catch(() => ({})) as {
+    error?: { message?: string; code?: number };
+    result?: Record<string, any> | null;
+  };
+  if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
+  return payload.result ?? null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function transactionBurnsMintFromOwner(
+  transaction: Record<string, any>,
+  mintAddress: string,
+  ownerWalletAddress: string,
+): boolean {
+  const instructions = [
+    ...readInstructions(transaction.transaction?.message?.instructions),
+    ...readInstructions(transaction.meta?.innerInstructions),
+  ];
+  return instructions.some((instruction) => {
+    const parsed = instruction?.parsed;
+    if (!parsed || typeof parsed !== "object") return false;
+    const type = typeof parsed.type === "string" ? parsed.type.toLowerCase() : "";
+    if (type !== "burn" && type !== "burnchecked" && type !== "burn_checked") return false;
+    const info = parsed.info && typeof parsed.info === "object" ? parsed.info as Record<string, unknown> : {};
+    const mint = typeof info.mint === "string" ? info.mint : "";
+    const owner = typeof info.owner === "string"
+      ? info.owner
+      : typeof info.authority === "string"
+        ? info.authority
+        : "";
+    const tokenAmount = info.tokenAmount && typeof info.tokenAmount === "object"
+      ? info.tokenAmount as Record<string, unknown>
+      : {};
+    const amount = typeof info.amount === "string" || typeof info.amount === "number" || typeof info.amount === "bigint"
+      ? String(info.amount)
+      : typeof tokenAmount.amount === "string" || typeof tokenAmount.amount === "number" || typeof tokenAmount.amount === "bigint"
+        ? String(tokenAmount.amount)
+        : "";
+    return mint === mintAddress && owner === ownerWalletAddress && amount === "1";
+  });
+}
+
+function readInstructions(value: unknown): any[] {
+  if (!Array.isArray(value)) return [];
+  const out: any[] = [];
+  for (const entry of value) {
+    if (entry && typeof entry === "object" && Array.isArray((entry as Record<string, unknown>).instructions)) {
+      out.push(...readInstructions((entry as Record<string, unknown>).instructions));
+    } else {
+      out.push(entry);
+    }
+  }
+  return out;
 }
 
 function parseSecretKeyBytes(raw: string): Uint8Array {

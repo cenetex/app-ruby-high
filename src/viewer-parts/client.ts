@@ -3051,6 +3051,91 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return data;
   }
 
+  function activeMintedHallPassCardsForWallet(ownerWalletAddress) {
+    const owner = String(ownerWalletAddress || connectedSolanaWalletAddress() || "").trim();
+    if (!owner) return [];
+    return hallPassCardsForTelemetry()
+      .filter((card) => (
+        card.status === "active" &&
+        card.mintAddress &&
+        card.mintSignature &&
+        card.ownerWalletAddress === owner
+      ))
+      .sort((a, b) => Number(a.issuedAt || 0) - Number(b.issuedAt || 0) || Number(a.serial || 0) - Number(b.serial || 0));
+  }
+
+  async function burnHallPassCardsForSpend(count, opts) {
+    const needed = positiveWholeNumber(count, 1);
+    if (needed <= 0) return [];
+    if (!connectedSolanaWalletAddress()) {
+      const connected = await ensureSolanaWalletForBilling();
+      if (!connected) throw new Error("Connect a Solana wallet before burning a card.");
+    }
+    const ownerWalletAddress = connectedSolanaWalletAddress();
+    const cards = activeMintedHallPassCardsForWallet(ownerWalletAddress);
+    if (cards.length < needed) {
+      const mintable = hallPassCardsForTelemetry().filter((card) => card.status === "active" && !card.mintAddress);
+      if (mintable.length > 0) throw new Error("Mint cards before burning them.");
+      throw new Error("No minted card is available to burn from this wallet.");
+    }
+    const client = await getPrivyClient();
+    if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
+      throw new Error("Solana card burn is unavailable.");
+    }
+    const selectedCards = cards.slice(0, needed);
+    if (opts && typeof opts.status === "function") {
+      opts.status(
+        "Opening wallet to burn " + needed + " card" + (needed === 1 ? "" : "s") + "...",
+        false,
+      );
+    }
+    const r = await apiFetch(apiBase + "/nft/burn-prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      timeoutMs: 15000,
+      body: JSON.stringify({ cardIds: selectedCards.map((card) => card.id), ownerWalletAddress }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data || !data.ok || !data.burn) throw new Error(data.error || "card burn " + r.status);
+    const preparedCards = Array.isArray(data.cards) && data.cards.length > 0
+      ? data.cards
+      : [{
+        cardId: data.cardId || selectedCards[0].id,
+        characterId: data.characterId || selectedCards[0].characterId,
+        characterName: data.characterName || selectedCards[0].characterName,
+        mintAddress: data.mintAddress || data.burn.mintAddress,
+      }];
+    if (preparedCards.length !== needed) throw new Error("Card burn count changed before signing.");
+    const payment = await client.signAndSendSolanaTransaction(data.burn);
+    const burnOwner = payment.walletAddress || ownerWalletAddress;
+    const burns = preparedCards.map((card) => ({
+      cardId: card.cardId,
+      ownerWalletAddress: burnOwner,
+      mintAddress: card.mintAddress,
+      burnSignature: payment.signature,
+    }));
+    for (const burn of burns) await confirmHallPassCardBurn(burn);
+    return burns;
+  }
+
+  async function confirmHallPassCardBurn(burn) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (attempt > 0) await waitForSolanaConfirmation(1200 + attempt * 500);
+      const r = await apiFetch(apiBase + "/nft/burn-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 15000,
+        body: JSON.stringify(burn),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data && data.ok) return data;
+      lastError = new Error(data.error || "card burn confirm " + r.status);
+      if (!/not found yet|confirmation|try again|rpc/i.test(lastError.message)) break;
+    }
+    throw lastError || new Error("Card burn could not be confirmed.");
+  }
+
   function accountAiAccessSuccessText(data) {
     const hostedAi = data && data.hosted_ai && typeof data.hosted_ai === "object"
       ? data.hosted_ai
@@ -3066,17 +3151,44 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     billingBusy = true;
     renderAccountPage();
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    if (fromAccount) setPrivyStatus("Burning card for AI access...", false);
-    setBillingStatus("Burning card for AI access...", false);
     try {
-      const r = await apiFetch(apiBase + "/billing/ai-pass", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        timeoutMs: 12000,
-        body: JSON.stringify({}),
+      const aiStatus = hostedAiTelemetry(lastTelemetry || {});
+      if (aiStatus.active) {
+        const message = "AI access is already active.";
+        setBillingStatus(message, false);
+        if (fromAccount) setPrivyStatus(message, false);
+        return;
+      }
+      if (fromAccount) setPrivyStatus("Burning card for AI access...", false);
+      setBillingStatus("Burning card for AI access...", false);
+      const aiCost = aiStatus.cost;
+      const burns = await burnHallPassCardsForSpend(aiCost, {
+        status: (message, invalid) => {
+          setBillingStatus(message, invalid);
+          if (fromAccount) setPrivyStatus(message, invalid);
+        },
       });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok) throw new Error(data.error || "AI pass " + r.status);
+      let data = null;
+      let lastError = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        if (attempt > 0) await waitForSolanaConfirmation(1500 + attempt * 500);
+        const r = await apiFetch(apiBase + "/billing/ai-pass", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          timeoutMs: 12000,
+          body: JSON.stringify({ hallPassBurns: burns }),
+        });
+        data = await r.json().catch(() => ({}));
+        if (r.ok && data && data.ok) {
+          lastError = null;
+          break;
+        }
+        lastError = new Error(data.error || "AI pass " + r.status);
+        if (!/not found yet|try again|rpc/i.test(lastError.message) || attempt === 3) throw lastError;
+        setBillingStatus("Waiting for card burn confirmation...", false);
+        if (fromAccount) setPrivyStatus("Waiting for card burn confirmation...", false);
+      }
+      if (lastError) throw lastError;
       const message = data.applied ? accountAiAccessSuccessText(data) : "AI access is already active.";
       setBillingStatus(message, false);
       if (fromAccount) setPrivyStatus(message, false);
@@ -5503,6 +5615,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   let diplomaInFlight = false;
   async function maybeFireDiplomaGen(c) {
     if (!c || !graduatedFor(c) || c.diplomaImageDataUrl || diplomaInFlight) return;
+    if (usingHostedImageGeneration("diploma")) return;
     diplomaInFlight = true;
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
@@ -5854,10 +5967,24 @@ export function runViewerClient(bootstrap, loadViewerModule) {
           const btn = e && e.currentTarget;
           if (btn) { btn.disabled = true; btn.textContent = "✨ Generating…"; }
           try {
+            if (!(await confirmHostedCreditSpend("Generate diploma image", "diploma"))) {
+              if (btn) { btn.disabled = false; btn.textContent = "✨ Try a different look"; }
+              return;
+            }
+            const diplomaEntitlement = hostedImageEntitlement("diploma") || {};
+            const diplomaCost = diplomaEntitlement.cost || 3;
+            const hallPassBurns = usingHostedImageGeneration("diploma")
+              ? await burnHallPassCardsForSpend(diplomaCost, {
+                status: (message) => { if (btn) btn.textContent = message; },
+              })
+              : [];
             const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ requestId: imageRequestId("diploma") }),
+              body: JSON.stringify({
+                requestId: imageRequestId("diploma"),
+                ...(hallPassBurns.length > 0 ? { hallPassBurns } : {}),
+              }),
             });
             if (!r.ok) throw new Error("diploma " + r.status);
             await fetchSession();
@@ -7115,12 +7242,21 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         !!(hostedImageEntitlement("portrait") && hostedImageEntitlement("portrait").configured) &&
         characterSlotTelemetry().photoDayCredits > 0;
       if (!(await confirmHostedCreditSpend("Custom character portrait", "portrait", usePhotoDayCredit))) return;
+      let hallPassBurns = [];
       inFlight.portrait = true;
       portraitBtn.textContent = "✨ Generating…";
       portraitStatus.textContent = "";
       portraitStatus.classList.remove("is-invalid");
       applyDisabled();
       try {
+        hallPassBurns = !usePhotoDayCredit && usingHostedImageGeneration("portrait")
+          ? await burnHallPassCardsForSpend(1, {
+            status: (message, invalid) => {
+              portraitStatus.textContent = message;
+              portraitStatus.classList.toggle("is-invalid", !!invalid);
+            },
+          })
+          : [];
         const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -7130,6 +7266,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
             playbookId: rolled.playbookId,
             personality: rolled.personality,
             stats: rolled.stats,
+            ...(hallPassBurns.length > 0 ? { hallPassBurns } : {}),
           }),
         });
         if (!r.ok) {
@@ -7144,7 +7281,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         portraitBtn.textContent = "✨ Try again";
         portraitStatus.textContent = "AI portrait ready.";
       } catch (err) {
-        portraitStatus.textContent = "Couldn't generate — keeping the default.";
+        portraitStatus.textContent = err && err.message ? err.message : "Couldn't generate — keeping the default.";
         portraitStatus.classList.add("is-invalid");
         portraitBtn.textContent = "✨ Generate AI portrait";
       } finally {
@@ -8491,6 +8628,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       return;
     }
     if (!(await confirmHostedCreditSpend("Custom teacher image generation", "portrait"))) return;
+    let hallPassBurns = [];
     const runId = ++pendingTeacherImageRunId;
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     pendingTeacherImageAbortController = controller;
@@ -8499,6 +8637,15 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     pendingTeacherImageInvalid = false;
     renderPackTeacherEditor();
     try {
+      hallPassBurns = usingHostedImageGeneration("portrait")
+        ? await burnHallPassCardsForSpend(1, {
+          status: (message, invalid) => {
+            pendingTeacherImageStatus = message;
+            pendingTeacherImageInvalid = !!invalid;
+            renderPackTeacherEditor();
+          },
+        })
+        : [];
       const r = await apiFetch("/api/apps/ruby-high/chat/teacher/portrait", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -8507,6 +8654,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
           requestId: imageRequestId("teacher-portrait"),
           name: pendingTeacherRoll.displayName,
           personality: pendingTeacherRoll.description,
+          ...(hallPassBurns.length > 0 ? { hallPassBurns } : {}),
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -8527,7 +8675,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       const aborted = err && err.name === "AbortError";
       pendingTeacherImageStatus = aborted
         ? "Generation canceled. Custom image is unchanged."
-        : "Couldn't generate - keeping the current teacher image.";
+        : (err && err.message ? err.message : "Couldn't generate - keeping the current teacher image.");
       pendingTeacherImageInvalid = !aborted;
     } finally {
       if (runId === pendingTeacherImageRunId) {

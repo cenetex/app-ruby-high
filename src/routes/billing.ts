@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { AuthService } from "../services/auth-service.js";
-import { RubyHighService } from "../services/ruby-high-service.js";
+import { RubyHighService, type HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import {
   courseSlotCost,
   hostedAiAccessCost,
@@ -11,7 +11,7 @@ import {
   moreQuestionsCount,
   questionGenerationCost,
 } from "../hosted-entitlements.js";
-import { publicHallPassNftStatus } from "../services/hall-pass-nfts.js";
+import { publicHallPassNftStatus, verifyHallPassCardBurn } from "../services/hall-pass-nfts.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
@@ -937,6 +937,32 @@ function authenticatedStateKey(ctx: RouteContext, deps: BillingDeps): string | n
   return deps.auth.stateKeyForRecord(record);
 }
 
+function hallPassBurnsFromBody(body: Record<string, unknown>): HallPassCardBurnInput[] {
+  const rawBurns = Array.isArray(body.hallPassBurns)
+    ? body.hallPassBurns
+    : Array.isArray(body.burns)
+      ? body.burns
+      : [];
+  return rawBurns.flatMap((raw): HallPassCardBurnInput[] => {
+    if (!raw || typeof raw !== "object") return [];
+    const record = raw as Record<string, unknown>;
+    const cardId = typeof record.cardId === "string" ? record.cardId.trim() : "";
+    const ownerWalletAddress = typeof record.ownerWalletAddress === "string" ? record.ownerWalletAddress.trim() : "";
+    const mintAddress = typeof record.mintAddress === "string" ? record.mintAddress.trim() : "";
+    const burnSignature = typeof record.burnSignature === "string" ? record.burnSignature.trim() : "";
+    if (!cardId || !isBase58Address(ownerWalletAddress) || !isBase58Address(mintAddress) || !isSolanaSignature(burnSignature)) {
+      return [];
+    }
+    return [{ cardId, ownerWalletAddress, mintAddress, burnSignature }];
+  });
+}
+
+async function verifyHallPassBurns(burns: HallPassCardBurnInput[]): Promise<void> {
+  for (const burn of burns) {
+    await verifyHallPassCardBurn(burn);
+  }
+}
+
 export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps): Promise<boolean> {
   if (!ctx.pathname.startsWith(BILLING_PREFIX)) return false;
 
@@ -1129,10 +1155,14 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const burns = hallPassBurnsFromBody(body);
     try {
+      if (burns.length > 0) await verifyHallPassBurns(burns);
       const activation = deps.ruby.activateHostedAiAccess(stateKey, {
         hallPassCost: hostedAiAccessCost(),
         durationMs: hostedAiAccessDurationMs(),
+        ...(burns.length > 0 ? { burns } : {}),
       });
       await deps.ruby.flushSession(stateKey);
       const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
