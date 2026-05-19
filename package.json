@@ -32,6 +32,7 @@
     "typecheck": "tsc --noEmit && node scripts/check-viewer-script.mjs",
     "test": "vitest",
     "test:ci": "vitest --run --testTimeout=15000",
+    "test:coverage": "vitest --run --coverage --testTimeout=15000",
     "check": "npm run typecheck && npm run test:ci && npm run build",
     "check:full": "npm run typecheck && npm run test:ci && npm run build:spa",
     "balance:report": "node scripts/balance-report.mjs",
@@ -54,6 +55,7 @@
     "@types/node": "^22.19.19",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^4.1.5",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.5"
