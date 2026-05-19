@@ -2695,6 +2695,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (!productId || billingBusy) return;
     billingBusy = true;
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    setBillingStatus("Starting crypto checkout...", false);
     try {
       if (!connectedSolanaWalletAddress()) {
         const connected = await ensureSolanaWalletForBilling();

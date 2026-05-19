@@ -8,7 +8,6 @@ import {
   usePrivy,
   type LinkedAccountWithMetadata,
   type User,
-  type WalletListEntry,
 } from "@privy-io/react-auth";
 import {
   useSignAndSendTransaction,
@@ -100,14 +99,7 @@ interface PendingLogin {
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const PRIVY_ACTION_TIMEOUT_MS = 30_000;
-const SOLANA_WALLET_LIST: WalletListEntry[] = [
-  "phantom",
-  "solflare",
-  "backpack",
-  "jupiter",
-  "detected_solana_wallets",
-  "wallet_connect_qr_solana",
-];
+const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;
 
 let mountedRoot: Root | null = null;
 let mountedConfigKey = "";
@@ -177,7 +169,6 @@ export async function createRubyHighPrivyClient(
               theme: "dark",
               accentColor: "#df2f2f",
               showWalletLoginFirst: false,
-              walletList: SOLANA_WALLET_LIST,
               walletChainType: "ethereum-and-solana",
             },
           },
@@ -205,6 +196,11 @@ function RubyHighPrivyBridge(props: {
   const pendingWalletConnect = useRef<PendingLogin | null>(null);
   const modalOpenedForLogin = useRef(false);
   const modalOpenedForWalletConnect = useRef(false);
+  const solanaWalletsRef = useRef<ConnectedStandardSolanaWallet[]>([]);
+
+  useEffect(() => {
+    solanaWalletsRef.current = solanaWallets.wallets;
+  }, [solanaWallets.wallets]);
 
   const resolvePendingLogin = (session: RubyHighPrivySession | null) => {
     const pending = pendingLogin.current;
@@ -238,18 +234,21 @@ function RubyHighPrivyBridge(props: {
     modalOpenedForWalletConnect.current = false;
   };
 
-  const current = useCallback(async (userOverride?: User | null): Promise<RubyHighPrivySession> => {
+  const current = useCallback(async (
+    userOverride?: User | null,
+    connectedWallets?: ConnectedStandardSolanaWallet[],
+  ): Promise<RubyHighPrivySession> => {
     if (!privy.ready) return emptySession();
     const user = userOverride ?? privy.user;
     if (!privy.authenticated || !user) return emptySession();
     const accessToken = await privy.getAccessToken();
-    return sessionFromUser(user, accessToken, firstSolanaWalletAddress(solanaWallets.wallets));
-  }, [privy, solanaWallets.wallets]);
+    return sessionFromUser(user, accessToken, firstSolanaWalletAddress(connectedWallets ?? solanaWalletsRef.current));
+  }, [privy]);
 
   const paySolanaQuote = useCallback(async (quote: SolanaPaymentQuote): Promise<SolanaPaymentResult> => {
     if (!privy.ready || !privy.authenticated) throw new Error("Connect your Ruby High account first.");
     if (!solanaWallets.ready) throw new Error("Solana wallets are still starting.");
-    const wallet = selectSolanaWallet(solanaWallets.wallets);
+    const wallet = selectSolanaWallet(solanaWalletsRef.current);
     if (!wallet) throw new Error("Connect a Solana wallet first.");
     const transaction = await buildSplTokenPaymentTransaction(quote, wallet.address);
     const result = await signAndSendTransaction({
@@ -261,24 +260,17 @@ function RubyHighPrivyBridge(props: {
       signature: base58Encode(result.signature),
       walletAddress: wallet.address,
     };
-  }, [privy.authenticated, privy.ready, signAndSendTransaction, solanaWallets.ready, solanaWallets.wallets]);
+  }, [privy.authenticated, privy.ready, signAndSendTransaction, solanaWallets.ready]);
 
   const { connectWallet } = useConnectWallet({
-    onSuccess: ({ wallet }) => {
-      const connectedSolanaAddress = solanaAddressFromConnectedWallet(wallet);
+    onSuccess: () => {
       window.setTimeout(() => {
-        void current().then(
+        void waitForSolanaWallets(() => solanaWalletsRef.current).then(
+          (wallets) => current(undefined, wallets),
+        ).then(
           (session) => {
-            const nextSession = connectedSolanaAddress
-              ? {
-                  ...session,
-                  solanaWalletAddress: connectedSolanaAddress,
-                  walletAddress: session.walletAddress ?? connectedSolanaAddress,
-                  walletChainType: session.walletChainType ?? "solana",
-                }
-              : session;
-            props.notify(nextSession);
-            resolvePendingWalletConnect(nextSession);
+            props.notify(session);
+            resolvePendingWalletConnect(session);
           },
           (err) => {
             rejectPendingWalletConnect(err);
@@ -615,28 +607,6 @@ function selectSolanaWallet(wallets: ConnectedStandardSolanaWallet[]): Connected
   return wallets.find((wallet) => typeof wallet.address === "string" && !!wallet.address.trim()) ?? null;
 }
 
-function solanaAddressFromConnectedWallet(wallet: unknown): string | null {
-  if (!wallet || typeof wallet !== "object") return null;
-  const record = wallet as Record<string, unknown>;
-  const address = typeof record.address === "string" && record.address.trim()
-    ? record.address.trim()
-    : readNestedSolanaAddress(record.provider);
-  const chainType = record.chainType ?? record.chain_type ?? record.type;
-  return address && chainType === "solana" ? address : null;
-}
-
-function readNestedSolanaAddress(value: unknown): string {
-  if (!value || typeof value !== "object") return "";
-  const record = value as Record<string, unknown>;
-  if (typeof record.address === "string" && record.address.trim()) return record.address.trim();
-  const account = record.account;
-  if (account && typeof account === "object") {
-    const nested = account as Record<string, unknown>;
-    if (typeof nested.address === "string" && nested.address.trim()) return nested.address.trim();
-  }
-  return "";
-}
-
 function walletCandidate(account: unknown): { address: string; chainType: "ethereum" | "solana"; rank: number } | null {
   if (!account || typeof account !== "object") return null;
   const record = account as Record<string, unknown>;
@@ -662,14 +632,28 @@ function walletCandidate(account: unknown): { address: string; chainType: "ether
 
 function readChainType(record: Record<string, unknown>): "ethereum" | "solana" | null {
   const raw = record.chainType ?? record.chain_type;
-  if (raw === "ethereum" || raw === "solana") return raw;
-  const type = record.type;
-  if (type === "wallet" || type === "smart_wallet") {
-    const walletClient = record.walletClientType ?? record.wallet_client;
-    if (walletClient === "phantom" || walletClient === "solflare") return "solana";
-    return "ethereum";
-  }
-  return null;
+  return raw === "ethereum" || raw === "solana" ? raw : null;
+}
+
+function waitForSolanaWallets(
+  readWallets: () => ConnectedStandardSolanaWallet[],
+): Promise<ConnectedStandardSolanaWallet[]> {
+  const startedAt = Date.now();
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      const wallets = readWallets();
+      if (selectSolanaWallet(wallets)) {
+        resolve(wallets);
+        return;
+      }
+      if (Date.now() - startedAt >= SOLANA_WALLET_READY_TIMEOUT_MS) {
+        reject(new Error("Privy connected a wallet, but did not expose a Solana signer. Refresh Ruby High and try again."));
+        return;
+      }
+      window.setTimeout(check, 100);
+    };
+    check();
+  });
 }
 
 function labelFromUser(user: User, walletAddress: string | null): string | null {
