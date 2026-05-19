@@ -13,6 +13,8 @@ export interface RouteContext {
   cookieHeader?: string | null;
   /** Raw User-Agent request header. Stored only in clipped durable metrics metadata. */
   userAgentHeader?: string | string[] | null;
+  /** Raw browser-local visitor id header. Stored only after server-side hashing. */
+  visitorHeader?: string | string[] | null;
   /** Raw value of the `X-Openrouter-Key` header, if the client sent one.
    *  This is the OpenRouter API key - clients keep it in localStorage and
    *  attach it to every LLM-touching request. The server never persists it. */

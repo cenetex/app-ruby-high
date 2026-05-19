@@ -315,6 +315,18 @@ export interface RubyHighAnalyticsSnapshot {
     returnedSessions: number;
     rate: number | null;
   };
+  retention: {
+    characterD1: {
+      eligibleSessions: number;
+      returnedSessions: number;
+      rate: number | null;
+    };
+    visitorD1: {
+      eligibleVisitors: number;
+      returnedVisitors: number;
+      rate: number | null;
+    };
+  };
   characters: number;
   graduatedCharacters: number;
   activeRounds: number;
@@ -330,6 +342,30 @@ export interface RubyHighAnalyticsSnapshot {
     hallPasses: number;
   };
   events: RubyHighMetricEventsSnapshot;
+  funnel: {
+    first10m: {
+      appOpenSessions: number;
+      firstCharacterCreated: number;
+      firstQuestionAnswered: number;
+      firstDailyClassPassed: number;
+      firstGradeCompleted: number;
+    };
+  };
+  guestSpotlight: {
+    seen: number;
+    started: number;
+    overrideSet: number;
+    startRate: number | null;
+  };
+  balance: {
+    repeatRate: {
+      repeatedAnswers: number;
+      totalAnswers: number;
+      rate: number | null;
+    };
+    samples: number;
+    latestSample?: Record<string, string | number | boolean | null>;
+  };
   daily: RubyHighAnalyticsDay[];
 }
 
@@ -342,10 +378,16 @@ export interface RubyHighAnalyticsDay {
   appOpens: number;
   sessionResumes: number;
   funnelSteps: number;
+  visitorSeen: number;
+  yearbookOpens: number;
+  yearbookCopies: number;
+  guestSpotlightSeen: number;
+  guestSpotlightStarted: number;
   commerceEvents: number;
   llmCalls: number;
   llmErrors: number;
   durableErrors: number;
+  balanceSamples: number;
 }
 
 export interface RubyHighMetricEventsSnapshot {
@@ -354,10 +396,16 @@ export interface RubyHighMetricEventsSnapshot {
   appOpen: {
     total: number;
     uniqueSessions: number;
+    uniqueVisitors: number;
   };
   sessionResume: {
     total: number;
     uniqueSessions: number;
+    uniqueVisitors: number;
+  };
+  visitorSeen: {
+    total: number;
+    uniqueVisitors: number;
   };
   funnel: {
     firstCharacterCreated: number;
@@ -365,6 +413,27 @@ export interface RubyHighMetricEventsSnapshot {
     firstEssaySubmitted: number;
     firstDailyClassPassed: number;
     firstGradeCompleted: number;
+  };
+  first10m: {
+    appOpenSessions: number;
+    firstCharacterCreated: number;
+    firstQuestionAnswered: number;
+    firstDailyClassPassed: number;
+    firstGradeCompleted: number;
+  };
+  yearbook: {
+    opens: number;
+    copies: number;
+    uniqueVisitors: number;
+  };
+  guestSpotlight: {
+    seen: number;
+    started: number;
+    overrideSet: number;
+  };
+  balance: {
+    samples: number;
+    latestRepeatRate: number | null;
   };
   commerce: {
     events: number;
@@ -539,9 +608,21 @@ export class RubyHighService extends Service {
     await promise;
   }
 
-  recordAppOpen(sessionId: string, input: { source?: string; userAgent?: string; referrer?: string; path?: string } = {}): void {
+  recordAppOpen(
+    sessionId: string,
+    input: { source?: string; userAgent?: string; referrer?: string; path?: string; visitorHash?: string | null } = {},
+  ): void {
+    if (input.visitorHash) {
+      this.recordMetricEvent("visitor_seen", {
+        sessionId,
+        visitorHash: input.visitorHash,
+        source: input.source ?? "viewer",
+        feature: "viewer",
+      });
+    }
     this.recordMetricEvent("app_open", {
       sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
       metadata: {
@@ -552,9 +633,21 @@ export class RubyHighService extends Service {
     });
   }
 
-  recordSessionResume(sessionId: string, input: { source?: string; inactiveMs?: number; reason?: string } = {}): void {
+  recordSessionResume(
+    sessionId: string,
+    input: { source?: string; inactiveMs?: number; reason?: string; visitorHash?: string | null } = {},
+  ): void {
+    if (input.visitorHash) {
+      this.recordMetricEvent("visitor_seen", {
+        sessionId,
+        visitorHash: input.visitorHash,
+        source: input.source ?? "viewer",
+        feature: "viewer",
+      });
+    }
     this.recordMetricEvent("session_resume", {
       sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
       metadata: {
@@ -563,6 +656,76 @@ export class RubyHighService extends Service {
           : {}),
         ...(input.reason ? { reason: clippedMetricValue(input.reason, 80) } : {}),
       },
+    });
+  }
+
+  recordYearbookOpen(sessionId: string, input: { visitorHash?: string | null; shareId?: string; grade?: string } = {}): void {
+    this.recordMetricEvent("yearbook_open", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "yearbook",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.grade ? { grade: clippedMetricValue(input.grade, 12) } : {}),
+      },
+    });
+  }
+
+  recordYearbookCopy(sessionId: string, input: { visitorHash?: string | null; shareId?: string; grade?: string } = {}): void {
+    this.recordMetricEvent("yearbook_copy", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "yearbook",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.grade ? { grade: clippedMetricValue(input.grade, 12) } : {}),
+      },
+    });
+  }
+
+  recordGuestSpotlightSeen(sessionId: string, input: { visitorHash?: string | null; packId?: string } = {}): void {
+    this.recordMetricEvent("guest_spotlight_seen", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "guest_faculty",
+      status: "success",
+      metadata: input.packId ? { packId: clippedMetricValue(input.packId, 120) } : {},
+    });
+  }
+
+  recordGuestSpotlightStarted(sessionId: string, input: { visitorHash?: string | null; packId?: string } = {}): void {
+    this.recordMetricEvent("guest_spotlight_started", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "guest_faculty",
+      status: "success",
+      metadata: input.packId ? { packId: clippedMetricValue(input.packId, 120) } : {},
+    });
+  }
+
+  recordGuestPackOverrideSet(sessionId: string, input: { visitorHash?: string | null; packId?: string } = {}): void {
+    this.recordMetricEvent("guest_pack_override_set", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "guest_faculty",
+      status: "success",
+      metadata: input.packId ? { packId: clippedMetricValue(input.packId, 120) } : {},
+    });
+  }
+
+  recordBalanceSample(input: { source?: string; metadata?: Record<string, unknown> } = {}): void {
+    this.recordMetricEvent("balance_sample", {
+      source: input.source ?? "script",
+      feature: "balance",
+      status: "success",
+      metadata: input.metadata ?? {},
     });
   }
 
@@ -582,6 +745,7 @@ export class RubyHighService extends Service {
       day: isoDate(occurredAt),
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.userId ? { userId: input.userId } : {}),
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       ...(input.source ? { source: input.source } : {}),
       ...(input.feature ? { feature: input.feature } : {}),
       ...(input.step ? { step: input.step } : {}),
@@ -670,6 +834,8 @@ export class RubyHighService extends Service {
     let essayReports = 0;
     let correct = 0;
     let total = 0;
+    let answerEvents = 0;
+    let repeatedAnswers = 0;
     let meritStars = 0;
     let hallPasses = 0;
     for (const state of this.sessions.values()) {
@@ -706,11 +872,19 @@ export class RubyHighService extends Service {
       }
       correct += Math.max(0, Math.floor(Number(state.score?.correct ?? 0)));
       total += Math.max(0, Math.floor(Number(state.score?.total ?? 0)));
+      const seenQuestionIds = new Set<string>();
+      for (const answer of Array.isArray(state.history) ? state.history : []) {
+        if (!answer?.questionId) continue;
+        answerEvents += 1;
+        if (seenQuestionIds.has(answer.questionId)) repeatedAnswers += 1;
+        else seenQuestionIds.add(answer.questionId);
+      }
       const wallet = normalizeWallet(state.wallet, state.score?.points ?? 0);
       meritStars += wallet.meritStars;
       hallPasses += wallet.hallPasses;
     }
     const events = buildMetricEventsSnapshot(this.metricEvents.values(), byDate);
+    const eventRetention = buildEventRetentionSnapshot(this.metricEvents.values(), now);
     return {
       store: this.store.describe(),
       loaded: this.loaded,
@@ -721,6 +895,16 @@ export class RubyHighService extends Service {
         eligibleSessions: eligibleCharacterSessions,
         returnedSessions: returnedCharacterSessions,
         rate: eligibleCharacterSessions > 0 ? returnedCharacterSessions / eligibleCharacterSessions : null,
+      },
+      retention: {
+        characterD1: eventRetention.characterD1.eligibleSessions > 0
+          ? eventRetention.characterD1
+          : {
+              eligibleSessions: eligibleCharacterSessions,
+              returnedSessions: returnedCharacterSessions,
+              rate: eligibleCharacterSessions > 0 ? returnedCharacterSessions / eligibleCharacterSessions : null,
+            },
+        visitorD1: eventRetention.visitorD1,
       },
       characters,
       graduatedCharacters,
@@ -737,6 +921,24 @@ export class RubyHighService extends Service {
         hallPasses,
       },
       events,
+      funnel: {
+        first10m: events.first10m,
+      },
+      guestSpotlight: {
+        seen: events.guestSpotlight.seen,
+        started: events.guestSpotlight.started,
+        overrideSet: events.guestSpotlight.overrideSet,
+        startRate: events.guestSpotlight.seen > 0 ? events.guestSpotlight.started / events.guestSpotlight.seen : null,
+      },
+      balance: {
+        repeatRate: {
+          repeatedAnswers,
+          totalAnswers: answerEvents,
+          rate: answerEvents > 0 ? repeatedAnswers / answerEvents : null,
+        },
+        samples: events.balance.samples,
+        ...(events.balance.latestRepeatRate != null ? { latestSample: { repeatRate: events.balance.latestRepeatRate } } : {}),
+      },
       daily: days,
     };
   }
@@ -4105,6 +4307,7 @@ export class RubyHighService extends Service {
     this.resetGuestCourseAfterChange(state, previousGuestId);
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
+    this.recordGuestPackOverrideSet(sessionId, { packId });
     log.event("pack.guest-override-set", { sessionId, packId });
     return state;
   }
@@ -4689,10 +4892,16 @@ function buildRubyHighDailyBuckets(now: number, count: number): {
       appOpens: 0,
       sessionResumes: 0,
       funnelSteps: 0,
+      visitorSeen: 0,
+      yearbookOpens: 0,
+      yearbookCopies: 0,
+      guestSpotlightSeen: 0,
+      guestSpotlightStarted: 0,
       commerceEvents: 0,
       llmCalls: 0,
       llmErrors: 0,
       durableErrors: 0,
+      balanceSamples: 0,
     };
     days.push(day);
     byDate.set(date, day);
@@ -4704,22 +4913,57 @@ function buildMetricEventsSnapshot(
   events: Iterable<StoredMetricEventRecord>,
   byDate: Map<string, RubyHighAnalyticsDay>,
 ): RubyHighMetricEventsSnapshot {
+  const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
   const byName: Record<StoredMetricEventName, number> = {
+    visitor_seen: 0,
     app_open: 0,
     session_resume: 0,
     funnel_step: 0,
+    yearbook_open: 0,
+    yearbook_copy: 0,
+    guest_spotlight_seen: 0,
+    guest_spotlight_started: 0,
+    guest_pack_override_set: 0,
     commerce: 0,
     llm_usage: 0,
     error: 0,
+    balance_sample: 0,
   };
   const appOpenSessions = new Set<string>();
+  const appOpenVisitors = new Set<string>();
   const resumeSessions = new Set<string>();
+  const resumeVisitors = new Set<string>();
+  const visitorHashes = new Set<string>();
+  const yearbookVisitors = new Set<string>();
+  const firstAppOpenBySession = new Map<string, number>();
+  const first10m = {
+    appOpenSessions: 0,
+    firstCharacterCreated: 0,
+    firstQuestionAnswered: 0,
+    firstDailyClassPassed: 0,
+    firstGradeCompleted: 0,
+  };
   const funnel = {
     firstCharacterCreated: 0,
     firstQuestionAnswered: 0,
     firstEssaySubmitted: 0,
     firstDailyClassPassed: 0,
     firstGradeCompleted: 0,
+  };
+  const seenFirst10mSteps = new Set<string>();
+  const yearbook = {
+    opens: 0,
+    copies: 0,
+    uniqueVisitors: 0,
+  };
+  const guestSpotlight = {
+    seen: 0,
+    started: 0,
+    overrideSet: 0,
+  };
+  const balance = {
+    samples: 0,
+    latestRepeatRate: null as number | null,
   };
   const commerce = {
     events: 0,
@@ -4739,15 +4983,24 @@ function buildMetricEventsSnapshot(
     byFeature: {} as Record<string, number>,
   };
   let total = 0;
-  for (const event of events) {
+  for (const event of orderedEvents) {
     total += 1;
     byName[event.name] += 1;
     const day = byDate.get(event.day);
-    if (event.name === "app_open") {
+    if (event.name === "visitor_seen") {
+      if (event.visitorHash) visitorHashes.add(event.visitorHash);
+      if (day) day.visitorSeen += 1;
+    } else if (event.name === "app_open") {
       if (event.sessionId) appOpenSessions.add(event.sessionId);
+      if (event.visitorHash) appOpenVisitors.add(event.visitorHash);
+      if (event.sessionId) {
+        const prev = firstAppOpenBySession.get(event.sessionId);
+        if (prev == null || event.occurredAt < prev) firstAppOpenBySession.set(event.sessionId, event.occurredAt);
+      }
       if (day) day.appOpens += 1;
     } else if (event.name === "session_resume") {
       if (event.sessionId) resumeSessions.add(event.sessionId);
+      if (event.visitorHash) resumeVisitors.add(event.visitorHash);
       if (day) day.sessionResumes += 1;
     } else if (event.name === "funnel_step") {
       if (day) day.funnelSteps += 1;
@@ -4756,6 +5009,38 @@ function buildMetricEventsSnapshot(
       else if (event.step === "first_essay_submitted") funnel.firstEssaySubmitted += 1;
       else if (event.step === "first_daily_class_passed") funnel.firstDailyClassPassed += 1;
       else if (event.step === "first_grade_completed") funnel.firstGradeCompleted += 1;
+      const firstOpen = event.sessionId ? firstAppOpenBySession.get(event.sessionId) : undefined;
+      if (event.sessionId && firstOpen != null && event.occurredAt - firstOpen >= 0 && event.occurredAt - firstOpen <= 10 * 60 * 1000) {
+        const key = `${event.sessionId}:${event.step ?? ""}`;
+        if (!seenFirst10mSteps.has(key)) {
+          seenFirst10mSteps.add(key);
+          if (event.step === "first_character_created") first10m.firstCharacterCreated += 1;
+          else if (event.step === "first_question_answered") first10m.firstQuestionAnswered += 1;
+          else if (event.step === "first_daily_class_passed") first10m.firstDailyClassPassed += 1;
+          else if (event.step === "first_grade_completed") first10m.firstGradeCompleted += 1;
+        }
+      }
+    } else if (event.name === "yearbook_open") {
+      yearbook.opens += 1;
+      if (event.visitorHash) yearbookVisitors.add(event.visitorHash);
+      if (day) day.yearbookOpens += 1;
+    } else if (event.name === "yearbook_copy") {
+      yearbook.copies += 1;
+      if (event.visitorHash) yearbookVisitors.add(event.visitorHash);
+      if (day) day.yearbookCopies += 1;
+    } else if (event.name === "guest_spotlight_seen") {
+      guestSpotlight.seen += 1;
+      if (day) day.guestSpotlightSeen += 1;
+    } else if (event.name === "guest_spotlight_started") {
+      guestSpotlight.started += 1;
+      if (day) day.guestSpotlightStarted += 1;
+    } else if (event.name === "guest_pack_override_set") {
+      guestSpotlight.overrideSet += 1;
+    } else if (event.name === "balance_sample") {
+      balance.samples += 1;
+      const repeatRate = metricNumber(event.metadata?.repeatRate);
+      if (repeatRate != null) balance.latestRepeatRate = repeatRate;
+      if (day) day.balanceSamples += 1;
     } else if (event.name === "commerce") {
       commerce.events += 1;
       commerce.hallPassesDelta += metricIntegerOrZero(event.hallPassesDelta);
@@ -4780,21 +5065,105 @@ function buildMetricEventsSnapshot(
       if (day) day.durableErrors += 1;
     }
   }
+  first10m.appOpenSessions = firstAppOpenBySession.size;
+  yearbook.uniqueVisitors = yearbookVisitors.size;
   return {
     total,
     byName,
     appOpen: {
       total: byName.app_open,
       uniqueSessions: appOpenSessions.size,
+      uniqueVisitors: appOpenVisitors.size,
     },
     sessionResume: {
       total: byName.session_resume,
       uniqueSessions: resumeSessions.size,
+      uniqueVisitors: resumeVisitors.size,
+    },
+    visitorSeen: {
+      total: byName.visitor_seen,
+      uniqueVisitors: visitorHashes.size,
     },
     funnel,
+    first10m,
+    yearbook,
+    guestSpotlight,
+    balance,
     commerce,
     llm,
     errors,
+  };
+}
+
+function buildEventRetentionSnapshot(events: Iterable<StoredMetricEventRecord>, now: number): {
+  characterD1: {
+    eligibleSessions: number;
+    returnedSessions: number;
+    rate: number | null;
+  };
+  visitorD1: {
+    eligibleVisitors: number;
+    returnedVisitors: number;
+    rate: number | null;
+  };
+} {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
+  const characterCreatedBySession = new Map<string, number>();
+  const returnedCharacterSessions = new Set<string>();
+  const visitorFirstSeen = new Map<string, number>();
+  const returnedVisitors = new Set<string>();
+
+  for (const event of orderedEvents) {
+    if (event.name === "funnel_step" && event.step === "first_character_created" && event.sessionId) {
+      if (!characterCreatedBySession.has(event.sessionId)) characterCreatedBySession.set(event.sessionId, event.occurredAt);
+      continue;
+    }
+    if ((event.name === "app_open" || event.name === "session_resume") && event.sessionId) {
+      const createdAt = characterCreatedBySession.get(event.sessionId);
+      if (createdAt != null && event.occurredAt - createdAt >= dayMs) returnedCharacterSessions.add(event.sessionId);
+    }
+    if (
+      event.visitorHash &&
+      (event.name === "visitor_seen" || event.name === "app_open" || event.name === "session_resume")
+    ) {
+      const firstSeenAt = visitorFirstSeen.get(event.visitorHash);
+      if (firstSeenAt == null) {
+        visitorFirstSeen.set(event.visitorHash, event.occurredAt);
+      } else if (event.occurredAt - firstSeenAt >= dayMs) {
+        returnedVisitors.add(event.visitorHash);
+      }
+    }
+  }
+
+  let eligibleSessions = 0;
+  for (const createdAt of characterCreatedBySession.values()) {
+    if (now - createdAt >= dayMs) eligibleSessions += 1;
+  }
+  let eligibleVisitors = 0;
+  for (const firstSeenAt of visitorFirstSeen.values()) {
+    if (now - firstSeenAt >= dayMs) eligibleVisitors += 1;
+  }
+  const returnedEligibleSessions = Array.from(returnedCharacterSessions).filter((sessionId) => {
+    const createdAt = characterCreatedBySession.get(sessionId);
+    return createdAt != null && now - createdAt >= dayMs;
+  }).length;
+  const returnedEligibleVisitors = Array.from(returnedVisitors).filter((visitorHash) => {
+    const firstSeenAt = visitorFirstSeen.get(visitorHash);
+    return firstSeenAt != null && now - firstSeenAt >= dayMs;
+  }).length;
+
+  return {
+    characterD1: {
+      eligibleSessions,
+      returnedSessions: returnedEligibleSessions,
+      rate: eligibleSessions > 0 ? returnedEligibleSessions / eligibleSessions : null,
+    },
+    visitorD1: {
+      eligibleVisitors,
+      returnedVisitors: returnedEligibleVisitors,
+      rate: eligibleVisitors > 0 ? returnedEligibleVisitors / eligibleVisitors : null,
+    },
   };
 }
 

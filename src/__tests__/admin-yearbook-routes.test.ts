@@ -30,6 +30,7 @@ function route(opts: {
   authorizationHeader?: string | string[] | null;
   cookieHeader?: string | null;
   userAgentHeader?: string | string[] | null;
+  visitorHeader?: string | string[] | null;
   clientIp?: string | null;
   body?: unknown;
 }): { ctx: RouteContext; response: () => { status: number; body: any; headers: Record<string, string> } | null } {
@@ -54,6 +55,7 @@ function route(opts: {
     authorizationHeader: opts.authorizationHeader ?? null,
     cookieHeader: opts.cookieHeader ?? null,
     userAgentHeader: opts.userAgentHeader ?? null,
+    visitorHeader: opts.visitorHeader ?? null,
     clientIp: opts.clientIp ?? null,
     callbackUrlBuilder: (path) => `https://rubyhighai.com${path}`,
     error: (_res, message, status = 500) => {
@@ -173,7 +175,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v3",
+      schemaVersion: "ruby-high-admin-metrics.v4",
       schemaPath: "/api/apps/ruby-high/admin/metrics/schema",
       auth: {
         users: 1,
@@ -231,7 +233,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v3",
+      schemaVersion: "ruby-high-admin-metrics.v4",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
     });
@@ -252,9 +254,29 @@ describe("admin metrics route", () => {
         path: "ruby.events.appOpen",
         reliability: "authoritative",
       }),
+      expect.objectContaining({
+        path: "auth.visitors",
+        reliability: "authoritative",
+      }),
+      expect.objectContaining({
+        path: "ruby.retention.visitorD1",
+        reliability: "authoritative",
+      }),
+      expect.objectContaining({
+        path: "ruby.funnel.first10m",
+        reliability: "authoritative",
+      }),
+      expect.objectContaining({
+        path: "ruby.guestSpotlight",
+        reliability: "authoritative",
+      }),
+      expect.objectContaining({
+        path: "ruby.balance.repeatRate",
+        reliability: "proxy",
+      }),
     ]));
     const activityProxy = response.body.fields.find((field: { path: string }) => field.path === "ruby.characterSessionsUpdatedLast24h");
-    expect(activityProxy?.caveat).toContain("prefer ruby.events.appOpen");
+    expect(activityProxy?.caveat).toContain("ruby.events.appOpen");
     expect(JSON.stringify(response.body)).not.toContain("until durable app_open/session_resume events exist");
     expect(response.body.missingEvents).toEqual([]);
   });
@@ -270,6 +292,7 @@ describe("admin metrics route", () => {
       path: "/api/apps/ruby-high/metrics/event",
       cookieHeader,
       userAgentHeader: "Vitest Browser",
+      visitorHeader: "rhv_metrics_test_visitor",
       body: { type: "app_open", path: "/api/apps/ruby-high/viewer" },
     });
     expect(response.status).toBe(200);
@@ -278,6 +301,7 @@ describe("admin metrics route", () => {
       method: "POST",
       path: "/api/apps/ruby-high/metrics/event",
       cookieHeader,
+      visitorHeader: "rhv_metrics_test_visitor",
       body: { type: "session_resume", inactiveMs: 600_000, reason: "focus" },
     });
     expect(response.status).toBe(200);
@@ -289,23 +313,82 @@ describe("admin metrics route", () => {
     expect(response.body.ruby.events.appOpen).toMatchObject({
       total: 1,
       uniqueSessions: 1,
+      uniqueVisitors: 1,
     });
     expect(response.body.ruby.events.sessionResume).toMatchObject({
       total: 1,
       uniqueSessions: 1,
+      uniqueVisitors: 1,
+    });
+    expect(response.body.ruby.events.visitorSeen).toMatchObject({
+      total: 2,
+      uniqueVisitors: 1,
     });
     expect(response.body.ruby.daily.at(-1)).toMatchObject({
       appOpens: 1,
       sessionResumes: 1,
+      visitorSeen: 2,
     });
     expect(response.body.ruby.events.total).toBeGreaterThanOrEqual(2);
     expect(sessionId).toMatch(/^rh:user:/);
     expect(ruby.analyticsSnapshot().events.appOpen.uniqueSessions).toBe(1);
+    expect(ruby.analyticsSnapshot().events.appOpen.uniqueVisitors).toBe(1);
     await ruby.flush();
     const appOpen = (await store.loadMetricEvents()).find((event) => event.name === "app_open");
     expect(appOpen?.metadata).toMatchObject({
       path: "/api/apps/ruby-high/viewer",
       userAgent: "Vitest Browser",
+    });
+  });
+
+  it("computes event-backed visitor and character D1 retention", async () => {
+    vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
+    const base = Date.UTC(2026, 4, 1, 12);
+    const { token } = await auth.createGuestSession(null, "rhv_retention_visitor");
+    const cookieHeader = `rh_session=${token}`;
+    const sessionId = auth.stateKeyForCookie(cookieHeader);
+
+    ruby.recordMetricEvent("visitor_seen", {
+      sessionId,
+      visitorHash: "visitor-hash-test",
+      feature: "viewer",
+      occurredAt: base,
+    });
+    ruby.recordMetricEvent("app_open", {
+      sessionId,
+      visitorHash: "visitor-hash-test",
+      feature: "viewer",
+      occurredAt: base,
+    });
+    ruby.recordMetricEvent("funnel_step", {
+      sessionId,
+      feature: "activation",
+      step: "first_character_created",
+      status: "success",
+      occurredAt: base + 60_000,
+    });
+    ruby.recordMetricEvent("session_resume", {
+      sessionId,
+      visitorHash: "visitor-hash-test",
+      feature: "viewer",
+      occurredAt: base + 24 * 60 * 60 * 1000 + 60_000,
+      metadata: { inactiveMs: 24 * 60 * 60 * 1000 },
+    });
+
+    const response = await appRoute({
+      path: "/api/apps/ruby-high/admin/metrics",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+
+    expect(response.body.ruby.retention.visitorD1).toMatchObject({
+      eligibleVisitors: 1,
+      returnedVisitors: 1,
+      rate: 1,
+    });
+    expect(response.body.ruby.retention.characterD1).toMatchObject({
+      eligibleSessions: 1,
+      returnedSessions: 1,
+      rate: 1,
     });
   });
 
@@ -518,7 +601,7 @@ describe("admin metrics route", () => {
     expect(headers.Authorization).toBe("Bearer or-test-key");
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     const prompt = body.messages[1].content as string;
-    expect(prompt).toContain("ruby-high-admin-metrics.v3");
+    expect(prompt).toContain("ruby-high-admin-metrics.v4");
     expect(prompt).toContain("identityRecords");
     expect(prompt).toContain("not deduped people");
     expect(prompt).toContain("characterD1Retention");

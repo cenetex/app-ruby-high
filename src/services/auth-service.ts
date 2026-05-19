@@ -32,6 +32,18 @@ export interface AuthAnalyticsSnapshot {
   createdLast24h: number;
   signedInLast24h: number;
   returningUsers: number;
+  visitors: {
+    total: number;
+    newLast24h: number;
+    returningLast24h: number;
+    d1Retention: {
+      eligibleVisitors: number;
+      returnedVisitors: number;
+      rate: number | null;
+    };
+  };
+  newVisitors: number;
+  returningVisitors: number;
   d1Retention: {
     eligibleUsers: number;
     returnedUsers: number;
@@ -45,6 +57,8 @@ export interface AuthAnalyticsDay {
   newUsers: number;
   signedInUsers: number;
   sessionStarts: number;
+  newVisitors: number;
+  returningVisitors: number;
 }
 
 interface PendingPkce {
@@ -162,6 +176,7 @@ export class AuthService extends Service {
     let returningUsers = 0;
     let eligibleUsers = 0;
     let returnedUsers = 0;
+    const visitors = new Map<string, { firstSeenAt: number; lastSeenAt: number }>();
     for (const user of users) {
       providers[user.provider] += 1;
       if (now - user.createdAt <= dayMs) createdLast24h += 1;
@@ -173,9 +188,34 @@ export class AuthService extends Service {
         eligibleUsers += 1;
         if (user.lastLoginAt - user.createdAt >= dayMs) returnedUsers += 1;
       }
+      if (user.visitorHash) {
+        const firstSeenAt = positiveNumber(user.visitorFirstSeenAt) ?? user.createdAt;
+        const lastSeenAt = positiveNumber(user.visitorLastSeenAt) ?? user.lastLoginAt;
+        const current = visitors.get(user.visitorHash);
+        visitors.set(user.visitorHash, current
+          ? {
+              firstSeenAt: Math.min(current.firstSeenAt, firstSeenAt),
+              lastSeenAt: Math.max(current.lastSeenAt, lastSeenAt),
+            }
+          : { firstSeenAt, lastSeenAt });
+      }
     }
     for (const session of this.sessions.values()) {
       incrementAuthDay(byDate, session.createdAt, "sessionStarts");
+    }
+    let newVisitors = 0;
+    let returningVisitors = 0;
+    let eligibleVisitors = 0;
+    let returnedVisitors = 0;
+    for (const visitor of visitors.values()) {
+      if (now - visitor.firstSeenAt <= dayMs) newVisitors += 1;
+      if (visitor.lastSeenAt > visitor.firstSeenAt && now - visitor.lastSeenAt <= dayMs) returningVisitors += 1;
+      incrementAuthDay(byDate, visitor.firstSeenAt, "newVisitors");
+      if (visitor.lastSeenAt > visitor.firstSeenAt) incrementAuthDay(byDate, visitor.lastSeenAt, "returningVisitors");
+      if (now - visitor.firstSeenAt >= dayMs) {
+        eligibleVisitors += 1;
+        if (visitor.lastSeenAt - visitor.firstSeenAt >= dayMs) returnedVisitors += 1;
+      }
     }
     return {
       users: users.length,
@@ -185,6 +225,18 @@ export class AuthService extends Service {
       createdLast24h,
       signedInLast24h,
       returningUsers,
+      visitors: {
+        total: visitors.size,
+        newLast24h: newVisitors,
+        returningLast24h: returningVisitors,
+        d1Retention: {
+          eligibleVisitors,
+          returnedVisitors,
+          rate: eligibleVisitors > 0 ? returnedVisitors / eligibleVisitors : null,
+        },
+      },
+      newVisitors,
+      returningVisitors,
       d1Retention: {
         eligibleUsers,
         returnedUsers,
@@ -203,23 +255,49 @@ export class AuthService extends Service {
   /** Mint an app-owned Ruby High session without a provider login. This is the
    *  default play path: it gives the browser a durable character bucket while
    *  leaving OpenRouter as an optional AI/chat upgrade. */
-  async createGuestSession(existingToken?: string | null): Promise<{ token: string; record: AuthRecord }> {
+  async createGuestSession(
+    existingToken?: string | null,
+    visitorHeader?: string | string[] | null,
+  ): Promise<{ token: string; record: AuthRecord }> {
+    const visitorHash = visitorHashFromHeader(visitorHeader);
     const existing = this.resolve(existingToken ?? null);
     if (existing) {
-      const touched = await this.touchUserActivity(existing);
+      const touched = await this.touchUserActivity(existing, Date.now(), visitorHash);
       return { token: existingToken!, record: touched };
     }
 
     const now = Date.now();
-    const providerUserHash = providerIdentityHash(base64url(randomBytes(24)), "guest");
-    const user: AuthUserRecord = {
-      userId: `usr_${base64url(randomBytes(18))}`,
-      provider: "guest",
-      providerUserHash,
-      createdAt: now,
-      lastLoginAt: now,
-      label: "Guest",
-    };
+    const providerUserHash = visitorHash ?? providerIdentityHash(base64url(randomBytes(24)), "guest");
+    const existingVisitorUser = visitorHash
+      ? this.usersByProviderHash.get(authUserKey("guest", visitorHash))
+      : undefined;
+    const user: AuthUserRecord = existingVisitorUser
+      ? {
+          ...existingVisitorUser,
+          lastLoginAt: now,
+          ...(visitorHash
+            ? {
+                visitorHash,
+                visitorFirstSeenAt: existingVisitorUser.visitorFirstSeenAt ?? existingVisitorUser.createdAt,
+                visitorLastSeenAt: now,
+              }
+            : {}),
+        }
+      : {
+          userId: `usr_${base64url(randomBytes(18))}`,
+          provider: "guest",
+          providerUserHash,
+          createdAt: now,
+          lastLoginAt: now,
+          label: "Guest",
+          ...(visitorHash
+            ? {
+                visitorHash,
+                visitorFirstSeenAt: now,
+                visitorLastSeenAt: now,
+              }
+            : {}),
+        };
     this.rememberAuthUser(user);
     await this.store.saveAuthUser(user);
 
@@ -238,7 +316,7 @@ export class AuthService extends Service {
       createdAt: record.createdAt,
       expiresAt: record.expiresAt,
     });
-    log.event("auth.guest-session-created", { userId: user.userId });
+    log.event("auth.guest-session-created", { userId: user.userId, visitor: !!visitorHash, returningVisitor: !!existingVisitorUser });
     return { token, record };
   }
 
@@ -500,11 +578,44 @@ export class AuthService extends Service {
     };
   }
 
-  private async touchUserActivity(record: AuthRecord, now: number = Date.now()): Promise<AuthRecord> {
+  private async touchUserActivity(
+    record: AuthRecord,
+    now: number = Date.now(),
+    visitorHash?: string | null,
+  ): Promise<AuthRecord> {
     const user = this.usersById.get(record.userId);
-    if (!user || now - user.lastLoginAt < ACTIVITY_TOUCH_INTERVAL_MS) return record;
-    const touched = this.rememberAuthUser({ ...user, lastLoginAt: now });
+    if (!user) return record;
+    const shouldTouchLogin = now - user.lastLoginAt >= ACTIVITY_TOUCH_INTERVAL_MS;
+    const shouldTouchVisitor = !!visitorHash && user.visitorHash !== visitorHash;
+    const shouldTouchVisitorSeen = !!visitorHash && user.visitorHash === visitorHash && user.visitorLastSeenAt !== now;
+    if (!shouldTouchLogin && !shouldTouchVisitor && !shouldTouchVisitorSeen) return record;
+    const touched = this.rememberAuthUser({
+      ...user,
+      ...(shouldTouchLogin ? { lastLoginAt: now } : {}),
+      ...(visitorHash
+        ? {
+            visitorHash,
+            visitorFirstSeenAt: user.visitorFirstSeenAt ?? user.createdAt,
+            visitorLastSeenAt: now,
+          }
+        : {}),
+    });
     await this.store.saveAuthUser(touched);
+    if (visitorHash && user.provider === "guest" && user.providerUserHash !== visitorHash) {
+      const visitorKey = authUserKey("guest", visitorHash);
+      const existingVisitorUser = this.usersByProviderHash.get(visitorKey);
+      if (!existingVisitorUser) {
+        const alias = this.rememberAuthUser({
+          ...touched,
+          provider: "guest",
+          providerUserHash: visitorHash,
+          visitorHash,
+          visitorFirstSeenAt: touched.visitorFirstSeenAt ?? touched.createdAt,
+          visitorLastSeenAt: now,
+        });
+        await this.store.saveAuthUser(alias);
+      }
+    }
     return this.enrichRecord(record);
   }
 
@@ -564,6 +675,15 @@ function mergeAuthUserProfile(current: AuthUserRecord | undefined, next: AuthUse
     createdAt: Math.min(current.createdAt, next.createdAt),
     lastLoginAt: Math.max(current.lastLoginAt, next.lastLoginAt),
     label: primary.label ?? secondary.label,
+    ...(primary.visitorHash ?? secondary.visitorHash
+      ? { visitorHash: primary.visitorHash ?? secondary.visitorHash }
+      : {}),
+    ...(primary.visitorFirstSeenAt ?? secondary.visitorFirstSeenAt
+      ? { visitorFirstSeenAt: Math.min(primary.visitorFirstSeenAt ?? Infinity, secondary.visitorFirstSeenAt ?? Infinity) }
+      : {}),
+    ...(primary.visitorLastSeenAt ?? secondary.visitorLastSeenAt
+      ? { visitorLastSeenAt: Math.max(primary.visitorLastSeenAt ?? 0, secondary.visitorLastSeenAt ?? 0) }
+      : {}),
     ...(primary.walletAddress ?? secondary.walletAddress
       ? { walletAddress: primary.walletAddress ?? secondary.walletAddress }
       : {}),
@@ -582,7 +702,7 @@ function buildAuthDailyBuckets(now: number, count: number): {
   const byDate = new Map<string, AuthAnalyticsDay>();
   for (let i = 0; i < count; i++) {
     const date = isoDate(start + i * 24 * 60 * 60 * 1000);
-    const day = { date, newUsers: 0, signedInUsers: 0, sessionStarts: 0 };
+    const day = { date, newUsers: 0, signedInUsers: 0, sessionStarts: 0, newVisitors: 0, returningVisitors: 0 };
     days.push(day);
     byDate.set(date, day);
   }
@@ -608,6 +728,11 @@ function isoDate(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10);
 }
 
+function positiveNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<{ key: string; userId?: string }> {
   const r = await fetch("https://openrouter.ai/api/v1/auth/keys", {
     method: "POST",
@@ -625,6 +750,17 @@ async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<{
 
 function base64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function visitorHashFromHeader(value: string | string[] | null | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") return null;
+  const clean = raw.trim();
+  if (clean.length < 8 || clean.length > 128) return null;
+  if (!/^[A-Za-z0-9._:-]+$/.test(clean)) return null;
+  return createHash("sha256")
+    .update(`ruby-high:visitor:v1:${clean}`)
+    .digest("hex");
 }
 
 function providerIdentityHash(value: string, source: "user" | "key" | "guest" | "privy"): string {

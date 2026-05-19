@@ -1661,6 +1661,50 @@ export const VIEWER_CSS = `
     font-size: 12px;
     letter-spacing: 0;
   }
+  .guest-spotlight {
+    width: min(100%, 520px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(0,0,0,0.22);
+    color: var(--text-soft);
+  }
+  .guest-spotlight-copy {
+    min-width: 0;
+    text-align: left;
+  }
+  .guest-spotlight-title {
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text);
+  }
+  .guest-spotlight-meta {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-mute);
+    overflow-wrap: anywhere;
+  }
+  .guest-spotlight-action {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: var(--accent);
+    color: #fff;
+    font-weight: 900;
+    border-radius: 8px;
+    padding: 8px 10px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .guest-spotlight-action:disabled {
+    cursor: default;
+    opacity: 0.62;
+    background: rgba(255,255,255,0.12);
+  }
   .board-frame-host {
     padding: 0 calc(var(--safe-right) + 10px) 0 calc(var(--safe-left) + 10px);
     position: relative;
@@ -2383,6 +2427,61 @@ export const VIEWER_CSS = `
     text-decoration-thickness: 3px;
     text-decoration-color: rgba(0,0,0,0.55);
     filter: grayscale(0.7);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .board-frame-host:not([hidden]) .board-frame {
+      animation: board-reveal 180ms ease-out;
+    }
+    .answer:not(:disabled):hover {
+      transform: translateY(-1px);
+    }
+    .roll-chip.hit,
+    .roll-chip.mixed,
+    .roll-chip.miss {
+      animation: dice-result-pop 240ms ease-out;
+    }
+    .race-card.is-locked {
+      animation: race-lock 180ms ease-out;
+    }
+    .board .class-report-card.passed,
+    .board .graduation-report-card {
+      animation: seal-in 260ms ease-out;
+    }
+    .is-creation-candidate-card,
+    .sheet-card.is-creation-sheet {
+      animation: lock-in-reveal 220ms ease-out;
+    }
+  }
+  @keyframes board-reveal {
+    from { opacity: 0.7; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes dice-result-pop {
+    0% { transform: scale(0.94); }
+    70% { transform: scale(1.04); }
+    100% { transform: scale(1); }
+  }
+  @keyframes race-lock {
+    from { transform: translateY(3px); }
+    to { transform: translateY(0); }
+  }
+  @keyframes seal-in {
+    from { opacity: 0.85; transform: scale(0.985); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes lock-in-reveal {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.001ms !important;
+    }
   }
   .advantage-bar {
     display: flex;

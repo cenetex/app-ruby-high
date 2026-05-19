@@ -15,6 +15,7 @@ export interface ViewerApiClientDeps {
   sessionRefreshTimeoutMs: number;
   fetchImpl?: (url: string, init?: RequestInit) => Promise<ViewerApiResponse>;
   getApiKey(): string | null;
+  getVisitorId?(): string | null;
   clearAuth(): void;
   onAuthCleared(): void;
   onCommandSession(data: unknown): void;
@@ -66,6 +67,8 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
     delete opts.timeoutMs;
     const key = deps.getApiKey();
     if (key) headers.set("X-Openrouter-Key", key);
+    const visitorId = deps.getVisitorId?.();
+    if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);
     opts.headers = headers;
     if (!opts.credentials) opts.credentials = "same-origin";
     const clearFetchTimeout = withViewerTimeoutSignal(opts, timeoutMs);
@@ -116,7 +119,10 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
   async function fetchSession(opts?: { timeoutMs?: number }): Promise<void> {
     const seqAtStart = commandSeq;
     const settledAtStart = lastSettledCommandSeq;
-    const fetchOpts: RequestInit = { credentials: "same-origin" };
+    const headers = new Headers();
+    const visitorId = deps.getVisitorId?.();
+    if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);
+    const fetchOpts: RequestInit = { credentials: "same-origin", headers };
     const clearFetchTimeout = withViewerTimeoutSignal(
       fetchOpts,
       opts?.timeoutMs || deps.sessionRefreshTimeoutMs,

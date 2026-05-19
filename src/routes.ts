@@ -191,6 +191,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       res: ctx.res,
       cookieHeader: ctx.cookieHeader,
       apiKeyHeader: ctx.apiKeyHeader,
+      visitorHeader: ctx.visitorHeader,
       authorizationHeader: ctx.authorizationHeader,
       callbackUrlBuilder: ctx.callbackUrlBuilder,
       isSecure: ctx.isSecure,

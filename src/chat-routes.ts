@@ -862,6 +862,8 @@ export interface ChatRouteContext {
    *  localStorage and attach it on every LLM-touching request; the server
    *  reads it here without persisting. Empty / missing → 401 at LLM endpoints. */
   apiKeyHeader?: string | null;
+  /** Browser-local visitor id header. AuthService hashes it before persistence. */
+  visitorHeader?: string | string[] | null;
   /** Caller-provided callback URL builder. Lets the dev server use http://localhost while production hosts use https://app.example.com. */
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS. Controls `Secure` cookie attribute. */
@@ -1541,7 +1543,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/guest`) {
     if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
     const existingToken = auth.parseSessionToken(ctx.cookieHeader);
-    const { token, record } = await auth.createGuestSession(existingToken);
+    const { token, record } = await auth.createGuestSession(existingToken, ctx.visitorHeader);
     if (token !== existingToken) {
       setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
     }
@@ -1633,7 +1635,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // Ruby High play requires only the app-owned session cookie. AI/chat
     // additionally requires the browser-owned OpenRouter key. The key still
     // never persists server-side.
-    const record = auth.resolve(auth.parseSessionToken(ctx.cookieHeader));
+    const existingToken = auth.parseSessionToken(ctx.cookieHeader);
+    const resolved = auth.resolve(existingToken);
+    const record = resolved && existingToken
+      ? (await auth.createGuestSession(existingToken, ctx.visitorHeader)).record
+      : resolved;
     const stateKey = record ? auth.stateKeyForRecord(record) : "";
     const apiKey = record ? readApiKey(ctx, ruby, stateKey) : null;
     const entitlements = record ? hostedEntitlementStatus({ ruby, sessionId: stateKey }) : null;

@@ -14,7 +14,7 @@ export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
 export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
 export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/schema`;
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v3";
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v4";
 const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-05-19";
 
 interface AdminDeps {
@@ -120,8 +120,8 @@ function buildAdminMetricsQuality(metrics: {
     {
       field: "auth.users",
       severity: "warning",
-      issue: "Counts auth identity records, not deduped people. Guest records are random cookie-bound identities.",
-      recommendedUse: "Use only as identity-record volume; use ruby.characters and ruby.characterD1Retention for product usage.",
+      issue: "Counts auth identity records, not deduped people. Guest records can include legacy cookie-bound identities.",
+      recommendedUse: "Use only as identity-record volume; use auth.visitors and ruby.retention.visitorD1 for visitor traffic/retention.",
     },
     {
       field: "auth.daily.signedInUsers",
@@ -149,7 +149,7 @@ function buildAdminMetricsQuality(metrics: {
       field: "auth.providers.guest",
       severity: "warning",
       issue: `${guestRecords} of ${metrics.auth.users} identity records are guest records.`,
-      recommendedUse: "Treat legacy acquisition and identity retention as suspect; use ruby.events app_open/session_resume after the trust start date for traffic claims.",
+      recommendedUse: "Treat legacy acquisition and identity retention as suspect; use auth.visitors and ruby.events visitor-backed app_open/session_resume after the trust start date.",
     });
   }
   if (metrics.ruby.characters > 0 && metrics.ruby.completedGrades === 0) {
@@ -164,8 +164,8 @@ function buildAdminMetricsQuality(metrics: {
     issues.push({
       field: "ruby.events",
       severity: "info",
-      issue: "No durable metric events have been recorded yet. The v3 streams start accumulating from deployment.",
-      recommendedUse: "Use product-state snapshots until v3 event volume exists; set RUBY_HIGH_METRICS_TRUST_START on deploy.",
+      issue: "No durable metric events have been recorded yet. The v4 streams start accumulating from deployment.",
+      recommendedUse: "Use product-state snapshots until v4 event volume exists; set RUBY_HIGH_METRICS_TRUST_START on deploy.",
     });
   }
   return {
@@ -194,7 +194,7 @@ function buildAdminMetricsSchema(): {
     bucketTimezone: "UTC",
     trustModel: [
       "Durable product-state metrics are authoritative for current state.",
-      "Auth guest identity metrics are legacy/proxy metrics, not unique people.",
+      "Auth users are identity records. Visitor metrics use the browser-local visitor id after server-side hashing.",
       "Daily buckets are UTC day buckets derived from current records unless a field explicitly says it is event-backed.",
       "In-process log counters are operational smoke signals only.",
     ],
@@ -205,7 +205,30 @@ function buildAdminMetricsSchema(): {
         source: "AuthUserRecord store",
         semantics: "Total stored auth identity records across guest, OpenRouter, and Privy providers.",
         reliability: "legacy",
-        caveat: "Guest records are random cookie-bound identities and are not deduped people.",
+        caveat: "Legacy guest records can be cookie-bound; v4 visitor metrics are the traffic source.",
+      },
+      {
+        path: "auth.visitors",
+        label: "Visitors",
+        source: "AuthUserRecord visitorHash, visitorFirstSeenAt, visitorLastSeenAt",
+        semantics: "Privacy-preserving browser visitor ids deduped after server-side hashing. Includes total, newLast24h, returningLast24h, and D1 retention.",
+        reliability: "authoritative",
+        caveat: "Only public-web browsers that can persist localStorage send the visitor id. Does not fingerprint or infer identity from IP/user-agent.",
+      },
+      {
+        path: "auth.newVisitors",
+        label: "New visitors in 24h",
+        source: "AuthUserRecord visitorFirstSeenAt",
+        semantics: "Alias for auth.visitors.newLast24h.",
+        reliability: "authoritative",
+      },
+      {
+        path: "auth.returningVisitors",
+        label: "Returning visitors in 24h",
+        source: "AuthUserRecord visitorLastSeenAt",
+        semantics: "Alias for auth.visitors.returningLast24h.",
+        reliability: "authoritative",
+        caveat: "Requires a later auth touch from the same local visitor id.",
       },
       {
         path: "auth.providers",
@@ -277,7 +300,7 @@ function buildAdminMetricsSchema(): {
         source: "QuizState.updatedAt plus PlayerCharacter presence",
         semantics: "Saved game sessions with a character and an update in the last rolling 24 hours.",
         reliability: "proxy",
-        caveat: "Use as a product-state proxy; prefer ruby.events.appOpen and ruby.events.sessionResume for traffic and return-visit claims after schema v3 deployment.",
+        caveat: "Use as a product-state proxy; prefer visitor-backed ruby.events.appOpen and ruby.events.sessionResume for traffic and return-visit claims after schema v4 deployment.",
       },
       {
         path: "ruby.characterD1Retention",
@@ -286,6 +309,22 @@ function buildAdminMetricsSchema(): {
         semantics: "Character sessions older than 24h whose saved game was updated at least 24h after character creation.",
         reliability: "proxy",
         caveat: "Better than guest identity retention, but still uses last update rather than explicit return events.",
+      },
+      {
+        path: "ruby.retention.characterD1",
+        label: "Event-backed character D1 retention",
+        source: "StoredMetricEventRecord funnel_step plus app_open/session_resume",
+        semantics: "Sessions with first_character_created and later durable activity at least 24h after creation.",
+        reliability: "authoritative",
+        caveat: "Falls back to product-state characterD1Retention until event history exists.",
+      },
+      {
+        path: "ruby.retention.visitorD1",
+        label: "Event-backed visitor D1 retention",
+        source: "StoredMetricEventRecord visitor_seen/app_open/session_resume visitorHash",
+        semantics: "Visitors first seen at least 24h ago who later returned with durable activity at least 24h after first seen.",
+        reliability: "authoritative",
+        caveat: "Begins only after v4 visitor headers are deployed.",
       },
       {
         path: "ruby.characters",
@@ -327,9 +366,9 @@ function buildAdminMetricsSchema(): {
         path: "ruby.daily",
         label: "Play daily buckets",
         source: "QuizState, PlayerCharacter, yearbook entries, and EssayReport timestamps",
-        semantics: "14 UTC day buckets for saved-session updates, character creation, grade completion, essays graded, and v3 metric events.",
+        semantics: "14 UTC day buckets for saved-session updates, character creation, grade completion, essays graded, and v4 metric events.",
         reliability: "proxy",
-        caveat: "Good for durable milestones; appOpens/sessionResumes are event-backed only after schema v3 deployment.",
+        caveat: "Good for durable milestones; appOpens/sessionResumes are event-backed only after schema v4 deployment.",
       },
       {
         path: "ruby.events.appOpen",
@@ -337,7 +376,7 @@ function buildAdminMetricsSchema(): {
         source: "StoredMetricEventRecord app_open",
         semantics: "Durable viewer boot events with session identity from the Ruby High cookie.",
         reliability: "authoritative",
-        caveat: "Begins only after schema v3 deployment; one human can still appear under multiple cookies.",
+        caveat: "Begins only after schema v4 deployment; uniqueVisitors dedupes only browsers retaining ruby-high:visitor-id.",
       },
       {
         path: "ruby.events.sessionResume",
@@ -354,6 +393,29 @@ function buildAdminMetricsSchema(): {
         semantics: "First character created, first question answered, first essay submitted, first daily class passed, and first grade completed.",
         reliability: "authoritative",
         caveat: "Dedupe is per Ruby High session id.",
+      },
+      {
+        path: "ruby.funnel.first10m",
+        label: "First 10 minute funnel",
+        source: "StoredMetricEventRecord app_open plus funnel_step",
+        semantics: "Counts first activation milestones reached within ten minutes of a session's first durable app_open.",
+        reliability: "authoritative",
+        caveat: "Requires app_open to fire before the funnel step.",
+      },
+      {
+        path: "ruby.guestSpotlight",
+        label: "Guest spotlight",
+        source: "StoredMetricEventRecord guest_spotlight_seen, guest_spotlight_started, guest_pack_override_set",
+        semantics: "Weekly guest-teacher spotlight impressions, starts, manual overrides, and start rate.",
+        reliability: "authoritative",
+      },
+      {
+        path: "ruby.balance.repeatRate",
+        label: "Question repeat rate",
+        source: "QuizState.history plus balance_sample",
+        semantics: "Observed repeated answers within saved sessions. Simulation samples are reported separately under ruby.balance.",
+        reliability: "proxy",
+        caveat: "Observed state is current-session history, not a normalized event stream yet.",
       },
       {
         path: "ruby.events.commerce",
@@ -484,14 +546,17 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
     quality: metrics.quality,
     interpretationRules: [
       "Do not call auth identity records unique users.",
-      "Use ruby.events.appOpen and ruby.events.sessionResume for traffic and return-visit claims after the trustStart date.",
-      "Use character-session retention before identity D1 retention when event history is still sparse.",
+      "Use auth.visitors and visitor-backed ruby.events.appOpen/sessionResume for traffic and return-visit claims after the trustStart date.",
+      "Use ruby.retention.characterD1 and ruby.retention.visitorD1 before identity D1 retention.",
     ],
     auth: {
       identityRecords: metrics.auth.users,
       guestIdentityRecords: metrics.auth.providers.guest,
       verifiedIdentityRecords: metrics.auth.providers.openrouter + metrics.auth.providers.privy,
-      identityCaveat: "Auth identity records are not deduped people. Guest records can inflate when cookies are lost, tests run, or users return from another browser.",
+      visitorMetrics: metrics.auth.visitors,
+      newVisitorsLast24h: metrics.auth.newVisitors,
+      returningVisitorsLast24h: metrics.auth.returningVisitors,
+      identityCaveat: "Auth identity records are not deduped people. Use visitor metrics for public-web traffic when localStorage persists.",
       activeSessions: metrics.auth.activeSessions,
       pendingAuth: metrics.auth.pendingAuth,
       newIdentityRecordsLast24h: metrics.auth.createdLast24h,
@@ -507,6 +572,7 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       updatedLast24h: metrics.ruby.updatedLast24h,
       characterSessionsUpdatedLast24h: metrics.ruby.characterSessionsUpdatedLast24h,
       characterD1Retention: metrics.ruby.characterD1Retention,
+      retention: metrics.ruby.retention,
       characters: metrics.ruby.characters,
       graduatedCharacters: metrics.ruby.graduatedCharacters,
       activeRounds: metrics.ruby.activeRounds,
@@ -515,6 +581,9 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       questions: metrics.ruby.questions,
       wallet: metrics.ruby.wallet,
       events: metrics.ruby.events,
+      funnel: metrics.ruby.funnel,
+      guestSpotlight: metrics.ruby.guestSpotlight,
+      balance: metrics.ruby.balance,
       daily: metrics.ruby.daily,
     },
     logs: {
@@ -1092,24 +1161,29 @@ export function renderAdminDashboardHtml(): string {
       const auth = data.auth || {};
       const ruby = data.ruby || {};
       const events = ruby.events || {};
-      const d1 = ruby.characterD1Retention && ruby.characterD1Retention.rate != null ? pct(ruby.characterD1Retention.rate) : "n/a";
+      const retention = ruby.retention || {};
+      const characterD1 = retention.characterD1 || ruby.characterD1Retention || {};
+      const visitorD1 = retention.visitorD1 || {};
+      const d1 = characterD1.rate != null ? pct(characterD1.rate) : "n/a";
       const activeShare = ruby.sessions ? Math.round((Number(ruby.updatedLast24h || 0) / Number(ruby.sessions || 1)) * 100) : 0;
       return {
-        headline: n(events.appOpen && events.appOpen.total) + " durable app opens recorded",
+        headline: n(auth.visitors && auth.visitors.total) + " visitor ids recorded",
         summary: "The current loop has " + n(ruby.characters) + " characters, " + n(ruby.completedGrades) + " sealed grades, and " + pct(ruby.questions && ruby.questions.accuracy) + " answer accuracy.",
         highlights: [
+          n(events.appOpen && events.appOpen.total) + " durable app opens",
           n(events.sessionResume && events.sessionResume.total) + " durable session resumes",
+          n(auth.visitors && auth.visitors.returningLast24h) + " returning visitors in 24h",
           n(ruby.updatedLast24h) + " saved sessions updated in 24h",
           n(ruby.essayReports) + " essay reports generated",
-          n(ruby.wallet && ruby.wallet.hallPasses) + " Hall Passes in circulation",
         ],
         risks: [
           d1 + " character-session D1 retention",
+          (visitorD1.rate == null ? "n/a" : pct(visitorD1.rate)) + " visitor D1 retention",
           n(auth.providers && auth.providers.guest) + " guest identity records are not unique people",
           activeShare + "% of saved sessions were active in 24h",
         ],
         actions: [
-          "Use v3 events after the trust-start date",
+          "Use v4 visitor events after the trust-start date",
           "Watch grade completion rate",
         ],
       };
@@ -1127,6 +1201,8 @@ export function renderAdminDashboardHtml(): string {
         chartCard("Auth", authDaily, [
           { key: "newUsers", label: "New records", color: "#9f2338", mode: "bar" },
           { key: "signedInUsers", label: "Seen records", color: "#0f6f68", mode: "line" },
+          { key: "newVisitors", label: "New visitors", color: "#2f5f91", mode: "bar" },
+          { key: "returningVisitors", label: "Returning", color: "#7a4f2a", mode: "line" },
           { key: "sessionStarts", label: "Starts", color: "#665c6d", mode: "line" },
         ]),
         chartCard("Play", rubyDaily, [
@@ -1142,12 +1218,13 @@ export function renderAdminDashboardHtml(): string {
         ]),
         chartCard("Events", rubyDaily, [
           { key: "funnelSteps", label: "Funnel", color: "#9f2338", mode: "bar" },
+          { key: "visitorSeen", label: "Visitors", color: "#2f5f91", mode: "line" },
           { key: "commerceEvents", label: "Commerce", color: "#665c6d", mode: "line" },
           { key: "llmCalls", label: "LLM", color: "#2f5f91", mode: "line" },
           { key: "durableErrors", label: "Errors", color: "#0f6f68", mode: "line" },
         ]),
         chartCard("Activation", mergeDaily(authDaily, rubyDaily), [
-          { key: "signedInUsers", label: "Seen records", color: "#0f6f68", mode: "line" },
+          { key: "returningVisitors", label: "Returning", color: "#0f6f68", mode: "line" },
           { key: "updatedSessions", label: "Updated", color: "#9f2338", mode: "bar" },
         ]),
       ].join("");

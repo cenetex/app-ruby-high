@@ -11,6 +11,9 @@ export interface AuthUserRecord {
   createdAt: number;
   lastLoginAt: number;
   label?: string;
+  visitorHash?: string;
+  visitorFirstSeenAt?: number;
+  visitorLastSeenAt?: number;
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
 }
@@ -127,12 +130,19 @@ export interface StoredPackInstallationRecord {
 }
 
 export type StoredMetricEventName =
+  | "visitor_seen"
   | "app_open"
   | "session_resume"
   | "funnel_step"
+  | "yearbook_open"
+  | "yearbook_copy"
+  | "guest_spotlight_seen"
+  | "guest_spotlight_started"
+  | "guest_pack_override_set"
   | "commerce"
   | "llm_usage"
-  | "error";
+  | "error"
+  | "balance_sample";
 
 export interface StoredMetricEventRecord {
   id: string;
@@ -141,6 +151,7 @@ export interface StoredMetricEventRecord {
   day: string;
   sessionId?: string;
   userId?: string;
+  visitorHash?: string;
   source?: string;
   feature?: string;
   step?: string;
@@ -650,12 +661,19 @@ const DEFAULT_DEBOUNCE_MS = 25;
 
 export function isStoredMetricEventName(value: unknown): value is StoredMetricEventName {
   return (
+    value === "visitor_seen" ||
     value === "app_open" ||
     value === "session_resume" ||
     value === "funnel_step" ||
+    value === "yearbook_open" ||
+    value === "yearbook_copy" ||
+    value === "guest_spotlight_seen" ||
+    value === "guest_spotlight_started" ||
+    value === "guest_pack_override_set" ||
     value === "commerce" ||
     value === "llm_usage" ||
-    value === "error"
+    value === "error" ||
+    value === "balance_sample"
   );
 }
 

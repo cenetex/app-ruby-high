@@ -137,6 +137,33 @@
       "options": { "A": "6.02 × 10^21", "B": "6.02 × 10^23", "C": "6.02 × 10^25", "D": "9.11 × 10^23" },
       "correct": "B",
       "explanation": "6.022 × 10²³ — particles in one mole of substance."
+    },
+    {
+      "id": "sally-016",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "Which seismic wave type cannot travel through Earth's liquid outer core?",
+      "options": { "A": "P-waves", "B": "S-waves", "C": "Surface waves", "D": "Infrasound" },
+      "correct": "B",
+      "explanation": "S-waves are shear waves, and liquids cannot support shear stress. Their shadow zone helped reveal the liquid outer core."
+    },
+    {
+      "id": "sally-017",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "For an exothermic equilibrium reaction, what does increasing temperature usually do to the equilibrium constant K?",
+      "options": { "A": "Increases K", "B": "Decreases K", "C": "Leaves K unchanged", "D": "Makes K negative" },
+      "correct": "B",
+      "explanation": "Heat behaves like a product in an exothermic reaction. Adding heat shifts equilibrium toward reactants, decreasing K."
+    },
+    {
+      "id": "sally-018",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "During cellular respiration, which process directly generates the largest share of ATP?",
+      "options": { "A": "Glycolysis", "B": "Pyruvate oxidation", "C": "Citric acid cycle substrate-level phosphorylation", "D": "Oxidative phosphorylation" },
+      "correct": "D",
+      "explanation": "The electron transport chain and chemiosmosis drive oxidative phosphorylation, which produces most ATP in aerobic respiration."
     }
   ]
 }

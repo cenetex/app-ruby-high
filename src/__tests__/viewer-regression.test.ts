@@ -97,7 +97,7 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain("function openCharacterCreationFromAccount()");
     expect(html).toContain('id="blackboard-empty-action"');
     expect(script).toContain("Create your first Ruby High student.");
-    expect(script).toContain('els.blackboardEmptyAction.addEventListener("click", openCharacterCreationFromAccount)');
+    expect(script).toContain('els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction)');
     expect(script).toContain("function maybeShowWelcomeHallPassPopup");
     expect(script).toContain('const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');
     expect(VIEWER_CSS).toContain(".welcome-hall-pass-art");

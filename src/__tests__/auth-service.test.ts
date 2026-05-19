@@ -167,6 +167,30 @@ describe("AuthService.gcSessions", () => {
     expect(auth.stateKeyForToken(first.token)).toBe(`rh:user:${first.record.userId}`);
   });
 
+  it("reuses a guest identity when the cookie is lost but the visitor id remains", async () => {
+    const auth = await freshAuth();
+    const first = await auth.createGuestSession(null, "rhv_test_visitor_123");
+    const second = await auth.createGuestSession(null, "rhv_test_visitor_123");
+    const withoutVisitor = await auth.createGuestSession(null, null);
+    const snapshot = auth.analyticsSnapshot(Date.now());
+
+    expect(second.token).not.toBe(first.token);
+    expect(second.record.userId).toBe(first.record.userId);
+    expect(withoutVisitor.record.userId).not.toBe(first.record.userId);
+    expect(snapshot.users).toBe(2);
+    expect(snapshot.visitors.total).toBe(1);
+    expect(snapshot.newVisitors).toBe(1);
+  });
+
+  it("binds an existing cookie guest to a visitor id for later lost-cookie recovery", async () => {
+    const auth = await freshAuth();
+    const first = await auth.createGuestSession();
+    await auth.createGuestSession(first.token, "rhv_cookie_bound_visitor");
+    const recovered = await auth.createGuestSession(null, "rhv_cookie_bound_visitor");
+
+    expect(recovered.record.userId).toBe(first.record.userId);
+  });
+
   it("counts a returned guest cookie as activity instead of a fresh identity", async () => {
     const auth = await freshAuth();
     const base = Date.UTC(2026, 4, 1);

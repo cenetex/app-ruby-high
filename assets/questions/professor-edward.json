@@ -137,6 +137,24 @@
       "options": { "A": "Reader-response", "B": "Postcolonial criticism", "C": "Russian formalism", "D": "Eco-criticism" },
       "correct": "B",
       "explanation": "Said showed how European scholarship constructed 'the Orient' as a discursive object that justified imperial power."
+    },
+    {
+      "id": "edward-016",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "In narratology, what is free indirect discourse?",
+      "options": { "A": "Dialogue without quotation marks only", "B": "A narrator blending third-person narration with a character's thoughts or idiom", "C": "A poem with no fixed meter", "D": "A plot told strictly backward" },
+      "correct": "B",
+      "explanation": "Free indirect discourse lets narration carry a character's interior voice without switching fully into first person or direct quotation."
+    },
+    {
+      "id": "edward-017",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "Which idea best describes the Theater of the Absurd associated with Beckett and Ionesco?",
+      "options": { "A": "Comedy based only on mistaken identity", "B": "Drama exposing meaninglessness through repetition, breakdown, and circular action", "C": "Historical drama written in blank verse", "D": "Realist domestic plots with strict causality" },
+      "correct": "B",
+      "explanation": "Absurdist drama stages the collapse of stable meaning and conventional plot logic, often through repetition and stalled action."
     }
   ]
 }

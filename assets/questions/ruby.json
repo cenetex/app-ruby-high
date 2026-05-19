@@ -137,6 +137,24 @@
       "options": { "A": "Whether the feature works on examples held back from prompt tuning", "B": "Whether the model has the largest context window", "C": "Whether the UI color palette is accessible", "D": "Whether API latency is always zero" },
       "correct": "A",
       "explanation": "A held-out evaluation set catches regressions and overfitting: the system has to work on cases it was not tuned against."
+    },
+    {
+      "id": "ruby-016",
+      "subject": "ai-literacy",
+      "difficulty": "hard",
+      "prompt": "Why is an idempotency key useful when an agent retries a payment-like tool call?",
+      "options": { "A": "It makes the model more creative", "B": "It lets the server recognize the retry as the same operation", "C": "It hides the request from logs", "D": "It bypasses authentication" },
+      "correct": "B",
+      "explanation": "Idempotency keys prevent duplicate side effects when a request is retried after a timeout or network failure."
+    },
+    {
+      "id": "ruby-017",
+      "subject": "agent-culture",
+      "difficulty": "hard",
+      "prompt": "In an agent workflow, why should durable state be written before acknowledging a completed external action?",
+      "options": { "A": "So the UI can use a bigger font", "B": "So recovery after a crash does not forget the action happened", "C": "So prompts are shorter", "D": "So rate limits disappear" },
+      "correct": "B",
+      "explanation": "If the process crashes after the external action but before persistence, the system can lose track of real-world side effects."
     }
   ]
 }

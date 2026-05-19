@@ -106,9 +106,9 @@ interface SessionTelemetry extends Record<string, unknown> {
   guest_pack: {
     mode: "auto" | "override";
     weekKey: string;
-    auto: { id: string; name: string; description: string } | null;
+    auto: PackSummaryTelemetry | null;
     overrideId: string | null;
-    active: { id: string; name: string; description: string } | null;
+    active: PackSummaryTelemetry | null;
   };
   active_teacher_provider: PublicTeacherProvider;
   active_course: PackCourse | null;
@@ -223,6 +223,16 @@ function deriveActiveRound(state: QuizState) {
         }
       : null,
   };
+}
+
+interface PackSummaryTelemetry {
+  id: string;
+  name: string;
+  description: string;
+  teacher_name: string;
+  subject: string;
+  faculty_count: number;
+  question_count: number;
 }
 
 function deriveRoomCohort(roster: NpcStudentState[], state: QuizState): Record<string, string[]> {
@@ -354,8 +364,20 @@ export function buildSessionState(args: {
     guest_pack: (() => {
       const active = guestPackForSession(state);
       const auto = weeklyAutoGuestPack();
-      const summary = (p: ReturnType<typeof guestPackForSession>) =>
-        p ? { id: p.id, name: p.name, description: p.description } : null;
+      const summary = (p: ReturnType<typeof guestPackForSession>): PackSummaryTelemetry | null => {
+        if (!p) return null;
+        const firstFaculty = p.faculty[0] ?? null;
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          teacher_name: firstFaculty?.shortName || firstFaculty?.displayName || "Guest Faculty",
+          subject: firstFaculty?.subjects?.[0] || "Guest Faculty",
+          faculty_count: p.faculty.length,
+          question_count: p.faculty.reduce((s, f) =>
+            s + (f.sourceCards?.length ?? 0) + f.questions.filter((q) => !q.sourceCardId).length, 0),
+        };
+      };
       return {
         mode: state.guestPackMode ?? "auto",
         weekKey: guestWeekKey(),

@@ -66,6 +66,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const metricsEventUrl = apiBase + "/metrics/event";
+  const VISITOR_ID_KEY = "ruby-high:visitor-id";
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
   const GRADE_SHORT_LABELS = { "9": "Fresh", "10": "Soph", "11": "Junior", "12": "Senior" };
   const GRADE_ORDER = ["9", "10", "11", "12"];
@@ -124,6 +125,28 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (n >= 3) return 3;
     if (n >= 2) return 2;
     return 1;
+  }
+  function makeVisitorId() {
+    const cryptoObj = window.crypto || window.msCrypto;
+    if (cryptoObj && typeof cryptoObj.randomUUID === "function") return "rhv_" + cryptoObj.randomUUID();
+    const random = Math.random().toString(36).slice(2, 12);
+    return "rhv_" + Date.now().toString(36) + "_" + random;
+  }
+  function getVisitorId() {
+    try {
+      const existing = localStorage.getItem(VISITOR_ID_KEY);
+      if (existing && /^[A-Za-z0-9._:-]{8,128}$/.test(existing)) return existing;
+      const next = makeVisitorId();
+      localStorage.setItem(VISITOR_ID_KEY, next);
+      return next;
+    } catch (_err) {
+      return "";
+    }
+  }
+  function attachVisitorHeader(headers) {
+    const visitorId = getVisitorId();
+    if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);
+    return headers;
   }
   function subjectProgressForFaculty(fid) {
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
@@ -394,6 +417,61 @@ const VIEWER_SCRIPT_SUFFIX = `
     return wrap;
   }
 
+  function buildGuestSpotlight(t) {
+    if (!secondarySurfacesUnlocked(t)) return null;
+    const guest = t.guest_pack || {};
+    const pack = guest.auto || null;
+    if (!pack || !pack.id) return null;
+    const key = String(guest.weekKey || "") + ":" + String(pack.id);
+    if (!guestSpotlightSeenKeys.has(key)) {
+      guestSpotlightSeenKeys.add(key);
+      postViewerMetricEvent("guest_spotlight_seen", { packId: pack.id });
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "guest-spotlight";
+    const copy = document.createElement("div");
+    copy.className = "guest-spotlight-copy";
+    const title = document.createElement("div");
+    title.className = "guest-spotlight-title";
+    title.textContent = "This week's guest teacher";
+    const meta = document.createElement("div");
+    meta.className = "guest-spotlight-meta";
+    const teacher = pack.teacher_name || "Guest Faculty";
+    const subject = pack.subject || "guest class";
+    const count = Math.max(0, Math.floor(Number(pack.question_count || 0)));
+    meta.textContent = pack.name + " · " + teacher + " · " + subject + " · " + count + " questions";
+    copy.appendChild(title);
+    copy.appendChild(meta);
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "guest-spotlight-action";
+    const isActive = guest.active && guest.active.id === pack.id && guest.mode === "auto";
+    action.textContent = isActive ? "Guest Faculty active" : "Try Guest Faculty";
+    action.disabled = !!isActive;
+    action.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void startGuestSpotlight(pack);
+    });
+    wrap.appendChild(copy);
+    wrap.appendChild(action);
+    return wrap;
+  }
+
+  async function startGuestSpotlight(pack) {
+    if (!pack || !pack.id) return;
+    postViewerMetricEvent("guest_spotlight_started", { packId: pack.id });
+    try {
+      packLibraryState = await packStudioClient.setGuestAuto();
+      syncGuestAutoButton();
+      renderPackList();
+      renderDraftPackList();
+      await fetchSession();
+    } catch (_err) {
+      appendSystem("guest faculty unavailable");
+    }
+  }
+
   // ── auth credential (client-owned) ───────────────────────────────────────
   // The OpenRouter API key lives ONLY in localStorage. The OAuth callback
   // tab writes it; same-origin storage events fan it out to other tabs;
@@ -401,6 +479,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   // never persists it; server-side auth stores only an opaque app session.
   const AUTH_KEY = "rh_openrouter_key";
   const AUTH_LABEL = "rh_openrouter_label";
+  const LAST_SEEN_KEY = "ruby-high:last-seen";
   const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
   const WELCOME_HALL_PASS_POPUP_KEY_PREFIX = "rh_welcome_hall_passes_seen:";
   const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png";
@@ -414,6 +493,16 @@ const VIEWER_SCRIPT_SUFFIX = `
     try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
     try { localStorage.removeItem(AUTH_LABEL); } catch (e) {}
     try { localStorage.removeItem("rh_openrouter_at"); } catch (e) {}
+  }
+  function markLocalAppOpen() {
+    try {
+      const now = Date.now();
+      const previous = Number(localStorage.getItem(LAST_SEEN_KEY) || 0);
+      localStorage.setItem(LAST_SEEN_KEY, String(now));
+      return previous > 0 && now - previous >= 6 * 60 * 60 * 1000;
+    } catch (_err) {
+      return false;
+    }
   }
   const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js";
   const COMMAND_TIMEOUT_MS = 15000;
@@ -566,6 +655,9 @@ const VIEWER_SCRIPT_SUFFIX = `
   let lastRevealId = null;
   let lastAnswerGradedTriggerId = null;
   let lastIdleTriggerId = null;
+  const guestSpotlightSeenKeys = new Set();
+  let showWelcomeBackCopy = false;
+  let firstRunCreationOpened = false;
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // Local/OpenRouter text AI + Ruby High session present
   let localAiEnabled = false;
@@ -710,7 +802,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   }
   function packStoreUnlocked(t) {
     if (!t || !t.character) return false;
-    return true;
+    return secondarySurfacesUnlocked(t);
   }
   async function maybeAutoStartClass(t) {
     if (autoPickInFlight) return;
@@ -1025,6 +1117,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     commandTimeoutMs: COMMAND_TIMEOUT_MS,
     sessionRefreshTimeoutMs: SESSION_REFRESH_TIMEOUT_MS,
     getApiKey: getStoredApiKey,
+    getVisitorId,
     clearAuth: clearStoredAuth,
     onAuthCleared() {
       try { deriveAuth(); } catch (_e) { /* deriveAuth not yet defined on boot */ }
@@ -1869,6 +1962,7 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   function renderAccountAi() {
     if (!els.accountAiStatus || !els.accountAiUsePass || !els.accountAiAction) return;
+    const unlocked = secondarySurfacesUnlocked(lastTelemetry);
     const ai = hostedAiTelemetry(lastTelemetry);
     const hasBrowserKey = !!getStoredApiKey();
     const durationLabel = formatDuration(ai.durationMs || 604_800_000);
@@ -1907,13 +2001,14 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (els.accountAiMeta) els.accountAiMeta.textContent = meta;
     els.accountAiUsePass.textContent = primaryLabel;
     els.accountAiUsePass.title = primaryTitle;
-    els.accountAiUsePass.disabled = primaryDisabled;
+    els.accountAiUsePass.disabled = !unlocked || primaryDisabled;
     els.accountAiAction.textContent = secondaryLabel;
-    els.accountAiAction.disabled = secondaryDisabled;
+    els.accountAiAction.disabled = !unlocked || secondaryDisabled;
   }
 
   function renderAccountWallet() {
     if (!els.accountWalletBalance) return;
+    const unlocked = secondarySurfacesUnlocked(lastTelemetry);
     const wallet = walletNumbers(lastTelemetry);
     const ai = hostedAiTelemetry(lastTelemetry);
     const slots = characterSlotTelemetry();
@@ -1932,9 +2027,9 @@ const VIEWER_SCRIPT_SUFFIX = `
         : ai.configured
           ? "Spend " + costLabel + " for " + durationLabel + " of hosted AI access."
           : "Hosted AI is not configured on this server.";
-      els.accountUsePass.disabled = !authed || billingBusy || localAiEnabled || ai.active || hostedAiActive || !ai.configured || !ai.affordable;
+      els.accountUsePass.disabled = !unlocked || !authed || billingBusy || localAiEnabled || ai.active || hostedAiActive || !ai.configured || !ai.affordable;
     }
-    if (els.accountBuyPasses) els.accountBuyPasses.disabled = !authed;
+    if (els.accountBuyPasses) els.accountBuyPasses.disabled = !unlocked || !authed;
   }
 
   function characterSlotTelemetry() {
@@ -2735,7 +2830,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       } else if (!lastTelemetry?.character) {
         els.blackboardEmptyText.textContent = "Create your first Ruby High student.";
         if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = "Create Character";
+          els.blackboardEmptyAction.textContent = "Lock it in";
           els.blackboardEmptyAction.hidden = false;
         }
       } else if (faculty && faculty.id === LOUNGE_ID) {
@@ -2753,14 +2848,19 @@ const VIEWER_SCRIPT_SUFFIX = `
         const progress = lastTelemetry && lastTelemetry.active_course_progress;
         const todayDone = progress && progress.today && progress.today.status === "complete";
         const todayActive = progress && progress.today && progress.today.status === "active";
+        const teacherName = faculty ? teacherShortName(faculty, "today's teacher") : "today's teacher";
         const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";
         const lead = todayDone
           ? "Today's graded class is complete. Practice is open."
           : todayActive
             ? "Continue today's class — tap " + advanceLabel + " to start."
             : "Start today's graded class — tap " + advanceLabel + " to start.";
-        els.blackboardEmptyText.textContent = hint ? lead + " " + hint : lead;
-        if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
+        const welcome = showWelcomeBackCopy ? "Welcome back — " + teacherName + " is ready. " : "";
+        els.blackboardEmptyText.textContent = hint ? welcome + lead + " " + hint : welcome + lead;
+        if (els.blackboardEmptyAction) {
+          els.blackboardEmptyAction.textContent = "Start today's class";
+          els.blackboardEmptyAction.hidden = !!todayDone;
+        }
       }
       // Below the lead text: a sleeker on-board subject-grade chip row, so the
       // player can read class standing without opening the sheet.
@@ -2778,6 +2878,8 @@ const VIEWER_SCRIPT_SUFFIX = `
           const grades = buildBoardSubjectGrades();
           if (grades) extras.appendChild(grades);
         }
+        const spotlight = buildGuestSpotlight(t);
+        if (spotlight) extras.appendChild(spotlight);
       }
       return;
     }
@@ -3812,6 +3914,14 @@ const VIEWER_SCRIPT_SUFFIX = `
       buttonTurn.finish();
     }
   }
+
+  function handleBlackboardEmptyAction() {
+    if (!lastTelemetry || !lastTelemetry.character) {
+      openCharacterCreationFromAccount();
+      return;
+    }
+    void pickNext();
+  }
   async function pickAnswer(choice, btn) {
     if (!btn || btn.disabled) return;
     els.answers.forEach((b) => (b.disabled = true));
@@ -4006,7 +4116,12 @@ const VIEWER_SCRIPT_SUFFIX = `
       loadHistory(t.faculty);
     }
     applyViewMode(deriveViewMode(t));
+    if (authed && !t.character && !firstRunCreationOpened) {
+      firstRunCreationOpened = true;
+      setTimeout(() => openCharacterCreationFromAccount(), 0);
+    }
     if (els.packBtn) els.packBtn.hidden = !packStoreUnlocked(t);
+    if (els.hallPassBtn) els.hallPassBtn.hidden = !secondarySurfacesUnlocked(t);
 
     setAccent(t.facultyAccent);
     rebuildServersRail();
@@ -5950,6 +6065,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     open.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      postViewerMetricEvent("yearbook_open", { shareId: share.shareId || "", grade: share.grade || "" });
       window.open(url, "_blank", "noopener,noreferrer");
     });
     actions.appendChild(open);
@@ -5965,6 +6081,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const original = copy.textContent;
       try {
         await copyTextToClipboard(url);
+        postViewerMetricEvent("yearbook_copy", { shareId: share.shareId || "", grade: share.grade || "" });
         copy.textContent = "Copied";
       } catch {
         copy.textContent = "Failed";
@@ -6538,6 +6655,9 @@ const VIEWER_SCRIPT_SUFFIX = `
       });
       if (data && data.session) {
         closeSheet();
+        setTimeout(() => {
+          if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+        }, 0);
       } else {
         applyDisabled();
         setStatus("Save failed — try again.", true);
@@ -8862,7 +8982,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const r = await fetch(apiBase + "/auth/privy", {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: attachVisitorHeader(new Headers({ "Content-Type": "application/json" })),
       body: JSON.stringify({
         accessToken: session.accessToken || undefined,
         identityToken: session.identityToken || undefined,
@@ -9005,6 +9125,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const headers = new Headers();
     const key = getStoredApiKey();
     if (key) headers.set("X-Openrouter-Key", key);
+    attachVisitorHeader(headers);
     const r = await fetch("/api/apps/ruby-high/auth/guest", {
       method: "POST",
       credentials: "same-origin",
@@ -9032,6 +9153,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     try {
       const headers = new Headers();
       if (key) headers.set("X-Openrouter-Key", key);
+      attachVisitorHeader(headers);
       const r = await fetch("/api/apps/ruby-high/auth/me", {
         credentials: "same-origin",
         headers,
@@ -9076,7 +9198,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         els.privyAction.textContent = "Account";
         els.privyAction.hidden = false;
       }
-      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
+      if (els.hallPassBtn) els.hallPassBtn.hidden = lastTelemetry ? !secondarySurfacesUnlocked(lastTelemetry) : true;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
     } else {
@@ -9106,7 +9228,11 @@ const VIEWER_SCRIPT_SUFFIX = `
     // our state.
     clearStoredAuth();
     try {
-      await fetch("/api/apps/ruby-high/auth/logout", { method: "POST", credentials: "same-origin" });
+      await fetch("/api/apps/ruby-high/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: attachVisitorHeader(new Headers()),
+      });
     } catch (e) { /* network failure is fine — local state is what matters */ }
     authed = null;
     aiEnabled = false;
@@ -9594,7 +9720,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountAiUsePass) els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }));
   if (els.accountAiAction) els.accountAiAction.addEventListener("click", handleAccountAiAction);
-  if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", openCharacterCreationFromAccount);
+  if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
   if (els.billingOverlay) els.billingOverlay.addEventListener("click", (e) => {
     if (e.target === els.billingOverlay) closeBilling();
@@ -9639,6 +9765,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   // to this tab from elsewhere (focus). No periodic polling: the only
   // server state we need here is the session cookie's current validity.
   async function bootInitialSession() {
+    showWelcomeBackCopy = markLocalAppOpen();
     await deriveAuth();
     postViewerMetricEvent("app_open", {
       path: window.location.pathname,

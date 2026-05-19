@@ -101,6 +101,7 @@ function makeRouteContext(req, res, url) {
     res,
     cookieHeader,
     userAgentHeader: req.headers["user-agent"] ?? null,
+    visitorHeader: req.headers["x-ruby-high-visitor"] ?? null,
     apiKeyHeader,
     isSecure: false,
     clientIp: deriveClientIp(req),

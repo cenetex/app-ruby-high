@@ -50,6 +50,7 @@
     "test:ci": "vitest --run --testTimeout=15000",
     "check": "npm run typecheck && npm run test:ci && npm run build",
     "check:full": "npm run typecheck && npm run test:ci && npm run build:spa",
+    "balance:report": "node scripts/balance-report.mjs",
     "eval:voice": "npm run build && node scripts/eval-voice.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
