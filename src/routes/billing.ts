@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import {
@@ -31,6 +31,16 @@ export interface BillingProduct {
   hallPasses: number;
   unitAmount: number;
   currency: string;
+  description: string;
+}
+
+export interface SolanaBillingProduct {
+  id: string;
+  name: string;
+  hallPasses: number;
+  tokenAmount: string;
+  tokenAmountBaseUnits: string;
+  tokenSymbol: string;
   description: string;
 }
 
@@ -82,8 +92,60 @@ interface RevenueCatWebhookPayload {
   event?: RevenueCatWebhookEvent;
 }
 
+interface SolanaBillingConfig {
+  configured: boolean;
+  rpcUrl: string;
+  recipient: string;
+  mint: string;
+  symbol: string;
+  decimals: number;
+  products: SolanaBillingProduct[];
+}
+
+interface SolanaTokenBalance {
+  accountIndex?: number;
+  mint?: string;
+  owner?: string;
+  uiTokenAmount?: {
+    amount?: string;
+    decimals?: number;
+  };
+}
+
+interface SolanaParsedTransaction {
+  slot?: number;
+  blockTime?: number | null;
+  meta?: {
+    err?: unknown;
+    preTokenBalances?: SolanaTokenBalance[];
+    postTokenBalances?: SolanaTokenBalance[];
+  } | null;
+  transaction?: {
+    signatures?: string[];
+    message?: {
+      accountKeys?: Array<string | { pubkey?: string }>;
+    };
+  };
+}
+
+interface SolanaRpcResponse<T> {
+  result?: T | null;
+  error?: { code?: number; message?: string };
+}
+
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
+const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
+const DEFAULT_SOLANA_MEMECOIN_MINT = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+const DEFAULT_SOLANA_TREASURY_OWNER = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const BASE58ISH = /^[1-9A-HJ-NP-Za-km-z]+$/;
+const SOLANA_TOKEN_PRICE_ENVS: Record<string, string> = {
+  "hall-pass-5": "RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS",
+  "hall-pass-20": "RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS",
+  "hall-pass-50": "RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS",
+  "hall-pass-100": "RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS",
+};
 
 function envTrim(name: string): string | null {
   const value = process.env[name]?.trim();
@@ -97,12 +159,39 @@ function readPositiveIntEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function readBoundedIntEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = envTrim(name);
+  if (!raw) return fallback;
+  const parsed = Math.floor(Number(raw));
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+}
+
 function billingCurrency(): string {
   return envTrim("RUBY_HIGH_STRIPE_CURRENCY")?.toLowerCase() ?? "usd";
 }
 
 function revenueCatCurrencyCode(): string {
   return envTrim("RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE") ?? "HLP";
+}
+
+function solanaRpcUrl(): string {
+  return envTrim("RUBY_HIGH_SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
+}
+
+function solanaMemecoinMint(): string {
+  return envTrim("RUBY_HIGH_SOLANA_MEMECOIN_MINT") ?? DEFAULT_SOLANA_MEMECOIN_MINT;
+}
+
+function solanaTreasuryOwner(): string {
+  return envTrim("RUBY_HIGH_SOLANA_TREASURY_OWNER") ?? DEFAULT_SOLANA_TREASURY_OWNER;
+}
+
+function solanaMemecoinSymbol(): string {
+  return envTrim("RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL") ?? "RUBY";
+}
+
+function solanaMemecoinDecimals(): number {
+  return readBoundedIntEnv("RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS", 6, 0, 18);
 }
 
 export function billingProducts(): BillingProduct[] {
@@ -141,6 +230,228 @@ export function billingProducts(): BillingProduct[] {
       description: "100 Hall Passes for heavy yearbook energy.",
     },
   ];
+}
+
+function isBase58Address(value: string): boolean {
+  return value.length >= 32 && value.length <= 44 && BASE58ISH.test(value);
+}
+
+function isSolanaSignature(value: string): boolean {
+  return value.length >= 64 && value.length <= 100 && BASE58ISH.test(value);
+}
+
+function parseTokenAmountToBaseUnits(raw: string, decimals: number): bigint | null {
+  const clean = raw.trim();
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(clean)) return null;
+  const [whole, fractional = ""] = clean.split(".");
+  if (fractional.length > decimals) return null;
+  const multiplier = 10n ** BigInt(decimals);
+  const wholeUnits = BigInt(whole) * multiplier;
+  const fractionalUnits = fractional
+    ? BigInt(fractional.padEnd(decimals, "0"))
+    : 0n;
+  const units = wholeUnits + fractionalUnits;
+  return units > 0n ? units : null;
+}
+
+function formatTokenAmount(units: bigint, decimals: number): string {
+  if (decimals <= 0) return units.toString();
+  const multiplier = 10n ** BigInt(decimals);
+  const whole = units / multiplier;
+  const fractional = units % multiplier;
+  if (fractional === 0n) return whole.toString();
+  const fractionalText = fractional.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return `${whole}.${fractionalText}`;
+}
+
+function solanaTokenAmountForProduct(product: BillingProduct, decimals: number): { display: string; baseUnits: string } | null {
+  const envName = SOLANA_TOKEN_PRICE_ENVS[product.id];
+  if (!envName) return null;
+  const raw = envTrim(envName) ?? "100000";
+  const baseUnits = parseTokenAmountToBaseUnits(raw, decimals);
+  if (!baseUnits) return null;
+  return {
+    display: formatTokenAmount(baseUnits, decimals),
+    baseUnits: baseUnits.toString(),
+  };
+}
+
+function solanaBillingConfig(): SolanaBillingConfig {
+  const decimals = solanaMemecoinDecimals();
+  const mint = solanaMemecoinMint();
+  const recipient = solanaTreasuryOwner();
+  const symbol = solanaMemecoinSymbol();
+  const products = billingProducts().flatMap((product): SolanaBillingProduct[] => {
+    const price = solanaTokenAmountForProduct(product, decimals);
+    if (!price) return [];
+    return [{
+      id: product.id,
+      name: product.name,
+      hallPasses: product.hallPasses,
+      tokenAmount: price.display,
+      tokenAmountBaseUnits: price.baseUnits,
+      tokenSymbol: symbol,
+      description: product.description,
+    }];
+  });
+  return {
+    configured: isBase58Address(mint) && isBase58Address(recipient) && products.length > 0,
+    rpcUrl: solanaRpcUrl(),
+    recipient,
+    mint,
+    symbol,
+    decimals,
+    products,
+  };
+}
+
+function solanaProductById(productId: string | undefined | null): SolanaBillingProduct | null {
+  const id = productId?.trim();
+  if (!id) return null;
+  return solanaBillingConfig().products.find((product) => product.id === id) ?? null;
+}
+
+function base58Encode(bytes: Uint8Array): string {
+  const digits = [0];
+  for (const byte of bytes) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i += 1) {
+      carry += digits[i] * 256;
+      digits[i] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = Math.floor(carry / 58);
+    }
+  }
+  let out = "";
+  for (const byte of bytes) {
+    if (byte !== 0) break;
+    out += "1";
+  }
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    out += BASE58_ALPHABET[digits[i]];
+  }
+  return out || "1";
+}
+
+function solanaPaymentReference(sessionId: string, productId: string): string {
+  const digest = createHash("sha256")
+    .update(`ruby-high:solana-payment:v1:${sessionId}:${productId}`)
+    .digest();
+  return base58Encode(digest);
+}
+
+function solanaPayUrl(config: SolanaBillingConfig, product: SolanaBillingProduct, reference: string): string {
+  const params = new URLSearchParams();
+  params.set("amount", product.tokenAmount);
+  params.set("spl-token", config.mint);
+  params.set("reference", reference);
+  params.set("label", "Ruby High");
+  params.set("message", `${product.hallPasses} Hall Passes`);
+  return `solana:${config.recipient}?${params.toString()}`;
+}
+
+function solanaTransactionKey(signature: string): string {
+  return `solana:spl-token-transfer:${signature.trim()}`;
+}
+
+function accountKeyPubkey(value: string | { pubkey?: string }): string {
+  return typeof value === "string" ? value : value.pubkey ?? "";
+}
+
+function solanaTransactionHasReference(transaction: SolanaParsedTransaction, reference: string): boolean {
+  const accountKeys = transaction.transaction?.message?.accountKeys;
+  return Array.isArray(accountKeys) && accountKeys.some((entry) => accountKeyPubkey(entry) === reference);
+}
+
+function tokenBalanceAmount(balance: SolanaTokenBalance): bigint {
+  const amount = balance.uiTokenAmount?.amount;
+  if (typeof amount !== "string" || !/^\d+$/.test(amount)) return 0n;
+  return BigInt(amount);
+}
+
+function solanaTreasuryTokenDelta(transaction: SolanaParsedTransaction, config: SolanaBillingConfig): bigint {
+  const pre = new Map<number, bigint>();
+  const post = new Map<number, bigint>();
+  const collect = (balances: SolanaTokenBalance[] | undefined, target: Map<number, bigint>) => {
+    if (!Array.isArray(balances)) return;
+    for (const balance of balances) {
+      if (balance.mint !== config.mint || balance.owner !== config.recipient) continue;
+      const index = Math.floor(Number(balance.accountIndex));
+      if (!Number.isFinite(index)) continue;
+      target.set(index, tokenBalanceAmount(balance));
+    }
+  };
+  collect(transaction.meta?.preTokenBalances, pre);
+  collect(transaction.meta?.postTokenBalances, post);
+  const indexes = new Set([...pre.keys(), ...post.keys()]);
+  let delta = 0n;
+  for (const index of indexes) {
+    delta += (post.get(index) ?? 0n) - (pre.get(index) ?? 0n);
+  }
+  return delta;
+}
+
+async function fetchSolanaTransaction(config: SolanaBillingConfig, signature: string): Promise<SolanaParsedTransaction | null> {
+  const response = await fetch(config.rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-solana-billing",
+      method: "getTransaction",
+      params: [
+        signature,
+        {
+          encoding: "jsonParsed",
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        },
+      ],
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as SolanaRpcResponse<SolanaParsedTransaction>;
+  if (!response.ok) {
+    throw new Error(`Solana RPC failed with ${response.status}.`);
+  }
+  if (payload.error) {
+    throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
+  }
+  return payload.result ?? null;
+}
+
+async function verifySolanaPayment(
+  config: SolanaBillingConfig,
+  product: SolanaBillingProduct,
+  sessionId: string,
+  signature: string,
+): Promise<{ reference: string; receivedBaseUnits: string; slot?: number; blockTime?: number | null }> {
+  const cleanSignature = signature.trim();
+  if (!isSolanaSignature(cleanSignature)) throw new Error("Invalid Solana transaction signature.");
+  const transaction = await fetchSolanaTransaction(config, cleanSignature);
+  if (!transaction) throw new Error("Solana transaction was not found yet. Try again after confirmation.");
+  if (transaction.meta?.err != null) throw new Error("Solana transaction failed on-chain.");
+  const signatures = transaction.transaction?.signatures;
+  if (Array.isArray(signatures) && signatures.length > 0 && !signatures.includes(cleanSignature)) {
+    throw new Error("Solana RPC returned a different transaction.");
+  }
+  const reference = solanaPaymentReference(sessionId, product.id);
+  if (!solanaTransactionHasReference(transaction, reference)) {
+    throw new Error("Solana transaction is missing this Ruby High payment reference.");
+  }
+  const received = solanaTreasuryTokenDelta(transaction, config);
+  const required = BigInt(product.tokenAmountBaseUnits);
+  if (received < required) {
+    throw new Error(`Solana payment is too small. Need ${product.tokenAmount} ${config.symbol}.`);
+  }
+  return {
+    reference,
+    receivedBaseUnits: received.toString(),
+    slot: transaction.slot,
+    blockTime: transaction.blockTime,
+  };
 }
 
 function firstHeader(value: string | string[] | null | undefined): string {
@@ -563,16 +874,32 @@ function optionalEntitlementsForRequest(ctx: RouteContext, deps: BillingDeps) {
   });
 }
 
+function authenticatedStateKey(ctx: RouteContext, deps: BillingDeps): string | null {
+  const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+  const record = deps.auth.resolve(token);
+  if (!token || !record) return null;
+  return deps.auth.stateKeyForRecord(record);
+}
+
 export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps): Promise<boolean> {
   if (!ctx.pathname.startsWith(BILLING_PREFIX)) return false;
 
   if (ctx.method === "GET" && ctx.pathname === `${BILLING_PREFIX}/products`) {
     const entitlements = optionalEntitlementsForRequest(ctx, deps);
+    const solana = solanaBillingConfig();
     ctx.json(ctx.res, {
       ok: true,
       configured: !!envTrim("RUBY_HIGH_STRIPE_SECRET_KEY"),
       currency: billingCurrency(),
       products: billingProducts(),
+      solana: {
+        configured: solana.configured,
+        recipient: solana.recipient,
+        mint: solana.mint,
+        symbol: solana.symbol,
+        decimals: solana.decimals,
+        products: solana.products,
+      },
       imageCosts: {
         portrait: hostedImageCost("portrait"),
         diploma: hostedImageCost("diploma"),
@@ -590,6 +917,117 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       },
       entitlements,
     });
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/quote`) {
+    const solana = solanaBillingConfig();
+    if (!solana.configured) {
+      ctx.error(ctx.res, "Solana Hall Pass billing is not configured.", 503);
+      return true;
+    }
+    const stateKey = authenticatedStateKey(ctx, deps);
+    if (!stateKey) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
+    if (!product) {
+      ctx.error(ctx.res, "Unknown Solana Hall Pass pack.", 400);
+      return true;
+    }
+    const reference = solanaPaymentReference(stateKey, product.id);
+    ctx.json(ctx.res, {
+      ok: true,
+      product,
+      recipient: solana.recipient,
+      mint: solana.mint,
+      symbol: solana.symbol,
+      decimals: solana.decimals,
+      reference,
+      solanaPayUrl: solanaPayUrl(solana, product, reference),
+    });
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/confirm`) {
+    const solana = solanaBillingConfig();
+    if (!solana.configured) {
+      ctx.error(ctx.res, "Solana Hall Pass billing is not configured.", 503);
+      return true;
+    }
+    const stateKey = authenticatedStateKey(ctx, deps);
+    if (!stateKey) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const signature = typeof body.signature === "string" ? body.signature.trim() : "";
+    const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
+    if (!product) {
+      ctx.error(ctx.res, "Unknown Solana Hall Pass pack.", 400);
+      return true;
+    }
+    if (!signature) {
+      ctx.error(ctx.res, "Solana transaction signature is required.", 400);
+      return true;
+    }
+    const idempotencyKey = solanaTransactionKey(signature);
+    const existing = deps.ruby.walletTransactionOwner(idempotencyKey);
+    if (existing && existing.sessionId !== stateKey) {
+      ctx.error(ctx.res, "Solana transaction has already been used for another Ruby High account.", 409);
+      return true;
+    }
+    if (existing) {
+      const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
+      ctx.json(ctx.res, {
+        ok: true,
+        applied: false,
+        sessionId: stateKey,
+        amount: Math.max(0, Math.floor(Number(existing.transaction.hallPasses ?? 0))),
+        hallPasses: entitlements.hallPasses,
+        productId: existing.transaction.metadata?.hallPassPackId ?? product.id,
+        entitlements,
+      });
+      return true;
+    }
+    try {
+      const verification = await verifySolanaPayment(solana, product, stateKey, signature);
+      const result = deps.ruby.grantHallPasses(stateKey, {
+        amount: product.hallPasses,
+        idempotencyKey,
+        source: "solana",
+        description: `${product.hallPasses} Hall Passes via ${solana.symbol}`,
+        metadata: {
+          solanaSignature: signature,
+          solanaMint: solana.mint,
+          solanaRecipient: solana.recipient,
+          solanaReference: verification.reference,
+          solanaRequiredBaseUnits: product.tokenAmountBaseUnits,
+          solanaReceivedBaseUnits: verification.receivedBaseUnits,
+          solanaTokenAmount: product.tokenAmount,
+          solanaTokenSymbol: solana.symbol,
+          hallPassPackId: product.id,
+          ...(verification.slot != null ? { solanaSlot: verification.slot } : {}),
+          ...(verification.blockTime != null ? { solanaBlockTime: verification.blockTime } : {}),
+        },
+      });
+      await deps.ruby.flushSession(stateKey);
+      const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
+      ctx.json(ctx.res, {
+        ok: true,
+        applied: result.applied,
+        sessionId: stateKey,
+        amount: product.hallPasses,
+        hallPasses: result.state.wallet.hallPasses,
+        productId: product.id,
+        entitlements,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      ctx.error(ctx.res, message, message.includes("too small") ? 402 : 400);
+    }
     return true;
   }
 

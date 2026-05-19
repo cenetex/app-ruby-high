@@ -1138,6 +1138,17 @@ export class RubyHighService extends Service {
     return state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id) ?? null;
   }
 
+  walletTransactionOwner(idempotencyKey: string): { sessionId: string; transaction: RubyHighWalletTransaction } | null {
+    const id = idempotencyKey.trim();
+    if (!id) return null;
+    for (const [sessionId, state] of this.sessions.entries()) {
+      state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+      const transaction = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id) ?? null;
+      if (transaction) return { sessionId, transaction };
+    }
+    return null;
+  }
+
   recordWalletMarker(
     sessionId: string,
     input: {
@@ -4704,6 +4715,7 @@ function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | n
   ];
   const sources: Array<NonNullable<RubyHighWalletTransaction["source"]>> = [
     "stripe",
+    "solana",
     "iap",
     "revenuecat",
     "hosted-image",

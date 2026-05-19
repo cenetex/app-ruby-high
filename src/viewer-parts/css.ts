@@ -1386,6 +1386,39 @@ export const VIEWER_CSS = `
     opacity: 0.5;
     cursor: default;
   }
+  .billing-solana-quote {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .billing-solana-details {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    color: var(--text-soft);
+    font-size: 11px;
+  }
+  .billing-solana-details code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    color: #ffe08a;
+  }
+  .billing-solana-signature {
+    width: 100%;
+    margin-top: 10px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+  .billing-solana-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
   .pack-row {
     display: flex;
     align-items: center;

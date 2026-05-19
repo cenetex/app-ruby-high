@@ -24,6 +24,15 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_HOSTED_AI_DURATION_HOURS: process.env.RUBY_HIGH_HOSTED_AI_DURATION_HOURS,
   RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH: process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH,
   RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE: process.env.RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE,
+  RUBY_HIGH_SOLANA_RPC_URL: process.env.RUBY_HIGH_SOLANA_RPC_URL,
+  RUBY_HIGH_SOLANA_MEMECOIN_MINT: process.env.RUBY_HIGH_SOLANA_MEMECOIN_MINT,
+  RUBY_HIGH_SOLANA_TREASURY_OWNER: process.env.RUBY_HIGH_SOLANA_TREASURY_OWNER,
+  RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL: process.env.RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL,
+  RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS: process.env.RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS,
+  RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS,
+  RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS,
+  RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS,
+  RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS,
 };
 
 function restoreEnv(): void {
@@ -100,6 +109,15 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_HOSTED_AI_DURATION_HOURS;
   delete process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH;
   delete process.env.RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE;
+  delete process.env.RUBY_HIGH_SOLANA_RPC_URL;
+  delete process.env.RUBY_HIGH_SOLANA_MEMECOIN_MINT;
+  delete process.env.RUBY_HIGH_SOLANA_TREASURY_OWNER;
+  delete process.env.RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL;
+  delete process.env.RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS;
+  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS;
+  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS;
+  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS;
+  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-billing-routes-"));
   await getActivePack();
   const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
@@ -127,6 +145,19 @@ describe("billing products", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.configured).toBe(false);
     expect(lastResponse?.body.products.map((p: any) => p.hallPasses)).toEqual([5, 20, 50, 100]);
+    expect(lastResponse?.body.solana).toMatchObject({
+      configured: true,
+      mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      recipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      symbol: "RUBY",
+      decimals: 6,
+    });
+    expect(lastResponse?.body.solana.products.map((p: any) => [p.hallPasses, p.tokenAmount])).toEqual([
+      [5, "100000"],
+      [20, "100000"],
+      [50, "100000"],
+      [100, "100000"],
+    ]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
     expect(lastResponse?.body.courseSlotCost).toBe(3);
     expect(lastResponse?.body.questionGenerationCost).toBe(1);
@@ -399,6 +430,167 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse?.status).toBe(400);
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+  });
+});
+
+describe("Solana Hall Pass billing", () => {
+  it("quotes every pack at 100,000 $RUBY with a session payment reference", async () => {
+    const stateKey = signInUser("solana-quote");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/quote",
+      cookie: "rh_session=solana-quote",
+      body: { productId: "hall-pass-50" },
+    }), deps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body).toMatchObject({
+      ok: true,
+      recipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      symbol: "RUBY",
+      decimals: 6,
+      product: {
+        id: "hall-pass-50",
+        hallPasses: 50,
+        tokenAmount: "100000",
+        tokenAmountBaseUnits: "100000000000",
+        tokenSymbol: "RUBY",
+      },
+    });
+    expect(lastResponse?.body.reference).toEqual(expect.any(String));
+    expect(lastResponse?.body.reference).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
+    expect(lastResponse?.body.solanaPayUrl).toContain("solana:1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY?");
+    expect(lastResponse?.body.solanaPayUrl).toContain("spl-token=ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump");
+    expect(lastResponse?.body.solanaPayUrl).toContain(`reference=${lastResponse?.body.reference}`);
+    expect(stateKey).toBe("rh:user:billing-solana-quote");
+  });
+
+  it("verifies an on-chain token transfer and grants Hall Passes idempotently", async () => {
+    const stateKey = signInUser("solana-paid");
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/quote",
+      cookie: "rh_session=solana-paid",
+      body: { productId: "hall-pass-20" },
+    }), deps());
+    const reference = lastResponse?.body.reference;
+    const signature = "2".repeat(88);
+    let rpcCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      rpcCalls += 1;
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: "ruby-high-solana-billing",
+        result: {
+          slot: 123,
+          blockTime: 1_775_000_000,
+          meta: {
+            err: null,
+            preTokenBalances: [
+              {
+                accountIndex: 3,
+                mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+                owner: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+                uiTokenAmount: { amount: "0", decimals: 6 },
+              },
+            ],
+            postTokenBalances: [
+              {
+                accountIndex: 3,
+                mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+                owner: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+                uiTokenAmount: { amount: "100000000000", decimals: 6 },
+              },
+            ],
+          },
+          transaction: {
+            signatures: [signature],
+            message: { accountKeys: [{ pubkey: reference }] },
+          },
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/confirm",
+      cookie: "rh_session=solana-paid",
+      body: { productId: "hall-pass-20", signature },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        applied: true,
+        sessionId: stateKey,
+        amount: 20,
+        hallPasses: 25,
+        productId: "hall-pass-20",
+      },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+    expect(ruby.walletTransaction(stateKey, `solana:spl-token-transfer:${signature}`)).toMatchObject({
+      source: "solana",
+      hallPasses: 20,
+      metadata: {
+        solanaRequiredBaseUnits: "100000000000",
+        solanaReceivedBaseUnits: "100000000000",
+        solanaReference: reference,
+      },
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/confirm",
+      cookie: "rh_session=solana-paid",
+      body: { productId: "hall-pass-20", signature },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { ok: true, applied: false, sessionId: stateKey, amount: 20, hallPasses: 25 },
+    });
+    expect(rpcCalls).toBe(1);
+  });
+
+  it("rejects a transaction that is missing the quoted payment reference", async () => {
+    signInUser("solana-wrong-ref");
+    const signature = "3".repeat(88);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-solana-billing",
+      result: {
+        meta: {
+          err: null,
+          preTokenBalances: [],
+          postTokenBalances: [],
+        },
+        transaction: {
+          signatures: [signature],
+          message: { accountKeys: [{ pubkey: "11111111111111111111111111111111" }] },
+        },
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/confirm",
+      cookie: "rh_session=solana-wrong-ref",
+      body: { productId: "hall-pass-20", signature },
+    }), deps());
+
+    expect(lastResponse?.status).toBe(400);
+    expect(lastResponse?.body.error).toContain("payment reference");
+    expect(ruby.getOrCreate("rh:user:billing-solana-wrong-ref").wallet.hallPasses).toBe(5);
   });
 });
 

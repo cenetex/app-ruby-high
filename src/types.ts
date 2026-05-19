@@ -500,7 +500,7 @@ export interface RubyHighWalletTransaction {
   hallPasses?: number;
   /** Positive for refunds, negative for spends. */
   photoDayCredits?: number;
-  source?: "stripe" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "admin" | "system";
+  source?: "stripe" | "solana" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "admin" | "system";
   description?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }

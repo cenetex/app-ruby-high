@@ -110,6 +110,15 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_HALL_PASS_20_CENTS` | `699` | Price for 20 Hall Passes. |
 | `RUBY_HIGH_HALL_PASS_50_CENTS` | `1499` | Price for 50 Hall Passes. |
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
+| `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto Hall Pass purchases. |
+| `RUBY_HIGH_SOLANA_MEMECOIN_MINT` | `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump` | SPL-token mint accepted for crypto Hall Pass purchases. |
+| `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY` | Treasury wallet owner that must receive the SPL-token transfer. |
+| `RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL` | `RUBY` | Display symbol for the Solana token. |
+| `RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS` | `6` | SPL-token decimal places used when converting quoted token amounts to base units. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS` | `100000` | `$RUBY` price for the 5 Hall Pass pack. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS` | `100000` | `$RUBY` price for the 20 Hall Pass pack. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS` | `100000` | `$RUBY` price for the 50 Hall Pass pack. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS` | `100000` | `$RUBY` price for the 100 Hall Pass pack. |
 | `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Hall Pass cost to activate server-hosted text AI for one timed window. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Hosted AI Access duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Optional exact hosted AI pass duration override. |
@@ -149,6 +158,14 @@ Web purchases use Stripe Checkout:
 - `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata.
 
 Stripe webhook events to send: `checkout.session.completed` and, if using asynchronous payment methods, `checkout.session.async_payment_succeeded`.
+
+Solana purchases use the configured SPL token:
+
+- The default token is `$RUBY` mint `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump`.
+- The default treasury wallet is `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY`.
+- Every built-in Hall Pass pack defaults to `100000` `$RUBY`.
+- `POST /api/apps/ruby-high/billing/solana/quote` returns the treasury wallet, mint, per-session payment reference, token amount, and Solana Pay URL for a selected pack.
+- `POST /api/apps/ruby-high/billing/solana/confirm` accepts a transaction signature, verifies the token transfer on Solana RPC, requires the quoted reference account in the transaction, and grants Hall Passes idempotently.
 
 Native billing is not wired in the current public-web build. If iOS or Android comes back, do not use Stripe for digital in-app currency; create matching consumable in-app purchase products in App Store Connect and Google Play Console, validate receipts/purchase tokens server-side, then call the same Hall Pass grant path. RevenueCat can replace most receipt-validation boilerplate; the Ruby High server remains the authority that credits the wallet after validation.
 
