@@ -36,9 +36,6 @@ let tmpDir: string;
 let storePath: string;
 let captured: { url: string; body: any } | null = null;
 let activeRuby: RubyHighService | null = null;
-const originalRatiBaseUrl = process.env.RUBY_HIGH_RATI_BASE_URL;
-const originalRatiApiKey = process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY;
-const originalRatiSupportsTools = process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
 
 function buildSseChunk(events: Array<{ content?: string; toolCalls?: any[]; finish?: string }>): Uint8Array {
   const lines: string[] = [];
@@ -146,11 +143,6 @@ function fakeImportedPack(): ContentPack {
   };
 }
 
-function restoreEnv(key: string, value: string | undefined): void {
-  if (value === undefined) delete process.env[key];
-  else process.env[key] = value;
-}
-
 class FailingSaveSessionStore implements StateStoreLike {
   async load(): Promise<Map<string, QuizState>> {
     return new Map();
@@ -208,9 +200,6 @@ class FailingSaveSessionStore implements StateStoreLike {
 }
 
 beforeEach(async () => {
-  delete process.env.RUBY_HIGH_RATI_BASE_URL;
-  delete process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY;
-  delete process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-"));
   storePath = join(tmpDir, "state.json");
   captured = null;
@@ -218,9 +207,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  restoreEnv("RUBY_HIGH_RATI_BASE_URL", originalRatiBaseUrl);
-  restoreEnv("RUBY_HIGH_RATI_INTERNAL_API_KEY", originalRatiApiKey);
-  restoreEnv("RUBY_HIGH_RATI_SUPPORTS_TOOLS", originalRatiSupportsTools);
   vi.restoreAllMocks();
   // Drain any in-flight persistSession writes before nuking the dir,
   // otherwise a fire-and-forget write can race the rm and trip ENOTEMPTY.
@@ -273,141 +259,45 @@ describe("ChatService.send — message composition", () => {
     expect(messages[0].content).not.toContain("You are Ruby");
   });
 
-  it("uses a server-backed RATi provider with board tools and no browser OpenRouter key", async () => {
-    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY = "sk-rati-test";
-    mockOpenRouter(buildSseChunk([{ content: "RATi here.", finish: "stop" }]));
+  it("falls back to OpenRouter for legacy unsupported provider metadata", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "Legacy provider recovered.", finish: "stop" }]));
     const { ruby, chat } = await makeServices();
-    const sid = "session:rati-chat";
+    const sid = "session:legacy-provider-chat";
     const pack = fakeImportedPack();
-    pack.id = "agent:rati-rati";
+    pack.id = "agent:legacy-provider";
     pack.faculty[0] = {
       ...pack.faculty[0]!,
-      id: "rati-rati",
-      displayName: "RATi",
-      defaultModel: "rati:rati",
+      id: "legacy-provider-teacher",
+      displayName: "Legacy Provider",
+      defaultModel: "legacy/provider-model",
       provider: {
-        kind: "rati-openai-compatible",
-        model: "rati:rati",
-        externalId: "rati",
+        kind: "unsupported-provider",
         supportsTools: false,
-      },
+      } as never,
       questions: [],
     };
-    pack.courses![0] = { ...pack.courses![0]!, facultyId: "rati-rati", id: "rati-rati" };
-    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "rati-rati" };
+    pack.courses![0] = { ...pack.courses![0]!, facultyId: "legacy-provider-teacher", id: "legacy-provider-teacher" };
+    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "legacy-provider-teacher" };
     registerPack(pack, sid);
     ruby.setActivePackForSession(sid, pack.id);
 
     const events: any[] = [];
     for await (const ev of chat.send({
-      sessionToken: "t-rati",
+      apiKey: "sk-test",
+      sessionToken: "t-legacy-provider",
       agentSessionId: sid,
-      faculty: "rati-rati",
+      faculty: "legacy-provider-teacher",
       userMessage: "Can you teach here?",
     })) {
       events.push(ev);
     }
 
-    expect(events.some((ev) => ev.type === "delta" && ev.text === "RATi here.")).toBe(true);
-    expect(captured?.url).toBe("https://swarm.test/api/v1/chat/completions");
-    expect(captured?.body.model).toBe("rati:rati");
+    expect(events.some((ev) => ev.type === "delta" && ev.text === "Legacy provider recovered.")).toBe(true);
+    expect(captured?.url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(captured?.body.model).toBe("legacy/provider-model");
     const toolNames = captured?.body.tools.map((tool: any) => tool.function.name);
     expect(toolNames).toContain("pose_question");
-    expect(toolNames).not.toContain("pick_from_bank");
     expect(captured?.body.tool_choice).toBe("auto");
-  });
-
-  it("drops RATi provider fallback text before streaming or saving teacher chat", async () => {
-    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY = "sk-rati-test";
-    mockOpenRouter(buildSseChunk([
-      { content: "I apologize, but I couldn" },
-      { content: "'t generate a response. Please try again." },
-      { content: "Let's reset with a real question." },
-      { finish: "stop" },
-    ]));
-    const { ruby, chat } = await makeServices();
-    const sid = "session:rati-fallback";
-    const pack = fakeImportedPack();
-    pack.id = "agent:rati-fallback";
-    pack.faculty[0] = {
-      ...pack.faculty[0]!,
-      id: "rati-fallback",
-      displayName: "Opus",
-      defaultModel: "rati:opus",
-      provider: {
-        kind: "rati-openai-compatible",
-        model: "rati:opus",
-        externalId: "opus",
-        supportsTools: true,
-      },
-      questions: [],
-    };
-    pack.courses![0] = { ...pack.courses![0]!, facultyId: "rati-fallback", id: "rati-fallback" };
-    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "rati-fallback" };
-    registerPack(pack, sid);
-    ruby.setActivePackForSession(sid, pack.id);
-
-    const events: any[] = [];
-    for await (const ev of chat.send({
-      sessionToken: "t-rati-fallback",
-      agentSessionId: sid,
-      faculty: "rati-fallback",
-      userMessage: "next",
-    })) {
-      events.push(ev);
-    }
-
-    const streamed = events.filter((ev) => ev.type === "delta").map((ev) => ev.text).join("");
-    expect(streamed).toBe("Let's reset with a real question.");
-    expect(streamed).not.toContain("couldn't generate a response");
-    expect(chat.history({ sessionToken: "t-rati-fallback", faculty: "rati-fallback" }))
-      .toEqual(expect.arrayContaining([
-        expect.objectContaining({ role: "assistant", content: "Let's reset with a real question." }),
-      ]));
-  });
-
-  it("strips board-tool instructions for a chat-only RATi backend", async () => {
-    process.env.RUBY_HIGH_RATI_BASE_URL = "https://swarm.test/api/v1";
-    process.env.RUBY_HIGH_RATI_INTERNAL_API_KEY = "sk-rati-test";
-    process.env.RUBY_HIGH_RATI_SUPPORTS_TOOLS = "false";
-    mockOpenRouter(buildSseChunk([{ content: "RATi here.", finish: "stop" }]));
-    const { ruby, chat } = await makeServices();
-    const sid = "session:rati-chat-only";
-    const pack = fakeImportedPack();
-    pack.id = "agent:rati-chat-only";
-    pack.faculty[0] = {
-      ...pack.faculty[0]!,
-      id: "rati-chat-only",
-      displayName: "RATi",
-      defaultModel: "rati:rati",
-      provider: {
-        kind: "rati-openai-compatible",
-        model: "rati:rati",
-        externalId: "rati",
-        supportsTools: true,
-      },
-      questions: [],
-    };
-    pack.courses![0] = { ...pack.courses![0]!, facultyId: "rati-chat-only", id: "rati-chat-only" };
-    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "rati-chat-only" };
-    registerPack(pack, sid);
-    ruby.setActivePackForSession(sid, pack.id);
-
-    for await (const _ of chat.send({
-      sessionToken: "t-rati-chat-only",
-      agentSessionId: sid,
-      faculty: "rati-chat-only",
-      systemEventNote: "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question.",
-    })) { /* consume */ }
-
-    expect(captured?.body.tools).toBeUndefined();
-    expect(captured?.body.tool_choice).toBeUndefined();
-    const promptText = JSON.stringify(captured?.body.messages);
-    expect(promptText).not.toContain("pick_from_bank");
-    expect(promptText).not.toContain("pose_question");
-    expect(promptText).toContain("Ruby High board tools are not available");
   });
 
   it("describes imported decks as no due cards, not exhausted", async () => {

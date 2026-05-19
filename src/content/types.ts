@@ -101,20 +101,11 @@ export interface PackFaculty {
 }
 
 export type PackFacultyProvider =
-  | {
-      kind: "openrouter";
-      /** Whether this provider can accept OpenAI-style Ruby High board tools. */
-      supportsTools?: boolean;
-    }
-  | {
-      kind: "rati-openai-compatible";
-      /** Model id sent to the RATi/aws-swarm OpenAI-compatible API. */
-      model: string;
-      /** Stable upstream id/root for display and reconnect validation. */
-      externalId?: string;
-      /** Server-side capability hint for Ruby High board tools. */
-      supportsTools?: boolean;
-    };
+  {
+    kind: "openrouter";
+    /** Whether this provider can accept OpenAI-style Ruby High board tools. */
+    supportsTools?: boolean;
+  };
 
 export interface PackRoom {
   id: string;

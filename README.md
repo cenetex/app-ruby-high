@@ -147,14 +147,9 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_ALLOW_HTTP_MATERIAL_URLS` | — | Set to `true` only in trusted local/dev environments. Remote course-material imports require HTTPS by default and reject localhost/private/reserved hosts. |
 | `RUBY_HIGH_EVAL_MODEL` | `openai/gpt-4.1-mini` | LLM-judge model for `npm run eval:voice` when an OpenRouter key is available. |
 | `RUBY_HIGH_EVAL_REQUIRE_API` | — | Set to `1` to make `npm run eval:voice` fail when no `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
-| `RUBY_HIGH_RATI_BASE_URL` | `https://swarm.rati.chat/api/v1` | OpenAI-compatible RATi/aws-swarm base URL for persisted RATi-backed teacher packs. |
-| `RUBY_HIGH_RATI_INTERNAL_API_KEY` | — | Internal server-to-server RATi credential for persisted RATi-backed teacher packs. The legacy `RUBY_HIGH_RATI_API_KEY` is no longer read. |
-| `RUBY_HIGH_RATI_SUPPORTS_TOOLS` | `true` | Whether RATi-backed teachers receive Ruby High board tools. Set `false` only for an older chat-only RATi backend. |
-| `RUBY_HIGH_RATI_TIMEOUT_MS` | `60000` | Timeout for RATi chat calls. |
-
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
-No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. Ruby High no longer lists, creates, imports, or grants RATi avatars. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on AI Access, and enables hosted image generation with per-image Hall Pass costs. Edit Pack no longer lists/imports live RATi models from a server key; new local teacher drafts become OpenRouter-backed packs, while existing RATi-backed packs use `RUBY_HIGH_RATI_INTERNAL_API_KEY` only for server-to-server runtime calls.
+No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on AI Access, and enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
 
 ## Billing and Hall Passes
 

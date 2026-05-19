@@ -68,7 +68,7 @@ describe("bug report route", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
     const harness = makeHarness({
-      description: "Teacher leaked sk-rati-abc123456789 in chat.",
+      description: "Teacher leaked sk-openrouter-test123456789 in chat.",
       context: {
         url: "https://rubyhighai.com/api/apps/ruby-high/viewer?code=oauth-secret",
         userAgent: "Vitest",
@@ -77,7 +77,7 @@ describe("bug report route", () => {
         aiEnabled: true,
         character: "Vince (outsider)",
         grade: "10",
-        faculty: "rati-agent",
+        faculty: "ruby",
         viewport: "1280x720",
         recentErrors: ["Authorization: Bearer sk-openrouter-abc123456789"],
       },
@@ -98,7 +98,7 @@ describe("bug report route", () => {
     expect(payload.labels).toEqual(["bug", "user-report"]);
     expect(payload.body).toContain("Vince (outsider)");
     expect(payload.body).toContain("code=[redacted]");
-    expect(payload.body).not.toContain("sk-rati-abc123456789");
+    expect(payload.body).not.toContain("sk-openrouter-test123456789");
     expect(payload.body).not.toContain("sk-openrouter-abc123456789");
   });
 

@@ -244,7 +244,7 @@ Main story pages unlock from class performance: Ruby, Sally Science, and Profess
 |---|---|---|
 | `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, daily-class progression, card mastery, the cohort, graduation. |
 | `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the composed Ruby High roster, including the weekly Guest Faculty slot. Picks daily-class and practice questions. |
-| `ChatService` | `src/services/chat-service.ts` | Provider-aware SSE per-teacher. OpenRouter remains the default; RATi/aws-swarm connected teachers use a server-side OpenAI-compatible adapter. Owns chat history, dispatches supported tools into the game state. |
+| `ChatService` | `src/services/chat-service.ts` | SSE per-teacher on OpenRouter or the configured local OpenAI-compatible text endpoint. Owns chat history and dispatches supported tools into the game state. |
 | `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions; the API key never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. Maintains a per-user record so a player's character persists across sessions. |
 | Content registry | `src/content/registry.ts` (+ `src/content/packs/`) | Active content pack resolver, global and per-session. Serves the built-in `ruby-high-original` plus session-scoped runtime packs. |
 | `StateStore` | `src/services/state-store.ts` + `dynamo-state-store.ts` | Two backends: atomic JSON-file for local dev, DynamoDB on-demand for production. Stores both per-session quiz state and per-user identity. |
@@ -388,8 +388,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 ### P3 — content & evaluation (the moat)
 
-5. **Prototype one connected teacher pack** backed by an OpenAI-compatible RATi/aws-swarm agent endpoint. Proves the live-teacher boundary, auth model, and fallback behavior before broadening the UI.
-6. **Expand the faculty-voice eval harness.** The script exists. Next: 20–30 hand-graded reference Q/A pairs per teacher, real generated samples from course packs, and a CI threshold.
+5. **Expand the faculty-voice eval harness.** The script exists. Next: 20–30 hand-graded reference Q/A pairs per teacher, real generated samples from course packs, and a CI threshold.
 
 ### Defer
 
