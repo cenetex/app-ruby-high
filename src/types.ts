@@ -6,6 +6,8 @@ export type Difficulty = "easy" | "medium" | "hard";
 
 export const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 
+export type GuestPackMode = "auto" | "override";
+
 /** Ruby HIGH School — only grades 9-12 (Freshman, Sophomore, Junior, Senior).
  *  Players start at Freshman and progress year by year. Each year completes
  *  when the player clears the daily-class and subject-grade gates. After
@@ -553,6 +555,10 @@ export interface QuizState {
    *  or "ruby-high-original" — the field exists so the per-session
    *  abstraction can land before the runtime pack adapters do. */
   activePackId: string | null;
+  /** Creator-pack guest faculty selector. Ruby High remains the permanent
+   *  base school; creator packs fill one weekly Guest course slot. */
+  guestPackMode: GuestPackMode;
+  guestPackOverrideId: string | null;
   /** The player's character sheet. Created once (on first run) and
    *  immutable thereafter (graduation flow archives it to a yearbook). */
   character: PlayerCharacter | null;

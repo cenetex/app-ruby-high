@@ -13,10 +13,10 @@
  *     teachers, generated, paid). Each entry is tagged with an owner so
  *     session-scoped packs only show up for the owner.
  *
- * Per-session resolution: each QuizState carries activePackId. The
- * packForSession(session) helper looks the id up in the registry,
- * falling back to the global active pack on null/unknown so an evicted
- * id never breaks reads.
+ * Per-session resolution: legacy/imported sessions may still carry an
+ * activePackId. Normal Ruby High play composes the permanent built-in pack
+ * with one creator-pack Guest Faculty slot selected by auto weekly rotation
+ * or user override.
  *
  * Built-in packs are pinned (never evicted; can't be overwritten by a
  * runtime registerPack call). Session-scoped packs evict LRU per-owner
@@ -29,6 +29,9 @@ import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
 
 /** Stable id of the built-in pack. */
 export const ORIGINAL_PACK_ID = "ruby-high-original";
+export const GUEST_COURSE_ID = "guest";
+export const GUEST_ROOM_ID = "guest-room";
+export const GUEST_CHANNEL_NAME = "guest";
 
 /** Pack-id builder for connected teacher packs. */
 export function connectedPackId(slug: string): string {
@@ -259,7 +262,13 @@ export function activeRoomsWithLounge(): PackRoom[] {
 // when the session is null or its activePackId points at an unregistered
 // pack.
 
-interface PackSession { activePackId?: string | null }
+export type GuestPackMode = "auto" | "override";
+
+interface PackSession {
+  activePackId?: string | null;
+  guestPackMode?: GuestPackMode | null;
+  guestPackOverrideId?: string | null;
+}
 
 /** Resolve the pack for a given session. Falls back to the global
  *  active pack when the session is null OR its activePackId doesn't
@@ -271,11 +280,132 @@ interface PackSession { activePackId?: string | null }
  *  activated, then ownership got transferred — we let them keep
  *  reading until next switch). */
 export function packForSession(session: PackSession | null): ContentPack {
-  if (session?.activePackId) {
+  if (session?.activePackId && session.activePackId !== ORIGINAL_PACK_ID) {
     const r = packs.get(session.activePackId);
     if (r) return r.pack;
   }
-  return getLoadedPack();
+  const base = getLoadedPack();
+  const guest = guestPackForSession(session);
+  return guest ? composeGuestPack(base, guest) : base;
+}
+
+export function guestWeekKey(date = new Date()): string {
+  const time = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const day = new Date(time).getUTCDay() || 7;
+  const monday = time - (day - 1) * 24 * 60 * 60 * 1000;
+  const d = new Date(monday);
+  const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
+  const week = Math.floor((monday - yearStart) / (7 * 24 * 60 * 60 * 1000)) + 1;
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+export function publicCreatorPacks(): ContentPack[] {
+  return Array.from(packs.values())
+    .filter((r) =>
+      r.ownerSessionId === null &&
+      r.pack.id !== ORIGINAL_PACK_ID &&
+      (r.pack.id.startsWith("pack:") || r.pack.id.startsWith("teacher:"))
+    )
+    .map((r) => r.pack)
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export function weeklyAutoGuestPack(date = new Date()): ContentPack | null {
+  const candidates = publicCreatorPacks().filter((pack) => guestFacultyForPack(pack) !== null);
+  if (candidates.length === 0) return null;
+  const key = guestWeekKey(date);
+  return candidates[hashString(key) % candidates.length] ?? null;
+}
+
+export function guestPackForSession(session: PackSession | null, date = new Date()): ContentPack | null {
+  if (!session) return null;
+  if (session?.activePackId && session.activePackId !== ORIGINAL_PACK_ID) return null;
+  if (session?.guestPackMode === "override" && session.guestPackOverrideId) {
+    const record = packs.get(session.guestPackOverrideId);
+    if (record && record.ownerSessionId === null && record.pack.id !== ORIGINAL_PACK_ID) {
+      return guestFacultyForPack(record.pack) ? record.pack : null;
+    }
+  }
+  return weeklyAutoGuestPack(date);
+}
+
+export function guestFacultyForPack(pack: ContentPack): PackFaculty | null {
+  return pack.faculty.find((f) => f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+    ?? pack.faculty[0]
+    ?? null;
+}
+
+function composeGuestPack(base: ContentPack, guestPack: ContentPack): ContentPack {
+  const sourceFaculty = guestFacultyForPack(guestPack);
+  if (!sourceFaculty) return base;
+  const sourceCourse = coursesForPack(guestPack).find((c) => c.facultyId === sourceFaculty.id);
+  const sourceRoom = guestPack.rooms.find((r) => r.teacherId === sourceFaculty.id);
+  const questionPrefix = `guest:${slugForId(guestPack.id)}:`;
+  const guestFaculty: PackFaculty = {
+    ...sourceFaculty,
+    id: GUEST_COURSE_ID,
+    questions: sourceFaculty.questions.map((q) => ({
+      ...q,
+      id: prefixedId(questionPrefix, q.id),
+      faculty: GUEST_COURSE_ID,
+      sourceCardId: q.sourceCardId ? prefixedId(questionPrefix, q.sourceCardId) : q.sourceCardId,
+    })),
+    sourceCards: sourceFaculty.sourceCards?.map((card) => ({
+      ...card,
+      id: prefixedId(questionPrefix, card.id),
+      faculty: GUEST_COURSE_ID,
+    })),
+  };
+  const baseCourses = coursesForPack(base);
+  return {
+    ...base,
+    id: `${base.id}+guest:${slugForId(guestPack.id)}`,
+    name: base.name,
+    description: `${base.description} Guest faculty: ${guestPack.name}.`,
+    faculty: [
+      ...base.faculty.filter((f) => f.id !== GUEST_COURSE_ID),
+      guestFaculty,
+    ],
+    courses: [
+      ...baseCourses.filter((c) => c.id !== GUEST_COURSE_ID && c.facultyId !== GUEST_COURSE_ID),
+      {
+        id: GUEST_COURSE_ID,
+        title: "Guest Faculty",
+        facultyId: GUEST_COURSE_ID,
+        roomId: GUEST_ROOM_ID,
+        teacherTemplateId: sourceCourse?.teacherTemplateId ?? sourceFaculty.assetTeacherId,
+        subjects: sourceCourse?.subjects?.length ? sourceCourse.subjects : sourceFaculty.subjects,
+      },
+    ],
+    rooms: [
+      ...base.rooms.filter((r) => r.id !== GUEST_ROOM_ID && r.teacherId !== GUEST_COURSE_ID),
+      {
+        id: GUEST_ROOM_ID,
+        name: sourceRoom?.name ?? sourceFaculty.displayName,
+        channelName: GUEST_CHANNEL_NAME,
+        teacherId: GUEST_COURSE_ID,
+        description: sourceRoom?.description ?? sourceFaculty.bio,
+        teaches: true,
+      },
+    ],
+  };
+}
+
+function prefixedId(prefix: string, id: string): string {
+  return id.startsWith(prefix) ? id : `${prefix}${id}`;
+}
+
+function slugForId(id: string): string {
+  return id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "pack";
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 export function coursesForPack(pack: ContentPack): PackCourse[] {

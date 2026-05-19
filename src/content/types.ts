@@ -1,9 +1,8 @@
 /**
- * Content pack — a swappable bundle of teachers + rooms + question banks
- * that drives a single Ruby High experience. The shipped product is one
- * pack at a time (the player picks which one they're playing). Future
- * surfaces (a pack store, connected teachers, paid SAT/MCAT packs,
- * LLM-generated packs) all materialize as ContentPack instances.
+ * Content pack — a portable bundle of teachers + rooms + question banks.
+ * Ruby High Original is the permanent base school. Creator packs now fill
+ * the weekly Guest Faculty slot, while legacy/imported pack flows can still
+ * resolve a single full-pack experience through activePackId.
  *
  * A pack owns:
  *   - a small set of courses (what is being taught)
@@ -13,7 +12,7 @@
  * A pack does NOT own:
  *   - the lounge (universal — all packs share the lounge)
  *   - the AI student cohort (universal — Lyra/Sami/Ravi/Indra/Mika/Noor
- *     ride along regardless of which pack the player is in)
+ *     ride along regardless of which guest pack is active)
  *   - the dice/streak/XP mechanics (the structural game is constant)
  *
  * The shape is intentionally inline — bank questions live IN the

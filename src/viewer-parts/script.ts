@@ -358,11 +358,10 @@ const VIEWER_SCRIPT_SUFFIX = `
     return String(Math.round(n)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
   }
 
-  // Build the chalkboard's subject-progress row — three pills (Homeroom /
-  // Science / Literature) showing progress until a course grade is earned.
+  // Build the chalkboard's subject-progress row from the active course roster.
   // Rendered into the empty-board state so
   // the player can see where they stand without opening the School Career
-  // sheet. SUBJECT_GATE_META and makeSubjectGradeChip are defined further
+  // sheet. subjectGateMetaFor and makeSubjectGradeChip are defined further
   // down (function declarations are hoisted within the IIFE).
   function buildBoardSubjectGrades() {
     const t = lastTelemetry;
@@ -377,8 +376,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     const row = document.createElement("div");
     row.className = "board-subject-grades-row";
     for (const g of summary.grades) {
-      const meta = SUBJECT_GATE_META.find((m) => m.facultyId === g.facultyId)
-        || { facultyId: g.facultyId, label: (g.progress && g.progress.displayName) || g.facultyId, icon: "□" };
+      const meta = subjectGateMetaFor(g.facultyId, g.progress);
       const p = g.progress || {};
       const completed = Number(p.completedClasses || 0);
       const required = Number(p.requiredClasses || 0);
@@ -4284,11 +4282,17 @@ const VIEWER_SCRIPT_SUFFIX = `
 
   // Lifted out of appendProgression so the same chip + metadata are reusable
   // by the on-board subject-grade row that renders when the chalkboard is empty.
-  const SUBJECT_GATE_META = [
-    { facultyId: "ruby", label: "Homeroom", icon: "⌂" },
-    { facultyId: "sally-science", label: "Science", icon: "⚗" },
-    { facultyId: "professor-edward", label: "Literature", icon: "✎" },
-  ];
+  const SUBJECT_GATE_ICONS = { ruby: "⌂", "sally-science": "⚗", "professor-edward": "✎", guest: "☆" };
+  function subjectGateMetaFor(fid, progress) {
+    return {
+      facultyId: fid,
+      label: subjectDisplayName(fid, progress),
+      icon: SUBJECT_GATE_ICONS[fid] || "□",
+    };
+  }
+  function subjectGateMetaList() {
+    return teachingFacultyIdsForSummary().map((fid) => subjectGateMetaFor(fid, subjectProgressForFaculty(fid)));
+  }
   function makeSubjectGradeChip(spec) {
     const grade = spec.grade || "—";
     const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
@@ -4374,8 +4378,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (r.state === "current" && r.streakProgress) {
         if (Array.isArray(r.classProgress)) {
           for (const cp of r.classProgress) {
-            const meta = SUBJECT_GATE_META.find((m) => m.facultyId === cp.facultyId)
-              || { label: subjectDisplayName(cp.facultyId, cp.progress), icon: "□" };
+            const meta = subjectGateMetaFor(cp.facultyId, cp.progress);
             const met = cp.progress
               ? Number(cp.progress.completedClasses || 0) >= Number(cp.progress.requiredClasses || 0) && letterGradePasses(cp.grade)
               : letterGradePasses(cp.grade);
@@ -4388,7 +4391,7 @@ const VIEWER_SCRIPT_SUFFIX = `
             }));
           }
         } else {
-          for (const meta of SUBJECT_GATE_META) {
+          for (const meta of subjectGateMetaList()) {
             gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
@@ -4398,7 +4401,7 @@ const VIEWER_SCRIPT_SUFFIX = `
         }
       } else {
         if (r.state === "completed") {
-          for (const meta of SUBJECT_GATE_META) {
+          for (const meta of subjectGateMetaList()) {
             gates.appendChild(makeGradeChip({
               label: meta.label,
               icon: meta.icon,
@@ -4406,7 +4409,7 @@ const VIEWER_SCRIPT_SUFFIX = `
             }));
           }
         } else {
-          for (const meta of SUBJECT_GATE_META) {
+          for (const meta of subjectGateMetaList()) {
             gates.appendChild(makeFutureReq({
               icon: meta.icon,
               title: meta.label + ": C required",
@@ -6547,6 +6550,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   const packSearchInputEl = $("pack-search-input");
   const packSearchBtn = $("pack-search-btn");
   const packSearchListEl = $("pack-search-list");
+  const packAutoBtn = $("pack-auto-btn");
   const packCreateBtn = $("pack-create-btn");
   const packEditEl = $("pack-edit-overlay");
   const packEditTitleEl = $("pack-edit-title");
@@ -6807,6 +6811,16 @@ const VIEWER_SCRIPT_SUFFIX = `
       if (!r.ok) throw new Error(data.error || "install " + r.status);
       return data;
     },
+    async setGuestAuto() {
+      const r = await apiFetch("/api/apps/ruby-high/pack-library/guest/auto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "guest auto " + r.status);
+      return data;
+    },
     async setActivePack(packId) {
       const r = await apiFetch("/api/apps/ruby-high/pack-library/" + encodeURIComponent(packId) + "/active", {
         method: "POST",
@@ -6898,6 +6912,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (packCreateBtn) packCreateBtn.disabled = packImportBusy;
     if (packSearchInputEl) packSearchInputEl.disabled = packImportBusy;
     if (packSearchBtn) packSearchBtn.disabled = packImportBusy;
+    syncGuestAutoButton();
     syncPackEditorGuardControls();
     packEditEl.querySelectorAll("input, textarea").forEach((field) => {
       field.disabled = packImportBusy;
@@ -7072,6 +7087,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     packStatusEl.classList.remove("is-invalid");
     try {
       packLibraryState = await packStudioClient.listPacks();
+      syncGuestAutoButton();
       renderPackList();
       renderPackSearchList();
       renderDraftPackList();
@@ -7092,6 +7108,20 @@ const VIEWER_SCRIPT_SUFFIX = `
     packs.forEach((pack) => {
       packListEl.appendChild(packCard(pack, { draft: false }));
     });
+  }
+
+  function syncGuestAutoButton() {
+    if (!packAutoBtn) return;
+    const guest = (packLibraryState && packLibraryState.guest) || {};
+    const mode = guest.mode || "auto";
+    const active = guest.active || null;
+    packAutoBtn.textContent = mode === "auto"
+      ? active ? "Auto: " + (active.name || "Guest") : "Auto Guest"
+      : "Auto";
+    packAutoBtn.disabled = packImportBusy || mode === "auto";
+    packAutoBtn.title = active
+      ? "This week's automatic guest is " + (active.name || "Guest Faculty") + "."
+      : "Use Ruby High's weekly automatic guest teacher.";
   }
 
   function renderPackSearchList() {
@@ -7132,7 +7162,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (canSwitch) {
       card.setAttribute("role", "button");
       card.tabIndex = packImportBusy ? -1 : 0;
-      card.setAttribute("aria-label", (pack.active ? "Using " : "Use ") + (pack.name || "Untitled Pack"));
+      card.setAttribute("aria-label", (pack.active ? "Guest " : "Set guest ") + (pack.name || "Untitled Pack"));
       card.addEventListener("click", () => {
         activateLibraryPack(pack);
       });
@@ -7178,8 +7208,8 @@ const VIEWER_SCRIPT_SUFFIX = `
       const state = document.createElement("div");
       state.className = "pack-row-state";
       state.textContent = isSearch
-        ? pack.active ? "Using now" : pack.installed ? "Installed" : "Not installed"
-        : pack.active ? "Using now" : "Use";
+        ? pack.active ? "Guest now" : pack.installed ? "Installed" : "Not installed"
+        : pack.builtIn ? "Always on" : pack.active ? "Guest now" : "Set guest";
       actions.appendChild(state);
     }
 
@@ -7187,7 +7217,7 @@ const VIEWER_SCRIPT_SUFFIX = `
       const installBtn = document.createElement("button");
       installBtn.type = "button";
       installBtn.className = "pack-action";
-      installBtn.textContent = pack.installed ? (pack.active ? "Using" : "Use") : "Install";
+      installBtn.textContent = pack.installed ? (pack.active ? "Guest" : "Set Guest") : "Install";
       installBtn.disabled = packImportBusy || pack.active;
       installBtn.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -7289,14 +7319,15 @@ const VIEWER_SCRIPT_SUFFIX = `
   async function activateLibraryPack(pack) {
     if (!pack || packImportBusy) return;
     setPackBusy(true);
-    packStatusEl.textContent = "Switching classroom pack...";
+    packStatusEl.textContent = "Setting guest teacher...";
     packStatusEl.classList.remove("is-invalid");
     try {
       packLibraryState = await packStudioClient.setActivePack(pack.id);
+      syncGuestAutoButton();
       renderPackList();
       renderDraftPackList();
-      packStatusEl.textContent = "Pack switched. Reloading...";
-      setTimeout(() => window.location.reload(), 300);
+      packStatusEl.textContent = "Guest teacher set.";
+      await fetchSession();
     } catch (err) {
       packStatusEl.textContent = "Could not switch pack · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
@@ -7354,12 +7385,34 @@ const VIEWER_SCRIPT_SUFFIX = `
     packStatusEl.classList.remove("is-invalid");
     try {
       packLibraryState = await packStudioClient.installPack(pack.id, true);
+      syncGuestAutoButton();
       renderPackList();
       renderDraftPackList();
       await refreshPackSearchResults();
       packStatusEl.textContent = "Pack installed.";
     } catch (err) {
       packStatusEl.textContent = "Could not install pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.classList.add("is-invalid");
+    } finally {
+      setPackBusy(false);
+    }
+  }
+
+  async function setGuestAutoMode() {
+    if (packImportBusy) return;
+    setPackBusy(true);
+    packStatusEl.textContent = "Setting weekly auto guest...";
+    packStatusEl.classList.remove("is-invalid");
+    try {
+      packLibraryState = await packStudioClient.setGuestAuto();
+      syncGuestAutoButton();
+      renderPackList();
+      renderDraftPackList();
+      await refreshPackSearchResults();
+      packStatusEl.textContent = "Auto guest enabled.";
+      await fetchSession();
+    } catch (err) {
+      packStatusEl.textContent = "Could not enable auto guest · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);
@@ -8612,6 +8665,7 @@ const VIEWER_SCRIPT_SUFFIX = `
   packBtn.addEventListener("click", openPackStore);
   if (packCreateBtn) packCreateBtn.addEventListener("click", createDraftPack);
   if (packSearchBtn) packSearchBtn.addEventListener("click", searchCreatorPacks);
+  if (packAutoBtn) packAutoBtn.addEventListener("click", setGuestAutoMode);
   if (packSearchInputEl) packSearchInputEl.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault();

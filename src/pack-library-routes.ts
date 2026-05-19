@@ -18,6 +18,9 @@ import {
   coursesForPack,
   getActivePack,
   getPackByIdForSession,
+  guestPackForSession,
+  guestWeekKey,
+  weeklyAutoGuestPack,
 } from "./content/registry.js";
 import type { ContentPack, PackSourceCard } from "./content/types.js";
 import type { BankedQuestion, CharacterStats, Choice, Difficulty } from "./types.js";
@@ -103,6 +106,17 @@ export async function handlePackLibraryRoutes(
       return true;
     }
 
+    if (ctx.method === "POST" && sub === "/guest/auto") {
+      try {
+        await setGuestAuto({ ruby: deps.ruby, sessionId });
+        ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
+      } catch (err) {
+        log.error("pack-library.guest-auto-failed", err, { userId: record.userId });
+        ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
+      }
+      return true;
+    }
+
     const editDraftMatch = sub.match(/^\/([^/]+)\/edit-draft$/);
     if (ctx.method === "POST" && editDraftMatch?.[1]) {
       const packId = decodeURIComponent(editDraftMatch[1]);
@@ -149,7 +163,7 @@ export async function handlePackLibraryRoutes(
     if (ctx.method === "POST" && activeMatch?.[1]) {
       const packId = decodeURIComponent(activeMatch[1]);
       try {
-        await setActivePack({ ruby: deps.ruby, userId: record.userId, sessionId, packId });
+        await setGuestOverride({ ruby: deps.ruby, userId: record.userId, sessionId, packId });
         ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
       } catch (err) {
         log.error("pack-library.activate-failed", err, { userId: record.userId, packId });
@@ -617,6 +631,10 @@ export async function handlePackLibraryRoutes(
 
 async function libraryPayload(ruby: RubyHighService, record: AuthRecord, sessionId: string) {
   const activePackId = currentActivePackId(ruby, sessionId);
+  const state = ruby.getOrCreate(sessionId);
+  const autoGuest = weeklyAutoGuestPack();
+  const activeGuest = guestPackForSession(state);
+  const activeGuestPackId = activeGuest?.id ?? null;
   const installs = await ruby.listPackInstallationRecords();
   const userInstalls = installs.filter((install) => install.userId === record.userId);
   const installByPack = new Map(userInstalls.map((install) => [install.packId, install]));
@@ -653,12 +671,12 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
     const backingDraft = owner ? backingDraftForPack(userDrafts, pack.id) : null;
     return [packLibrarySummary(pack, {
       enabled: install ? install.enabled : builtIn,
-      active: pack.id === activePackId,
+      active: builtIn || pack.id === activeGuestPackId,
       owner,
       readOnly: builtIn,
       editDraftId: backingDraft?.id,
       source,
-      installed: !!install || builtIn || pack.id === activePackId,
+      installed: !!install || builtIn || pack.id === activeGuestPackId,
     })];
   });
   const visiblePackIds = new Set(visiblePacks.map((pack) => pack.id));
@@ -667,6 +685,7 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
     .map(draftSummary);
   return {
     activePackId,
+    guest: guestPayload(state, autoGuest, activeGuest),
     packs: packs.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name)),
     drafts,
   };
@@ -680,7 +699,8 @@ async function creatorPackSearchPayload(
 ) {
   const query = rawQuery.trim();
   const normalized = normalizeSearchQuery(query);
-  const activePackId = currentActivePackId(ruby, sessionId);
+  const state = ruby.getOrCreate(sessionId);
+  const activeGuestPackId = guestPackForSession(state)?.id ?? null;
   const installs = await ruby.listPackInstallationRecords();
   const userInstalls = installs.filter((install) => install.userId === record.userId);
   const installByPack = new Map(userInstalls.map((install) => [install.packId, install]));
@@ -706,12 +726,12 @@ async function creatorPackSearchPayload(
       const backingDraft = owner ? backingDraftForPack(userDrafts, entry.pack.id) : null;
       return packLibrarySummary(entry.pack, {
         enabled: !!install?.enabled,
-        active: entry.pack.id === activePackId,
+        active: entry.pack.id === activeGuestPackId,
         owner,
         readOnly: false,
         editDraftId: backingDraft?.id,
         source: "creator",
-        installed: !!install || entry.pack.id === activePackId,
+        installed: !!install || entry.pack.id === activeGuestPackId,
       });
     });
 
@@ -729,6 +749,10 @@ async function setPackEnabled(args: {
   packId: string;
   enabled: boolean;
 }): Promise<void> {
+  if (args.packId === ORIGINAL_PACK_ID) {
+    await setGuestAuto({ ruby: args.ruby, sessionId: args.sessionId });
+    return;
+  }
   const target = getPackByIdForSession(args.packId, args.sessionId);
   if (!target) throw new Error("Unknown pack.");
   const now = Date.now();
@@ -742,8 +766,8 @@ async function setPackEnabled(args: {
     installedAt: existing?.installedAt ?? now,
     updatedAt: now,
   });
-  if (!args.enabled && currentActivePackId(args.ruby, args.sessionId) === args.packId && args.packId !== ORIGINAL_PACK_ID) {
-    await setActivePack({ ruby: args.ruby, userId: args.userId, sessionId: args.sessionId, packId: ORIGINAL_PACK_ID });
+  if (!args.enabled && guestPackForSession(args.ruby.getOrCreate(args.sessionId))?.id === args.packId) {
+    await setGuestAuto({ ruby: args.ruby, sessionId: args.sessionId });
   }
 }
 
@@ -759,21 +783,38 @@ async function uninstallPack(args: {
   const target = getPackByIdForSession(args.packId, args.sessionId);
   if (!target && !existing) throw new Error("Unknown pack.");
   if (existing) await args.ruby.deletePackInstallationRecord(args.userId, args.packId);
-  if (currentActivePackId(args.ruby, args.sessionId) === args.packId) {
-    args.ruby.setActivePackForSession(args.sessionId, ORIGINAL_PACK_ID);
-    await args.ruby.flushSession(args.sessionId);
+  if (guestPackForSession(args.ruby.getOrCreate(args.sessionId))?.id === args.packId) {
+    await setGuestAuto({ ruby: args.ruby, sessionId: args.sessionId });
   }
 }
 
-async function setActivePack(args: {
+async function setGuestAuto(args: {
+  ruby: RubyHighService;
+  sessionId: string;
+}): Promise<void> {
+  args.ruby.setGuestPackAutoForSession(args.sessionId);
+  await args.ruby.flushSession(args.sessionId);
+}
+
+async function setGuestOverride(args: {
   ruby: RubyHighService;
   userId: string;
   sessionId: string;
   packId: string;
 }): Promise<void> {
+  if (args.packId === ORIGINAL_PACK_ID) {
+    await setGuestAuto({ ruby: args.ruby, sessionId: args.sessionId });
+    return;
+  }
   const target = getPackByIdForSession(args.packId, args.sessionId);
   if (!target) throw new Error("Unknown pack.");
-  args.ruby.setActivePackForSession(args.sessionId, args.packId);
+  const guestCandidate = guestPackForSession({
+    activePackId: null,
+    guestPackMode: "override",
+    guestPackOverrideId: args.packId,
+  });
+  if (!guestCandidate || guestCandidate.id !== args.packId) throw new Error("Unknown creator pack.");
+  args.ruby.setGuestPackOverrideForSession(args.sessionId, args.packId);
   await args.ruby.flushSession(args.sessionId);
   const installs = await args.ruby.listPackInstallationRecords();
   const now = Date.now();
@@ -826,9 +867,8 @@ async function deleteOwnedPublishedPack(args: {
     .filter((install) => install.packId === args.packId)
     .map((install) => args.ruby.deletePackInstallationRecord(install.userId, install.packId)));
 
-  if (currentActivePackId(args.ruby, args.sessionId) === args.packId) {
-    args.ruby.setActivePackForSession(args.sessionId, ORIGINAL_PACK_ID);
-    await args.ruby.flushSession(args.sessionId);
+  if (guestPackForSession(args.ruby.getOrCreate(args.sessionId))?.id === args.packId) {
+    await setGuestAuto({ ruby: args.ruby, sessionId: args.sessionId });
   }
 }
 
@@ -885,6 +925,32 @@ async function saveInstallationSet(
 function currentActivePackId(ruby: RubyHighService, sessionId: string): string {
   const state = ruby.getOrCreate(sessionId);
   return state.activePackId || ORIGINAL_PACK_ID;
+}
+
+function guestPayload(
+  state: ReturnType<RubyHighService["getOrCreate"]>,
+  autoGuest: ContentPack | null,
+  activeGuest: ContentPack | null,
+) {
+  const summary = (pack: ContentPack | null) => pack
+    ? packLibrarySummary(pack, {
+        enabled: true,
+        active: activeGuest?.id === pack.id,
+        owner: false,
+        readOnly: false,
+        source: "creator",
+        installed: true,
+      })
+    : null;
+  return {
+    mode: state.guestPackMode ?? "auto",
+    weekKey: guestWeekKey(),
+    overridePackId: state.guestPackOverrideId ?? null,
+    autoPackId: autoGuest?.id ?? null,
+    activePackId: activeGuest?.id ?? null,
+    auto: summary(autoGuest),
+    active: summary(activeGuest),
+  };
 }
 
 function packLibrarySummary(

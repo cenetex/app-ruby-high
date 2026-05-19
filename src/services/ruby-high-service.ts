@@ -119,6 +119,8 @@ import {
   coursesForPack,
   facultyByIdForSession,
   facultyForSession,
+  GUEST_COURSE_ID,
+  guestPackForSession,
   isPackLoaded,
   MAX_PACKS_PER_OWNER,
   ORIGINAL_PACK_ID,
@@ -1001,7 +1003,7 @@ export class RubyHighService extends Service {
   private reconcileLoadedPackState(state: QuizState): boolean {
     const resolvedPack = packForSession(state);
     let repaired = false;
-    if (state.activePackId && resolvedPack.id !== state.activePackId) {
+    if (state.activePackId && state.activePackId !== ORIGINAL_PACK_ID && resolvedPack.id !== state.activePackId) {
       state.activePackId = null;
       state.current = null;
       state.activeRound = null;
@@ -1239,6 +1241,8 @@ export class RubyHighService extends Service {
         completedGrades: [],
         hasSeenIntro: true,
         activePackId: null,
+        guestPackMode: "auto",
+        guestPackOverrideId: null,
         character: null,
         studentPool: [],
         characterSlots: {
@@ -3482,6 +3486,8 @@ export class RubyHighService extends Service {
       questionType: current.type,
       faculty: state.faculty,
       activePackId: state.activePackId,
+      guestPackMode: state.guestPackMode,
+      guestPackOverrideId: state.guestPackOverrideId,
       phaseToken: state.phaseToken,
       roundStartedAt: round?.startedAt ?? null,
     };
@@ -3505,8 +3511,7 @@ export class RubyHighService extends Service {
       if (!generated) throw new Error("Could not generate multiple-choice distractors for this card.");
       mc = this.normalizeGeneratedMcQuestion(source, generated);
       const updated = appendQuestionToPackBank(sourcePackId, source.faculty, mc);
-      if (!updated) throw new Error("Could not cache generated multiple-choice question in this pack.");
-      await this.persistImportedPack(sessionId, updated);
+      if (updated) await this.persistImportedPack(sessionId, updated);
     }
 
     const latest = this.getOrCreate(sessionId);
@@ -3516,6 +3521,8 @@ export class RubyHighService extends Service {
       latest.current?.type === expected.questionType &&
       latest.faculty === expected.faculty &&
       latest.activePackId === expected.activePackId &&
+      latest.guestPackMode === expected.guestPackMode &&
+      latest.guestPackOverrideId === expected.guestPackOverrideId &&
       latest.phaseToken === expected.phaseToken &&
       latestRound?.questionId === expected.questionId &&
       !latestRound.resolved &&
@@ -3776,14 +3783,10 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  /** Switch the active content pack for THIS session. Per-session so a
-   *  future runtime pack switch (connected teachers / paid packs) flips only the
-   *  relevant session's view; other sessions on the same server stay on
-   *  whatever they were on. Caller is expected to have already
-   *  registered the pack in the global registry; this method just
-   *  records the id + resets transient state that the previous pack's
-   *  faculty/rooms pinned. Today only the original pack is registered,
-   *  so the meaningful effect is the reset rather than the swap.
+  /** Legacy full-pack switch for imported/runtime packs. Normal creator-pack
+   *  gameplay now uses setGuestPackAutoForSession/setGuestPackOverrideForSession
+   *  so Ruby High Original stays mounted and a creator pack fills only the
+   *  Guest Faculty slot.
    *
    *  Wipes:
    *   - state.faculty (set to the new pack's first teaching faculty —
@@ -3812,6 +3815,47 @@ export class RubyHighService extends Service {
     void this.persistSession(sessionId);
     log.event("pack.session-switched", { sessionId, packId, faculty: state.faculty });
     return state;
+  }
+
+  setGuestPackAutoForSession(sessionId: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const previousGuestId = guestPackForSession(state)?.id ?? null;
+    state.activePackId = null;
+    state.guestPackMode = "auto";
+    state.guestPackOverrideId = null;
+    this.resetGuestCourseAfterChange(state, previousGuestId);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("pack.guest-auto-enabled", {
+      sessionId,
+      guestPackId: guestPackForSession(state)?.id ?? null,
+    });
+    return state;
+  }
+
+  setGuestPackOverrideForSession(sessionId: string, packId: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const previousGuestId = guestPackForSession(state)?.id ?? null;
+    state.activePackId = null;
+    state.guestPackMode = "override";
+    state.guestPackOverrideId = packId;
+    this.resetGuestCourseAfterChange(state, previousGuestId);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("pack.guest-override-set", { sessionId, packId });
+    return state;
+  }
+
+  private resetGuestCourseAfterChange(state: QuizState, previousGuestId: string | null): void {
+    const nextGuestId = guestPackForSession(state)?.id ?? null;
+    if (previousGuestId === nextGuestId) return;
+    if (state.roomBoards) delete state.roomBoards[GUEST_COURSE_ID];
+    if (state.faculty === GUEST_COURSE_ID) {
+      state.current = null;
+      state.activeRound = null;
+      state.lastReveal = null;
+      this.transition(state, { kind: "clear-board" });
+    }
   }
 
   setFaculty(sessionId: string, facultyId: string): QuizState {
@@ -4344,6 +4388,10 @@ function normalizeLoaded(s: QuizState): QuizState {
     completedGrades: migratedCompleted,
     hasSeenIntro: !!s.hasSeenIntro,
     activePackId: typeof s.activePackId === "string" ? s.activePackId : null,
+    guestPackMode: (s as { guestPackMode?: unknown }).guestPackMode === "override" ? "override" : "auto",
+    guestPackOverrideId: typeof (s as { guestPackOverrideId?: unknown }).guestPackOverrideId === "string"
+      ? (s as { guestPackOverrideId: string }).guestPackOverrideId
+      : null,
     studentPool: normalizeStudentPool((s as { studentPool?: unknown }).studentPool),
     characterSlots: normalizeCharacterSlots((s as { characterSlots?: unknown }).characterSlots),
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),

@@ -186,6 +186,8 @@ function offlineApiScript(data) {
       completedGrades: [],
       hasSeenIntro: true,
       activePackId: "ruby-high-original",
+      guestPackMode: "auto",
+      guestPackOverrideId: null,
       character: null,
       studentPool: [],
       characterSlots: { unlockedSlots: 1, photoDayCredits: 0 },
@@ -879,6 +881,7 @@ function offlineApiScript(data) {
       completed_grades: state.completedGrades,
       has_seen_intro: state.hasSeenIntro,
       active_pack: { id: "ruby-high-original", name: "Ruby High", description: "Bundled offline curriculum." },
+      guest_pack: { mode: "auto", weekKey: "", auto: null, overrideId: null, active: null },
       active_course: { id: activeFaculty.id, title: roomForFaculty(activeFaculty.id) ? roomForFaculty(activeFaculty.id).name : activeFaculty.displayName, facultyId: activeFaculty.id, roomId: roomForFaculty(activeFaculty.id) ? roomForFaculty(activeFaculty.id).id : "homeroom", teacherTemplateId: activeFaculty.id, subjects: activeFaculty.subjects },
       active_course_progress: state.faculty === "lounge" ? null : courseProgress(state, state.faculty),
       courses: FACULTY.map(function(f) { const room = roomForFaculty(f.id); return { id: f.id, title: room ? room.name : f.displayName, facultyId: f.id, roomId: room ? room.id : f.id, teacherTemplateId: f.id, subjects: f.subjects }; }),
@@ -1281,7 +1284,7 @@ function offlineApiScript(data) {
         return json({ error: "Pack imports need the hosted Ruby High server." }, 501);
       }
       if (url.pathname === APP_BASE + "/pack-library" && method === "GET") {
-        return json({ activePackId: "ruby-high-original", packs: [builtInPackSummary()], drafts: [] });
+        return json({ activePackId: "ruby-high-original", guest: { mode: "auto", weekKey: "", auto: null, overrideId: null, active: null }, packs: [builtInPackSummary()], drafts: [] });
       }
       if (url.pathname.startsWith(APP_BASE + "/pack-library/") || url.pathname.startsWith(APP_BASE + "/pack-drafts")) {
         return json({ error: "Content pack editing needs the hosted Ruby High server." }, 501);
