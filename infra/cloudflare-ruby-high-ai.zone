@@ -1,0 +1,32 @@
+$ORIGIN ruby-high.ai.
+$TTL 300
+
+; Cloudflare DNS import for the new Ruby High production domain.
+; Import this into the ruby-high.ai zone only. It deliberately does not
+; modify the existing rubyhighai.com DNS zone.
+;
+; These use Fly's explicit A/AAAA records instead of apex CNAME flattening
+; because Fly verifies custom domains by looking for the app's IPv6 address
+; unless a _fly-ownership TXT record is present.
+
+@       IN A     66.241.124.163
+@       IN AAAA  2a09:8280:1::110:305:0
+www     IN A     66.241.124.163
+www     IN AAAA  2a09:8280:1::110:305:0
+
+; Fly ownership proof. Keep these if Cloudflare proxying is enabled, since
+; Fly will otherwise see Cloudflare edge addresses instead of app addresses.
+_fly-ownership      IN TXT   "app-56xn59q"
+_fly-ownership.www  IN TXT   "app-56xn59q"
+
+; Optional ACME DNS challenge records from `flyctl certs setup`.
+; They are useful if you want Fly certificates issued before relying on
+; traffic-based validation.
+_acme-challenge      IN CNAME ruby-high.ai.56xn59q.flydns.net.
+_acme-challenge.www  IN CNAME www.ruby-high.ai.56xn59q.flydns.net.
+
+; Ruby High is not sending mail from this domain yet. These records make
+; accidental/spoofed mail fail closed without blocking a later proper mail
+; setup; replace them when a mail provider is added.
+@       IN TXT   "v=spf1 -all"
+_dmarc  IN TXT   "v=DMARC1; p=reject; adkim=s; aspf=s"

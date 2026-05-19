@@ -1,6 +1,6 @@
 FROM node:22-slim AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --include=dev
 COPY tsconfig.json tsup.config.ts ./
 COPY scripts/check-privy-client-bundle.mjs ./scripts/check-privy-client-bundle.mjs
@@ -19,12 +19,14 @@ ENV RUBY_HIGH_BUILD=$RUBY_HIGH_BUILD
 # deploy target (Fly.io) this is only used if the JSON backend is selected.
 # Production uses DynamoDB; the path is retained for local/container fallback.
 ENV RUBY_HIGH_DATA_DIR=/data
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/assets ./assets
+COPY landing ./landing
 COPY scripts/server.mjs ./scripts/server.mjs
 COPY scripts/http-limits.mjs ./scripts/http-limits.mjs
+COPY scripts/landing.mjs ./scripts/landing.mjs
 RUN mkdir -p /data
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \

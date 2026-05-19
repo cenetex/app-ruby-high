@@ -8,6 +8,7 @@ import {
   usePrivy,
   type LinkedAccountWithMetadata,
   type User,
+  type WalletListEntry,
 } from "@privy-io/react-auth";
 import {
   useSignAndSendTransaction,
@@ -93,10 +94,20 @@ interface BridgeApi {
 interface PendingLogin {
   resolve: (session: RubyHighPrivySession | null) => void;
   reject: (err: unknown) => void;
+  timeoutId?: number;
 }
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
+const PRIVY_ACTION_TIMEOUT_MS = 30_000;
+const SOLANA_WALLET_LIST: WalletListEntry[] = [
+  "phantom",
+  "solflare",
+  "backpack",
+  "jupiter",
+  "detected_solana_wallets",
+  "wallet_connect_qr_solana",
+];
 
 let mountedRoot: Root | null = null;
 let mountedConfigKey = "";
@@ -160,12 +171,13 @@ export async function createRubyHighPrivyClient(
               solana: { createOnLogin: "off" },
             },
             externalWallets: {
-              solana: { connectors: toSolanaWalletConnectors() },
+              solana: { connectors: toSolanaWalletConnectors({ shouldAutoConnect: true }) },
             },
             appearance: {
               theme: "dark",
               accentColor: "#df2f2f",
               showWalletLoginFirst: false,
+              walletList: SOLANA_WALLET_LIST,
               walletChainType: "ethereum-and-solana",
             },
           },
@@ -193,6 +205,38 @@ function RubyHighPrivyBridge(props: {
   const pendingWalletConnect = useRef<PendingLogin | null>(null);
   const modalOpenedForLogin = useRef(false);
   const modalOpenedForWalletConnect = useRef(false);
+
+  const resolvePendingLogin = (session: RubyHighPrivySession | null) => {
+    const pending = pendingLogin.current;
+    if (pending?.timeoutId) window.clearTimeout(pending.timeoutId);
+    pending?.resolve(session);
+    pendingLogin.current = null;
+    modalOpenedForLogin.current = false;
+  };
+
+  const rejectPendingLogin = (err: unknown) => {
+    const pending = pendingLogin.current;
+    if (pending?.timeoutId) window.clearTimeout(pending.timeoutId);
+    pending?.reject(err);
+    pendingLogin.current = null;
+    modalOpenedForLogin.current = false;
+  };
+
+  const resolvePendingWalletConnect = (session: RubyHighPrivySession | null) => {
+    const pending = pendingWalletConnect.current;
+    if (pending?.timeoutId) window.clearTimeout(pending.timeoutId);
+    pending?.resolve(session);
+    pendingWalletConnect.current = null;
+    modalOpenedForWalletConnect.current = false;
+  };
+
+  const rejectPendingWalletConnect = (err: unknown) => {
+    const pending = pendingWalletConnect.current;
+    if (pending?.timeoutId) window.clearTimeout(pending.timeoutId);
+    pending?.reject(err);
+    pendingWalletConnect.current = null;
+    modalOpenedForWalletConnect.current = false;
+  };
 
   const current = useCallback(async (userOverride?: User | null): Promise<RubyHighPrivySession> => {
     if (!privy.ready) return emptySession();
@@ -234,22 +278,16 @@ function RubyHighPrivyBridge(props: {
                 }
               : session;
             props.notify(nextSession);
-            pendingWalletConnect.current?.resolve(nextSession);
-            pendingWalletConnect.current = null;
-            modalOpenedForWalletConnect.current = false;
+            resolvePendingWalletConnect(nextSession);
           },
           (err) => {
-            pendingWalletConnect.current?.reject(err);
-            pendingWalletConnect.current = null;
-            modalOpenedForWalletConnect.current = false;
+            rejectPendingWalletConnect(err);
           },
         );
       }, 0);
     },
     onError: (error) => {
-      pendingWalletConnect.current?.reject(new Error(String(error || "Solana wallet connection failed")));
-      pendingWalletConnect.current = null;
-      modalOpenedForWalletConnect.current = false;
+      rejectPendingWalletConnect(new Error(String(error || "Solana wallet connection failed")));
     },
   });
 
@@ -258,21 +296,15 @@ function RubyHighPrivyBridge(props: {
       void current(user).then(
         (session) => {
           props.notify(session);
-          pendingLogin.current?.resolve(session);
-          pendingLogin.current = null;
-          modalOpenedForLogin.current = false;
+          resolvePendingLogin(session);
         },
         (err) => {
-          pendingLogin.current?.reject(err);
-          pendingLogin.current = null;
-          modalOpenedForLogin.current = false;
+          rejectPendingLogin(err);
         },
       );
     },
     onError: (error) => {
-      pendingLogin.current?.reject(new Error(String(error || "Privy login failed")));
-      pendingLogin.current = null;
-      modalOpenedForLogin.current = false;
+      rejectPendingLogin(new Error(String(error || "Privy login failed")));
     },
   });
 
@@ -282,22 +314,38 @@ function RubyHighPrivyBridge(props: {
     if (pendingLogin.current) {
       return new Promise((resolve, reject) => {
         const previous = pendingLogin.current;
-        pendingLogin.current = {
-          resolve: (session) => {
-            previous?.resolve(session);
-            resolve(session);
-          },
-          reject: (err) => {
-            previous?.reject(err);
-            reject(err);
-          },
+        if (!previous) {
+          reject(new Error("Privy sign-in is not ready."));
+          return;
+        }
+        const previousResolve = previous.resolve;
+        const previousReject = previous.reject;
+        previous.resolve = (session) => {
+          previousResolve(session);
+          resolve(session);
+        };
+        previous.reject = (err) => {
+          previousReject(err);
+          reject(err);
         };
       });
     }
     return new Promise((resolve, reject) => {
-      pendingLogin.current = { resolve, reject };
-      modalOpenedForLogin.current = true;
-      login();
+      const pending: PendingLogin = { resolve, reject };
+      pending.timeoutId = window.setTimeout(() => {
+        if (pendingLogin.current !== pending) return;
+        rejectPendingLogin(new Error("Privy sign-in did not open. Refresh Ruby High and try again."));
+      }, PRIVY_ACTION_TIMEOUT_MS);
+      pendingLogin.current = pending;
+      modalOpenedForLogin.current = false;
+      try {
+        const result = login() as unknown;
+        if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+          void Promise.resolve(result).catch((err) => rejectPendingLogin(err));
+        }
+      } catch (err) {
+        rejectPendingLogin(err);
+      }
     });
   }, [current, login, privy.authenticated, privy.ready, privy.user]);
 
@@ -307,25 +355,41 @@ function RubyHighPrivyBridge(props: {
     if (pendingWalletConnect.current) {
       return new Promise((resolve, reject) => {
         const previous = pendingWalletConnect.current;
-        pendingWalletConnect.current = {
-          resolve: (session) => {
-            previous?.resolve(session);
-            resolve(session);
-          },
-          reject: (err) => {
-            previous?.reject(err);
-            reject(err);
-          },
+        if (!previous) {
+          reject(new Error("Solana wallet connection is not ready."));
+          return;
+        }
+        const previousResolve = previous.resolve;
+        const previousReject = previous.reject;
+        previous.resolve = (session) => {
+          previousResolve(session);
+          resolve(session);
+        };
+        previous.reject = (err) => {
+          previousReject(err);
+          reject(err);
         };
       });
     }
     return new Promise((resolve, reject) => {
-      pendingWalletConnect.current = { resolve, reject };
-      modalOpenedForWalletConnect.current = true;
-      connectWallet({
-        walletChainType: "solana-only",
-        description: "Connect a Solana wallet to pay for Hall Passes with Ruby.",
-      });
+      const pending: PendingLogin = { resolve, reject };
+      pending.timeoutId = window.setTimeout(() => {
+        if (pendingWalletConnect.current !== pending) return;
+        rejectPendingWalletConnect(new Error("Solana wallet connection did not open. Refresh Ruby High and try again."));
+      }, PRIVY_ACTION_TIMEOUT_MS);
+      pendingWalletConnect.current = pending;
+      modalOpenedForWalletConnect.current = false;
+      try {
+        const result = connectWallet({
+          walletChainType: "solana-only",
+          description: "Connect a Solana wallet to pay for Hall Passes with Ruby.",
+        }) as unknown;
+        if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+          void Promise.resolve(result).catch((err) => rejectPendingWalletConnect(err));
+        }
+      } catch (err) {
+        rejectPendingWalletConnect(err);
+      }
     });
   }, [connectWallet, openLogin, privy.authenticated, privy.ready, privy.user]);
 
@@ -333,12 +397,8 @@ function RubyHighPrivyBridge(props: {
     await privy.logout();
     const session = emptySession();
     props.notify(session);
-    pendingLogin.current?.resolve(null);
-    pendingLogin.current = null;
-    pendingWalletConnect.current?.resolve(null);
-    pendingWalletConnect.current = null;
-    modalOpenedForLogin.current = false;
-    modalOpenedForWalletConnect.current = false;
+    resolvePendingLogin(null);
+    resolvePendingWalletConnect(null);
   }, [privy, props]);
 
   useEffect(() => {
@@ -346,19 +406,21 @@ function RubyHighPrivyBridge(props: {
   }, [connectSolanaWallet, current, logout, openLogin, paySolanaQuote, privy.ready, props]);
 
   useEffect(() => {
-    if (modal.isOpen) return;
+    if (modal.isOpen) {
+      if (pendingLogin.current) modalOpenedForLogin.current = true;
+      return;
+    }
     if (!modalOpenedForLogin.current || !pendingLogin.current) return;
-    pendingLogin.current.resolve(null);
-    pendingLogin.current = null;
-    modalOpenedForLogin.current = false;
+    resolvePendingLogin(null);
   }, [modal.isOpen]);
 
   useEffect(() => {
-    if (modal.isOpen) return;
+    if (modal.isOpen) {
+      if (pendingWalletConnect.current) modalOpenedForWalletConnect.current = true;
+      return;
+    }
     if (!modalOpenedForWalletConnect.current || !pendingWalletConnect.current) return;
-    pendingWalletConnect.current.resolve(null);
-    pendingWalletConnect.current = null;
-    modalOpenedForWalletConnect.current = false;
+    resolvePendingWalletConnect(null);
   }, [modal.isOpen]);
 
   useEffect(() => {
@@ -556,9 +618,23 @@ function selectSolanaWallet(wallets: ConnectedStandardSolanaWallet[]): Connected
 function solanaAddressFromConnectedWallet(wallet: unknown): string | null {
   if (!wallet || typeof wallet !== "object") return null;
   const record = wallet as Record<string, unknown>;
-  const address = typeof record.address === "string" ? record.address.trim() : "";
-  const chainType = record.chainType ?? record.chain_type;
+  const address = typeof record.address === "string" && record.address.trim()
+    ? record.address.trim()
+    : readNestedSolanaAddress(record.provider);
+  const chainType = record.chainType ?? record.chain_type ?? record.type;
   return address && chainType === "solana" ? address : null;
+}
+
+function readNestedSolanaAddress(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (typeof record.address === "string" && record.address.trim()) return record.address.trim();
+  const account = record.account;
+  if (account && typeof account === "object") {
+    const nested = account as Record<string, unknown>;
+    if (typeof nested.address === "string" && nested.address.trim()) return nested.address.trim();
+  }
+  return "";
 }
 
 function walletCandidate(account: unknown): { address: string; chainType: "ethereum" | "solana"; rank: number } | null {

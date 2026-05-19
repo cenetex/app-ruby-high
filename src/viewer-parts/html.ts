@@ -195,7 +195,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
           <button type="button" id="privy-login-widget">Sign in with Privy</button>
-          <button type="button" id="privy-connect-solana" hidden>Connect Solana wallet</button>
           <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
         </div>
       </div>

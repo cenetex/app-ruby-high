@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { renderViewerHtml } from "../viewer.js";
 import { VIEWER_CSS } from "../viewer-parts/css.js";
+
+const PRIVY_CLIENT_SOURCE = readFileSync(new URL("../viewer-privy-client.ts", import.meta.url), "utf8");
 
 function renderedViewer(opts: Partial<Parameters<typeof renderViewerHtml>[0]> = {}): string {
   return renderViewerHtml({
@@ -86,7 +89,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
     expect(html).toContain('id="privy-login-widget"');
-    expect(html).toContain('id="privy-connect-solana"');
+    expect(html).not.toContain('id="privy-connect-solana"');
     expect(html).toContain('id="account-ai-use-pass"');
     expect(html).toContain('id="account-ai-action"');
     expect(html).toContain('id="account-use-pass"');
@@ -110,17 +113,53 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("loginWithEmailCode");
   });
 
-  it("uses connected Solana wallets for crypto checkout without signature-paste UI", () => {
+  it("offers crypto checkout only after a Hall Pass pack is selected", () => {
     const script = inlineScript(renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } }));
 
     expectScriptToContain(script, "function connectedSolanaWalletAddress()");
+    expectScriptToContain(script, "function selectBillingProduct(productId)");
+    expectScriptToContain(script, 'buy.addEventListener("click", () => selectBillingProduct(product.id))');
+    expectScriptToContain(script, "buildBillingPaymentChoice(payload, product, solana, solanaProduct)");
+    expectScriptToContain(script, "prices.push(formatTokenAmount(solanaProduct.tokenAmount, solanaProduct.tokenSymbol || solana.symbol))");
+    expectScriptToContain(script, 'meta.textContent = prices.join(" or ")');
+    expectScriptToContain(script, 'stripe.textContent = "Stripe"');
+    expectScriptToContain(script, 'crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Crypto"');
+    expectScriptToContain(script, "crypto.disabled = billingBusy || cryptoUnavailable");
+    expectScriptToContain(script, "Crypto checkout is not configured in this preview.");
+    expect(VIEWER_CSS).toContain(".billing-payment-note");
+    expect(script).not.toContain('"Buy " + formatWholeNumber(product.hallPasses || 0) + " Hall Passes."');
+    expectScriptToContain(script, "async function ensureSolanaWalletForBilling()");
+    expectScriptToContain(script, 'await startPrivyLogin({ source: "billing" })');
+    expectScriptToContain(script, 'await startSolanaWalletConnect({ source: "billing" })');
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
-    expectScriptToContain(script, 'buy.textContent = "Pay with wallet"');
-    expectScriptToContain(script, "if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0)");
+    expect(script).not.toContain('buy.textContent = "Pay with wallet"');
+    expect(script).not.toContain("if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0)");
     expect(script).not.toContain("Solana transaction signature");
     expect(script).not.toContain("paste the transaction");
     expect(script).not.toContain("Pay Crypto");
+  });
+
+  it("keeps Privy modal actions from getting stuck in mobile webviews", () => {
+    expect(PRIVY_CLIENT_SOURCE).toContain('"phantom"');
+    expect(PRIVY_CLIENT_SOURCE).toContain('"detected_solana_wallets"');
+    expect(PRIVY_CLIENT_SOURCE).toContain('"wallet_connect_qr_solana"');
+    expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
+    expect(PRIVY_CLIENT_SOURCE).toContain("walletList: SOLANA_WALLET_LIST");
+    expect(PRIVY_CLIENT_SOURCE).toContain("record.chainType ?? record.chain_type ?? record.type");
+    expect(PRIVY_CLIENT_SOURCE).toContain("readNestedSolanaAddress(record.provider)");
+    expect(PRIVY_CLIENT_SOURCE).toContain("const PRIVY_ACTION_TIMEOUT_MS = 30_000;");
+    expect(PRIVY_CLIENT_SOURCE).toContain("Privy sign-in did not open. Refresh Ruby High and try again.");
+    expect(PRIVY_CLIENT_SOURCE).toContain("Solana wallet connection did not open. Refresh Ruby High and try again.");
+    expect(PRIVY_CLIENT_SOURCE).toContain("Promise.resolve(result).catch((err) => rejectPendingLogin(err))");
+    expect(PRIVY_CLIENT_SOURCE).toContain("Promise.resolve(result).catch((err) => rejectPendingWalletConnect(err))");
+    expect(PRIVY_CLIENT_SOURCE).toContain("if (modal.isOpen) {");
+    expect(PRIVY_CLIENT_SOURCE).toContain("if (pendingLogin.current) modalOpenedForLogin.current = true;");
+    expect(PRIVY_CLIENT_SOURCE).toContain("if (pendingWalletConnect.current) modalOpenedForWalletConnect.current = true;");
+    expect(PRIVY_CLIENT_SOURCE).toContain("modalOpenedForLogin.current = false;");
+    expect(PRIVY_CLIENT_SOURCE).toContain("modalOpenedForWalletConnect.current = false;");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("modalOpenedForLogin.current = true;\n      login();");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("modalOpenedForWalletConnect.current = true;\n      connectWallet({");
   });
 
   it("makes Account the character home before wallet, history, comics, and AI access", () => {
@@ -147,6 +186,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "Roll your first student and try a custom portrait");
     expectScriptToContain(script, 'els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
     expectScriptToContain(script, 'els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
+    expectScriptToContain(script, "els.accountBuyPasses.disabled = !authed;");
+    expectScriptToContain(script, "els.accountUsePass.disabled = !authed || billingBusy");
+    expectScriptToContain(script, "els.accountAiUsePass.disabled = primaryDisabled;");
+    expect(script).not.toContain("els.accountBuyPasses.disabled = !unlocked || !authed");
+    expect(script).not.toContain("els.accountUsePass.disabled = !unlocked || !authed");
+    expect(script).not.toContain("els.accountAiUsePass.disabled = !unlocked || primaryDisabled");
     expectScriptToContain(script, "formatDuration(ai.durationMs || 6048e5)");
     expectScriptToContain(script, "AI Access active");
     expect(script).not.toContain("Roll your character to start today's class.");

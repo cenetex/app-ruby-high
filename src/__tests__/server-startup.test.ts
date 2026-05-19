@@ -30,6 +30,10 @@ describe("production startup guardrails", () => {
     expect(flyConfig).toContain('path = "/health"');
   });
 
+  it("copies npm install policy into Docker before npm ci", () => {
+    expect(dockerfile).toContain("COPY package.json package-lock.json* .npmrc ./");
+  });
+
   it("packages every runtime script imported by the production server", () => {
     expect(dockerfile).toContain("COPY scripts/server.mjs ./scripts/server.mjs");
     const relativeScriptImports = [...serverEntry.matchAll(/from "\.\/([^"]+\.mjs)"/g)]
@@ -38,6 +42,13 @@ describe("production startup guardrails", () => {
     for (const file of relativeScriptImports) {
       expect(dockerfile).toContain(`COPY scripts/${file} ./scripts/${file}`);
     }
+  });
+
+  it("serves the old domain as the static landing page from Fly", () => {
+    expect(serverEntry).toContain('import { isLandingHost, serveLandingRequest } from "./landing.mjs";');
+    expect(serverEntry).toContain('const APP_BASE = process.env.RUBY_HIGH_APP_BASE ?? "https://ruby-high.ai";');
+    expect(serverEntry).toMatch(/isLandingHost\(req\)[\s\S]+serveLandingRequest\(req, res, url, \{ appBase: APP_BASE \}\)/);
+    expect(dockerfile).toContain("COPY landing ./landing");
   });
 
   it("uses the shared host JSON body cap helper", () => {

@@ -1363,6 +1363,9 @@ export const VIEWER_CSS = `
     background: var(--bg-elev);
     border: 1px solid var(--line);
   }
+  .billing-product.is-selected {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  }
   .billing-product-title {
     font-weight: 850;
     color: var(--text);
@@ -1382,9 +1385,40 @@ export const VIEWER_CSS = `
     font-weight: 850;
     white-space: nowrap;
   }
+  .billing-buy.is-secondary {
+    background: rgba(255,255,255,0.09);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.14);
+  }
   .billing-buy:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+  .billing-payment-choice {
+    margin: -2px 0 6px 14px;
+    padding: 11px 12px 12px;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    background: rgba(255,255,255,0.035);
+  }
+  .billing-payment-title {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .billing-payment-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .billing-payment-note {
+    margin-top: 8px;
+    color: var(--text-mute);
+    font-size: 12px;
+    line-height: 1.35;
   }
   .billing-solana-quote {
     grid-template-columns: minmax(0, 1fr);
