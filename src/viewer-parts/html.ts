@@ -157,6 +157,19 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
 <div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
 
+<div class="app-confirm-overlay" id="app-confirm-overlay" aria-hidden="true" hidden>
+  <div class="app-confirm-card" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-copy">
+    <div class="app-confirm-kicker" id="app-confirm-kicker">Confirm</div>
+    <h2 id="app-confirm-title">Continue?</h2>
+    <p id="app-confirm-copy"></p>
+    <p class="app-confirm-detail" id="app-confirm-detail" hidden></p>
+    <div class="app-confirm-actions">
+      <button type="button" class="secondary" id="app-confirm-cancel">Cancel</button>
+      <button type="button" class="primary" id="app-confirm-ok">Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- Sign-in fallback. Normal boot creates a guest Ruby High session; this only
      opens if the app cannot establish even that local session. -->
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
@@ -182,6 +195,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
           <button type="button" id="privy-login-widget">Sign in with Privy</button>
+          <button type="button" id="privy-connect-solana" hidden>Connect Solana wallet</button>
           <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
         </div>
       </div>

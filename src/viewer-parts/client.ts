@@ -594,6 +594,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     privyClose: $("privy-close"),
     privyWallet: $("privy-wallet"),
     privyLoginWidget: $("privy-login-widget"),
+    privyConnectSolana: $("privy-connect-solana"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
     accountAiStatus: $("account-ai-status"),
@@ -620,7 +621,96 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     billingCosts: $("billing-costs"),
     billingProducts: $("billing-products"),
     billingStatus: $("billing-status"),
+    appConfirmOverlay: $("app-confirm-overlay"),
+    appConfirmKicker: $("app-confirm-kicker"),
+    appConfirmTitle: $("app-confirm-title"),
+    appConfirmCopy: $("app-confirm-copy"),
+    appConfirmDetail: $("app-confirm-detail"),
+    appConfirmCancel: $("app-confirm-cancel"),
+    appConfirmOk: $("app-confirm-ok"),
   };
+
+  let activeConfirmDialog = null;
+  function confirmInApp(options) {
+    const overlay = els.appConfirmOverlay;
+    const okBtn = els.appConfirmOk;
+    const cancelBtn = els.appConfirmCancel;
+    if (!overlay || !okBtn || !cancelBtn) return Promise.resolve(false);
+    if (activeConfirmDialog && activeConfirmDialog.resolve) activeConfirmDialog.resolve(false);
+
+    const title = options && options.title ? options.title : "Continue?";
+    const copy = options && options.copy ? options.copy : "";
+    const detail = options && options.detail ? options.detail : "";
+    const kicker = options && options.kicker ? options.kicker : "Confirm";
+    const confirmText = options && options.confirmText ? options.confirmText : "Continue";
+    const cancelText = options && options.cancelText ? options.cancelText : "Cancel";
+    const tone = options && options.tone ? options.tone : "";
+    const previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+      ? document.activeElement
+      : null;
+
+    if (els.appConfirmKicker) els.appConfirmKicker.textContent = kicker;
+    if (els.appConfirmTitle) els.appConfirmTitle.textContent = title;
+    if (els.appConfirmCopy) els.appConfirmCopy.textContent = copy;
+    if (els.appConfirmDetail) {
+      els.appConfirmDetail.textContent = detail;
+      els.appConfirmDetail.hidden = !detail;
+    }
+    okBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+    overlay.classList.toggle("is-danger", tone === "danger");
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    overlay.classList.add("is-open");
+
+    return new Promise((resolve) => {
+      function cleanup(result) {
+        overlay.classList.remove("is-open", "is-danger");
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.hidden = true;
+        overlay.removeEventListener("click", onOverlayClick);
+        overlay.removeEventListener("keydown", onKeyDown);
+        okBtn.removeEventListener("click", onConfirm);
+        cancelBtn.removeEventListener("click", onCancel);
+        activeConfirmDialog = null;
+        if (previousFocus && previousFocus.isConnected) {
+          try { previousFocus.focus({ preventScroll: true }); } catch (_err) { try { previousFocus.focus(); } catch (_focusErr) {} }
+        }
+        resolve(result);
+      }
+      function onConfirm() { cleanup(true); }
+      function onCancel() { cleanup(false); }
+      function onOverlayClick(event) {
+        if (event.target === overlay) cleanup(false);
+      }
+      function onKeyDown(event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cleanup(false);
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(overlay.querySelectorAll("button:not(:disabled), [href], input, textarea, select, [tabindex]:not([tabindex='-1'])"));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      activeConfirmDialog = { resolve: cleanup };
+      overlay.addEventListener("click", onOverlayClick);
+      overlay.addEventListener("keydown", onKeyDown);
+      okBtn.addEventListener("click", onConfirm);
+      cancelBtn.addEventListener("click", onCancel);
+      const focusTarget = options && options.focus === "confirm" ? okBtn : cancelBtn;
+      setTimeout(() => { try { focusTarget.focus({ preventScroll: true }); } catch (_err) { focusTarget.focus(); } }, 0);
+    });
+  }
 
   // ── view state ────────────────────────────────────────────────────────────
   let lastTelemetry = null;
@@ -643,6 +733,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     ready: !privyConfig,
     walletAddress: null,
     walletChainType: null,
+    solanaWalletAddress: null,
     label: null,
   };
   function activeTeacherUsesServerAi() {
@@ -674,7 +765,6 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let lastSocialSummaryId = null;
   let billingProductsCache = null;
-  let activeSolanaQuote = null;
   let billingBusy = false;
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
   function setNextButtonDisabled(disabled) {
@@ -1792,16 +1882,31 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   async function confirmHostedCreditSpend(action, kind, usePhotoDayCredit) {
     if (!usingHostedImageGeneration(kind) && !usePhotoDayCredit) return true;
     await ensureBillingProductsForCreditWarning();
+    const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : hostedImageCostLabel(kind);
+    const spendKind = usePhotoDayCredit ? "photo-day credit" : "Hall Pass spend";
+    const isCharacterPortrait = action === "Custom character portrait";
+    const detail = isCharacterPortrait
+      ? "You can keep editing while it runs. Lock it in unlocks after the request finishes."
+      : "You can keep editing while it runs. Save and Close unlock after it finishes or you cancel.";
+    const confirmText = isCharacterPortrait ? "Generate portrait" : "Generate image";
     if (usePhotoDayCredit) {
-      return window.confirm(
-        action + " uses hosted OpenRouter image generation and will spend 1 Photo Day credit if the image completes. " +
-        "You can keep editing while it runs, but Save and Close stay locked until it finishes or you cancel."
-      );
+      return confirmInApp({
+        kicker: "Hosted image",
+        title: action + "?",
+        copy: "This uses hosted OpenRouter image generation. If the image completes, it will spend " + spendLabel + ".",
+        detail,
+        confirmText,
+        focus: "confirm",
+      });
     }
-    return window.confirm(
-      action + " uses hosted OpenRouter image generation and will spend " + hostedImageCostLabel(kind) + " if the image completes. " +
-      "You can keep editing while it runs, but Save and Close stay locked until it finishes or you cancel."
-    );
+    return confirmInApp({
+      kicker: spendKind,
+      title: action + "?",
+      copy: "This uses hosted OpenRouter image generation. If the image completes, it will spend " + spendLabel + ".",
+      detail,
+      confirmText,
+      focus: "confirm",
+    });
   }
 
   function teacherImageGenerationStatusReason() {
@@ -2372,52 +2477,6 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     window.location.href = "/api/apps/ruby-high/auth/start";
   }
 
-  function renderSolanaQuotePanel() {
-    const quote = activeSolanaQuote;
-    if (!quote || !quote.product) return null;
-    const panel = document.createElement("div");
-    panel.className = "billing-product billing-solana-quote";
-    const body = document.createElement("div");
-    const title = document.createElement("div");
-    title.className = "billing-product-title";
-    title.textContent = "Solana payment ready";
-    const meta = document.createElement("div");
-    meta.className = "billing-product-meta";
-    meta.textContent = formatTokenAmount(quote.product.tokenAmount, quote.symbol)
-      + " for " + formatWholeNumber(quote.product.hallPasses) + " Hall Passes";
-    const details = document.createElement("div");
-    details.className = "billing-solana-details";
-    const recipient = document.createElement("code");
-    recipient.textContent = quote.recipient || "";
-    const reference = document.createElement("code");
-    reference.textContent = quote.reference || "";
-    details.append("Wallet ", recipient, " · Ref ", reference);
-    const input = document.createElement("input");
-    input.className = "billing-solana-signature";
-    input.placeholder = "Solana transaction signature";
-    input.autocomplete = "off";
-    body.append(title, meta, details, input);
-    const actions = document.createElement("div");
-    actions.className = "billing-solana-actions";
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "billing-buy";
-    open.textContent = "Open Wallet";
-    open.disabled = billingBusy || !quote.solanaPayUrl;
-    open.addEventListener("click", () => {
-      if (quote.solanaPayUrl) window.location.href = quote.solanaPayUrl;
-    });
-    const verify = document.createElement("button");
-    verify.type = "button";
-    verify.className = "billing-buy";
-    verify.textContent = "Verify";
-    verify.disabled = billingBusy;
-    verify.addEventListener("click", () => confirmSolanaPayment(quote.product.id, input.value));
-    actions.append(open, verify);
-    panel.append(body, actions);
-    return panel;
-  }
-
   function renderBillingProducts(payload) {
     if (!els.billingProducts) return;
     els.billingProducts.replaceChildren();
@@ -2473,8 +2532,35 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     aiRow.appendChild(aiBody);
     aiRow.appendChild(aiBuy);
     els.billingProducts.appendChild(aiRow);
-    const solanaPanel = renderSolanaQuotePanel();
-    if (solanaPanel) els.billingProducts.appendChild(solanaPanel);
+    const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
+    const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
+    const solanaWalletAddress = connectedSolanaWalletAddress();
+    if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0) {
+      solanaProducts.forEach((product) => {
+        const row = document.createElement("div");
+        row.className = "billing-product";
+        const body = document.createElement("div");
+        const title = document.createElement("div");
+        title.className = "billing-product-title";
+        title.textContent = product.name || "Hall Pass pack";
+        const meta = document.createElement("div");
+        meta.className = "billing-product-meta";
+        meta.textContent = formatWholeNumber(product.hallPasses || 0) + " Hall Passes · " + formatTokenAmount(product.tokenAmount, product.tokenSymbol || solana.symbol);
+        body.appendChild(title);
+        body.appendChild(meta);
+        const buy = document.createElement("button");
+        buy.type = "button";
+        buy.className = "billing-buy";
+        buy.textContent = "Pay with wallet";
+        buy.disabled = billingBusy;
+        buy.addEventListener("click", () => startSolanaPayment(product.id));
+        row.appendChild(body);
+        row.appendChild(buy);
+        els.billingProducts.appendChild(row);
+      });
+      setBillingStatus("", false);
+      return;
+    }
     const products = Array.isArray(payload && payload.products) ? payload.products : [];
     if (products.length === 0) {
       setBillingStatus("No Hall Pass packs are available.", true);
@@ -2502,33 +2588,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       row.appendChild(buy);
       els.billingProducts.appendChild(row);
     });
-    const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
-    const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
-    solanaProducts.forEach((product) => {
-      const row = document.createElement("div");
-      row.className = "billing-product";
-      const body = document.createElement("div");
-      const title = document.createElement("div");
-      title.className = "billing-product-title";
-      title.textContent = (product.name || "Hall Pass pack") + " · Solana";
-      const meta = document.createElement("div");
-      meta.className = "billing-product-meta";
-      meta.textContent = formatWholeNumber(product.hallPasses || 0) + " Hall Passes · " + formatTokenAmount(product.tokenAmount, product.tokenSymbol || solana.symbol);
-      body.appendChild(title);
-      body.appendChild(meta);
-      const buy = document.createElement("button");
-      buy.type = "button";
-      buy.className = "billing-buy";
-      buy.textContent = "Pay Crypto";
-      buy.disabled = !solana.configured || billingBusy;
-      buy.addEventListener("click", () => startSolanaPayment(product.id));
-      row.appendChild(body);
-      row.appendChild(buy);
-      els.billingProducts.appendChild(row);
-    });
     setBillingStatus(
-      payload.configured || (solana && solana.configured) ? "" : "Checkout is not configured on this server.",
-      !payload.configured && !(solana && solana.configured) && !hostedAi.configured,
+      payload.configured ? "" : "Checkout is not configured on this server.",
+      !payload.configured && !hostedAi.configured,
     );
   }
 
@@ -2588,6 +2650,10 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   async function startSolanaPayment(productId) {
     if (!productId || billingBusy) return;
+    if (!connectedSolanaWalletAddress()) {
+      setBillingStatus("Connect a Solana wallet first.", true);
+      return;
+    }
     billingBusy = true;
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
     setBillingStatus("Preparing Solana payment...", false);
@@ -2600,26 +2666,30 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) throw new Error(data.error || "solana quote " + r.status);
-      activeSolanaQuote = data;
-      setBillingStatus("Send " + formatTokenAmount(data.product && data.product.tokenAmount, data.symbol) + ", then paste the transaction signature.", false);
+      const client = await getPrivyClient();
+      if (!client || typeof client.paySolanaQuote !== "function") throw new Error("Solana wallet checkout is unavailable.");
+      setBillingStatus("Confirm the Solana payment in your wallet...", false);
+      const payment = await client.paySolanaQuote(data);
+      const signature = payment && payment.signature ? payment.signature : "";
+      setBillingStatus("Payment sent. Verifying on-chain...", false);
+      await confirmSolanaPayment(productId, signature);
     } catch (err) {
       setBillingStatus("Solana payment failed · " + (err && err.message ? err.message : "error"), true);
     } finally {
       billingBusy = false;
+      renderAccountPage();
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
     }
   }
 
   async function confirmSolanaPayment(productId, signature) {
     const cleanSignature = String(signature || "").trim();
-    if (!productId || !cleanSignature || billingBusy) {
-      setBillingStatus("Paste the Solana transaction signature first.", true);
-      return;
-    }
-    billingBusy = true;
-    if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    setBillingStatus("Checking Solana payment...", false);
-    try {
+    if (!productId || !cleanSignature) throw new Error("Wallet did not return a Solana payment confirmation.");
+    const maxAttempts = 6;
+    let lastError = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) await waitForSolanaConfirmation(1500 + attempt * 500);
+      setBillingStatus(attempt === 0 ? "Checking Solana payment..." : "Waiting for Solana confirmation...", false);
       const r = await apiFetch(apiBase + "/billing/solana/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2627,19 +2697,22 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         body: JSON.stringify({ productId, signature: cleanSignature }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok) throw new Error(data.error || "solana confirm " + r.status);
-      activeSolanaQuote = null;
+      if (!r.ok || !data || !data.ok) {
+        lastError = new Error(data.error || "solana confirm " + r.status);
+        if (r.status === 400 && /not found yet|try again|rpc/i.test(lastError.message) && attempt + 1 < maxAttempts) continue;
+        throw lastError;
+      }
       setBillingStatus(data.applied ? "Hall Passes added from Solana payment." : "Solana payment was already credited.", false);
       await fetchSession();
       await deriveAuth();
       if (billingProductsCache) await loadBillingProducts();
-    } catch (err) {
-      setBillingStatus("Solana verification failed · " + (err && err.message ? err.message : "error"), true);
-    } finally {
-      billingBusy = false;
-      renderAccountPage();
-      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+      return;
     }
+    throw lastError || new Error("Solana verification failed.");
+  }
+
+  function waitForSolanaConfirmation(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   function accountAiAccessSuccessText(data) {
@@ -7512,7 +7585,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (!pack || packImportBusy) return;
     const name = pack.name || "Untitled Pack";
     const kind = opts && opts.draft ? "draft pack" : "pack";
-    if (!window.confirm("Delete " + name + "? This removes the " + kind + " from your library.")) return;
+    if (!(await confirmInApp({
+      kicker: "Delete " + kind,
+      title: "Delete " + name + "?",
+      copy: "This removes the " + kind + " from your library.",
+      confirmText: "Delete",
+      tone: "danger",
+    }))) return;
     setPackBusy(true);
     packStatusEl.textContent = "Deleting pack...";
     packStatusEl.classList.remove("is-invalid");
@@ -7534,7 +7613,12 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   async function uninstallLibraryPack(pack) {
     if (!pack || packImportBusy) return;
     const name = pack.name || "Untitled Pack";
-    if (!window.confirm("Uninstall " + name + "? You can install it again from search or keep editing it if you own it.")) return;
+    if (!(await confirmInApp({
+      kicker: "Uninstall pack",
+      title: "Uninstall " + name + "?",
+      copy: "You can install it again from search or keep editing it if you own it.",
+      confirmText: "Uninstall",
+    }))) return;
     setPackBusy(true);
     packStatusEl.textContent = "Uninstalling pack...";
     packStatusEl.classList.remove("is-invalid");
@@ -8824,7 +8908,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (!currentDraft || !teacherId || packImportBusy || packQuestionGenerationBusy) return;
     const teacher = currentDraft.teachers.find((entry) => entry.id === teacherId);
     const name = teacher ? (teacher.displayName || "this teacher") : "this teacher";
-    if (!window.confirm("Delete " + name + "? This removes the teacher and their cards from the draft.")) return;
+    if (!(await confirmInApp({
+      kicker: "Delete teacher",
+      title: "Delete " + name + "?",
+      copy: "This removes the teacher and their cards from the draft.",
+      confirmText: "Delete",
+      tone: "danger",
+    }))) return;
     setPackBusy(true);
     if (packEditStatusEl) {
       packEditStatusEl.textContent = "Deleting teacher...";
@@ -9023,19 +9113,33 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const raw = String(address || "");
     return raw.length > 12 ? raw.slice(0, 6) + "..." + raw.slice(-4) : raw;
   }
+  function connectedSolanaWalletAddress() {
+    return privyState.solanaWalletAddress
+      || (privyState.walletChainType === "solana" ? privyState.walletAddress : null)
+      || null;
+  }
   function applyPrivyState(next) {
     if (next && typeof next === "object") {
+      const authenticated = !!next.authenticated;
+      const hasSolanaWallet = Object.prototype.hasOwnProperty.call(next, "solanaWalletAddress");
+      const nextSolanaWalletAddress = next.solanaWalletAddress
+        || (next.walletChainType === "solana" ? next.walletAddress : null)
+        || (authenticated && !hasSolanaWallet ? privyState.solanaWalletAddress : null);
       privyState = {
         configured: !!(next.configured != null ? next.configured : privyState.configured),
-        authenticated: !!next.authenticated,
+        authenticated,
         ready: next.ready != null ? !!next.ready : true,
         walletAddress: next.walletAddress || null,
         walletChainType: next.walletChainType || null,
+        solanaWalletAddress: authenticated ? nextSolanaWalletAddress : null,
         label: next.label || null,
       };
     }
+    const solanaAddress = connectedSolanaWalletAddress();
     if (els.privyWallet) {
-      els.privyWallet.textContent = privyState.walletAddress
+      els.privyWallet.textContent = solanaAddress
+        ? shortWallet(solanaAddress) + " · solana"
+        : privyState.walletAddress
         ? shortWallet(privyState.walletAddress) + " · " + (privyState.walletChainType || "wallet")
         : privyState.authenticated
           ? "Signed in"
@@ -9044,6 +9148,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
             : "Privy not configured";
     }
     if (els.privyLoginWidget) els.privyLoginWidget.hidden = !privyState.configured || privyState.authenticated;
+    if (els.privyConnectSolana) els.privyConnectSolana.hidden = !privyState.configured || !privyState.authenticated || !!solanaAddress;
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
     if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
     applyAuthUI();
@@ -9137,6 +9242,27 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       setPrivyBusy(false);
     }
   }
+  async function startSolanaWalletConnect() {
+    if (!privyConfig) return;
+    setPrivyBusy(true);
+    setPrivyStatus("Opening Solana wallet connection...", false);
+    try {
+      const client = await getPrivyClient();
+      if (!client || typeof client.connectSolanaWallet !== "function") throw new Error("Solana wallet connection is unavailable.");
+      const snapshot = await client.connectSolanaWallet();
+      if (!snapshot) {
+        setPrivyStatus("Solana wallet connection closed.", false);
+        return;
+      }
+      await handlePrivySession(snapshot, { source: "wallet-connect" });
+      setPrivyStatus(connectedSolanaWalletAddress() ? "Solana wallet connected." : "Account connected.", false);
+      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    } catch (err) {
+      setPrivyStatus(err && err.message ? err.message : "Solana wallet connection failed", true);
+    } finally {
+      setPrivyBusy(false);
+    }
+  }
   async function openPrivyAccount() {
     setPrivyStatus("Checking account...", false);
     try {
@@ -9159,6 +9285,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   }
   function setPrivyBusy(busy) {
     if (els.privyLoginWidget) els.privyLoginWidget.disabled = !!busy;
+    if (els.privyConnectSolana) els.privyConnectSolana.disabled = !!busy;
     if (els.privySignout) els.privySignout.disabled = !!busy;
   }
   async function signOutPrivy() {
@@ -9830,6 +9957,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (e.target === els.privyOverlay) closePrivyAccount();
   });
   if (els.privyLoginWidget) els.privyLoginWidget.addEventListener("click", startPrivyLogin);
+  if (els.privyConnectSolana) els.privyConnectSolana.addEventListener("click", startSolanaWalletConnect);
   if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 
   // Click your name/avatar to open the character sheet.

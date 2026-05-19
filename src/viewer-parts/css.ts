@@ -5365,6 +5365,113 @@ export const VIEWER_CSS = `
   .congrats-toast.is-wrong { background: rgba(160, 24, 24, 0.95); }
   .congrats-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 
+  .app-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: grid;
+    place-items: center;
+    padding: calc(var(--safe-top) + 18px) calc(var(--safe-right) + 18px) calc(var(--safe-bot) + 18px) calc(var(--safe-left) + 18px);
+    background: rgba(8, 10, 16, 0.68);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .app-confirm-card {
+    width: min(420px, 100%);
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, rgba(255,255,255,0.18));
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02)),
+      rgba(24, 27, 38, 0.98);
+    color: var(--text);
+    box-shadow: 0 22px 70px rgba(0,0,0,0.56);
+    padding: 18px;
+  }
+  .app-confirm-kicker {
+    margin-bottom: 7px;
+    color: #ffe08a;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  .app-confirm-card h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 20px;
+    line-height: 1.15;
+    letter-spacing: 0;
+  }
+  .app-confirm-card p {
+    margin: 10px 0 0;
+    color: var(--text-soft);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .app-confirm-detail {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.045);
+    padding: 10px 11px;
+  }
+  .app-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    margin-top: 18px;
+  }
+  .app-confirm-actions button {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px;
+    min-height: 40px;
+    padding: 0 15px;
+    color: var(--text);
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+  .app-confirm-actions button.secondary {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-soft);
+  }
+  .app-confirm-actions button.primary {
+    border-color: color-mix(in srgb, var(--accent) 58%, rgba(255,255,255,0.16));
+    background: var(--accent);
+    color: #fff;
+  }
+  .app-confirm-actions button:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.65);
+    outline-offset: 2px;
+  }
+  .app-confirm-actions button:not(:disabled):hover {
+    border-color: rgba(255,255,255,0.28);
+    filter: brightness(1.05);
+  }
+  .app-confirm-overlay.is-danger .app-confirm-kicker {
+    color: #ffaaa5;
+  }
+  .app-confirm-overlay.is-danger .app-confirm-actions button.primary {
+    border-color: rgba(255,110,110,0.72);
+    background: #b92b2b;
+  }
+
+  @media (max-width: 520px) {
+    .app-confirm-card {
+      padding: 16px;
+    }
+    .app-confirm-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+    .app-confirm-actions button {
+      width: 100%;
+    }
+    .app-confirm-actions button.primary {
+      order: -1;
+    }
+  }
+
   .welcome-hall-pass-popup {
     position: fixed;
     inset: 0;
