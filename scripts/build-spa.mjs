@@ -373,15 +373,50 @@ function offlineApiScript(data) {
     return "hard";
   }
 
+  function difficultiesForGrade(grade) {
+    if (grade === "9") return ["easy"];
+    if (grade === "10") return ["easy", "medium"];
+    return ["easy", "medium", "hard"];
+  }
+
+  function difficultyWeightsForGrade(grade) {
+    if (grade === "9") return { easy: 1 };
+    if (grade === "10") return { easy: 0.35, medium: 0.65 };
+    if (grade === "11") return { easy: 0.1, medium: 0.55, hard: 0.35 };
+    return { medium: 0.25, hard: 0.75 };
+  }
+
+  function weightedDifficulty(pool, weights) {
+    var entries = ["easy", "medium", "hard"].map(function(difficulty) {
+      return { difficulty: difficulty, weight: Math.max(0, Number(weights[difficulty] || 0)) };
+    }).filter(function(entry) {
+      return entry.weight > 0 && pool.some(function(q) { return q.difficulty === entry.difficulty; });
+    });
+    var total = entries.reduce(function(sum, entry) { return sum + entry.weight; }, 0);
+    if (total <= 0) return null;
+    var cursor = Math.random() * total;
+    for (var i = 0; i < entries.length; i += 1) {
+      cursor -= entries[i].weight;
+      if (cursor <= 0) return entries[i].difficulty;
+    }
+    return entries.length ? entries[entries.length - 1].difficulty : null;
+  }
+
   function pickQuestion(state) {
     const facultyId = state.faculty === "lounge" ? "ruby" : state.faculty;
     const bank = questionBank(facultyId);
-    const gradeDifficulty = difficultyForGrade(state.currentGrade || "9");
+    const grade = state.currentGrade || "9";
+    const gradeDifficulty = difficultyForGrade(grade);
+    const allowed = difficultiesForGrade(grade);
     const unseen = bank.filter(function(q) {
-      return state.askedQuestionIds.indexOf(q.id) === -1 && (!q.difficulty || q.difficulty === gradeDifficulty);
+      return state.askedQuestionIds.indexOf(q.id) === -1 && (!q.difficulty || allowed.indexOf(q.difficulty) !== -1);
     });
     const fallback = bank.filter(function(q) { return state.askedQuestionIds.indexOf(q.id) === -1; });
-    const pool = unseen.length ? unseen : fallback.length ? fallback : bank;
+    const basePool = unseen.length ? unseen : fallback.length ? fallback : bank;
+    const weighted = weightedDifficulty(basePool, difficultyWeightsForGrade(grade));
+    const pool = weighted
+      ? basePool.filter(function(q) { return q.difficulty === weighted; })
+      : basePool;
     if (!pool.length) throw new Error("No offline questions are bundled for this room.");
     const q = clone(pool[Math.floor(Math.random() * pool.length)]);
     state.askedQuestionIds.push(q.id);

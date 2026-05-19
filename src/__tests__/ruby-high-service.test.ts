@@ -481,6 +481,44 @@ describe("RubyHighService Phase 1", () => {
     expect(ruby.questionBankStatus(sid, "ruby").total).toBe(total);
   });
 
+  it("weights automatic difficulty by grade instead of hard-locking one level", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:weighted-grade-difficulty";
+    const pack = fakeLeveledPack("pack:weighted-grade-difficulty");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    ruby.selectGrade(sid, "11");
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+
+    const state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+
+    expect(state.current?.difficulty).toBe("hard");
+    expect(ruby.questionBankStatus(sid, "level-test-course").difficultyWeights).toEqual({
+      easy: 0.1,
+      medium: 0.55,
+      hard: 0.35,
+    });
+  });
+
+  it("keeps Freshman auto-picks on easy questions", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:freshman-easy-weight";
+    const pack = fakeLeveledPack("pack:freshman-easy-weight");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    ruby.selectGrade(sid, "9");
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+
+    const state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+
+    expect(state.current?.difficulty).toBe("easy");
+    expect(ruby.questionBankStatus(sid, "level-test-course").remainingByDifficulty).toEqual({
+      easy: 1,
+    });
+  });
+
   it("does not replace or clear a live unresolved board", async () => {
     const { ruby } = await makeServices();
     const sid = "test:live-board-lock";

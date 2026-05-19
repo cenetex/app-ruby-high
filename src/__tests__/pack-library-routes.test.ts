@@ -8,6 +8,7 @@ import type { ContentPack } from "../content/types.js";
 import { AuthService } from "../services/auth-service.js";
 import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
+import type { BankedQuestion } from "../types.js";
 
 let tmpDir: string;
 let auth: AuthService;
@@ -254,6 +255,12 @@ async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: num
   expect(handled).toBe(true);
   expect(lastResponse).not.toBeNull();
   return lastResponse!;
+}
+
+function fetchRequestJson(fetchMock: { mock: { calls: unknown[][] } }, index = 0): any {
+  const call = fetchMock.mock.calls[index] ?? [];
+  const init = call[1] as { body?: unknown } | undefined;
+  return JSON.parse(String(init?.body ?? "{}"));
 }
 
 beforeEach(async () => {
@@ -582,7 +589,24 @@ describe("/pack-library", () => {
       prompt: "What does sampling bias change?",
       subject: "sampling",
       difficulty: "easy",
+      stat: "head",
     });
+    expect(response.body.teacher.questions.map((q: { difficulty: string }) => q.difficulty)).toEqual([
+      "easy",
+      "medium",
+      "hard",
+      "easy",
+    ]);
+    expect(response.body.teacher.questions.map((q: { stat: string }) => q.stat)).toEqual([
+      "head",
+      "heart",
+      "hustle",
+      "honor",
+    ]);
+    const coursePrompt = fetchRequestJson(fetchMock).messages[1].content as string;
+    expect(coursePrompt).toContain("Balance requirements");
+    expect(coursePrompt).toContain("difficulty=easy, stat=head");
+    expect(coursePrompt).toContain("difficulty=medium, stat=heart");
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(5);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -1188,6 +1212,12 @@ describe("/pack-library", () => {
     expect(response.body.entitlements.hallPasses).toBe(4);
     expect(response.body.teacher.generationCount).toBe(1);
     expect(response.body.teacher.questions).toHaveLength(2);
+    expect(response.body.teacher.questions.map((q: { difficulty: string }) => q.difficulty)).toEqual(["easy", "medium"]);
+    expect(response.body.teacher.questions.map((q: { stat: string }) => q.stat)).toEqual(["head", "heart"]);
+    const questionPrompt = fetchRequestJson(questionFetch).messages[1].content as string;
+    expect(questionPrompt).toContain("Current teacher balance: no existing cards.");
+    expect(questionPrompt).toContain("difficulty=easy, stat=head");
+    expect(questionPrompt).toContain("difficulty=medium, stat=heart");
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(4);
     expect(questionFetch).toHaveBeenCalledTimes(1);
     expect(ruby.walletTransaction(aliceSessionId, `question-generation:${aliceSessionId}:${draftId}:${teacherId}:hosted-more-questions-1`)).toMatchObject({
@@ -1214,6 +1244,79 @@ describe("/pack-library", () => {
     expect(response.body.teacher.questions).toHaveLength(2);
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
     expect(questionFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("fills underrepresented difficulty and stat buckets when generating creator-pack questions", async () => {
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
+    signInUser("alice");
+    const questionFetch = stubQuestionGeneratorFetch();
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Unbalanced Questions" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+      cookie: "rh_session=alice",
+      body: {
+        displayName: "Balance Coach",
+        description: "Already has too many easy head cards.",
+      },
+    });
+    const teacherId = response.body.teacher.id as string;
+
+    response = await route({
+      method: "PATCH",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}`,
+      cookie: "rh_session=alice",
+      body: {
+        materials: "Signals need controls, replication, and careful evidence handling.",
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const draft = (await ruby.listDraftPackRecords()).find((entry) => entry.id === draftId)!;
+    const teacher = draft.teachers.find((entry) => entry.id === teacherId)!;
+    const existingQuestions: BankedQuestion[] = Array.from({ length: 8 }, (_, index) => ({
+      id: `existing-easy-head-${index + 1}`,
+      faculty: "draft-balance-coach",
+      prompt: `Existing easy fact card ${index + 1}?`,
+      subject: "signals",
+      difficulty: "easy",
+      stat: "head",
+      options: { A: "Evidence", B: "Wallpaper", C: "Locker", D: "Bell" },
+      correct: "A",
+      explanation: "This existing card is intentionally easy/head-heavy.",
+    }));
+    await ruby.saveDraftPackRecord({
+      ...draft,
+      teachers: draft.teachers.map((entry) =>
+        entry.id === teacherId ? { ...teacher, questions: existingQuestions } : entry
+      ),
+    });
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/generate`,
+      cookie: "rh_session=alice",
+      body: { requestId: "rebalance-more-questions-1", questionCount: 2 },
+    });
+
+    expect(response.status).toBe(200);
+    const appended = response.body.teacher.questions.slice(-2);
+    expect(appended.map((q: { difficulty: string }) => q.difficulty)).toEqual(["medium", "hard"]);
+    expect(appended.map((q: { stat: string }) => q.stat)).toEqual(["heart", "hustle"]);
+    const questionPrompt = fetchRequestJson(questionFetch).messages[1].content as string;
+    expect(questionPrompt).toContain("Current teacher balance: 8 existing cards.");
+    expect(questionPrompt).toContain("Difficulty counts: easy=8, medium=0, hard=0.");
+    expect(questionPrompt).toContain("Stat counts: head=8, heart=0, hustle=0, honor=0.");
+    expect(questionPrompt).toContain("difficulty=medium, stat=heart");
+    expect(questionPrompt).toContain("difficulty=hard, stat=hustle");
   });
 
   it("creates an edit draft for owned published packs that no longer have a backing draft", async () => {

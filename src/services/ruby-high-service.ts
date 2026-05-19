@@ -14,6 +14,7 @@ import {
   RUBY_FACULTY,
   difficultiesForGrade,
   difficultyForGrade,
+  difficultyWeightsForGrade,
   initialNpcRoster,
   npcsInRoom,
   classifyTotal,
@@ -43,6 +44,7 @@ import {
   type DailyClassRecord,
   type DeckCardRole,
   type Difficulty,
+  type DifficultyWeights,
   type EssayReport,
   type FacultyMember,
   type Grade,
@@ -205,6 +207,7 @@ export interface QuestionBankStatus {
     score?: number;
   };
   defaultDifficulty?: Difficulty;
+  difficultyWeights?: DifficultyWeights;
   remainingByDifficulty: Partial<Record<Difficulty, number>>;
   remainingBySubject: Record<string, number>;
 }
@@ -2455,7 +2458,13 @@ export class RubyHighService extends Service {
   private pickReviewQuestion(
     state: QuizState,
     facultyId: string,
-    filter: { subject?: string; difficulty?: Difficulty; allowedDifficulties?: Iterable<Difficulty>; allowUndue?: boolean } = {},
+    filter: {
+      subject?: string;
+      difficulty?: Difficulty;
+      allowedDifficulties?: Iterable<Difficulty>;
+      difficultyWeights?: DifficultyWeights;
+      allowUndue?: boolean;
+    } = {},
     now = Date.now(),
   ): BankedQuestion | null {
     const all = this.eligibleCourseQuestions(state, facultyId, {
@@ -2516,7 +2525,40 @@ export class RubyHighService extends Service {
       });
       return undue[0] ?? null;
     };
-    return choose(preferred.length > 0 ? preferred : all) ?? (preferred.length > 0 ? choose(all) : null);
+
+    const chooseWithWeights = (pool: BankedQuestion[]): BankedQuestion | null => {
+      const weights = filter.difficultyWeights;
+      if (!weights || filter.difficulty) return choose(pool);
+      const weighted = (["easy", "medium", "hard"] as const)
+        .map((difficulty) => ({
+          difficulty,
+          weight: Math.max(0, Number(weights[difficulty] ?? 0)),
+        }))
+        .filter(({ difficulty, weight }) =>
+          weight > 0 && pool.some((q) => q.difficulty === difficulty)
+        );
+      const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+      if (total <= 0) return choose(pool);
+
+      let cursor = Math.random() * total;
+      for (const entry of weighted) {
+        cursor -= entry.weight;
+        if (cursor <= 0) {
+          const picked = choose(pool.filter((q) => q.difficulty === entry.difficulty));
+          if (picked) return picked;
+          break;
+        }
+      }
+      return choose(pool);
+    };
+
+    const subjectAndDifficultyPool = preferred.length > 0 ? preferred : all;
+    const weighted = chooseWithWeights(subjectAndDifficultyPool);
+    if (weighted) return weighted;
+    if (preferred.length > 0) {
+      return chooseWithWeights(all);
+    }
+    return null;
   }
 
   private questionBelongsToReviewCourse(state: QuizState, q: Question): BankedQuestion | null {
@@ -3670,24 +3712,25 @@ export class RubyHighService extends Service {
     const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
     const cardRole = this.peekCardRoleForPose(state, facultyId, filter.mode);
     const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
-    let difficulty = filter.difficulty;
+    const explicitDifficulty = filter.difficulty;
     const allowedDifficulties = !filter.difficulty && state.currentGrade && !importedReviewCourse
       ? difficultiesForGrade(state.currentGrade)
       : undefined;
-    if (!difficulty && state.currentGrade && !importedReviewCourse) {
-      // Until the bank grows explicit grade tags, difficulty is the year-level
-      // proxy: prefer this year's level but allow prior-year material.
-      difficulty = difficultyForGrade(state.currentGrade);
-    }
+    const difficultyWeights = !filter.difficulty && state.currentGrade && !importedReviewCourse
+      ? difficultyWeightsForGrade(state.currentGrade)
+      : undefined;
+    const displayDifficulty = explicitDifficulty
+      ?? (state.currentGrade && !importedReviewCourse ? difficultyForGrade(state.currentGrade) : undefined);
     const question = cardRole === "social"
       ? undefined
       : this.pickReviewQuestion(state, facultyId, {
           subject: filter.subject,
-          difficulty,
+          difficulty: explicitDifficulty,
           allowedDifficulties,
+          difficultyWeights,
           allowUndue: filter.mode === "practice",
         }) ?? undefined;
-    return { facultyId, cardRole, importedReviewCourse, difficulty, question };
+    return { facultyId, cardRole, importedReviewCourse, difficulty: displayDifficulty, question };
   }
 
   pickAndPose(sessionId: string, filter: PickAndPoseInput = {}): QuizState {
@@ -3747,6 +3790,7 @@ export class RubyHighService extends Service {
       shakyCount: counts.shaky,
       newCount: counts.fresh,
       defaultDifficulty: state.currentGrade && !imported ? difficultyForGrade(state.currentGrade) : undefined,
+      difficultyWeights: state.currentGrade && !imported ? difficultyWeightsForGrade(state.currentGrade) : undefined,
       remainingByDifficulty: counts.remainingByDifficulty,
       remainingBySubject: counts.remainingBySubject,
     };

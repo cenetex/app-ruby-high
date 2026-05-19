@@ -5,10 +5,15 @@ const GRADE_LABELS = { 9: "Freshman", 10: "Sophomore", 11: "Junior", 12: "Senior
 const GRADE_DIFFICULTIES = {
   9: ["easy"],
   10: ["easy", "medium"],
-  11: ["easy", "medium"],
+  11: ["easy", "medium", "hard"],
   12: ["easy", "medium", "hard"],
 };
-const PREFERRED_DIFFICULTY = { 9: "easy", 10: "medium", 11: "medium", 12: "hard" };
+const GRADE_DIFFICULTY_WEIGHTS = {
+  9: { easy: 1 },
+  10: { easy: 0.35, medium: 0.65 },
+  11: { easy: 0.1, medium: 0.55, hard: 0.35 },
+  12: { medium: 0.25, hard: 0.75 },
+};
 const DIFFICULTY_ACCURACY = { easy: 0.82, medium: 0.68, hard: 0.54 };
 const QUESTIONS_PER_CLASS = 3;
 const PASS_THRESHOLD = 2;
@@ -53,9 +58,19 @@ function simulateAnswer(rng, difficulty, useAdvantage) {
 }
 
 function nextDifficulty(rng, grade, seen) {
-  const preferred = PREFERRED_DIFFICULTY[grade];
+  const weights = GRADE_DIFFICULTY_WEIGHTS[grade] ?? { medium: 1 };
   const pool = GRADE_DIFFICULTIES[grade];
-  if ((seen[preferred] ?? 0) < 6) return preferred;
+  const weighted = pool
+    .map((difficulty) => ({ difficulty, weight: Math.max(0, Number(weights[difficulty] ?? 0)) }))
+    .filter(({ weight }) => weight > 0);
+  const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  if (total > 0) {
+    let cursor = rng() * total;
+    for (const entry of weighted) {
+      cursor -= entry.weight;
+      if (cursor <= 0) return entry.difficulty;
+    }
+  }
   return choice(rng, pool);
 }
 
@@ -109,7 +124,7 @@ function simulateSession(rng) {
       label: GRADE_LABELS[grade],
       classesTaken: gradeClasses,
       passRate: gradeClasses > 0 ? gradePasses / gradeClasses : null,
-      preferredDifficulty: PREFERRED_DIFFICULTY[grade],
+      difficultyWeights: GRADE_DIFFICULTY_WEIGHTS[grade],
     });
   }
 

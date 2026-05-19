@@ -127,12 +127,30 @@ export function difficultyForGrade(grade: Grade): Difficulty {
   return "hard";
 }
 
-/** Question-bank level cap for each school year. The current year should
- *  unlock its level plus prior-year material, never future-year material. */
+/** Question-bank level cap for each school year. The scheduler weights within
+ *  this unlocked set instead of hard-locking every year to one level. */
 export function difficultiesForGrade(grade: Grade): Difficulty[] {
   if (grade === "9") return ["easy"];
-  if (grade === "10" || grade === "11") return ["easy", "medium"];
+  if (grade === "10") return ["easy", "medium"];
   return ["easy", "medium", "hard"];
+}
+
+export type DifficultyWeights = Partial<Record<Difficulty, number>>;
+
+/** Grade-level draw weights. Zero or omitted weights are not preferred, but
+ *  the service still falls back to any unlocked due card when a preferred
+ *  bucket is exhausted. */
+export function difficultyWeightsForGrade(grade: Grade): DifficultyWeights {
+  switch (grade) {
+    case "9":
+      return { easy: 1 };
+    case "10":
+      return { easy: 0.35, medium: 0.65 };
+    case "11":
+      return { easy: 0.1, medium: 0.55, hard: 0.35 };
+    case "12":
+      return { medium: 0.25, hard: 0.75 };
+  }
 }
 
 /** The grade the player advances to after completing `grade`. Returns null

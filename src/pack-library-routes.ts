@@ -43,7 +43,7 @@ import {
   maybeUploadPortrait,
   renderTeacherPortrait,
 } from "./services/character-generation.js";
-import { classifyQuestionStat } from "./question-stats.js";
+import { classifyQuestionStat, normalizeQuestionStat, type QuestionStat } from "./question-stats.js";
 
 export interface PackLibraryRouteContext {
   method: string;
@@ -76,6 +76,13 @@ const PACK_SEARCH_LIMIT = 24;
 const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
 const MAX_MATERIAL_URL_REDIRECTS = 5;
 type PackLibrarySource = "official" | "creator" | "imported";
+const GENERATED_DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard"] as const;
+const GENERATED_STATS: readonly QuestionStat[] = ["head", "heart", "hustle", "honor"] as const;
+
+interface QuestionBalanceTarget {
+  difficulty: Difficulty;
+  stat: QuestionStat;
+}
 
 export async function handlePackLibraryRoutes(
   ctx: PackLibraryRouteContext,
@@ -1244,6 +1251,12 @@ function teacherDetail(teacher: StoredDraftTeacherRecord) {
         answer: card.back,
         subject: card.subject,
         difficulty: card.difficulty,
+        stat: classifyQuestionStat({
+          prompt: card.front,
+          subject: card.subject,
+          explanation: card.back,
+          correctAnswer: card.back,
+        }),
         type: "source-card",
       })),
       ...teacher.questions.map((question) => ({
@@ -1252,6 +1265,12 @@ function teacherDetail(teacher: StoredDraftTeacherRecord) {
         answer: question.explanation ?? "",
         subject: question.subject,
         difficulty: question.difficulty,
+        stat: normalizeQuestionStat(question.stat) ?? classifyQuestionStat({
+          prompt: question.prompt,
+          subject: question.subject,
+          explanation: question.explanation,
+          correctAnswer: question.correct && question.options ? question.options[question.correct] : undefined,
+        }),
         type: question.type ?? "multiple-choice",
       })),
     ],
@@ -1540,6 +1559,7 @@ async function generateCourseSpecWithAi(args: {
   const facultyId = draftTeacherFacultyIdForId(teacherId);
   const requestedCount = Math.max(4, Math.min(24, args.questionCount || COURSE_GENERATION_QUESTION_COUNT));
   const materials = args.materials.trim();
+  const balanceTargets = questionBalanceTargets([], requestedCount);
   const prompt = [
     `Draft pack: ${args.draft.name || "Untitled Content Pack"}`,
     args.draft.description ? `Draft description: ${args.draft.description}` : "",
@@ -1548,8 +1568,9 @@ async function generateCourseSpecWithAi(args: {
     `Create a Ruby High course teacher and exactly ${requestedCount} multiple-choice study questions from the course materials.`,
     "Return only JSON. Do not include markdown fences.",
     "Use this exact shape:",
-    `{"courseTitle":"...","courseDescription":"...","teacher":{"displayName":"...","subject":"...","description":"...","quote":"..."},"questions":[{"prompt":"...","subject":"...","difficulty":"easy","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
-    "Questions must be answerable from the materials. Difficulty must be easy, medium, or hard. correct must be A, B, C, or D.",
+    `{"courseTitle":"...","courseDescription":"...","teacher":{"displayName":"...","subject":"...","description":"...","quote":"..."},"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    "Questions must be answerable from the materials. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must be A, B, C, or D.",
+    questionBalancePrompt(balanceTargets),
     "Course materials:",
     materials.slice(0, 24_000),
   ].filter(Boolean).join("\n\n");
@@ -1584,6 +1605,7 @@ async function generateCourseSpecWithAi(args: {
     existingTeacher: args.teacher,
     fallbackSubject: subjectFromHeading(args.draft.name || args.teacher?.displayName || "course"),
     questionCount: requestedCount,
+    balanceTargets,
   });
 }
 
@@ -1598,6 +1620,8 @@ async function generateAdditionalQuestionsWithAi(args: {
   const facultyId = draftTeacherFacultyId(args.teacher);
   const requestedCount = Math.max(2, Math.min(12, args.questionCount || MORE_QUESTIONS_COUNT));
   const existingCount = args.teacher.questions.length + args.teacher.sourceCards.length;
+  const existingBalance = balanceItemsForTeacher(args.teacher);
+  const balanceTargets = questionBalanceTargets(existingBalance, requestedCount);
   const prompt = [
     `Draft pack: ${args.draft.name || "Untitled Content Pack"}`,
     `Teacher: ${args.teacher.displayName}`,
@@ -1606,8 +1630,10 @@ async function generateAdditionalQuestionsWithAi(args: {
     `Write exactly ${requestedCount} new multiple-choice study questions from the course materials.`,
     "Return only JSON. Do not include markdown fences.",
     "Use this exact shape:",
-    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
-    "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. correct must be A, B, C, or D.",
+    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must be A, B, C, or D.",
+    questionBalanceStatusPrompt(existingBalance),
+    questionBalancePrompt(balanceTargets),
     "Course materials:",
     materials.slice(0, 24_000),
   ].filter(Boolean).join("\n\n");
@@ -1643,6 +1669,7 @@ async function generateAdditionalQuestionsWithAi(args: {
     subject: args.teacher.subject || subjectFromHeading(args.teacher.displayName),
     limit: requestedCount,
     startIndex: existingCount,
+    balanceTargets,
   });
   if (questions.length === 0) throw new Error("Question generator did not return usable questions.");
   return questions;
@@ -1832,6 +1859,111 @@ function subjectFromHeading(value: string): string {
   return words.slice(0, 3).join(" ").toLowerCase() || "open study";
 }
 
+function balanceItemsForTeacher(teacher: StoredDraftTeacherRecord): QuestionBalanceTarget[] {
+  const fromQuestions = teacher.questions.map((question) => ({
+    difficulty: question.difficulty,
+    stat: normalizeQuestionStat(question.stat) ?? classifyQuestionStat({
+      prompt: question.prompt,
+      subject: question.subject,
+      explanation: question.explanation,
+      correctAnswer: question.correct && question.options ? question.options[question.correct] : undefined,
+    }),
+  }));
+  const fromSourceCards = teacher.sourceCards.map((card) => ({
+    difficulty: card.difficulty,
+    stat: classifyQuestionStat({
+      prompt: card.front,
+      subject: card.subject,
+      explanation: card.back,
+      correctAnswer: card.back,
+    }),
+  }));
+  return [...fromSourceCards, ...fromQuestions];
+}
+
+function questionBalanceTargets(
+  existing: readonly QuestionBalanceTarget[],
+  count: number,
+): QuestionBalanceTarget[] {
+  const difficultyCounts = countBy(GENERATED_DIFFICULTIES, existing.map((item) => item.difficulty));
+  const statCounts = countBy(GENERATED_STATS, existing.map((item) => item.stat));
+  const pairCounts = new Map<string, number>();
+  for (const item of existing) {
+    const key = balancePairKey(item.difficulty, item.stat);
+    pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+  }
+  const targets: QuestionBalanceTarget[] = [];
+  for (let i = 0; i < Math.max(0, count); i += 1) {
+    let best: QuestionBalanceTarget | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const difficulty of GENERATED_DIFFICULTIES) {
+      for (const stat of GENERATED_STATS) {
+        const key = balancePairKey(difficulty, stat);
+        const score =
+          (difficultyCounts[difficulty] * 4) +
+          (statCounts[stat] * 3) +
+          (pairCounts.get(key) ?? 0);
+        if (
+          score < bestScore ||
+          (score === bestScore && best && balanceTieBreak(difficulty, stat, best) < 0)
+        ) {
+          best = { difficulty, stat };
+          bestScore = score;
+        }
+      }
+    }
+    if (!best) break;
+    targets.push(best);
+    difficultyCounts[best.difficulty] += 1;
+    statCounts[best.stat] += 1;
+    const key = balancePairKey(best.difficulty, best.stat);
+    pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+  }
+  return targets;
+}
+
+function questionBalancePrompt(targets: readonly QuestionBalanceTarget[]): string {
+  if (targets.length === 0) return "";
+  const targetLines = targets
+    .map((target, index) => `${index + 1}. difficulty=${target.difficulty}, stat=${target.stat}`)
+    .join("\n");
+  return [
+    "Balance requirements:",
+    "Use these target buckets in order. Each returned question must include the matching difficulty and stat.",
+    "Stat meanings: head=facts/concepts/interpretation, heart=people/voice/audience/relationships, hustle=procedures/application/calculation/action, honor=evidence/safety/responsibility/rules.",
+    targetLines,
+  ].join("\n");
+}
+
+function questionBalanceStatusPrompt(existing: readonly QuestionBalanceTarget[]): string {
+  if (existing.length === 0) return "Current teacher balance: no existing cards.";
+  const difficultyCounts = countBy(GENERATED_DIFFICULTIES, existing.map((item) => item.difficulty));
+  const statCounts = countBy(GENERATED_STATS, existing.map((item) => item.stat));
+  return [
+    `Current teacher balance: ${existing.length} existing cards.`,
+    `Difficulty counts: ${GENERATED_DIFFICULTIES.map((difficulty) => `${difficulty}=${difficultyCounts[difficulty]}`).join(", ")}.`,
+    `Stat counts: ${GENERATED_STATS.map((stat) => `${stat}=${statCounts[stat]}`).join(", ")}.`,
+  ].join("\n");
+}
+
+function countBy<const T extends string>(keys: readonly T[], values: readonly T[]): Record<T, number> {
+  const counts = Object.fromEntries(keys.map((key) => [key, 0])) as Record<T, number>;
+  for (const value of values) {
+    if (Object.prototype.hasOwnProperty.call(counts, value)) counts[value] += 1;
+  }
+  return counts;
+}
+
+function balancePairKey(difficulty: Difficulty, stat: QuestionStat): string {
+  return `${difficulty}:${stat}`;
+}
+
+function balanceTieBreak(difficulty: Difficulty, stat: QuestionStat, best: QuestionBalanceTarget): number {
+  const difficultyDelta = GENERATED_DIFFICULTIES.indexOf(difficulty) - GENERATED_DIFFICULTIES.indexOf(best.difficulty);
+  if (difficultyDelta !== 0) return difficultyDelta;
+  return GENERATED_STATS.indexOf(stat) - GENERATED_STATS.indexOf(best.stat);
+}
+
 function normalizeGeneratedCourseSpec(
   value: unknown,
   opts: {
@@ -1840,6 +1972,7 @@ function normalizeGeneratedCourseSpec(
     existingTeacher: StoredDraftTeacherRecord | null;
     fallbackSubject: string;
     questionCount: number;
+    balanceTargets?: readonly QuestionBalanceTarget[];
   },
 ): GeneratedCourseSpec {
   const root = asRecord(value);
@@ -1862,6 +1995,7 @@ function normalizeGeneratedCourseSpec(
     facultyId: opts.facultyId,
     subject,
     limit: opts.questionCount,
+    balanceTargets: opts.balanceTargets,
   });
   if (questions.length === 0) throw new Error("Course generator did not return usable questions.");
   return {
@@ -1878,7 +2012,13 @@ function normalizeGeneratedCourseSpec(
 
 function normalizeGeneratedQuestions(
   value: unknown,
-  opts: { facultyId: string; subject: string; limit: number; startIndex?: number },
+  opts: {
+    facultyId: string;
+    subject: string;
+    limit: number;
+    startIndex?: number;
+    balanceTargets?: readonly QuestionBalanceTarget[];
+  },
 ): BankedQuestion[] {
   const rawQuestions = Array.isArray(value) ? value : [];
   const questions: BankedQuestion[] = [];
@@ -1890,11 +2030,18 @@ function normalizeGeneratedQuestions(
     const optionSet = generatedQuestionOptions(record);
     if (!prompt || !optionSet) return;
     const subject = cleanGeneratedText(firstString(record, ["subject", "topic"]), 80) || opts.subject || "open study";
-    const difficulty = cleanDifficulty(firstString(record, ["difficulty", "level"]));
+    const target = opts.balanceTargets?.[questions.length] ?? null;
+    const difficulty = target?.difficulty ?? cleanDifficulty(firstString(record, ["difficulty", "level"]));
     const explanation = cleanGeneratedText(
       firstString(record, ["explanation", "rationale", "answer"]),
       800,
     ) || optionSet.options[optionSet.correct];
+    const stat = target?.stat ?? normalizeQuestionStat(firstString(record, ["stat", "trait", "attribute"])) ?? classifyQuestionStat({
+      prompt,
+      subject,
+      correctAnswer: optionSet.options[optionSet.correct],
+      explanation,
+    });
     questions.push({
       id: `${opts.facultyId}-ai-${startIndex + index + 1}`,
       type: "multiple-choice",
@@ -1905,12 +2052,7 @@ function normalizeGeneratedQuestions(
       subject,
       difficulty,
       faculty: opts.facultyId,
-      stat: classifyQuestionStat({
-        prompt,
-        subject,
-        correctAnswer: optionSet.options[optionSet.correct],
-        explanation,
-      }),
+      stat,
     });
   });
   return questions;
