@@ -87,15 +87,26 @@ jobs:
           fi
 
       - name: Deploy to Fly
+        id: deploy
         run: |
+          set -euo pipefail
           SHA="${GITHUB_SHA::12}"
-          flyctl deploy --app ruby-high --remote-only --depot=false --build-arg RUBY_HIGH_BUILD="$SHA"
+          for attempt in 1 2 3; do
+            if flyctl deploy --app ruby-high --remote-only --depot=false --build-arg RUBY_HIGH_BUILD="$SHA"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 30))
+            fi
+          done
+          exit 1
 
       - name: Smoke production
+        id: smoke
         run: node scripts/smoke.mjs https://ruby-high.fly.dev
 
       - name: Roll back Fly on deploy smoke failure
-        if: failure() && steps.previous-release.outputs.image != ''
+        if: failure() && steps.deploy.outcome == 'success' && steps.smoke.outcome == 'failure' && steps.previous-release.outputs.image != ''
         run: |
           set -euo pipefail
           echo "Rolling back to ${{ steps.previous-release.outputs.image }}"
