@@ -102,7 +102,7 @@ export const character = {
 };
 ```
 
-The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`.
+The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week, or can be set as a user override from the Guest Faculty screen.
 
 ## Configuration
 

@@ -32,7 +32,10 @@ import {
   courseForFacultyForSession,
   coursesForSession,
   facultyForSession,
+  guestPackForSession,
+  guestWeekKey,
   packForSession,
+  weeklyAutoGuestPack,
   roomsForSession,
   roomsWithLoungeForSession,
 } from "../content/registry.js";
@@ -100,6 +103,13 @@ interface SessionTelemetry extends Record<string, unknown> {
   completed_grades: Grade[];
   has_seen_intro: boolean;
   active_pack: { id: string; name: string; description: string };
+  guest_pack: {
+    mode: "auto" | "override";
+    weekKey: string;
+    auto: { id: string; name: string; description: string } | null;
+    overrideId: string | null;
+    active: { id: string; name: string; description: string } | null;
+  };
   active_teacher_provider: PublicTeacherProvider;
   active_course: PackCourse | null;
   active_course_progress: CourseProgress | null;
@@ -340,6 +350,19 @@ export function buildSessionState(args: {
     active_pack: (() => {
       const p = packForSession(state);
       return { id: p.id, name: p.name, description: p.description };
+    })(),
+    guest_pack: (() => {
+      const active = guestPackForSession(state);
+      const auto = weeklyAutoGuestPack();
+      const summary = (p: ReturnType<typeof guestPackForSession>) =>
+        p ? { id: p.id, name: p.name, description: p.description } : null;
+      return {
+        mode: state.guestPackMode ?? "auto",
+        weekKey: guestWeekKey(),
+        auto: summary(auto),
+        overrideId: state.guestPackOverrideId ?? null,
+        active: summary(active),
+      };
     })(),
     active_teacher_provider: publicProviderForFaculty(activePackFaculty),
     active_course: courseForFacultyForSession(state, state.faculty),

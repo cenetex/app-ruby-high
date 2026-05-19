@@ -243,7 +243,7 @@ Main story pages unlock from class performance: Ruby, Sally Science, and Profess
 | Component | File | Job |
 |---|---|---|
 | `RubyHighService` | `src/services/ruby-high-service.ts` | Per-session game state, the phase machine, the dice, daily-class progression, card mastery, the cohort, graduation. |
-| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the active content pack. Picks daily-class and practice questions. |
+| `FacultyService` | `src/services/faculty-service.ts` | Resolves faculty + question banks against the composed Ruby High roster, including the weekly Guest Faculty slot. Picks daily-class and practice questions. |
 | `ChatService` | `src/services/chat-service.ts` | Provider-aware SSE per-teacher. OpenRouter remains the default; RATi/aws-swarm connected teachers use a server-side OpenAI-compatible adapter. Owns chat history, dispatches supported tools into the game state. |
 | `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions; the API key never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. Maintains a per-user record so a player's character persists across sessions. |
 | Content registry | `src/content/registry.ts` (+ `src/content/packs/`) | Active content pack resolver, global and per-session. Serves the built-in `ruby-high-original` plus session-scoped runtime packs. |
@@ -306,7 +306,7 @@ Same daily class window, two students, one shared lounge. The cohort already run
 
 ## 2.5 Community-authored faculty packs
 
-The pack registry and per-session pack switching are wired for this. Future state: a teacher pack is a name, a voice prompt, a sticker portrait, a question bank or a live connected teacher endpoint, and a model preference. Authors publish packs; players load them per-session; the pack switch is a one-click action.
+The pack registry and Guest Faculty slot are wired for this. Ruby High remains the permanent base school; public creator packs rotate into a weekly guest course automatically, and players can override the weekly pick from search. A teacher pack is a name, a voice prompt, a sticker portrait, a question bank or a live connected teacher endpoint, and a model preference.
 
 This depends on §2.2's evaluation harness — voice evaluation is a public-good guard, not a private-product nicety, the moment outside packs are loadable.
 

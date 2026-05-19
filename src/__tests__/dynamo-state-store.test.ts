@@ -148,6 +148,8 @@ function blankState(sessionId: string, updatedAt = 1): QuizState {
     completedGrades: [],
     hasSeenIntro: false,
     activePackId: null,
+    guestPackMode: "auto",
+    guestPackOverrideId: null,
     character: null,
     comicCollection: { issueId: "first-bell", title: "Ruby High: Book One - First Bell", pageCount: 12, unlockedPages: [] },
     schoolEvents: [],

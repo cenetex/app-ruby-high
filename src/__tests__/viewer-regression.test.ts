@@ -234,7 +234,7 @@ describe("viewer regression guardrails", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
-    expect(html).toContain("Official and installed packs stay here.");
+    expect(html).toContain("Ruby High is always on. Pick this week's guest teacher automatically or set your own from creator packs.");
     expect(html).toContain('id="pack-search-input"');
     expect(html).toContain('id="pack-search-btn"');
     expect(html).toContain('id="pack-search-list"');
@@ -246,15 +246,15 @@ describe("viewer regression guardrails", () => {
     expect(cssRule(".pack-card-item")).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(script).toContain('card.addEventListener("click", () => {');
     expect(script).toContain("state.textContent = isSearch");
-    expect(script).toContain(': pack.active ? "Using now" : "Use"');
+    expect(script).toContain(': pack.active ? "Guest now" : "Set guest"');
     expect(script).toContain("async searchCreatorPacks(query)");
     expect(script).toContain("async function refreshPackSearchResults()");
     expect(script).toContain('"/api/apps/ruby-high/pack-library/search?q="');
     expect(script).toContain("async function installCreatorPack(pack)");
-    expect((script.match(/await refreshPackSearchResults\(\);/g) ?? []).length).toBe(2);
-    expect(script).toContain('installBtn.textContent = pack.installed ? (pack.active ? "Using" : "Use") : "Install"');
+    expect((script.match(/await refreshPackSearchResults\(\);/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(script).toContain('installBtn.textContent = pack.installed ? (pack.active ? "Guest" : "Set Guest") : "Install"');
     expect(script).toContain('packSearchBtn.addEventListener("click", searchCreatorPacks)');
-    expect(script).toContain('"Switching classroom pack..."');
+    expect(script).toContain('"Setting guest teacher..."');
     expect(script).toContain("async function deleteLibraryPack");
     expect(script).toContain("deleteDraftPack");
     expect(script).toContain("deletePublishedPack");

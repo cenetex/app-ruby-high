@@ -7,6 +7,8 @@ import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { handleAppRoutes } from "../routes.js";
 import { applyTick, emptyMashCard } from "../characters/mash.js";
+import { registerPublicPack, resetActivePack } from "../content/registry.js";
+import type { ContentPack } from "../content/types.js";
 import {
   dailyKey,
   dailyIndex,
@@ -24,6 +26,7 @@ const TEACHING_FACULTY_IDS = ["ruby", "sally-science", "professor-edward"] as co
 const REQUIRED_CLASSES_BY_GRADE: Record<Grade, number> = { "9": 3, "10": 3, "11": 3, "12": 3 };
 
 beforeEach(async () => {
+  resetActivePack();
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-daily-"));
   storePath = join(tmpDir, "state.json");
   activeRuby = null;
@@ -31,6 +34,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   if (activeRuby) await activeRuby.flush();
+  resetActivePack();
   await rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -94,6 +98,53 @@ function completedClassesForGrade(
     }
   }
   return records;
+}
+
+function registerGuestPack(id = "pack:weekly-guest"): ContentPack {
+  const pack: ContentPack = {
+    id,
+    name: "Weekly Guest",
+    description: "Guest faculty pack for progression tests.",
+    version: "1.0.0",
+    faculty: [{
+      id: "guest-source",
+      displayName: "Guest Teacher",
+      shortName: "Guest",
+      assetTeacherId: "ruby",
+      subjects: ["signals"],
+      bio: "A visiting teacher.",
+      accent: "#9f2338",
+      systemPrompt: "You are a guest teacher.",
+      defaultModel: "openai/gpt-4o-mini",
+      questions: [{
+        id: "guest-q1",
+        prompt: "What is a signal?",
+        options: { A: "A pattern", B: "A lunch", C: "A locker", D: "A hallway" },
+        correct: "A",
+        faculty: "guest-source",
+        subject: "signals",
+        difficulty: "easy",
+      }],
+    }],
+    courses: [{
+      id: "guest-source",
+      title: "Signals",
+      facultyId: "guest-source",
+      roomId: "guest-room-source",
+      teacherTemplateId: "ruby",
+      subjects: ["signals"],
+    }],
+    rooms: [{
+      id: "guest-room-source",
+      name: "Signals Lab",
+      channelName: "signals",
+      teacherId: "guest-source",
+      description: "Guest room.",
+      teaches: true,
+    }],
+  };
+  registerPublicPack(pack, Date.now());
+  return pack;
 }
 
 function completeClassOnDate(
@@ -476,6 +527,24 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
 });
 
 describe("Per-class letter-grade gate — streak alone is not enough", () => {
+  it("requires the weekly guest course grade before opening the grade ceremony", async () => {
+    const { ruby, faculty } = await makeServices();
+    registerGuestPack();
+    const sid = "test:guest-class-gate";
+    attachCharacter(ruby, sid, "9", false);
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+
+    markFacultyMastered(ruby, faculty, sid, "ruby");
+    markFacultyMastered(ruby, faculty, sid, "sally-science");
+    markFacultyMastered(ruby, faculty, sid, "professor-edward");
+    expect(ruby.courseProgress(sid, "guest").requiredClasses).toBe(3);
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
+
+    markFacultyMastered(ruby, faculty, sid, "guest");
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
+  });
+
   it("Freshman: a passing class ticks the streak, but all classes must reach C before advancement triggers", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:per-class-gate";

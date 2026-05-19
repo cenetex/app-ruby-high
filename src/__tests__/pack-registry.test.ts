@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ORIGINAL_PACK_ID,
+  GUEST_COURSE_ID,
   connectedPackId,
   appendQuestionToPackBank,
   availablePacksForSession,
+  coursesForSession,
   getActivePack,
   getPackByIdForSession,
   MAX_PACKS_PER_OWNER,
   packForSession,
+  registerPublicPack,
   registerPack,
   resetActivePack,
 } from "../content/registry.js";
@@ -162,6 +165,33 @@ describe("packForSession — fallback semantics", () => {
     // session somehow has activePackId=agent:alice-1, packForSession
     // resolves it. (Documented edge case in the registry.)
     expect(packForSession({ activePackId: "agent:alice-1" }).id).toBe("agent:alice-1");
+  });
+});
+
+describe("packForSession — weekly guest composition", () => {
+  it("keeps Ruby High as the base school and adds one stable guest course", async () => {
+    await getActivePack();
+    const guestPack = fakePack("pack:guest-signals");
+    guestPack.faculty[0]!.questions = [{
+      id: "signals-q1",
+      prompt: "What is a signal?",
+      options: { A: "A measurable pattern", B: "A random guess", C: "A room", D: "A bell" },
+      correct: "A",
+      faculty: guestPack.faculty[0]!.id,
+      subject: "signals",
+      difficulty: "easy",
+    }];
+    registerPublicPack(guestPack, 1_000);
+
+    const composed = packForSession({ activePackId: null, guestPackMode: "auto" });
+    expect(composed.id).toContain(`${ORIGINAL_PACK_ID}+guest`);
+    expect(composed.faculty.map((f) => f.id)).toContain(GUEST_COURSE_ID);
+    expect(composed.faculty.map((f) => f.id)).toContain("ruby");
+    expect(coursesForSession({ activePackId: null, guestPackMode: "auto" })).toHaveLength(4);
+    expect(composed.faculty.find((f) => f.id === GUEST_COURSE_ID)?.questions[0]).toMatchObject({
+      faculty: GUEST_COURSE_ID,
+      subject: "signals",
+    });
   });
 });
 

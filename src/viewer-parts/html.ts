@@ -277,12 +277,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <!-- Pack editor overlay -->
 <div class="sheet-overlay" id="pack-overlay">
   <div class="sheet-card" id="pack-card">
-    <h2>Pack Library</h2>
-    <p class="sub">Official and installed packs stay here. Search creator packs to add more.</p>
+    <h2>Guest Faculty</h2>
+    <p class="sub">Ruby High is always on. Pick this week's guest teacher automatically or set your own from creator packs.</p>
     <div class="pack-library-actions">
+      <button type="button" class="pack-action" id="pack-auto-btn">Auto Guest</button>
       <button type="button" class="pack-action" id="pack-create-btn">+ Create New Content Pack</button>
     </div>
-    <div class="pack-section-title">Your packs</div>
+    <div class="pack-section-title">Ruby High and guest</div>
     <div class="pack-grid" id="pack-list"></div>
     <div class="pack-section-title">Find creator packs</div>
     <div class="pack-search-row">

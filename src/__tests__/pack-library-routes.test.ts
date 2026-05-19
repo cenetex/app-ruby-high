@@ -337,9 +337,9 @@ describe("/pack-library", () => {
     expect(response.body.packs[0]).toMatchObject({
       id: pack.id,
       source: "creator",
-      installed: false,
+      installed: true,
       enabled: false,
-      active: false,
+      active: true,
       owner: false,
     });
 
@@ -354,7 +354,7 @@ describe("/pack-library", () => {
       source: "creator",
       installed: true,
       enabled: true,
-      active: false,
+      active: true,
     });
 
     response = await route({
@@ -374,7 +374,11 @@ describe("/pack-library", () => {
       cookie: "rh_session=bob",
     });
     expect(response.status).toBe(200);
-    expect(ruby.getOrCreate(bobSessionId).activePackId).toBe(pack.id);
+    expect(ruby.getOrCreate(bobSessionId)).toMatchObject({
+      activePackId: null,
+      guestPackMode: "override",
+      guestPackOverrideId: pack.id,
+    });
     expect(response.body.packs.find((entry: { id: string }) => entry.id === pack.id)).toMatchObject({
       installed: true,
       enabled: true,
@@ -387,7 +391,11 @@ describe("/pack-library", () => {
       cookie: "rh_session=bob",
     });
     expect(response.status).toBe(200);
-    expect(ruby.getOrCreate(bobSessionId).activePackId).toBe(ORIGINAL_PACK_ID);
+    expect(ruby.getOrCreate(bobSessionId)).toMatchObject({
+      activePackId: null,
+      guestPackMode: "auto",
+      guestPackOverrideId: null,
+    });
     expect((await ruby.listPackInstallationRecords()).some((entry) =>
       entry.userId === "test-bob" && entry.packId === pack.id
     )).toBe(false);
@@ -400,9 +408,9 @@ describe("/pack-library", () => {
     });
     expect(response.body.packs[0]).toMatchObject({
       id: pack.id,
-      installed: false,
+      installed: true,
       enabled: false,
-      active: false,
+      active: true,
     });
   });
 
@@ -477,7 +485,7 @@ describe("/pack-library", () => {
     expect(response.body.packs.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("keeps account-level hosted AI access when switching packs", async () => {
+  it("keeps account-level hosted AI access when setting a guest pack override", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const aliceSessionId = signInUser("alice");
     ruby.activateHostedAiAccess(aliceSessionId, {
@@ -496,7 +504,11 @@ describe("/pack-library", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(pack.id);
+    expect(ruby.getOrCreate(aliceSessionId)).toMatchObject({
+      activePackId: null,
+      guestPackMode: "override",
+      guestPackOverrideId: pack.id,
+    });
     expect(ruby.hostedAiAccessExpiresAt(aliceSessionId)).toBe(expiresAt);
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(4);
   });
@@ -1024,7 +1036,7 @@ describe("/pack-library", () => {
       source: "creator",
       installed: true,
       enabled: true,
-      active: false,
+      active: true,
       owner: true,
       canEdit: true,
       draftId,
@@ -1074,7 +1086,11 @@ describe("/pack-library", () => {
       cookie: "rh_session=alice",
     });
     expect(response.status).toBe(200);
-    expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(packId);
+    expect(ruby.getOrCreate(aliceSessionId)).toMatchObject({
+      activePackId: null,
+      guestPackMode: "override",
+      guestPackOverrideId: packId,
+    });
     expect(response.body.packs.find((pack: { id: string }) => pack.id === packId)).toMatchObject({
       enabled: true,
       active: true,
@@ -1087,10 +1103,14 @@ describe("/pack-library", () => {
       body: { enabled: false },
     });
     expect(response.status).toBe(200);
-    expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(ORIGINAL_PACK_ID);
+    expect(ruby.getOrCreate(aliceSessionId)).toMatchObject({
+      activePackId: null,
+      guestPackMode: "auto",
+      guestPackOverrideId: null,
+    });
     expect(response.body.packs.find((pack: { id: string }) => pack.id === packId)).toMatchObject({
       enabled: false,
-      active: false,
+      active: true,
     });
     expect(response.body.packs.find((pack: { id: string }) => pack.id === ORIGINAL_PACK_ID)).toMatchObject({
       enabled: true,
@@ -1109,7 +1129,11 @@ describe("/pack-library", () => {
     expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
     expect((await ruby.listPackInstallationRecords()).some((entry) => entry.packId === packId)).toBe(false);
     expect(getPackByIdForSession(packId, aliceSessionId)).toBeNull();
-    expect(ruby.getOrCreate(aliceSessionId).activePackId).toBe(ORIGINAL_PACK_ID);
+    expect(ruby.getOrCreate(aliceSessionId)).toMatchObject({
+      activePackId: null,
+      guestPackMode: "auto",
+      guestPackOverrideId: null,
+    });
   });
 
   it("spends one Hall Pass for hosted generate-more-questions without browser OpenRouter", async () => {
@@ -1206,10 +1230,10 @@ describe("/pack-library", () => {
     expect(listed).toMatchObject({
       id: pack.id,
       owner: true,
-      installed: false,
+      installed: true,
       canEdit: true,
       canDelete: true,
-      canUninstall: false,
+      canUninstall: true,
     });
     expect(listed.draftId).toBeUndefined();
 
