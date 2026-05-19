@@ -18,6 +18,18 @@ function inlineScript(html: string): string {
   return match[1]!;
 }
 
+function compactScript(value: string): string {
+  return value.replace(/\s+/g, "");
+}
+
+function expectScriptToContain(script: string, snippet: string): void {
+  const compact = compactScript(snippet);
+  expect(
+    compactScript(script).includes(compact),
+    `missing script snippet: ${snippet}`,
+  ).toBe(true);
+}
+
 function cssRule(selector: string): string {
   const needle = `${selector} {`;
   const start = VIEWER_CSS.indexOf(needle);
@@ -41,11 +53,11 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
 
     expect(() => new Function(script)).not.toThrow();
-    expect(script).toContain("/api/apps/ruby-high/auth/guest");
-    expect(script).toContain('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)');
-    expect(script).toContain("navigator.serviceWorker.getRegistrations()");
-    expect(script).toContain('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
-    expect(script).toContain("async function bootInitialSession()");
+    expectScriptToContain(script, "/api/apps/ruby-high/auth/guest");
+    expectScriptToContain(script, '["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)');
+    expectScriptToContain(script, "navigator.serviceWorker.getRegistrations()");
+    expectScriptToContain(script, 'navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
+    expectScriptToContain(script, "async function bootInitialSession()");
     const boot = script.slice(script.indexOf("async function bootInitialSession()"));
     expect(boot.indexOf("await deriveAuth();")).toBeLessThan(boot.indexOf('postViewerMetricEvent("app_open"'));
     expect(boot.indexOf('postViewerMetricEvent("app_open"')).toBeLessThan(boot.indexOf("await fetchSession();"));
@@ -68,14 +80,15 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
-    expect(script).toContain('const privyConfig = {"appId":"privy-app-test","clientId":"privy-client-test"};');
-    expect(script).toContain('const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js"');
-    expect(script).toContain("import(PRIVY_CLIENT_URL)");
-    expect(script).toContain("createRubyHighPrivyClient(privyConfig)");
-    expect(script).toContain("client.login()");
-    expect(script).toContain("startPrivyLogin");
-    expect(script).toContain('apiBase + "/auth/privy"');
-    expect(script).toContain("initializePrivyFromStoredSession();");
+    expectScriptToContain(script, '"privyConfig":{"appId":"privy-app-test","clientId":"privy-client-test"}');
+    expectScriptToContain(script, 'const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js"');
+    expectScriptToContain(script, "const loadViewerModule = (url) => import(url)");
+    expectScriptToContain(script, "loadViewerModule(PRIVY_CLIENT_URL)");
+    expectScriptToContain(script, "createRubyHighPrivyClient(privyConfig)");
+    expectScriptToContain(script, "client.login()");
+    expectScriptToContain(script, "startPrivyLogin");
+    expectScriptToContain(script, 'apiBase + "/auth/privy"');
+    expectScriptToContain(script, "initializePrivyFromStoredSession();");
     expect(script).not.toContain("sendEmailCode");
     expect(script).not.toContain("loginWithEmailCode");
   });
@@ -94,47 +107,47 @@ describe("viewer regression guardrails", () => {
     expect(history).toBeGreaterThan(wallet);
     expect(comics).toBeGreaterThan(history);
     expect(ai).toBeGreaterThan(comics);
-    expect(script).toContain("function openCharacterCreationFromAccount()");
+    expectScriptToContain(script, "function openCharacterCreationFromAccount()");
     expect(html).toContain('id="blackboard-empty-action"');
-    expect(script).toContain("Create your first Ruby High student.");
-    expect(script).toContain('els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction)');
-    expect(script).toContain("function maybeShowWelcomeHallPassPopup");
-    expect(script).toContain('const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');
+    expectScriptToContain(script, "Create your first Ruby High student.");
+    expectScriptToContain(script, 'els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction)');
+    expectScriptToContain(script, "function maybeShowWelcomeHallPassPopup");
+    expectScriptToContain(script, 'const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');
     expect(VIEWER_CSS).toContain(".welcome-hall-pass-art");
-    expect(script).toContain("Roll your first student and try a custom portrait");
-    expect(script).toContain('els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
-    expect(script).toContain('els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
-    expect(script).toContain("formatDuration(ai.durationMs || 604_800_000)");
-    expect(script).toContain("AI Access active");
+    expectScriptToContain(script, "Roll your first student and try a custom portrait");
+    expectScriptToContain(script, 'els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
+    expectScriptToContain(script, 'els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
+    expectScriptToContain(script, "formatDuration(ai.durationMs || 6048e5)");
+    expectScriptToContain(script, "AI Access active");
     expect(script).not.toContain("Roll your character to start today's class.");
   });
 
   it("labels offline classroom advance as Continue instead of Chat", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain('offlineClassroom ? "Continue" : "Chat"');
-    expect(script).toContain('const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";');
-    expect(script).toContain("Connect OpenRouter for hints.");
+    expectScriptToContain(script, 'offlineClassroom ? "Continue" : "Chat"');
+    expectScriptToContain(script, 'const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";');
+    expectScriptToContain(script, "Connect OpenRouter for hints.");
     expect(script).not.toContain("Connect or enable AI for hints.");
   });
 
   it("keeps opinion submit, waiting refresh, and force-grade paths wired in the client", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain('/api/apps/ruby-high/chat/opinion-submit');
-    expect(script).toContain('event === "waiting" || event === "opinion-graded"');
-    expect(script).toContain("refreshSessionAfterStreamEvent();");
-    expect(script).toContain("body: JSON.stringify({ force: true })");
-    expect(script).toContain("opinionGradeFired = true");
+    expectScriptToContain(script, '/api/apps/ruby-high/chat/opinion-submit');
+    expectScriptToContain(script, 'event === "waiting" || event === "opinion-graded"');
+    expectScriptToContain(script, "refreshSessionAfterStreamEvent();");
+    expectScriptToContain(script, "body: JSON.stringify({ force: true })");
+    expectScriptToContain(script, "opinionGradeFired = true");
   });
 
   it("wires sealed yearbook share controls in the character sheet", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain("function buildYearbookShareActions");
-    expect(script).toContain("yearbook_shares");
-    expect(script).toContain("Open yearbook card");
-    expect(script).toContain("Copy yearbook card link");
+    expectScriptToContain(script, "function buildYearbookShareActions");
+    expectScriptToContain(script, "yearbook_shares");
+    expectScriptToContain(script, "Open yearbook card");
+    expectScriptToContain(script, "Copy yearbook card link");
     expect(VIEWER_CSS).toContain(".paper-archive-action");
   });
 
@@ -144,21 +157,21 @@ describe("viewer regression guardrails", () => {
     const consumeEnd = script.indexOf("async function sendChatMessage");
     const consumeBody = script.slice(consumeStart, consumeEnd);
 
-    expect(script).toContain("function withViewerTimeoutSignal");
-    expect(script).toContain("const SESSION_REFRESH_TIMEOUT_MS = 8000");
-    expect(script).toContain("function createViewerApiClient");
-    expect(script).toContain("const apiClient = createViewerApiClient");
-    expect(script).toContain("function imageRequestId(prefix)");
-    expect(script).toContain("function createViewerTurnController");
-    expect(script).toContain("const turnController = createViewerTurnController");
-    expect(script).toContain("function syncNextButtonDisabled()");
-    expect(script).toContain("const manualTurn = turnController.beginManual()");
-    expect(script).toContain("const agentTurn = turnController.beginAgent(false)");
-    expect(script).toContain("const buttonTurn = turnController.beginButtonAction()");
-    expect(script).toContain("turnController.syncControls()");
-    expect(script).toContain("if (!els.chatInput.disabled) els.chatInput.focus();");
+    expectScriptToContain(script, "function withViewerTimeoutSignal");
+    expectScriptToContain(script, "const SESSION_REFRESH_TIMEOUT_MS = 8e3");
+    expectScriptToContain(script, "function createViewerApiClient");
+    expectScriptToContain(script, "const apiClient = createViewerApiClient");
+    expectScriptToContain(script, "function imageRequestId(prefix)");
+    expectScriptToContain(script, "function createViewerTurnController");
+    expectScriptToContain(script, "const turnController = createViewerTurnController");
+    expectScriptToContain(script, "function syncNextButtonDisabled()");
+    expectScriptToContain(script, "const manualTurn = turnController.beginManual()");
+    expectScriptToContain(script, "const agentTurn = turnController.beginAgent(false)");
+    expectScriptToContain(script, "const buttonTurn = turnController.beginButtonAction()");
+    expectScriptToContain(script, "turnController.syncControls()");
+    expectScriptToContain(script, "if (!els.chatInput.disabled) els.chatInput.focus();");
     expect(script).not.toContain("els.chatInput.disabled = !teacherChatEnabled()");
-    expect(consumeBody).toContain("refreshSessionAfterStreamEvent();");
+    expectScriptToContain(consumeBody, "refreshSessionAfterStreamEvent();");
     expect(consumeBody).not.toContain("await fetchSession(");
     expect(script).not.toContain("let agentBusy =");
     expect(script).not.toContain("let manualChatBusy =");
@@ -167,20 +180,20 @@ describe("viewer regression guardrails", () => {
   it("keeps SSE streams bounded so stale network reads cannot hold the UI lock forever", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain("function chatStreamStillCurrent(opts)");
-    expect(script).toContain("const watchdog = setTimeout");
-    expect(script).toContain("reader.cancel()");
-    expect(script).toContain("clearTimeout(watchdog)");
-    expect(script).toContain("opts.streamSeq !== state.streamSeq");
-    expect(script).toContain("turnController.nextStreamGuard(targetFaculty)");
+    expectScriptToContain(script, "function chatStreamStillCurrent(opts)");
+    expectScriptToContain(script, "const watchdog = setTimeout");
+    expectScriptToContain(script, "reader.cancel()");
+    expectScriptToContain(script, "clearTimeout(watchdog)");
+    expectScriptToContain(script, "opts.streamSeq !== state.streamSeq");
+    expectScriptToContain(script, "turnController.nextStreamGuard(targetFaculty)");
   });
 
   it("drops session polls that overlap command requests", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain("const seqAtStart = commandSeq");
-    expect(script).toContain("const settledAtStart = lastSettledCommandSeq");
-    expect(script).toContain("commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart");
+    expectScriptToContain(script, "const seqAtStart = commandSeq");
+    expectScriptToContain(script, "const settledAtStart = lastSettledCommandSeq");
+    expectScriptToContain(script, "commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart");
   });
 
   it("uses explicit top status labels instead of ambiguous streak/classes copy", () => {
@@ -189,20 +202,20 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('title="Passed daily classes needed for this year"');
     expect(html).toContain('title="Subjects cleared with a C or better this year"');
-    expect(script).toContain('streakCount + "/" + streakReq + " daily classes"');
-    expect(script).toContain('subjects.met + "/" + subjects.total + " subjects cleared"');
-    expect(script).toContain('walletSummaryText(t)');
-    expect(script).toContain('" Merit Stars · "');
+    expectScriptToContain(script, 'streakCount + "/" + streakReq + " daily classes"');
+    expectScriptToContain(script, 'subjects.met + "/" + subjects.total + " subjects cleared"');
+    expectScriptToContain(script, 'walletSummaryText(t)');
+    expectScriptToContain(script, '" Merit Stars · "');
   });
 
   it("keeps answer reveals until player advance and uses room completion dots", () => {
     const script = inlineScript(renderedViewer());
 
     expect(script).not.toContain("clearResolvedBoardAfterTeacherTurn");
-    expect(script).toContain("function buildRoomCompletionMeter(fac)");
-    expect(script).toContain("function earnedCourseGrade(progress)");
-    expect(script).toContain("function subjectProgressShortLabel(progress)");
-    expect(script).toContain("if (phase === \"revealed\")");
+    expectScriptToContain(script, "function buildRoomCompletionMeter(fac)");
+    expectScriptToContain(script, "function earnedCourseGrade(progress)");
+    expectScriptToContain(script, "function subjectProgressShortLabel(progress)");
+    expectScriptToContain(script, "if (phase === \"revealed\")");
     expect(script).not.toContain("subjectMark.textContent = fac.courseGrade");
     expect(script).not.toContain("const grade = spec.grade || \"F\"");
     expect(script).not.toContain("(\" + cg.grade + \")");
@@ -213,11 +226,11 @@ describe("viewer regression guardrails", () => {
   it("uses one teacher pfp source for channel thumbs and class chat bubbles", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain("function teacherSmallAvatarUrl(facultyOrId)");
-    expect(script).toContain('return teacherPortraitUrl(facultyOrId, "face");');
-    expect(script).toContain("avatarImgSrc = teacherSmallAvatarUrl(facultyId)");
-    expect(script).toContain("const thumbUrl = teacherSmallAvatarUrl(fac);");
-    expect(script).toContain('+ ":" + (f.assetTeacherId || "") + ":" + (f.profileImageUrl || "")');
+    expectScriptToContain(script, "function teacherSmallAvatarUrl(facultyOrId)");
+    expectScriptToContain(script, 'return teacherPortraitUrl(facultyOrId, "face");');
+    expectScriptToContain(script, "avatarImgSrc = teacherSmallAvatarUrl(facultyId)");
+    expectScriptToContain(script, "const thumbUrl = teacherSmallAvatarUrl(fac);");
+    expectScriptToContain(script, '+ ":" + (f.assetTeacherId || "") + ":" + (f.profileImageUrl || "")');
     expect(script).not.toContain("function teacherStickerUrl");
     expect(script).not.toContain('avatarImgSrc = teacherPortraitUrl(facultyId, "")');
   });
@@ -228,8 +241,8 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('title="Something broken? Send a bug report."');
     expect(html).toContain('id="bug-report-form"');
-    expect(script).toContain('apiBase + "/bug-report"');
-    expect(script).toContain("RECENT_ERRORS");
+    expectScriptToContain(script, 'apiBase + "/bug-report"');
+    expectScriptToContain(script, "RECENT_ERRORS");
     expect(script).not.toContain("github.com/cenetex/app-ruby-high/issues/new");
     expect(script).not.toContain("mailto:hello@ratimics.com");
   });
@@ -248,28 +261,28 @@ describe("viewer regression guardrails", () => {
     expect(cssRule(".pack-grid")).not.toContain("grid-template-columns");
     expect(cssRule(".pack-search-row")).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(cssRule(".pack-card-item")).toContain("grid-template-columns: minmax(0, 1fr) auto");
-    expect(script).toContain('card.addEventListener("click", () => {');
-    expect(script).toContain("state.textContent = isSearch");
-    expect(script).toContain(': pack.active ? "Guest now" : "Set guest"');
-    expect(script).toContain("async searchCreatorPacks(query)");
-    expect(script).toContain("async function refreshPackSearchResults()");
-    expect(script).toContain('"/api/apps/ruby-high/pack-library/search?q="');
-    expect(script).toContain("async function installCreatorPack(pack)");
+    expectScriptToContain(script, 'card.addEventListener("click", () => {');
+    expectScriptToContain(script, "state.textContent = isSearch");
+    expectScriptToContain(script, ': pack.active ? "Guest now" : "Set guest"');
+    expectScriptToContain(script, "async searchCreatorPacks(query)");
+    expectScriptToContain(script, "async function refreshPackSearchResults()");
+    expectScriptToContain(script, '"/api/apps/ruby-high/pack-library/search?q="');
+    expectScriptToContain(script, "async function installCreatorPack(pack)");
     expect((script.match(/await refreshPackSearchResults\(\);/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    expect(script).toContain('installBtn.textContent = pack.installed ? (pack.active ? "Guest" : "Set Guest") : "Install"');
-    expect(script).toContain('packSearchBtn.addEventListener("click", searchCreatorPacks)');
-    expect(script).toContain('"Setting guest teacher..."');
-    expect(script).toContain("async function deleteLibraryPack");
-    expect(script).toContain("deleteDraftPack");
-    expect(script).toContain("deletePublishedPack");
-    expect(script).toContain("createEditDraftForPublishedPack");
-    expect(script).toContain("async function editPublishedPack(pack)");
-    expect(script).toContain("teacherFormVersion += 1");
-    expect(script).toContain("mergeTeacherPatchIntoDraft(currentDraft, selectedPackTeacherId, selectedTeacherFormPatch())");
-    expect(script).toContain("formVersion !== teacherFormVersion");
-    expect(script).toContain("pack.canDelete");
-    expect(script).toContain("if (isDraft) editDraftPack(pack.id)");
-    expect(script).toContain("await editDraftPack(pack.draftId)");
+    expectScriptToContain(script, 'installBtn.textContent = pack.installed ? pack.active ? "Guest" : "Set Guest" : "Install"');
+    expectScriptToContain(script, 'packSearchBtn.addEventListener("click", searchCreatorPacks)');
+    expectScriptToContain(script, '"Setting guest teacher..."');
+    expectScriptToContain(script, "async function deleteLibraryPack");
+    expectScriptToContain(script, "deleteDraftPack");
+    expectScriptToContain(script, "deletePublishedPack");
+    expectScriptToContain(script, "createEditDraftForPublishedPack");
+    expectScriptToContain(script, "async function editPublishedPack(pack)");
+    expectScriptToContain(script, "teacherFormVersion += 1");
+    expectScriptToContain(script, "mergeTeacherPatchIntoDraft(currentDraft, selectedPackTeacherId, selectedTeacherFormPatch())");
+    expectScriptToContain(script, "formVersion !== teacherFormVersion");
+    expectScriptToContain(script, "pack.canDelete");
+    expectScriptToContain(script, "if (isDraft) editDraftPack(pack.id)");
+    expectScriptToContain(script, "await editDraftPack(pack.draftId)");
     expect(cssRule(".pack-card-actions .pack-action.danger")).toContain("#ff8c8c");
     expect(script).not.toContain('document.createTextNode("Enabled")');
     expect(script).not.toContain("togglePackInstall");
@@ -290,10 +303,10 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('id="pack-add-teacher-btn"');
     expect(html).not.toContain('<span class="pack-teacher-title">New Teacher</span>');
     expect(html).not.toContain('<span class="pack-teacher-subtitle">Create manually</span>');
-    expect(script).toContain('packEditTitleEl.textContent = emptyDraft ? "Create content pack" : "Edit pack"');
-    expect(script).toContain('packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here."');
-    expect(script).toContain('if (teacherSidebar) teacherSidebar.hidden = emptyDraft');
-    expect(script).toContain("if (Object.keys(patch).length === 0) return;");
+    expectScriptToContain(script, 'packEditTitleEl.textContent = emptyDraft ? "Create content pack" : "Edit pack"');
+    expectScriptToContain(script, 'packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here."');
+    expectScriptToContain(script, 'if (teacherSidebar) teacherSidebar.hidden = emptyDraft');
+    expectScriptToContain(script, "if (Object.keys(patch).length === 0) return;");
     expect(script).not.toContain('packAddTeacherBtn.addEventListener("click", addDraftTeacher)');
   });
 
@@ -311,56 +324,56 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="course-generate-btn"');
     expect(html).not.toContain('class="pack-teacher-tab pack-new-teacher-tab"');
     expect(html).not.toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');
-    expect(script).toContain("async generateCourse(draftId, payload, options)");
-    expect(script).toContain('"/course/generate"');
-    expect(script).toContain("function creatorPricing(t)");
-    expect(script).toContain("COURSE_GENERATION_STEPS");
-    expect(script).toContain("Generate teacher portrait");
-    expect(script).toContain("function startCourseGenerationProgress()");
-    expect(script).toContain("function finishCourseGenerationProgress()");
-    expect(script).toContain("function generateCourseFromMaterials()");
-    expect(script).toContain("function runCourseGeneration(teacher)");
-    expect(script).toContain('label.textContent = packQuestionGenerationBusy');
-    expect(script).toContain('"Generate More Questions (" + questionCostLabel + ")" : "Generate More Questions"');
-    expect(script).toContain('packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + hallPassCostLabel(cost) + ")"');
-    expect(script).toContain("teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateQuestions");
-    expect(script).toContain("applyHallPassBalance(data.hallPasses, data.entitlements)");
-    expect(script).toContain("function deleteDraftTeacher(teacherId)");
-    expect(script).toContain("packStudioClient.deleteTeacher");
-    expect(script).toContain("function editDraftTeacher(teacherId)");
-    expect(script).toContain('selectDraftTeacher(teacherId, { tab: "settings", focus: true })');
-    expect(script).toContain('edit.textContent = "Edit"');
-    expect(script).toContain('del.textContent = "Delete"');
-    expect(script).toContain("Cancel generation before closing.");
+    expectScriptToContain(script, "async generateCourse(draftId, payload, options)");
+    expectScriptToContain(script, '"/course/generate"');
+    expectScriptToContain(script, "function creatorPricing(t)");
+    expectScriptToContain(script, "COURSE_GENERATION_STEPS");
+    expectScriptToContain(script, "Generate teacher portrait");
+    expectScriptToContain(script, "function startCourseGenerationProgress()");
+    expectScriptToContain(script, "function finishCourseGenerationProgress()");
+    expectScriptToContain(script, "function generateCourseFromMaterials()");
+    expectScriptToContain(script, "function runCourseGeneration(teacher)");
+    expectScriptToContain(script, 'label.textContent = packQuestionGenerationBusy');
+    expectScriptToContain(script, '"Generate More Questions (" + questionCostLabel + ")" : "Generate More Questions"');
+    expectScriptToContain(script, 'packPublishBtn.textContent = draftHasCourseSlot() ? "Publish Course" : "Publish Course (" + hallPassCostLabel(cost) + ")"');
+    expectScriptToContain(script, "teacherGenerateQuestionsBtn.disabled = packImportBusy || packQuestionGenerationBusy || !selectedDraftTeacher() || !canGenerateQuestions");
+    expectScriptToContain(script, "applyHallPassBalance(data.hallPasses, data.entitlements)");
+    expectScriptToContain(script, "function deleteDraftTeacher(teacherId)");
+    expectScriptToContain(script, "packStudioClient.deleteTeacher");
+    expectScriptToContain(script, "function editDraftTeacher(teacherId)");
+    expectScriptToContain(script, 'selectDraftTeacher(teacherId, { tab: "settings", focus: true })');
+    expectScriptToContain(script, 'edit.textContent = "Edit"');
+    expectScriptToContain(script, 'del.textContent = "Delete"');
+    expectScriptToContain(script, "Cancel generation before closing.");
     expect(script).not.toContain("Generate Questions");
   });
 
   it("routes the post-class Practice button to a practice board or teacher advance", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain("async function startPostClassPractice(postClass)");
-    expect(script).toContain('type: "pick"');
-    expect(script).toContain('mode: "practice"');
-    expect(script).toContain("faculty: lastTelemetry && lastTelemetry.faculty");
-    expect(script).toContain('intent: "advance"');
-    expect(script).toContain('runAgentTurn("manual"');
-    expect(script).toContain("if (postClass.report)");
-    expect(script).toContain("function subjectDisplayName(fid, progress)");
-    expect(script).toContain("subjectDisplayName(cg.facultyId, cg.progress)");
+    expectScriptToContain(script, "async function startPostClassPractice(postClass)");
+    expectScriptToContain(script, 'type: "pick"');
+    expectScriptToContain(script, 'mode: "practice"');
+    expectScriptToContain(script, "faculty: lastTelemetry && lastTelemetry.faculty");
+    expectScriptToContain(script, 'intent: "advance"');
+    expectScriptToContain(script, 'runAgentTurn("manual"');
+    expectScriptToContain(script, "if (postClass.report)");
+    expectScriptToContain(script, "function subjectDisplayName(fid, progress)");
+    expectScriptToContain(script, "subjectDisplayName(cg.facultyId, cg.progress)");
   });
 
   it("builds the class report with full-body teacher standee art and a score metric", () => {
     const script = inlineScript(renderedViewer());
 
-    expect(script).toContain("function buildClassReportCard");
-    expect(script).toContain("function shouldShowClassReport");
-    expect(script).toContain("let dismissedClassReportKey = null");
-    expect(script).toContain("key !== dismissedClassReportKey");
-    expect(script).toContain("dismissedClassReportKey = reportKey");
-    expect(script).toContain("class-report-teacher-art");
-    expect(script).toContain('teacherAssetUrl(artAssetId, "full-sticker")');
-    expect(script).toContain('addMetric("score"');
-    expect(script).toContain('"grade score"');
+    expectScriptToContain(script, "function buildClassReportCard");
+    expectScriptToContain(script, "function shouldShowClassReport");
+    expectScriptToContain(script, "let dismissedClassReportKey = null");
+    expectScriptToContain(script, "key !== dismissedClassReportKey");
+    expectScriptToContain(script, "dismissedClassReportKey = reportKey");
+    expectScriptToContain(script, "class-report-teacher-art");
+    expectScriptToContain(script, 'teacherAssetUrl(artAssetId, "full-sticker")');
+    expectScriptToContain(script, 'addMetric("score"');
+    expectScriptToContain(script, '"grade score"');
     expect(script).not.toContain('addMetric("score / grade"');
     expect(script).not.toContain('addMetric("questions"');
   });
