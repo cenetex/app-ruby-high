@@ -451,6 +451,7 @@ describe("Solana Hall Pass billing", () => {
       mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       symbol: "RUBY",
       decimals: 6,
+      rpcUrl: "https://api.mainnet-beta.solana.com",
       product: {
         id: "hall-pass-50",
         hallPasses: 50,

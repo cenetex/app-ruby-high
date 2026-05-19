@@ -945,6 +945,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       mint: solana.mint,
       symbol: solana.symbol,
       decimals: solana.decimals,
+      rpcUrl: solana.rpcUrl,
       reference,
       solanaPayUrl: solanaPayUrl(solana, product, reference),
     });

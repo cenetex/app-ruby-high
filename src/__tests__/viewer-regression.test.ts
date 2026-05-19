@@ -63,6 +63,20 @@ describe("viewer regression guardrails", () => {
     expect(boot.indexOf('postViewerMetricEvent("app_open"')).toBeLessThan(boot.indexOf("await fetchSession();"));
   });
 
+  it("uses an in-app confirmation dialog instead of native browser prompts", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('id="app-confirm-overlay"');
+    expect(html).toContain('role="dialog"');
+    expectScriptToContain(script, "function confirmInApp(options)");
+    expectScriptToContain(script, "return confirmInApp({");
+    expect(VIEWER_CSS).toContain(".app-confirm-overlay");
+    expect(script).not.toContain("window.confirm");
+    expect(script).not.toContain("window.alert");
+    expect(script).not.toContain("window.prompt");
+  });
+
   it("wires the Privy account UI through the lazy widget bundle", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
     const script = inlineScript(html);
@@ -72,6 +86,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
     expect(html).toContain('id="privy-login-widget"');
+    expect(html).toContain('id="privy-connect-solana"');
     expect(html).toContain('id="account-ai-use-pass"');
     expect(html).toContain('id="account-ai-action"');
     expect(html).toContain('id="account-use-pass"');
@@ -86,11 +101,26 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "loadViewerModule(PRIVY_CLIENT_URL)");
     expectScriptToContain(script, "createRubyHighPrivyClient(privyConfig)");
     expectScriptToContain(script, "client.login()");
+    expectScriptToContain(script, "client.connectSolanaWallet()");
     expectScriptToContain(script, "startPrivyLogin");
+    expectScriptToContain(script, "startSolanaWalletConnect");
     expectScriptToContain(script, 'apiBase + "/auth/privy"');
     expectScriptToContain(script, "initializePrivyFromStoredSession();");
     expect(script).not.toContain("sendEmailCode");
     expect(script).not.toContain("loginWithEmailCode");
+  });
+
+  it("uses connected Solana wallets for crypto checkout without signature-paste UI", () => {
+    const script = inlineScript(renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } }));
+
+    expectScriptToContain(script, "function connectedSolanaWalletAddress()");
+    expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
+    expectScriptToContain(script, "await client.paySolanaQuote(data)");
+    expectScriptToContain(script, 'buy.textContent = "Pay with wallet"');
+    expectScriptToContain(script, "if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0)");
+    expect(script).not.toContain("Solana transaction signature");
+    expect(script).not.toContain("paste the transaction");
+    expect(script).not.toContain("Pay Crypto");
   });
 
   it("makes Account the character home before wallet, history, comics, and AI access", () => {

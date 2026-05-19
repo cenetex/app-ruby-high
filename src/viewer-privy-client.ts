@@ -2,12 +2,38 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
   PrivyProvider,
+  useConnectWallet,
   useLogin,
   useModalStatus,
   usePrivy,
   type LinkedAccountWithMetadata,
   type User,
 } from "@privy-io/react-auth";
+import {
+  useSignAndSendTransaction,
+  useWallets as useSolanaWallets,
+  toSolanaWalletConnectors,
+  type ConnectedStandardSolanaWallet,
+} from "@privy-io/react-auth/solana";
+import {
+  AccountRole,
+  address,
+  appendTransactionMessageInstructions,
+  compileTransaction,
+  createNoopSigner,
+  createSolanaRpc,
+  createTransactionMessage,
+  getTransactionEncoder,
+  pipe,
+  setTransactionMessageFeePayer,
+  setTransactionMessageLifetimeUsingBlockhash,
+} from "@solana/kit";
+import {
+  findAssociatedTokenPda,
+  getCreateAssociatedTokenIdempotentInstruction,
+  getTransferCheckedInstruction,
+  TOKEN_PROGRAM_ADDRESS,
+} from "@solana-program/token";
 
 interface RubyHighPrivyConfig {
   appId: string;
@@ -20,28 +46,57 @@ interface RubyHighPrivySession {
   label: string | null;
   walletAddress: string | null;
   walletChainType: "ethereum" | "solana" | null;
+  solanaWalletAddress: string | null;
   accessToken?: string | null;
 }
 
 type SessionListener = (session: RubyHighPrivySession) => void | Promise<void>;
 
+interface SolanaPaymentQuote {
+  product?: {
+    id?: string;
+    hallPasses?: number;
+    tokenAmount?: string;
+    tokenAmountBaseUnits?: string;
+    tokenSymbol?: string;
+  };
+  recipient?: string;
+  mint?: string;
+  symbol?: string;
+  decimals?: number;
+  reference?: string;
+  rpcUrl?: string;
+}
+
+interface SolanaPaymentResult {
+  signature: string;
+  walletAddress: string;
+}
+
 interface RubyHighPrivyClient {
   current(): Promise<RubyHighPrivySession>;
   login(): Promise<RubyHighPrivySession | null>;
+  connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
+  paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
   onSession(listener: SessionListener): () => void;
 }
 
 interface BridgeApi {
   current(): Promise<RubyHighPrivySession>;
   login(): Promise<RubyHighPrivySession | null>;
+  connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
+  paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
 }
 
 interface PendingLogin {
   resolve: (session: RubyHighPrivySession | null) => void;
   reject: (err: unknown) => void;
 }
+
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 
 let mountedRoot: Root | null = null;
 let mountedConfigKey = "";
@@ -67,7 +122,9 @@ export async function createRubyHighPrivyClient(
   const client: RubyHighPrivyClient = {
     current: () => requireBridge(bridgeApi).current(),
     login: () => requireBridge(bridgeApi).login(),
+    connectSolanaWallet: () => requireBridge(bridgeApi).connectSolanaWallet(),
     logout: () => requireBridge(bridgeApi).logout(),
+    paySolanaQuote: (quote) => requireBridge(bridgeApi).paySolanaQuote(quote),
     onSession(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -100,11 +157,16 @@ export async function createRubyHighPrivyClient(
           config: {
             embeddedWallets: {
               ethereum: { createOnLogin: "users-without-wallets" },
+              solana: { createOnLogin: "off" },
+            },
+            externalWallets: {
+              solana: { connectors: toSolanaWalletConnectors() },
             },
             appearance: {
               theme: "dark",
               accentColor: "#df2f2f",
               showWalletLoginFirst: false,
+              walletChainType: "ethereum-and-solana",
             },
           },
           children: bridge,
@@ -125,16 +187,71 @@ function RubyHighPrivyBridge(props: {
 }): null {
   const privy = usePrivy();
   const modal = useModalStatus();
+  const solanaWallets = useSolanaWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
   const pendingLogin = useRef<PendingLogin | null>(null);
+  const pendingWalletConnect = useRef<PendingLogin | null>(null);
   const modalOpenedForLogin = useRef(false);
+  const modalOpenedForWalletConnect = useRef(false);
 
   const current = useCallback(async (userOverride?: User | null): Promise<RubyHighPrivySession> => {
     if (!privy.ready) return emptySession();
     const user = userOverride ?? privy.user;
     if (!privy.authenticated || !user) return emptySession();
     const accessToken = await privy.getAccessToken();
-    return sessionFromUser(user, accessToken);
-  }, [privy]);
+    return sessionFromUser(user, accessToken, firstSolanaWalletAddress(solanaWallets.wallets));
+  }, [privy, solanaWallets.wallets]);
+
+  const paySolanaQuote = useCallback(async (quote: SolanaPaymentQuote): Promise<SolanaPaymentResult> => {
+    if (!privy.ready || !privy.authenticated) throw new Error("Connect your Ruby High account first.");
+    if (!solanaWallets.ready) throw new Error("Solana wallets are still starting.");
+    const wallet = selectSolanaWallet(solanaWallets.wallets);
+    if (!wallet) throw new Error("Connect a Solana wallet first.");
+    const transaction = await buildSplTokenPaymentTransaction(quote, wallet.address);
+    const result = await signAndSendTransaction({
+      transaction,
+      wallet,
+      chain: "solana:mainnet",
+    });
+    return {
+      signature: base58Encode(result.signature),
+      walletAddress: wallet.address,
+    };
+  }, [privy.authenticated, privy.ready, signAndSendTransaction, solanaWallets.ready, solanaWallets.wallets]);
+
+  const { connectWallet } = useConnectWallet({
+    onSuccess: ({ wallet }) => {
+      const connectedSolanaAddress = solanaAddressFromConnectedWallet(wallet);
+      window.setTimeout(() => {
+        void current().then(
+          (session) => {
+            const nextSession = connectedSolanaAddress
+              ? {
+                  ...session,
+                  solanaWalletAddress: connectedSolanaAddress,
+                  walletAddress: session.walletAddress ?? connectedSolanaAddress,
+                  walletChainType: session.walletChainType ?? "solana",
+                }
+              : session;
+            props.notify(nextSession);
+            pendingWalletConnect.current?.resolve(nextSession);
+            pendingWalletConnect.current = null;
+            modalOpenedForWalletConnect.current = false;
+          },
+          (err) => {
+            pendingWalletConnect.current?.reject(err);
+            pendingWalletConnect.current = null;
+            modalOpenedForWalletConnect.current = false;
+          },
+        );
+      }, 0);
+    },
+    onError: (error) => {
+      pendingWalletConnect.current?.reject(new Error(String(error || "Solana wallet connection failed")));
+      pendingWalletConnect.current = null;
+      modalOpenedForWalletConnect.current = false;
+    },
+  });
 
   const { login } = useLogin({
     onComplete: ({ user }) => {
@@ -184,18 +301,49 @@ function RubyHighPrivyBridge(props: {
     });
   }, [current, login, privy.authenticated, privy.ready, privy.user]);
 
+  const connectSolanaWallet = useCallback((): Promise<RubyHighPrivySession | null> => {
+    if (!privy.ready) return Promise.reject(new Error("Privy is still starting."));
+    if (!privy.authenticated || !privy.user) return openLogin();
+    if (pendingWalletConnect.current) {
+      return new Promise((resolve, reject) => {
+        const previous = pendingWalletConnect.current;
+        pendingWalletConnect.current = {
+          resolve: (session) => {
+            previous?.resolve(session);
+            resolve(session);
+          },
+          reject: (err) => {
+            previous?.reject(err);
+            reject(err);
+          },
+        };
+      });
+    }
+    return new Promise((resolve, reject) => {
+      pendingWalletConnect.current = { resolve, reject };
+      modalOpenedForWalletConnect.current = true;
+      connectWallet({
+        walletChainType: "solana-only",
+        description: "Connect a Solana wallet to pay for Hall Passes with Ruby.",
+      });
+    });
+  }, [connectWallet, openLogin, privy.authenticated, privy.ready, privy.user]);
+
   const logout = useCallback(async () => {
     await privy.logout();
     const session = emptySession();
     props.notify(session);
     pendingLogin.current?.resolve(null);
     pendingLogin.current = null;
+    pendingWalletConnect.current?.resolve(null);
+    pendingWalletConnect.current = null;
     modalOpenedForLogin.current = false;
+    modalOpenedForWalletConnect.current = false;
   }, [privy, props]);
 
   useEffect(() => {
-    props.register({ current, login: openLogin, logout }, privy.ready);
-  }, [current, logout, openLogin, privy.ready, props]);
+    props.register({ current, login: openLogin, connectSolanaWallet, logout, paySolanaQuote }, privy.ready);
+  }, [connectSolanaWallet, current, logout, openLogin, paySolanaQuote, privy.ready, props]);
 
   useEffect(() => {
     if (modal.isOpen) return;
@@ -206,6 +354,14 @@ function RubyHighPrivyBridge(props: {
   }, [modal.isOpen]);
 
   useEffect(() => {
+    if (modal.isOpen) return;
+    if (!modalOpenedForWalletConnect.current || !pendingWalletConnect.current) return;
+    pendingWalletConnect.current.resolve(null);
+    pendingWalletConnect.current = null;
+    modalOpenedForWalletConnect.current = false;
+  }, [modal.isOpen]);
+
+  useEffect(() => {
     if (!privy.ready) return;
     void current().then((session) => {
       if (session.authenticated) props.notify(session);
@@ -213,6 +369,112 @@ function RubyHighPrivyBridge(props: {
   }, [current, privy.ready, props]);
 
   return null;
+}
+
+async function buildSplTokenPaymentTransaction(
+  quote: SolanaPaymentQuote,
+  payerAddressText: string,
+): Promise<Uint8Array> {
+  const payerAddress = address(cleanAddress(payerAddressText, "Solana wallet"));
+  const recipientAddress = address(cleanAddress(quote.recipient, "Solana recipient"));
+  const mintAddress = address(cleanAddress(quote.mint, "Solana token mint"));
+  const referenceAddress = address(cleanAddress(quote.reference, "Solana payment reference"));
+  const decimals = readTokenDecimals(quote.decimals);
+  const amount = readBaseUnitAmount(quote.product?.tokenAmountBaseUnits);
+  const rpcUrl = cleanRpcUrl(quote.rpcUrl);
+  const payer = createNoopSigner(payerAddress);
+  const [sourceAta] = await findAssociatedTokenPda({
+    owner: payerAddress,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    mint: mintAddress,
+  });
+  const [destinationAta] = await findAssociatedTokenPda({
+    owner: recipientAddress,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    mint: mintAddress,
+  });
+  const createDestinationAtaInstruction = getCreateAssociatedTokenIdempotentInstruction({
+    payer,
+    ata: destinationAta,
+    owner: recipientAddress,
+    mint: mintAddress,
+  });
+  const transferInstruction = getTransferCheckedInstruction({
+    source: sourceAta,
+    mint: mintAddress,
+    destination: destinationAta,
+    authority: payer,
+    amount,
+    decimals,
+  });
+  const transferWithReference = {
+    ...transferInstruction,
+    accounts: [
+      ...transferInstruction.accounts,
+      { address: referenceAddress, role: AccountRole.READONLY },
+    ],
+  };
+  const { value: latestBlockhash } = await createSolanaRpc(rpcUrl).getLatestBlockhash().send();
+  return pipe(
+    createTransactionMessage({ version: 0 }),
+    (tx) => setTransactionMessageFeePayer(payerAddress, tx),
+    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+    (tx) => appendTransactionMessageInstructions([createDestinationAtaInstruction, transferWithReference], tx),
+    (tx) => compileTransaction(tx),
+    (tx) => new Uint8Array(getTransactionEncoder().encode(tx)),
+  );
+}
+
+function cleanAddress(value: unknown, label: string): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) throw new Error(`${label} is missing.`);
+  return raw;
+}
+
+function cleanRpcUrl(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return raw || DEFAULT_SOLANA_RPC_URL;
+}
+
+function readBaseUnitAmount(value: unknown): bigint {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!/^\d+$/.test(raw)) throw new Error("Solana payment amount is missing.");
+  const amount = BigInt(raw);
+  if (amount <= 0n) throw new Error("Solana payment amount must be positive.");
+  return amount;
+}
+
+function readTokenDecimals(value: unknown): number {
+  const decimals = Math.floor(Number(value));
+  if (!Number.isFinite(decimals) || decimals < 0 || decimals > 18) {
+    throw new Error("Solana token decimals are invalid.");
+  }
+  return decimals;
+}
+
+function base58Encode(bytes: Uint8Array): string {
+  const digits = [0];
+  for (const byte of bytes) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i += 1) {
+      carry += digits[i] * 256;
+      digits[i] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = Math.floor(carry / 58);
+    }
+  }
+  let out = "";
+  for (const byte of bytes) {
+    if (byte !== 0) break;
+    out += "1";
+  }
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    out += BASE58_ALPHABET[digits[i]];
+  }
+  return out || "1";
 }
 
 function ensureHost(): HTMLElement {
@@ -236,17 +498,27 @@ function emptySession(): RubyHighPrivySession {
     label: null,
     walletAddress: null,
     walletChainType: null,
+    solanaWalletAddress: null,
   };
 }
 
-function sessionFromUser(user: User, accessToken: string | null): RubyHighPrivySession {
+function sessionFromUser(
+  user: User,
+  accessToken: string | null,
+  connectedSolanaWalletAddress: string | null,
+): RubyHighPrivySession {
   const wallet = walletFromUser(user);
+  const linkedSolanaWallet = solanaWalletFromUser(user);
+  const solanaWalletAddress = connectedSolanaWalletAddress
+    ?? linkedSolanaWallet?.address
+    ?? (wallet?.chainType === "solana" ? wallet.address : null);
   return {
     authenticated: true,
     userId: user.id,
     label: labelFromUser(user, wallet?.address ?? null),
     walletAddress: wallet?.address ?? null,
     walletChainType: wallet?.chainType ?? null,
+    solanaWalletAddress,
     accessToken,
   };
 }
@@ -259,6 +531,34 @@ function walletFromUser(user: User): { address: string; chainType: "ethereum" | 
     .filter((wallet): wallet is { address: string; chainType: "ethereum" | "solana"; rank: number } => !!wallet)
     .sort((a, b) => a.rank - b.rank);
   return wallets[0] ?? null;
+}
+
+function solanaWalletFromUser(user: User): { address: string; chainType: "solana"; rank: number } | null {
+  const direct = walletCandidate(user.wallet);
+  if (direct?.chainType === "solana") {
+    return { address: direct.address, chainType: "solana", rank: direct.rank };
+  }
+  const wallet = user.linkedAccounts
+    .map((account) => walletCandidate(account))
+    .filter((candidate): candidate is { address: string; chainType: "solana"; rank: number } => candidate?.chainType === "solana")
+    .sort((a, b) => a.rank - b.rank)[0];
+  return wallet ?? null;
+}
+
+function firstSolanaWalletAddress(wallets: ConnectedStandardSolanaWallet[]): string | null {
+  return selectSolanaWallet(wallets)?.address ?? null;
+}
+
+function selectSolanaWallet(wallets: ConnectedStandardSolanaWallet[]): ConnectedStandardSolanaWallet | null {
+  return wallets.find((wallet) => typeof wallet.address === "string" && !!wallet.address.trim()) ?? null;
+}
+
+function solanaAddressFromConnectedWallet(wallet: unknown): string | null {
+  if (!wallet || typeof wallet !== "object") return null;
+  const record = wallet as Record<string, unknown>;
+  const address = typeof record.address === "string" ? record.address.trim() : "";
+  const chainType = record.chainType ?? record.chain_type;
+  return address && chainType === "solana" ? address : null;
 }
 
 function walletCandidate(account: unknown): { address: string; chainType: "ethereum" | "solana"; rank: number } | null {
