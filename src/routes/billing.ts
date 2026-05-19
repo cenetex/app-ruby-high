@@ -175,7 +175,13 @@ function revenueCatCurrencyCode(): string {
 }
 
 function solanaRpcUrl(): string {
-  return envTrim("RUBY_HIGH_SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
+  const explicit = envTrim("RUBY_HIGH_SOLANA_RPC_URL");
+  if (explicit) return explicit;
+  const privyAppId = envTrim("RUBY_HIGH_PRIVY_APP_ID");
+  if (privyAppId) {
+    return `https://solana-mainnet.rpc.privy.systems?privyAppId=${encodeURIComponent(privyAppId)}`;
+  }
+  return DEFAULT_SOLANA_RPC_URL;
 }
 
 function solanaMemecoinMint(): string {

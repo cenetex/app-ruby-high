@@ -24,6 +24,7 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_HOSTED_AI_DURATION_HOURS: process.env.RUBY_HIGH_HOSTED_AI_DURATION_HOURS,
   RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH: process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH,
   RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE: process.env.RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE,
+  RUBY_HIGH_PRIVY_APP_ID: process.env.RUBY_HIGH_PRIVY_APP_ID,
   RUBY_HIGH_SOLANA_RPC_URL: process.env.RUBY_HIGH_SOLANA_RPC_URL,
   RUBY_HIGH_SOLANA_MEMECOIN_MINT: process.env.RUBY_HIGH_SOLANA_MEMECOIN_MINT,
   RUBY_HIGH_SOLANA_TREASURY_OWNER: process.env.RUBY_HIGH_SOLANA_TREASURY_OWNER,
@@ -109,6 +110,7 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_HOSTED_AI_DURATION_HOURS;
   delete process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH;
   delete process.env.RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE;
+  delete process.env.RUBY_HIGH_PRIVY_APP_ID;
   delete process.env.RUBY_HIGH_SOLANA_RPC_URL;
   delete process.env.RUBY_HIGH_SOLANA_MEMECOIN_MINT;
   delete process.env.RUBY_HIGH_SOLANA_TREASURY_OWNER;
@@ -466,6 +468,21 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.solanaPayUrl).toContain("spl-token=ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump");
     expect(lastResponse?.body.solanaPayUrl).toContain(`reference=${lastResponse?.body.reference}`);
     expect(stateKey).toBe("rh:user:billing-solana-quote");
+  });
+
+  it("uses Privy's Solana RPC for browser payment prep when Privy is configured", async () => {
+    process.env.RUBY_HIGH_PRIVY_APP_ID = "privy-app-test";
+    signInUser("solana-quote-privy-rpc");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/quote",
+      cookie: "rh_session=solana-quote-privy-rpc",
+      body: { productId: "hall-pass-100" },
+    }), deps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.rpcUrl).toBe("https://solana-mainnet.rpc.privy.systems?privyAppId=privy-app-test");
   });
 
   it("verifies an on-chain token transfer and grants Hall Passes idempotently", async () => {
