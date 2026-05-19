@@ -6,7 +6,7 @@
  *
  * This is the freemium core experience. Lean in: AI/agent culture (Ruby),
  * STEM (Sally), postwar lit (Edward). Future paid packs (SAT prep, USMLE,
- * AP US History, language-vocab) and connected teacher packs follow the
+ * AP US History, language-vocab) and creator teacher packs follow the
  * same shape.
  */
 

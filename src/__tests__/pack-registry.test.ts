@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ORIGINAL_PACK_ID,
   GUEST_COURSE_ID,
-  connectedPackId,
   appendQuestionToPackBank,
   availablePacksForSession,
   coursesForSession,
@@ -160,11 +159,8 @@ describe("packForSession — fallback semantics", () => {
     expect(packForSession(null).id).toBe(ORIGINAL_PACK_ID);
     expect(packForSession({ activePackId: null }).id).toBe(ORIGINAL_PACK_ID);
     expect(packForSession({ activePackId: "agent:does-not-exist" }).id).toBe(ORIGINAL_PACK_ID);
-    // packForSession does NOT enforce ownership — the route layer
-    // already validated when the session activated. So if Bob's
-    // session somehow has activePackId=agent:alice-1, packForSession
-    // resolves it. (Documented edge case in the registry.)
-    expect(packForSession({ activePackId: "agent:alice-1" }).id).toBe("agent:alice-1");
+    expect(packForSession({ sessionId: "session:bob", activePackId: "agent:alice-1" }).id).toBe(ORIGINAL_PACK_ID);
+    expect(packForSession({ sessionId: "session:alice", activePackId: "agent:alice-1" }).id).toBe("agent:alice-1");
   });
 });
 
@@ -192,11 +188,5 @@ describe("packForSession — weekly guest composition", () => {
       faculty: GUEST_COURSE_ID,
       subject: "signals",
     });
-  });
-});
-
-describe("connectedPackId helper", () => {
-  it("prefixes a slug with the agent: namespace", () => {
-    expect(connectedPackId("sally-remote")).toBe("agent:sally-remote");
   });
 });

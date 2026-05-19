@@ -30,6 +30,7 @@ function route(opts: {
   authorizationHeader?: string | string[] | null;
   cookieHeader?: string | null;
   userAgentHeader?: string | string[] | null;
+  clientIp?: string | null;
   body?: unknown;
 }): { ctx: RouteContext; response: () => { status: number; body: any; headers: Record<string, string> } | null } {
   let response: { status: number; body: any; headers: Record<string, string> } | null = null;
@@ -53,6 +54,7 @@ function route(opts: {
     authorizationHeader: opts.authorizationHeader ?? null,
     cookieHeader: opts.cookieHeader ?? null,
     userAgentHeader: opts.userAgentHeader ?? null,
+    clientIp: opts.clientIp ?? null,
     callbackUrlBuilder: (path) => `https://rubyhighai.com${path}`,
     error: (_res, message, status = 500) => {
       response = { status, body: { error: message }, headers };
@@ -305,6 +307,34 @@ describe("admin metrics route", () => {
       path: "/api/apps/ruby-high/viewer",
       userAgent: "Vitest Browser",
     });
+  });
+
+  it("rate-limits durable viewer metrics events", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-19T00:00:00.000Z"));
+
+    for (let i = 0; i < 60; i++) {
+      const response = await appRoute({
+        method: "POST",
+        path: "/api/apps/ruby-high/metrics/event",
+        cookieHeader,
+        clientIp: "203.0.113.9",
+        body: { type: "app_open", path: `/viewer?refresh=${i}` },
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      clientIp: "203.0.113.9",
+      body: { type: "app_open", path: "/viewer?refresh=overflow" },
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers["retry-after"]).toBe("1");
   });
 
   it("adds daily auth and play series for charts", async () => {

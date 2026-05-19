@@ -177,7 +177,7 @@ Every question has per-character mastery memory with one of four phases:
 | **review** | answered correctly two in a row; on a review schedule |
 | **mastered** | answered correctly enough times in a row to be retired from the queue |
 
-Each round's hit/mixed/miss outcome rates the card and pushes it through the phases or knocks it back. This memory drives scheduling and practice: shaky cards come back, stable cards move out, and connected/generated teacher packs can land in the same review queue.
+Each round's hit/mixed/miss outcome rates the card and pushes it through the phases or knocks it back. This memory drives scheduling and practice: shaky cards come back, stable cards move out, and generated/imported teacher packs can land in the same review queue.
 
 Daily class grades are tracked separately from card memory: each completed class records a score and letter grade, and those class records gate year advancement (§1.6.6). Card mastery is the layer that makes "answering a question" feel like banking a card, and "coming back tomorrow" feel like clearing a queue.
 
@@ -306,7 +306,7 @@ Same daily class window, two students, one shared lounge. The cohort already run
 
 ## 2.5 Community-authored faculty packs
 
-The pack registry and Guest Faculty slot are wired for this. Ruby High remains the permanent base school; public creator packs rotate into a weekly guest course automatically, and players can override the weekly pick from search. A teacher pack is a name, a voice prompt, a sticker portrait, a question bank or a live connected teacher endpoint, and a model preference.
+The pack registry and Guest Faculty slot are wired for this. Ruby High remains the permanent base school; public creator packs rotate into a weekly guest course automatically, and players can override the weekly pick from search. A teacher pack is a name, a voice prompt, a sticker portrait, a question bank or source-card set, and a model preference.
 
 This depends on §2.2's evaluation harness — voice evaluation is a public-good guard, not a private-product nicety, the moment outside packs are loadable.
 
@@ -356,7 +356,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 | **Faculty-voice evaluation harness** | `npm run eval:voice` runs a lightweight reference-set smoke harness and optionally calls an OpenRouter judge when a key is present. | A larger hand-curated held-out set, thresholds that fail CI, and generated sample capture from real teacher/course flows. |
 | **Mentor mode mechanical effect** | `inheritedFrom` field captured on the new character; rendered on card. | No code reads `inheritedFrom` during round resolution. The inherited move is lore, not mechanics. |
 | **Playbook moves** | All six moves named, described, rendered on character card, and passed to teacher context as flavor. | None of the six change round resolution. |
-| **Rate-limiter endpoint coverage** | Buckets cover LLM-backed chat, portrait/diploma generation, `/command` mutations, and remote course-material URL imports. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
+| **Rate-limiter endpoint coverage** | Buckets cover LLM-backed chat, portrait/diploma generation, `/command` mutations, viewer metric events, and remote course-material URL imports. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
 
 ## 3.3 Open questions
 

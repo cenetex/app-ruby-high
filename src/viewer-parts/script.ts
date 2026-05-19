@@ -2642,7 +2642,7 @@ const VIEWER_SCRIPT_SUFFIX = `
     if (on) renderLoungeFigures();
   }
   // Lounge figures come from the ACTIVE PACK's faculty roster — for the
-  // original pack that's Ruby/Sally/Edward; for a connected/generated pack
+  // original pack that's Ruby/Sally/Edward; for a generated/imported pack
   // it's that pack's teacher roster. Without this the lounge
   // would always show the original-pack portraits regardless of which
   // pack the player is on. Teachers without portrait assets fall back

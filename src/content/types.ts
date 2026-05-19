@@ -67,7 +67,7 @@ export interface PackFaculty {
   /** Optional built-in teacher asset id used for portraits when a generated
    *  pack borrows an existing teacher's face/figure but keeps a unique id. */
   assetTeacherId?: string;
-  /** Optional external profile image URL for connected live teachers. */
+  /** Optional external profile image URL for custom or published teachers. */
   profileImageUrl?: string;
   /** Optional card stats for custom pack teachers. */
   stats?: CharacterStats;
@@ -86,15 +86,14 @@ export interface PackFaculty {
   /** OpenRouter model id. Cheap fast models work fine — chat is short
    *  and high-volume. */
   defaultModel: string;
-  /** Optional live teacher backend. Omitted means the existing browser-owned
-   *  OpenRouter credential path. Server-backed providers must not store
-   *  secrets here; keep only stable public ids and capability flags. */
+  /** Optional teacher LLM capability metadata. Omitted means the default
+   *  OpenRouter/local LLM credential path. Do not store secrets here. */
   provider?: PackFacultyProvider;
   // ── question bank (inline) ────────────────────────────────────────────
   /** Inline question bank. Matches the existing BankedQuestion shape so
    *  pickQuestion / pickDaily logic doesn't change. */
   questions: BankedQuestion[];
-  /** Raw source cards. Connected/generated packs can keep these cheap by default:
+  /** Raw source cards. Generated/imported packs can keep these cheap by default:
    *  the player can type answers immediately, and MC distractors are
    *  generated/cached later only when explicitly requested. */
   sourceCards?: PackSourceCard[];

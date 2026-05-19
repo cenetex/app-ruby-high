@@ -1475,7 +1475,7 @@ export const VIEWER_CSS = `
   .pack-import-panel.is-error .pack-progress-fill {
     background: #d22a2a;
   }
-  /* Lounge placeholder — shown when a connected/generated faculty has no
+  /* Lounge placeholder — shown when generated/imported faculty has no
    * portrait asset on disk. Single colored circle with the teacher's
    * initial; matches the size of the real portrait images. */
   .lounge-placeholder {

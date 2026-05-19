@@ -22,6 +22,7 @@
  * | CHAT_LIMITER       | chat-routes.ts |       60 |  1/sec | POST /chat, /chat/event, /chat/student-chime, /chat/opinion-submit, /chat/character/generate, /chat/reset |
  * | PORTRAIT_LIMITER   | chat-routes.ts |        8 | 1/30s  | POST /chat/character/portrait, /chat/character/diploma |
  * | COMMAND_LIMITER    | routes.ts      |      120 |  2/sec | POST /command (game-state mutation surface) |
+ * | METRICS_EVENT_LIMITER | metrics-events.ts | 60 | 1/sec | POST /metrics/event |
  *
  * Endpoints intentionally NOT gated:
  *

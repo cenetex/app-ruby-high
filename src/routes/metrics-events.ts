@@ -1,8 +1,11 @@
 import { RubyHighService } from "../services/ruby-high-service.js";
+import { TokenBucket } from "../services/rate-limit.js";
 import type { RouteContext } from "./context.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 
 export const METRICS_EVENT_PATH = `${APP_ROUTE_PREFIX}/metrics/event`;
+
+const METRICS_EVENT_LIMITER = new TokenBucket(60, 1);
 
 type MetricsEventBody = {
   type?: unknown;
@@ -22,6 +25,14 @@ export async function handleMetricsEventRoute(
   if (ctx.pathname !== METRICS_EVENT_PATH) return false;
   if (ctx.method !== "POST") {
     ctx.error(ctx.res, "Method not allowed", 405);
+    return true;
+  }
+  const limitKey = metricsRateLimitKey(ctx.clientIp, deps.sessionId);
+  if (!METRICS_EVENT_LIMITER.take(limitKey)) {
+    const retryAfter = METRICS_EVENT_LIMITER.retryAfterSeconds(limitKey);
+    const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+    res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
+    ctx.error(ctx.res, "Too many metrics events.", 429);
     return true;
   }
   const body = (await ctx.readJsonBody().catch(() => ({}))) as MetricsEventBody;
@@ -47,6 +58,10 @@ export async function handleMetricsEventRoute(
   }
   ctx.error(ctx.res, "Unknown metrics event type.", 400);
   return true;
+}
+
+function metricsRateLimitKey(clientIp: string | null | undefined, sessionId: string): string {
+  return `${clientIp || "no-ip"}:${sessionId || "anon"}`;
 }
 
 function requestHeaderString(value: unknown): string | undefined {

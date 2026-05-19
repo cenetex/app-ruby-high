@@ -9,8 +9,8 @@
  *     diagnostics, telemetry default).
  *
  *  2. The MULTI-PACK REGISTRY — a Map<packId, RegisteredPack>. Holds
- *     the built-in pack PLUS any runtime-registered packs (connected
- *     teachers, generated, paid). Each entry is tagged with an owner so
+ *     the built-in pack PLUS any runtime-registered packs (imported,
+ *     generated, paid). Each entry is tagged with an owner so
  *     session-scoped packs only show up for the owner.
  *
  * Per-session resolution: legacy/imported sessions may still carry an
@@ -32,11 +32,6 @@ export const ORIGINAL_PACK_ID = "ruby-high-original";
 export const GUEST_COURSE_ID = "guest";
 export const GUEST_ROOM_ID = "guest-room";
 export const GUEST_CHANNEL_NAME = "guest";
-
-/** Pack-id builder for connected teacher packs. */
-export function connectedPackId(slug: string): string {
-  return `agent:${slug}`;
-}
 
 /** Per-owner soft cap on registered packs. When an owner exceeds this,
  *  their oldest pack evicts. Built-in packs (owner=null) are PINNED and
@@ -265,6 +260,7 @@ export function activeRoomsWithLounge(): PackRoom[] {
 export type GuestPackMode = "auto" | "override";
 
 interface PackSession {
+  sessionId?: string | null;
   activePackId?: string | null;
   guestPackMode?: GuestPackMode | null;
   guestPackOverrideId?: string | null;
@@ -272,17 +268,13 @@ interface PackSession {
 
 /** Resolve the pack for a given session. Falls back to the global
  *  active pack when the session is null OR its activePackId doesn't
- *  match a registered pack (e.g. evicted) — so a stranded id never
- *  breaks reads. Note: ownership is NOT enforced here because
- *  state.activePackId was already validated against ownership by the
- *  route layer when the session activated the pack. Sessions can
- *  legitimately read packs they don't own (rare edge case: they
- *  activated, then ownership got transferred — we let them keep
- *  reading until next switch). */
+ *  match a registered pack (e.g. evicted) or points at another session's
+ *  private pack — so a stranded or malformed id never breaks reads or
+ *  crosses pack ownership boundaries. */
 export function packForSession(session: PackSession | null): ContentPack {
   if (session?.activePackId && session.activePackId !== ORIGINAL_PACK_ID) {
     const r = packs.get(session.activePackId);
-    if (r) return r.pack;
+    if (r && (r.ownerSessionId === null || r.ownerSessionId === session.sessionId)) return r.pack;
   }
   const base = getLoadedPack();
   const guest = guestPackForSession(session);
