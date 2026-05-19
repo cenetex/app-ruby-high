@@ -141,9 +141,11 @@ describe("PWA surface", () => {
     expect(response.res.statusCode).toBe(200);
     expect(response.headers.get("content-type")).toMatch(/text\/javascript/);
     expect(response.headers.get("service-worker-allowed")).toBe("/api/apps/ruby-high/");
+    expect(response.text).toContain('const CACHE_NAME = "ruby-high-pwa-v3";');
     expect(response.text).toContain('const APP_BASE = "/api/apps/ruby-high/";');
     expect(response.text).toContain('"/api/apps/ruby-high/assets/logo.png"');
     expect(response.text).toContain('url.pathname.startsWith(APP_BASE + "session/")');
+    expect(response.text).toContain('url.pathname === ASSET_PREFIX + "privy-client.js"');
     expect(response.text).toContain("networkFirst(request)");
     expect(response.text).toContain("staleWhileRevalidate(request)");
   });

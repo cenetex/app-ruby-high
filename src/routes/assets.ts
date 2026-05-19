@@ -11,7 +11,7 @@ import {
   VIEWER_PATH,
 } from "./constants.js";
 
-const SERVICE_WORKER_CACHE = "ruby-high-pwa-v2";
+const SERVICE_WORKER_CACHE = "ruby-high-pwa-v3";
 const VIEWER_SECURITY_CSP_DIRECTIVES = [
   "default-src 'self'",
   "base-uri 'none'",
@@ -301,7 +301,8 @@ function isNetworkOnly(url) {
   return url.pathname.startsWith(APP_BASE + "auth/")
     || url.pathname.startsWith(APP_BASE + "chat/")
     || url.pathname.startsWith(APP_BASE + "packs/")
-    || url.pathname.startsWith(APP_BASE + "session/");
+    || url.pathname.startsWith(APP_BASE + "session/")
+    || url.pathname === ASSET_PREFIX + "privy-client.js";
 }
 
 async function putOk(cache, request, response) {
