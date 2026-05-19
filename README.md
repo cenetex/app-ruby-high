@@ -86,6 +86,7 @@ No eliza runtime needed for these:
 
 ### Production app endpoints
 
+- `GET /api/apps/ruby-high/admin` renders a browser dashboard for the token-gated usage snapshot. Paste the admin token once; the page stores it locally and calls the metrics endpoint with a Bearer header.
 - `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth users/sessions, Ruby High sessions/progression, and in-process log counters. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data and `?format=svg` returns the social image. `?format=png` is intentionally 501 until server-side raster rendering is configured.
 

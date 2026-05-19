@@ -118,6 +118,20 @@ afterEach(async () => {
 });
 
 describe("admin metrics route", () => {
+  it("serves a browser admin dashboard without embedding metrics or tokens", async () => {
+    const response = await appRoute({
+      path: "/api/apps/ruby-high/admin",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/html");
+    expect(response.body).toContain("Ruby High Admin");
+    expect(response.body).toContain("/api/apps/ruby-high/admin/metrics");
+    expect(response.body).toContain("localStorage");
+    expect(response.body).not.toContain("admin-test-token");
+    expect(response.body).not.toContain("\"auth\":");
+  });
+
   it("requires an admin token and returns auth, Ruby High, and log snapshots", async () => {
     await createSession();
 

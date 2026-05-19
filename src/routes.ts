@@ -29,7 +29,12 @@ import {
 import { handleCommandRoute } from "./routes/commands.js";
 import { handleBugReportRoute } from "./routes/bug-report.js";
 import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
-import { ADMIN_METRICS_PATH, handleAdminMetricsRoute } from "./routes/admin.js";
+import {
+  ADMIN_METRICS_PATH,
+  ADMIN_PATH,
+  handleAdminMetricsRoute,
+  renderAdminDashboardHtml,
+} from "./routes/admin.js";
 import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import type { RouteContext } from "./routes/context.js";
@@ -128,6 +133,11 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     return handleAdminMetricsRoute(ctx, { auth, ruby });
+  }
+
+  if (ctx.method === "GET" && ctx.pathname === ADMIN_PATH) {
+    sendHtmlResponse(ctx.res, renderAdminDashboardHtml(), ctx.acceptEncoding);
+    return true;
   }
 
   if (ctx.pathname.startsWith(BILLING_PREFIX)) {
