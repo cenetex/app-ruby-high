@@ -648,7 +648,7 @@ function readDebounceMsFromEnv(): number {
 
 const DEFAULT_DEBOUNCE_MS = 25;
 
-function isStoredMetricEventName(value: unknown): value is StoredMetricEventName {
+export function isStoredMetricEventName(value: unknown): value is StoredMetricEventName {
   return (
     value === "app_open" ||
     value === "session_resume" ||

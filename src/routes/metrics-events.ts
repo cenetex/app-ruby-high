@@ -31,7 +31,7 @@ export async function handleMetricsEventRoute(
       source: "viewer",
       path: typeof body.path === "string" ? body.path : undefined,
       referrer: typeof body.referrer === "string" ? body.referrer : undefined,
-      userAgent: requestHeaderString((ctx as { userAgentHeader?: unknown }).userAgentHeader),
+      userAgent: requestHeaderString(ctx.userAgentHeader),
     });
     ctx.json(ctx.res, { ok: true });
     return true;

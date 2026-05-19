@@ -12,6 +12,7 @@ import type { Grade } from "../types.js";
 let tmpDir: string;
 let auth: AuthService;
 let ruby: RubyHighService;
+let store: StateStore;
 
 function runtime() {
   return {
@@ -28,6 +29,7 @@ function route(opts: {
   path: string;
   authorizationHeader?: string | string[] | null;
   cookieHeader?: string | null;
+  userAgentHeader?: string | string[] | null;
   body?: unknown;
 }): { ctx: RouteContext; response: () => { status: number; body: any; headers: Record<string, string> } | null } {
   let response: { status: number; body: any; headers: Record<string, string> } | null = null;
@@ -50,6 +52,7 @@ function route(opts: {
     res: res as never,
     authorizationHeader: opts.authorizationHeader ?? null,
     cookieHeader: opts.cookieHeader ?? null,
+    userAgentHeader: opts.userAgentHeader ?? null,
     callbackUrlBuilder: (path) => `https://rubyhighai.com${path}`,
     error: (_res, message, status = 500) => {
       response = { status, body: { error: message }, headers };
@@ -106,7 +109,7 @@ beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-routes-"));
   resetActivePack();
   await getActivePack();
-  const store = new StateStore(join(tmpDir, "state.json"));
+  store = new StateStore(join(tmpDir, "state.json"));
   auth = await AuthService.start({} as never, store);
   ruby = new RubyHighService({} as never, store);
   await ruby["hydrate"]();
@@ -261,6 +264,7 @@ describe("admin metrics route", () => {
       method: "POST",
       path: "/api/apps/ruby-high/metrics/event",
       cookieHeader,
+      userAgentHeader: "Vitest Browser",
       body: { type: "app_open", path: "/api/apps/ruby-high/viewer" },
     });
     expect(response.status).toBe(200);
@@ -292,6 +296,12 @@ describe("admin metrics route", () => {
     expect(response.body.ruby.events.total).toBeGreaterThanOrEqual(2);
     expect(sessionId).toMatch(/^rh:user:/);
     expect(ruby.analyticsSnapshot().events.appOpen.uniqueSessions).toBe(1);
+    await ruby.flush();
+    const appOpen = (await store.loadMetricEvents()).find((event) => event.name === "app_open");
+    expect(appOpen?.metadata).toMatchObject({
+      path: "/api/apps/ruby-high/viewer",
+      userAgent: "Vitest Browser",
+    });
   });
 
   it("adds daily auth and play series for charts", async () => {

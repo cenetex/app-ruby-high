@@ -100,6 +100,7 @@ function makeRouteContext(req, res, url) {
     runtime: fakeRuntime,
     res,
     cookieHeader,
+    userAgentHeader: req.headers["user-agent"] ?? null,
     apiKeyHeader,
     isSecure: false,
     clientIp: deriveClientIp(req),

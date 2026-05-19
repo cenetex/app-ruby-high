@@ -426,6 +426,18 @@ describe("DynamoStateStore", () => {
       feature: "viewer",
       metadata: { inactiveMs: 600_000 },
     });
+    (fake as unknown as { items: Map<string, Record<string, unknown>> }).items.set(
+      "metric-event:1970-01-01:bad-event",
+      {
+        pk: "metric-event:1970-01-01:bad-event",
+        metricEvent: {
+          id: "bad-event",
+          name: "legacy_unknown_event",
+          occurredAt: 124_000,
+          day: "1970-01-01",
+        },
+      },
+    );
 
     const snapshot = fake.snapshot();
     const item = snapshot.get("metric-event:1970-01-01:evt-1")!;

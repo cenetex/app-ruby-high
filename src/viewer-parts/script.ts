@@ -9634,16 +9634,19 @@ const VIEWER_SCRIPT_SUFFIX = `
   // default). The player progresses Freshman → Sophomore → Junior → Senior
   // → graduate as they clear per-grade daily-class and subject-grade gates. There is no year
   // picker — they walk in, get started, and advance by playing.
-  postViewerMetricEvent("app_open", {
-    path: window.location.pathname,
-    referrer: document.referrer || "",
-  });
-  fetchSession();
   // Auth is checked once on boot and again whenever the OAuth tab writes
   // the key (storage event fires in every other tab) or the user returns
   // to this tab from elsewhere (focus). No periodic polling: the only
   // server state we need here is the session cookie's current validity.
-  deriveAuth();
+  async function bootInitialSession() {
+    await deriveAuth();
+    postViewerMetricEvent("app_open", {
+      path: window.location.pathname,
+      referrer: document.referrer || "",
+    });
+    await fetchSession();
+  }
+  void bootInitialSession();
   initializePrivyFromStoredSession();
   window.addEventListener("storage", (e) => {
     if (e.key === AUTH_KEY || e.key === null) deriveAuth();

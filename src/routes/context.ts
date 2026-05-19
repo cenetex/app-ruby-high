@@ -11,6 +11,8 @@ export interface RouteContext {
   readRawBody?: () => Promise<string>;
   /** Raw incoming Cookie header. If absent, auth + chat features are unavailable but the rest of the app keeps working. */
   cookieHeader?: string | null;
+  /** Raw User-Agent request header. Stored only in clipped durable metrics metadata. */
+  userAgentHeader?: string | string[] | null;
   /** Raw value of the `X-Openrouter-Key` header, if the client sent one.
    *  This is the OpenRouter API key - clients keep it in localStorage and
    *  attach it to every LLM-touching request. The server never persists it. */

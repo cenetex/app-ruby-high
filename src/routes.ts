@@ -65,7 +65,7 @@ export async function resolveLaunchSession(
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
   if (!ruby) return null;
   const faculty = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
-  // Launch context (from the eliza app-bridge) doesn't carry an HTTP cookie,
+  // Launch context from app hosts does not always carry an HTTP cookie,
   // so launch-time state lands in the anonymous bucket. The interactive HTTP
   // routes pick up the per-user state once the browser sends rh_session.
   const state = ruby.getOrCreate(getSessionId(runtime));

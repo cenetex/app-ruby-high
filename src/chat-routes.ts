@@ -862,7 +862,7 @@ export interface ChatRouteContext {
    *  localStorage and attach it on every LLM-touching request; the server
    *  reads it here without persisting. Empty / missing → 401 at LLM endpoints. */
   apiKeyHeader?: string | null;
-  /** Caller-provided callback URL builder. Lets the dev server use http://localhost while the eliza host uses https://app.example.com . */
+  /** Caller-provided callback URL builder. Lets the dev server use http://localhost while production hosts use https://app.example.com. */
   callbackUrlBuilder?: (path: string) => string;
   /** True when the response is being served over HTTPS. Controls `Secure` cookie attribute. */
   isSecure?: boolean;

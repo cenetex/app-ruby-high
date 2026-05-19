@@ -18,6 +18,7 @@ import type {
   StoredPackInstallationRecord,
   StoredTeacherRecord,
 } from "./state-store.js";
+import { isStoredMetricEventName } from "./state-store.js";
 
 /**
  * DynamoDB-backed state store. One item per session, primary key = sessionId.
@@ -253,7 +254,7 @@ export class DynamoStateStore implements StateStoreLike {
       if (
         record &&
         typeof record.id === "string" &&
-        typeof record.name === "string" &&
+        isStoredMetricEventName(record.name) &&
         typeof record.occurredAt === "number" &&
         typeof record.day === "string"
       ) {

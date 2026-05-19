@@ -45,6 +45,10 @@ describe("viewer regression guardrails", () => {
     expect(script).toContain('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)');
     expect(script).toContain("navigator.serviceWorker.getRegistrations()");
     expect(script).toContain('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
+    expect(script).toContain("async function bootInitialSession()");
+    const boot = script.slice(script.indexOf("async function bootInitialSession()"));
+    expect(boot.indexOf("await deriveAuth();")).toBeLessThan(boot.indexOf('postViewerMetricEvent("app_open"'));
+    expect(boot.indexOf('postViewerMetricEvent("app_open"')).toBeLessThan(boot.indexOf("await fetchSession();"));
   });
 
   it("wires the Privy account UI through the lazy widget bundle", () => {
