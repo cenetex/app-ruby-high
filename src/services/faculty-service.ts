@@ -1,4 +1,4 @@
-import { Service, type IAgentRuntime } from "@elizaos/core";
+import { Service, type IAgentRuntime } from "../runtime.js";
 import {
   type BankedQuestion,
   type Difficulty,

@@ -1,4 +1,4 @@
-import { Service, type IAgentRuntime } from "@elizaos/core";
+import { Service, type IAgentRuntime } from "../runtime.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { STUDENTS, type StudentCharacter } from "../characters/students.js";
 import type { CharacterStats, Choice, Difficulty, NpcStudentState, QuizState } from "../types.js";

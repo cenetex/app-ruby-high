@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "../runtime.js";
 import { AuthService } from "./auth-service.js";
 
 export const ANONYMOUS_SESSION_ID = "rh:anonymous";

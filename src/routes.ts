@@ -1,9 +1,9 @@
 import type {
-  PluginAppBridgeLaunchContext,
-  PluginAppBridgeRunContext,
-  PluginAppLaunchDiagnostic,
-  PluginAppSessionState,
-} from "@elizaos/core";
+  AppBridgeLaunchContext,
+  AppBridgeRunContext,
+  AppLaunchDiagnostic,
+  AppSessionState,
+} from "./runtime.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { FacultyService } from "./services/faculty-service.js";
 import { renderViewerHtml } from "./viewer.js";
@@ -59,8 +59,8 @@ function parseSessionSubroute(pathname: string): "command" | "control" | null {
 }
 
 export async function resolveLaunchSession(
-  ctx: PluginAppBridgeLaunchContext,
-): Promise<PluginAppSessionState | null> {
+  ctx: AppBridgeLaunchContext,
+): Promise<AppSessionState | null> {
   const runtime = getRuntime(ctx.runtime);
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
   if (!ruby) return null;
@@ -73,32 +73,30 @@ export async function resolveLaunchSession(
 }
 
 export async function refreshRunSession(
-  ctx: PluginAppBridgeRunContext,
-): Promise<PluginAppSessionState | null> {
+  ctx: AppBridgeRunContext,
+): Promise<AppSessionState | null> {
   return resolveLaunchSession(ctx);
 }
 
 export async function collectLaunchDiagnostics(
-  ctx: PluginAppBridgeRunContext,
-): Promise<PluginAppLaunchDiagnostic[]> {
+  ctx: AppBridgeRunContext,
+): Promise<AppLaunchDiagnostic[]> {
   const runtime = getRuntime(ctx.runtime);
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
   const faculty = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
-  const diagnostics: PluginAppLaunchDiagnostic[] = [];
+  const diagnostics: AppLaunchDiagnostic[] = [];
   if (!ruby) {
     diagnostics.push({
       code: "ruby-high-service-missing",
       severity: "error",
-      message:
-        "RubyHighService is not registered. Include @cenetex/app-ruby-high in the character's plugins.",
+      message: "RubyHighService is not registered in the Ruby High runtime.",
     });
   }
   if (!faculty) {
     diagnostics.push({
       code: "ruby-high-faculty-missing",
       severity: "warning",
-      message:
-        "FacultyService is not registered — PICK_QUESTION will fail. Make sure the plugin's services are loaded in the order declared.",
+      message: "FacultyService is not registered; question picking will be unavailable.",
     });
   }
   return diagnostics;

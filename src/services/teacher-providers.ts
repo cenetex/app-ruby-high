@@ -114,7 +114,7 @@ export async function* streamTeacherCompletion(opts: {
     return;
   }
 
-  throw new Error("Native elizaOS teacher provider is not wired yet.");
+  throw new Error(`Unsupported teacher provider: ${(opts.provider as { kind?: string }).kind ?? "unknown"}.`);
 }
 
 function ratiConfig(): { configured: false; baseUrl: string; apiKey: "" } | { configured: true; baseUrl: string; apiKey: string } {
@@ -132,7 +132,6 @@ function providerLabel(provider: PackFacultyProvider): string {
   switch (provider.kind) {
     case "openrouter": return llmProviderName();
     case "rati-openai-compatible": return "RATi";
-    case "elizaos": return "elizaOS";
   }
 }
 

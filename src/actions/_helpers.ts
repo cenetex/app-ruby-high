@@ -1,13 +1,11 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "../runtime.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { getSessionId as getRuntimeSessionId } from "../services/session-identity.js";
 
 export function getService(runtime: IAgentRuntime): RubyHighService {
   const svc = runtime.getService<RubyHighService>(RubyHighService.serviceType);
   if (!svc) {
-    throw new Error(
-      "RubyHighService is not registered. Add @cenetex/app-ruby-high to the character's plugins.",
-    );
+    throw new Error("RubyHighService is not registered in the Ruby High runtime.");
   }
   return svc;
 }

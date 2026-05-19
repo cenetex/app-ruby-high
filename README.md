@@ -2,7 +2,7 @@
 
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
-Ruby High is an [elizaOS](https://elizaos.dev) app and a standalone Node service. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
+Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
 
 **For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
 
@@ -76,7 +76,7 @@ CI builds `dist-spa/` once, then reuses that artifact for Tauri and Capacitor jo
 
 ### Dev endpoints
 
-No eliza runtime needed for these:
+No hosted account or OpenRouter key is needed for these:
 
 - `GET /dev/pick` — draw a question for the active faculty.
 - `GET /dev/pick?faculty=sally-science&difficulty=hard` — filter the draw.
@@ -93,18 +93,9 @@ No eliza runtime needed for these:
 - `GET /api/apps/ruby-high/admin/overview` returns a token-gated LLM-generated operator overview built only from aggregate metrics. It requires the normal server LLM credential.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data and `?format=svg` returns the social image. `?format=png` is intentionally 501 until server-side raster rendering is configured.
 
-## Wire it into a character
+## Service Wiring
 
-```ts
-import rubyHighPlugin from "@cenetex/app-ruby-high";
-
-export const character = {
-  name: "Ruby",
-  plugins: [rubyHighPlugin /* , ...others */],
-};
-```
-
-The plugin registers four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week, or can be set as a user override from the Guest Faculty screen.
+The standalone server starts four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week, or can be set as a user override from the Guest Faculty screen.
 
 ## Configuration
 

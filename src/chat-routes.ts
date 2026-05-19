@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
 import { RubyHighService, type QuestionBankStatus } from "./services/ruby-high-service.js";

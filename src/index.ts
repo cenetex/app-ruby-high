@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime, RubyHighAppModule } from "./runtime.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { FacultyService } from "./services/faculty-service.js";
 import { AuthService } from "./services/auth-service.js";
@@ -44,10 +44,10 @@ class BoundChatService extends ChatService {
   }
 }
 
-export const rubyHighPlugin: Plugin = {
+export const rubyHighApp: RubyHighAppModule = {
   name: "@cenetex/app-ruby-high",
   description:
-    "Ruby High — educational eliza app. Ruby hosts the school; specialist faculty teach their domains. v0.3: faculty packs + persistence + OpenRouter PKCE login + per-teacher chat with tool-driven blackboard control.",
+    "Ruby High educational app. Ruby hosts the school; specialist faculty teach their domains with persistence, OpenRouter PKCE login, and per-teacher chat with tool-driven blackboard control.",
   services: [FacultyService, BoundRubyHighService, AuthService, BoundChatService],
   actions: [
     poseQuestionAction,
@@ -62,7 +62,6 @@ export const rubyHighPlugin: Plugin = {
     launchType: "connect",
     launchUrl: null,
     capabilities: ["education", "quiz", "multiple-choice", "chat", "spectate-and-steer"],
-    runtimePlugin: "@cenetex/app-ruby-high",
     viewer: {
       url: "/api/apps/ruby-high/viewer",
       sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
@@ -80,7 +79,7 @@ export const rubyHighPlugin: Plugin = {
   },
 };
 
-export default rubyHighPlugin;
+export default rubyHighApp;
 
 export { RubyHighService } from "./services/ruby-high-service.js";
 export { FacultyService } from "./services/faculty-service.js";

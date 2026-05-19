@@ -1,7 +1,7 @@
 import type {
   IAgentRuntime,
-  PluginAppSessionState,
-} from "@elizaos/core";
+  AppSessionState,
+} from "../runtime.js";
 import {
   CHARACTER_SLOT_HALL_PASS_COST,
   CHARACTER_SLOT_PHOTO_DAY_CREDITS,
@@ -296,7 +296,7 @@ export function buildSessionState(args: {
   state: QuizState;
   faculty: FacultyService | null;
   cookieHeader?: string | null;
-}): PluginAppSessionState {
+}): AppSessionState {
   const { runtime, state, faculty } = args;
   const sessionId = getSessionId(runtime, args.cookieHeader);
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
@@ -434,7 +434,7 @@ export function buildSessionState(args: {
     summary,
     goalLabel: state.subject ? `Ruby High · ${state.subject}` : "Ruby High",
     suggestedPrompts: suggested,
-    telemetry: telemetry as PluginAppSessionState["telemetry"],
+    telemetry: telemetry as AppSessionState["telemetry"],
   };
 }
 

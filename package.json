@@ -1,7 +1,7 @@
 {
   "name": "@cenetex/app-ruby-high",
   "version": "0.1.0",
-  "description": "Ruby High — elizaOS app. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward, etc.) handle deep-domain teaching.",
+  "description": "Ruby High standalone app. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward, etc.) handle deep-domain teaching.",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -20,7 +20,6 @@
   },
   "files": [
     "dist",
-    "elizaos.plugin.json",
     "assets"
   ],
   "scripts": {
@@ -61,15 +60,11 @@
     "@aws-sdk/client-dynamodb": "^3.1041.0",
     "@aws-sdk/client-s3": "^3.1041.0",
     "@aws-sdk/lib-dynamodb": "^3.1041.0",
-    "@elizaos/core": "2.0.0-alpha.535",
     "@privy-io/js-sdk-core": "^0.63.0",
     "@privy-io/node": "^0.18.0",
     "@privy-io/react-auth": "^3.26.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
-  },
-  "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.535"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",
@@ -87,42 +82,10 @@
     "access": "public"
   },
   "keywords": [
-    "elizaos",
-    "eliza-plugin",
-    "eliza-app",
     "ruby-high",
     "education",
     "quiz"
   ],
-  "elizaos": {
-    "kind": "app",
-    "app": {
-      "displayName": "Ruby High",
-      "category": "education",
-      "launchType": "connect",
-      "launchUrl": null,
-      "capabilities": [
-        "education",
-        "quiz",
-        "multiple-choice",
-        "spectate-and-steer"
-      ],
-      "runtimePlugin": "@cenetex/app-ruby-high",
-      "viewer": {
-        "url": "/api/apps/ruby-high/viewer",
-        "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
-      },
-      "session": {
-        "mode": "spectate-and-steer",
-        "features": [
-          "commands",
-          "telemetry",
-          "suggestions"
-        ]
-      },
-      "bridgeExport": "./dist/routes.js"
-    }
-  },
   "license": "MIT",
   "repository": {
     "type": "git",

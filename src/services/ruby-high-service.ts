@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { Service, type IAgentRuntime } from "@elizaos/core";
+import { Service, type IAgentRuntime } from "../runtime.js";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
   CHOICES,
@@ -1174,7 +1174,7 @@ export class RubyHighService extends Service {
 
   /**
    * Bind the FacultyService once both services are registered. Called by the
-   * plugin index after both `Service.start()` calls return. Lets RubyHighService
+   * app bootstrap after both `Service.start()` calls return. Lets RubyHighService
    * delegate question-bank picks without a circular dependency at construction.
    */
   setFacultyService(faculty: FacultyService): void {

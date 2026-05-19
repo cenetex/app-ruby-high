@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Service, type IAgentRuntime } from "@elizaos/core";
+import { Service, type IAgentRuntime } from "../runtime.js";
 import { log } from "./logger.js";
 import {
   authUserKey,

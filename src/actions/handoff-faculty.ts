@@ -1,4 +1,4 @@
-import type { Action, ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
+import type { Action, ActionResult, IAgentRuntime, Memory } from "../runtime.js";
 import { errorText, getService, getSessionId } from "./_helpers.js";
 
 export const handoffFacultyAction: Action = {

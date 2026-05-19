@@ -1,4 +1,4 @@
-import type { Action, ActionResult, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionResult, IAgentRuntime } from "../runtime.js";
 import { describe, expect, it, vi } from "vitest";
 import { clearBoardAction } from "../actions/clear-board.js";
 import { gradeAnswerAction } from "../actions/grade-answer.js";
@@ -30,7 +30,7 @@ async function runAction(action: Action, service: unknown, parameters?: Record<s
   return result;
 }
 
-describe("Eliza runtime actions", () => {
+describe("runtime actions", () => {
   it("uses an agent-scoped key for runtime actions even when AuthService is registered without a cookie", () => {
     const auth = { stateKeyForCookie: vi.fn(() => "rh:anonymous") };
     const runtime = {

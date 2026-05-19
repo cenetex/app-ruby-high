@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "../runtime.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { TokenBucket } from "../services/rate-limit.js";

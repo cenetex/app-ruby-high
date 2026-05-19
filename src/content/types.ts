@@ -114,12 +114,6 @@ export type PackFacultyProvider =
       externalId?: string;
       /** Server-side capability hint for Ruby High board tools. */
       supportsTools?: boolean;
-    }
-  | {
-      kind: "elizaos";
-      /** Local/runtime agent id or future elizaOS HTTP agent id. */
-      agentId: string;
-      supportsTools?: boolean;
     };
 
 export interface PackRoom {

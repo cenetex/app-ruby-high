@@ -6,7 +6,6 @@ COPY tsconfig.json tsup.config.ts ./
 COPY scripts/check-privy-client-bundle.mjs ./scripts/check-privy-client-bundle.mjs
 COPY src ./src
 COPY assets ./assets
-COPY elizaos.plugin.json ./
 RUN npm run build
 
 FROM node:22-slim AS runtime
@@ -26,7 +25,6 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/assets ./assets
 COPY scripts/server.mjs ./scripts/server.mjs
 COPY scripts/http-limits.mjs ./scripts/http-limits.mjs
-COPY elizaos.plugin.json ./
 RUN mkdir -p /data
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
