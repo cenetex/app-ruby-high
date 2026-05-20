@@ -91,6 +91,13 @@ const HISTORY_LIMIT = 30;
 const EVENT_LOG_LIMIT = 60;
 const DEFAULT_AGENT_ROUNDS = 4;
 const MAX_AGENT_ROUNDS = readAgentRoundLimit(process.env.RUBY_HIGH_CHAT_AGENT_ROUNDS);
+const INTERNAL_TOOL_XML_TAGS = new Set([
+  "pick_from_bank",
+  "pose_question",
+  "pose_opinion",
+  "clear_board",
+  "handoff_faculty",
+]);
 
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
@@ -326,16 +333,20 @@ export class ChatService extends Service {
       let finishReason: string | null = null;
 
       try {
+        const visibleTextFilter = createInternalToolXmlFilter();
         for await (const chunk of stream) {
           if (chunk.kind === "text") {
             assistantText += chunk.text;
-            yield { type: "delta", text: chunk.text };
+            const visibleText = visibleTextFilter.push(chunk.text);
+            if (visibleText) yield { type: "delta", text: visibleText };
           } else if (chunk.kind === "tool-call") {
             assistantToolCalls.push(chunk.toolCall);
           } else if (chunk.kind === "finish") {
             finishReason = chunk.reason;
           }
         }
+        const finalVisibleText = visibleTextFilter.flush();
+        if (finalVisibleText) yield { type: "delta", text: finalVisibleText };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         yield { type: "error", message };
@@ -348,13 +359,14 @@ export class ChatService extends Service {
       }
 
       const historyLenBeforeAssistant = history.length;
-      if (assistantToolCalls.length === 0 && assistantText.trim().length === 0) {
+      const visibleAssistantText = stripInternalToolXml(assistantText);
+      if (assistantToolCalls.length === 0 && visibleAssistantText.trim().length === 0) {
         yield { type: "done", finishReason: finishReason ?? "empty-response" };
         return;
       }
       const assistantMessage: ChatMessage = {
         role: "assistant",
-        content: assistantText,
+        content: visibleAssistantText,
         toolCalls: assistantToolCalls.length ? assistantToolCalls : undefined,
         // Tag with the SPEAKER id so the lounge can attribute messages to the
         // right teacher when replaying history.
@@ -1267,6 +1279,81 @@ function toolFreeDirective(text: string): string {
     cleaned,
     "Ruby High board tools are not available to this provider on this turn. Do not mention tool names, missing tools, prompts, or technical limitations; speak only as the teacher.",
   ].filter(Boolean).join(" ");
+}
+
+function stripInternalToolXml(text: string): string {
+  const filter = createInternalToolXmlFilter();
+  return filter.push(text) + filter.flush();
+}
+
+function createInternalToolXmlFilter(): {
+  push(text: string): string;
+  flush(): string;
+} {
+  let pending = "";
+  let suppressingTag = "";
+  const maxCloseTagLength = Math.max(...Array.from(INTERNAL_TOOL_XML_TAGS).map((name) => name.length)) + 8;
+
+  const push = (text: string): string => {
+    pending += text;
+    let out = "";
+    while (pending) {
+      if (suppressingTag) {
+        const closeMatch = new RegExp(`<\\s*/\\s*${escapeRegExp(suppressingTag)}\\s*>`, "i").exec(pending);
+        if (!closeMatch) {
+          pending = pending.slice(-maxCloseTagLength);
+          return out;
+        }
+        pending = pending.slice(closeMatch.index + closeMatch[0].length);
+        suppressingTag = "";
+        continue;
+      }
+
+      const openIndex = pending.indexOf("<");
+      if (openIndex < 0) {
+        out += pending;
+        pending = "";
+        return out;
+      }
+      out += pending.slice(0, openIndex);
+      pending = pending.slice(openIndex);
+      const closeIndex = pending.indexOf(">");
+      if (closeIndex < 0) return out;
+
+      const rawTag = pending.slice(0, closeIndex + 1);
+      const tag = rawTag.match(/^<\s*(\/?)\s*([a-z_][a-z0-9_]*)\b[^>]*(\/?)\s*>$/i);
+      if (!tag || !INTERNAL_TOOL_XML_TAGS.has(tag[2]!.toLowerCase())) {
+        out += rawTag;
+        pending = pending.slice(closeIndex + 1);
+        continue;
+      }
+
+      const closing = !!tag[1];
+      const selfClosing = !!tag[3] || /\/\s*>$/.test(rawTag);
+      const tagName = tag[2]!.toLowerCase();
+      pending = pending.slice(closeIndex + 1);
+      if (!closing && !selfClosing) suppressingTag = tagName;
+    }
+    return out;
+  };
+
+  return {
+    push,
+    flush() {
+      if (suppressingTag) {
+        pending = "";
+        suppressingTag = "";
+        return "";
+      }
+      const out = pending;
+      pending = "";
+      return out;
+    },
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function buildToolDefs(opts: { includePickFromBank?: boolean; includePoseOpinion?: boolean } = {}): unknown[] {

@@ -789,6 +789,9 @@ export function runViewerClient(bootstrap) {
   let billingProductsCache = null;
   let billingBusy = false;
   let selectedBillingProductId = null;
+  let packSyncBusy = false;
+  let packSyncWalletAddress = "";
+  let packSyncAt = 0;
   let packMintProgressEl = null;
   let packMintProgressStatusEl = null;
   let packMintProgressTimer = null;
@@ -1453,8 +1456,8 @@ export function runViewerClient(bootstrap) {
     head.appendChild(stamp);
     const bodyEl = document.createElement("div");
     bodyEl.className = "body";
-    bodyEl.dataset.markdownRaw = body || "";
-    renderMarkdownInto(bodyEl, body || "");
+    bodyEl.dataset.markdownRaw = sanitizeVisibleChatText(body || "");
+    renderMarkdownInto(bodyEl, bodyEl.dataset.markdownRaw);
     wrap.appendChild(avatar);
     wrap.appendChild(head);
     wrap.appendChild(bodyEl);
@@ -1523,7 +1526,7 @@ export function runViewerClient(bootstrap) {
     const end = String.fromCharCode(0xe001);
     const tick = String.fromCharCode(96);
     const placeholders = [];
-    let text = String(value == null ? "" : value);
+    let text = sanitizeVisibleChatText(value);
     const stash = (html) => {
       const key = start + placeholders.length + end;
       placeholders.push(html);
@@ -1558,7 +1561,7 @@ export function runViewerClient(bootstrap) {
     el.classList.add("markdown");
     el.classList.toggle("markdown-inline", !!opts.inline);
     el.replaceChildren();
-    const text = String(source == null ? "" : source).replace(/\r\n?/g, "\n");
+    const text = sanitizeVisibleChatText(source).replace(/\r\n?/g, "\n");
     if (!text) return;
     if (opts.inline) {
       appendMarkdownInline(el, text);
@@ -1644,6 +1647,14 @@ export function runViewerClient(bootstrap) {
       }
       appendParagraph(paraLines.join("\n"));
     }
+  }
+
+  function sanitizeVisibleChatText(value) {
+    let text = String(value == null ? "" : value);
+    const tags = "pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty";
+    text = text.replace(new RegExp("<\\s*(" + tags + ")\\b[^>]*>[\\s\\S]*?<\\s*/\\s*\\1\\s*>", "gi"), "");
+    text = text.replace(new RegExp("<\\s*/?\\s*(?:" + tags + ")\\b[^>]*\\/?>", "gi"), "");
+    return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   // ── blackboard panel (single, persistent, updates in place) ─────────────
@@ -2182,6 +2193,41 @@ export function runViewerClient(bootstrap) {
     renderAccountHistory();
   }
 
+  async function syncWalletPackNftsFromAccount(opts) {
+    const ownerWalletAddress = knownSolanaOwnerWalletAddress();
+    const force = !!(opts && opts.force);
+    if (!authed || !ownerWalletAddress || packSyncBusy) return;
+    const now = Date.now();
+    if (!force && packSyncWalletAddress === ownerWalletAddress && now - packSyncAt < 60000) return;
+    packSyncBusy = true;
+    packSyncWalletAddress = ownerWalletAddress;
+    packSyncAt = now;
+    if (els.accountCardSummary) els.accountCardSummary.textContent = "Checking wallet for pack NFTs...";
+    try {
+      const r = await apiFetch(apiBase + "/nft/sync-packs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 30000,
+        body: JSON.stringify({ ownerWalletAddress }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.ok) throw new Error(data.error || "pack sync " + r.status);
+      const importedCount = Math.max(0, Math.floor(Number(data.importedCount || 0)));
+      if (importedCount > 0) {
+        setPrivyStatus("Imported " + formatWholeNumber(importedCount) + " pack NFT" + (importedCount === 1 ? "" : "s") + " from this wallet.", false);
+        await fetchSession();
+        renderAccountPage();
+      } else if (force) {
+        renderAccountHallPassCards();
+      }
+    } catch (err) {
+      setPrivyStatus("Pack sync failed · " + (err && err.message ? err.message : "error"), true);
+      renderAccountHallPassCards();
+    } finally {
+      packSyncBusy = false;
+    }
+  }
+
   function renderAccountAi() {
     if (!els.accountAiStatus || !els.accountAiUsePass || !els.accountAiAction) return;
     const ai = hostedAiTelemetry(lastTelemetry);
@@ -2250,6 +2296,11 @@ export function runViewerClient(bootstrap) {
     return cards.filter((card) => card && typeof card === "object" && card.id);
   }
 
+  function pendingHallPassCardMintsForTelemetry(t) {
+    return hallPassCardsForTelemetry(t)
+      .filter((card) => card.status === "active" && (!card.mintAddress || !card.mintSignature));
+  }
+
   function hallPassPacksForTelemetry(t) {
     const src = t || lastTelemetry;
     const wallet = src && src.wallet && typeof src.wallet === "object" ? src.wallet : {};
@@ -2274,6 +2325,7 @@ export function runViewerClient(bootstrap) {
     const activePacks = packs.filter((pack) => pack.status === "active");
     const active = cards.filter((card) => card.status === "active");
     const minted = cards.filter((card) => card.mintAddress && card.mintSignature);
+    const pendingMints = pendingHallPassCardMintsForTelemetry();
     const shown = cards
       .slice()
       .sort((a, b) => {
@@ -2288,6 +2340,7 @@ export function runViewerClient(bootstrap) {
       if (cards.length > 0) {
         pieces.push(active.length + " active card" + (active.length === 1 ? "" : "s"));
         if (minted.length > 0) pieces.push(minted.length + " minted");
+        if (pendingMints.length > 0) pieces.push(pendingMints.length + " pending NFT mint" + (pendingMints.length === 1 ? "" : "s"));
       }
       els.accountCardSummary.textContent = pieces.length === 0
         ? "No pack or card collectibles in this wallet yet."
@@ -2295,8 +2348,13 @@ export function runViewerClient(bootstrap) {
     }
     if (els.accountMintCards) {
       els.accountMintCards.disabled = !authed || billingBusy;
-      els.accountMintCards.textContent = "Buy Packs";
-      els.accountMintCards.title = "Buy Ruby High card packs.";
+      if (pendingMints.length > 0) {
+        els.accountMintCards.textContent = billingBusy ? "Minting..." : "Mint Card NFTs";
+        els.accountMintCards.title = "Retry minting pending Ruby High card NFTs.";
+      } else {
+        els.accountMintCards.textContent = "Buy Packs";
+        els.accountMintCards.title = "Buy Ruby High card packs.";
+      }
     }
     els.accountHallPassCards.replaceChildren();
     const shownPacks = packs
@@ -3021,6 +3079,56 @@ export function runViewerClient(bootstrap) {
     } catch (err) {
       hidePackMintProgress();
       setPrivyStatus("Open pack failed · " + (err && err.message ? err.message : "error"), true);
+    } finally {
+      hidePackMintProgress(900);
+      billingBusy = false;
+      renderAccountHallPassCards();
+    }
+  }
+
+  async function mintPendingCardNftsFromAccount() {
+    if (!authed || billingBusy) return;
+    const pending = pendingHallPassCardMintsForTelemetry();
+    if (pending.length <= 0) {
+      openBilling();
+      return;
+    }
+    const ownerWalletAddress = knownSolanaOwnerWalletAddress();
+    if (!ownerWalletAddress) {
+      setPrivyStatus("Connect a Solana wallet before minting card NFTs.", true);
+      return;
+    }
+    billingBusy = true;
+    renderAccountHallPassCards();
+    showPackMintProgress("Minting pending card NFTs...");
+    setPrivyStatus("Minting pending card NFTs...", false);
+    try {
+      const r = await apiFetch(apiBase + "/nft/mint-pack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 90000,
+        body: JSON.stringify({ ownerWalletAddress }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.ok) throw new Error(data.error || "mint cards " + r.status);
+      const mintedCount = Math.max(0, Math.floor(Number(Array.isArray(data.minted) ? data.minted.length : 0)));
+      const remaining = Math.max(0, Math.floor(Number(data.remaining || 0)));
+      updatePackMintProgress(data.warning
+        ? "Some card NFTs still need attention."
+        : remaining > 0
+          ? "Batch minted. More cards are waiting..."
+          : "Card NFTs minted. Updating your locker...");
+      const base = mintedCount + " card NFT" + (mintedCount === 1 ? "" : "s") + " minted";
+      setPrivyStatus(data.warning
+        ? base + " · " + data.warning
+        : remaining > 0
+          ? base + " · " + formatWholeNumber(remaining) + " still pending."
+          : base + ".", !!data.warning);
+      await fetchSession();
+      renderAccountPage();
+    } catch (err) {
+      hidePackMintProgress();
+      setPrivyStatus("Card NFT mint failed · " + (err && err.message ? err.message : "error"), true);
     } finally {
       hidePackMintProgress(900);
       billingBusy = false;
@@ -10213,6 +10321,7 @@ export function runViewerClient(bootstrap) {
       await handlePrivySession(snapshot, { source: fromBilling ? "billing-wallet-connect" : "wallet-connect" });
       reportStatus(connectedSolanaWalletAddress() ? "Solana wallet connected." : "Account connected.", false);
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
+      if (!fromBilling) void syncWalletPackNftsFromAccount({ force: true });
       return snapshot;
     } catch (err) {
       reportStatus(err && err.message ? err.message : "Solana wallet connection failed", true);
@@ -10229,6 +10338,7 @@ export function runViewerClient(bootstrap) {
       els.privyOverlay?.setAttribute("aria-hidden", "false");
       setPrivyStatus(privyState.authenticated ? "Account connected." : "", false);
       renderAccountPage();
+      void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
       if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
       els.privyOverlay?.setAttribute("aria-hidden", "false");
@@ -10899,6 +11009,10 @@ export function runViewerClient(bootstrap) {
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
+    if (pendingHallPassCardMintsForTelemetry().length > 0) {
+      await mintPendingCardNftsFromAccount();
+      return;
+    }
     openBilling();
   });
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);

@@ -647,6 +647,7 @@ export interface HallPassPackMintInput {
   mintSignature: string;
   metadataUri: string;
   idempotencyKey: string;
+  serial?: number;
   source?: RubyHighWalletTransaction["source"];
   description?: string;
   metadata?: RubyHighWalletTransaction["metadata"];
@@ -1758,7 +1759,9 @@ export class RubyHighService extends Service {
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
     const pack: RubyHighHallPassPack = {
       id: hallPassPackId(id, assetAddress),
-      serial: hashInteger(`${id}:${assetAddress}`) % 900000 + 100000,
+      serial: Number.isFinite(Number(input.serial)) && Number(input.serial) > 0
+        ? Math.floor(Number(input.serial))
+        : hashInteger(`${id}:${assetAddress}`) % 900000 + 100000,
       productId: input.productId.trim().slice(0, 96) || `card-pack-${packCount}`,
       packCount,
       cardCount,
@@ -1966,6 +1969,12 @@ export class RubyHighService extends Service {
         !!card.mintSignature &&
         (!owner || card.ownerWalletAddress === owner)
       ));
+  }
+
+  hallPassPacks(sessionId: string): RubyHighHallPassPack[] {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    return normalizeHallPassPacks(state.wallet.hallPassPacks);
   }
 
   recordHallPassCardMint(sessionId: string, input: HallPassCardMintInput): {

@@ -2,6 +2,8 @@ import type { AuthService } from "../services/auth-service.js";
 import {
   corePackCollectionMetadataForRoute,
   corePackNftMetadataForRoute,
+  type OwnedCorePackNft,
+  fetchOwnedCorePackNfts,
   publicCorePackNftStatus,
 } from "../services/core-pack-nfts.js";
 import {
@@ -15,6 +17,7 @@ import {
 } from "../services/hall-pass-nfts.js";
 import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import type { RubyHighService } from "../services/ruby-high-service.js";
+import type { RubyHighHallPassPack } from "../types.js";
 import type { RouteContext } from "./context.js";
 
 interface NftDeps {
@@ -71,6 +74,80 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       ...publicHallPassNftStatus(),
       corePacks: publicCorePackNftStatus(),
     });
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/sync-packs`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const ownerWalletAddress = cleanOwnerWalletAddress(
+      typeof body.ownerWalletAddress === "string" && body.ownerWalletAddress.trim()
+        ? body.ownerWalletAddress
+        : record.walletChainType === "solana"
+          ? deps.auth.walletAddressForRecord(record)
+          : "",
+    );
+    if (!ownerWalletAddress) {
+      ctx.error(ctx.res, "Connect a Solana wallet before syncing packs.", 400);
+      return true;
+    }
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    try {
+      const ownedPacks = await fetchOwnedCorePackNfts(ownerWalletAddress);
+      const existingAssets = new Set(deps.ruby.hallPassPacks(stateKey).map((pack) => pack.assetAddress));
+      const imported: RubyHighHallPassPack[] = [];
+      const known: OwnedCorePackNft[] = [];
+      for (const owned of ownedPacks) {
+        if (existingAssets.has(owned.assetAddress)) {
+          known.push(owned);
+          continue;
+        }
+        const result = deps.ruby.recordHallPassPackMint(stateKey, {
+          productId: owned.productId,
+          packCount: owned.packCount,
+          cardCount: owned.cardCount,
+          ownerWalletAddress: owned.ownerWalletAddress,
+          assetAddress: owned.assetAddress,
+          mintSignature: `import:${owned.assetAddress}`,
+          metadataUri: owned.metadataUri,
+          idempotencyKey: `solana:core-pack-import:${owned.assetAddress}`,
+          source: "solana",
+          description: "Ruby High Pack imported from wallet",
+          serial: owned.serial,
+          metadata: {
+            importedOnChain: true,
+            ownerWalletAddress: owned.ownerWalletAddress,
+            packAssetAddress: owned.assetAddress,
+            packMetadataUri: owned.metadataUri,
+          },
+        });
+        if (result.pack) imported.push(result.pack);
+        existingAssets.add(owned.assetAddress);
+      }
+      await deps.ruby.flushSession(stateKey);
+      ctx.json(ctx.res, {
+        ok: true,
+        ownerWalletAddress,
+        imported: imported.map(packPayload),
+        known: known.map((pack) => ({
+          productId: pack.productId,
+          packCount: pack.packCount,
+          cardCount: pack.cardCount,
+          assetAddress: pack.assetAddress,
+          metadataUri: pack.metadataUri,
+          serial: pack.serial,
+        })),
+        onChainCount: ownedPacks.length,
+        importedCount: imported.length,
+      });
+    } catch (err) {
+      ctx.error(ctx.res, publicPackSyncErrorMessage(err), 502);
+    }
     return true;
   }
 
@@ -406,6 +483,30 @@ function readCardIds(body: Record<string, unknown>): string[] {
     ids.push(id);
   }
   return ids;
+}
+
+function packPayload(pack: RubyHighHallPassPack): Record<string, unknown> {
+  return {
+    id: pack.id,
+    serial: pack.serial,
+    productId: pack.productId,
+    packCount: pack.packCount,
+    cardCount: pack.cardCount,
+    status: pack.status,
+    ownerWalletAddress: pack.ownerWalletAddress,
+    assetAddress: pack.assetAddress,
+    metadataUri: pack.metadataUri,
+    issuedAt: pack.issuedAt,
+    updatedAt: pack.updatedAt,
+  };
+}
+
+function publicPackSyncErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/getProgramAccounts|410|forbidden|rpc/i.test(raw)) {
+    return "Solana RPC could not sync wallet pack NFTs. Check the configured Ruby High Solana RPC.";
+  }
+  return raw || "Pack NFT sync failed.";
 }
 
 function publicNftErrorMessage(err: unknown): string {

@@ -144,6 +144,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "No pack or card collectibles in this wallet yet.");
     expectScriptToContain(script, "async function openHallPassPackFromAccount(packId)");
     expectScriptToContain(script, 'apiBase + "/nft/open-pack"');
+    expectScriptToContain(script, "async function syncWalletPackNftsFromAccount(opts)");
+    expectScriptToContain(script, 'apiBase + "/nft/sync-packs"');
+    expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
     expectScriptToContain(script, 'img.src = PACK_NFT_ART_URL');
     expectScriptToContain(script, 'item.className = "account-pack-tile is-" + String(pack.status || "active")');
     expectScriptToContain(script, 'item.className = "account-card-tile is-" + String(card.status || "active")');
@@ -162,7 +165,9 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain(".account-card-tile");
     expect(VIEWER_CSS).toContain("aspect-ratio: 1122 / 1402");
     expect(script).not.toContain("mintPurchasedHallPassCards");
-    expect(script).not.toContain('apiBase + "/nft/mint-pack"');
+    expectScriptToContain(script, "function mintPendingCardNftsFromAccount()");
+    expectScriptToContain(script, 'apiBase + "/nft/mint-pack"');
+    expectScriptToContain(script, "Retry minting pending Ruby High card NFTs.");
     expect(script).not.toContain("unmintedCardCount");
     expect(script).not.toContain("/nft/mint-pending");
     expect(script).not.toContain("Mint \" + mintableCount + \" Pending");

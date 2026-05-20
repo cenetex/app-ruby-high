@@ -449,7 +449,7 @@ export async function mintHallPassCardNft(
     .sendTransaction(getBase64EncodedWireTransaction(signed), {
       encoding: "base64",
       maxRetries: 3n,
-      skipPreflight: false,
+      skipPreflight: true,
     })
     .send();
   return {

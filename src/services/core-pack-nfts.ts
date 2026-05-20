@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { create, createCollection, fetchAssetV1, fetchCollectionV1, mplCore } from "@metaplex-foundation/mpl-core";
+import {
+  Key,
+  create,
+  createCollection,
+  fetchAssetV1,
+  fetchCollectionV1,
+  getAssetV1GpaBuilder,
+  mplCore,
+} from "@metaplex-foundation/mpl-core";
 import {
   createNoopSigner,
   createSignerFromKeypair,
@@ -108,15 +116,28 @@ export interface CoreCollectionCreateResult {
   metadataUri: string;
 }
 
+export interface OwnedCorePackNft {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  ownerWalletAddress: string;
+  assetAddress: string;
+  metadataUri: string;
+  serial: number;
+  name: string;
+}
+
 type CorePackNftMinter = (input: CorePackNftMintInput) => Promise<CorePackNftMintResult>;
 type CorePackPurchaseTransactionBuilder = (
   input: CorePackPurchaseTransactionInput,
 ) => Promise<CorePackPurchaseTransactionResult>;
 type CorePackNftVerifier = (input: CorePackNftVerifyInput) => Promise<CorePackNftMintResult>;
+type CorePackNftOwnerFetcher = (ownerWalletAddress: string) => Promise<OwnedCorePackNft[]>;
 
 let packMinterOverride: CorePackNftMinter | null = null;
 let packPurchaseTransactionBuilderOverride: CorePackPurchaseTransactionBuilder | null = null;
 let packVerifierOverride: CorePackNftVerifier | null = null;
+let packOwnerFetcherOverride: CorePackNftOwnerFetcher | null = null;
 
 export function setCorePackNftMinterForTest(minter: CorePackNftMinter | null): () => void {
   const previous = packMinterOverride;
@@ -141,6 +162,14 @@ export function setCorePackNftVerifierForTest(verifier: CorePackNftVerifier | nu
   packVerifierOverride = verifier;
   return () => {
     packVerifierOverride = previous;
+  };
+}
+
+export function setOwnedCorePackNftFetcherForTest(fetcher: CorePackNftOwnerFetcher | null): () => void {
+  const previous = packOwnerFetcherOverride;
+  packOwnerFetcherOverride = fetcher;
+  return () => {
+    packOwnerFetcherOverride = previous;
   };
 }
 
@@ -453,6 +482,32 @@ export async function verifyCorePackNftMint(input: CorePackNftVerifyInput): Prom
   };
 }
 
+export async function fetchOwnedCorePackNfts(ownerWalletAddress: string): Promise<OwnedCorePackNft[]> {
+  if (packOwnerFetcherOverride) return packOwnerFetcherOverride(ownerWalletAddress);
+  const config = readCoreSyncConfig();
+  const owner = publicKey(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const assets = await getAssetV1GpaBuilder(umi)
+    .whereField("key", Key.AssetV1)
+    .whereField("owner", owner)
+    .getDeserialized({ commitment: "confirmed" });
+  return assets.flatMap((asset) => {
+    const collectionAddress = coreAssetCollectionAddress(asset.updateAuthority);
+    if (collectionAddress !== config.collectionAddress) return [];
+    const metadataUri = typeof asset.uri === "string" ? asset.uri.trim() : "";
+    if (!metadataUri) return [];
+    const parsed = corePackInfoFromMetadataUri(metadataUri, asset.name);
+    if (!parsed) return [];
+    return [{
+      ...parsed,
+      ownerWalletAddress: String(owner),
+      assetAddress: String(asset.publicKey),
+      metadataUri,
+      name: typeof asset.name === "string" && asset.name.trim() ? asset.name.trim() : "Ruby High Pack",
+    }];
+  });
+}
+
 export async function createCorePackCollection(): Promise<CoreCollectionCreateResult> {
   const config = readCollectionCreateConfig();
   const umi = createUmi(config.rpcUrl).use(mplCore());
@@ -489,6 +544,55 @@ function readCoreMintConfig(): {
     rpcUrl: status.rpcUrl,
     symbol: status.symbol,
     collectionAddress: status.collectionAddress,
+  };
+}
+
+function readCoreSyncConfig(): {
+  rpcUrl: string;
+  collectionAddress: string;
+} {
+  const collectionAddress = cleanEnv(process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS);
+  if (!collectionAddress) throw new Error("RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS is not set.");
+  return {
+    rpcUrl: nftRpcUrl(process.env),
+    collectionAddress: cleanSolanaAddress(collectionAddress, "Core collection address"),
+  };
+}
+
+function coreAssetCollectionAddress(updateAuthority: unknown): string {
+  const value = updateAuthority as { __kind?: string; fields?: unknown[]; type?: string; address?: unknown };
+  if (value?.type === "Collection" && value.address) return String(value.address);
+  if (value?.__kind === "Collection" && Array.isArray(value.fields)) return String(value.fields[0] ?? "");
+  return "";
+}
+
+function corePackInfoFromMetadataUri(metadataUri: string, name?: string): {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: number;
+} | null {
+  let url: URL;
+  try {
+    url = new URL(metadataUri);
+  } catch (_err) {
+    return null;
+  }
+  const match = url.pathname.match(/\/metadata\/core\/pack\/([^/]+)\/([^/]+)\.json$/);
+  if (!match) return null;
+  const productId = cleanProductId(decodeURIComponent(match[1] ?? "card-pack-1"));
+  const serial = Math.max(1, Math.floor(Number(decodeURIComponent(match[2] ?? "1"))));
+  const productPackMatch = productId.match(/^card-pack-(\d+)$/);
+  const namedPackMatch = typeof name === "string" ? name.match(/Ruby High\s+(\d+)-Pack/i) : null;
+  const inferredPackCount = productPackMatch ? Number(productPackMatch[1]) : namedPackMatch ? Number(namedPackMatch[1]) : 1;
+  const packCount = Math.max(1, Math.floor(Number(url.searchParams.get("packs") ?? inferredPackCount)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(url.searchParams.get("cards") ?? packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  return {
+    productId,
+    packCount,
+    cardCount,
+    serial: Number.isFinite(serial) ? serial : 1,
   };
 }
 

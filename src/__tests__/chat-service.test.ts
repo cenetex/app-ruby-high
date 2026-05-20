@@ -747,6 +747,31 @@ describe("ChatService.send — message composition", () => {
     expect(tool.tool).toBe("pick_from_bank");
   });
 
+  it("does not stream or persist provider-emitted XML tool tags as chat text", async () => {
+    mockOpenRouter(buildSseChunk([
+      { content: "Right, Vince has the textbook answer.\n\n<pick_" },
+      { content: "from_bank>\n</pick_from_bank>\nBack to the board.", finish: "stop" },
+    ]));
+    const { chat } = await makeServices();
+    const events: any[] = [];
+    for await (const ev of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-xml-leak",
+      agentSessionId: "session:xml-leak",
+      faculty: "science",
+      systemEventNote: "EVENT: answer was graded.",
+    })) {
+      events.push(ev);
+    }
+
+    const streamed = events.filter((e) => e.type === "delta").map((e) => e.text).join("");
+    expect(streamed).toContain("Right, Vince has the textbook answer.");
+    expect(streamed).toContain("Back to the board.");
+    expect(streamed).not.toContain("pick_from_bank");
+    const history = chat.history({ sessionToken: "t-xml-leak", faculty: "science" });
+    expect(history.find((m) => m.role === "assistant")?.content).not.toContain("pick_from_bank");
+  });
+
   it("can suppress opinion tools for manual practice advance turns", async () => {
     mockOpenRouter(buildSseChunk([{ content: "Practice time.", finish: "stop" }]));
     const { chat } = await makeServices();
