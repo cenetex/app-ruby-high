@@ -152,6 +152,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, 'setBillingStatus("Starting crypto checkout...", false)');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
+    expect(PRIVY_CLIENT_SOURCE).toContain('useSignTransaction');
+    expect(PRIVY_CLIENT_SOURCE).toContain('/billing/solana/submit');
     expect(script).not.toContain('buy.textContent = "Pay with wallet"');
     expect(script).not.toContain("if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0)");
     expect(script).not.toContain("Solana transaction signature");

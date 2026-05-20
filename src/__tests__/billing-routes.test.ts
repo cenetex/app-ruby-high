@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleBillingRoutes } from "../routes/billing.js";
 import type { RouteContext } from "../routes/context.js";
@@ -138,6 +139,32 @@ function stubCorePackPurchaseBuilderForTest(opts: {
       rpcUrl: opts.rpcUrl ?? process.env.RUBY_HIGH_SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
     };
   });
+}
+
+function signedCheckoutTransactionForTest(input: {
+  ownerWalletAddress: string;
+  recipient: string;
+  mint: string;
+  reference: string;
+  packAssetAddress: string;
+}): string {
+  const owner = new PublicKey(input.ownerWalletAddress);
+  const transaction = new Transaction({
+    feePayer: owner,
+    recentBlockhash: "11111111111111111111111111111111",
+  });
+  transaction.add(new TransactionInstruction({
+    programId: new PublicKey("11111111111111111111111111111111"),
+    keys: [
+      { pubkey: owner, isSigner: true, isWritable: true },
+      { pubkey: new PublicKey(input.recipient), isSigner: false, isWritable: true },
+      { pubkey: new PublicKey(input.mint), isSigner: false, isWritable: false },
+      { pubkey: new PublicKey(input.reference), isSigner: false, isWritable: false },
+      { pubkey: new PublicKey(input.packAssetAddress), isSigner: false, isWritable: true },
+    ],
+    data: Buffer.alloc(0),
+  }));
+  return transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
 }
 
 beforeEach(async () => {
@@ -518,6 +545,20 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.error).toContain("Connect a Solana wallet");
   });
 
+  it("rejects using the Ruby High treasury wallet as the pack buyer", async () => {
+    signInUser("solana-quote-treasury-wallet");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/quote",
+      cookie: "rh_session=solana-quote-treasury-wallet",
+      body: { productId: "card-pack-1", ownerWalletAddress: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY" },
+    }), deps());
+
+    expect(lastResponse?.status).toBe(400);
+    expect(lastResponse?.body.error).toContain("buyer wallet");
+  });
+
   it("quotes every pack at 100,000 $RUBY with a session payment reference", async () => {
     const stateKey = signInUser("solana-quote");
     stubCorePackPurchaseBuilderForTest({
@@ -635,6 +676,62 @@ describe("Solana Hall Pass billing", () => {
       transactionBase64: "AQID",
       transactionEncoding: "base64",
       chain: "solana:mainnet",
+    });
+  });
+
+  it("submits a wallet-signed pack transaction through the configured Solana RPC", async () => {
+    signInUser("solana-submit-signed");
+    stubCorePackPurchaseBuilderForTest();
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/quote",
+      cookie: "rh_session=solana-submit-signed",
+      body: { productId: "card-pack-1", ownerWalletAddress: TEST_SOLANA_OWNER },
+    }), deps());
+    const reference = String(lastResponse?.body.reference ?? "");
+    const signature = "4".repeat(88);
+    const signedTransactionBase64 = signedCheckoutTransactionForTest({
+      ownerWalletAddress: TEST_SOLANA_OWNER,
+      recipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      reference,
+      packAssetAddress: TEST_PACK_ASSET,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body ?? "{}"));
+      expect(payload.method).toBe("sendTransaction");
+      expect(payload.params[0]).toBe(signedTransactionBase64);
+      expect(payload.params[1]).toMatchObject({
+        encoding: "base64",
+        maxRetries: 5,
+        preflightCommitment: "confirmed",
+        skipPreflight: false,
+      });
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: "ruby-high-solana-submit",
+        result: signature,
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/submit",
+      cookie: "rh_session=solana-submit-signed",
+      body: {
+        productId: "card-pack-1",
+        ownerWalletAddress: TEST_SOLANA_OWNER,
+        packAssetAddress: TEST_PACK_ASSET,
+        signedTransactionBase64,
+      },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { ok: true, signature },
     });
   });
 

@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import type { AuthService } from "../services/auth-service.js";
 import { log } from "../services/logger.js";
 import { RubyHighService, type HallPassCardBurnInput } from "../services/ruby-high-service.js";
@@ -446,6 +447,58 @@ async function fetchSolanaTransaction(config: SolanaBillingConfig, signature: st
     throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
   }
   return payload.result ?? null;
+}
+
+function signedSolanaTransactionAccountKeys(transactionBase64: string): string[] {
+  const raw = transactionBase64.trim();
+  if (!raw || raw.length > 4096 || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
+    throw new Error("Signed Solana transaction is missing or invalid.");
+  }
+  const bytes = Buffer.from(raw, "base64");
+  if (bytes.length <= 0 || bytes.length > 1232) throw new Error("Signed Solana transaction is invalid.");
+  try {
+    const transaction = VersionedTransaction.deserialize(bytes);
+    return transaction.message.getAccountKeys().staticAccountKeys.map((key) => key.toBase58());
+  } catch {
+    const transaction = Transaction.from(bytes);
+    return transaction.compileMessage().accountKeys.map((key) => key.toBase58());
+  }
+}
+
+function requireSignedTransactionAccounts(transactionBase64: string, accounts: string[]): void {
+  const present = new Set(signedSolanaTransactionAccountKeys(transactionBase64));
+  const missing = accounts.filter((account) => account && !present.has(account));
+  if (missing.length > 0) {
+    throw new Error("Signed Solana transaction does not match this Ruby High checkout.");
+  }
+}
+
+async function submitSignedSolanaTransaction(config: SolanaBillingConfig, transactionBase64: string): Promise<string> {
+  const response = await fetch(config.rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-solana-submit",
+      method: "sendTransaction",
+      params: [
+        transactionBase64.trim(),
+        {
+          encoding: "base64",
+          maxRetries: 5,
+          preflightCommitment: "confirmed",
+          skipPreflight: false,
+        },
+      ],
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as SolanaRpcResponse<string>;
+  if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
+  if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
+  if (!payload.result || !isSolanaSignature(payload.result)) {
+    throw new Error("Solana RPC did not return a transaction signature.");
+  }
+  return payload.result;
 }
 
 async function verifySolanaPayment(
@@ -1061,6 +1114,10 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ctx.error(ctx.res, "Connect a Solana wallet before minting a pack.", 400);
       return true;
     }
+    if (ownerWalletAddress === solana.recipient) {
+      ctx.error(ctx.res, "Use a buyer wallet, not the Ruby High treasury wallet, to mint a pack.", 400);
+      return true;
+    }
     const reference = solanaPaymentReference(stateKey, product.id);
     let preparedTransaction;
     try {
@@ -1100,6 +1157,78 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       reference,
       solanaPayUrl: solanaPayUrl(solana, product, reference),
     });
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/submit`) {
+    const solana = solanaBillingConfig();
+    if (!solana.configured) {
+      ctx.error(ctx.res, "Solana card billing is not configured.", 503);
+      return true;
+    }
+    const packNfts = publicCorePackNftStatus();
+    if (!packNfts.configured) {
+      ctx.error(ctx.res, packNfts.reason || "Pack NFT minting is not configured.", 503);
+      return true;
+    }
+    const stateKey = authenticatedStateKey(ctx, deps);
+    if (!stateKey) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
+    if (!product) {
+      ctx.error(ctx.res, "Unknown Solana card pack.", 400);
+      return true;
+    }
+    const ownerWalletAddress = typeof body.ownerWalletAddress === "string" && isBase58Address(body.ownerWalletAddress.trim())
+      ? body.ownerWalletAddress.trim()
+      : "";
+    const packAssetAddress = typeof body.packAssetAddress === "string" && isBase58Address(body.packAssetAddress.trim())
+      ? body.packAssetAddress.trim()
+      : "";
+    const signedTransactionBase64 = typeof body.signedTransactionBase64 === "string" ? body.signedTransactionBase64.trim() : "";
+    if (!ownerWalletAddress) {
+      ctx.error(ctx.res, "Solana wallet address is required to submit the pack checkout.", 400);
+      return true;
+    }
+    if (ownerWalletAddress === solana.recipient) {
+      ctx.error(ctx.res, "Use a buyer wallet, not the Ruby High treasury wallet, to mint a pack.", 400);
+      return true;
+    }
+    if (!packAssetAddress) {
+      ctx.error(ctx.res, "Solana pack checkout is missing the prepared pack NFT. Refresh Ruby High and try again.", 400);
+      return true;
+    }
+    try {
+      const reference = solanaPaymentReference(stateKey, product.id);
+      requireSignedTransactionAccounts(signedTransactionBase64, [
+        ownerWalletAddress,
+        solana.recipient,
+        solana.mint,
+        reference,
+        packAssetAddress,
+      ]);
+      const signature = await submitSignedSolanaTransaction(solana, signedTransactionBase64);
+      ctx.json(ctx.res, { ok: true, signature });
+      log.event("billing.solana.transaction-submitted", {
+        sessionId: stateKey,
+        productId: product.id,
+        signature,
+        ownerWalletAddress,
+        packAssetAddress,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error("billing.solana.submit-failed", err, {
+        sessionId: stateKey,
+        productId: product.id,
+        ownerWalletAddress,
+        packAssetAddress,
+      });
+      ctx.error(ctx.res, message, /rpc|blockhash|simulation|preflight|insufficient funds|Attempt to debit/i.test(message) ? 502 : 400);
+    }
     return true;
   }
 

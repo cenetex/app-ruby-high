@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
-import { VersionedTransaction } from "@solana/web3.js";
+import { Transaction } from "@solana/web3.js";
 import { buildCorePackPurchaseTransaction } from "../services/core-pack-nfts.js";
 
 const ORIGINAL_ENV = {
@@ -50,18 +50,22 @@ describe("Core pack NFT checkout transactions", () => {
         lastValidBlockHeight: 1,
       },
     });
-    const transaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
-    const accountKeys = transaction.message.staticAccountKeys.map((key) => key.toBase58());
-    const instructions = transaction.message.compiledInstructions.map((ix) => ({
+    const transaction = Transaction.from(Buffer.from(prepared.transactionBase64, "base64"));
+    const message = transaction.compileMessage();
+    const accountKeys = message.accountKeys.map((key) => key.toBase58());
+    const instructions = message.instructions.map((ix) => ({
       program: accountKeys[ix.programIdIndex],
-      data: Buffer.from(ix.data),
-      accounts: ix.accountKeyIndexes.map((index) => accountKeys[index]),
+      accounts: ix.accounts.map((index) => accountKeys[index]),
     }));
-    const createDestinationAta = instructions.find((ix) => ix.program === "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" && ix.data[0] === 1);
-    const tokenTransfer = instructions.find((ix) => ix.program === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" && ix.data[0] === 12);
+    const createDestinationAta = instructions.find((ix) => ix.program === "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+    const tokenTransfer = instructions.find((ix) => (
+      ix.program === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      && ix.accounts.includes(sourceTokenAccountAddress)
+      && ix.accounts.includes(ownerWalletAddress)
+    ));
 
-    expect(transaction.signatures[0]?.every((byte) => byte === 0)).toBe(true);
-    expect(transaction.signatures.some((signature) => signature.some((byte) => byte !== 0))).toBe(true);
+    expect(transaction.signatures[0]?.signature).toBeNull();
+    expect(transaction.signatures.some((signature) => signature.signature != null)).toBe(true);
     expect(instructions.map((ix) => ix.program)).toEqual(expect.arrayContaining([
       "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

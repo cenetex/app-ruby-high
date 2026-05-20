@@ -379,7 +379,8 @@ export async function buildCorePackPurchaseTransaction(
       { instruction: createDestinationAta, signers: [], bytesCreatedOnChain: 0 },
       { instruction: transfer, signers: [], bytesCreatedOnChain: 0 },
     ])
-    .setFeePayer(ownerSigner);
+    .setFeePayer(ownerSigner)
+    .useLegacyVersion();
   const transaction = input.latestBlockhash
     ? builder.setBlockhash(input.latestBlockhash).build(umi)
     : await builder.buildWithLatestBlockhash(umi);

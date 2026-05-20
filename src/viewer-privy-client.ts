@@ -12,6 +12,7 @@ import {
   type WalletListEntry,
 } from "@privy-io/react-auth";
 import {
+  useSignTransaction,
   useSignAndSendTransaction,
   useWallets as useSolanaWallets,
   toSolanaWalletConnectors,
@@ -53,6 +54,8 @@ interface SolanaPaymentQuote {
   transaction?: string;
   transactionBase64?: string;
   chain?: "solana:mainnet" | "solana:devnet" | "solana:testnet";
+  assetAddress?: string;
+  metadataUri?: string;
 }
 
 interface SolanaPaymentResult {
@@ -190,6 +193,7 @@ function RubyHighPrivyBridge(props: {
   const privy = usePrivy();
   const modal = useModalStatus();
   const solanaWallets = useSolanaWallets();
+  const { signTransaction } = useSignTransaction();
   const { signAndSendTransaction } = useSignAndSendTransaction();
   const pendingLogin = useRef<PendingLogin | null>(null);
   const pendingWalletConnect = useRef<PendingLogin | null>(null);
@@ -253,16 +257,17 @@ function RubyHighPrivyBridge(props: {
       throw new Error("Pack checkout is missing its NFT transaction. Refresh Ruby High and try again.");
     }
     const transaction = base64Decode(quote.transactionBase64 || quote.transaction || "");
-    const result = await signAndSendTransaction({
+    const signed = await signTransaction({
       transaction,
       wallet,
       chain: quote.chain || "solana:mainnet",
     });
+    const submitted = await submitSignedSolanaQuote(quote, signedTransactionBytes(signed), wallet.address);
     return {
-      signature: base58Encode(result.signature),
+      signature: submitted.signature,
       walletAddress: wallet.address,
     };
-  }, [privy.authenticated, privy.ready, signAndSendTransaction, solanaWallets.ready]);
+  }, [privy.authenticated, privy.ready, signTransaction, solanaWallets.ready]);
 
   const signAndSendSolanaPreparedTransaction = useCallback(async (
     prepared: SolanaPreparedTransaction,
@@ -488,6 +493,12 @@ function base58Encode(bytes: Uint8Array): string {
   return out || "1";
 }
 
+function base64Encode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return window.btoa(binary);
+}
+
 function base64Decode(value: string): Uint8Array {
   const clean = value.trim();
   if (!clean) throw new Error("Solana transaction is missing.");
@@ -495,6 +506,41 @@ function base64Decode(value: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function signedTransactionBytes(result: unknown): Uint8Array {
+  if (result instanceof Uint8Array) return result;
+  if (result && typeof result === "object") {
+    const record = result as Record<string, unknown>;
+    const signed = record.signedTransaction ?? record.transaction;
+    if (signed instanceof Uint8Array) return signed;
+    if (typeof signed === "string") return base64Decode(signed);
+  }
+  throw new Error("Wallet did not return a signed Solana transaction.");
+}
+
+async function submitSignedSolanaQuote(
+  quote: SolanaPaymentQuote,
+  signedTransaction: Uint8Array,
+  walletAddress: string,
+): Promise<{ signature: string }> {
+  const response = await fetch("/api/apps/ruby-high/billing/solana/submit", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      productId: quote.product?.id || "",
+      ownerWalletAddress: walletAddress,
+      packAssetAddress: quote.assetAddress || null,
+      packMetadataUri: quote.metadataUri || null,
+      signedTransactionBase64: base64Encode(signedTransaction),
+    }),
+  });
+  const data = await response.json().catch(() => ({})) as { ok?: boolean; signature?: string; error?: string };
+  if (!response.ok || !data?.ok || !data.signature) {
+    throw new Error(data?.error || `Solana submit ${response.status}`);
+  }
+  return { signature: data.signature };
 }
 
 function ensureHost(): HTMLElement {
