@@ -12,7 +12,6 @@ import {
   type CorePackPurchaseTransactionResult,
   deterministicCorePackMintForTest,
   setCorePackNftMinterForTest,
-  setCorePackNftVerifierForTest,
   setCorePackPurchaseTransactionBuilderForTest,
 } from "../services/core-pack-nfts.js";
 import { setHallPassNftBurnVerifierForTest } from "../services/hall-pass-nfts.js";
@@ -50,7 +49,6 @@ const ORIGINAL_ENV = {
 
 let restoreCorePackMinter: (() => void) | null = null;
 let restoreCorePackPurchaseBuilder: (() => void) | null = null;
-let restoreCorePackVerifier: (() => void) | null = null;
 let restoreHallPassBurnVerifier: (() => void) | null = null;
 const TEST_SOLANA_OWNER = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
 const TEST_PACK_ASSET = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
@@ -107,11 +105,7 @@ function signInUser(token: string): string {
 }
 
 function emptyWelcomeHallPasses(stateKey: string): void {
-  ruby.revokeHallPasses(stateKey, {
-    amount: WELCOME_HALL_PASS_GRANT,
-    idempotencyKey: `test:empty-welcome:${stateKey}`,
-    source: "admin",
-  });
+  expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
 }
 
 function stripeSignature(rawBody: string, secret: string, timestamp = Math.floor(Date.now() / 1000)): string {
@@ -131,8 +125,8 @@ function stubCorePackPurchaseBuilderForTest(opts: {
     if (opts.expected) expect(input).toMatchObject(opts.expected);
     return {
       ownerWalletAddress: input.ownerWalletAddress,
-      assetAddress: opts.assetAddress ?? TEST_PACK_ASSET,
-      metadataUri: opts.metadataUri ?? `https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/${input.productId}/123456.json?packs=${input.packCount}&cards=${input.cardCount}`,
+      ...(opts.assetAddress ? { assetAddress: opts.assetAddress } : {}),
+      ...(opts.metadataUri ? { metadataUri: opts.metadataUri } : {}),
       sourceTokenAccountAddress: TEST_SOURCE_TOKEN_ACCOUNT,
       destinationTokenAccountAddress: TEST_DESTINATION_TOKEN_ACCOUNT,
       transactionBase64: "AQID",
@@ -148,7 +142,6 @@ function signedCheckoutTransactionForTest(input: {
   recipient: string;
   mint: string;
   reference: string;
-  packAssetAddress: string;
 }): string {
   const owner = new PublicKey(input.ownerWalletAddress);
   const transaction = new Transaction({
@@ -162,7 +155,6 @@ function signedCheckoutTransactionForTest(input: {
       { pubkey: new PublicKey(input.recipient), isSigner: false, isWritable: true },
       { pubkey: new PublicKey(input.mint), isSigner: false, isWritable: false },
       { pubkey: new PublicKey(input.reference), isSigner: false, isWritable: false },
-      { pubkey: new PublicKey(input.packAssetAddress), isSigner: false, isWritable: true },
     ],
     data: Buffer.alloc(0),
   }));
@@ -210,11 +202,9 @@ afterEach(async () => {
   restoreEnv();
   if (restoreCorePackMinter) restoreCorePackMinter();
   if (restoreCorePackPurchaseBuilder) restoreCorePackPurchaseBuilder();
-  if (restoreCorePackVerifier) restoreCorePackVerifier();
   if (restoreHallPassBurnVerifier) restoreHallPassBurnVerifier();
   restoreCorePackMinter = null;
   restoreCorePackPurchaseBuilder = null;
-  restoreCorePackVerifier = null;
   restoreHallPassBurnVerifier = null;
   vi.restoreAllMocks();
   await auth.stop();
@@ -255,6 +245,7 @@ describe("billing products", () => {
     expect(lastResponse?.body.courseSlotCost).toBe(3);
     expect(lastResponse?.body.questionGenerationCost).toBe(1);
     expect(lastResponse?.body.moreQuestionsCount).toBe(6);
+    expect(lastResponse?.body.cardBurn).toEqual({ hallPassesPerCard: 5 });
     expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: false, cost: 1, durationMs: 604_800_000 });
     expect(lastResponse?.body.entitlements).toMatchObject({
       hallPasses: 0,
@@ -285,15 +276,52 @@ describe("billing products", () => {
     expect(handled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.entitlements).toMatchObject({
-      hallPasses: 7,
+      hallPasses: 2,
       hosted_ai: { configured: true, active: false, affordable: true, canActivate: true, cost: 1 },
       hosted_images: {
         portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
-        diploma: { configured: true, cost: 3, affordable: true, canUseHosted: true },
+        diploma: { configured: true, cost: 3, affordable: false, canUseHosted: false },
       },
       creator: { courseSlotCost: 3, questionGenerationCost: 1, moreQuestionsCount: 6 },
     });
     expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: true, active: false, cost: 1 });
+  });
+
+  it("claims the welcome Hall Pass grant from the Hall Pass page once", async () => {
+    const stateKey = signInUser("welcome-claim");
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/welcome",
+      cookie: "rh_session=welcome-claim",
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        applied: true,
+        amount: WELCOME_HALL_PASS_GRANT,
+        hallPasses: WELCOME_HALL_PASS_GRANT,
+      },
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/welcome",
+      cookie: "rh_session=welcome-claim",
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        applied: false,
+        amount: WELCOME_HALL_PASS_GRANT,
+        hallPasses: WELCOME_HALL_PASS_GRANT,
+      },
+    });
   });
 });
 
@@ -314,13 +342,13 @@ describe("AI Access", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body).toMatchObject({ ok: true, applied: true, hallPassCost: 1, hallPasses: 6 });
+    expect(lastResponse?.body).toMatchObject({ ok: true, applied: true, hallPassCost: 1, hallPasses: 1 });
     expect(lastResponse?.body.entitlements).toMatchObject({
-      hallPasses: 6,
+      hallPasses: 1,
       hosted_ai: { configured: true, active: true, affordable: true, canActivate: false },
       hosted_images: {
         portrait: { configured: true, affordable: true },
-        diploma: { configured: true, affordable: true },
+        diploma: { configured: true, affordable: false },
       },
     });
     const firstExpiry = Number(lastResponse?.body.expiresAt);
@@ -333,10 +361,10 @@ describe("AI Access", () => {
       cookie: "rh_session=ai-pass-alice",
     }), deps());
 
-    expect(lastResponse?.body).toMatchObject({ ok: true, applied: false, hallPassCost: 1, hallPasses: 6 });
+    expect(lastResponse?.body).toMatchObject({ ok: true, applied: false, hallPassCost: 1, hallPasses: 1 });
     expect(lastResponse?.body.hosted_ai).toMatchObject({ configured: true, active: true });
     expect(lastResponse?.body.expiresAt).toBe(firstExpiry);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
   });
 
   it("returns authenticated hosted entitlement status", async () => {
@@ -358,10 +386,10 @@ describe("AI Access", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       ok: true,
-      hallPasses: 8,
+      hallPasses: 3,
       hosted_ai: { configured: true, active: false, affordable: true, canActivate: true },
       entitlements: {
-        hallPasses: 8,
+        hallPasses: 3,
         hosted_images: {
           portrait: { canUseHosted: true },
           diploma: { canUseHosted: true },
@@ -457,8 +485,8 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 55, amount: 50 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(55);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 50, amount: 50 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(50);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1") ?? []).toHaveLength(0);
 
     await handleBillingRoutes(makeCtx({
@@ -468,8 +496,8 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 55, amount: 50 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(55);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 50, amount: 50 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(50);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1") ?? []).toHaveLength(0);
   });
 
@@ -507,7 +535,7 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse?.status).toBe(400);
     expect(lastResponse?.body.error).toContain("amount does not match");
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
   });
 
   it("rejects invalid Stripe signatures without mutating a wallet", async () => {
@@ -533,12 +561,12 @@ describe("Stripe webhook", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(400);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
   });
 });
 
 describe("card burn Hall Pass conversion", () => {
-  it("credits one Hall Pass per owner-signed card burn", async () => {
+  it("credits five Hall Passes per owner-signed card burn", async () => {
     const stateKey = signInUser("card-burn-credit");
     const grant = ruby.grantHallPassCards(stateKey, {
       cardCount: 2,
@@ -574,8 +602,9 @@ describe("card burn Hall Pass conversion", () => {
       body: {
         ok: true,
         applied: true,
-        amount: 1,
-        hallPasses: 6,
+        amount: 5,
+        hallPassesPerCard: 5,
+        hallPasses: 5,
       },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.find((candidate) => candidate.id === card.id)).toMatchObject({
@@ -650,7 +679,6 @@ describe("Solana Hall Pass billing", () => {
         tokenSymbol: "RUBY",
       },
       ownerWalletAddress: TEST_SOLANA_OWNER,
-      assetAddress: TEST_PACK_ASSET,
     });
     expect(lastResponse?.body.reference).toEqual(expect.any(String));
     expect(lastResponse?.body.reference).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
@@ -658,7 +686,8 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.solanaPayUrl).toContain("spl-token=ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump");
     expect(lastResponse?.body.solanaPayUrl).toContain(`reference=${lastResponse?.body.reference}`);
     expect(lastResponse?.body.transactionBase64).toBe("AQID");
-    expect(lastResponse?.body.assetAddress).toEqual(expect.any(String));
+    expect(lastResponse?.body.assetAddress).toBeUndefined();
+    expect(lastResponse?.body.metadataUri).toBeUndefined();
     expect(lastResponse?.body.rpcUrl).toBeUndefined();
     expect(stateKey).toBe("rh:user:billing-solana-quote");
   });
@@ -686,7 +715,7 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.rpcUrl).toBeUndefined();
   });
 
-  it("prepares an atomic token payment and Pack NFT mint when a Solana wallet is supplied", async () => {
+  it("prepares a wallet-only token payment when a Solana wallet is supplied", async () => {
     const ownerWalletAddress = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
     restoreCorePackPurchaseBuilder = setCorePackPurchaseTransactionBuilderForTest(async (input) => {
       expect(input).toMatchObject({
@@ -704,8 +733,6 @@ describe("Solana Hall Pass billing", () => {
       expect(input.paymentReference).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
       return {
         ownerWalletAddress,
-        assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
-        metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5",
         sourceTokenAccountAddress: "FNhC7aog7542La3isBvGF5fd1myzahUwAyUWfoNNHhYV",
         destinationTokenAccountAddress: "3brqp4DSMX92bCRhSDYNowFr1zGbcR7DVA5jMdUKiwyh",
         transactionBase64: "AQID",
@@ -727,11 +754,11 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body).toMatchObject({
       ok: true,
       ownerWalletAddress,
-      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
       transactionBase64: "AQID",
       transactionEncoding: "base64",
       chain: "solana:mainnet",
     });
+    expect(lastResponse?.body.assetAddress).toBeUndefined();
   });
 
   it("submits a wallet-signed pack transaction through the configured Solana RPC", async () => {
@@ -750,7 +777,6 @@ describe("Solana Hall Pass billing", () => {
       recipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
       mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       reference,
-      packAssetAddress: TEST_PACK_ASSET,
     });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const payload = JSON.parse(String(init?.body ?? "{}"));
@@ -789,7 +815,6 @@ describe("Solana Hall Pass billing", () => {
       body: {
         productId: "card-pack-1",
         ownerWalletAddress: TEST_SOLANA_OWNER,
-        packAssetAddress: TEST_PACK_ASSET,
         signedTransactionBase64,
       },
     }), deps());
@@ -801,55 +826,52 @@ describe("Solana Hall Pass billing", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects Solana confirmations that are missing the prepared Pack NFT", async () => {
+  it("rejects Solana confirmations that are missing the connected wallet", async () => {
     signInUser("solana-paid");
-    const ownerWalletAddress = TEST_SOLANA_OWNER;
     const signature = "2".repeat(88);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-paid",
-      body: { productId: "card-pack-5", signature, ownerWalletAddress },
+      body: { productId: "card-pack-5", signature },
     }), deps());
 
     expect(lastResponse?.status).toBe(400);
-    expect(lastResponse?.body.error).toContain("prepared pack NFT");
+    expect(lastResponse?.body.error).toContain("Solana wallet address");
   });
 
-  it("records an atomically minted Pack NFT from the payment transaction", async () => {
-    const stateKey = signInUser("solana-atomic-paid");
+  it("records a server-minted Pack NFT after verifying the payment transaction", async () => {
+    const stateKey = signInUser("solana-server-mint-paid");
     const ownerWalletAddress = TEST_SOLANA_OWNER;
     const packAssetAddress = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     const packMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-3/456789.json?packs=3&cards=15";
+    const packMintSignature = "6".repeat(88);
     stubCorePackPurchaseBuilderForTest({
       expected: {
         productId: "card-pack-3",
         ownerWalletAddress,
       },
-      assetAddress: packAssetAddress,
-      metadataUri: packMetadataUri,
     });
-    restoreCorePackVerifier = setCorePackNftVerifierForTest(async (input) => {
+    restoreCorePackMinter?.();
+    restoreCorePackMinter = setCorePackNftMinterForTest(async (input) => {
       expect(input).toMatchObject({
         productId: "card-pack-3",
         packCount: 3,
         cardCount: 15,
         ownerWalletAddress,
-        assetAddress: packAssetAddress,
-        metadataUri: packMetadataUri,
       });
       return {
         ownerWalletAddress,
         assetAddress: packAssetAddress,
-        mintSignature: input.paymentSignature,
+        mintSignature: packMintSignature,
         metadataUri: packMetadataUri,
       };
     });
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/quote",
-      cookie: "rh_session=solana-atomic-paid",
+      cookie: "rh_session=solana-server-mint-paid",
       body: { productId: "card-pack-3", ownerWalletAddress },
     }), deps());
     const reference = lastResponse?.body.reference;
@@ -881,7 +903,7 @@ describe("Solana Hall Pass billing", () => {
         },
         transaction: {
           signatures: [signature],
-          message: { accountKeys: [{ pubkey: reference }, { pubkey: packAssetAddress }] },
+          message: { accountKeys: [{ pubkey: reference }] },
         },
       },
     }), {
@@ -892,13 +914,11 @@ describe("Solana Hall Pass billing", () => {
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
-      cookie: "rh_session=solana-atomic-paid",
+      cookie: "rh_session=solana-server-mint-paid",
       body: {
         productId: "card-pack-3",
         signature,
         ownerWalletAddress,
-        packAssetAddress,
-        packMetadataUri,
       },
     }), deps());
 
@@ -913,7 +933,7 @@ describe("Solana Hall Pass billing", () => {
         packCount: 3,
         cardCount: 15,
         packAssetAddress,
-        packMintSignature: signature,
+        packMintSignature,
         packMetadataUri,
       },
     });
@@ -921,7 +941,7 @@ describe("Solana Hall Pass billing", () => {
       source: "solana",
       metadata: {
         packAssetAddress,
-        packMintSignature: signature,
+        packMintSignature,
         packMetadataUri,
         solanaReference: reference,
       },
@@ -930,26 +950,23 @@ describe("Solana Hall Pass billing", () => {
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
-      cookie: "rh_session=solana-atomic-paid",
+      cookie: "rh_session=solana-server-mint-paid",
       body: {
         productId: "card-pack-3",
         signature,
         ownerWalletAddress,
-        packAssetAddress,
-        packMetadataUri,
       },
     }), deps());
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { ok: true, applied: false, sessionId: stateKey, amount: 15, hallPasses: 5 },
+      body: { ok: true, applied: false, sessionId: stateKey, amount: 15, hallPasses: 0 },
     });
   });
 
   it("rejects a transaction that is missing the quoted payment reference", async () => {
     signInUser("solana-wrong-ref");
     const signature = "3".repeat(88);
-    const packAssetAddress = TEST_PACK_ASSET;
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({
       jsonrpc: "2.0",
       id: "ruby-high-solana-billing",
@@ -973,12 +990,12 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-wrong-ref",
-      body: { productId: "card-pack-5", signature, ownerWalletAddress: TEST_SOLANA_OWNER, packAssetAddress },
+      body: { productId: "card-pack-5", signature, ownerWalletAddress: TEST_SOLANA_OWNER },
     }), deps());
 
     expect(lastResponse?.status).toBe(400);
     expect(lastResponse?.body.error).toContain("payment reference");
-    expect(ruby.getOrCreate("rh:user:billing-solana-wrong-ref").wallet.hallPasses).toBe(5);
+    expect(ruby.getOrCreate("rh:user:billing-solana-wrong-ref").wallet.hallPasses).toBe(0);
   });
 });
 
@@ -1021,9 +1038,9 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 25 },
+      body: { received: true, applied: true, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 20 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(25);
+    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(20);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
@@ -1034,9 +1051,9 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: false, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 25 },
+      body: { received: true, applied: false, sessionId: "rh:user:rc-alice", amount: 20, hallPasses: 20 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(25);
+    expect(ruby.getOrCreate("rh:user:rc-alice").wallet.hallPasses).toBe(20);
   });
 
   it("reverses Hall Passes only for a matching RevenueCat purchase", async () => {
@@ -1063,7 +1080,7 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: stateKey, amount: 20, hallPasses: 25 },
+      body: { received: true, applied: true, sessionId: stateKey, amount: 20, hallPasses: 20 },
     });
 
     await handleBillingRoutes(makeCtx({
@@ -1087,14 +1104,19 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: stateKey, amount: -20, hallPasses: 5 },
+      body: { received: true, applied: true, sessionId: stateKey, amount: -20, hallPasses: 0 },
     });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
   });
 
   it("does not debit unrelated Hall Passes for an unmatched RevenueCat cancellation", async () => {
     process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
     const stateKey = "rh:user:rc-orphan-refund";
+    ruby.grantHallPasses(stateKey, {
+      amount: 5,
+      idempotencyKey: "test:orphan-refund-unrelated-balance",
+      source: "admin",
+    });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
 
     await handleBillingRoutes(makeCtx({
@@ -1170,7 +1192,7 @@ describe("RevenueCat webhook", () => {
       applied: false,
       amount: 0,
       requestedAmount: -20,
-      hallPasses: 5,
+      hallPasses: 0,
       reason: "missing-original-grant",
     });
 
@@ -1197,11 +1219,11 @@ describe("RevenueCat webhook", () => {
         sessionId: stateKey,
         amount: 0,
         requestedAmount: 20,
-        hallPasses: 5,
+        hallPasses: 0,
         reason: "transaction-already-refunded",
       },
     });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
     expect(ruby.walletTransaction(stateKey, "revenuecat:reversal:tx_rc_refund_first_20:HLP")).toMatchObject({
       kind: "hall-pass-revoke",
       hallPasses: 0,
@@ -1212,6 +1234,11 @@ describe("RevenueCat webhook", () => {
   it("reports the actual RevenueCat reversal delta when the wallet has fewer Hall Passes than the refund", async () => {
     process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
     const stateKey = "rh:user:rc-partial-refund";
+    ruby.grantHallPasses(stateKey, {
+      amount: 5,
+      idempotencyKey: "test:partial-refund-unrelated-balance",
+      source: "admin",
+    });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
 
     await handleBillingRoutes(makeCtx({
@@ -1306,8 +1333,8 @@ describe("RevenueCat webhook", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { received: true, applied: true, sessionId: "rh:user:rc-vc", amount: 5, hallPasses: 10 },
+      body: { received: true, applied: true, sessionId: "rh:user:rc-vc", amount: 5, hallPasses: 5 },
     });
-    expect(ruby.getOrCreate("rh:user:rc-vc").wallet.hallPasses).toBe(10);
+    expect(ruby.getOrCreate("rh:user:rc-vc").wallet.hallPasses).toBe(5);
   });
 });

@@ -472,6 +472,7 @@ export function runViewerClient(bootstrap) {
     "location-homeroom", "location-science-lab", "location-library", "location-cafeteria", "location-greenhouse", "location-courtyard",
   ];
   const HALL_PASS_CARDS_PER_PACK = 5;
+  const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
   const PACK_MINT_STATUS_LINES = [
     "Checking the attendance ledger...",
     "Stamping the front-office receipt...",
@@ -643,6 +644,7 @@ export function runViewerClient(bootstrap) {
     accountAiAction: $("account-ai-action"),
     accountWalletBalance: $("account-wallet-balance"),
     accountWalletMeta: $("account-wallet-meta"),
+    accountBuyPasses: $("account-buy-passes"),
     accountMintCards: $("account-mint-cards"),
     accountCardSummary: $("account-card-summary"),
     accountHallPassCards: $("account-hall-pass-cards"),
@@ -658,6 +660,8 @@ export function runViewerClient(bootstrap) {
     congrats: $("congrats-toast"),
     billingOverlay: $("billing-overlay"),
     billingClose: $("billing-close"),
+    billingTitle: $("billing-title"),
+    billingSub: $("billing-sub"),
     billingWallet: $("billing-wallet"),
     billingCosts: $("billing-costs"),
     billingProducts: $("billing-products"),
@@ -807,6 +811,7 @@ export function runViewerClient(bootstrap) {
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let lastSocialSummaryId = null;
   let billingProductsCache = null;
+  let billingMode = "hall-passes";
   let billingBusy = false;
   let selectedBillingProductId = null;
   let packSyncBusy = false;
@@ -1958,7 +1963,15 @@ export function runViewerClient(bootstrap) {
   }
 
   function canBurnCollectibleCards(cost, t) {
-    return mintedCardCount(t || lastTelemetry) >= positiveWholeNumber(cost, 1);
+    return mintedCardCount(t || lastTelemetry) >= hallPassBurnCardsRequired(cost);
+  }
+
+  function hallPassBurnCardsRequired(hallPassCost) {
+    return Math.max(1, Math.ceil(positiveWholeNumber(hallPassCost, 1) / HALL_PASS_CARD_BURN_HALL_PASS_VALUE));
+  }
+
+  function hallPassBurnCreditForCards(cardCount) {
+    return Math.max(1, positiveWholeNumber(cardCount, 1)) * HALL_PASS_CARD_BURN_HALL_PASS_VALUE;
   }
 
   function walletNumbers(t) {
@@ -2041,7 +2054,18 @@ export function runViewerClient(bootstrap) {
     const entitlement = hostedImageEntitlement(kind);
     const cost = Math.max(1, Math.floor(Number(entitlement && entitlement.cost || 1)));
     const usesHallPass = !usePhotoDayCredit && canSpendHallPasses(cost);
-    const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : usesHallPass ? hallPassCostLabel(cost) : formatWholeNumber(cost) + " minted Card" + (cost === 1 ? "" : "s");
+    const burnCards = hallPassBurnCardsRequired(cost);
+    const canBurnCards = canBurnCollectibleCards(cost);
+    if (!usePhotoDayCredit && !usesHallPass && !canBurnCards) {
+      await promptForHallPasses({
+        title: "No Hall Passes yet",
+        copy: action + " needs " + hallPassCostLabel(cost) + ". Visit Hall Passes for the free starter grant, or keep playing without this.",
+        detail: "Class questions and default character art still work for free.",
+      });
+      return false;
+    }
+    const burnCredit = hallPassBurnCreditForCards(burnCards);
+    const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : usesHallPass ? hallPassCostLabel(cost) : formatWholeNumber(burnCards) + " minted Card" + (burnCards === 1 ? "" : "s");
     const spendKind = usePhotoDayCredit ? "photo-day credit" : usesHallPass ? "Hall Pass" : "card burn";
     const isCharacterPortrait = action === "Custom character portrait";
     const detail = isCharacterPortrait
@@ -2063,11 +2087,25 @@ export function runViewerClient(bootstrap) {
       title: action + "?",
       copy: usesHallPass
         ? "If the image completes, Ruby High will spend " + spendLabel + "."
-        : "Ruby High will burn " + spendLabel + " for Hall Passes, then spend those Hall Passes if the image completes.",
+        : "Ruby High will burn " + spendLabel + " for " + hallPassCostLabel(burnCredit) + ", then spend " + hallPassCostLabel(cost) + " if the image completes.",
       detail,
       confirmText,
       focus: "confirm",
     });
+  }
+
+  async function promptForHallPasses(opts) {
+    const open = await confirmInApp({
+      kicker: "Hall Passes",
+      title: opts && opts.title ? opts.title : "No Hall Passes yet",
+      copy: opts && opts.copy ? opts.copy : "Hosted AI needs Hall Passes. Visit Hall Passes for the free starter grant, or keep playing free.",
+      detail: opts && opts.detail ? opts.detail : "The classroom loop still works without hosted AI.",
+      confirmText: "Open Hall Passes",
+      cancelText: "Keep playing",
+      focus: "confirm",
+    });
+    if (open) openBilling({ mode: "hall-passes" });
+    return open;
   }
 
   function teacherImageGenerationStatusReason() {
@@ -2075,8 +2113,7 @@ export function runViewerClient(bootstrap) {
     if (getStoredApiKey()) return "";
     const entitlement = hostedImageEntitlement("portrait");
     if (entitlement && entitlement.configured) {
-      const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
-      return canSpendHallPasses(cost) || canBurnCollectibleCards(cost) ? "" : "Need " + hallPassCostLabel(cost) + " or a minted Card.";
+      return "";
     }
     return openRouterGenerationMessage("generating teacher images");
   }
@@ -2088,7 +2125,9 @@ export function runViewerClient(bootstrap) {
     const cost = entitlement.cost || 1;
     if (!getStoredApiKey()) return canSpendHallPasses(cost)
       ? "Hosted image generation spends a Hall Pass when it completes."
-      : "Burn a minted Card into a Hall Pass before hosted image generation.";
+      : canBurnCollectibleCards(cost)
+        ? "Burn a minted Card into 5 Hall Passes before hosted image generation."
+        : "No Hall Passes yet. The Hall Pass page has the starter grant.";
     return "Uses your AI key. No cards are burned.";
   }
 
@@ -2259,12 +2298,14 @@ export function runViewerClient(bootstrap) {
     const costLabel = hallPassCostLabel(cost);
     const canUseHallPass = canSpendHallPasses(cost);
     const canBurnCard = canBurnCollectibleCards(cost);
+    const burnCards = hallPassBurnCardsRequired(cost);
+    const burnCredit = hallPassBurnCreditForCards(burnCards);
     let status = "Offline mode";
     let meta = "Spend " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
     let primaryLabel = canUseHallPass ? "Use Hall Pass" : "Burn for Pass";
     let primaryTitle = canUseHallPass
       ? "Spend " + costLabel + " for " + durationLabel + " of AI access."
-      : "Burn " + formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s") + " into Hall Passes for " + durationLabel + " of AI access.";
+      : "Burn " + formatWholeNumber(burnCards) + " Card" + (burnCards === 1 ? "" : "s") + " into " + hallPassCostLabel(burnCredit) + " for " + durationLabel + " of AI access.";
     let primaryDisabled = !authed || billingBusy || localAiEnabled || ai.active || !ai.configured || (!canUseHallPass && !canBurnCard);
     let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect AI key";
     let secondaryDisabled = !authed || localAiEnabled;
@@ -2284,12 +2325,12 @@ export function runViewerClient(bootstrap) {
       primaryTitle = "";
     } else if (activeTeacherUsesServerAi()) {
       status = "Teacher AI connected";
-      meta = "This server can speak for teachers. Use a Hall Pass, burn a card into one, or connect your own AI key for browser-owned AI features.";
+      meta = "This server can speak for teachers. Use a Hall Pass, burn a card into 5, or connect your own AI key for browser-owned AI features.";
     } else if (!ai.configured) {
       meta = "Hosted AI is not configured on this server. Connect your own AI key.";
       primaryTitle = "Hosted AI is not configured on this server.";
     } else if (!canUseHallPass && !canBurnCard) {
-      primaryTitle = "Need " + costLabel + " or a minted Card.";
+      primaryTitle = "Need " + costLabel + " or " + formatWholeNumber(burnCards) + " minted Card" + (burnCards === 1 ? "" : "s") + ".";
     }
     els.accountAiStatus.textContent = status;
     if (els.accountAiMeta) els.accountAiMeta.textContent = meta;
@@ -2304,10 +2345,15 @@ export function runViewerClient(bootstrap) {
     if (!els.accountWalletBalance) return;
     const slots = characterSlotTelemetry();
     els.accountWalletBalance.textContent = walletSummaryText(lastTelemetry || {});
+    if (els.accountBuyPasses) {
+      els.accountBuyPasses.disabled = !authed || billingBusy;
+      els.accountBuyPasses.textContent = billingBusy && billingMode === "hall-passes" ? "Loading..." : "Buy Hall Passes";
+      els.accountBuyPasses.title = "Buy Hall Passes for hosted AI, creator slots, and image generation.";
+    }
     if (els.accountWalletMeta) {
       els.accountWalletMeta.textContent = slots.photoDayCredits > 0
         ? slots.photoDayCredits + " Photo Day " + (slots.photoDayCredits === 1 ? "credit" : "credits")
-        : "Hall Passes cover your first AI and image runs. Collectible cards come from packs.";
+        : "Hall Passes cover hosted AI and images. Burned card NFTs add 5 Hall Passes each.";
     }
   }
 
@@ -2381,8 +2427,8 @@ export function runViewerClient(bootstrap) {
         els.accountMintCards.textContent = billingBusy ? "Minting..." : "Reveal Card";
         els.accountMintCards.title = "Mint the next face-down Ruby High card NFT to reveal it.";
       } else {
-        els.accountMintCards.textContent = "Buy Hall Passes";
-        els.accountMintCards.title = "Buy Hall Passes for hosted AI and creator features.";
+        els.accountMintCards.textContent = "Buy Card Packs";
+        els.accountMintCards.title = "Buy Ruby High card pack NFTs.";
       }
     }
     els.accountHallPassCards.replaceChildren();
@@ -2603,12 +2649,14 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildHallPassCard(card) {
-    const faceDown = !card.mintAddress || !card.mintSignature || card.characterId === "card-back";
-    const item = document.createElement("article");
+    const faceDown = hallPassCardIsFaceDown(card);
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = "account-card-tile is-" + String(card.status || "active")
       + " is-" + String(card.role || "student")
       + " rarity-" + String(card.rarity || "common").replace(/[^a-z0-9-]/gi, "")
       + (faceDown ? " is-face-down" : "");
+    item.setAttribute("aria-label", "Open " + hallPassCardTitle(card, faceDown));
     const artUrl = faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
     if (artUrl) {
       const img = document.createElement("img");
@@ -2629,15 +2677,131 @@ export function runViewerClient(bootstrap) {
     meta.className = "account-card-tile-meta";
     const title = document.createElement("div");
     title.className = "account-card-tile-title";
-    title.textContent = faceDown ? "Mystery Card" : card.characterName || "Ruby High Card";
+    title.textContent = hallPassCardTitle(card, faceDown);
     const detail = document.createElement("div");
     detail.className = "account-card-tile-detail";
-    const status = card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
-    detail.textContent = faceDown
-      ? "Face down · mint to reveal · #" + String(card.serial || card.id || "").slice(-6)
-      : String(card.rarity || "common") + " · " + status + " · minted · #" + String(card.serial || card.id || "").slice(-6);
+    detail.textContent = hallPassCardDetail(card, faceDown);
     meta.appendChild(title);
     meta.appendChild(detail);
+    item.appendChild(meta);
+    item.addEventListener("click", () => showHallPassCardReader(card));
+    return item;
+  }
+
+  function hallPassCardIsFaceDown(card) {
+    return !card || !card.mintAddress || !card.mintSignature || card.characterId === "card-back";
+  }
+
+  function hallPassCardTitle(card, faceDown) {
+    return faceDown ? "Mystery Card" : card && card.characterName ? card.characterName : "Ruby High Card";
+  }
+
+  function hallPassCardStatus(card) {
+    if (!card) return "active";
+    return card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
+  }
+
+  function hallPassCardDetail(card, faceDown) {
+    if (faceDown) return "Face down · #" + String(card && (card.serial || card.id) || "").slice(-6);
+    return String(card && card.rarity || "common") + " · " + hallPassCardStatus(card) + " · #" + String(card && (card.serial || card.id) || "").slice(-6);
+  }
+
+  function hallPassCardProfile(card) {
+    const id = String(card && card.characterId || "");
+    return HALL_PASS_CARD_PROFILES[id] || null;
+  }
+
+  function burnHallPassCardFromAccount(card) {
+    if (!card || billingBusy) return;
+    billingBusy = true;
+    renderAccountPage();
+    void convertHallPassCardsToHallPasses(1, {
+      presetCards: [card],
+      status: (message, invalid) => setPrivyStatus(message, invalid),
+    }).catch((err) => {
+      setPrivyStatus("Card burn failed · " + (err && err.message ? err.message : "error"), true);
+    }).finally(() => {
+      billingBusy = false;
+      renderAccountPage();
+      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    });
+  }
+
+  function showHallPassCardReader(card) {
+    if (!card) return;
+    const faceDown = hallPassCardIsFaceDown(card);
+    const profile = hallPassCardProfile(card);
+    const overlay = document.createElement("div");
+    overlay.className = "account-card-reader";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+
+    const panel = document.createElement("div");
+    panel.className = "account-card-reader-panel";
+    const top = document.createElement("div");
+    top.className = "account-card-reader-top";
+    const title = document.createElement("div");
+    title.className = "account-card-reader-title";
+    title.textContent = hallPassCardTitle(card, faceDown);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "account-card-reader-close";
+    close.setAttribute("aria-label", "Close card");
+    close.textContent = "X";
+    top.appendChild(title);
+    top.appendChild(close);
+    panel.appendChild(top);
+
+    const main = document.createElement("div");
+    main.className = "account-card-reader-main";
+    const artWrap = document.createElement("div");
+    artWrap.className = "account-card-reader-art";
+    const artUrl = faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
+    if (artUrl) {
+      const img = document.createElement("img");
+      img.alt = hallPassCardTitle(card, faceDown);
+      img.src = artUrl;
+      artWrap.appendChild(img);
+    } else {
+      const fallback = document.createElement("div");
+      fallback.className = "account-card-reader-fallback";
+      fallback.textContent = hallPassCardTitle(card, faceDown).slice(0, 1).toUpperCase();
+      artWrap.appendChild(fallback);
+    }
+    main.appendChild(artWrap);
+
+    const body = document.createElement("div");
+    body.className = "account-card-reader-body";
+    const detail = document.createElement("div");
+    detail.className = "account-card-reader-detail";
+    detail.textContent = hallPassCardDetail(card, faceDown);
+    body.appendChild(detail);
+    if (!faceDown && profile) {
+      const teaches = document.createElement("div");
+      teaches.className = "account-hall-pass-card-teaches";
+      const detailLabel = document.createElement("span");
+      detailLabel.textContent = hallPassCardDetailLabel(card);
+      const detailText = document.createElement("strong");
+      detailText.textContent = profile.teaches || profile.subtitle || "Ruby High";
+      teaches.appendChild(detailLabel);
+      teaches.appendChild(detailText);
+      body.appendChild(teaches);
+      if (profile.stats) body.appendChild(buildHallPassStats(profile.stats));
+      if (profile.quote) {
+        const quote = document.createElement("div");
+        quote.className = "account-hall-pass-card-quote";
+        quote.textContent = "\"" + profile.quote + "\"";
+        body.appendChild(quote);
+      }
+    } else if (faceDown) {
+      const note = document.createElement("div");
+      note.className = "account-card-reader-note";
+      note.textContent = "Mint this card NFT to reveal the character.";
+      body.appendChild(note);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "account-card-reader-actions";
     if (faceDown && card.status === "active") {
       const reveal = document.createElement("button");
       reveal.type = "button";
@@ -2648,37 +2812,44 @@ export function runViewerClient(bootstrap) {
       reveal.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        remove();
         void mintHallPassCardFromAccount(card.id);
       });
-      meta.appendChild(reveal);
+      actions.appendChild(reveal);
     } else if (!faceDown && card.status === "active" && card.mintAddress && card.mintSignature) {
       const burn = document.createElement("button");
       burn.type = "button";
       burn.className = "account-card-tile-reveal";
-      burn.textContent = billingBusy ? "Burning..." : "Burn for Hall Pass";
+      burn.textContent = billingBusy ? "Burning..." : "Burn for 5 Passes";
       burn.disabled = !authed || billingBusy;
-      burn.title = "Burn this card NFT for 1 Hall Pass.";
+      burn.title = "Burn this card NFT for 5 Hall Passes.";
       burn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (billingBusy) return;
-        billingBusy = true;
-        renderAccountPage();
-        void convertHallPassCardsToHallPasses(1, {
-          presetCards: [card],
-          status: (message, invalid) => setPrivyStatus(message, invalid),
-        }).catch((err) => {
-          setPrivyStatus("Card burn failed · " + (err && err.message ? err.message : "error"), true);
-        }).finally(() => {
-          billingBusy = false;
-          renderAccountPage();
-          if (billingProductsCache) renderBillingProducts(billingProductsCache);
-        });
+        remove();
+        burnHallPassCardFromAccount(card);
       });
-      meta.appendChild(burn);
+      actions.appendChild(burn);
     }
-    item.appendChild(meta);
-    return item;
+    if (actions.childElementCount > 0) body.appendChild(actions);
+    main.appendChild(body);
+    panel.appendChild(main);
+    overlay.appendChild(panel);
+
+    const remove = () => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") remove();
+    };
+    close.addEventListener("click", remove);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) remove();
+    });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(overlay);
+    close.focus({ preventScroll: true });
   }
 
   function hallPassCardArtUrl(card) {
@@ -3022,14 +3193,16 @@ export function runViewerClient(bootstrap) {
   }
 
   let welcomeHallPassPopupOpen = false;
+  let welcomeHallPassClaimInFlight = false;
   function maybeShowWelcomeHallPassPopup(t) {
     const grant = welcomeHallPassGrant(t);
     if (!authed || !grant || welcomeHallPassPopupOpen || hasSeenWelcomeHallPassPopup(grant)) return;
     showWelcomeHallPassPopup(grant);
   }
 
-  function showWelcomeHallPassPopup(grant) {
+  function showWelcomeHallPassPopup(grant, opts) {
     welcomeHallPassPopupOpen = true;
+    const fromBilling = opts && opts.source === "billing";
     const overlay = document.createElement("div");
     overlay.className = "welcome-hall-pass-popup";
     overlay.setAttribute("role", "dialog");
@@ -3052,13 +3225,15 @@ export function runViewerClient(bootstrap) {
     const copy = document.createElement("div");
     copy.className = "welcome-hall-pass-copy";
     const title = document.createElement("h2");
-    title.textContent = "5 Hall Passes added";
+    title.textContent = formatWholeNumber(grant.amount || 5) + " Hall Passes added";
     const body = document.createElement("p");
     const portraitEntitlement = hostedImageEntitlement("portrait");
     const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
-    body.textContent = portraitConfigured
-      ? "Roll your first student and try a custom portrait, or save your Hall Passes for AI Access and extra character slots."
-      : "Roll your first student now, or save your Hall Passes for AI Access, images, and extra character slots.";
+    body.textContent = fromBilling
+      ? "The front office stamped your starter passes. Spend them on hosted AI or images, or keep playing classes free."
+      : portraitConfigured
+        ? "Roll your first student and try a custom portrait, or save your Hall Passes for AI Access and extra character slots."
+        : "Roll your first student now, or save your Hall Passes for AI Access, images, and extra character slots.";
     const actions = document.createElement("div");
     actions.className = "welcome-hall-pass-actions";
     const later = document.createElement("button");
@@ -3067,8 +3242,8 @@ export function runViewerClient(bootstrap) {
     later.textContent = "Later";
     const create = document.createElement("button");
     create.type = "button";
-    create.textContent = lastTelemetry && lastTelemetry.character ? "Open Account" : "Create Character";
-    actions.appendChild(later);
+    create.textContent = fromBilling ? "Continue" : lastTelemetry && lastTelemetry.character ? "Open Account" : "Create Character";
+    if (!fromBilling) actions.appendChild(later);
     actions.appendChild(create);
     copy.appendChild(title);
     copy.appendChild(body);
@@ -3089,6 +3264,7 @@ export function runViewerClient(bootstrap) {
     later.addEventListener("click", close);
     create.addEventListener("click", () => {
       close();
+      if (fromBilling) return;
       if (lastTelemetry && lastTelemetry.character) {
         void openPrivyAccount();
       } else {
@@ -3218,10 +3394,6 @@ export function runViewerClient(bootstrap) {
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before minting card NFTs.");
-      const client = await getPrivyClient();
-      if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
-        throw new Error("Solana card mint is unavailable.");
-      }
       const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3231,6 +3403,19 @@ export function runViewerClient(bootstrap) {
       const preparedData = await prepared.json().catch(() => ({}));
       if (!prepared.ok || !preparedData || !preparedData.ok || !preparedData.mint) {
         throw new Error(preparedData.error || "prepare card mint " + prepared.status);
+      }
+      if (preparedData.mint.serverMinted || !preparedData.mint.transactionBase64) {
+        const name = preparedData.card && preparedData.card.characterName ? preparedData.card.characterName : "Card";
+        updatePackMintProgress("Mint confirmed. Revealing card...");
+        setPrivyStatus(name + " revealed.", false);
+        await fetchSession();
+        renderAccountPage();
+        hidePackMintProgress(900);
+        return;
+      }
+      const client = await getPrivyClient();
+      if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
+        throw new Error("Solana card mint is unavailable.");
       }
       updatePackMintProgress("Confirm the mint in your wallet...");
       const payment = await client.signAndSendSolanaTransaction(preparedData.mint);
@@ -3267,7 +3452,7 @@ export function runViewerClient(bootstrap) {
     if (!authed || billingBusy) return;
     const pending = pendingHallPassCardMintsForTelemetry();
     if (pending.length <= 0) {
-      openBilling();
+      openBilling({ mode: "card-packs" });
       return;
     }
     await mintHallPassCardFromAccount(pending[0].id);
@@ -3286,10 +3471,19 @@ export function runViewerClient(bootstrap) {
     if (!els.billingProducts) return;
     els.billingProducts.replaceChildren();
     syncBillingWallet(lastTelemetry);
+    const mode = billingMode === "card-packs" ? "card-packs" : "hall-passes";
+    if (els.billingTitle) els.billingTitle.textContent = mode === "card-packs" ? "Buy Card Packs" : "Buy Hall Passes";
+    if (els.billingSub) {
+      els.billingSub.textContent = mode === "card-packs"
+        ? "Card packs are Solana NFTs. Open a pack to create five face-down Ruby High cards."
+        : "Hall Passes unlock hosted AI, creator slots, and image generation. Minted cards burn into 5 Hall Passes each.";
+    }
     const entitlements = payload && payload.entitlements && typeof payload.entitlements === "object" ? payload.entitlements : null;
     const hostedImages = entitlements && entitlements.hosted_images && typeof entitlements.hosted_images === "object"
       ? entitlements.hosted_images
       : null;
+    const cardBurn = payload && payload.cardBurn && typeof payload.cardBurn === "object" ? payload.cardBurn : null;
+    const hallPassesPerBurnedCard = positiveWholeNumber(cardBurn && cardBurn.hallPassesPerCard || HALL_PASS_CARD_BURN_HALL_PASS_VALUE, HALL_PASS_CARD_BURN_HALL_PASS_VALUE);
     const costs = {
       portrait: hostedImages && hostedImages.portrait ? hostedImages.portrait.cost : payload && payload.imageCosts ? payload.imageCosts.portrait : undefined,
       diploma: hostedImages && hostedImages.diploma ? hostedImages.diploma.cost : payload && payload.imageCosts ? payload.imageCosts.diploma : undefined,
@@ -3306,32 +3500,46 @@ export function runViewerClient(bootstrap) {
       ].forEach(([label, cost]) => {
         const chip = document.createElement("span");
         chip.className = "cost-chip";
-        chip.textContent = label + ": " + formatWholeNumber(cost || 0) + " Card" + (Number(cost || 0) === 1 ? "" : "s");
+        chip.textContent = label + ": " + billingHallPassCostLabel(cost);
         els.billingCosts.appendChild(chip);
       });
+      if (mode === "card-packs") {
+        els.billingCosts.replaceChildren();
+        [
+          "Pack NFT: " + HALL_PASS_CARDS_PER_PACK + " cards",
+          "Burn rate: 1 Card = " + hallPassCostLabel(hallPassesPerBurnedCard),
+        ].forEach((label) => {
+          const chip = document.createElement("span");
+          chip.className = "cost-chip";
+          chip.textContent = label;
+          els.billingCosts.appendChild(chip);
+        });
+      }
     }
     const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
     const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
     const products = Array.isArray(payload && payload.products) ? payload.products : [];
-    if (products.length === 0) {
-      setBillingStatus("No Hall Passes are available.", true);
+    const shownProducts = mode === "card-packs" ? solanaProducts : products;
+    if (shownProducts.length === 0) {
+      setBillingStatus(mode === "card-packs" ? "No card packs are available." : "No Hall Passes are available.", true);
       return;
     }
-    if (selectedBillingProductId && !products.some((product) => product.id === selectedBillingProductId)) {
+    if (selectedBillingProductId && !shownProducts.some((product) => product.id === selectedBillingProductId)) {
       selectedBillingProductId = null;
     }
-    products.forEach((product) => {
+    shownProducts.forEach((product) => {
       const row = document.createElement("div");
       row.className = "billing-product";
       if (product.id === selectedBillingProductId) row.classList.add("is-selected");
       const body = document.createElement("div");
       const title = document.createElement("div");
       title.className = "billing-product-title";
-      title.textContent = product.name || hallPassCostLabel(productHallPassCount(product));
+      title.textContent = mode === "card-packs" ? (product.name || packCountLabel(product.packCount)) : (product.name || hallPassCostLabel(productHallPassCount(product)));
       const meta = document.createElement("div");
       meta.className = "billing-product-meta";
-      const solanaProduct = matchingSolanaProduct(solanaProducts, product);
-      meta.textContent = formatMoney(product.unitAmount, product.currency) + " · " + hallPassCostLabel(productHallPassCount(product));
+      meta.textContent = mode === "card-packs"
+        ? (formatWholeNumber(product.cardCount || productHallPassCount(product)) + " cards · " + (product.tokenAmount || "?") + " " + (product.tokenSymbol || (solana && solana.symbol) || "RUBY"))
+        : formatMoney(product.unitAmount, product.currency) + " · " + hallPassCostLabel(productHallPassCount(product));
       body.appendChild(title);
       body.appendChild(meta);
       const buy = document.createElement("button");
@@ -3344,12 +3552,16 @@ export function runViewerClient(bootstrap) {
       row.appendChild(buy);
       els.billingProducts.appendChild(row);
       if (product.id === selectedBillingProductId) {
-        els.billingProducts.appendChild(buildBillingPaymentChoice(payload, product, solana, solanaProduct));
+        els.billingProducts.appendChild(mode === "card-packs"
+          ? buildCardPackPaymentChoice(solana, product)
+          : buildBillingPaymentChoice(payload, product));
       }
     });
     setBillingStatus(
-      payload.configured ? "" : "Stripe checkout is not configured on this server.",
-      !payload.configured,
+      mode === "card-packs"
+        ? (solana && solana.configured ? "" : "Card pack checkout is not configured on this server.")
+        : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
+      mode === "card-packs" ? !(solana && solana.configured) : !payload.configured,
     );
   }
 
@@ -3358,9 +3570,10 @@ export function runViewerClient(bootstrap) {
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
   }
 
-  function matchingSolanaProduct(solanaProducts, product) {
-    if (!Array.isArray(solanaProducts) || !product) return null;
-    return solanaProducts.find((entry) => entry && entry.id === product.id) || null;
+  function billingHallPassCostLabel(cost) {
+    const n = Math.floor(Number(cost));
+    if (!Number.isFinite(n) || n <= 0) return "0 Hall Passes";
+    return hallPassCostLabel(n);
   }
 
   function productHallPassCount(product) {
@@ -3374,7 +3587,7 @@ export function runViewerClient(bootstrap) {
     return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
   }
 
-  function buildBillingPaymentChoice(payload, product, solana, solanaProduct) {
+  function buildBillingPaymentChoice(payload, product) {
     const panel = document.createElement("div");
     panel.className = "billing-payment-choice";
     const title = document.createElement("div");
@@ -3393,33 +3606,48 @@ export function runViewerClient(bootstrap) {
     stripe.title = payload.configured ? "Pay by card with Stripe." : "Stripe checkout is not configured.";
     stripe.addEventListener("click", () => startCheckout(product.id));
     actions.appendChild(stripe);
-    if (solana && solana.configured && solanaProduct) {
-      const cryptoUnavailable = !privyState.configured;
-      const crypto = document.createElement("button");
-      crypto.type = "button";
-      crypto.className = "billing-buy is-secondary";
-      crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Crypto";
-      crypto.disabled = billingBusy || cryptoUnavailable;
-      crypto.title = cryptoUnavailable
-        ? "Crypto checkout needs Privy configuration."
-        : "Pay with " + (solanaProduct.tokenSymbol || solana.symbol || "crypto") + ".";
-      crypto.addEventListener("click", () => startSolanaPayment(product.id));
-      actions.appendChild(crypto);
-      if (cryptoUnavailable) {
-        const note = document.createElement("div");
-        note.className = "billing-payment-note";
-        note.textContent = "Crypto checkout is not configured in this preview.";
-        panel.appendChild(note);
-      }
-    }
     panel.appendChild(title);
     panel.appendChild(meta);
     panel.appendChild(actions);
     return panel;
   }
 
+  function buildCardPackPaymentChoice(solana, product) {
+    const panel = document.createElement("div");
+    panel.className = "billing-payment-choice";
+    const title = document.createElement("div");
+    title.className = "billing-payment-title";
+    title.textContent = "Buy " + (product.name || packCountLabel(product.packCount));
+    const meta = document.createElement("div");
+    meta.className = "billing-product-meta";
+    meta.textContent = formatWholeNumber(product.cardCount || HALL_PASS_CARDS_PER_PACK) + " cards · " + (product.tokenAmount || "?") + " " + (product.tokenSymbol || (solana && solana.symbol) || "RUBY");
+    const actions = document.createElement("div");
+    actions.className = "billing-payment-actions";
+    const cryptoUnavailable = !privyState.configured;
+    const crypto = document.createElement("button");
+    crypto.type = "button";
+    crypto.className = "billing-buy";
+    crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Buy Pack";
+    crypto.disabled = billingBusy || cryptoUnavailable || !(solana && solana.configured);
+    crypto.title = cryptoUnavailable
+      ? "Card pack checkout needs Privy wallet configuration."
+      : "Pay with " + (product.tokenSymbol || (solana && solana.symbol) || "RUBY") + " and mint a pack NFT.";
+    crypto.addEventListener("click", () => startSolanaPayment(product.id));
+    actions.appendChild(crypto);
+    panel.appendChild(title);
+    panel.appendChild(meta);
+    panel.appendChild(actions);
+    if (cryptoUnavailable) {
+      const note = document.createElement("div");
+      note.className = "billing-payment-note";
+      note.textContent = "Card pack checkout is not configured in this preview.";
+      panel.appendChild(note);
+    }
+    return panel;
+  }
+
   async function loadBillingProducts() {
-    setBillingStatus("Loading Hall Passes...", false);
+    setBillingStatus(billingMode === "card-packs" ? "Loading card packs..." : "Loading Hall Passes...", false);
     try {
       const r = await apiFetch(apiBase + "/billing/products", { timeoutMs: 8000 });
       const data = await r.json().catch(() => ({}));
@@ -3427,17 +3655,47 @@ export function runViewerClient(bootstrap) {
       billingProductsCache = data;
       renderBillingProducts(data);
     } catch (err) {
-      setBillingStatus("Couldn't load packs · " + (err && err.message ? err.message : "error"), true);
+      setBillingStatus((billingMode === "card-packs" ? "Couldn't load packs" : "Couldn't load Hall Passes") + " · " + (err && err.message ? err.message : "error"), true);
     }
   }
 
-  function openBilling() {
+  async function claimWelcomeHallPassesFromBilling() {
+    if (welcomeHallPassClaimInFlight || !authed) return;
+    welcomeHallPassClaimInFlight = true;
+    try {
+      const r = await apiFetch(apiBase + "/billing/welcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 8000,
+        body: JSON.stringify({}),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.ok) throw new Error(data.error || "welcome " + r.status);
+      if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
+      await fetchSession();
+      if (data.applied) {
+        showWelcomeHallPassPopup({
+          at: Math.floor(Number(data.welcomeHallPassesGrantedAt || Date.now())),
+          amount: Math.max(1, Math.floor(Number(data.amount || 5))),
+        }, { source: "billing" });
+      }
+      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    } catch (err) {
+      setBillingStatus("Starter Hall Passes unavailable · " + (err && err.message ? err.message : "error"), true);
+    } finally {
+      welcomeHallPassClaimInFlight = false;
+    }
+  }
+
+  function openBilling(opts) {
     if (!authed || !els.billingOverlay) return;
+    billingMode = opts && opts.mode === "card-packs" ? "card-packs" : "hall-passes";
     selectedBillingProductId = null;
     syncBillingWallet(lastTelemetry);
     els.billingOverlay.classList.add("is-open");
     els.billingOverlay.setAttribute("aria-hidden", "false");
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    if (billingMode === "hall-passes") void claimWelcomeHallPassesFromBilling();
     void loadBillingProducts();
   }
 
@@ -3477,16 +3735,16 @@ export function runViewerClient(bootstrap) {
     if (!productId || billingBusy) return;
     billingBusy = true;
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    setBillingStatus("Starting crypto checkout...", false);
+    setBillingStatus("Starting card pack checkout...", false);
     try {
       if (!connectedSolanaWalletAddress()) {
         const connected = await ensureSolanaWalletForBilling();
         if (!connected) {
-          setBillingStatus("Crypto checkout canceled.", false);
+          setBillingStatus("Card pack checkout canceled.", false);
           return;
         }
       }
-      setBillingStatus("Preparing crypto payment...", false);
+      setBillingStatus("Preparing card pack payment...", false);
       const ownerWalletAddress = connectedSolanaWalletAddress();
       const r = await apiFetch(apiBase + "/billing/solana/quote", {
         method: "POST",
@@ -3498,7 +3756,7 @@ export function runViewerClient(bootstrap) {
       if (!r.ok || !data || !data.ok) throw new Error(data.error || "solana quote " + r.status);
       const client = await getPrivyClient();
       if (!client || typeof client.paySolanaQuote !== "function") throw new Error("Solana wallet checkout is unavailable.");
-      setBillingStatus("Confirm the crypto payment in your wallet...", false);
+      setBillingStatus("Confirm the card pack payment in your wallet...", false);
       const payment = await client.paySolanaQuote(data);
       const signature = payment && payment.signature ? payment.signature : "";
       showPackMintProgress("Payment signed. Minting your Ruby High pack...");
@@ -3506,7 +3764,7 @@ export function runViewerClient(bootstrap) {
       await confirmSolanaPayment(productId, signature, payment && payment.walletAddress, data);
     } catch (err) {
       hidePackMintProgress();
-      setBillingStatus("Crypto payment failed · " + (err && err.message ? err.message : "error"), true);
+      setBillingStatus("Card pack checkout failed · " + (err && err.message ? err.message : "error"), true);
     } finally {
       billingBusy = false;
       renderAccountPage();
@@ -3516,14 +3774,14 @@ export function runViewerClient(bootstrap) {
 
   async function ensureSolanaWalletForBilling() {
     if (connectedSolanaWalletAddress()) return true;
-    if (!privyConfig) throw new Error("Crypto checkout is not configured.");
+    if (!privyConfig) throw new Error("Card pack checkout is not configured.");
     if (!privyState.authenticated) {
-      setBillingStatus("Opening sign-in for crypto checkout...", false);
+      setBillingStatus("Opening sign-in for card pack checkout...", false);
       const loginSnapshot = await startPrivyLogin({ source: "billing" });
       if (!loginSnapshot && !privyState.authenticated) return false;
     }
     if (connectedSolanaWalletAddress()) return true;
-    setBillingStatus("Opening wallet connection for crypto checkout...", false);
+    setBillingStatus("Opening wallet connection for card pack checkout...", false);
     const walletSnapshot = await startSolanaWalletConnect({ source: "billing" });
     return !!walletSnapshot && !!connectedSolanaWalletAddress();
   }
@@ -3608,7 +3866,7 @@ export function runViewerClient(bootstrap) {
       const title = document.createElement("h2");
       title.textContent = count === 1 ? "Pick a card to burn" : "Pick " + count + " cards to burn";
       const copy = document.createElement("p");
-      copy.textContent = "The selected card leaves your wallet and pays for this Ruby High action.";
+      copy.textContent = "Each selected card leaves your wallet and credits 5 Hall Passes.";
       const grid = document.createElement("div");
       grid.className = "card-burn-grid";
       const actions = document.createElement("div");
@@ -3748,40 +4006,53 @@ export function runViewerClient(bootstrap) {
         false,
       );
     }
-    const r = await apiFetch(apiBase + "/nft/burn-prepare", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      timeoutMs: 15000,
-      body: JSON.stringify({ cardIds: selectedCards.map((card) => card.id), ownerWalletAddress }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data || !data.ok || !data.burn) throw new Error(data.error || "card burn " + r.status);
-    const preparedCards = Array.isArray(data.cards) && data.cards.length > 0
-      ? data.cards
-      : [{
-        cardId: data.cardId || selectedCards[0].id,
-        characterId: data.characterId || selectedCards[0].characterId,
-        characterName: data.characterName || selectedCards[0].characterName,
-        mintAddress: data.mintAddress || data.burn.mintAddress,
-      }];
-    if (preparedCards.length !== needed) throw new Error("Card burn count changed before signing.");
-    const payment = await client.signAndSendSolanaTransaction(data.burn);
-    const burnOwner = payment.walletAddress || ownerWalletAddress;
-    const burns = preparedCards.map((card) => ({
-      cardId: card.cardId,
-      ownerWalletAddress: burnOwner,
-      mintAddress: card.mintAddress,
-      burnSignature: payment.signature,
-    }));
-    for (const burn of burns) await confirmHallPassCardBurn(burn);
+    const burns = [];
+    for (let index = 0; index < selectedCards.length; index += 1) {
+      const selectedCard = selectedCards[index];
+      if (opts && typeof opts.status === "function") {
+        opts.status(
+          "Opening wallet to burn card " + (index + 1) + " of " + selectedCards.length + "...",
+          false,
+        );
+      }
+      const r = await apiFetch(apiBase + "/nft/burn-prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 15000,
+        body: JSON.stringify({ cardIds: [selectedCard.id], ownerWalletAddress }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.ok || !data.burn) throw new Error(data.error || "card burn " + r.status);
+      const preparedCard = Array.isArray(data.cards) && data.cards.length > 0
+        ? data.cards[0]
+        : {
+          cardId: data.cardId || selectedCard.id,
+          characterId: data.characterId || selectedCard.characterId,
+          characterName: data.characterName || selectedCard.characterName,
+          mintAddress: data.mintAddress || data.burn.mintAddress,
+        };
+      if (!preparedCard || !preparedCard.cardId || !preparedCard.mintAddress) {
+        throw new Error("Card burn changed before signing.");
+      }
+      const payment = await client.signAndSendSolanaTransaction(data.burn);
+      const burn = {
+        cardId: preparedCard.cardId,
+        ownerWalletAddress: payment.walletAddress || ownerWalletAddress,
+        mintAddress: preparedCard.mintAddress,
+        burnSignature: payment.signature,
+      };
+      await confirmHallPassCardBurn(burn);
+      burns.push(burn);
+    }
     return burns;
   }
 
   async function convertHallPassCardsToHallPasses(count, opts) {
-    const needed = positiveWholeNumber(count, 1);
-    if (needed <= 0) return null;
+    const hallPassesNeeded = positiveWholeNumber(count, 1);
+    const needed = hallPassBurnCardsRequired(hallPassesNeeded);
+    const expectedCredit = hallPassBurnCreditForCards(needed);
     const status = opts && typeof opts.status === "function" ? opts.status : setBillingStatus;
-    status("Burning " + needed + " card" + (needed === 1 ? "" : "s") + " for Hall Passes...", false);
+    status("Burning " + needed + " card" + (needed === 1 ? "" : "s") + " for " + hallPassCostLabel(expectedCredit) + "...", false);
     const burns = await burnHallPassCardsForSpend(needed, opts);
     let data = null;
     let lastError = null;
@@ -3795,8 +4066,8 @@ export function runViewerClient(bootstrap) {
       });
       data = await r.json().catch(() => ({}));
       if (r.ok && data && data.ok) {
-        const amount = Math.max(0, Math.floor(Number(data.amount || needed)));
-        status("Added " + hallPassCostLabel(amount) + " from burned card" + (amount === 1 ? "" : "s") + ".", false);
+        const amount = Math.max(0, Math.floor(Number(data.amount || expectedCredit)));
+        status("Added " + hallPassCostLabel(amount) + " from " + needed + " burned card" + (needed === 1 ? "" : "s") + ".", false);
         await fetchSession();
         await deriveAuth();
         renderAccountPage();
@@ -5172,11 +5443,27 @@ export function runViewerClient(bootstrap) {
       const phase = telemetryPhase(lastTelemetry);
       if (!teacherChatEnabled()) {
         if (phase === "asking") {
-          appendSystem("Answer the board to continue. Connect AI for hints.");
+          if (!walletNumbers(lastTelemetry).hallPasses) {
+            await promptForHallPasses({
+              title: "No Hall Passes yet",
+              copy: "Hints and teacher chat need AI access. Visit Hall Passes for the free starter grant, or answer the board and keep playing free.",
+              detail: "Free play does not spend Hall Passes.",
+            });
+          } else {
+            appendSystem("Answer the board to continue. Connect AI for hints.");
+          }
           return;
         }
         if (phase === "lounge") {
-          appendSystem("Connect AI to hear the lounge conversation continue.");
+          if (!walletNumbers(lastTelemetry).hallPasses) {
+            await promptForHallPasses({
+              title: "No Hall Passes yet",
+              copy: "Lounge chat needs AI access. Visit Hall Passes for the free starter grant, or keep playing classes free.",
+              detail: "The classroom loop stays available without AI chat.",
+            });
+          } else {
+            appendSystem("Connect AI to hear the lounge conversation continue.");
+          }
           return;
         }
         if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -5434,7 +5721,6 @@ export function runViewerClient(bootstrap) {
     syncAiStateFromTelemetry(t);
     syncBillingWallet(t);
     renderAccountPage();
-    maybeShowWelcomeHallPassPopup(t);
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
@@ -7796,11 +8082,8 @@ export function runViewerClient(bootstrap) {
       if (getStoredApiKey()) return "";
       const entitlement = hostedImageEntitlement("portrait");
       if (entitlement && entitlement.configured) {
-      if (characterSlotTelemetry().photoDayCredits > 0) return "";
-      const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
-      if (canSpendHallPasses(cost) || canBurnCollectibleCards(cost)) return "";
-      return "Need " + hallPassCostLabel(cost) + " or a minted Card.";
-    }
+        return "";
+      }
       return "Connect AI for a custom portrait.";
     }
 
@@ -10495,7 +10778,7 @@ export function runViewerClient(bootstrap) {
         return null;
       }
       await handlePrivySession(snapshot, { source: fromBilling ? "billing-login" : "login" });
-      if (fromBilling) reportStatus("Account connected. Continue with crypto checkout.", false);
+      if (fromBilling) reportStatus("Account connected. Continue with card pack checkout.", false);
       return snapshot;
     } catch (err) {
       if (!fromBilling && looksLikeWalletLoginFailure(err) && phantomWalletAvailable()) {
@@ -11240,7 +11523,8 @@ export function runViewerClient(bootstrap) {
   if (els.bugReportOverlay) els.bugReportOverlay.addEventListener("click", (e) => {
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
-  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
+  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", () => openBilling({ mode: "card-packs" }));
+  if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }));
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
     const hasWallet = !!knownSolanaOwnerWalletAddress();
@@ -11254,7 +11538,7 @@ export function runViewerClient(bootstrap) {
       await mintPendingCardNftsFromAccount();
       return;
     }
-    openBilling();
+    openBilling({ mode: "card-packs" });
   });
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);

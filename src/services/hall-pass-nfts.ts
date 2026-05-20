@@ -425,12 +425,14 @@ export async function buildHallPassCardMintTransaction(
     (tx) => appendTransactionMessageInstructions(instructions, tx),
   );
   const signed = await partiallySignTransactionMessageWithSigners(message);
+  const transactionBase64 = getBase64EncodedWireTransaction(signed);
+  await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
   return {
     cardId: card.id,
     ownerWalletAddress: owner,
     mintAddress: mint.address,
     metadataUri,
-    transactionBase64: getBase64EncodedWireTransaction(signed),
+    transactionBase64,
     transactionEncoding: "base64",
     chain: "solana:mainnet",
     rpcUrl: config.rpcUrl,
@@ -548,19 +550,75 @@ export async function mintHallPassCardNft(
     (tx) => appendTransactionMessageInstructions(instructions, tx),
   );
   const signed = await signTransactionMessageWithSigners(message);
-  const signature = await createSolanaRpc(config.rpcUrl)
-    .sendTransaction(getBase64EncodedWireTransaction(signed), {
-      encoding: "base64",
-      maxRetries: 3n,
-      skipPreflight: true,
-    })
-    .send();
+  const signature = await sendBase64TransactionWithPreflightFallback(
+    createSolanaRpc(config.rpcUrl),
+    getBase64EncodedWireTransaction(signed),
+  );
   return {
     ownerWalletAddress: owner,
     mintAddress: mint.address,
     mintSignature: String(signature),
     metadataUri,
   };
+}
+
+async function sendBase64TransactionWithPreflightFallback(
+  rpc: ReturnType<typeof createSolanaRpc>,
+  transactionBase64: ReturnType<typeof getBase64EncodedWireTransaction>,
+): Promise<string> {
+  try {
+    return String(await rpc.sendTransaction(transactionBase64, {
+      encoding: "base64",
+      maxRetries: 3n,
+      skipPreflight: false,
+    }).send());
+  } catch (err) {
+    if (!isPreflightUnsupportedError(err)) throw err;
+    return String(await rpc.sendTransaction(transactionBase64, {
+      encoding: "base64",
+      maxRetries: 3n,
+      skipPreflight: true,
+    }).send());
+  }
+}
+
+function isPreflightUnsupportedError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /preflight check is not supported/i.test(message);
+}
+
+async function simulateBase64TransactionForSigning(
+  rpcUrl: string,
+  transactionBase64: string,
+  label: string,
+): Promise<void> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-card-transaction-simulate",
+      method: "simulateTransaction",
+      params: [
+        transactionBase64,
+        {
+          encoding: "base64",
+          sigVerify: false,
+          commitment: "confirmed",
+        },
+      ],
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    error?: { message?: string; code?: number };
+    result?: { err?: unknown; logs?: string[] };
+  };
+  if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
+  if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
+  if (payload.result?.err != null) {
+    const logs = Array.isArray(payload.result.logs) ? ` ${payload.result.logs.slice(-3).join(" ")}` : "";
+    throw new Error(`${label} failed Solana preflight simulation.${logs}`.trim());
+  }
 }
 
 export async function ensureHallPassCardCollectionVerified(mintAddress: string): Promise<boolean> {
@@ -709,11 +767,13 @@ export async function buildHallPassCardsBurnTransaction(
     (tx) => compileTransaction(tx),
     (tx) => new Uint8Array(getTransactionEncoder().encode(tx)),
   );
+  const transaction = Buffer.from(transactionBytes).toString("base64");
+  await simulateBase64TransactionForSigning(config.rpcUrl, transaction, "Card burn");
   return {
     ownerWalletAddress: owner,
     mintAddress: firstMint,
     tokenAccountAddress: firstTokenAccount,
-    transaction: Buffer.from(transactionBytes).toString("base64"),
+    transaction,
     transactionEncoding: "base64",
     rpcUrl: config.rpcUrl,
   };

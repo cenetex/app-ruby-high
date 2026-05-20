@@ -9,19 +9,20 @@ import {
   mplCore,
 } from "@metaplex-foundation/mpl-core";
 import {
-  createNoopSigner,
-  createSignerFromKeypair,
   generateSigner,
   keypairIdentity,
   publicKey,
-  signTransaction,
-  type Instruction,
   type TransactionBuilder,
   type Umi,
 } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { address as kitAddress } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
+import {
+  PublicKey as Web3PublicKey,
+  Transaction as Web3Transaction,
+  TransactionInstruction as Web3TransactionInstruction,
+} from "@solana/web3.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -91,8 +92,8 @@ export interface CorePackPurchaseTransactionInput {
 
 export interface CorePackPurchaseTransactionResult {
   ownerWalletAddress: string;
-  assetAddress: string;
-  metadataUri: string;
+  assetAddress?: string;
+  metadataUri?: string;
   sourceTokenAccountAddress: string;
   destinationTokenAccountAddress: string;
   transactionBase64: string;
@@ -370,36 +371,23 @@ export async function buildCorePackPurchaseTransaction(
       tokenAmount: input.tokenAmount,
       tokenSymbol: input.tokenSymbol,
     });
-  const umi = createUmi(config.rpcUrl).use(mplCore());
-  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
-  const authority = createSignerFromKeypair(umi, authorityKeypair);
-  const owner = publicKey(ownerWalletAddress);
-  const ownerSigner = createNoopSigner(owner);
-  const collection = {
-    publicKey: publicKey(config.collectionAddress),
-    oracles: [],
-    lifecycleHooks: [],
-  };
-  const asset = generateSigner(umi);
-  const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
-  const metadataUri = corePackNftMetadataUri({
-    productId: input.productId,
-    packCount,
-    cardCount: input.cardCount,
-    paymentSignature: asset.publicKey,
-  });
   const [destinationTokenAccountAddress] = await findAssociatedTokenPda({
     owner: kitAddress(tokenRecipient),
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
     mint: kitAddress(tokenMint),
   });
-  const createDestinationAta = createAssociatedTokenAccountIdempotentInstruction({
+  const latestBlockhash = input.latestBlockhash ?? await fetchLatestBlockhash(config.rpcUrl);
+  const transaction = new Web3Transaction({
+    feePayer: new Web3PublicKey(ownerWalletAddress),
+    recentBlockhash: latestBlockhash.blockhash,
+  });
+  transaction.add(web3CreateAssociatedTokenAccountIdempotentInstruction({
     payer: ownerWalletAddress,
     ata: destinationTokenAccountAddress,
     owner: tokenRecipient,
     mint: tokenMint,
-  });
-  const transfer = transferCheckedInstruction({
+  }));
+  transaction.add(web3TransferCheckedInstruction({
     source: source.tokenAccountAddress,
     mint: tokenMint,
     destination: destinationTokenAccountAddress,
@@ -407,34 +395,18 @@ export async function buildCorePackPurchaseTransaction(
     amount: tokenAmountBaseUnits,
     decimals: tokenDecimals,
     reference: paymentReference,
-  });
-  const createPack = create(umi, {
-    asset,
-    collection,
-    authority,
-    payer: ownerSigner,
-    owner,
-    name: packCount === 1 ? `Ruby High Pack #${packSerial(asset.publicKey)}` : `Ruby High ${packCount}-Pack #${packSerial(asset.publicKey)}`,
-    uri: metadataUri,
-  });
-  const builder = createPack
-    .prepend([
-      { instruction: createDestinationAta, signers: [], bytesCreatedOnChain: 0 },
-      { instruction: transfer, signers: [], bytesCreatedOnChain: 0 },
-    ])
-    .setFeePayer(ownerSigner)
-    .useLegacyVersion();
-  const transaction = input.latestBlockhash
-    ? builder.setBlockhash(input.latestBlockhash).build(umi)
-    : await builder.buildWithLatestBlockhash(umi);
-  const signed = await signTransaction(transaction, [authority, asset]);
+  }));
+  const transactionBase64 = transaction
+    .serialize({ requireAllSignatures: false, verifySignatures: false })
+    .toString("base64");
+  if (!input.latestBlockhash) {
+    await simulateSolanaTransactionForSigning(config.rpcUrl, transactionBase64, "Pack payment");
+  }
   return {
     ownerWalletAddress,
-    assetAddress: asset.publicKey,
-    metadataUri,
     sourceTokenAccountAddress: source.tokenAccountAddress,
     destinationTokenAccountAddress,
-    transactionBase64: Buffer.from(umi.transactions.serialize(signed)).toString("base64"),
+    transactionBase64,
     transactionEncoding: "base64",
     chain: "solana:mainnet",
     rpcUrl: config.rpcUrl,
@@ -746,27 +718,86 @@ function isPreflightUnsupportedError(err: unknown): boolean {
   return /preflight check is not supported/i.test(message);
 }
 
-function createAssociatedTokenAccountIdempotentInstruction(input: {
+async function fetchLatestBlockhash(rpcUrl: string): Promise<{ blockhash: string; lastValidBlockHeight: number }> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-pack-payment-blockhash",
+      method: "getLatestBlockhash",
+      params: [{ commitment: "confirmed" }],
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    error?: { message?: string; code?: number };
+    result?: { value?: { blockhash?: string; lastValidBlockHeight?: number } };
+  };
+  if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
+  if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
+  const blockhash = payload.result?.value?.blockhash;
+  const lastValidBlockHeight = Number(payload.result?.value?.lastValidBlockHeight);
+  if (!blockhash || !Number.isFinite(lastValidBlockHeight)) {
+    throw new Error("Solana RPC did not return a recent blockhash.");
+  }
+  return { blockhash, lastValidBlockHeight: Math.floor(lastValidBlockHeight) };
+}
+
+async function simulateSolanaTransactionForSigning(
+  rpcUrl: string,
+  transactionBase64: string,
+  label: string,
+): Promise<void> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-pack-payment-simulate",
+      method: "simulateTransaction",
+      params: [
+        transactionBase64,
+        {
+          encoding: "base64",
+          sigVerify: false,
+          commitment: "confirmed",
+        },
+      ],
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    error?: { message?: string; code?: number };
+    result?: { err?: unknown; logs?: string[] };
+  };
+  if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
+  if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
+  if (payload.result?.err != null) {
+    const logs = Array.isArray(payload.result.logs) ? ` ${payload.result.logs.slice(-3).join(" ")}` : "";
+    throw new Error(`${label} failed Solana preflight simulation.${logs}`.trim());
+  }
+}
+
+function web3CreateAssociatedTokenAccountIdempotentInstruction(input: {
   payer: string;
   ata: string;
   owner: string;
   mint: string;
-}): Instruction {
-  return {
-    programId: publicKey(ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
+}): Web3TransactionInstruction {
+  return new Web3TransactionInstruction({
+    programId: new Web3PublicKey(ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
     keys: [
-      { pubkey: publicKey(input.payer), isSigner: true, isWritable: true },
-      { pubkey: publicKey(input.ata), isSigner: false, isWritable: true },
-      { pubkey: publicKey(input.owner), isSigner: false, isWritable: false },
-      { pubkey: publicKey(input.mint), isSigner: false, isWritable: false },
-      { pubkey: publicKey(SYSTEM_PROGRAM_ADDRESS), isSigner: false, isWritable: false },
-      { pubkey: publicKey(TOKEN_PROGRAM_ADDRESS), isSigner: false, isWritable: false },
+      { pubkey: new Web3PublicKey(input.payer), isSigner: true, isWritable: true },
+      { pubkey: new Web3PublicKey(input.ata), isSigner: false, isWritable: true },
+      { pubkey: new Web3PublicKey(input.owner), isSigner: false, isWritable: false },
+      { pubkey: new Web3PublicKey(input.mint), isSigner: false, isWritable: false },
+      { pubkey: new Web3PublicKey(SYSTEM_PROGRAM_ADDRESS), isSigner: false, isWritable: false },
+      { pubkey: new Web3PublicKey(String(TOKEN_PROGRAM_ADDRESS)), isSigner: false, isWritable: false },
     ],
-    data: Uint8Array.of(1),
-  };
+    data: Buffer.from([1]),
+  });
 }
 
-function transferCheckedInstruction(input: {
+function web3TransferCheckedInstruction(input: {
   source: string;
   mint: string;
   destination: string;
@@ -774,18 +805,18 @@ function transferCheckedInstruction(input: {
   amount: bigint;
   decimals: number;
   reference: string;
-}): Instruction {
-  return {
-    programId: publicKey(TOKEN_PROGRAM_ADDRESS),
+}): Web3TransactionInstruction {
+  return new Web3TransactionInstruction({
+    programId: new Web3PublicKey(String(TOKEN_PROGRAM_ADDRESS)),
     keys: [
-      { pubkey: publicKey(input.source), isSigner: false, isWritable: true },
-      { pubkey: publicKey(input.mint), isSigner: false, isWritable: false },
-      { pubkey: publicKey(input.destination), isSigner: false, isWritable: true },
-      { pubkey: publicKey(input.authority), isSigner: true, isWritable: false },
-      { pubkey: publicKey(input.reference), isSigner: false, isWritable: false },
+      { pubkey: new Web3PublicKey(input.source), isSigner: false, isWritable: true },
+      { pubkey: new Web3PublicKey(input.mint), isSigner: false, isWritable: false },
+      { pubkey: new Web3PublicKey(input.destination), isSigner: false, isWritable: true },
+      { pubkey: new Web3PublicKey(input.authority), isSigner: true, isWritable: false },
+      { pubkey: new Web3PublicKey(input.reference), isSigner: false, isWritable: false },
     ],
-    data: transferCheckedData(input.amount, input.decimals),
-  };
+    data: Buffer.from(transferCheckedData(input.amount, input.decimals)),
+  });
 }
 
 function transferCheckedData(amount: bigint, decimals: number): Uint8Array {

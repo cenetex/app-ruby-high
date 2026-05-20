@@ -232,6 +232,7 @@ const WALLET_TRANSACTION_LIMIT = 200;
 const STUDENT_POOL_LIMIT = 50;
 const HALL_PASS_REDEEMED_CARD_LIMIT = 160;
 export const HALL_PASS_CARDS_PER_PACK = 5;
+export const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
 export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
@@ -1380,8 +1381,9 @@ export class RubyHighService extends Service {
       };
     }
     const durationMs = normalizePositiveInteger(input.durationMs, "Hosted AI duration");
-    if (input.burns && input.burns.length > 0 && input.burns.length !== hallPassCost) {
-      throw new Error(`Hosted AI Access needs ${hallPassCost} burned Card${hallPassCost === 1 ? "" : "s"}.`);
+    const requiredBurnCards = hallPassCardsRequiredForCost(hallPassCost);
+    if (input.burns && input.burns.length > 0 && input.burns.length !== requiredBurnCards) {
+      throw new Error(`Hosted AI Access needs ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"}.`);
     }
     const spendInput = {
       idempotencyKey: `hosted-ai:access:${sessionId}:${now}`,
@@ -1392,12 +1394,20 @@ export class RubyHighService extends Service {
         durationMs,
       },
     };
-    const spend = input.burns && input.burns.length > 0
-      ? this.spendBurnedHallPassCards(sessionId, { ...spendInput, burns: input.burns })
-      : this.applyHallPassTransaction(sessionId, "hall-pass-spend", {
-        amount: hallPassCost,
-        ...spendInput,
+    if (input.burns && input.burns.length > 0) {
+      this.convertBurnedHallPassCardsToHallPasses(sessionId, {
+        burns: input.burns,
+        idempotencyKey: `${spendInput.idempotencyKey}:card-credit`,
+        source: spendInput.source,
+        description: "AI Access card burn credit",
+        at: spendInput.at,
+        metadata: spendInput.metadata,
       });
+    }
+    const spend = this.applyHallPassTransaction(sessionId, "hall-pass-spend", {
+      amount: hallPassCost,
+      ...spendInput,
+    });
     const expiresAt = now + durationMs;
     spend.state.wallet.hostedAiAccessExpiresAt = expiresAt;
     spend.state.updatedAt = Date.now();
@@ -1689,17 +1699,18 @@ export class RubyHighService extends Service {
       burnedCards.push(card);
     }
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
-    const hallPasses = burnedCards.length;
+    const hallPasses = burnedCards.length * HALL_PASS_CARD_BURN_HALL_PASS_VALUE;
     const transaction: RubyHighWalletTransaction = {
       id,
       kind: "hall-pass-card-burn",
       at,
       hallPasses,
       source: input.source ?? "hall-pass-card",
-      description: input.description ?? `${hallPasses} Card${hallPasses === 1 ? "" : "s"} burned for ${hallPasses} Hall Pass${hallPasses === 1 ? "" : "es"}`,
+      description: input.description ?? `${burnedCards.length} Card${burnedCards.length === 1 ? "" : "s"} burned for ${hallPasses} Hall Pass${hallPasses === 1 ? "" : "es"}`,
       metadata: {
         ...(input.metadata ?? {}),
         cardBurnConversion: true,
+        hallPassesPerCard: HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
         ...(burns.length === 1 ? { burnSignature: burns[0]!.burnSignature } : {}),
         burnSignatures: burns.map((burn) => burn.burnSignature).join(","),
         burnMintAddresses: burns.map((burn) => burn.mintAddress).join(","),
@@ -2363,52 +2374,45 @@ export class RubyHighService extends Service {
       this.ensureRoster(state, DEFAULT_GRADE);
       this.sessions.set(sessionId, state);
     }
-    const repairedWelcomeGrant = this.ensureWelcomeHallPasses(state);
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
     const repairedMemory = this.backfillCardMemory(state);
     const repairedComicCollection = this.unlockStudentInsertPagesForCircledSocialCard(state);
     const repairedTeacherPages = this.unlockTeacherStoryPagesForAClasses(state);
-    if (this.maybeMarkGradeReady(state) || repairedWelcomeGrant || repairedMemory || repairedComicCollection || repairedTeacherPages) {
+    if (this.maybeMarkGradeReady(state) || repairedMemory || repairedComicCollection || repairedTeacherPages) {
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
     }
     return state;
   }
 
-  private ensureWelcomeHallPasses(state: QuizState): boolean {
+  claimWelcomeHallPasses(sessionId: string): HallPassMutationResult {
+    const state = this.getOrCreate(sessionId);
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
-    if (state.wallet.welcomeHallPassesGrantedAt) return false;
     const existing = state.wallet.operationLedger?.[WELCOME_HALL_PASS_GRANT_ID] ??
       state.wallet.transactions?.find((tx) => tx.id === WELCOME_HALL_PASS_GRANT_ID) ??
       null;
     if (existing) {
-      state.wallet.welcomeHallPassesGrantedAt = existing.at;
-      return true;
+      if (!state.wallet.welcomeHallPassesGrantedAt) {
+        state.wallet.welcomeHallPassesGrantedAt = existing.at;
+        state.updatedAt = Date.now();
+        void this.persistSession(sessionId);
+      }
+      return { state, applied: false, transaction: existing };
     }
     const at = Date.now();
-    const transaction: RubyHighWalletTransaction = {
-      id: WELCOME_HALL_PASS_GRANT_ID,
-      kind: "hall-pass-grant",
-      at,
-      hallPasses: WELCOME_HALL_PASS_GRANT,
+    const result = this.applyHallPassTransaction(sessionId, "hall-pass-grant", {
+      amount: WELCOME_HALL_PASS_GRANT,
+      idempotencyKey: WELCOME_HALL_PASS_GRANT_ID,
       source: "system",
       description: "Welcome Hall Passes",
-      metadata: { reason: "account-welcome" },
-    };
-    state.wallet.hallPasses = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0))) + WELCOME_HALL_PASS_GRANT;
-    state.wallet.welcomeHallPassesGrantedAt = at;
-    recordWalletTransaction(state, transaction);
-    this.recordMetricEvent("commerce", {
-      sessionId: state.sessionId,
-      source: "system",
-      feature: "hall-pass-grant",
-      status: "success",
-      hallPassesDelta: WELCOME_HALL_PASS_GRANT,
-      metadata: { transactionId: transaction.id, reason: "account-welcome" },
+      metadata: { reason: "hall-pass-page-welcome" },
+      at,
     });
-    state.updatedAt = at;
-    return true;
+    result.state.wallet.welcomeHallPassesGrantedAt = result.transaction.at;
+    result.state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return result;
   }
 
   private appendSchoolEvent(state: QuizState, event: SchoolEvent): void {
@@ -4960,7 +4964,6 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     if (wallet) state.wallet = { ...wallet, meritStars: Math.max(0, Math.floor(Number(state.score.points ?? 0))) };
     if (characterSlots) state.characterSlots = characterSlots;
-    if (wallet && this.ensureWelcomeHallPasses(state)) state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
   }
@@ -5137,6 +5140,11 @@ function normalizePositiveInteger(value: number, label: string): number {
     throw new Error(`${label} must be a positive integer.`);
   }
   return amount;
+}
+
+function hallPassCardsRequiredForCost(hallPassCost: number): number {
+  const cost = normalizePositiveInteger(hallPassCost, "Hall Pass cost");
+  return Math.max(1, Math.ceil(cost / HALL_PASS_CARD_BURN_HALL_PASS_VALUE));
 }
 
 function yearbookShareId(parts: {

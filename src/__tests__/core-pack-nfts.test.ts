@@ -33,7 +33,7 @@ describe("Core pack NFT checkout transactions", () => {
     })).toContain("cards=5");
   });
 
-  it("builds one partially signed transaction with RUBY transfer and Core pack mint", async () => {
+  it("builds one wallet-only transaction with a RUBY transfer", async () => {
     const umi = createUmi("https://rpc.test");
     const authority = umi.eddsa.generateKeypair();
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(authority.secretKey));
@@ -76,12 +76,12 @@ describe("Core pack NFT checkout transactions", () => {
     ));
 
     expect(transaction.signatures[0]?.signature).toBeNull();
-    expect(transaction.signatures.some((signature) => signature.signature != null)).toBe(true);
+    expect(transaction.signatures.some((signature) => signature.signature != null)).toBe(false);
     expect(instructions.map((ix) => ix.program)).toEqual(expect.arrayContaining([
       "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
     ]));
+    expect(instructions.map((ix) => ix.program)).not.toContain("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
     expect(createDestinationAta?.accounts[0]).toBe(ownerWalletAddress);
     expect(tokenTransfer).toBeTruthy();
     expect(tokenTransfer?.accounts).toEqual(expect.arrayContaining([
@@ -90,7 +90,7 @@ describe("Core pack NFT checkout transactions", () => {
       ownerWalletAddress,
       paymentReference,
     ]));
-    expect(prepared.assetAddress).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
+    expect(prepared.assetAddress).toBeUndefined();
   });
 
   it("syncs owned Core packs from DAS owner lookups", async () => {

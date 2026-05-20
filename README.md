@@ -161,7 +161,7 @@ Web purchases use Stripe Checkout for Hall Passes only:
 - Unlocking an extra student slot costs 1 Hall Pass and grants a Photo Day credit; hosted character portraits consume that credit before spending a Hall Pass.
 - `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for Hall Passes for the signed-in Ruby High cookie session.
 - `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata. Stripe does not sell card packs or NFTs.
-- `POST /api/apps/ruby-high/billing/card-burn` verifies owner-signed card burns and credits 1 Hall Pass per burned card. Hosted features then spend Hall Passes normally.
+- `POST /api/apps/ruby-high/billing/card-burn` verifies owner-signed card burns and credits 5 Hall Passes per burned card. Hosted features then spend Hall Passes normally.
 
 Stripe webhook events to send: `checkout.session.completed` and, if using asynchronous payment methods, `checkout.session.async_payment_succeeded`.
 
@@ -173,9 +173,11 @@ Solana purchases are separate from Stripe and use the configured SPL token to mi
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
 - Create the card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` to the printed address so card NFTs verify into `Ruby High`.
 - Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Card identities are HMAC-selected from the server-only `RUBY_HIGH_PACK_REVEAL_SECRET` mapping.
-- Each face-down card is minted and revealed one at a time. The connected user wallet is the transaction fee payer, so failed or unfunded mints leave the card face-down and retryable instead of creating a partial server-funded batch.
-- `POST /api/apps/ruby-high/billing/solana/quote` accepts the connected owner wallet and returns the treasury wallet, mint, per-session payment reference, token amount, prepared payment-plus-pack-NFT transaction, and Solana Pay URL for a selected pack.
-- `POST /api/apps/ruby-high/billing/solana/confirm` accepts the signed transaction signature, owner wallet, prepared pack asset address, and metadata URI, then verifies that the transaction contains the payment reference and pack NFT before recording it idempotently.
+- Wallet-signed pack checkout is payment-only: the prepared transaction creates the treasury ATA if needed and transfers the configured SPL token with the Ruby High payment reference. The server verifies the payment and mints the Metaplex Core pack NFT afterward.
+- Each face-down card is minted and revealed one at a time by the Ruby High mint authority to the connected wallet. The player wallet is the recipient, not the mint fee payer.
+- Owner-signed card burns are prepared one card per wallet prompt and preflighted before signing; `POST /api/apps/ruby-high/billing/card-burn` verifies the burn signature and credits 5 Hall Passes per burned card.
+- `POST /api/apps/ruby-high/billing/solana/quote` accepts the connected owner wallet and returns the treasury wallet, mint, per-session payment reference, token amount, payment-only transaction, and Solana Pay URL for a selected pack.
+- `POST /api/apps/ruby-high/billing/solana/confirm` accepts the signed payment transaction signature and owner wallet, then verifies the payment reference/token receipt before minting and recording the pack idempotently.
 
 Native billing is not wired in the current public-web build. If iOS or Android comes back, do not use Stripe for digital in-app currency; create matching consumable in-app purchase products in App Store Connect and Google Play Console, validate receipts/purchase tokens server-side, then call the same Hall Pass grant path. RevenueCat can replace most receipt-validation boilerplate; the Ruby High server remains the authority that credits the wallet after validation.
 

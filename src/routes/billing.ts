@@ -2,7 +2,13 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import type { AuthService } from "../services/auth-service.js";
 import { log } from "../services/logger.js";
-import { HALL_PASS_CARDS_PER_PACK, RubyHighService, type HallPassCardBurnInput } from "../services/ruby-high-service.js";
+import {
+  HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
+  HALL_PASS_CARDS_PER_PACK,
+  RubyHighService,
+  WELCOME_HALL_PASS_GRANT,
+  type HallPassCardBurnInput,
+} from "../services/ruby-high-service.js";
 import {
   courseSlotCost,
   hostedAiAccessCost,
@@ -16,8 +22,8 @@ import {
 import { publicHallPassNftStatus, verifyHallPassCardBurn } from "../services/hall-pass-nfts.js";
 import {
   buildCorePackPurchaseTransaction,
+  mintCorePackNft,
   publicCorePackNftStatus,
-  verifyCorePackNftMint,
 } from "../services/core-pack-nfts.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
@@ -1120,6 +1126,9 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       courseSlotCost: courseSlotCost(),
       questionGenerationCost: questionGenerationCost(),
       moreQuestionsCount: moreQuestionsCount(),
+      cardBurn: {
+        hallPassesPerCard: HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
+      },
       hostedAiAccess: {
         configured: entitlements.hosted_ai.configured,
         cost: hostedAiAccessCost(),
@@ -1245,10 +1254,6 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ctx.error(ctx.res, "Use a buyer wallet, not the Ruby High treasury wallet, to mint a pack.", 400);
       return true;
     }
-    if (!packAssetAddress) {
-      ctx.error(ctx.res, "Solana pack checkout is missing the prepared pack NFT. Refresh Ruby High and try again.", 400);
-      return true;
-    }
     try {
       const reference = solanaPaymentReference(stateKey, product.id);
       requireSignedTransactionAccounts(signedTransactionBase64, [
@@ -1256,7 +1261,6 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         solana.recipient,
         solana.mint,
         reference,
-        packAssetAddress,
       ]);
       const signature = await submitSignedSolanaTransaction(solana, signedTransactionBase64);
       ctx.json(ctx.res, { ok: true, signature });
@@ -1265,7 +1269,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         productId: product.id,
         signature,
         ownerWalletAddress,
-        packAssetAddress,
+        ...(packAssetAddress ? { packAssetAddress } : {}),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1273,7 +1277,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         sessionId: stateKey,
         productId: product.id,
         ownerWalletAddress,
-        packAssetAddress,
+        ...(packAssetAddress ? { packAssetAddress } : {}),
       });
       ctx.error(ctx.res, message, /rpc|blockhash|simulation|preflight|insufficient funds|Attempt to debit/i.test(message) ? 502 : 400);
     }
@@ -1304,9 +1308,6 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const packAssetAddress = typeof body.packAssetAddress === "string" && isBase58Address(body.packAssetAddress.trim())
       ? body.packAssetAddress.trim()
       : "";
-    const packMetadataUri = typeof body.packMetadataUri === "string" && body.packMetadataUri.trim()
-      ? body.packMetadataUri.trim()
-      : "";
     const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
     if (!product) {
       ctx.error(ctx.res, "Unknown Solana card pack.", 400);
@@ -1318,10 +1319,6 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     if (!ownerWalletAddress) {
       ctx.error(ctx.res, "Solana wallet address is required to mint the pack NFT.", 400);
-      return true;
-    }
-    if (!packAssetAddress) {
-      ctx.error(ctx.res, "Solana pack checkout is missing the prepared pack NFT. Refresh Ruby High and try again.", 400);
       return true;
     }
     const idempotencyKey = solanaTransactionKey(signature);
@@ -1352,14 +1349,12 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     try {
-      const verification = await verifySolanaPayment(solana, product, stateKey, signature, packAssetAddress);
-      const packMint = await verifyCorePackNftMint({
+      const verification = await verifySolanaPayment(solana, product, stateKey, signature);
+      const packMint = await mintCorePackNft({
         productId: product.id,
         packCount: product.packCount,
         cardCount: product.cardCount,
         ownerWalletAddress,
-        assetAddress: packAssetAddress,
-        metadataUri: packMetadataUri,
         paymentSignature: signature,
       });
       const result = deps.ruby.recordHallPassPackMint(stateKey, {
@@ -1454,6 +1449,28 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     return true;
   }
 
+  if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/welcome`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    const result = deps.ruby.claimWelcomeHallPasses(stateKey);
+    await deps.ruby.flushSession(stateKey);
+    const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey, state: result.state });
+    ctx.json(ctx.res, {
+      ok: true,
+      applied: result.applied,
+      amount: WELCOME_HALL_PASS_GRANT,
+      hallPasses: result.state.wallet.hallPasses,
+      welcomeHallPassesGrantedAt: result.state.wallet.welcomeHallPassesGrantedAt ?? result.transaction.at,
+      entitlements,
+    });
+    return true;
+  }
+
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/ai-pass`) {
     if (!hostedOpenRouterConfigured()) {
       ctx.error(ctx.res, "Hosted AI is not configured on this server.", 503);
@@ -1512,11 +1529,12 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const stateKey = deps.auth.stateKeyForRecord(record);
     try {
       await verifyHallPassBurns(burns);
+      const hallPassCredit = burns.length * HALL_PASS_CARD_BURN_HALL_PASS_VALUE;
       const result = deps.ruby.convertBurnedHallPassCardsToHallPasses(stateKey, {
         burns,
         idempotencyKey,
         source: "hall-pass-card",
-        description: `${burns.length} Card${burns.length === 1 ? "" : "s"} burned for ${burns.length} Hall Pass${burns.length === 1 ? "" : "es"}`,
+        description: `${burns.length} Card${burns.length === 1 ? "" : "s"} burned for ${hallPassCredit} Hall Pass${hallPassCredit === 1 ? "" : "es"}`,
       });
       await deps.ruby.flushSession(stateKey);
       const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
@@ -1524,7 +1542,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         ok: true,
         applied: result.applied,
         sessionId: stateKey,
-        amount: burns.length,
+        amount: hallPassCredit,
+        hallPassesPerCard: HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
         hallPasses: result.state.wallet.hallPasses,
         burnedCards: result.cards?.map((card) => ({
           cardId: card.id,

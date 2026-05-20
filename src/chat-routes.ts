@@ -2,7 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
-import { RubyHighService, type HallPassCardBurnInput, type QuestionBankStatus } from "./services/ruby-high-service.js";
+import {
+  HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
+  RubyHighService,
+  type HallPassCardBurnInput,
+  type QuestionBankStatus,
+} from "./services/ruby-high-service.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import {
@@ -1192,9 +1197,10 @@ async function prepareHostedImageCharge(args: {
     args.costKind === "portrait" &&
     args.ruby.photoDayCreditBalance(args.sessionId) > 0;
   const burns = hallPassBurnsFromBody(args.body);
+  const requiredBurnCards = hallPassCardsRequiredForHostedImageCost(hallPassCost);
   if (!usePhotoDayCredit && !imageEntitlement.affordable && burns.length <= 0) {
     throw new HostedImageChargeError(
-      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} or burned Card${hallPassCost === 1 ? "" : "s"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
+      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} or ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
       402,
     );
   }
@@ -1224,15 +1230,28 @@ async function prepareHostedImageCharge(args: {
       };
     }
     if (burns.length > 0) {
-      if (burns.length !== hallPassCost) {
+      if (burns.length !== requiredBurnCards) {
         throw new HostedImageChargeError(
-          `Need ${hallPassCost} burned Card${hallPassCost === 1 ? "" : "s"} for this image.`,
+          `Need ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"} for this image.`,
           402,
         );
       }
       for (const burn of burns) await verifyHallPassCardBurn(burn);
-      const spend = args.ruby.spendBurnedHallPassCards(args.sessionId, {
+      args.ruby.convertBurnedHallPassCardsToHallPasses(args.sessionId, {
         burns,
+        idempotencyKey: `${spendKey}:card-credit`,
+        source: "hosted-image",
+        description: `${args.description} card burn credit`,
+        metadata: {
+          route: args.route,
+          requestId,
+          fingerprint,
+          status: "pending",
+          hallPassCost,
+        },
+      });
+      const spend = args.ruby.spendHallPasses(args.sessionId, {
+        amount: hallPassCost,
         idempotencyKey: spendKey,
         source: "hosted-image",
         description: args.description,
@@ -1279,6 +1298,11 @@ async function prepareHostedImageCharge(args: {
       message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Cards") || message.startsWith("Not enough Photo Day credits") ? 402 : 503,
     );
   }
+}
+
+function hallPassCardsRequiredForHostedImageCost(hallPassCost: number): number {
+  const cost = Math.max(1, Math.floor(Number(hallPassCost)));
+  return Math.max(1, Math.ceil(cost / HALL_PASS_CARD_BURN_HALL_PASS_VALUE));
 }
 
 function hallPassBurnsFromBody(body: Record<string, unknown> | null | undefined): HallPassCardBurnInput[] {

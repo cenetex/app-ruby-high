@@ -71,7 +71,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">0 Merit Stars · 0 Hall Passes</span>
       </div>
-      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Account" aria-label="Account" hidden>
+      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Buy card packs" aria-label="Buy card packs" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 9a3 3 0 0 0 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
           <path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>
@@ -214,7 +214,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="account-character-grid" id="account-character-grid"></div>
     </section>
     <section class="account-section account-wallet-section">
-      <div class="account-section-title">Wallet</div>
+      <div class="account-section-head">
+        <div>
+          <div class="account-section-title">Wallet</div>
+        </div>
+        <div class="account-section-actions">
+          <button type="button" id="account-buy-passes">Buy Hall Passes</button>
+        </div>
+      </div>
       <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
       <div class="account-wallet-meta" id="account-wallet-meta"></div>
     </section>
@@ -264,12 +271,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <div class="sheet-card" id="sheet-card"></div>
 </div>
 
-<!-- Card mint overlay -->
+<!-- Billing overlay -->
 <div class="sheet-overlay" id="billing-overlay">
   <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card billing-card">
-    <h2>Buy Hall Passes</h2>
-    <p class="sub">Hall Passes unlock hosted AI, creator slots, and image generation. Minted cards can be burned into Hall Passes.</p>
+    <h2 id="billing-title">Buy Hall Passes</h2>
+    <p class="sub" id="billing-sub">Hall Passes unlock hosted AI, creator slots, and image generation. Minted cards can be burned into Hall Passes.</p>
     <div class="wallet-panel" id="billing-wallet">0 Hall Passes · 0 Cards</div>
     <div class="billing-costs" id="billing-costs"></div>
     <div class="billing-products" id="billing-products"></div>

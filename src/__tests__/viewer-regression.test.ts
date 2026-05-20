@@ -95,7 +95,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-ai-use-pass"');
     expect(html).toContain('id="account-ai-action"');
     expect(html).not.toContain('id="account-use-pass"');
-    expect(html).not.toContain('id="account-buy-passes"');
+    expect(html).toContain('id="account-buy-passes"');
+    expect(html).toContain('title="Buy card packs"');
     expect(html).toContain("Connect AI key");
     expect(html).toContain("Burn Card");
     expect(html).toContain('id="account-create-character"');
@@ -135,14 +136,15 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "async function ensureSolanaWalletFromAccount()");
     expectScriptToContain(script, "accountHallPassCards");
     expectScriptToContain(script, 'buy.addEventListener("click", () => selectBillingProduct(product.id))');
-    expectScriptToContain(script, "buildBillingPaymentChoice(payload, product, solana, solanaProduct)");
-    expectScriptToContain(script, "return solanaProducts.find((entry) => entry && entry.id === product.id) || null;");
+    expectScriptToContain(script, 'mode === "card-packs"');
+    expectScriptToContain(script, "buildCardPackPaymentChoice(solana, product)");
+    expectScriptToContain(script, "buildBillingPaymentChoice(payload, product)");
     expectScriptToContain(script, 'title.textContent = "Buy " + hallPassCostLabel(productHallPassCount(product));');
     expectScriptToContain(script, "meta.textContent = formatMoney(product.unitAmount, product.currency);");
     expectScriptToContain(script, 'stripe.textContent = "Checkout"');
-    expectScriptToContain(script, 'crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Crypto"');
-    expectScriptToContain(script, "crypto.disabled = billingBusy || cryptoUnavailable");
-    expectScriptToContain(script, "Crypto checkout is not configured in this preview.");
+    expectScriptToContain(script, 'crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Buy Pack"');
+    expectScriptToContain(script, "crypto.disabled = billingBusy || cryptoUnavailable || !(solana && solana.configured)");
+    expectScriptToContain(script, "Card pack checkout is not configured in this preview.");
     expect(VIEWER_CSS).toContain(".billing-payment-note");
     expect(VIEWER_CSS).toContain(".account-hall-pass-card");
     expect(script).not.toContain('"Buy " + formatWholeNumber(product.hallPasses || 0) + " Hall Passes."');
@@ -163,6 +165,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'img.src = PACK_NFT_ART_URL');
     expectScriptToContain(script, 'item.className = "account-pack-tile is-" + String(pack.status || "active")');
     expectScriptToContain(script, 'item.className = "account-card-tile is-" + String(card.status || "active")');
+    expectScriptToContain(script, 'item.type = "button"');
+    expectScriptToContain(script, 'item.addEventListener("click", () => showHallPassCardReader(card))');
+    expectScriptToContain(script, "function showHallPassCardReader(card)");
     expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");
     expectScriptToContain(script, "Opening pack. Laying out five face-down cards...");
     expectScriptToContain(script, 'const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2"');
@@ -180,7 +185,10 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain(".pack-mint-overlay");
     expect(VIEWER_CSS).toContain(".account-pack-tile");
     expect(VIEWER_CSS).toContain(".account-card-tile");
+    expect(VIEWER_CSS).toContain("grid-template-columns: repeat(auto-fill, minmax(72px, 1fr))");
+    expect(VIEWER_CSS).toContain(".account-card-reader");
     expect(VIEWER_CSS).toContain(".account-card-tile-reveal");
+    expect(VIEWER_CSS).toContain("aspect-ratio: 3 / 4");
     expect(VIEWER_CSS).toContain("aspect-ratio: 1122 / 1402");
     expect(script).not.toContain("mintPurchasedHallPassCards");
     expectScriptToContain(script, "function mintPendingCardNftsFromAccount()");
@@ -195,7 +203,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'await startPrivyLogin({ source: "billing" })');
     expectScriptToContain(script, 'await startSolanaWalletConnect({ source: "billing" })');
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
-    expectScriptToContain(script, 'setBillingStatus("Starting crypto checkout...", false)');
+    expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
     expect(PRIVY_CLIENT_SOURCE).toContain('useSignTransaction');
     expect(PRIVY_CLIENT_SOURCE).toContain('/billing/solana/submit');
@@ -204,6 +212,8 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("Solana transaction signature");
     expect(script).not.toContain("paste the transaction");
     expect(script).not.toContain("Pay Crypto");
+    expectScriptToContain(script, 'els.hallPassBtn.addEventListener("click", () => openBilling({ mode: "card-packs" }))');
+    expectScriptToContain(script, 'els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }))');
   });
 
   it("shows a thumbnail selector before burning collectible cards", () => {
@@ -215,7 +225,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'thumb.className = "card-burn-thumb"');
     expectScriptToContain(script, "img.src = hallPassCardArtUrl(card)");
     expectScriptToContain(script, "const selectedCards = presetCards.length === needed");
-    expectScriptToContain(script, "body: JSON.stringify({ cardIds: selectedCards.map((card) => card.id), ownerWalletAddress })");
+    expectScriptToContain(script, "body: JSON.stringify({ hallPassBurns: burns })");
     expectScriptToContain(script, "async function convertHallPassCardsToHallPasses(count, opts)");
     expectScriptToContain(script, 'apiBase + "/billing/card-burn"');
     expect(VIEWER_CSS).toContain(".card-burn-overlay");
@@ -292,6 +302,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "Create your first Ruby High student.");
     expectScriptToContain(script, 'els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction)');
     expectScriptToContain(script, "function maybeShowWelcomeHallPassPopup");
+    expectScriptToContain(script, "function claimWelcomeHallPassesFromBilling()");
+    expectScriptToContain(script, 'apiBase + "/billing/welcome"');
+    expectScriptToContain(script, "No Hall Passes yet");
+    expectScriptToContain(script, "Open Hall Passes");
+    expectScriptToContain(script, 'if (billingMode === "hall-passes") void claimWelcomeHallPassesFromBilling();');
+    expect(script).not.toContain("maybeShowWelcomeHallPassPopup(t);");
     expectScriptToContain(script, 'const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');
     expect(VIEWER_CSS).toContain(".welcome-hall-pass-art");
     expectScriptToContain(script, "Roll your first student and try a custom portrait");

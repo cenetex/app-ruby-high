@@ -80,26 +80,36 @@ function completedClassRecord(
 }
 
 describe("Hall Pass wallet", () => {
-  it("grants every account five welcome Hall Passes once", async () => {
+  it("starts accounts without Hall Passes and claims the welcome grant once", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:welcome";
 
     const state = ruby.getOrCreate(sid);
-    expect(state.wallet.hallPasses).toBe(WELCOME_HALL_PASS_GRANT);
+    expect(state.wallet.hallPasses).toBe(0);
+    expect(state.wallet.welcomeHallPassesGrantedAt).toBeUndefined();
     expect(state.wallet.hallPassCards?.filter((card) => card.status === "active") ?? []).toHaveLength(0);
-    expect(state.wallet.welcomeHallPassesGrantedAt).toEqual(expect.any(Number));
-    expect(state.wallet.transactions).toContainEqual(expect.objectContaining({
+
+    const grant = ruby.claimWelcomeHallPasses(sid);
+    expect(grant.applied).toBe(true);
+    expect(grant.state.wallet.hallPasses).toBe(WELCOME_HALL_PASS_GRANT);
+    expect(grant.state.wallet.welcomeHallPassesGrantedAt).toEqual(expect.any(Number));
+    expect(grant.transaction).toMatchObject({
       id: WELCOME_HALL_PASS_GRANT_ID,
       kind: "hall-pass-grant",
       hallPasses: WELCOME_HALL_PASS_GRANT,
       source: "system",
       description: "Welcome Hall Passes",
       metadata: expect.objectContaining({
-        reason: "account-welcome",
+        reason: "hall-pass-page-welcome",
       }),
-    }));
+    });
+
+    const repeatGrant = ruby.claimWelcomeHallPasses(sid);
+    expect(repeatGrant.applied).toBe(false);
+    expect(repeatGrant.state.wallet.hallPasses).toBe(WELCOME_HALL_PASS_GRANT);
 
     const repeat = ruby.getOrCreate(sid);
+    expect(state.wallet.hallPasses).toBe(WELCOME_HALL_PASS_GRANT);
     expect(repeat.wallet.hallPasses).toBe(WELCOME_HALL_PASS_GRANT);
     expect((repeat.wallet.transactions ?? []).filter((tx) => tx.id === WELCOME_HALL_PASS_GRANT_ID)).toHaveLength(1);
   });
@@ -114,7 +124,7 @@ describe("Hall Pass wallet", () => {
       source: "stripe",
     });
     expect(grant.applied).toBe(true);
-    expect(grant.state.wallet.hallPasses).toBe(25);
+    expect(grant.state.wallet.hallPasses).toBe(20);
     expect(grant.cards).toBeUndefined();
     expect(grant.state.wallet.hallPassCards?.filter((card) => card.status === "active") ?? []).toHaveLength(0);
 
@@ -124,7 +134,7 @@ describe("Hall Pass wallet", () => {
       source: "stripe",
     });
     expect(repeatGrant.applied).toBe(false);
-    expect(repeatGrant.state.wallet.hallPasses).toBe(25);
+    expect(repeatGrant.state.wallet.hallPasses).toBe(20);
     expect(repeatGrant.cards).toBeUndefined();
 
     const spend = ruby.spendHallPasses(sid, {
@@ -133,7 +143,7 @@ describe("Hall Pass wallet", () => {
       source: "hosted-image",
     });
     expect(spend.applied).toBe(true);
-    expect(spend.state.wallet.hallPasses).toBe(22);
+    expect(spend.state.wallet.hallPasses).toBe(17);
     expect(spend.cards).toBeUndefined();
     expect(spend.transaction.metadata).toBeUndefined();
     expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "active") ?? []).toHaveLength(0);
@@ -144,7 +154,7 @@ describe("Hall Pass wallet", () => {
       source: "hosted-image",
     });
     expect(repeatSpend.applied).toBe(false);
-    expect(repeatSpend.state.wallet.hallPasses).toBe(22);
+    expect(repeatSpend.state.wallet.hallPasses).toBe(17);
     expect(repeatSpend.cards).toBeUndefined();
     expect(() => ruby.spendHallPasses(sid, {
       amount: 23,
@@ -185,7 +195,7 @@ describe("Hall Pass wallet", () => {
     });
 
     expect(spend.applied).toBe(true);
-    expect(spend.state.wallet.hallPasses).toBe(5);
+    expect(spend.state.wallet.hallPasses).toBe(0);
     expect(spend.cards).toHaveLength(1);
     expect(spend.transaction).toMatchObject({
       kind: "hall-pass-spend",
@@ -301,20 +311,67 @@ describe("Hall Pass wallet", () => {
     });
 
     expect(converted.applied).toBe(true);
-    expect(converted.state.wallet.hallPasses).toBe(6);
+    expect(converted.state.wallet.hallPasses).toBe(5);
     expect(converted.transaction).toMatchObject({
       kind: "hall-pass-card-burn",
-      hallPasses: 1,
+      hallPasses: 5,
       source: "hall-pass-card",
     });
     expect(converted.transaction.metadata).toMatchObject({
       cardBurnConversion: true,
+      hallPassesPerCard: 5,
       hallPassCardIds: card.id,
     });
     expect(converted.state.wallet.hallPassCards?.find((candidate) => candidate.id === card.id)).toMatchObject({
       status: "redeemed",
       redeemTransactionId: "hall-pass-card-burn:convert",
     });
+  });
+
+  it("credits burned card value before spending for hosted AI access", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:nft-burn-hosted-ai";
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const grant = ruby.grantHallPassCards(sid, {
+      cardCount: 1,
+      idempotencyKey: "solana:pack:nft-burn-hosted-ai",
+      source: "solana",
+    });
+    const card = grant.cards![0]!;
+    ruby.recordHallPassCardMint(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mMintSignatureHostedAi11111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    });
+
+    const activated = ruby.activateHostedAiAccess(sid, {
+      hallPassCost: 1,
+      durationMs: 604_800_000,
+      burns: [{
+        cardId: card.id,
+        ownerWalletAddress,
+        mintAddress,
+        burnSignature: "4mBurnSignatureHostedAi11111111111111111111111111111111111",
+      }],
+    });
+
+    expect(activated.applied).toBe(true);
+    expect(activated.state.wallet.hallPasses).toBe(4);
+    expect(activated.transaction).toMatchObject({
+      kind: "hall-pass-spend",
+      hallPasses: -1,
+      source: "hosted-ai",
+    });
+    const transactions = activated.state.wallet.transactions ?? [];
+    expect(transactions.some((tx) =>
+      tx.kind === "hall-pass-card-burn" &&
+      tx.hallPasses === 5 &&
+      tx.metadata?.hallPassesPerCard === 5 &&
+      tx.metadata?.hallPassCardIds === card.id
+    )).toBe(true);
   });
 
   it("keeps wallet idempotency after the visible transaction list rotates", async () => {
@@ -334,7 +391,7 @@ describe("Hall Pass wallet", () => {
       });
     }
     expect(ruby.getOrCreate(sid).wallet.transactions?.some((tx) => tx.id === "stripe:checkout:old")).toBe(false);
-    expect(ruby.hallPassBalance(sid)).toBe(230);
+    expect(ruby.hallPassBalance(sid)).toBe(225);
 
     await ruby.flush();
     const rehydrated = new RubyHighService({} as never, new StateStore(storePath));
@@ -347,7 +404,7 @@ describe("Hall Pass wallet", () => {
     });
 
     expect(repeat.applied).toBe(false);
-    expect(repeat.state.wallet.hallPasses).toBe(230);
+    expect(repeat.state.wallet.hallPasses).toBe(225);
   });
 
   it("packs three students, one teacher, and one utility or special card into each Hall Pass set", async () => {
@@ -451,6 +508,7 @@ describe("Hall Pass wallet", () => {
   it("unlocks character slots for one Hall Pass and grants a Photo Day credit", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:slots";
+    ruby.claimWelcomeHallPasses(sid);
 
     const unlock = ruby.unlockCharacterSlot(sid, { requestId: "slot-2", now: 1_700_000_000_000 });
     expect(unlock.applied).toBe(true);
@@ -479,6 +537,7 @@ describe("Hall Pass wallet", () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:photo-day";
 
+    ruby.claimWelcomeHallPasses(sid);
     ruby.unlockCharacterSlot(sid, { requestId: "slot-2", now: 1_700_000_000_000 });
     const spend = ruby.consumePhotoDayCredit(sid, {
       idempotencyKey: "photo-day:portrait-1",
@@ -820,7 +879,7 @@ describe("RubyHighService Phase 1", () => {
     const correct = s.current!.correct!;
     s = ruby.submitAnswer(sid, correct);
     expect(s.score).toMatchObject({ correct: 1, total: 1, points: 80, possible: 100 });
-    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 5 });
+    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
     expect(s.lastReveal?.scoreAward).toMatchObject({ base: 80, multiplier: 1, points: 80, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(true);
 
@@ -831,7 +890,7 @@ describe("RubyHighService Phase 1", () => {
     // Wrong answers earn no points (the dice can't pile on a miss).
     // session.points stays at the previous correct's value; possible still ticks.
     expect(s.score).toMatchObject({ correct: 1, total: 2, points: 80, possible: 200 });
-    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 5 });
+    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
     expect(s.lastReveal?.scoreAward).toMatchObject({ base: 0, multiplier: 1, points: 0, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(false);
   });
@@ -904,7 +963,7 @@ describe("RubyHighService Phase 1", () => {
     expect(restored.score.correct).toBe(1);
     expect(restored.score.total).toBe(1);
     expect(restored.wallet.meritStars).toBe(restored.score.points);
-    expect(restored.wallet.hallPasses).toBe(5);
+    expect(restored.wallet.hallPasses).toBe(0);
     expect(restored.askedQuestionIds.length).toBe(1);
     expect(restored.faculty).toBe("sally-science");
     await rubyB.flush();
@@ -1713,7 +1772,7 @@ describe("RubyHighService Phase 1", () => {
     ruby.resetSession(sid);
     const fresh = ruby.getOrCreate(sid);
     expect(fresh.score).toMatchObject({ correct: 0, total: 0, points: 0, possible: 0 });
-    expect(fresh.wallet).toMatchObject({ meritStars: 0, hallPasses: 5 });
+    expect(fresh.wallet).toMatchObject({ meritStars: 0, hallPasses: 0 });
     expect(fresh.askedQuestionIds).toEqual([]);
     expect(fresh.history).toEqual([]);
   });

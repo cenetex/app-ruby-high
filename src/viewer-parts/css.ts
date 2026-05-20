@@ -3024,6 +3024,8 @@ export const VIEWER_CSS = `
     max-width: 860px;
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 28px);
     padding-bottom: calc(var(--safe-bot) + 14px);
+    scrollbar-gutter: stable;
+    overflow-anchor: none;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
@@ -3200,8 +3202,9 @@ export const VIEWER_CSS = `
   }
   .account-hall-pass-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 6px;
+    align-items: start;
   }
   .account-hall-pass-card {
     min-width: 0;
@@ -3467,13 +3470,29 @@ export const VIEWER_CSS = `
   .account-card-tile {
     min-width: 0;
     overflow: hidden;
+    position: relative;
     border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.12);
     background: #080d19;
     box-shadow: 0 10px 26px rgba(0,0,0,0.24);
   }
   .account-pack-tile {
+    grid-column: span 2;
     border-color: rgba(241,201,92,0.72);
+  }
+  button.account-card-tile {
+    appearance: none;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    padding: 0;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  button.account-card-tile:hover,
+  button.account-card-tile:focus-visible {
+    border-color: rgba(241,201,92,0.68);
+    outline: none;
   }
   .account-pack-tile.is-opened,
   .account-card-tile.is-redeemed,
@@ -3488,53 +3507,83 @@ export const VIEWER_CSS = `
   .account-card-tile-art {
     display: block;
     width: 100%;
-    height: auto;
+    height: 100%;
     background: #050914;
   }
   .account-pack-tile-art {
     aspect-ratio: 1122 / 1402;
     object-fit: cover;
   }
+  .account-card-tile-art {
+    object-fit: cover;
+    object-position: center;
+  }
   .account-card-tile-fallback {
-    aspect-ratio: 482 / 543;
+    width: 100%;
+    height: 100%;
     display: grid;
     place-items: center;
     background: #101827;
     color: var(--accent);
-    font-size: 72px;
+    font-size: 28px;
     font-weight: 950;
   }
-  .account-pack-tile-meta,
-  .account-card-tile-meta {
+  .account-pack-tile-meta {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
     justify-content: space-between;
-    padding: 9px 10px;
+    padding: 8px;
     border-top: 1px solid rgba(255,255,255,0.10);
     background: #0a1020;
+  }
+  .account-card-tile-meta {
+    display: block;
+    position: absolute;
+    inset: auto 0 0;
+    padding: 18px 5px 5px;
+    border-top: none;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(5,9,20,0.92) 48%, rgba(5,9,20,0.98));
   }
   .account-pack-tile-copy {
     min-width: 0;
   }
-  .account-pack-tile-title,
   .account-card-tile-title {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text);
-    font-size: 14px;
+    font-size: 10px;
     font-weight: 900;
   }
-  .account-pack-tile-detail,
   .account-card-tile-detail {
     margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-mute);
-    font-size: 11px;
+    font-size: 9px;
+    font-weight: 750;
+    text-transform: capitalize;
+  }
+  .account-pack-tile-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .account-pack-tile-detail {
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-mute);
+    font-size: 10px;
     font-weight: 750;
     text-transform: capitalize;
   }
@@ -3627,14 +3676,13 @@ export const VIEWER_CSS = `
       flex-direction: column;
     }
     .account-hall-pass-cards {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
     }
     .account-section-head button,
     .account-section-actions {
       width: 100%;
     }
-    .account-pack-tile-meta,
-    .account-card-tile-meta {
+    .account-pack-tile-meta {
       align-items: stretch;
       flex-direction: column;
     }
@@ -3642,8 +3690,7 @@ export const VIEWER_CSS = `
       align-items: flex-start;
       grid-template-columns: 1fr;
     }
-    .account-pack-tile-copy,
-    .account-card-tile-meta > * {
+    .account-pack-tile-copy {
       width: 100%;
     }
     .account-pack-tile-open,
@@ -6595,5 +6642,112 @@ export const VIEWER_CSS = `
     object-fit: contain;
     border-radius: 8px;
     box-shadow: 0 24px 70px rgba(0,0,0,0.55);
+  }
+  .account-card-reader {
+    position: fixed;
+    z-index: 9999;
+    inset: 0;
+    padding: 18px;
+    background: rgba(5, 9, 20, 0.86);
+    display: grid;
+    place-items: center;
+  }
+  .account-card-reader-panel {
+    width: min(94vw, 560px);
+    max-height: 94vh;
+    overflow: auto;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: #0a1020;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.58);
+    padding: 12px;
+  }
+  .account-card-reader-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .account-card-reader-title {
+    min-width: 0;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 950;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .account-card-reader-close {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font-weight: 900;
+  }
+  .account-card-reader-main {
+    display: grid;
+    grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .account-card-reader-art {
+    min-width: 0;
+    aspect-ratio: 3 / 4;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #050914;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .account-card-reader-art img,
+  .account-card-reader-fallback {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .account-card-reader-art img {
+    object-fit: cover;
+    object-position: center;
+  }
+  .account-card-reader-fallback {
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+    font-size: 56px;
+    font-weight: 950;
+  }
+  .account-card-reader-body {
+    min-width: 0;
+    display: grid;
+    gap: 9px;
+  }
+  .account-card-reader-detail,
+  .account-card-reader-note {
+    color: var(--text-mute);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .account-card-reader-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .account-card-reader-actions button {
+    min-height: 36px;
+  }
+  @media (max-width: 560px) {
+    .account-card-reader {
+      padding: 10px;
+      place-items: start center;
+    }
+    .account-card-reader-main {
+      grid-template-columns: 1fr;
+    }
+    .account-card-reader-art {
+      width: min(100%, 240px);
+      justify-self: center;
+    }
   }
 `;

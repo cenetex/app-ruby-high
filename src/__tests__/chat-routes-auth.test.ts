@@ -7,10 +7,11 @@ import { handleChatRoutes, type ChatRouteContext } from "../chat-routes.js";
 import { AuthService } from "../services/auth-service.js";
 import { ChatService } from "../services/chat-service.js";
 import { FacultyService } from "../services/faculty-service.js";
-import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
+import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
 import { setPrivyAuthVerifierForTest } from "../services/privy-auth.js";
+import { setHallPassNftBurnVerifierForTest } from "../services/hall-pass-nfts.js";
 
 let tmpDir: string;
 let auth: AuthService;
@@ -18,6 +19,7 @@ let chat: ChatService;
 let faculty: FacultyService;
 let ruby: RubyHighService;
 let capturedChatRequest: any | null = null;
+let restoreHallPassBurnVerifier: (() => void) | null = null;
 const originalHostedOpenRouterKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY;
 const originalPortraitBucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
 const originalPortraitCost = process.env.RUBY_HIGH_PORTRAIT_HALL_PASS_COST;
@@ -104,11 +106,7 @@ function makeCtx(url: URL, res: TestResponse, opts: {
 }
 
 function emptyWelcomeHallPasses(stateKey: string): void {
-  ruby.revokeHallPasses(stateKey, {
-    amount: WELCOME_HALL_PASS_GRANT,
-    idempotencyKey: `test:empty-welcome:${stateKey}`,
-    source: "admin",
-  });
+  expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
 }
 
 function buildSseChunk(text: string): Uint8Array {
@@ -172,6 +170,8 @@ afterEach(async () => {
   restoreEnv("RUBY_HIGH_PRIVY_APP_SECRET", originalPrivyAppSecret);
   restoreEnv("RUBY_HIGH_PRIVY_VERIFICATION_KEY", originalPrivyVerificationKey);
   setPrivyAuthVerifierForTest(null);
+  if (restoreHallPassBurnVerifier) restoreHallPassBurnVerifier();
+  restoreHallPassBurnVerifier = null;
   vi.restoreAllMocks();
   await auth.stop();
   await chat.stop();
@@ -343,8 +343,8 @@ describe("hosted AI access auth", () => {
     expect(me.entitlements.hosted_images.portrait).toMatchObject({
       configured: true,
       cost: 1,
-      affordable: true,
-      canUseHosted: true,
+      affordable: false,
+      canUseHosted: false,
     });
 
     const chatRes = new TestResponse();
@@ -393,10 +393,10 @@ describe("hosted AI access auth", () => {
     expect(body.hosted_ai.active).toBe(true);
     expect(body.hosted_ai.expiresAt).toBeGreaterThan(Date.now());
     expect(body.entitlements).toMatchObject({
-      hallPasses: 5,
-      hosted_ai: { configured: true, active: true, affordable: true, canActivate: false },
+      hallPasses: 0,
+      hosted_ai: { configured: true, active: true, affordable: false, canActivate: false },
       hosted_images: {
-        portrait: { configured: true, affordable: true },
+        portrait: { configured: true, affordable: false },
       },
     });
   });
@@ -414,6 +414,7 @@ describe("hosted image Hall Passes", () => {
     };
     auth.injectSessionForTest(token, record);
     const stateKey = auth.stateKeyForRecord(record);
+    ruby.claimWelcomeHallPasses(stateKey);
     (globalThis.fetch as any).mockImplementation(async () => {
       return new Response(JSON.stringify({
         choices: [{
@@ -488,8 +489,96 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(402);
-    expect(JSON.parse(res.body).error).toContain("Need 1 Hall Pass or burned Card");
+    expect(JSON.parse(res.body).error).toContain("Need 1 Hall Pass or 1 burned Card");
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("converts burned card value before spending for hosted portraits", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-portrait-card-burn";
+    const record = {
+      userId: "hosted-portrait-card-burn-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Portrait Card Burn",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    emptyWelcomeHallPasses(stateKey);
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 1,
+      idempotencyKey: "test:portrait-card-burn-pack",
+      source: "admin",
+    });
+    const card = grant.cards![0]!;
+    ruby.recordHallPassCardMint(stateKey, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mMintSignature111111111111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    });
+    restoreHallPassBurnVerifier = setHallPassNftBurnVerifierForTest(async (burn) => ({
+      signature: burn.burnSignature,
+      ownerWalletAddress: burn.ownerWalletAddress,
+      mintAddress: burn.mintAddress,
+      slot: 123,
+    }));
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            images: [{ image_url: { url: "data:image/png;base64,BURNED" } }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/portrait"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          requestId: "portrait-card-burn-1",
+          name: "Mina",
+          personality: "Quietly intense and observant.",
+          hallPassBurns: [{
+            cardId: card.id,
+            ownerWalletAddress,
+            mintAddress,
+            burnSignature: "4mBurnSignature111111111111111111111111111111111111111111111",
+          }],
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      portraitDataUrl: "data:image/png;base64,BURNED",
+      hallPassCost: 1,
+      hallPasses: 4,
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(4);
+    const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(transactions.some((tx) =>
+      tx.kind === "hall-pass-card-burn" &&
+      tx.hallPasses === 5 &&
+      tx.metadata?.hallPassesPerCard === 5 &&
+      tx.metadata?.requestId === "portrait-card-burn-1"
+    )).toBe(true);
+    expect(transactions.some((tx) =>
+      tx.kind === "hall-pass-spend" &&
+      tx.hallPasses === -1 &&
+      tx.metadata?.requestId === "portrait-card-burn-1" &&
+      tx.metadata?.status === "completed"
+    )).toBe(true);
   });
 
   it("spends Hall Passes for server-hosted portraits", async () => {
@@ -538,16 +627,16 @@ describe("hosted image Hall Passes", () => {
       ok: true,
       portraitDataUrl: "data:image/png;base64,AAAA",
       hallPassCost: 1,
-      hallPasses: 6,
+      hallPasses: 1,
       entitlements: {
-        hallPasses: 6,
+        hallPasses: 1,
         hosted_images: {
           portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
-          diploma: { configured: true, cost: 3, affordable: true, canUseHosted: true },
+          diploma: { configured: true, cost: 3, affordable: false, canUseHosted: false },
         },
       },
     });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
   });
 
   it("uses a Photo Day credit before Hall Passes for hosted character portraits", async () => {
@@ -665,7 +754,7 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(502);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
     const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
     expect(transactions.some((tx) =>
       tx.kind === "hall-pass-spend" &&
@@ -725,7 +814,7 @@ describe("hosted image Hall Passes", () => {
     expect(firstRes.statusCode).toBe(200);
     expect(JSON.parse(firstRes.body)).toMatchObject({
       portraitDataUrl: "data:image/png;base64,REPLAY",
-      hallPasses: 6,
+      hallPasses: 1,
     });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 
@@ -744,7 +833,7 @@ describe("hosted image Hall Passes", () => {
     expect(secondRes.statusCode).toBe(200);
     expect(JSON.parse(secondRes.body)).toMatchObject({
       portraitDataUrl: "data:image/png;base64,REPLAY",
-      hallPasses: 6,
+      hallPasses: 1,
     });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
@@ -753,7 +842,7 @@ describe("hosted image Hall Passes", () => {
       tx.source === "hosted-image" &&
       tx.metadata?.requestId === "portrait-replay-1"
     )).toHaveLength(1);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(6);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
   });
 
   it("refunds stale pending hosted image spends before rejecting the replay", async () => {
@@ -775,6 +864,7 @@ describe("hosted image Hall Passes", () => {
       stats: null,
     };
     const spendKey = hostedImageSpendKey("character-portrait", requestId);
+    ruby.claimWelcomeHallPasses(stateKey);
     ruby.spendHallPasses(stateKey, {
       amount: 1,
       idempotencyKey: spendKey,

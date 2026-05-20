@@ -7,7 +7,7 @@ import { ORIGINAL_PACK_ID, getActivePack, getPackByIdForSession, registerPack, r
 import type { ContentPack } from "../content/types.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { AuthService } from "../services/auth-service.js";
-import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
+import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import type { BankedQuestion } from "../types.js";
 
@@ -60,11 +60,7 @@ function signInUser(token: string): string {
 }
 
 function emptyWelcomeHallPasses(stateKey: string): void {
-  ruby.revokeHallPasses(stateKey, {
-    amount: WELCOME_HALL_PASS_GRANT,
-    idempotencyKey: `test:empty-welcome:${stateKey}`,
-    source: "admin",
-  });
+  expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
 }
 
 function fakePack(id: string): ContentPack {
@@ -496,6 +492,7 @@ describe("/pack-library", () => {
   it("keeps account-level hosted AI access when setting a guest pack override", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const aliceSessionId = signInUser("alice");
+    ruby.claimWelcomeHallPasses(aliceSessionId);
     ruby.activateHostedAiAccess(aliceSessionId, {
       hallPassCost: 1,
       durationMs: 604_800_000,
@@ -577,7 +574,7 @@ describe("/pack-library", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.hallPassCost).toBe(0);
-    expect(response.body.hallPasses).toBe(5);
+    expect(response.body.hallPasses).toBe(0);
     expect(response.body.draft.name).toBe("Signals Seminar");
     expect(response.body.teacher).toMatchObject({
       displayName: "Dr. Signal",
@@ -608,7 +605,7 @@ describe("/pack-library", () => {
     expect(coursePrompt).toContain("Balance requirements");
     expect(coursePrompt).toContain("difficulty=easy, stat=head");
     expect(coursePrompt).toContain("difficulty=medium, stat=heart");
-    expect(ruby.hallPassBalance(aliceSessionId)).toBe(5);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -774,6 +771,7 @@ describe("/pack-library", () => {
 
   it("charges a fresh course slot spend after a refunded reservation failure", async () => {
     const aliceSessionId = signInUser("alice");
+    ruby.claimWelcomeHallPasses(aliceSessionId);
 
     let response = await route({
       method: "POST",
@@ -907,6 +905,7 @@ describe("/pack-library", () => {
 
   it("persists draft packs, generates cards manually, publishes, and keeps enable separate from active", async () => {
     const aliceSessionId = signInUser("alice");
+    ruby.claimWelcomeHallPasses(aliceSessionId);
 
     let response = await route({
       method: "POST",
@@ -1164,6 +1163,7 @@ describe("/pack-library", () => {
   it("spends one Hall Pass for hosted generate-more-questions without browser OpenRouter", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const aliceSessionId = signInUser("alice");
+    ruby.claimWelcomeHallPasses(aliceSessionId);
     const questionFetch = stubQuestionGeneratorFetch();
 
     let response = await route({
@@ -1249,7 +1249,8 @@ describe("/pack-library", () => {
 
   it("fills underrepresented difficulty and stat buckets when generating creator-pack questions", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
-    signInUser("alice");
+    const aliceSessionId = signInUser("alice");
+    ruby.claimWelcomeHallPasses(aliceSessionId);
     const questionFetch = stubQuestionGeneratorFetch();
 
     let response = await route({
@@ -1396,7 +1397,7 @@ describe("/pack-library", () => {
       canDelete: true,
     });
     expect(response.body.hallPassCost).toBe(0);
-    expect(ruby.hallPassBalance(aliceSessionId)).toBe(5);
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
     expect((await ruby.listPersistedPackRecords()).find((entry) => entry.pack.id === pack.id)?.pack.name).toBe("Legacy Published Updated");
   });
 

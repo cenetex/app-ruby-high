@@ -8,13 +8,13 @@ import {
 } from "../services/core-pack-nfts.js";
 import {
   HALL_PASS_NFT_PREFIX,
-  buildHallPassCardMintTransaction,
   hallPassCollectionMetadataForRoute,
   hallPassCardBackMetadataForRoute,
   hallPassNftMetadataUri,
   buildHallPassCardsBurnTransaction,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
+  mintHallPassCardNft,
   publicHallPassNftStatus,
   verifyHallPassCardMint,
   verifyHallPassCardBurn,
@@ -30,7 +30,7 @@ interface NftDeps {
 }
 
 const MAX_MINTS_PER_REQUEST = 8;
-const MAX_BURNS_PER_REQUEST = 8;
+const MAX_BURNS_PER_REQUEST = 1;
 const BASE58ISH = /^[1-9A-HJ-NP-Za-km-z]+$/;
 
 export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise<boolean> {
@@ -302,12 +302,36 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     try {
-      const mint = await buildHallPassCardMintTransaction(card, ownerWalletAddress);
-      const { rpcUrl: _rpcUrl, ...publicMint } = mint;
+      const mint = await mintHallPassCardNft(card, ownerWalletAddress);
+      const recorded = deps.ruby.recordHallPassCardMint(stateKey, {
+        cardId,
+        ownerWalletAddress: mint.ownerWalletAddress,
+        mintAddress: mint.mintAddress,
+        mintSignature: mint.mintSignature,
+        metadataUri: mint.metadataUri,
+      });
+      await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
-        card: hiddenCardPayload(card),
-        mint: publicMint,
+        card: revealedCardPayload(recorded.card),
+        minted: [{
+          cardId: recorded.card.id,
+          characterId: recorded.card.characterId,
+          characterName: recorded.card.characterName,
+          mintAddress: recorded.card.mintAddress,
+          mintSignature: recorded.card.mintSignature,
+          metadataUri: recorded.card.metadataUri,
+        }],
+        mint: {
+          cardId: recorded.card.id,
+          ownerWalletAddress: mint.ownerWalletAddress,
+          mintAddress: mint.mintAddress,
+          mintSignature: mint.mintSignature,
+          metadataUri: mint.metadataUri,
+          serverMinted: true,
+        },
+        remaining: deps.ruby.mintableHallPassCards(stateKey).length,
+        status: publicHallPassNftStatus(),
       });
     } catch (err) {
       ctx.error(ctx.res, publicNftErrorMessage(err), 502);
@@ -427,14 +451,35 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
         return true;
       }
-      const mint = await buildHallPassCardMintTransaction(card, ownerWalletAddress);
-      const { rpcUrl: _rpcUrl, ...publicMint } = mint;
+      const mint = await mintHallPassCardNft(card, ownerWalletAddress);
+      const recorded = deps.ruby.recordHallPassCardMint(stateKey, {
+        cardId: card.id,
+        ownerWalletAddress: mint.ownerWalletAddress,
+        mintAddress: mint.mintAddress,
+        mintSignature: mint.mintSignature,
+        metadataUri: mint.metadataUri,
+      });
+      await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
         ownerWalletAddress,
-        minted: [],
-        card: hiddenCardPayload(card),
-        mint: publicMint,
+        minted: [{
+          cardId: recorded.card.id,
+          characterId: recorded.card.characterId,
+          characterName: recorded.card.characterName,
+          mintAddress: recorded.card.mintAddress,
+          mintSignature: recorded.card.mintSignature,
+          metadataUri: recorded.card.metadataUri,
+        }],
+        card: revealedCardPayload(recorded.card),
+        mint: {
+          cardId: recorded.card.id,
+          ownerWalletAddress: mint.ownerWalletAddress,
+          mintAddress: mint.mintAddress,
+          mintSignature: mint.mintSignature,
+          metadataUri: mint.metadataUri,
+          serverMinted: true,
+        },
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
         status: publicHallPassNftStatus(),
       });
@@ -482,7 +527,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     if (cards.length > MAX_BURNS_PER_REQUEST) {
-      ctx.error(ctx.res, `Burn at most ${MAX_BURNS_PER_REQUEST} cards at once.`, 400);
+      ctx.error(ctx.res, `Burn at most ${MAX_BURNS_PER_REQUEST} card${MAX_BURNS_PER_REQUEST === 1 ? "" : "s"} at once.`, 400);
       return true;
     }
     try {
@@ -678,7 +723,7 @@ function publicPackSyncErrorMessage(err: unknown): string {
 function publicNftErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   if (/insufficient funds|Attempt to debit|0x1\b/i.test(raw)) {
-    return "Connected Solana wallet needs more SOL to mint this card.";
+    return "Ruby High mint authority needs more SOL to mint this card.";
   }
   if (/403|forbidden/i.test(raw)) {
     return "Solana RPC rejected the request. Check the configured Helius/Solana RPC key.";
