@@ -8,6 +8,7 @@ import {
 } from "../services/core-pack-nfts.js";
 import {
   HALL_PASS_NFT_PREFIX,
+  hallPassCollectionMetadataForRoute,
   buildHallPassCardsBurnTransaction,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
@@ -34,6 +35,13 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
 
   if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/metadata/core/collection.json`) {
     ctx.json(ctx.res, corePackCollectionMetadataForRoute({
+      publicBaseUrl: publicBaseUrlForRequest(ctx),
+    }));
+    return true;
+  }
+
+  if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`) {
+    ctx.json(ctx.res, hallPassCollectionMetadataForRoute({
       publicBaseUrl: publicBaseUrlForRequest(ctx),
     }));
     return true;

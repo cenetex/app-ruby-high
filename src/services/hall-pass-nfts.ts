@@ -32,6 +32,11 @@ const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CARD_IMAGE_VERSION = "card-v2";
+const CARD_COLLECTION_NAME = "Ruby High: First Bell";
+const CARD_COLLECTION_FAMILY = "Ruby High";
+const CARD_COLLECTION_SERIES = "First Bell";
+const CARD_COLLECTION_EDITION = "Student & Faculty Edition";
+const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1";
 
 type HallPassNftProfile = {
   name: string;
@@ -378,6 +383,36 @@ export function hallPassNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.P
   return `${base}${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/${characterId}/${serial}.json`;
 }
 
+export function hallPassCollectionMetadataForRoute(args: {
+  publicBaseUrl?: string;
+}): Record<string, unknown> {
+  const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
+  const image = `${publicBaseUrl}${CARD_COLLECTION_IMAGE_ASSET_PATH}`;
+  const collection = {
+    name: CARD_COLLECTION_NAME,
+    family: CARD_COLLECTION_FAMILY,
+  };
+  return {
+    name: CARD_COLLECTION_NAME,
+    symbol: nftSymbol(process.env),
+    description: "Student & Faculty Edition collectible card collection for Ruby High.",
+    image,
+    external_url: `${publicBaseUrl}/`,
+    collection,
+    attributes: [
+      { trait_type: "School", value: "Ruby High" },
+      { trait_type: "Type", value: "Card Collection" },
+      { trait_type: "Series", value: CARD_COLLECTION_SERIES },
+      { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
+    ],
+    properties: {
+      category: "image",
+      files: [{ uri: image, type: "image/png" }],
+      collection,
+    },
+  };
+}
+
 export function hallPassNftMetadataForRoute(args: {
   characterId: string;
   serial: string;
@@ -387,14 +422,21 @@ export function hallPassNftMetadataForRoute(args: {
   const profile = hallPassNftProfile(args.characterId);
   const serial = normalizeSerial(args.serial);
   const image = `${publicBaseUrl}${versionedImagePath(profile.imagePath)}`;
+  const collection = {
+    name: CARD_COLLECTION_NAME,
+    family: CARD_COLLECTION_FAMILY,
+  };
   return {
     name: `${profile.name} Ruby High Card #${serial}`,
     symbol: nftSymbol(process.env),
-    description: profile.description,
+    description: `${profile.description} Part of the ${CARD_COLLECTION_NAME} collection.`,
     image,
     external_url: `${publicBaseUrl}/`,
+    collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
+      { trait_type: "Collection", value: CARD_COLLECTION_NAME },
+      { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
       { trait_type: "Character", value: profile.name },
       { trait_type: "Role", value: profile.role },
       { trait_type: "Rarity", value: profile.rarity },
@@ -403,6 +445,7 @@ export function hallPassNftMetadataForRoute(args: {
     properties: {
       category: "image",
       files: [{ uri: image, type: profile.imageMime }],
+      collection,
     },
   };
 }

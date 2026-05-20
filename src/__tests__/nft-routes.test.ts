@@ -121,6 +121,19 @@ afterEach(async () => {
 
 describe("Hall Pass NFT routes", () => {
   it("serves public Hall Pass metadata", async () => {
+    const collectionHandled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/hall-pass/collection.json",
+    }), deps());
+
+    expect(collectionHandled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body).toMatchObject({
+      name: "Ruby High: First Bell",
+      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1",
+    });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Edition", value: "Student & Faculty Edition" });
+
     const handled = await handleNftRoutes(makeCtx({
       method: "GET",
       path: "/api/apps/ruby-high/nft/metadata/hall-pass/lyra/123456.json",
@@ -133,6 +146,11 @@ describe("Hall Pass NFT routes", () => {
       symbol: "RUBY",
       image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v2",
     });
+    expect(lastResponse?.body.collection).toMatchObject({
+      name: "Ruby High: First Bell",
+      family: "Ruby High",
+    });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Collection", value: "Ruby High: First Bell" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Common" });
   });
 
