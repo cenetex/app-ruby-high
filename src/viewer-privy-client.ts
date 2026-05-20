@@ -47,6 +47,7 @@ interface RubyHighPrivySession {
   walletAddress: string | null;
   walletChainType: "ethereum" | "solana" | null;
   solanaWalletAddress: string | null;
+  solanaAccountAddress: string | null;
   accessToken?: string | null;
 }
 
@@ -608,6 +609,7 @@ function emptySession(): RubyHighPrivySession {
     walletAddress: null,
     walletChainType: null,
     solanaWalletAddress: null,
+    solanaAccountAddress: null,
   };
 }
 
@@ -618,6 +620,7 @@ function sessionFromUser(
 ): RubyHighPrivySession {
   const wallet = walletFromUser(user);
   const solanaWalletAddress = connectedSolanaWalletAddress;
+  const solanaAccountAddress = solanaWalletAddress || solanaAddressFromUser(user);
   return {
     authenticated: true,
     userId: user.id,
@@ -625,6 +628,7 @@ function sessionFromUser(
     walletAddress: wallet?.address ?? null,
     walletChainType: wallet?.chainType ?? null,
     solanaWalletAddress,
+    solanaAccountAddress,
     accessToken,
   };
 }
@@ -645,6 +649,16 @@ function firstSolanaWalletAddress(wallets: ConnectedStandardSolanaWallet[]): str
 
 function selectSolanaWallet(wallets: ConnectedStandardSolanaWallet[]): ConnectedStandardSolanaWallet | null {
   return wallets.find((wallet) => typeof wallet.address === "string" && !!wallet.address.trim()) ?? null;
+}
+
+function solanaAddressFromUser(user: User): string | null {
+  const direct = walletCandidate(user.wallet);
+  if (direct?.chainType === "solana") return direct.address;
+  for (const account of user.linkedAccounts) {
+    const wallet = walletCandidate(account);
+    if (wallet?.chainType === "solana") return wallet.address;
+  }
+  return null;
 }
 
 function walletCandidate(account: unknown): { address: string; chainType: "ethereum" | "solana"; rank: number } | null {

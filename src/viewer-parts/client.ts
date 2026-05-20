@@ -735,6 +735,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     walletAddress: null,
     walletChainType: null,
     solanaWalletAddress: null,
+    solanaAccountAddress: null,
     label: null,
   };
   function activeTeacherUsesServerAi() {
@@ -2985,6 +2986,28 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     setBillingStatus("Opening wallet connection for crypto checkout...", false);
     const walletSnapshot = await startSolanaWalletConnect({ source: "billing" });
     return !!walletSnapshot && !!connectedSolanaWalletAddress();
+  }
+
+  async function ensureSolanaWalletAddressForMint() {
+    const existing = knownSolanaOwnerWalletAddress();
+    if (existing) return existing;
+    if (!privyConfig) throw new Error("Card minting needs a Solana wallet.");
+    if (!privyState.authenticated) {
+      setPrivyStatus("Opening sign-in for card minting...", false);
+      const loginSnapshot = await startPrivyLogin({ source: "billing" });
+      if (!loginSnapshot && !privyState.authenticated) return "";
+    }
+    const afterLogin = knownSolanaOwnerWalletAddress();
+    if (afterLogin) {
+      setPrivyStatus("Solana wallet ready. Minting cards...", false);
+      return afterLogin;
+    }
+    setPrivyStatus("Opening wallet connection for card minting...", false);
+    const walletSnapshot = await startSolanaWalletConnect({ source: "billing" });
+    if (!walletSnapshot && !knownSolanaOwnerWalletAddress()) return "";
+    const afterConnect = knownSolanaOwnerWalletAddress() || "";
+    if (afterConnect) setPrivyStatus("Solana wallet ready. Minting cards...", false);
+    return afterConnect;
   }
 
   async function confirmSolanaPayment(productId, signature, ownerWalletAddress) {
@@ -9600,12 +9623,23 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function connectedSolanaWalletAddress() {
     return privyState.solanaWalletAddress || null;
   }
+  function knownSolanaOwnerWalletAddress() {
+    return connectedSolanaWalletAddress()
+      || privyState.solanaAccountAddress
+      || (privyState.walletChainType === "solana" ? privyState.walletAddress : null)
+      || null;
+  }
   function applyPrivyState(next) {
     if (next && typeof next === "object") {
       const authenticated = !!next.authenticated;
       const hasSolanaWallet = Object.prototype.hasOwnProperty.call(next, "solanaWalletAddress");
+      const hasSolanaAccount = Object.prototype.hasOwnProperty.call(next, "solanaAccountAddress");
       const nextSolanaWalletAddress = next.solanaWalletAddress
         || (authenticated && !hasSolanaWallet ? privyState.solanaWalletAddress : null);
+      const nextSolanaAccountAddress = next.solanaAccountAddress
+        || nextSolanaWalletAddress
+        || (next.walletChainType === "solana" ? next.walletAddress : null)
+        || (authenticated && !hasSolanaAccount ? privyState.solanaAccountAddress : null);
       privyState = {
         configured: !!(next.configured != null ? next.configured : privyState.configured),
         authenticated,
@@ -9613,10 +9647,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         walletAddress: next.walletAddress || null,
         walletChainType: next.walletChainType || null,
         solanaWalletAddress: authenticated ? nextSolanaWalletAddress : null,
+        solanaAccountAddress: authenticated ? nextSolanaAccountAddress : null,
         label: next.label || null,
       };
     }
-    const solanaAddress = connectedSolanaWalletAddress();
+    const solanaAddress = knownSolanaOwnerWalletAddress();
     if (els.privyWallet) {
       els.privyWallet.textContent = solanaAddress
         ? shortWallet(solanaAddress) + " · solana"
@@ -10438,12 +10473,12 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     billingBusy = true;
     renderAccountPage();
     try {
-      const connected = await ensureSolanaWalletForBilling();
-      if (!connected) {
+      const ownerWalletAddress = await ensureSolanaWalletAddressForMint();
+      if (!ownerWalletAddress) {
         setPrivyStatus("Card mint canceled.", false);
         return;
       }
-      await mintPendingHallPassCards(connectedSolanaWalletAddress(), { source: "account" });
+      await mintPendingHallPassCards(ownerWalletAddress, { source: "account" });
     } catch (err) {
       const message = "Card mint failed · " + (err && err.message ? err.message : "error");
       setPrivyStatus(message, true);

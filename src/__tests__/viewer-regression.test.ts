@@ -135,6 +135,9 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('"Buy " + formatWholeNumber(product.hallPasses || 0) + " Hall Passes."');
     expectScriptToContain(script, "async function ensureSolanaWalletForBilling()");
     expectScriptToContain(script, "function connectedSolanaWalletAddress() {\n    return privyState.solanaWalletAddress || null;\n  }");
+    expectScriptToContain(script, "function knownSolanaOwnerWalletAddress()");
+    expectScriptToContain(script, "async function ensureSolanaWalletAddressForMint()");
+    expectScriptToContain(script, "await mintPendingHallPassCards(ownerWalletAddress, { source: \"account\" })");
     expectScriptToContain(script, 'await startPrivyLogin({ source: "billing" })');
     expectScriptToContain(script, 'await startSolanaWalletConnect({ source: "billing" })');
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
@@ -142,7 +145,6 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
     expect(script).not.toContain('buy.textContent = "Pay with wallet"');
     expect(script).not.toContain("if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0)");
-    expect(script).not.toContain('privyState.walletChainType === "solana" ? privyState.walletAddress : null');
     expect(script).not.toContain("Solana transaction signature");
     expect(script).not.toContain("paste the transaction");
     expect(script).not.toContain("Pay Crypto");
