@@ -697,7 +697,7 @@ describe("Solana Hall Pass billing", () => {
       reference,
       packAssetAddress: TEST_PACK_ASSET,
     });
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const payload = JSON.parse(String(init?.body ?? "{}"));
       expect(payload.method).toBe("sendTransaction");
       expect(payload.params[0]).toBe(signedTransactionBase64);
@@ -705,8 +705,18 @@ describe("Solana Hall Pass billing", () => {
         encoding: "base64",
         maxRetries: 5,
         preflightCommitment: "confirmed",
-        skipPreflight: false,
       });
+      if (payload.params[1].skipPreflight === false) {
+        return new Response(JSON.stringify({
+          jsonrpc: "2.0",
+          id: "ruby-high-solana-submit",
+          error: { code: -32010, message: "Invalid Request: running preflight check is not supported" },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      expect(payload.params[1].skipPreflight).toBe(true);
       return new Response(JSON.stringify({
         jsonrpc: "2.0",
         id: "ruby-high-solana-submit",
@@ -733,6 +743,7 @@ describe("Solana Hall Pass billing", () => {
       status: 200,
       body: { ok: true, signature },
     });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("rejects Solana confirmations that are missing the prepared Pack NFT", async () => {

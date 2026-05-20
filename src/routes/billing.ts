@@ -473,7 +473,11 @@ function requireSignedTransactionAccounts(transactionBase64: string, accounts: s
   }
 }
 
-async function submitSignedSolanaTransaction(config: SolanaBillingConfig, transactionBase64: string): Promise<string> {
+async function submitSignedSolanaTransactionAttempt(
+  config: SolanaBillingConfig,
+  transactionBase64: string,
+  skipPreflight: boolean,
+): Promise<string> {
   const response = await fetch(config.rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -487,7 +491,7 @@ async function submitSignedSolanaTransaction(config: SolanaBillingConfig, transa
           encoding: "base64",
           maxRetries: 5,
           preflightCommitment: "confirmed",
-          skipPreflight: false,
+          skipPreflight,
         },
       ],
     }),
@@ -499,6 +503,16 @@ async function submitSignedSolanaTransaction(config: SolanaBillingConfig, transa
     throw new Error("Solana RPC did not return a transaction signature.");
   }
   return payload.result;
+}
+
+async function submitSignedSolanaTransaction(config: SolanaBillingConfig, transactionBase64: string): Promise<string> {
+  try {
+    return await submitSignedSolanaTransactionAttempt(config, transactionBase64, false);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err ?? "");
+    if (!/preflight check is not supported/i.test(message)) throw err;
+    return submitSignedSolanaTransactionAttempt(config, transactionBase64, true);
+  }
 }
 
 async function verifySolanaPayment(
