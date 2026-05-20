@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { create, createCollection, fetchCollectionV1, mplCore } from "@metaplex-foundation/mpl-core";
-import { generateSigner, keypairIdentity, publicKey } from "@metaplex-foundation/umi";
+import { generateSigner, keypairIdentity, publicKey, type TransactionBuilder, type Umi } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
@@ -217,10 +217,7 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
     name: packCount === 1 ? `Ruby High Pack #${packSerial(input.paymentSignature)}` : `Ruby High ${packCount}-Pack #${packSerial(input.paymentSignature)}`,
     uri: metadataUri,
   });
-  const sent = await builder.sendAndConfirm(umi, {
-    send: { skipPreflight: false, maxRetries: 3 },
-    confirm: { commitment: "confirmed" },
-  });
+  const sent = await sendAndConfirmCoreTransaction(umi, builder);
   return {
     ownerWalletAddress: owner,
     assetAddress: asset.publicKey,
@@ -236,16 +233,13 @@ export async function createCorePackCollection(): Promise<CoreCollectionCreateRe
   umi.use(keypairIdentity(authorityKeypair, true));
   const collection = generateSigner(umi);
   const metadataUri = coreCollectionMetadataUri();
-  const sent = await createCollection(umi, {
+  const sent = await sendAndConfirmCoreTransaction(umi, createCollection(umi, {
     collection,
     updateAuthority: umi.identity.publicKey,
     payer: umi.payer,
     name: "Ruby High Packs",
     uri: metadataUri,
-  }).sendAndConfirm(umi, {
-    send: { skipPreflight: false, maxRetries: 3 },
-    confirm: { commitment: "confirmed" },
-  });
+  }));
   return {
     collectionAddress: collection.publicKey,
     signature: base58Encode(sent.signature),
@@ -269,6 +263,26 @@ function readCoreMintConfig(): {
     symbol: status.symbol,
     collectionAddress: status.collectionAddress,
   };
+}
+
+async function sendAndConfirmCoreTransaction(umi: Umi, builder: TransactionBuilder): ReturnType<TransactionBuilder["sendAndConfirm"]> {
+  try {
+    return await builder.sendAndConfirm(umi, {
+      send: { skipPreflight: false, maxRetries: 3 },
+      confirm: { commitment: "confirmed" },
+    });
+  } catch (err) {
+    if (!isPreflightUnsupportedError(err)) throw err;
+    return builder.sendAndConfirm(umi, {
+      send: { skipPreflight: true, maxRetries: 3 },
+      confirm: { commitment: "confirmed" },
+    });
+  }
+}
+
+function isPreflightUnsupportedError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /preflight check is not supported/i.test(message);
 }
 
 function readCollectionCreateConfig(): {
