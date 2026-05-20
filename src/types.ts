@@ -547,6 +547,8 @@ export interface RubyHighWallet {
   hostedAiAccessExpiresAt?: number;
   /** Collectible Hall Pass cards granted in packs. Redeemed cards are kept as recent history. */
   hallPassCards?: RubyHighHallPassCard[];
+  /** Server-side pack cards that have not been minted on-chain and should not render as owned NFTs. */
+  unmintedHallPassCardCount?: number;
   /** Idempotency ledger for paid currency grants/spends. */
   transactions?: RubyHighWalletTransaction[];
   /** Durable operation ledger. Kept out of telemetry; used for idempotency after display history rotates. */

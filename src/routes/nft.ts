@@ -43,7 +43,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     return true;
   }
 
-  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-pending`) {
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-pack`) {
     const status = hallPassNftStatus();
     if (!status.configured) {
       ctx.error(ctx.res, status.reason || "Card minting is not configured.", 503);

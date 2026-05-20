@@ -153,12 +153,21 @@ function walletCandidate(account: unknown): { address: string; chainType: "ether
   if (!account || typeof account !== "object") return null;
   const record = account as Record<string, unknown>;
   const address = typeof record.address === "string" ? record.address.trim() : "";
-  const chainType = record.chain_type === "ethereum" || record.chain_type === "solana" ? record.chain_type : null;
+  const rawChainType = record.chainType ?? record.chain_type;
+  const chainType = rawChainType === "ethereum" || rawChainType === "solana" ? rawChainType : null;
   if (!address || !chainType || (record.type !== "wallet" && record.type !== "smart_wallet")) return null;
-  const walletClient = typeof record.wallet_client === "string" ? record.wallet_client : "";
-  const connectorType = typeof record.connector_type === "string" ? record.connector_type : "";
+  const walletClient = typeof record.walletClientType === "string"
+    ? record.walletClientType
+    : typeof record.wallet_client === "string"
+      ? record.wallet_client
+      : "";
+  const connectorType = typeof record.connectorType === "string"
+    ? record.connectorType
+    : typeof record.connector_type === "string"
+      ? record.connector_type
+      : "";
   const embedded = walletClient === "privy" || connectorType === "embedded";
-  const rank = chainType === "ethereum"
+  const rank = chainType === "solana"
     ? (embedded ? 0 : 1)
     : (embedded ? 2 : 3);
   return { address, chainType, rank };

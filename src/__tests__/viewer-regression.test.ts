@@ -137,7 +137,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function connectedSolanaWalletAddress() {\n    return privyState.solanaWalletAddress || null;\n  }");
     expectScriptToContain(script, "function knownSolanaOwnerWalletAddress()");
     expectScriptToContain(script, "async function ensureSolanaWalletAddressForMint()");
-    expectScriptToContain(script, "await mintPendingHallPassCards(ownerWalletAddress, { source: \"account\" })");
+    expectScriptToContain(script, "await mintPurchasedHallPassCards(ownerWalletAddress, { source: \"account\" })");
+    expectScriptToContain(script, 'apiBase + "/nft/mint-pack"');
+    expectScriptToContain(script, "function unmintedCardCount(t)");
+    expectScriptToContain(script, "No minted cards in this wallet yet.");
+    expect(script).not.toContain("/nft/mint-pending");
+    expect(script).not.toContain("Mint \" + mintableCount + \" Pending");
     expectScriptToContain(script, 'await startPrivyLogin({ source: "billing" })');
     expectScriptToContain(script, 'await startSolanaWalletConnect({ source: "billing" })');
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
@@ -167,11 +172,14 @@ describe("viewer regression guardrails", () => {
 
   it("keeps Privy modal actions from getting stuck while Privy owns Solana wallet selection", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
-    expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_LOGIN_METHODS: Array<"email" | "google" | "twitter"> = ["email", "google", "twitter"];');
+    expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_LOGIN_METHODS: NonNullable<PrivyClientConfig["loginMethods"]> = ["wallet", "email", "google", "twitter"];');
+    expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];');
     expect(PRIVY_CLIENT_SOURCE).toContain("loginMethods: RUBY_HIGH_LOGIN_METHODS");
-    expect(PRIVY_CLIENT_SOURCE).toContain("login({ loginMethods: RUBY_HIGH_LOGIN_METHODS })");
-    expect(PRIVY_CLIENT_SOURCE).toContain('walletChainType: "ethereum-and-solana"');
+    expect(PRIVY_CLIENT_SOURCE).toContain('login({ loginMethods: RUBY_HIGH_LOGIN_METHODS, walletChainType: "solana-only" })');
     expect(PRIVY_CLIENT_SOURCE).toContain('walletChainType: "solana-only"');
+    expect(PRIVY_CLIENT_SOURCE).toContain("walletList: RUBY_HIGH_SOLANA_WALLET_LIST");
+    expect(PRIVY_CLIENT_SOURCE).toContain("showWalletLoginFirst: true");
+    expect(PRIVY_CLIENT_SOURCE).toContain('ethereum: { createOnLogin: "off" }');
     expect(PRIVY_CLIENT_SOURCE).toContain("const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;");
     expect(PRIVY_CLIENT_SOURCE).toContain("const solanaWalletsRef = useRef<ConnectedStandardSolanaWallet[]>([]);");
     expect(PRIVY_CLIENT_SOURCE).toContain("waitForSolanaWallets(() => solanaWalletsRef.current)");
@@ -191,13 +199,12 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("if (pendingWalletConnect.current) modalOpenedForWalletConnect.current = true;");
     expect(PRIVY_CLIENT_SOURCE).toContain("modalOpenedForLogin.current = false;");
     expect(PRIVY_CLIENT_SOURCE).toContain("modalOpenedForWalletConnect.current = false;");
-    expect(PRIVY_CLIENT_SOURCE).not.toContain('"phantom"');
-    expect(PRIVY_CLIENT_SOURCE).not.toContain("SOLANA_WALLET_LIST");
+    expect(PRIVY_CLIENT_SOURCE).toContain('"phantom"');
     expect(PRIVY_CLIENT_SOURCE).not.toContain("readNestedSolanaAddress");
     expect(PRIVY_CLIENT_SOURCE).not.toContain("solanaAddressFromConnectedWallet");
     expect(PRIVY_CLIENT_SOURCE).not.toContain('walletClient === "phantom"');
-    expect(PRIVY_CLIENT_SOURCE).not.toContain('"wallet", "email"');
-    expect(PRIVY_CLIENT_SOURCE).not.toContain('"email", "wallet"');
+    expect(PRIVY_CLIENT_SOURCE).not.toContain('walletChainType: "ethereum-and-solana"');
+    expect(PRIVY_CLIENT_SOURCE).not.toContain('createOnLogin: "users-without-wallets"');
     expect(PRIVY_CLIENT_SOURCE).not.toContain("modalOpenedForLogin.current = true;\n      login();");
     expect(PRIVY_CLIENT_SOURCE).not.toContain("modalOpenedForWalletConnect.current = true;\n      connectWallet({");
   });

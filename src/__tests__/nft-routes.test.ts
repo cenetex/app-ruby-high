@@ -142,7 +142,7 @@ describe("Hall Pass NFT routes", () => {
 
     const handled = await handleNftRoutes(makeCtx({
       method: "POST",
-      path: "/api/apps/ruby-high/nft/mint-pending",
+      path: "/api/apps/ruby-high/nft/mint-pack",
       cookie: "rh_session=alice",
       body: { ownerWalletAddress: OWNER },
     }), deps());
@@ -173,7 +173,7 @@ describe("Hall Pass NFT routes", () => {
 
     const handled = await handleNftRoutes(makeCtx({
       method: "POST",
-      path: "/api/apps/ruby-high/nft/mint-pending",
+      path: "/api/apps/ruby-high/nft/mint-pack",
       cookie: "rh_session=partial",
       body: { ownerWalletAddress: OWNER },
     }), deps());
@@ -266,7 +266,7 @@ describe("Hall Pass NFT routes", () => {
 
     const handled = await handleNftRoutes(makeCtx({
       method: "POST",
-      path: "/api/apps/ruby-high/nft/mint-pending",
+      path: "/api/apps/ruby-high/nft/mint-pack",
       cookie: "rh_session=bob",
       body: { ownerWalletAddress: OWNER },
     }), deps());

@@ -1811,7 +1811,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   }
 
   function walletCardCount(t) {
-    return hallPassCardsForTelemetry(t).filter((card) => card.status === "active").length;
+    return mintedCardCount(t);
   }
 
   function mintedCardCount(t) {
@@ -1819,7 +1819,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   }
 
   function unmintedCardCount(t) {
-    return hallPassCardsForTelemetry(t).filter((card) => card.status === "active" && !card.mintAddress).length;
+    const src = t || lastTelemetry;
+    const wallet = src && src.wallet && typeof src.wallet === "object" ? src.wallet : {};
+    return Math.max(0, Math.floor(Number(wallet.unmintedHallPassCardCount || 0)));
   }
 
   function canSpendHallPasses(cost, t) {
@@ -2151,10 +2153,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function renderAccountHallPassCards() {
     if (!els.accountHallPassCards) return;
     const cards = hallPassCardsForTelemetry();
-    const active = cards.filter((card) => card.status === "active");
-    const mintable = active.filter((card) => !card.mintAddress);
-    const minted = cards.filter((card) => card.mintAddress);
+    const active = cards.filter((card) => card.status === "active" && card.mintAddress && card.mintSignature);
+    const mintableCount = unmintedCardCount();
+    const minted = cards.filter((card) => card.mintAddress && card.mintSignature);
     const shown = cards
+      .filter((card) => card.mintAddress && card.mintSignature)
       .slice()
       .sort((a, b) => {
         const activeDelta = (b.status === "active" ? 1 : 0) - (a.status === "active" ? 1 : 0);
@@ -2163,14 +2166,14 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       })
       .slice(0, 24);
     if (els.accountCardSummary) {
-      els.accountCardSummary.textContent = cards.length === 0
-        ? "Each pack opens one teacher and three students."
-        : active.length + " active · " + minted.length + " minted · " + cards.length + " total";
+      els.accountCardSummary.textContent = minted.length === 0
+        ? "No minted cards in this wallet yet."
+        : active.length + " active minted · " + minted.length + " minted total";
     }
     if (els.accountMintCards) {
       els.accountMintCards.disabled = !authed || billingBusy;
-      els.accountMintCards.textContent = mintable.length > 0 ? "Mint " + mintable.length + " Pending" : "Mint Pack";
-      els.accountMintCards.title = mintable.length > 0
+      els.accountMintCards.textContent = mintableCount > 0 ? "Mint " + mintableCount + " Cards" : "Mint Pack";
+      els.accountMintCards.title = mintableCount > 0
         ? "Send purchased pack cards to your Solana wallet."
         : "Buy a Ruby High card pack.";
     }
@@ -2178,7 +2181,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (shown.length === 0) {
       const empty = document.createElement("div");
       empty.className = "account-empty";
-      empty.textContent = "Mint a pack to start the stack.";
+      empty.textContent = "Mint a pack to show cards here.";
       els.accountHallPassCards.appendChild(empty);
       return;
     }
@@ -3075,7 +3078,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       setBillingStatus(data.applied ? packText + " credited from Solana payment." : "Solana payment was already credited.", false);
       await fetchSession();
       if (ownerWalletAddress) {
-        await mintPendingHallPassCards(ownerWalletAddress, { source: "billing" });
+        await mintPurchasedHallPassCards(ownerWalletAddress, { source: "billing" });
       }
       await deriveAuth();
       if (billingProductsCache) await loadBillingProducts();
@@ -3088,13 +3091,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function mintPendingHallPassCards(ownerWalletAddress, opts) {
+  async function mintPurchasedHallPassCards(ownerWalletAddress, opts) {
     const cleanOwner = String(ownerWalletAddress || connectedSolanaWalletAddress() || "").trim();
     if (!cleanOwner) throw new Error("Connect a Solana wallet before minting cards.");
     const fromAccount = !!(opts && opts.source === "account");
     if (fromAccount) setPrivyStatus("Minting cards...", false);
     setBillingStatus("Minting cards...", false);
-    const r = await apiFetch(apiBase + "/nft/mint-pending", {
+    const r = await apiFetch(apiBase + "/nft/mint-pack", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       timeoutMs: 90_000,
@@ -3105,7 +3108,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const minted = Array.isArray(data.minted) ? data.minted.length : 0;
     const message = minted > 0
       ? "Minted " + minted + " card" + (minted === 1 ? "" : "s") + "."
-      : "No unminted cards.";
+      : "No pack cards ready to mint.";
     setBillingStatus(message, false);
     if (fromAccount) setPrivyStatus(message, false);
     await fetchSession();
@@ -3267,8 +3270,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const ownerWalletAddress = connectedSolanaWalletAddress();
     const cards = activeMintedHallPassCardsForWallet(ownerWalletAddress);
     if (cards.length < needed) {
-      const mintable = hallPassCardsForTelemetry().filter((card) => card.status === "active" && !card.mintAddress);
-      if (mintable.length > 0) throw new Error("Mint cards before burning them.");
+      if (unmintedCardCount() > 0) throw new Error("Mint a card pack before burning a card.");
       throw new Error("No minted card is available to burn from this wallet.");
     }
     const client = await getPrivyClient();
@@ -10647,8 +10649,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
-    const mintable = hallPassCardsForTelemetry().filter((card) => card.status === "active" && !card.mintAddress);
-    if (mintable.length === 0) {
+    const mintableCount = unmintedCardCount();
+    if (mintableCount === 0) {
       openBilling();
       return;
     }
@@ -10660,7 +10662,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         setPrivyStatus("Card mint canceled.", false);
         return;
       }
-      await mintPendingHallPassCards(ownerWalletAddress, { source: "account" });
+      await mintPurchasedHallPassCards(ownerWalletAddress, { source: "account" });
     } catch (err) {
       const message = "Card mint failed · " + (err && err.message ? err.message : "error");
       setPrivyStatus(message, true);

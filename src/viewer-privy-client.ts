@@ -7,7 +7,9 @@ import {
   useModalStatus,
   usePrivy,
   type LinkedAccountWithMetadata,
+  type PrivyClientConfig,
   type User,
+  type WalletListEntry,
 } from "@privy-io/react-auth";
 import {
   useSignAndSendTransaction,
@@ -109,7 +111,8 @@ const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvw
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const PRIVY_ACTION_TIMEOUT_MS = 30_000;
 const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;
-const RUBY_HIGH_LOGIN_METHODS: Array<"email" | "google" | "twitter"> = ["email", "google", "twitter"];
+const RUBY_HIGH_LOGIN_METHODS: NonNullable<PrivyClientConfig["loginMethods"]> = ["wallet", "email", "google", "twitter"];
+const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];
 
 let mountedRoot: Root | null = null;
 let mountedConfigKey = "";
@@ -171,7 +174,7 @@ export async function createRubyHighPrivyClient(
           config: {
             loginMethods: RUBY_HIGH_LOGIN_METHODS,
             embeddedWallets: {
-              ethereum: { createOnLogin: "users-without-wallets" },
+              ethereum: { createOnLogin: "off" },
               solana: { createOnLogin: "off" },
             },
             externalWallets: {
@@ -180,8 +183,9 @@ export async function createRubyHighPrivyClient(
             appearance: {
               theme: "dark",
               accentColor: "#df2f2f",
-              showWalletLoginFirst: false,
-              walletChainType: "ethereum-and-solana",
+              showWalletLoginFirst: true,
+              walletChainType: "solana-only",
+              walletList: RUBY_HIGH_SOLANA_WALLET_LIST,
             },
           },
           children: bridge,
@@ -362,7 +366,7 @@ function RubyHighPrivyBridge(props: {
       pendingLogin.current = pending;
       modalOpenedForLogin.current = false;
       try {
-        const result = login({ loginMethods: RUBY_HIGH_LOGIN_METHODS }) as unknown;
+        const result = login({ loginMethods: RUBY_HIGH_LOGIN_METHODS, walletChainType: "solana-only" }) as unknown;
         if (result && typeof (result as PromiseLike<unknown>).then === "function") {
           void Promise.resolve(result).catch((err) => rejectPendingLogin(err));
         }
@@ -405,7 +409,8 @@ function RubyHighPrivyBridge(props: {
       try {
         const result = connectWallet({
           walletChainType: "solana-only",
-          description: "Connect a Solana wallet to pay for Ruby High packs.",
+          walletList: RUBY_HIGH_SOLANA_WALLET_LIST,
+          description: "Connect Phantom or another Solana wallet to mint Ruby High cards.",
         }) as unknown;
         if (result && typeof (result as PromiseLike<unknown>).then === "function") {
           void Promise.resolve(result).catch((err) => rejectPendingWalletConnect(err));
@@ -635,10 +640,12 @@ function sessionFromUser(
 
 function walletFromUser(user: User): { address: string; chainType: "ethereum" | "solana"; rank: number } | null {
   const direct = walletCandidate(user.wallet);
-  if (direct) return direct;
-  const wallets = user.linkedAccounts
+  const wallets = [
+    ...(direct ? [direct] : []),
+    ...user.linkedAccounts
     .map((account) => walletCandidate(account))
-    .filter((wallet): wallet is { address: string; chainType: "ethereum" | "solana"; rank: number } => !!wallet)
+    .filter((wallet): wallet is { address: string; chainType: "ethereum" | "solana"; rank: number } => !!wallet),
+  ]
     .sort((a, b) => a.rank - b.rank);
   return wallets[0] ?? null;
 }
@@ -678,7 +685,7 @@ function walletCandidate(account: unknown): { address: string; chainType: "ether
       ? record.connector_type
       : "";
   const embedded = walletClient === "privy" || connectorType === "embedded";
-  const rank = chainType === "ethereum"
+  const rank = chainType === "solana"
     ? (embedded ? 0 : 1)
     : (embedded ? 2 : 3);
   return { address, chainType, rank };
