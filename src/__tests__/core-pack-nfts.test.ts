@@ -57,6 +57,7 @@ describe("Core pack NFT checkout transactions", () => {
       data: Buffer.from(ix.data),
       accounts: ix.accountKeyIndexes.map((index) => accountKeys[index]),
     }));
+    const createDestinationAta = instructions.find((ix) => ix.program === "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" && ix.data[0] === 1);
     const tokenTransfer = instructions.find((ix) => ix.program === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" && ix.data[0] === 12);
 
     expect(transaction.signatures[0]?.every((byte) => byte === 0)).toBe(true);
@@ -66,6 +67,7 @@ describe("Core pack NFT checkout transactions", () => {
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
       "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
     ]));
+    expect(createDestinationAta?.accounts[0]).toBe(ownerWalletAddress);
     expect(tokenTransfer).toBeTruthy();
     expect(tokenTransfer?.accounts).toEqual(expect.arrayContaining([
       sourceTokenAccountAddress,

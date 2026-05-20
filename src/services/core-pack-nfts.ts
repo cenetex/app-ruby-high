@@ -351,7 +351,7 @@ export async function buildCorePackPurchaseTransaction(
     mint: kitAddress(tokenMint),
   });
   const createDestinationAta = createAssociatedTokenAccountIdempotentInstruction({
-    payer: authority.publicKey,
+    payer: ownerWalletAddress,
     ata: destinationTokenAccountAddress,
     owner: tokenRecipient,
     mint: tokenMint,
@@ -369,14 +369,14 @@ export async function buildCorePackPurchaseTransaction(
     asset,
     collection,
     authority,
-    payer: authority,
+    payer: ownerSigner,
     owner,
     name: packCount === 1 ? `Ruby High Pack #${packSerial(asset.publicKey)}` : `Ruby High ${packCount}-Pack #${packSerial(asset.publicKey)}`,
     uri: metadataUri,
   });
   const builder = createPack
     .prepend([
-      { instruction: createDestinationAta, signers: [authority], bytesCreatedOnChain: 0 },
+      { instruction: createDestinationAta, signers: [], bytesCreatedOnChain: 0 },
       { instruction: transfer, signers: [], bytesCreatedOnChain: 0 },
     ])
     .setFeePayer(ownerSigner);
