@@ -767,7 +767,7 @@ describe("/pack-library", () => {
       cookie: "rh_session=alice",
     });
     expect(response.status).toBe(402);
-    expect(response.body.error).toContain("Not enough Cards");
+    expect(response.body.error).toContain("Not enough Hall Passes");
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
   });
 

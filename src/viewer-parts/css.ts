@@ -5710,6 +5710,142 @@ export const VIEWER_CSS = `
     background: #b92b2b;
   }
 
+  .card-burn-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 124;
+    display: grid;
+    place-items: center;
+    padding: calc(var(--safe-top) + 18px) calc(var(--safe-right) + 18px) calc(var(--safe-bot) + 18px) calc(var(--safe-left) + 18px);
+    background: rgba(8, 10, 16, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .card-burn-panel {
+    width: min(560px, 100%);
+    max-height: min(720px, calc(100dvh - var(--safe-top) - var(--safe-bot) - 36px));
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, rgba(255,255,255,0.18));
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02)),
+      rgba(24, 27, 38, 0.98);
+    color: var(--text);
+    box-shadow: 0 22px 70px rgba(0,0,0,0.56);
+    padding: 18px;
+  }
+  .card-burn-kicker {
+    margin-bottom: 7px;
+    color: #ffe08a;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  .card-burn-panel h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 20px;
+    line-height: 1.15;
+    letter-spacing: 0;
+  }
+  .card-burn-panel p {
+    margin: 10px 0 0;
+    color: var(--text-soft);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .card-burn-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .card-burn-choice {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 9px;
+    align-items: center;
+    min-height: 66px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 8px;
+    background: rgba(255,255,255,0.055);
+    color: var(--text);
+    text-align: left;
+  }
+  .card-burn-choice.is-selected {
+    border-color: color-mix(in srgb, var(--accent) 78%, #fff 8%);
+    background: color-mix(in srgb, var(--accent) 20%, rgba(255,255,255,0.06));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 34%, transparent);
+  }
+  .card-burn-thumb {
+    width: 44px;
+    height: 50px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 6px;
+    background: rgba(0,0,0,0.2);
+  }
+  .card-burn-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .card-burn-choice-text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .card-burn-choice-text strong {
+    overflow: hidden;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-burn-choice-text span {
+    overflow: hidden;
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-burn-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    margin-top: 18px;
+  }
+  .card-burn-actions button {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px;
+    min-height: 40px;
+    padding: 0 15px;
+    color: var(--text);
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+  .card-burn-actions button.secondary {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-soft);
+  }
+  .card-burn-actions button.primary {
+    border-color: rgba(255,110,110,0.72);
+    background: #b92b2b;
+    color: #fff;
+  }
+  .card-burn-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.46;
+  }
+
   @media (max-width: 520px) {
     .app-confirm-card {
       padding: 16px;

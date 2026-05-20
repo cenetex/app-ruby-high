@@ -80,16 +80,15 @@ describe("Hall Pass wallet", () => {
 
     const state = ruby.getOrCreate(sid);
     expect(state.wallet.hallPasses).toBe(WELCOME_HALL_PASS_GRANT);
-    expect(state.wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(WELCOME_HALL_PASS_GRANT);
+    expect(state.wallet.hallPassCards?.filter((card) => card.status === "active") ?? []).toHaveLength(0);
     expect(state.wallet.welcomeHallPassesGrantedAt).toEqual(expect.any(Number));
     expect(state.wallet.transactions).toContainEqual(expect.objectContaining({
       id: WELCOME_HALL_PASS_GRANT_ID,
       kind: "hall-pass-grant",
       hallPasses: WELCOME_HALL_PASS_GRANT,
       source: "system",
-      description: "Welcome Cards",
+      description: "Welcome Hall Passes",
       metadata: expect.objectContaining({
-        hallPassCardCount: WELCOME_HALL_PASS_GRANT,
         reason: "account-welcome",
       }),
     }));
@@ -110,14 +109,8 @@ describe("Hall Pass wallet", () => {
     });
     expect(grant.applied).toBe(true);
     expect(grant.state.wallet.hallPasses).toBe(25);
-    expect(grant.cards).toHaveLength(20);
-    for (let i = 0; i < (grant.cards?.length ?? 0); i += 4) {
-      const pack = grant.cards!.slice(i, i + 4);
-      expect(pack.filter((card) => card.role === "teacher" || card.role === "special")).toHaveLength(1);
-      expect(pack.filter((card) => card.role === "student")).toHaveLength(3);
-    }
-    expect(grant.state.wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(25);
-    expect(new Set(grant.cards?.map((card) => card.id)).size).toBe(20);
+    expect(grant.cards).toBeUndefined();
+    expect(grant.state.wallet.hallPassCards?.filter((card) => card.status === "active") ?? []).toHaveLength(0);
 
     const repeatGrant = ruby.grantHallPasses(sid, {
       amount: 20,
@@ -135,10 +128,9 @@ describe("Hall Pass wallet", () => {
     });
     expect(spend.applied).toBe(true);
     expect(spend.state.wallet.hallPasses).toBe(22);
-    expect(spend.cards).toHaveLength(3);
-    expect(spend.transaction.metadata).toMatchObject({ hallPassCardCount: 3 });
-    expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(22);
-    expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "redeemed")).toHaveLength(3);
+    expect(spend.cards).toBeUndefined();
+    expect(spend.transaction.metadata).toBeUndefined();
+    expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "active") ?? []).toHaveLength(0);
 
     const repeatSpend = ruby.spendHallPasses(sid, {
       amount: 3,
@@ -152,7 +144,7 @@ describe("Hall Pass wallet", () => {
       amount: 23,
       idempotencyKey: "hosted-image:portrait:too-many",
       source: "hosted-image",
-    })).toThrow(/Not enough Cards/);
+    })).toThrow(/Not enough Hall Passes/);
   });
 
   it("records owner-signed NFT card burns as exact card spends", async () => {
@@ -160,8 +152,8 @@ describe("Hall Pass wallet", () => {
     const sid = "rh:user:nft-burn";
     const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
     const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
-    const grant = ruby.grantHallPasses(sid, {
-      amount: 4,
+    const grant = ruby.grantHallPassCards(sid, {
+      cardCount: 4,
       idempotencyKey: "stripe:checkout:nft-burn",
       source: "stripe",
     });
@@ -187,7 +179,7 @@ describe("Hall Pass wallet", () => {
     });
 
     expect(spend.applied).toBe(true);
-    expect(spend.state.wallet.hallPasses).toBe(8);
+    expect(spend.state.wallet.hallPasses).toBe(5);
     expect(spend.cards).toHaveLength(1);
     expect(spend.transaction).toMatchObject({
       kind: "hall-pass-spend",
@@ -232,8 +224,8 @@ describe("Hall Pass wallet", () => {
     const sid = "rh:user:nft-burn-batch";
     const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
     const burnSignature = "4mBatchBurnSignature1111111111111111111111111111111111111111";
-    const grant = ruby.grantHallPasses(sid, {
-      amount: 4,
+    const grant = ruby.grantHallPassCards(sid, {
+      cardCount: 4,
       idempotencyKey: "stripe:checkout:nft-burn-batch",
       source: "stripe",
     });
@@ -266,7 +258,7 @@ describe("Hall Pass wallet", () => {
     });
 
     expect(spend.applied).toBe(true);
-    expect(spend.state.wallet.hallPasses).toBe(before - burns.length);
+    expect(spend.state.wallet.hallPasses).toBe(before);
     expect(spend.cards).toHaveLength(2);
     expect(spend.state.wallet.hallPassCards?.filter((card) => card.status === "redeemed")).toHaveLength(2);
     expect(spend.transaction.metadata?.burnSignatures).toBe(`${burnSignature},${burnSignature}`);
@@ -309,8 +301,8 @@ describe("Hall Pass wallet", () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:super-rare-cards";
 
-    const grant = ruby.grantHallPasses(sid, {
-      amount: 20,
+    const grant = ruby.grantHallPassCards(sid, {
+      cardCount: 20,
       idempotencyKey: "admin:grant:super-2",
       source: "admin",
     });
@@ -325,7 +317,7 @@ describe("Hall Pass wallet", () => {
     expect(grant.cards?.some((card) => ["captain-null", "eliza", "rati"].includes(card.characterId))).toBe(true);
   });
 
-  it("backfills legacy positive card balances into mintable cards", async () => {
+  it("does not backfill legacy Hall Pass balances into mintable cards", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:legacy-card-balance";
     const state = ruby.getOrCreate(sid);
@@ -347,8 +339,8 @@ describe("Hall Pass wallet", () => {
     const reloaded = new RubyHighService({} as never, new StateStore(storePath));
     await reloaded["hydrate"]();
     const wallet = reloaded.getOrCreate(sid).wallet;
-    expect(wallet.hallPassCards?.filter((card) => card.status === "active")).toHaveLength(7);
-    expect(wallet.hallPassCards?.every((card) => card.grantTransactionId === "legacy-card-backfill")).toBe(true);
+    expect(wallet.hallPasses).toBe(7);
+    expect(wallet.hallPassCards?.filter((card) => card.status === "active") ?? []).toHaveLength(0);
     await reloaded.stop();
   });
 

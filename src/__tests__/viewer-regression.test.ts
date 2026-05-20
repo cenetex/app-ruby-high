@@ -150,6 +150,21 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("Pay Crypto");
   });
 
+  it("shows a thumbnail selector before burning collectible cards", () => {
+    const script = inlineScript(renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } }));
+
+    expectScriptToContain(script, "function selectHallPassCardsForBurn(cards, needed)");
+    expectScriptToContain(script, 'overlay.className = "card-burn-overlay"');
+    expectScriptToContain(script, 'grid.className = "card-burn-grid"');
+    expectScriptToContain(script, 'thumb.className = "card-burn-thumb"');
+    expectScriptToContain(script, "img.src = hallPassCardArtUrl(card)");
+    expectScriptToContain(script, "const selectedCards = await selectHallPassCardsForBurn(cards, needed)");
+    expectScriptToContain(script, "body: JSON.stringify({ cardIds: selectedCards.map((card) => card.id), ownerWalletAddress })");
+    expect(VIEWER_CSS).toContain(".card-burn-overlay");
+    expect(VIEWER_CSS).toContain(".card-burn-grid");
+    expect(VIEWER_CSS).toContain(".card-burn-thumb img");
+  });
+
   it("keeps Privy modal actions from getting stuck while Privy owns Solana wallet selection", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_LOGIN_METHODS: Array<"email" | "google" | "twitter"> = ["email", "google", "twitter"];');
@@ -420,7 +435,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="course-generation-checklist"');
     expect(html).toContain("Add course materials here");
     expect(html).toContain("Generate Course");
-    expect(html).toContain("Publish Course (3 Cards)");
+    expect(html).toContain("Publish Course (3 Hall Passes)");
     expect(html).toContain('id="course-generate-btn"');
     expect(html).not.toContain('class="pack-teacher-tab pack-new-teacher-tab"');
     expect(html).not.toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');

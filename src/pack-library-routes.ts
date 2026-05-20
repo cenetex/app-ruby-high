@@ -470,7 +470,7 @@ export async function handlePackLibraryRoutes(
           return true;
         }
         if (deps.ruby.hallPassBalance(sessionId) < hallPassCost) {
-          ctx.error(ctx.res, `Not enough Cards. Need ${hallPassCost}, have ${deps.ruby.hallPassBalance(sessionId)}.`, 402);
+          ctx.error(ctx.res, `Not enough Hall Passes. Need ${hallPassCost}, have ${deps.ruby.hallPassBalance(sessionId)}.`, 402);
           return true;
         }
         spend = deps.ruby.spendHallPasses(sessionId, {

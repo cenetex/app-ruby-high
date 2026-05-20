@@ -132,13 +132,13 @@ describe("Hall Pass NFT routes", () => {
 
   it("mints unminted active Hall Pass cards and records signatures", async () => {
     const stateKey = signInUser("alice");
-    const grant = ruby.grantHallPasses(stateKey, {
-      amount: 20,
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 20,
       idempotencyKey: "stripe:checkout:cs_nft",
       source: "stripe",
     });
     expect(grant.cards).toHaveLength(20);
-    expect(ruby.mintableHallPassCards(stateKey)).toHaveLength(25);
+    expect(ruby.mintableHallPassCards(stateKey)).toHaveLength(20);
 
     const handled = await handleNftRoutes(makeCtx({
       method: "POST",
@@ -150,7 +150,7 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.minted).toHaveLength(8);
-    expect(lastResponse?.body.remaining).toBe(17);
+    expect(lastResponse?.body.remaining).toBe(12);
     const cards = ruby.getOrCreate(stateKey).wallet.hallPassCards ?? [];
     expect(cards.filter((card) => card.mintAddress && card.mintSignature && card.metadataUri)).toHaveLength(8);
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(true);
@@ -165,8 +165,8 @@ describe("Hall Pass NFT routes", () => {
       return deterministicMintSignatureForTest(card, ownerWalletAddress);
     });
     const stateKey = signInUser("partial");
-    ruby.grantHallPasses(stateKey, {
-      amount: 8,
+    ruby.grantHallPassCards(stateKey, {
+      cardCount: 8,
       idempotencyKey: "stripe:checkout:cs_partial",
       source: "stripe",
     });
@@ -187,8 +187,8 @@ describe("Hall Pass NFT routes", () => {
 
   it("prepares and confirms owner-signed card burns", async () => {
     const stateKey = signInUser("burn");
-    const grant = ruby.grantHallPasses(stateKey, {
-      amount: 4,
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 4,
       idempotencyKey: "stripe:checkout:cs_burn",
       source: "stripe",
     });
@@ -229,8 +229,8 @@ describe("Hall Pass NFT routes", () => {
 
   it("prepares multiple owner-signed card burns in one transaction", async () => {
     const stateKey = signInUser("burn-batch");
-    const grant = ruby.grantHallPasses(stateKey, {
-      amount: 4,
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 4,
       idempotencyKey: "stripe:checkout:cs_burn_batch",
       source: "stripe",
     });

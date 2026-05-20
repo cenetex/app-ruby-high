@@ -1807,13 +1807,27 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function walletSummaryText(t) {
     const wallet = walletNumbers(t);
-    return formatWholeNumber(wallet.meritStars) + " Merit Stars · " + formatWholeNumber(walletCardCount(t)) + " Cards";
+    return formatWholeNumber(wallet.meritStars) + " Merit Stars · " + formatWholeNumber(wallet.hallPasses) + " Hall Pass" + (wallet.hallPasses === 1 ? "" : "es");
   }
 
   function walletCardCount(t) {
-    const cards = hallPassCardsForTelemetry(t);
-    if (cards.length > 0) return cards.filter((card) => card.status === "active").length;
-    return walletNumbers(t).hallPasses;
+    return hallPassCardsForTelemetry(t).filter((card) => card.status === "active").length;
+  }
+
+  function mintedCardCount(t) {
+    return hallPassCardsForTelemetry(t).filter((card) => card.status === "active" && card.mintAddress && card.mintSignature).length;
+  }
+
+  function unmintedCardCount(t) {
+    return hallPassCardsForTelemetry(t).filter((card) => card.status === "active" && !card.mintAddress).length;
+  }
+
+  function canSpendHallPasses(cost, t) {
+    return walletNumbers(t || lastTelemetry).hallPasses >= positiveWholeNumber(cost, 1);
+  }
+
+  function canBurnCollectibleCards(cost, t) {
+    return mintedCardCount(t || lastTelemetry) >= positiveWholeNumber(cost, 1);
   }
 
   function walletNumbers(t) {
@@ -1841,7 +1855,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function usingHostedImageGeneration(kind) {
     const image = hostedImageEntitlement(kind);
-    return !!authed && !getStoredApiKey() && !!(image && image.canUseHosted);
+    return !!authed && !getStoredApiKey() && !!(image && image.configured) && (
+      canSpendHallPasses(image.cost || 1) || canBurnCollectibleCards(image.cost || 1)
+    );
   }
 
   function hostedImageCostLabel(kind) {
@@ -1849,7 +1865,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const costs = billingProductsCache && billingProductsCache.imageCosts ? billingProductsCache.imageCosts : {};
     const raw = entitlement && entitlement.cost != null ? entitlement.cost : costs && costs[kind];
     const cost = Math.max(1, Math.round(Number(raw || 1)));
-    return formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s");
+    return formatWholeNumber(cost) + " Hall Pass" + (cost === 1 ? "" : "es");
   }
 
   function positiveWholeNumber(value, fallback) {
@@ -1859,7 +1875,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function hallPassCostLabel(cost) {
     const normalized = positiveWholeNumber(cost, 1);
-    return formatWholeNumber(normalized) + " Card" + (normalized === 1 ? "" : "s");
+    return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
   }
 
   function creatorPricing(t) {
@@ -1891,8 +1907,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   async function confirmHostedCreditSpend(action, kind, usePhotoDayCredit) {
     if (!usingHostedImageGeneration(kind) && !usePhotoDayCredit) return true;
     await ensureBillingProductsForCreditWarning();
-    const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : hostedImageCostLabel(kind);
-    const spendKind = usePhotoDayCredit ? "photo-day credit" : "card burn";
+    const entitlement = hostedImageEntitlement(kind);
+    const cost = Math.max(1, Math.floor(Number(entitlement && entitlement.cost || 1)));
+    const usesHallPass = !usePhotoDayCredit && canSpendHallPasses(cost);
+    const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : usesHallPass ? hallPassCostLabel(cost) : formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s");
+    const spendKind = usePhotoDayCredit ? "photo-day credit" : usesHallPass ? "Hall Pass" : "card burn";
     const isCharacterPortrait = action === "Custom character portrait";
     const detail = isCharacterPortrait
       ? "You can keep editing while it runs. Lock it in unlocks after the request finishes."
@@ -1911,7 +1930,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return confirmInApp({
       kicker: spendKind,
       title: action + "?",
-      copy: "If the image completes, Ruby High will burn " + spendLabel + ".",
+      copy: "If the image completes, Ruby High will " + (usesHallPass ? "spend " : "burn ") + spendLabel + ".",
       detail,
       confirmText,
       focus: "confirm",
@@ -1923,7 +1942,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (getStoredApiKey()) return "";
     const entitlement = hostedImageEntitlement("portrait");
     if (entitlement && entitlement.configured) {
-      return entitlement.affordable ? "" : "Need " + hostedImageCostLabel("portrait") + ".";
+      const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
+      return canSpendHallPasses(cost) || canBurnCollectibleCards(cost) ? "" : "Need " + hallPassCostLabel(cost) + " or a minted Card.";
     }
     return openRouterGenerationMessage("generating teacher images");
   }
@@ -1931,7 +1951,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function teacherImageCreditHint() {
     const reason = teacherImageGenerationStatusReason();
     if (reason) return reason;
-    if (!getStoredApiKey()) return "Hosted image generation burns " + hostedImageCostLabel("portrait") + " when it completes.";
+    const entitlement = hostedImageEntitlement("portrait") || {};
+    const cost = entitlement.cost || 1;
+    if (!getStoredApiKey()) return canSpendHallPasses(cost)
+      ? "Hosted image generation spends a Hall Pass when it completes."
+      : "Hosted image generation burns a minted Card when it completes.";
     return "Uses your AI key. No cards are burned.";
   }
 
@@ -1967,8 +1991,10 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function syncBillingWallet(t) {
     if (!els.billingWallet) return;
     const cardCount = walletCardCount(t || lastTelemetry);
+    const hallPasses = walletNumbers(t || lastTelemetry).hallPasses;
     const ai = hostedAiTelemetry(t || lastTelemetry);
-    els.billingWallet.textContent = formatWholeNumber(cardCount) + " Card" + (cardCount === 1 ? "" : "s")
+    els.billingWallet.textContent = formatWholeNumber(hallPasses) + " Hall Pass" + (hallPasses === 1 ? "" : "es")
+      + " · " + formatWholeNumber(cardCount) + " Card" + (cardCount === 1 ? "" : "s")
       + (ai.active ? " · AI active " + formatRelativeExpiry(ai.expiresAt) : "");
     renderAccountWallet();
   }
@@ -2059,12 +2085,17 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const ai = hostedAiTelemetry(lastTelemetry);
     const hasBrowserKey = !!getStoredApiKey();
     const durationLabel = formatDuration(ai.durationMs || 604_800_000);
-    const costLabel = formatWholeNumber(ai.cost || 1) + " Card" + ((ai.cost || 1) === 1 ? "" : "s");
+    const cost = positiveWholeNumber(ai.cost || 1, 1);
+    const costLabel = hallPassCostLabel(cost);
+    const canUseHallPass = canSpendHallPasses(cost);
+    const canBurnCard = canBurnCollectibleCards(cost);
     let status = "Offline mode";
-    let meta = "Burn " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
-    let primaryLabel = "Burn Card";
-    let primaryTitle = "Burn " + costLabel + " for " + durationLabel + " of AI access.";
-    let primaryDisabled = !authed || billingBusy || localAiEnabled || ai.active || !ai.configured || !ai.affordable;
+    let meta = "Spend " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
+    let primaryLabel = canUseHallPass ? "Use Hall Pass" : "Burn Card";
+    let primaryTitle = canUseHallPass
+      ? "Spend " + costLabel + " for " + durationLabel + " of AI access."
+      : "Burn " + formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s") + " for " + durationLabel + " of AI access.";
+    let primaryDisabled = !authed || billingBusy || localAiEnabled || ai.active || !ai.configured || (!canUseHallPass && !canBurnCard);
     let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect AI key";
     let secondaryDisabled = !authed || localAiEnabled;
     if (localAiEnabled) {
@@ -2075,7 +2106,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       secondaryLabel = "Connect AI key";
     } else if (hasBrowserKey && aiEnabled) {
       status = "AI key connected";
-      meta = "Teacher chat and character text rerolls use your browser key. Card burns are still available for hosted play.";
+      meta = "Teacher chat and character text rerolls use your browser key. Hall Passes and card burns are still available for hosted play.";
     } else if (ai.active || hostedAiActive) {
       status = "AI Access active";
       meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
@@ -2083,12 +2114,12 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       primaryTitle = "";
     } else if (activeTeacherUsesServerAi()) {
       status = "Teacher AI connected";
-      meta = "This server can speak for teachers. Burn a card or connect your own AI key for browser-owned AI features.";
+      meta = "This server can speak for teachers. Use a Hall Pass, burn a card, or connect your own AI key for browser-owned AI features.";
     } else if (!ai.configured) {
       meta = "Hosted AI is not configured on this server. Connect your own AI key.";
       primaryTitle = "Hosted AI is not configured on this server.";
-    } else if (!ai.affordable) {
-      primaryTitle = "Need " + costLabel + ".";
+    } else if (!canUseHallPass && !canBurnCard) {
+      primaryTitle = "Need " + costLabel + " or a minted Card.";
     }
     els.accountAiStatus.textContent = status;
     if (els.accountAiMeta) els.accountAiMeta.textContent = meta;
@@ -2106,7 +2137,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (els.accountWalletMeta) {
       els.accountWalletMeta.textContent = slots.photoDayCredits > 0
         ? slots.photoDayCredits + " Photo Day " + (slots.photoDayCredits === 1 ? "credit" : "credits")
-        : "Cards burn for AI access, image generation, and extra student slots.";
+        : "Hall Passes cover your first AI and image runs. Collectible cards come from packs.";
     }
   }
 
@@ -2138,10 +2169,10 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     }
     if (els.accountMintCards) {
       els.accountMintCards.disabled = !authed || billingBusy;
-      els.accountMintCards.textContent = mintable.length > 0 ? "Mint " + mintable.length + " Cards" : "Mint Cards";
+      els.accountMintCards.textContent = mintable.length > 0 ? "Mint " + mintable.length + " Pending" : "Mint Pack";
       els.accountMintCards.title = mintable.length > 0
-        ? "Mint unminted cards to your connected Solana wallet."
-        : "Buy a pack or mint pending cards.";
+        ? "Send purchased pack cards to your Solana wallet."
+        : "Buy a Ruby High card pack.";
     }
     els.accountHallPassCards.replaceChildren();
     if (shown.length === 0) {
@@ -2535,7 +2566,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     row.className = "account-history-row";
     const amount = Number(tx.hallPasses || 0);
     const photoDayAmount = Number(tx.photoDayCredits || 0);
-    const visibleAmount = amount || photoDayAmount;
+    const cardAmount = walletTransactionCardCount(tx);
+    const visibleAmount = amount || photoDayAmount || cardAmount;
     if (visibleAmount > 0) row.classList.add("is-credit");
     if (visibleAmount < 0) row.classList.add("is-debit");
     const main = document.createElement("div");
@@ -2550,11 +2582,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     main.appendChild(meta);
     const delta = document.createElement("div");
     delta.className = "account-history-delta";
-    delta.textContent = amount !== 0
-      ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " Card" + (Math.abs(amount) === 1 ? "" : "s")
-      : photoDayAmount !== 0
-        ? (photoDayAmount > 0 ? "+" : "") + formatWholeNumber(photoDayAmount) + " Photo Day"
-        : "0";
+    delta.textContent = cardAmount !== 0
+      ? (cardAmount > 0 ? "+" : "") + formatWholeNumber(cardAmount) + " Card" + (Math.abs(cardAmount) === 1 ? "" : "s")
+      : amount !== 0
+        ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " Hall Pass" + (Math.abs(amount) === 1 ? "" : "es")
+        : photoDayAmount !== 0
+          ? (photoDayAmount > 0 ? "+" : "") + formatWholeNumber(photoDayAmount) + " Photo Day"
+          : "0";
     row.appendChild(main);
     row.appendChild(delta);
     return row;
@@ -2562,10 +2596,10 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function walletTransactionTitle(tx) {
     if (!tx || !tx.kind) return "Wallet update";
-    if (tx.kind === "hall-pass-grant") return "Card grant";
-    if (tx.kind === "hall-pass-spend") return "Card burn";
-    if (tx.kind === "hall-pass-refund") return "Card refund";
-    if (tx.kind === "hall-pass-revoke") return "Card reversal";
+    if (tx.kind === "hall-pass-grant") return walletTransactionCardCount(tx) > 0 ? "Pack opened" : "Hall Pass grant";
+    if (tx.kind === "hall-pass-spend") return walletTransactionCardCount(tx) < 0 ? "Card burn" : "Hall Pass spend";
+    if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
+    if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
     if (tx.kind === "photo-day-spend") return "Photo Day credit";
     if (tx.kind === "photo-day-refund") return "Photo Day refund";
     return "Wallet update";
@@ -2575,9 +2609,14 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const raw = tx && typeof tx.description === "string" && tx.description.trim()
       ? tx.description.trim()
       : walletTransactionTitle(tx);
-    return raw
-      .replace(/Hall Passes/g, "Cards")
-      .replace(/Hall Pass/g, "Card");
+    return raw;
+  }
+
+  function walletTransactionCardCount(tx) {
+    const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
+    const count = Math.max(0, Math.floor(Number(metadata.hallPassCardCount || metadata.cardCount || 0)));
+    if (count <= 0) return 0;
+    return tx.kind === "hall-pass-spend" || tx.kind === "hall-pass-revoke" ? -count : count;
   }
 
   function walletTransactionSource(tx) {
@@ -2639,13 +2678,13 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const copy = document.createElement("div");
     copy.className = "welcome-hall-pass-copy";
     const title = document.createElement("h2");
-    title.textContent = "Starter cards added";
+    title.textContent = "5 Hall Passes added";
     const body = document.createElement("p");
     const portraitEntitlement = hostedImageEntitlement("portrait");
     const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
     body.textContent = portraitConfigured
-      ? "Roll your first student and try a custom portrait, or save your cards for AI Access and extra character slots."
-      : "Roll your first student now, or save your cards for AI Access, images, and extra character slots.";
+      ? "Roll your first student and try a custom portrait, or save your Hall Passes for AI Access and extra character slots."
+      : "Roll your first student now, or save your Hall Passes for AI Access, images, and extra character slots.";
     const actions = document.createElement("div");
     actions.className = "welcome-hall-pass-actions";
     const later = document.createElement("button");
@@ -3087,6 +3126,137 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       .sort((a, b) => Number(a.issuedAt || 0) - Number(b.issuedAt || 0) || Number(a.serial || 0) - Number(b.serial || 0));
   }
 
+  function selectHallPassCardsForBurn(cards, needed) {
+    const choices = Array.isArray(cards) ? cards.slice() : [];
+    const count = positiveWholeNumber(needed, 1);
+    if (choices.length < count) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+        ? document.activeElement
+        : null;
+      const selectedIds = new Set();
+      const overlay = document.createElement("div");
+      overlay.className = "card-burn-overlay";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      const panel = document.createElement("div");
+      panel.className = "card-burn-panel";
+      const kicker = document.createElement("div");
+      kicker.className = "card-burn-kicker";
+      kicker.textContent = "Choose card burn";
+      const title = document.createElement("h2");
+      title.textContent = count === 1 ? "Pick a card to burn" : "Pick " + count + " cards to burn";
+      const copy = document.createElement("p");
+      copy.textContent = "The selected card leaves your wallet and pays for this Ruby High action.";
+      const grid = document.createElement("div");
+      grid.className = "card-burn-grid";
+      const actions = document.createElement("div");
+      actions.className = "card-burn-actions";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "secondary";
+      cancel.textContent = "Cancel";
+      const confirm = document.createElement("button");
+      confirm.type = "button";
+      confirm.className = "primary";
+      confirm.disabled = true;
+      confirm.textContent = count === 1 ? "Burn Card" : "Burn " + count + " Cards";
+
+      function escapedCardId(id) {
+        if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(id || ""));
+        return String(id || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      }
+      function cleanup(result) {
+        document.removeEventListener("keydown", onKeyDown);
+        overlay.removeEventListener("click", onOverlayClick);
+        overlay.remove();
+        if (previousFocus && previousFocus.isConnected) {
+          try { previousFocus.focus({ preventScroll: true }); } catch (_err) { try { previousFocus.focus(); } catch (_focusErr) {} }
+        }
+        resolve(result);
+      }
+      function updateConfirm() {
+        confirm.disabled = selectedIds.size !== count;
+      }
+      function toggleCard(card, button) {
+        if (selectedIds.has(card.id)) {
+          selectedIds.delete(card.id);
+          button.classList.remove("is-selected");
+          button.setAttribute("aria-pressed", "false");
+        } else {
+          if (selectedIds.size >= count) {
+            const first = selectedIds.values().next().value;
+            selectedIds.delete(first);
+            const firstButton = grid.querySelector("[data-card-id='" + escapedCardId(first) + "']");
+            if (firstButton) {
+              firstButton.classList.remove("is-selected");
+              firstButton.setAttribute("aria-pressed", "false");
+            }
+          }
+          selectedIds.add(card.id);
+          button.classList.add("is-selected");
+          button.setAttribute("aria-pressed", "true");
+        }
+        updateConfirm();
+      }
+      function onOverlayClick(event) {
+        if (event.target === overlay) cleanup(null);
+      }
+      function onKeyDown(event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cleanup(null);
+        }
+      }
+
+      choices.forEach((card) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "card-burn-choice";
+        button.dataset.cardId = card.id;
+        button.setAttribute("aria-pressed", "false");
+        const thumb = document.createElement("span");
+        thumb.className = "card-burn-thumb";
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = hallPassCardArtUrl(card);
+        thumb.appendChild(img);
+        const text = document.createElement("span");
+        text.className = "card-burn-choice-text";
+        const name = document.createElement("strong");
+        name.textContent = displayCardText(card.characterName || card.title, "Ruby High Card");
+        const meta = document.createElement("span");
+        meta.textContent = displayCardText(card.title, "Collectible Card");
+        text.appendChild(name);
+        text.appendChild(meta);
+        button.appendChild(thumb);
+        button.appendChild(text);
+        button.addEventListener("click", () => toggleCard(card, button));
+        grid.appendChild(button);
+      });
+      cancel.addEventListener("click", () => cleanup(null));
+      confirm.addEventListener("click", () => {
+        const selected = choices.filter((card) => selectedIds.has(card.id)).slice(0, count);
+        cleanup(selected.length === count ? selected : null);
+      });
+      actions.appendChild(cancel);
+      actions.appendChild(confirm);
+      panel.appendChild(kicker);
+      panel.appendChild(title);
+      panel.appendChild(copy);
+      panel.appendChild(grid);
+      panel.appendChild(actions);
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
+      overlay.addEventListener("click", onOverlayClick);
+      document.addEventListener("keydown", onKeyDown);
+      setTimeout(() => {
+        const first = grid.querySelector("button");
+        try { (first || cancel).focus({ preventScroll: true }); } catch (_err) { (first || cancel).focus(); }
+      }, 0);
+    });
+  }
+
   async function burnHallPassCardsForSpend(count, opts) {
     const needed = positiveWholeNumber(count, 1);
     if (needed <= 0) return [];
@@ -3105,7 +3275,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
       throw new Error("Solana card burn is unavailable.");
     }
-    const selectedCards = cards.slice(0, needed);
+    if (opts && typeof opts.status === "function") {
+      opts.status("Choose " + (needed === 1 ? "a card" : needed + " cards") + " to burn...", false);
+    }
+    const selectedCards = await selectHallPassCardsForBurn(cards, needed);
+    if (!selectedCards) throw new Error("Card burn canceled.");
     if (opts && typeof opts.status === "function") {
       opts.status(
         "Opening wallet to burn " + needed + " card" + (needed === 1 ? "" : "s") + "...",
@@ -3182,15 +3356,18 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         if (fromAccount) setPrivyStatus(message, false);
         return;
       }
-      if (fromAccount) setPrivyStatus("Burning card for AI access...", false);
-      setBillingStatus("Burning card for AI access...", false);
       const aiCost = aiStatus.cost;
-      const burns = await burnHallPassCardsForSpend(aiCost, {
-        status: (message, invalid) => {
-          setBillingStatus(message, invalid);
-          if (fromAccount) setPrivyStatus(message, invalid);
-        },
-      });
+      const useHallPass = canSpendHallPasses(aiCost);
+      if (fromAccount) setPrivyStatus(useHallPass ? "Using Hall Pass for AI access..." : "Burning card for AI access...", false);
+      setBillingStatus(useHallPass ? "Using Hall Pass for AI access..." : "Burning card for AI access...", false);
+      const burns = useHallPass
+        ? []
+        : await burnHallPassCardsForSpend(aiCost, {
+          status: (message, invalid) => {
+            setBillingStatus(message, invalid);
+            if (fromAccount) setPrivyStatus(message, invalid);
+          },
+        });
       let data = null;
       let lastError = null;
       for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -3199,7 +3376,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           timeoutMs: 12000,
-          body: JSON.stringify({ hallPassBurns: burns }),
+          body: JSON.stringify(burns.length > 0 ? { hallPassBurns: burns } : {}),
         });
         data = await r.json().catch(() => ({}));
         if (r.ok && data && data.ok) {
@@ -3220,7 +3397,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       renderAccountPage();
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
     } catch (err) {
-      const message = "Burn failed · " + (err && err.message ? err.message : "error");
+      const message = "AI access failed · " + (err && err.message ? err.message : "error");
       setBillingStatus(message, true);
       if (fromAccount) setPrivyStatus(message, true);
     } finally {
@@ -5996,7 +6173,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
             }
             const diplomaEntitlement = hostedImageEntitlement("diploma") || {};
             const diplomaCost = diplomaEntitlement.cost || 3;
-            const hallPassBurns = usingHostedImageGeneration("diploma")
+            const hallPassBurns = usingHostedImageGeneration("diploma") && !canSpendHallPasses(diplomaCost)
               ? await burnHallPassCardsForSpend(diplomaCost, {
                 status: (message) => { if (btn) btn.textContent = message; },
               })
@@ -6978,8 +7155,9 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     controlsSub.className = "ccg-subtitle";
     const hostedPortrait = hostedImageEntitlement("portrait");
     const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
-    controlsSub.textContent = hostedPortrait && (hostedPortrait.canUseHosted || hasPhotoDayCredit)
-      ? "Reroll any field. Photo Day credits or cards can make a custom portrait."
+    const portraitCost = hostedPortrait && hostedPortrait.cost || 1;
+    controlsSub.textContent = hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost) || canBurnCollectibleCards(portraitCost))
+      ? "Reroll any field. Photo Day credits, Hall Passes, or cards can make a custom portrait."
       : localAiEnabled
         ? "Reroll any field. Local AI can refresh the voice."
         : aiEnabled
@@ -7124,11 +7302,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       if (getStoredApiKey()) return "";
       const entitlement = hostedImageEntitlement("portrait");
       if (entitlement && entitlement.configured) {
-        if (characterSlotTelemetry().photoDayCredits > 0) return "";
-        if (entitlement.affordable) return "";
-        const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
-        return "Need " + cost + " Card" + (cost === 1 ? "" : "s") + ".";
-      }
+      if (characterSlotTelemetry().photoDayCredits > 0) return "";
+      const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
+      if (canSpendHallPasses(cost) || canBurnCollectibleCards(cost)) return "";
+      return "Need " + hallPassCostLabel(cost) + " or a minted Card.";
+    }
       return "Connect AI for a custom portrait.";
     }
 
@@ -7272,8 +7450,10 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       portraitStatus.classList.remove("is-invalid");
       applyDisabled();
       try {
-        hallPassBurns = !usePhotoDayCredit && usingHostedImageGeneration("portrait")
-          ? await burnHallPassCardsForSpend(1, {
+        const portraitEntitlement = hostedImageEntitlement("portrait") || {};
+        const portraitCost = portraitEntitlement.cost || 1;
+        hallPassBurns = !usePhotoDayCredit && usingHostedImageGeneration("portrait") && !canSpendHallPasses(portraitCost)
+          ? await burnHallPassCardsForSpend(portraitCost, {
             status: (message, invalid) => {
               portraitStatus.textContent = message;
               portraitStatus.classList.toggle("is-invalid", !!invalid);
@@ -8660,8 +8840,10 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     pendingTeacherImageInvalid = false;
     renderPackTeacherEditor();
     try {
-      hallPassBurns = usingHostedImageGeneration("portrait")
-        ? await burnHallPassCardsForSpend(1, {
+      const portraitEntitlement = hostedImageEntitlement("portrait") || {};
+      const portraitCost = portraitEntitlement.cost || 1;
+      hallPassBurns = usingHostedImageGeneration("portrait") && !canSpendHallPasses(portraitCost)
+        ? await burnHallPassCardsForSpend(portraitCost, {
           status: (message, invalid) => {
             pendingTeacherImageStatus = message;
             pendingTeacherImageInvalid = !!invalid;

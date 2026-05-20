@@ -640,8 +640,8 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
   if (!session.id) throw new Error("Stripe checkout session is missing an id.");
   if (!sessionId) throw new Error("Stripe checkout session is missing a Ruby High session id.");
   const product = validateStripeCheckoutPack(session, metadata);
-  const result = ruby.grantHallPasses(sessionId, {
-    amount: product.hallPasses,
+  const result = ruby.grantHallPassCards(sessionId, {
+    cardCount: product.cardCount,
     idempotencyKey: `stripe:checkout:${session.id}`,
     source: "stripe",
     description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"}`,
@@ -656,7 +656,7 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
   });
   return {
     sessionId,
-    amount: product.hallPasses,
+    amount: product.cardCount,
     productId: product.id,
     packCount: product.packCount,
     cardCount: product.cardCount,
@@ -1068,11 +1068,15 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     if (existing) {
       const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
+      const existingCardCount = Math.max(0, Math.floor(Number(
+        existing.transaction.metadata?.cardCount ?? existing.transaction.metadata?.hallPassCardCount ?? 0,
+      )));
+      const existingAmount = Math.max(0, Math.floor(Number(existing.transaction.hallPasses ?? 0))) || existingCardCount;
       ctx.json(ctx.res, {
         ok: true,
         applied: false,
         sessionId: stateKey,
-        amount: Math.max(0, Math.floor(Number(existing.transaction.hallPasses ?? 0))),
+        amount: existingAmount,
         hallPasses: entitlements.hallPasses,
         productId: existing.transaction.metadata?.hallPassPackId ?? product.id,
         packCount: product.packCount,
@@ -1083,8 +1087,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     try {
       const verification = await verifySolanaPayment(solana, product, stateKey, signature);
-      const result = deps.ruby.grantHallPasses(stateKey, {
-        amount: product.hallPasses,
+      const result = deps.ruby.grantHallPassCards(stateKey, {
+        cardCount: product.cardCount,
         idempotencyKey,
         source: "solana",
         description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"} via ${solana.symbol}`,
@@ -1111,7 +1115,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         ok: true,
         applied: result.applied,
         sessionId: stateKey,
-        amount: product.hallPasses,
+        amount: product.cardCount,
         hallPasses: result.state.wallet.hallPasses,
         productId: product.id,
         packCount: product.packCount,
@@ -1177,7 +1181,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      ctx.error(ctx.res, message.replace(/Hall Passes/g, "Cards").replace(/Hall Pass/g, "Card"), message.startsWith("Not enough Cards") || message.startsWith("Not enough Hall Passes") ? 402 : 500);
+      ctx.error(ctx.res, message, message.startsWith("Not enough Cards") || message.startsWith("Not enough Hall Passes") ? 402 : 500);
     }
     return true;
   }

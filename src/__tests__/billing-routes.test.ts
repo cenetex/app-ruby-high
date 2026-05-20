@@ -296,7 +296,7 @@ describe("AI Access", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(402);
-    expect(lastResponse?.body.error).toContain("Not enough Cards");
+    expect(lastResponse?.body.error).toContain("Not enough Hall Passes");
   });
 });
 
@@ -374,8 +374,8 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 25 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 5 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(20);
 
     await handleBillingRoutes(makeCtx({
@@ -385,8 +385,8 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 25 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 5 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(20);
   });
 
@@ -569,17 +569,17 @@ describe("Solana Hall Pass billing", () => {
         applied: true,
         sessionId: stateKey,
         amount: 20,
-        hallPasses: 25,
+        hallPasses: 5,
         productId: "card-pack-5",
         packCount: 5,
         cardCount: 20,
       },
     });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(25);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === `solana:spl-token-transfer:${signature}`)).toHaveLength(20);
     expect(ruby.walletTransaction(stateKey, `solana:spl-token-transfer:${signature}`)).toMatchObject({
       source: "solana",
-      hallPasses: 20,
+      hallPasses: 0,
       metadata: {
         hallPassCardCount: 20,
         solanaRequiredBaseUnits: "100000000000",
@@ -597,7 +597,7 @@ describe("Solana Hall Pass billing", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { ok: true, applied: false, sessionId: stateKey, amount: 20, hallPasses: 25 },
+      body: { ok: true, applied: false, sessionId: stateKey, amount: 20, hallPasses: 5 },
     });
     expect(rpcCalls).toBe(1);
   });

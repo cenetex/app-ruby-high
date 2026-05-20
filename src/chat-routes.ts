@@ -1150,9 +1150,10 @@ async function prepareHostedImageCharge(args: {
   const usePhotoDayCredit = args.route === "character-portrait" &&
     args.costKind === "portrait" &&
     args.ruby.photoDayCreditBalance(args.sessionId) > 0;
-  if (!usePhotoDayCredit && !imageEntitlement.affordable) {
+  const burns = hallPassBurnsFromBody(args.body);
+  if (!usePhotoDayCredit && !imageEntitlement.affordable && burns.length <= 0) {
     throw new HostedImageChargeError(
-      `Need ${hallPassCost} Card${hallPassCost === 1 ? "" : "s"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
+      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} or burned Card${hallPassCost === 1 ? "" : "s"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
       402,
     );
   }
@@ -1181,7 +1182,6 @@ async function prepareHostedImageCharge(args: {
         usedPhotoDayCredit: true,
       };
     }
-    const burns = hallPassBurnsFromBody(args.body);
     if (burns.length > 0) {
       if (burns.length !== hallPassCost) {
         throw new HostedImageChargeError(
@@ -1234,7 +1234,7 @@ async function prepareHostedImageCharge(args: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new HostedImageChargeError(
-      message.replace(/Hall Passes/g, "Cards").replace(/Hall Pass/g, "Card"),
+      message,
       message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Cards") || message.startsWith("Not enough Photo Day credits") ? 402 : 503,
     );
   }

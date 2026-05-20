@@ -488,7 +488,7 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(402);
-    expect(JSON.parse(res.body).error).toContain("Need 1 Card");
+    expect(JSON.parse(res.body).error).toContain("Need 1 Hall Pass or burned Card");
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
