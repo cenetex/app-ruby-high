@@ -574,7 +574,7 @@ describe("Solana Hall Pass billing", () => {
         productId: "card-pack-10",
         ownerWalletAddress: TEST_SOLANA_OWNER,
       },
-      rpcUrl: "https://nft-rpc.test",
+      rpcUrl: "https://solana-mainnet.rpc.privy.systems?privyAppId=privy-app-test",
     });
 
     await handleBillingRoutes(makeCtx({
