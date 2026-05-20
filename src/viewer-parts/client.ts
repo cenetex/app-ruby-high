@@ -463,6 +463,13 @@ export function runViewerClient(bootstrap) {
   const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
   const ITEM_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-item-cards.png";
   const LOCATION_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-location-cards.png";
+  const CARD_NFT_ART_VERSION = "card-v1";
+  const CARD_NFT_IMAGE_IDS = [
+    "lyra", "sami", "ravi", "indra", "mika", "noor",
+    "ruby", "sally-science", "professor-edward", "captain-null", "eliza", "rati",
+    "item-hall-pass", "item-flashcards", "item-library-card", "item-lab-flask", "item-lunch-tray", "item-notebook",
+    "location-homeroom", "location-science-lab", "location-library", "location-cafeteria", "location-greenhouse", "location-courtyard",
+  ];
   const HALL_PASS_CARDS_PER_PACK = 5;
   const PACK_MINT_STATUS_LINES = [
     "Checking the attendance ledger...",
@@ -2458,166 +2465,86 @@ export function runViewerClient(bootstrap) {
 
   function buildHallPassPack(pack) {
     const item = document.createElement("article");
-    item.className = "account-hall-pass-card account-hall-pass-pack is-" + String(pack.status || "active");
-    item.style.setProperty("--hall-pass-card-color", "#f1c95c");
-    const top = document.createElement("div");
-    top.className = "account-hall-pass-card-top";
-    const crest = document.createElement("div");
-    crest.className = "account-hall-pass-card-crest";
-    crest.textContent = "RH";
-    const head = document.createElement("div");
-    head.className = "account-hall-pass-card-head";
-    const role = document.createElement("div");
-    role.className = "account-hall-pass-card-role";
-    role.textContent = "PACK NFT";
-    const name = document.createElement("div");
-    name.className = "account-hall-pass-card-name";
+    item.className = "account-pack-tile is-" + String(pack.status || "active");
     const packs = Math.max(1, Math.floor(Number(pack.packCount || 1)));
-    name.textContent = packs === 1 ? "Ruby High Pack" : "Ruby High " + packs + "-Pack";
-    const subtitle = document.createElement("div");
-    subtitle.className = "account-hall-pass-card-subtitle";
-    subtitle.textContent = formatWholeNumber(Math.max(packs * HALL_PASS_CARDS_PER_PACK, Math.floor(Number(pack.cardCount || 0)))) + " cards inside";
-    head.appendChild(role);
-    head.appendChild(name);
-    head.appendChild(subtitle);
-    top.appendChild(crest);
-    top.appendChild(head);
-    const art = document.createElement("div");
-    art.className = "account-hall-pass-card-art account-hall-pass-pack-art";
+    const cardCount = Math.max(packs * HALL_PASS_CARDS_PER_PACK, Math.floor(Number(pack.cardCount || 0)));
     const img = document.createElement("img");
-    img.alt = "";
+    img.className = "account-pack-tile-art";
+    img.alt = "Ruby High Pack";
     img.loading = "lazy";
     img.src = PACK_NFT_ART_URL;
-    art.appendChild(img);
-    const body = document.createElement("div");
-    body.className = "account-hall-pass-card-body";
-    const blurb = document.createElement("div");
-    blurb.className = "account-hall-pass-card-blurb";
-    blurb.textContent = pack.status === "opened" ? "Opened at the counter." : "Ready to open at Ruby High.";
-    const quote = document.createElement("div");
-    quote.className = "account-hall-pass-card-quote";
-    quote.textContent = "Asset " + shortWallet(pack.assetAddress || "");
-    body.appendChild(blurb);
-    body.appendChild(quote);
+    item.appendChild(img);
+    const meta = document.createElement("div");
+    meta.className = "account-pack-tile-meta";
+    const copy = document.createElement("div");
+    copy.className = "account-pack-tile-copy";
+    const title = document.createElement("div");
+    title.className = "account-pack-tile-title";
+    title.textContent = packs === 1 ? "Ruby High Pack" : "Ruby High " + packs + "-Pack";
+    const detail = document.createElement("div");
+    detail.className = "account-pack-tile-detail";
+    const status = String(pack.status || "active");
+    detail.textContent = formatWholeNumber(cardCount) + " cards · #" + String(pack.serial || "").padStart(6, "0") + " · " + status;
+    copy.appendChild(title);
+    copy.appendChild(detail);
+    meta.appendChild(copy);
     if (pack.status === "active") {
-      const actions = document.createElement("div");
-      actions.className = "account-hall-pass-pack-actions";
       const open = document.createElement("button");
       open.type = "button";
-      open.className = "account-hall-pass-pack-open";
+      open.className = "account-pack-tile-open";
       open.textContent = billingBusy ? "Opening..." : "Open Pack";
       open.disabled = !authed || billingBusy;
-      open.title = "Open this Ruby High pack and reveal its cards.";
+      open.title = "Open this Ruby High pack and mint its cards.";
       open.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         void openHallPassPackFromAccount(pack.id);
       });
-      actions.appendChild(open);
-      body.appendChild(actions);
+      meta.appendChild(open);
     }
-    const foot = document.createElement("div");
-    foot.className = "account-hall-pass-card-foot";
-    foot.textContent = String(pack.status || "active") + " · serial #" + String(pack.serial || "").padStart(6, "0");
-    item.appendChild(top);
-    item.appendChild(art);
-    item.appendChild(body);
-    item.appendChild(foot);
+    item.appendChild(meta);
     return item;
   }
 
   function buildHallPassCard(card) {
-    const item = document.createElement("div");
-    const profile = HALL_PASS_CARD_PROFILES[card.characterId] || {};
-    item.className = "account-hall-pass-card is-" + String(card.status || "active")
+    const item = document.createElement("article");
+    item.className = "account-card-tile is-" + String(card.status || "active")
       + " is-" + String(card.role || "student")
       + " rarity-" + String(card.rarity || "common").replace(/[^a-z0-9-]/gi, "");
-    item.style.setProperty("--hall-pass-card-color", card.color || "var(--accent)");
-
-    const top = document.createElement("div");
-    top.className = "account-hall-pass-card-top";
-    const crest = document.createElement("div");
-    crest.className = "account-hall-pass-card-crest";
-    crest.textContent = "R";
-    const head = document.createElement("div");
-    head.className = "account-hall-pass-card-head";
-    const role = document.createElement("div");
-    role.className = "account-hall-pass-card-role";
-    role.textContent = String(card.role || "student").toUpperCase();
-    const name = document.createElement("div");
-    name.className = "account-hall-pass-card-name";
-    name.textContent = card.characterName || "Ruby High";
-    const subtitle = document.createElement("div");
-    subtitle.className = "account-hall-pass-card-subtitle";
-    subtitle.textContent = profile.subtitle || displayCardText(card.title, "Ruby High Card");
-    head.appendChild(role);
-    head.appendChild(name);
-    head.appendChild(subtitle);
-    top.appendChild(crest);
-    top.appendChild(head);
-    item.appendChild(top);
-
-    const art = document.createElement("div");
-    art.className = "account-hall-pass-card-art";
-    const sheetUrl = hallPassCardSheetUrl(card);
-    if (sheetUrl) {
-      art.classList.add("is-sheet");
-      art.style.backgroundImage = "url(" + sheetUrl + ")";
-      art.style.backgroundPosition = card.artPosition || "0% 0%";
+    const artUrl = hallPassCardArtUrl(card);
+    if (artUrl) {
+      const img = document.createElement("img");
+      img.className = "account-card-tile-art";
+      img.alt = card.characterName ? card.characterName + " Ruby High card" : "Ruby High card";
+      img.loading = "lazy";
+      img.src = artUrl;
+      item.appendChild(img);
     } else {
-      const artUrl = hallPassCardArtUrl(card);
-      if (artUrl) {
-        const img = document.createElement("img");
-        img.alt = "";
-        img.src = artUrl;
-        img.onerror = () => {
-          art.innerHTML = "";
-          art.classList.add("is-fallback");
-          art.textContent = String(card.characterName || "R").slice(0, 1).toUpperCase();
-        };
-        art.appendChild(img);
-      } else {
-        art.classList.add("is-fallback");
-        art.textContent = String(card.characterName || "R").slice(0, 1).toUpperCase();
-      }
+      const fallback = document.createElement("div");
+      fallback.className = "account-card-tile-fallback";
+      fallback.textContent = String(card.characterName || "R").slice(0, 1).toUpperCase();
+      item.appendChild(fallback);
     }
-    item.appendChild(art);
-
-    const body = document.createElement("div");
-    body.className = "account-hall-pass-card-body";
-    const blurb = document.createElement("div");
-    blurb.className = "account-hall-pass-card-blurb";
-    blurb.textContent = displayCardText(card.blurb, "Good for one burn.");
-    body.appendChild(blurb);
-    if (profile.teaches) {
-      const teaches = document.createElement("div");
-      teaches.className = "account-hall-pass-card-teaches";
-      const label = document.createElement("span");
-      label.textContent = hallPassCardDetailLabel(card);
-      const text = document.createElement("strong");
-      text.textContent = profile.teaches;
-      teaches.appendChild(label);
-      teaches.appendChild(text);
-      body.appendChild(teaches);
-    }
-    body.appendChild(buildHallPassStats(profile.stats || { head: 1, heart: 1, hustle: 1, honor: 1 }));
-    const quote = document.createElement("div");
-    quote.className = "account-hall-pass-card-quote";
-    quote.textContent = "\"" + (profile.quote || displayCardText(card.title, "Ruby High card.")) + "\"";
-    body.appendChild(quote);
-    item.appendChild(body);
-
-    const foot = document.createElement("div");
-    foot.className = "account-hall-pass-card-foot";
+    const meta = document.createElement("div");
+    meta.className = "account-card-tile-meta";
+    const title = document.createElement("div");
+    title.className = "account-card-tile-title";
+    title.textContent = card.characterName || "Ruby High Card";
+    const detail = document.createElement("div");
+    detail.className = "account-card-tile-detail";
     const status = card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
     const chain = card.mintAddress ? "minted" : "in-app";
-    foot.textContent = status + " · " + chain + " · #" + String(card.serial || card.id || "").slice(-6);
-    item.appendChild(foot);
+    detail.textContent = String(card.rarity || "common") + " · " + status + " · " + chain + " · #" + String(card.serial || card.id || "").slice(-6);
+    meta.appendChild(title);
+    meta.appendChild(detail);
+    item.appendChild(meta);
     return item;
   }
 
   function hallPassCardArtUrl(card) {
     if (!card || !card.characterId) return "";
+    const nftImage = hallPassCardNftImageUrl(card);
+    if (nftImage) return nftImage;
     if (card.role === "student" && STUDENTS.some((s) => s.id === card.characterId)) {
       return studentFullPortraitUrl(card.characterId);
     }
@@ -2628,6 +2555,12 @@ export function runViewerClient(bootstrap) {
       return apiBase + "/assets/comics/first-bell/page-10.jpg";
     }
     return "";
+  }
+
+  function hallPassCardNftImageUrl(card) {
+    const id = String(card && card.characterId ? card.characterId : "").trim().toLowerCase();
+    if (!id || !CARD_NFT_IMAGE_IDS.includes(id)) return "";
+    return apiBase + "/assets/nft/cards/" + encodeURIComponent(id) + ".png?v=" + encodeURIComponent(CARD_NFT_ART_VERSION);
   }
 
   function hallPassCardSheetUrl(card) {
@@ -3059,13 +2992,14 @@ export function runViewerClient(bootstrap) {
     if (!authed || !cleanPackId || billingBusy) return;
     billingBusy = true;
     renderAccountHallPassCards();
-    setPrivyStatus("Opening pack...", false);
+    showPackMintProgress("Opening pack. Minting five card NFTs...");
+    setPrivyStatus("Opening pack and minting card NFTs...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       const r = await apiFetch(apiBase + "/nft/open-pack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        timeoutMs: 12000,
+        timeoutMs: 90000,
         body: JSON.stringify({
           packId: cleanPackId,
           ...(ownerWalletAddress ? { ownerWalletAddress } : {}),
@@ -3074,14 +3008,21 @@ export function runViewerClient(bootstrap) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) throw new Error(data.error || "open pack " + r.status);
       const count = Math.max(0, Math.floor(Number(data.cardCount || (Array.isArray(data.cards) ? data.cards.length : 0))));
-      setPrivyStatus(data.applied
-        ? "Pack opened. " + formatWholeNumber(count) + " card" + (count === 1 ? "" : "s") + " revealed."
-        : "Pack was already opened.", false);
+      const mintedCount = Math.max(0, Math.floor(Number(Array.isArray(data.minted) ? data.minted.length : 0)));
+      const openedText = data.applied ? "Pack opened." : "Pack was already opened.";
+      updatePackMintProgress(data.warning
+        ? "Pack opened, but card minting needs attention."
+        : "Cards minted. Updating your locker...");
+      setPrivyStatus(data.warning
+        ? openedText + " " + formatWholeNumber(mintedCount) + " of " + formatWholeNumber(count) + " card NFT" + (count === 1 ? "" : "s") + " minted · " + data.warning
+        : openedText + " " + formatWholeNumber(mintedCount || count) + " card NFT" + ((mintedCount || count) === 1 ? "" : "s") + " minted.", !!data.warning);
       await fetchSession();
       renderAccountPage();
     } catch (err) {
+      hidePackMintProgress();
       setPrivyStatus("Open pack failed · " + (err && err.message ? err.message : "error"), true);
     } finally {
+      hidePackMintProgress(900);
       billingBusy = false;
       renderAccountHallPassCards();
     }

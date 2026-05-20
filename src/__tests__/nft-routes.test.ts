@@ -43,10 +43,11 @@ function makeCtx(opts: {
   body?: any;
 }): RouteContext {
   lastResponse = null;
+  const url = new URL(`https://ruby-high.ai${opts.path}`);
   return {
     method: opts.method,
-    pathname: opts.path,
-    url: new URL(`https://ruby-high.ai${opts.path}`),
+    pathname: url.pathname,
+    url,
     runtime: null,
     res: {} as never,
     cookieHeader: opts.cookie ?? null,
@@ -126,8 +127,9 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body).toMatchObject({
       name: "Lyra Ruby High Card #123456",
       symbol: "RUBY",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/students/lyra-full.png",
+      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v1",
     });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Common" });
   });
 
   it("serves Core pack metadata with Ruby High pack artwork", async () => {
@@ -154,9 +156,20 @@ describe("Hall Pass NFT routes", () => {
       name: "Ruby High Pack #123456",
       image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
     });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
+
+    const legacyUriHandled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=4",
+    }), deps());
+
+    expect(legacyUriHandled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.description).toContain("5 cards inside");
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
   });
 
-  it("opens an active Pack NFT into five in-app cards", async () => {
+  it("opens an active Pack NFT and mints five card NFTs", async () => {
     const stateKey = signInUser("open-pack");
     const pack = ruby.recordHallPassPackMint(stateKey, {
       productId: "card-pack-1",
@@ -188,11 +201,14 @@ describe("Hall Pass NFT routes", () => {
       },
     });
     expect(lastResponse?.body.cards).toHaveLength(5);
+    expect(lastResponse?.body.minted).toHaveLength(5);
+    expect(lastResponse?.body.remaining).toBe(0);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
       id: pack.id,
       status: "opened",
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards).toHaveLength(5);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress && card.mintSignature && card.metadataUri)).toHaveLength(5);
   });
 
   it("mints unminted active Hall Pass cards and records signatures", async () => {

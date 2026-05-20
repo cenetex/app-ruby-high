@@ -184,5 +184,16 @@ describe("PWA surface", () => {
     expect(assetResponse.res.statusCode).toBe(200);
     expect(assetResponse.headers.get("content-type")).toMatch(/image\/png/);
     expect(assetResponse.text).toBe("");
+
+    const cardAssetResponse = makeResponse();
+    const cardAssetHandled = await handleAppRoutes(makeCtx(
+      "/api/apps/ruby-high/assets/nft/cards/lyra.png",
+      cardAssetResponse,
+      "HEAD",
+    ));
+    expect(cardAssetHandled).toBe(true);
+    expect(cardAssetResponse.res.statusCode).toBe(200);
+    expect(cardAssetResponse.headers.get("content-type")).toMatch(/image\/png/);
+    expect(cardAssetResponse.text).toBe("");
   });
 });

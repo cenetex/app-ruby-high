@@ -38,6 +38,40 @@ const FIRST_BELL_PAGE_FILES = Object.fromEntries(
   }),
 ) as Record<string, { file: string; mime: string }>;
 
+const NFT_CARD_IMAGE_IDS = [
+  "lyra",
+  "sami",
+  "ravi",
+  "indra",
+  "mika",
+  "noor",
+  "ruby",
+  "sally-science",
+  "professor-edward",
+  "captain-null",
+  "eliza",
+  "rati",
+  "item-hall-pass",
+  "item-flashcards",
+  "item-library-card",
+  "item-lab-flask",
+  "item-lunch-tray",
+  "item-notebook",
+  "location-homeroom",
+  "location-science-lab",
+  "location-library",
+  "location-cafeteria",
+  "location-greenhouse",
+  "location-courtyard",
+] as const;
+
+const NFT_CARD_IMAGE_FILES = Object.fromEntries(
+  NFT_CARD_IMAGE_IDS.map((id) => [
+    `nft/cards/${id}.png`,
+    { file: `nft/cards/${id}.png`, mime: "image/png" },
+  ]),
+) as Record<string, { file: string; mime: string }>;
+
 const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string }> = {
   "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-store" },
   "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-store" },
@@ -45,8 +79,12 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
   "ruby-high-logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "nft/ruby-high-pack.png": { file: "nft/ruby-high-pack.png", mime: "image/png" },
   "nft/ruby-high-pack-promo.png": { file: "nft/ruby-high-pack-promo.png", mime: "image/png" },
+  "nft/ruby-high-student-cards.png": { file: "nft/ruby-high-student-cards.png", mime: "image/png" },
+  "nft/ruby-high-teacher-cards.png": { file: "nft/ruby-high-teacher-cards.png", mime: "image/png" },
+  "nft/ruby-high-special-teacher-cards.png": { file: "nft/ruby-high-special-teacher-cards.png", mime: "image/png" },
   "nft/ruby-high-item-cards.png": { file: "nft/ruby-high-item-cards.png", mime: "image/png" },
   "nft/ruby-high-location-cards.png": { file: "nft/ruby-high-location-cards.png", mime: "image/png" },
+  ...NFT_CARD_IMAGE_FILES,
   "ruby.png": { file: "ruby-classroom.png", mime: "image/png" },
   "welcome-hall-passes.png": { file: "welcome-hall-passes.png", mime: "image/png" },
   "teachers/ruby.png": { file: "teachers/ruby.png", mime: "image/png" },

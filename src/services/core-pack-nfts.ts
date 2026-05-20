@@ -213,8 +213,11 @@ export function corePackNftMetadataUri(args: {
 }, env: NodeJS.ProcessEnv = process.env): string {
   const base = publicBaseUrlFromEnv(env);
   const productId = encodeURIComponent(cleanProductId(args.productId));
+  const packCount = Math.max(1, Math.floor(Number(args.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = encodeURIComponent(packSerial(args.paymentSignature));
-  return `${base}${CORE_PACK_NFT_PREFIX}/metadata/core/pack/${productId}/${serial}.json?packs=${encodeURIComponent(String(args.packCount))}&cards=${encodeURIComponent(String(args.cardCount))}`;
+  return `${base}${CORE_PACK_NFT_PREFIX}/metadata/core/pack/${productId}/${serial}.json?packs=${encodeURIComponent(String(packCount))}&cards=${encodeURIComponent(String(cardCount))}`;
 }
 
 export function coreCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
@@ -230,7 +233,8 @@ export function corePackNftMetadataForRoute(args: {
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const packCount = Math.max(1, Math.floor(Number(args.packCount ?? 1)));
-  const cardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * CORE_PACK_CARDS_PER_PACK)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = normalizeSerial(args.serial);
   const name = packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`;
   const image = `${publicBaseUrl}${PACK_IMAGE_ASSET_PATH}`;

@@ -3448,6 +3448,93 @@ export const VIEWER_CSS = `
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
+  .account-pack-tile,
+  .account-card-tile {
+    min-width: 0;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: #080d19;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.24);
+  }
+  .account-pack-tile {
+    border-color: rgba(241,201,92,0.72);
+  }
+  .account-pack-tile.is-opened,
+  .account-card-tile.is-redeemed,
+  .account-card-tile.is-void {
+    opacity: 0.66;
+    filter: grayscale(0.35);
+  }
+  .account-pack-tile-art,
+  .account-card-tile-art {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #050914;
+  }
+  .account-pack-tile-art {
+    aspect-ratio: 1122 / 1402;
+    object-fit: cover;
+  }
+  .account-card-tile-fallback {
+    aspect-ratio: 482 / 543;
+    display: grid;
+    place-items: center;
+    background: #101827;
+    color: var(--accent);
+    font-size: 72px;
+    font-weight: 950;
+  }
+  .account-pack-tile-meta,
+  .account-card-tile-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 10px;
+    border-top: 1px solid rgba(255,255,255,0.10);
+    background: #0a1020;
+  }
+  .account-pack-tile-copy {
+    min-width: 0;
+  }
+  .account-pack-tile-title,
+  .account-card-tile-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 900;
+  }
+  .account-pack-tile-detail,
+  .account-card-tile-detail {
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-mute);
+    font-size: 11px;
+    font-weight: 750;
+    text-transform: capitalize;
+  }
+  .account-pack-tile-open {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 7px;
+    background: linear-gradient(180deg, #ef3f43, #a50f1a);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 950;
+  }
+  .account-pack-tile-open:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+  }
   .account-history-list {
     display: grid;
     gap: 6px;

@@ -519,7 +519,7 @@ export interface RubyHighHallPassCard {
   mintAddress?: string;
   mintSignature?: string;
   metadataUri?: string;
-  artSheet?: "items" | "locations";
+  artSheet?: "students" | "teachers" | "specials" | "items" | "locations";
   artPosition?: string;
   burnSignature?: string;
   burnedAt?: number;

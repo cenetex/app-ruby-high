@@ -251,6 +251,8 @@ const HALL_PASS_CARD_TEACHERS: HallPassCardCatalogEntry[] = [
     title: "Homeroom Card",
     blurb: "Ruby stamped this one before the late bell could object.",
     color: "#d22a2a",
+    artSheet: "teachers",
+    artPosition: "0% 0%",
   },
   {
     characterId: "sally-science",
@@ -260,6 +262,8 @@ const HALL_PASS_CARD_TEACHERS: HallPassCardCatalogEntry[] = [
     title: "Lab Sink Shortcut",
     blurb: "Good for one escape from sloppy variables.",
     color: "#35b978",
+    artSheet: "teachers",
+    artPosition: "50% 0%",
   },
   {
     characterId: "professor-edward",
@@ -269,6 +273,8 @@ const HALL_PASS_CARD_TEACHERS: HallPassCardCatalogEntry[] = [
     title: "Library Corridor Pass",
     blurb: "Please return before the footnotes start breeding.",
     color: "#b79243",
+    artSheet: "teachers",
+    artPosition: "100% 0%",
   },
 ];
 
@@ -281,6 +287,8 @@ const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
     title: "Color-Coded Spare",
     blurb: "Lyra made three backups and labeled this one urgent.",
     color: "#ff6f91",
+    artSheet: "students",
+    artPosition: "0% 0%",
   },
   {
     characterId: "sami",
@@ -290,6 +298,8 @@ const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
     title: "Side Door Whatever",
     blurb: "Sami says it works if you look bored enough.",
     color: "#36c2cc",
+    artSheet: "students",
+    artPosition: "50% 0%",
   },
   {
     characterId: "ravi",
@@ -299,6 +309,8 @@ const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
     title: "Field Trip Fact Slip",
     blurb: "Ravi has a tangent ready for the entire walk.",
     color: "#ffb05a",
+    artSheet: "students",
+    artPosition: "100% 0%",
   },
   {
     characterId: "indra",
@@ -308,6 +320,8 @@ const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
     title: "Quiet Perfect Exit",
     blurb: "Indra noticed the pattern and left before anyone clapped.",
     color: "#a06bff",
+    artSheet: "students",
+    artPosition: "0% 100%",
   },
   {
     characterId: "mika",
@@ -317,6 +331,8 @@ const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
     title: "Locker Room Shortcut",
     blurb: "Mika says you are absolutely cleared for this.",
     color: "#52c673",
+    artSheet: "students",
+    artPosition: "50% 100%",
   },
   {
     characterId: "noor",
@@ -326,6 +342,8 @@ const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
     title: "Deadpan Detour",
     blurb: "Noor called it a plot hole and walked through it.",
     color: "#ec4f9e",
+    artSheet: "students",
+    artPosition: "100% 100%",
   },
 ];
 
@@ -338,6 +356,8 @@ const HALL_PASS_CARD_SUPER_RARES: HallPassCardCatalogEntry[] = [
     title: "Page 10 Shadow Pass",
     blurb: "Find page 10 and the hallway forgets your name.",
     color: "#111111",
+    artSheet: "specials",
+    artPosition: "0% 0%",
   },
   {
     characterId: "eliza",
@@ -347,6 +367,8 @@ const HALL_PASS_CARD_SUPER_RARES: HallPassCardCatalogEntry[] = [
     title: "Systems Lab Override",
     blurb: "Eliza makes the system legible, then makes it sing.",
     color: "#62d3c2",
+    artSheet: "specials",
+    artPosition: "50% 0%",
   },
   {
     characterId: "rati",
@@ -356,6 +378,8 @@ const HALL_PASS_CARD_SUPER_RARES: HallPassCardCatalogEntry[] = [
     title: "Signal Studies Pass",
     blurb: "Hold the signal. Build the world.",
     color: "#f0a12a",
+    artSheet: "specials",
+    artPosition: "100% 0%",
   },
 ];
 
@@ -5438,7 +5462,13 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   }
   const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
   if (Number.isFinite(burnedAt) && burnedAt > 0) entry.burnedAt = burnedAt;
-  if (card.artSheet === "items" || card.artSheet === "locations") entry.artSheet = card.artSheet;
+  if (
+    card.artSheet === "students" ||
+    card.artSheet === "teachers" ||
+    card.artSheet === "specials" ||
+    card.artSheet === "items" ||
+    card.artSheet === "locations"
+  ) entry.artSheet = card.artSheet;
   if (typeof card.artPosition === "string" && card.artPosition.trim()) {
     entry.artPosition = card.artPosition.trim().slice(0, 32);
   }

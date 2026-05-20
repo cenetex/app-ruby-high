@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { Transaction } from "@solana/web3.js";
-import { buildCorePackPurchaseTransaction } from "../services/core-pack-nfts.js";
+import { buildCorePackPurchaseTransaction, corePackNftMetadataUri } from "../services/core-pack-nfts.js";
 
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_SOLANA_RPC_URL: process.env.RUBY_HIGH_SOLANA_RPC_URL,
+  RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
 };
 
 function restoreEnv(): void {
@@ -22,6 +23,16 @@ afterEach(() => {
 });
 
 describe("Core pack NFT checkout transactions", () => {
+  it("normalizes legacy one-pack metadata URLs to five cards", () => {
+    process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
+    expect(corePackNftMetadataUri({
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 4,
+      paymentSignature: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+    })).toContain("cards=5");
+  });
+
   it("builds one partially signed transaction with RUBY transfer and Core pack mint", async () => {
     const umi = createUmi("https://rpc.test");
     const authority = umi.eddsa.generateKeypair();

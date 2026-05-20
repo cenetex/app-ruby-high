@@ -145,7 +145,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "async function openHallPassPackFromAccount(packId)");
     expectScriptToContain(script, 'apiBase + "/nft/open-pack"');
     expectScriptToContain(script, 'img.src = PACK_NFT_ART_URL');
+    expectScriptToContain(script, 'item.className = "account-pack-tile is-" + String(pack.status || "active")');
+    expectScriptToContain(script, 'item.className = "account-card-tile is-" + String(card.status || "active")');
+    expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");
+    expectScriptToContain(script, "Opening pack and minting card NFTs...");
     expectScriptToContain(script, 'const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2"');
+    expectScriptToContain(script, 'const CARD_NFT_ART_VERSION = "card-v1"');
     expectScriptToContain(script, "const HALL_PASS_CARDS_PER_PACK = 5");
     expectScriptToContain(script, "function showPackMintProgress(message)");
     expectScriptToContain(script, "Please wait: minting pack");
@@ -153,6 +158,8 @@ describe("viewer regression guardrails", () => {
     expect(packBuilder).toContain("PACK_NFT_ART_URL");
     expect(packBuilder).not.toContain("WELCOME_HALL_PASS_ART_URL");
     expect(VIEWER_CSS).toContain(".pack-mint-overlay");
+    expect(VIEWER_CSS).toContain(".account-pack-tile");
+    expect(VIEWER_CSS).toContain(".account-card-tile");
     expect(VIEWER_CSS).toContain("aspect-ratio: 1122 / 1402");
     expect(script).not.toContain("mintPurchasedHallPassCards");
     expect(script).not.toContain('apiBase + "/nft/mint-pack"');

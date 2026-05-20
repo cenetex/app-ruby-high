@@ -32,6 +32,210 @@ const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 
+type HallPassNftProfile = {
+  name: string;
+  role: string;
+  rarity: string;
+  description: string;
+  imagePath: string;
+  imageMime: string;
+};
+
+const HALL_PASS_NFT_CARD_PROFILES: Record<string, HallPassNftProfile> = {
+  lyra: {
+    name: "Lyra",
+    role: "Student",
+    rarity: "Common",
+    description: "Lyra slipped this one into the stack.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/lyra.png",
+    imageMime: "image/png",
+  },
+  sami: {
+    name: "Sami",
+    role: "Student",
+    rarity: "Common",
+    description: "Sami slipped this one into the stack.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/sami.png",
+    imageMime: "image/png",
+  },
+  ravi: {
+    name: "Ravi",
+    role: "Student",
+    rarity: "Common",
+    description: "Ravi slipped this one into the stack.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/ravi.png",
+    imageMime: "image/png",
+  },
+  indra: {
+    name: "Indra",
+    role: "Student",
+    rarity: "Rare",
+    description: "Indra noticed the pattern before anyone clapped.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/indra.png",
+    imageMime: "image/png",
+  },
+  mika: {
+    name: "Mika",
+    role: "Student",
+    rarity: "Rare",
+    description: "Mika says you are absolutely cleared for this.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/mika.png",
+    imageMime: "image/png",
+  },
+  noor: {
+    name: "Noor",
+    role: "Student",
+    rarity: "Rare",
+    description: "Noor called it a plot hole and walked through it.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/noor.png",
+    imageMime: "image/png",
+  },
+  ruby: {
+    name: "Ruby",
+    role: "Teacher",
+    rarity: "Common",
+    description: "Ruby stamped this one before the late bell could object.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/ruby.png",
+    imageMime: "image/png",
+  },
+  "sally-science": {
+    name: "Sally Science",
+    role: "Teacher",
+    rarity: "Common",
+    description: "Good for one escape from sloppy variables.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/sally-science.png",
+    imageMime: "image/png",
+  },
+  "professor-edward": {
+    name: "Professor Edward",
+    role: "Teacher",
+    rarity: "Common",
+    description: "Please return before the footnotes start breeding.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/professor-edward.png",
+    imageMime: "image/png",
+  },
+  "captain-null": {
+    name: "Captain Null",
+    role: "Teacher",
+    rarity: "Super Rare",
+    description: "Find page 10 and the hallway forgets your name.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/captain-null.png",
+    imageMime: "image/png",
+  },
+  eliza: {
+    name: "Eliza",
+    role: "Teacher",
+    rarity: "Super Rare",
+    description: "Make the system legible, then make it sing.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/eliza.png",
+    imageMime: "image/png",
+  },
+  rati: {
+    name: "Rati",
+    role: "Teacher",
+    rarity: "Super Rare",
+    description: "Hold the signal. Build the world.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/rati.png",
+    imageMime: "image/png",
+  },
+  "item-hall-pass": {
+    name: "Hall Pass",
+    role: "Item",
+    rarity: "Common",
+    description: "Sometimes the smartest move is stepping out and coming back better.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-hall-pass.png",
+    imageMime: "image/png",
+  },
+  "item-flashcards": {
+    name: "Flashcards",
+    role: "Item",
+    rarity: "Common",
+    description: "Shuffle. Repeat. Survive.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-flashcards.png",
+    imageMime: "image/png",
+  },
+  "item-library-card": {
+    name: "Library Card",
+    role: "Item",
+    rarity: "Common",
+    description: "If the answer exists, this helps you find it.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-library-card.png",
+    imageMime: "image/png",
+  },
+  "item-lab-flask": {
+    name: "Lab Flask",
+    role: "Item",
+    rarity: "Rare",
+    description: "Observe first. Guess later.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-lab-flask.png",
+    imageMime: "image/png",
+  },
+  "item-lunch-tray": {
+    name: "Lunch Tray",
+    role: "Item",
+    rarity: "Rare",
+    description: "Half the social game happens between bites.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-lunch-tray.png",
+    imageMime: "image/png",
+  },
+  "item-notebook": {
+    name: "Notebook",
+    role: "Item",
+    rarity: "Rare",
+    description: "Messy notes still count as evidence of life.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-notebook.png",
+    imageMime: "image/png",
+  },
+  "location-homeroom": {
+    name: "Homeroom",
+    role: "Location",
+    rarity: "Common",
+    description: "Where every day begins, and every question gets a room.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-homeroom.png",
+    imageMime: "image/png",
+  },
+  "location-science-lab": {
+    name: "Science Lab",
+    role: "Location",
+    rarity: "Common",
+    description: "Observe. Test. Explain. Repeat.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-science-lab.png",
+    imageMime: "image/png",
+  },
+  "location-library": {
+    name: "Library",
+    role: "Location",
+    rarity: "Common",
+    description: "If it matters, someone wrote it down.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-library.png",
+    imageMime: "image/png",
+  },
+  "location-cafeteria": {
+    name: "Cafeteria",
+    role: "Location",
+    rarity: "Rare",
+    description: "Half the school day happens between bites.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-cafeteria.png",
+    imageMime: "image/png",
+  },
+  "location-greenhouse": {
+    name: "Greenhouse",
+    role: "Location",
+    rarity: "Rare",
+    description: "Some lessons grow slowly.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-greenhouse.png",
+    imageMime: "image/png",
+  },
+  "location-courtyard": {
+    name: "Courtyard",
+    role: "Location",
+    rarity: "Rare",
+    description: "Every hallway leads somewhere. Every path leads to someone.",
+    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-courtyard.png",
+    imageMime: "image/png",
+  },
+};
+
 export interface HallPassNftStatus {
   configured: boolean;
   publicBaseUrl: string;
@@ -181,21 +385,23 @@ export function hallPassNftMetadataForRoute(args: {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const profile = hallPassNftProfile(args.characterId);
   const serial = normalizeSerial(args.serial);
+  const image = `${publicBaseUrl}${versionedImagePath(profile.imagePath)}`;
   return {
     name: `${profile.name} Ruby High Card #${serial}`,
     symbol: nftSymbol(process.env),
     description: profile.description,
-    image: `${publicBaseUrl}${profile.imagePath}`,
+    image,
     external_url: `${publicBaseUrl}/`,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Character", value: profile.name },
       { trait_type: "Role", value: profile.role },
+      { trait_type: "Rarity", value: profile.rarity },
       { trait_type: "Serial", value: serial },
     ],
     properties: {
       category: "image",
-      files: [{ uri: `${publicBaseUrl}${profile.imagePath}`, type: profile.imageMime }],
+      files: [{ uri: image, type: profile.imageMime }],
     },
   };
 }
@@ -357,87 +563,12 @@ function readMintConfig(): {
   };
 }
 
-function hallPassNftProfile(characterId: string): {
-  name: string;
-  role: string;
-  rarity: string;
-  description: string;
-  imagePath: string;
-  imageMime: string;
-} {
-  switch (characterId) {
-    case "sally-science":
-      return {
-        name: "Sally Science",
-        role: "Teacher",
-        rarity: "Common",
-        description: "Good for one escape from sloppy variables.",
-        imagePath: "/api/apps/ruby-high/assets/teachers/sally-science-full.png",
-        imageMime: "image/png",
-      };
-    case "professor-edward":
-      return {
-        name: "Professor Edward",
-        role: "Teacher",
-        rarity: "Common",
-        description: "Please return before the footnotes start breeding.",
-        imagePath: "/api/apps/ruby-high/assets/teachers/professor-edward-full.png",
-        imageMime: "image/png",
-      };
-    case "lyra":
-    case "sami":
-    case "ravi":
-    case "indra":
-    case "mika":
-    case "noor": {
-      const name = characterId.slice(0, 1).toUpperCase() + characterId.slice(1);
-      return {
-        name,
-        role: "Student",
-        rarity: characterId === "indra" || characterId === "noor" ? "Rare" : "Common",
-        description: `${name} slipped this one into the stack.`,
-        imagePath: `/api/apps/ruby-high/assets/students/${characterId}-full.png`,
-        imageMime: "image/png",
-      };
-    }
-    case "captain-null":
-      return {
-        name: "Captain Null",
-        role: "Special",
-        rarity: "Super Rare",
-        description: "Find page 10 and the hallway forgets your name.",
-        imagePath: "/api/apps/ruby-high/assets/comics/first-bell/page-10.jpg",
-        imageMime: "image/jpeg",
-      };
-    case "eliza":
-      return {
-        name: "Eliza",
-        role: "Teacher",
-        rarity: "Super Rare",
-        description: "Make the system legible, then make it sing.",
-        imagePath: "/api/apps/ruby-high/assets/logo.png",
-        imageMime: "image/png",
-      };
-    case "rati":
-      return {
-        name: "Rati",
-        role: "Teacher",
-        rarity: "Super Rare",
-        description: "Hold the signal. Build the world.",
-        imagePath: "/api/apps/ruby-high/assets/logo.png",
-        imageMime: "image/png",
-      };
-    case "ruby":
-    default:
-      return {
-        name: "Ruby",
-        role: "Teacher",
-        rarity: "Common",
-        description: "Ruby stamped this one before the late bell could object.",
-        imagePath: "/api/apps/ruby-high/assets/teachers/ruby-full.png",
-        imageMime: "image/png",
-      };
-  }
+function hallPassNftProfile(characterId: string): HallPassNftProfile {
+  return HALL_PASS_NFT_CARD_PROFILES[characterId] ?? HALL_PASS_NFT_CARD_PROFILES.ruby!;
+}
+
+function versionedImagePath(path: string): string {
+  return `${path}${path.includes("?") ? "&" : "?"}v=card-v1`;
 }
 
 function normalizeSerial(serial: string): string {
