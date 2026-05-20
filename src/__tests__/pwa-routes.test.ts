@@ -173,5 +173,16 @@ describe("PWA surface", () => {
     expect(workerResponse.res.statusCode).toBe(200);
     expect(workerResponse.headers.get("service-worker-allowed")).toBe("/api/apps/ruby-high/");
     expect(workerResponse.text).toBe("");
+
+    const assetResponse = makeResponse();
+    const assetHandled = await handleAppRoutes(makeCtx(
+      "/api/apps/ruby-high/assets/nft/ruby-high-pack.png",
+      assetResponse,
+      "HEAD",
+    ));
+    expect(assetHandled).toBe(true);
+    expect(assetResponse.res.statusCode).toBe(200);
+    expect(assetResponse.headers.get("content-type")).toMatch(/image\/png/);
+    expect(assetResponse.text).toBe("");
   });
 });
