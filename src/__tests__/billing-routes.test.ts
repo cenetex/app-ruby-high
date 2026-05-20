@@ -543,7 +543,7 @@ describe("Solana Hall Pass billing", () => {
       mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       symbol: "RUBY",
       decimals: 6,
-      rpcUrl: "https://api.mainnet-beta.solana.com",
+      rpcHost: "api.mainnet-beta.solana.com",
       product: {
         id: "card-pack-5",
         packCount: 5,
@@ -563,6 +563,7 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.solanaPayUrl).toContain(`reference=${lastResponse?.body.reference}`);
     expect(lastResponse?.body.transactionBase64).toBe("AQID");
     expect(lastResponse?.body.assetAddress).toEqual(expect.any(String));
+    expect(lastResponse?.body.rpcUrl).toBeUndefined();
     expect(stateKey).toBe("rh:user:billing-solana-quote");
   });
 
@@ -585,7 +586,8 @@ describe("Solana Hall Pass billing", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.rpcUrl).toBe("https://solana-mainnet.rpc.privy.systems?privyAppId=privy-app-test");
+    expect(lastResponse?.body.rpcHost).toBe("solana-mainnet.rpc.privy.systems");
+    expect(lastResponse?.body.rpcUrl).toBeUndefined();
   });
 
   it("prepares an atomic token payment and Pack NFT mint when a Solana wallet is supplied", async () => {

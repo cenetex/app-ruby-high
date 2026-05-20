@@ -199,6 +199,15 @@ function solanaRpcUrl(): string {
   return DEFAULT_SOLANA_RPC_URL;
 }
 
+function rpcHostForPublicStatus(value: string): string {
+  try {
+    const parsed = new URL(value);
+    return parsed.host || "configured";
+  } catch {
+    return value ? "configured" : "";
+  }
+}
+
 function solanaMemecoinMint(): string {
   return envTrim("RUBY_HIGH_SOLANA_MEMECOIN_MINT") ?? DEFAULT_SOLANA_MEMECOIN_MINT;
 }
@@ -1078,15 +1087,16 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ctx.error(ctx.res, message, message.startsWith("Need ") ? 402 : 502);
       return true;
     }
+    const { rpcUrl: _rpcUrl, ...publicPreparedTransaction } = preparedTransaction;
     ctx.json(ctx.res, {
       ok: true,
       product,
-      ...preparedTransaction,
+      ...publicPreparedTransaction,
       recipient: solana.recipient,
       mint: solana.mint,
       symbol: solana.symbol,
       decimals: solana.decimals,
-      rpcUrl: solana.rpcUrl,
+      rpcHost: rpcHostForPublicStatus(solana.rpcUrl),
       reference,
       solanaPayUrl: solanaPayUrl(solana, product, reference),
     });
