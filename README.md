@@ -168,8 +168,8 @@ Solana purchases use the configured SPL token and mint a Metaplex Core pack NFT:
 - The default treasury wallet is `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY`.
 - Every built-in pack defaults to `100000` `$RUBY`.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
-- `POST /api/apps/ruby-high/billing/solana/quote` returns the treasury wallet, mint, per-session payment reference, token amount, and Solana Pay URL for a selected pack.
-- `POST /api/apps/ruby-high/billing/solana/confirm` accepts a transaction signature and owner wallet, verifies the token transfer on Solana RPC, requires the quoted reference account in the transaction, mints one Core pack NFT, and records it idempotently.
+- `POST /api/apps/ruby-high/billing/solana/quote` accepts the connected owner wallet and returns the treasury wallet, mint, per-session payment reference, token amount, prepared payment-plus-pack-NFT transaction, and Solana Pay URL for a selected pack.
+- `POST /api/apps/ruby-high/billing/solana/confirm` accepts the signed transaction signature, owner wallet, prepared pack asset address, and metadata URI, then verifies that the transaction contains the payment reference and pack NFT before recording it idempotently.
 
 Native billing is not wired in the current public-web build. If iOS or Android comes back, do not use Stripe for digital in-app currency; create matching consumable in-app purchase products in App Store Connect and Google Play Console, validate receipts/purchase tokens server-side, then call the same Hall Pass grant path. RevenueCat can replace most receipt-validation boilerplate; the Ruby High server remains the authority that credits the wallet after validation.
 

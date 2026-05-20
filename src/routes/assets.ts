@@ -192,7 +192,12 @@ async function loadAsset(name: string): Promise<CachedAsset | null> {
   return promise;
 }
 
-export async function sendAsset(res: unknown, name: string, ifNoneMatch?: string | null): Promise<boolean> {
+export async function sendAsset(
+  res: unknown,
+  name: string,
+  ifNoneMatch?: string | null,
+  includeBody = true,
+): Promise<boolean> {
   if (!(name in ASSET_FILES)) return false;
   const asset = await loadAsset(name);
   if (!asset) return false;
@@ -210,7 +215,7 @@ export async function sendAsset(res: unknown, name: string, ifNoneMatch?: string
     return true;
   }
   response.statusCode = 200;
-  response.end(asset.body);
+  response.end(includeBody ? asset.body : undefined);
   return true;
 }
 

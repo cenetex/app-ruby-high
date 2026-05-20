@@ -288,9 +288,9 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return true;
   }
 
-  if (ctx.method === "GET" && ctx.pathname.startsWith(ASSETS_PREFIX)) {
+  if ((ctx.method === "GET" || ctx.method === "HEAD") && ctx.pathname.startsWith(ASSETS_PREFIX)) {
     const name = ctx.pathname.slice(ASSETS_PREFIX.length);
-    const sent = await sendAsset(ctx.res, name, ctx.ifNoneMatch ?? null);
+    const sent = await sendAsset(ctx.res, name, ctx.ifNoneMatch ?? null, ctx.method === "GET");
     if (sent) return true;
     ctx.error(ctx.res, `Asset not found: ${name}`, 404);
     return true;

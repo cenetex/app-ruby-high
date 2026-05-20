@@ -411,8 +411,8 @@ export async function verifyCorePackNftMint(input: CorePackNftVerifyInput): Prom
   const umi = createUmi(config.rpcUrl).use(mplCore());
   let asset;
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    if (attempt > 0) await sleep(900 + attempt * 400);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (attempt > 0) await sleep(Math.min(3000, 800 + attempt * 450));
     try {
       asset = await fetchAssetV1(umi, publicKey(assetAddress), { commitment: "confirmed" });
       break;
@@ -421,7 +421,8 @@ export async function verifyCorePackNftMint(input: CorePackNftVerifyInput): Prom
     }
   }
   if (!asset) {
-    throw new Error(lastError instanceof Error ? lastError.message : "Pack NFT was not found on-chain yet.");
+    const detail = lastError instanceof Error ? lastError.message : "";
+    throw new Error(detail ? `Pack NFT was not found on-chain yet. Try again after confirmation. ${detail}` : "Pack NFT was not found on-chain yet. Try again after confirmation.");
   }
   if (String(asset.owner) !== ownerWalletAddress) {
     throw new Error("Pack NFT owner does not match the connected wallet.");

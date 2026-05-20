@@ -17,25 +17,6 @@ import {
   toSolanaWalletConnectors,
   type ConnectedStandardSolanaWallet,
 } from "@privy-io/react-auth/solana";
-import {
-  AccountRole,
-  address,
-  appendTransactionMessageInstructions,
-  compileTransaction,
-  createNoopSigner,
-  createSolanaRpc,
-  createTransactionMessage,
-  getTransactionEncoder,
-  pipe,
-  setTransactionMessageFeePayer,
-  setTransactionMessageLifetimeUsingBlockhash,
-} from "@solana/kit";
-import {
-  findAssociatedTokenPda,
-  getCreateAssociatedTokenIdempotentInstruction,
-  getTransferCheckedInstruction,
-  TOKEN_PROGRAM_ADDRESS,
-} from "@solana-program/token";
 
 interface RubyHighPrivyConfig {
   appId: string;
@@ -111,7 +92,6 @@ interface PendingLogin {
 }
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const PRIVY_ACTION_TIMEOUT_MS = 30_000;
 const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;
 const RUBY_HIGH_LOGIN_METHODS: NonNullable<PrivyClientConfig["loginMethods"]> = ["wallet", "email", "google", "twitter"];
@@ -269,9 +249,10 @@ function RubyHighPrivyBridge(props: {
     if (!solanaWallets.ready) throw new Error("Solana wallets are still starting.");
     const wallet = selectSolanaWallet(solanaWalletsRef.current);
     if (!wallet) throw new Error("Connect a Solana wallet first.");
-    const transaction = quote.transactionBase64 || quote.transaction
-      ? base64Decode(quote.transactionBase64 || quote.transaction || "")
-      : await buildSplTokenPaymentTransaction(quote, wallet.address);
+    if (!quote.transactionBase64 && !quote.transaction) {
+      throw new Error("Pack checkout is missing its NFT transaction. Refresh Ruby High and try again.");
+    }
+    const transaction = base64Decode(quote.transactionBase64 || quote.transaction || "");
     const result = await signAndSendTransaction({
       transaction,
       wallet,
@@ -480,87 +461,6 @@ function RubyHighPrivyBridge(props: {
   }, [current, privy.ready, props]);
 
   return null;
-}
-
-async function buildSplTokenPaymentTransaction(
-  quote: SolanaPaymentQuote,
-  payerAddressText: string,
-): Promise<Uint8Array> {
-  const payerAddress = address(cleanAddress(payerAddressText, "Solana wallet"));
-  const recipientAddress = address(cleanAddress(quote.recipient, "Solana recipient"));
-  const mintAddress = address(cleanAddress(quote.mint, "Solana token mint"));
-  const referenceAddress = address(cleanAddress(quote.reference, "Solana payment reference"));
-  const decimals = readTokenDecimals(quote.decimals);
-  const amount = readBaseUnitAmount(quote.product?.tokenAmountBaseUnits);
-  const rpcUrl = cleanRpcUrl(quote.rpcUrl);
-  const payer = createNoopSigner(payerAddress);
-  const [sourceAta] = await findAssociatedTokenPda({
-    owner: payerAddress,
-    tokenProgram: TOKEN_PROGRAM_ADDRESS,
-    mint: mintAddress,
-  });
-  const [destinationAta] = await findAssociatedTokenPda({
-    owner: recipientAddress,
-    tokenProgram: TOKEN_PROGRAM_ADDRESS,
-    mint: mintAddress,
-  });
-  const createDestinationAtaInstruction = getCreateAssociatedTokenIdempotentInstruction({
-    payer,
-    ata: destinationAta,
-    owner: recipientAddress,
-    mint: mintAddress,
-  });
-  const transferInstruction = getTransferCheckedInstruction({
-    source: sourceAta,
-    mint: mintAddress,
-    destination: destinationAta,
-    authority: payer,
-    amount,
-    decimals,
-  });
-  const transferWithReference = {
-    ...transferInstruction,
-    accounts: [
-      ...transferInstruction.accounts,
-      { address: referenceAddress, role: AccountRole.READONLY },
-    ],
-  };
-  const { value: latestBlockhash } = await createSolanaRpc(rpcUrl).getLatestBlockhash().send();
-  return pipe(
-    createTransactionMessage({ version: 0 }),
-    (tx) => setTransactionMessageFeePayer(payerAddress, tx),
-    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-    (tx) => appendTransactionMessageInstructions([createDestinationAtaInstruction, transferWithReference], tx),
-    (tx) => compileTransaction(tx),
-    (tx) => new Uint8Array(getTransactionEncoder().encode(tx)),
-  );
-}
-
-function cleanAddress(value: unknown, label: string): string {
-  const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw) throw new Error(`${label} is missing.`);
-  return raw;
-}
-
-function cleanRpcUrl(value: unknown): string {
-  const raw = typeof value === "string" ? value.trim() : "";
-  return raw || DEFAULT_SOLANA_RPC_URL;
-}
-
-function readBaseUnitAmount(value: unknown): bigint {
-  const raw = typeof value === "string" ? value.trim() : "";
-  if (!/^\d+$/.test(raw)) throw new Error("Solana payment amount is missing.");
-  const amount = BigInt(raw);
-  if (amount <= 0n) throw new Error("Solana payment amount must be positive.");
-  return amount;
-}
-
-function readTokenDecimals(value: unknown): number {
-  const decimals = Math.floor(Number(value));
-  if (!Number.isFinite(decimals) || decimals < 0 || decimals > 18) {
-    throw new Error("Solana token decimals are invalid.");
-  }
-  return decimals;
 }
 
 function base58Encode(bytes: Uint8Array): string {

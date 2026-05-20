@@ -3109,7 +3109,7 @@ export function runViewerClient(bootstrap) {
   async function confirmSolanaPayment(productId, signature, ownerWalletAddress, quote) {
     const cleanSignature = String(signature || "").trim();
     if (!productId || !cleanSignature) throw new Error("Wallet did not return a Solana payment confirmation.");
-    const maxAttempts = 6;
+    const maxAttempts = 10;
     let lastError = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       if (attempt > 0) await waitForSolanaConfirmation(1500 + attempt * 500);
@@ -3117,7 +3117,7 @@ export function runViewerClient(bootstrap) {
       const r = await apiFetch(apiBase + "/billing/solana/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        timeoutMs: 15000,
+        timeoutMs: 30000,
         body: JSON.stringify({
           productId,
           signature: cleanSignature,
@@ -3129,7 +3129,7 @@ export function runViewerClient(bootstrap) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) {
         lastError = new Error(data.error || "solana confirm " + r.status);
-        if (r.status === 400 && /not found yet|try again|rpc/i.test(lastError.message) && attempt + 1 < maxAttempts) continue;
+        if ([400, 425, 502, 503].includes(r.status) && /not found yet|not found on-chain|try again|rpc|temporar|confirmation/i.test(lastError.message) && attempt + 1 < maxAttempts) continue;
         throw lastError;
       }
       const packText = data && Number(data.packCount || 0) > 0

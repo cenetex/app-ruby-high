@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { AuthService } from "../services/auth-service.js";
+import { log } from "../services/logger.js";
 import { RubyHighService, type HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import {
   courseSlotCost,
@@ -14,7 +15,6 @@ import {
 import { publicHallPassNftStatus, verifyHallPassCardBurn } from "../services/hall-pass-nfts.js";
 import {
   buildCorePackPurchaseTransaction,
-  mintCorePackNft,
   publicCorePackNftStatus,
   verifyCorePackNftMint,
 } from "../services/core-pack-nfts.js";
@@ -1048,32 +1048,40 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const ownerWalletAddress = typeof body.ownerWalletAddress === "string" && isBase58Address(body.ownerWalletAddress.trim())
       ? body.ownerWalletAddress.trim()
       : "";
+    if (!ownerWalletAddress) {
+      ctx.error(ctx.res, "Connect a Solana wallet before minting a pack.", 400);
+      return true;
+    }
     const reference = solanaPaymentReference(stateKey, product.id);
-    let preparedTransaction = {};
-    if (ownerWalletAddress) {
-      try {
-        preparedTransaction = await buildCorePackPurchaseTransaction({
-          productId: product.id,
-          packCount: product.packCount,
-          cardCount: product.cardCount,
-          ownerWalletAddress,
-          paymentReference: reference,
-          tokenMint: solana.mint,
-          tokenRecipient: solana.recipient,
-          tokenAmount: product.tokenAmount,
-          tokenAmountBaseUnits: product.tokenAmountBaseUnits,
-          tokenDecimals: solana.decimals,
-          tokenSymbol: solana.symbol,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        ctx.error(ctx.res, message, message.startsWith("Need ") ? 402 : 502);
-        return true;
-      }
+    let preparedTransaction;
+    try {
+      preparedTransaction = await buildCorePackPurchaseTransaction({
+        productId: product.id,
+        packCount: product.packCount,
+        cardCount: product.cardCount,
+        ownerWalletAddress,
+        paymentReference: reference,
+        tokenMint: solana.mint,
+        tokenRecipient: solana.recipient,
+        tokenAmount: product.tokenAmount,
+        tokenAmountBaseUnits: product.tokenAmountBaseUnits,
+        tokenDecimals: solana.decimals,
+        tokenSymbol: solana.symbol,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error("billing.solana.quote-failed", err, {
+        sessionId: stateKey,
+        productId: product.id,
+        ownerWalletAddress,
+      });
+      ctx.error(ctx.res, message, message.startsWith("Need ") ? 402 : 502);
+      return true;
     }
     ctx.json(ctx.res, {
       ok: true,
       product,
+      ...preparedTransaction,
       recipient: solana.recipient,
       mint: solana.mint,
       symbol: solana.symbol,
@@ -1081,7 +1089,6 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       rpcUrl: solana.rpcUrl,
       reference,
       solanaPayUrl: solanaPayUrl(solana, product, reference),
-      ...preparedTransaction,
     });
     return true;
   }
@@ -1126,6 +1133,10 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ctx.error(ctx.res, "Solana wallet address is required to mint the pack NFT.", 400);
       return true;
     }
+    if (!packAssetAddress) {
+      ctx.error(ctx.res, "Solana pack checkout is missing the prepared pack NFT. Refresh Ruby High and try again.", 400);
+      return true;
+    }
     const idempotencyKey = solanaTransactionKey(signature);
     const existing = deps.ruby.walletTransactionOwner(idempotencyKey);
     if (existing && existing.sessionId !== stateKey) {
@@ -1155,23 +1166,15 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     try {
       const verification = await verifySolanaPayment(solana, product, stateKey, signature, packAssetAddress);
-      const packMint = packAssetAddress
-        ? await verifyCorePackNftMint({
-          productId: product.id,
-          packCount: product.packCount,
-          cardCount: product.cardCount,
-          ownerWalletAddress,
-          assetAddress: packAssetAddress,
-          metadataUri: packMetadataUri,
-          paymentSignature: signature,
-        })
-        : await mintCorePackNft({
-          productId: product.id,
-          packCount: product.packCount,
-          cardCount: product.cardCount,
-          ownerWalletAddress,
-          paymentSignature: signature,
-        });
+      const packMint = await verifyCorePackNftMint({
+        productId: product.id,
+        packCount: product.packCount,
+        cardCount: product.cardCount,
+        ownerWalletAddress,
+        assetAddress: packAssetAddress,
+        metadataUri: packMetadataUri,
+        paymentSignature: signature,
+      });
       const result = deps.ruby.recordHallPassPackMint(stateKey, {
         productId: product.id,
         packCount: product.packCount,
@@ -1216,9 +1219,27 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         packMetadataUri: packMint.metadataUri,
         entitlements,
       });
+      log.event("billing.solana.pack-minted", {
+        sessionId: stateKey,
+        productId: product.id,
+        signature,
+        packAssetAddress: packMint.assetAddress,
+        packCount: product.packCount,
+        cardCount: product.cardCount,
+        applied: result.applied,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      const status = message.includes("too small")
+      log.error("billing.solana.confirm-failed", err, {
+        sessionId: stateKey,
+        productId: product.id,
+        signature,
+        ownerWalletAddress,
+        packAssetAddress,
+      });
+      const status = /not found on-chain yet|not found yet|try again after confirmation/i.test(message)
+        ? 400
+        : message.includes("too small")
         ? 402
         : /mint|nft|rpc|insufficient funds|Attempt to debit|forbidden|403/i.test(message)
           ? 502
