@@ -150,7 +150,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");
     expectScriptToContain(script, "Opening pack and minting card NFTs...");
     expectScriptToContain(script, 'const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2"');
-    expectScriptToContain(script, 'const CARD_NFT_ART_VERSION = "card-v1"');
+    expectScriptToContain(script, 'const CARD_NFT_ART_VERSION = "card-v2"');
     expectScriptToContain(script, "const HALL_PASS_CARDS_PER_PACK = 5");
     expectScriptToContain(script, "function showPackMintProgress(message)");
     expectScriptToContain(script, "Please wait: minting pack");

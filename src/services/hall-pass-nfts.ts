@@ -31,6 +31,7 @@ const BASE58_INDEX = new Map(BASE58_ALPHABET.split("").map((char, index) => [cha
 const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
+const CARD_IMAGE_VERSION = "card-v2";
 
 type HallPassNftProfile = {
   name: string;
@@ -568,7 +569,7 @@ function hallPassNftProfile(characterId: string): HallPassNftProfile {
 }
 
 function versionedImagePath(path: string): string {
-  return `${path}${path.includes("?") ? "&" : "?"}v=card-v1`;
+  return `${path}${path.includes("?") ? "&" : "?"}v=${CARD_IMAGE_VERSION}`;
 }
 
 function normalizeSerial(serial: string): string {

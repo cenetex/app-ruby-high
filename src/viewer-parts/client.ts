@@ -463,7 +463,7 @@ export function runViewerClient(bootstrap) {
   const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
   const ITEM_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-item-cards.png";
   const LOCATION_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-location-cards.png";
-  const CARD_NFT_ART_VERSION = "card-v1";
+  const CARD_NFT_ART_VERSION = "card-v2";
   const CARD_NFT_IMAGE_IDS = [
     "lyra", "sami", "ravi", "indra", "mika", "noor",
     "ruby", "sally-science", "professor-edward", "captain-null", "eliza", "rati",

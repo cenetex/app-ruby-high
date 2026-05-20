@@ -127,7 +127,7 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body).toMatchObject({
       name: "Lyra Ruby High Card #123456",
       symbol: "RUBY",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v1",
+      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v2",
     });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Common" });
   });
