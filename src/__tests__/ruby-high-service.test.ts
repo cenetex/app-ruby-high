@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FacultyService } from "../services/faculty-service.js";
-import { RubyHighService, WELCOME_HALL_PASS_GRANT, WELCOME_HALL_PASS_GRANT_ID } from "../services/ruby-high-service.js";
+import {
+  HALL_PASS_CARDS_PER_PACK,
+  RubyHighService,
+  WELCOME_HALL_PASS_GRANT,
+  WELCOME_HALL_PASS_GRANT_ID,
+} from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
@@ -297,24 +302,75 @@ describe("Hall Pass wallet", () => {
     expect(repeat.state.wallet.hallPasses).toBe(230);
   });
 
-  it("packs one teacher or super rare and three students into a Hall Pass card set", async () => {
+  it("packs three students, one teacher, and one item or location into each Hall Pass set", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:super-rare-cards";
 
     const grant = ruby.grantHallPassCards(sid, {
-      cardCount: 20,
+      cardCount: 25,
       idempotencyKey: "admin:grant:super-2",
       source: "admin",
     });
 
-    expect(grant.cards).toHaveLength(20);
-    for (let i = 0; i < (grant.cards?.length ?? 0); i += 4) {
-      const pack = grant.cards!.slice(i, i + 4);
+    expect(grant.cards).toHaveLength(25);
+    for (let i = 0; i < (grant.cards?.length ?? 0); i += HALL_PASS_CARDS_PER_PACK) {
+      const pack = grant.cards!.slice(i, i + HALL_PASS_CARDS_PER_PACK);
       expect(pack.filter((card) => card.role === "student")).toHaveLength(3);
-      expect(pack.filter((card) => card.role !== "student")).toHaveLength(1);
+      expect(pack.filter((card) => card.role === "teacher")).toHaveLength(1);
+      expect(pack.filter((card) => card.role === "item" || card.role === "location")).toHaveLength(1);
     }
     expect(grant.cards?.filter((card) => card.rarity === "super-rare").length).toBeGreaterThanOrEqual(1);
-    expect(grant.cards?.some((card) => ["captain-null", "eliza", "rati"].includes(card.characterId))).toBe(true);
+    expect(grant.cards?.some((card) => ["eliza", "rati"].includes(card.characterId))).toBe(true);
+    expect(grant.cards?.find((card) => card.characterId === "mika")?.rarity).toBe("rare");
+  });
+
+  it("opens a recorded Pack NFT into deterministic in-app cards", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:open-pack";
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const recorded = ruby.recordHallPassPackMint(sid, {
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: HALL_PASS_CARDS_PER_PACK,
+      ownerWalletAddress,
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      mintSignature: "5mPackMintSignature111111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5",
+      idempotencyKey: "solana:spl-token-transfer:pack-open",
+      source: "solana",
+    });
+
+    const opened = ruby.openHallPassPack(sid, {
+      packId: recorded.pack!.id,
+      ownerWalletAddress,
+    });
+
+    expect(opened.applied).toBe(true);
+    expect(opened.cards).toHaveLength(HALL_PASS_CARDS_PER_PACK);
+    expect(opened.pack).toMatchObject({
+      status: "opened",
+      openTransactionId: `hall-pass-pack-open:${recorded.pack!.id}`,
+    });
+    expect(opened.transaction).toMatchObject({
+      kind: "hall-pass-pack-open",
+      source: "hall-pass-pack",
+      metadata: {
+        packId: recorded.pack!.id,
+        cardCount: HALL_PASS_CARDS_PER_PACK,
+        hallPassCardCount: HALL_PASS_CARDS_PER_PACK,
+      },
+    });
+    expect(opened.cards?.filter((card) => card.role === "student")).toHaveLength(3);
+    expect(opened.cards?.filter((card) => card.role === "teacher")).toHaveLength(1);
+    expect(opened.cards?.filter((card) => card.role === "item" || card.role === "location")).toHaveLength(1);
+
+    const repeat = ruby.openHallPassPack(sid, {
+      packId: recorded.pack!.id,
+      ownerWalletAddress,
+    });
+    expect(repeat.applied).toBe(false);
+    expect(repeat.cards).toHaveLength(HALL_PASS_CARDS_PER_PACK);
+    expect(ruby.getOrCreate(sid).wallet.hallPassCards).toHaveLength(HALL_PASS_CARDS_PER_PACK);
   });
 
   it("does not backfill legacy Hall Pass balances into mintable cards", async () => {

@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import type { AuthService } from "../services/auth-service.js";
 import { log } from "../services/logger.js";
-import { RubyHighService, type HallPassCardBurnInput } from "../services/ruby-high-service.js";
+import { HALL_PASS_CARDS_PER_PACK, RubyHighService, type HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import {
   courseSlotCost,
   hostedAiAccessCost,
@@ -232,7 +232,7 @@ export function billingProducts(): BillingProduct[] {
     unitAmount: number,
   ): BillingProduct => {
     const plural = packCount === 1 ? "Pack" : "Packs";
-    const cardCount = packCount * 4;
+    const cardCount = packCount * HALL_PASS_CARDS_PER_PACK;
     return {
       id: `card-pack-${packCount}`,
       name: `${packCount} ${plural}`,
@@ -241,7 +241,7 @@ export function billingProducts(): BillingProduct[] {
       hallPasses: cardCount,
       unitAmount,
       currency,
-      description: `${packCount} Ruby High ${plural.toLowerCase()}: one faculty card and three student cards per pack.`,
+      description: `${packCount} Ruby High ${plural.toLowerCase()}: three student cards, one teacher card, and one item or location per pack.`,
     };
   };
   return [
@@ -636,7 +636,7 @@ function billingProductById(productId: string | undefined | null): BillingProduc
   return {
     id,
     name: `${legacyProduct.cards} Card Legacy Pack`,
-    packCount: Math.ceil(legacyProduct.cards / 4),
+    packCount: Math.ceil(legacyProduct.cards / HALL_PASS_CARDS_PER_PACK),
     cardCount: legacyProduct.cards,
     hallPasses: legacyProduct.cards,
     unitAmount: readPositiveIntEnv(legacyProduct.centsEnv, legacyProduct.fallbackCents),
@@ -676,14 +676,14 @@ function hallPassesForProductId(productId: string | undefined | null): number | 
   if (!productId) return null;
   const normalized = productId.trim().toLowerCase();
   const exact: Record<string, number> = {
-    "card-pack-1": 4,
-    "card_pack_1": 4,
-    "card-pack-3": 12,
-    "card_pack_3": 12,
-    "card-pack-5": 20,
-    "card_pack_5": 20,
-    "card-pack-10": 40,
-    "card_pack_10": 40,
+    "card-pack-1": 5,
+    "card_pack_1": 5,
+    "card-pack-3": 15,
+    "card_pack_3": 15,
+    "card-pack-5": 25,
+    "card_pack_5": 25,
+    "card-pack-10": 50,
+    "card_pack_10": 50,
     "hall-pass-5": 5,
     "hall_pass_5": 5,
     "hall-pass-20": 20,
@@ -695,7 +695,7 @@ function hallPassesForProductId(productId: string | undefined | null): number | 
   };
   if (exact[normalized] != null) return exact[normalized];
   const cardPackMatch = /(?:^|[._-])card[_-]?pack[_-]?(1|3|5|10)$/.exec(normalized);
-  if (cardPackMatch) return Number(cardPackMatch[1]) * 4;
+  if (cardPackMatch) return Number(cardPackMatch[1]) * HALL_PASS_CARDS_PER_PACK;
   const match = /(?:^|[._-])hall[_-]?pass[_-]?(5|20|50|100)$/.exec(normalized);
   return match ? Number(match[1]) : null;
 }

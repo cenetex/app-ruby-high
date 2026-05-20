@@ -3212,6 +3212,10 @@ export const VIEWER_CSS = `
       radial-gradient(circle at 76% 16%, rgba(255,255,255,0.22), transparent 2px),
       linear-gradient(180deg, #15182f 0%, #221640 42%, #0b1324 42%, #07101f 100%);
   }
+  .account-hall-pass-pack {
+    background:
+      linear-gradient(180deg, #190707 0%, #451016 42%, #0d101a 42%, #090d16 100%);
+  }
   .account-hall-pass-card.is-redeemed,
   .account-hall-pass-card.is-void {
     opacity: 0.64;
@@ -3301,11 +3305,32 @@ export const VIEWER_CSS = `
     object-position: center bottom;
     filter: drop-shadow(0 10px 10px rgba(0,0,0,0.35));
   }
+  .account-hall-pass-pack-art {
+    height: auto;
+    aspect-ratio: 1122 / 1402;
+    margin-top: 0;
+    place-items: center;
+    background: #12090b;
+  }
+  .account-hall-pass-pack-art img {
+    object-fit: cover;
+    object-position: center;
+    filter: none;
+  }
   .account-hall-pass-card-art.is-fallback {
     color: color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 70%, #fff);
     font-size: 76px;
     font-weight: 950;
     text-shadow: 0 5px 16px rgba(0,0,0,0.36);
+  }
+  .account-hall-pass-card-art.is-sheet {
+    height: 220px;
+    margin: 8px;
+    border-radius: 10px;
+    background-repeat: no-repeat;
+    background-size: 300% 200%;
+    background-color: #050914;
+    box-shadow: 0 10px 18px rgba(0,0,0,0.30);
   }
   .account-hall-pass-card-body {
     min-width: 0;
@@ -3394,6 +3419,24 @@ export const VIEWER_CSS = `
     font-size: 12px;
     font-style: italic;
     line-height: 1.35;
+  }
+  .account-hall-pass-pack-actions {
+    display: grid;
+  }
+  .account-hall-pass-pack-open {
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.20);
+    border-radius: 8px;
+    background: linear-gradient(180deg, #f04b45, #a7111d);
+    color: #fff;
+    min-height: 40px;
+    font-weight: 950;
+    letter-spacing: 0.02em;
+    box-shadow: 0 10px 22px rgba(180, 17, 29, 0.28);
+  }
+  .account-hall-pass-pack-open:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
   }
   .account-hall-pass-card-foot {
     padding: 8px 10px 10px;
@@ -5708,6 +5751,61 @@ export const VIEWER_CSS = `
   .app-confirm-overlay.is-danger .app-confirm-actions button.primary {
     border-color: rgba(255,110,110,0.72);
     background: #b92b2b;
+  }
+
+  .pack-mint-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 126;
+    display: none;
+    place-items: center;
+    padding: calc(var(--safe-top) + 18px) calc(var(--safe-right) + 18px) calc(var(--safe-bot) + 18px) calc(var(--safe-left) + 18px);
+    background: rgba(8, 10, 16, 0.74);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+  }
+  .pack-mint-overlay.is-open {
+    display: grid;
+  }
+  .pack-mint-panel {
+    width: min(420px, 100%);
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    border: 1px solid rgba(255, 225, 150, 0.32);
+    border-radius: 8px;
+    background:
+      linear-gradient(135deg, rgba(190, 25, 35, 0.22), rgba(19, 24, 42, 0.96) 44%),
+      rgba(22, 25, 38, 0.98);
+    color: var(--text);
+    box-shadow: 0 24px 78px rgba(0,0,0,0.60);
+    padding: 18px;
+  }
+  .pack-mint-spinner {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.14);
+    border-top-color: #ffd166;
+    border-right-color: #f04b45;
+    animation: spin 0.9s linear infinite;
+  }
+  .pack-mint-copy {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+  }
+  .pack-mint-title {
+    color: #fff7de;
+    font-size: 18px;
+    font-weight: 950;
+    line-height: 1.15;
+  }
+  .pack-mint-status {
+    color: var(--text-soft);
+    font-size: 14px;
+    line-height: 1.35;
   }
 
   .card-burn-overlay {

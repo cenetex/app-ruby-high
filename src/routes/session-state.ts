@@ -462,8 +462,16 @@ export function buildSessionState(args: {
 
 function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
   const cards = Array.isArray(state.wallet?.hallPassCards) ? state.wallet.hallPassCards : [];
-  const mintedCards = cards.filter((card) => !!card.mintAddress && !!card.mintSignature);
-  const packs = Array.isArray(state.wallet?.hallPassPacks) ? state.wallet.hallPassPacks : [];
+  const packs = normalizeHallPassPacksForTelemetry(state.wallet?.hallPassPacks);
+  const openedPackTransactions = new Set(
+    packs
+      .map((pack) => typeof pack.openTransactionId === "string" ? pack.openTransactionId : "")
+      .filter(Boolean),
+  );
+  const visibleCards = cards.filter((card) => (
+    (!!card.mintAddress && !!card.mintSignature) ||
+    (typeof card.grantTransactionId === "string" && openedPackTransactions.has(card.grantTransactionId))
+  ));
   return {
     meritStars: Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0))),
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
@@ -473,8 +481,8 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
     ...(Number.isFinite(Number(state.wallet?.hostedAiAccessExpiresAt))
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(state.wallet?.hostedAiAccessExpiresAt))) }
       : {}),
-    ...(mintedCards.length > 0
-      ? { hallPassCards: mintedCards }
+    ...(visibleCards.length > 0
+      ? { hallPassCards: visibleCards }
       : {}),
     ...(packs.length > 0
       ? { hallPassPacks: packs }
@@ -483,6 +491,26 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
       ? { transactions: state.wallet.transactions.slice(-80) }
       : {}),
   };
+}
+
+function normalizeHallPassPacksForTelemetry(value: unknown): NonNullable<RubyHighWallet["hallPassPacks"]> {
+  if (!Array.isArray(value)) return [];
+  type Pack = NonNullable<RubyHighWallet["hallPassPacks"]>[number];
+  const byAsset = new Map<string, Pack>();
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const pack = raw as Partial<Pack>;
+    const id = typeof pack.id === "string" ? pack.id.trim() : "";
+    const assetAddress = typeof pack.assetAddress === "string" ? pack.assetAddress.trim() : "";
+    const mintSignature = typeof pack.mintSignature === "string" ? pack.mintSignature.trim() : "";
+    if (!id || !assetAddress || !mintSignature) continue;
+    const key = assetAddress || id;
+    const existing = byAsset.get(key);
+    if (!existing || Number(pack.updatedAt || pack.issuedAt || 0) >= Number(existing.updatedAt || existing.issuedAt || 0)) {
+      byAsset.set(key, raw as Pack);
+    }
+  }
+  return [...byAsset.values()].sort((a, b) => Number(a.issuedAt || 0) - Number(b.issuedAt || 0));
 }
 
 function normalizeCharacterSlotsForTelemetry(state: QuizState): SessionTelemetry["character_slots"] {

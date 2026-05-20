@@ -22,8 +22,9 @@ const BASE58_INDEX = new Map(BASE58_ALPHABET.split("").map((char, index) => [cha
 const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
-const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png";
-const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png";
+const CORE_PACK_CARDS_PER_PACK = 5;
+const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
+const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1";
 const ASSOCIATED_TOKEN_PROGRAM_ADDRESS = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
 
@@ -229,7 +230,7 @@ export function corePackNftMetadataForRoute(args: {
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const packCount = Math.max(1, Math.floor(Number(args.packCount ?? 1)));
-  const cardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * 4)));
+  const cardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * CORE_PACK_CARDS_PER_PACK)));
   const serial = normalizeSerial(args.serial);
   const name = packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`;
   const image = `${publicBaseUrl}${PACK_IMAGE_ASSET_PATH}`;

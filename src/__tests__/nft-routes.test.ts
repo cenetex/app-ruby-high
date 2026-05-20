@@ -140,7 +140,7 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High Packs",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png",
+      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1",
     });
 
     const packHandled = await handleNftRoutes(makeCtx({
@@ -152,8 +152,47 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High Pack #123456",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png",
+      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
     });
+  });
+
+  it("opens an active Pack NFT into five in-app cards", async () => {
+    const stateKey = signInUser("open-pack");
+    const pack = ruby.recordHallPassPackMint(stateKey, {
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      ownerWalletAddress: OWNER,
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      mintSignature: "5mPackMintSignature111111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5",
+      idempotencyKey: "solana:spl-token-transfer:open-pack-route",
+      source: "solana",
+    }).pack!;
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/open-pack",
+      cookie: "rh_session=open-pack",
+      body: { packId: pack.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        applied: true,
+        cardCount: 5,
+        pack: { id: pack.id, status: "opened" },
+      },
+    });
+    expect(lastResponse?.body.cards).toHaveLength(5);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
+      id: pack.id,
+      status: "opened",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards).toHaveLength(5);
   });
 
   it("mints unminted active Hall Pass cards and records signatures", async () => {

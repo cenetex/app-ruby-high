@@ -223,6 +223,7 @@ const ESSAY_REPORT_LIMIT = 100;
 const WALLET_TRANSACTION_LIMIT = 200;
 const STUDENT_POOL_LIMIT = 50;
 const HALL_PASS_REDEEMED_CARD_LIMIT = 160;
+export const HALL_PASS_CARDS_PER_PACK = 5;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
 export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
@@ -237,6 +238,8 @@ type HallPassCardCatalogEntry = {
   title: string;
   blurb: string;
   color: string;
+  artSheet?: RubyHighHallPassCard["artSheet"];
+  artPosition?: string;
 };
 
 const HALL_PASS_CARD_TEACHERS: HallPassCardCatalogEntry[] = [
@@ -310,7 +313,7 @@ const HALL_PASS_CARD_STUDENTS: HallPassCardCatalogEntry[] = [
     characterId: "mika",
     characterName: "Mika",
     role: "student",
-    rarity: "common",
+    rarity: "rare",
     title: "Locker Room Shortcut",
     blurb: "Mika says you are absolutely cleared for this.",
     color: "#52c673",
@@ -353,6 +356,141 @@ const HALL_PASS_CARD_SUPER_RARES: HallPassCardCatalogEntry[] = [
     title: "Signal Studies Pass",
     blurb: "Hold the signal. Build the world.",
     color: "#f0a12a",
+  },
+];
+
+const HALL_PASS_CARD_ITEM_LOCATIONS: HallPassCardCatalogEntry[] = [
+  {
+    characterId: "item-hall-pass",
+    characterName: "Hall Pass",
+    role: "item",
+    rarity: "common",
+    title: "Front Office Reset",
+    blurb: "Sometimes the smartest move is stepping out and coming back better.",
+    color: "#f14a4a",
+    artSheet: "items",
+    artPosition: "0% 0%",
+  },
+  {
+    characterId: "item-flashcards",
+    characterName: "Flashcards",
+    role: "item",
+    rarity: "common",
+    title: "Study Kit",
+    blurb: "Shuffle. Repeat. Survive.",
+    color: "#2aa8ef",
+    artSheet: "items",
+    artPosition: "50% 0%",
+  },
+  {
+    characterId: "item-library-card",
+    characterName: "Library Card",
+    role: "item",
+    rarity: "common",
+    title: "Quiet Wing Access",
+    blurb: "If the answer exists, this helps you find it.",
+    color: "#84c43f",
+    artSheet: "items",
+    artPosition: "100% 0%",
+  },
+  {
+    characterId: "location-homeroom",
+    characterName: "Homeroom",
+    role: "location",
+    rarity: "common",
+    title: "Front Door",
+    blurb: "Where every day begins, and every question gets a room.",
+    color: "#f14a66",
+    artSheet: "locations",
+    artPosition: "0% 0%",
+  },
+  {
+    characterId: "location-science-lab",
+    characterName: "Science Lab",
+    role: "location",
+    rarity: "common",
+    title: "STEM Wing",
+    blurb: "Observe. Test. Explain. Repeat.",
+    color: "#25bfe4",
+    artSheet: "locations",
+    artPosition: "50% 0%",
+  },
+  {
+    characterId: "location-library",
+    characterName: "Library",
+    role: "location",
+    rarity: "common",
+    title: "Quiet Wing",
+    blurb: "If it matters, someone wrote it down.",
+    color: "#f2a13a",
+    artSheet: "locations",
+    artPosition: "100% 0%",
+  },
+  {
+    characterId: "item-lab-flask",
+    characterName: "Lab Flask",
+    role: "item",
+    rarity: "rare",
+    title: "Science Lab Evidence",
+    blurb: "Observe first. Guess later.",
+    color: "#9c54d5",
+    artSheet: "items",
+    artPosition: "0% 100%",
+  },
+  {
+    characterId: "item-lunch-tray",
+    characterName: "Lunch Tray",
+    role: "item",
+    rarity: "rare",
+    title: "Commons Diplomacy",
+    blurb: "Half the social game happens between bites.",
+    color: "#f29322",
+    artSheet: "items",
+    artPosition: "50% 100%",
+  },
+  {
+    characterId: "item-notebook",
+    characterName: "Notebook",
+    role: "item",
+    rarity: "rare",
+    title: "Daily Carry",
+    blurb: "Messy notes still count as evidence of life.",
+    color: "#33c6c4",
+    artSheet: "items",
+    artPosition: "100% 100%",
+  },
+  {
+    characterId: "location-cafeteria",
+    characterName: "Cafeteria",
+    role: "location",
+    rarity: "rare",
+    title: "Commons",
+    blurb: "Half the school day happens between bites.",
+    color: "#f29322",
+    artSheet: "locations",
+    artPosition: "0% 100%",
+  },
+  {
+    characterId: "location-greenhouse",
+    characterName: "Greenhouse",
+    role: "location",
+    rarity: "rare",
+    title: "Garden Annex",
+    blurb: "Some lessons grow slowly.",
+    color: "#66bc50",
+    artSheet: "locations",
+    artPosition: "50% 100%",
+  },
+  {
+    characterId: "location-courtyard",
+    characterName: "Courtyard",
+    role: "location",
+    rarity: "rare",
+    title: "Central Grounds",
+    blurb: "Every hallway leads somewhere. Every path leads to someone.",
+    color: "#8652d6",
+    artSheet: "locations",
+    artPosition: "100% 100%",
   },
 ];
 
@@ -424,6 +562,17 @@ export interface HallPassMutationInput {
 export interface HallPassCardGrantInput {
   cardCount: number;
   idempotencyKey: string;
+  source?: RubyHighWalletTransaction["source"];
+  description?: string;
+  metadata?: RubyHighWalletTransaction["metadata"];
+  at?: number;
+}
+
+export interface HallPassPackOpenInput {
+  packId: string;
+  ownerWalletAddress?: string;
+  idempotencyKey?: string;
+  openSignature?: string;
   source?: RubyHighWalletTransaction["source"];
   description?: string;
   metadata?: RubyHighWalletTransaction["metadata"];
@@ -1578,7 +1727,10 @@ export class RubyHighService extends Service {
     }
     if (existingPack) throw new Error("Pack NFT is already recorded.");
     const packCount = normalizePositiveInteger(input.packCount, "Pack count");
-    const cardCount = normalizePositiveInteger(input.cardCount, "Card count");
+    const cardCount = Math.max(
+      normalizePositiveInteger(input.cardCount, "Card count"),
+      packCount * HALL_PASS_CARDS_PER_PACK,
+    );
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
     const pack: RubyHighHallPassPack = {
       id: hallPassPackId(id, assetAddress),
@@ -1629,6 +1781,72 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction, pack, packs: state.wallet.hallPassPacks };
+  }
+
+  openHallPassPack(sessionId: string, input: HallPassPackOpenInput): HallPassMutationResult {
+    const state = this.getOrCreate(sessionId);
+    const packId = typeof input.packId === "string" ? input.packId.trim() : "";
+    if (!packId) throw new Error("Pack id is required.");
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const packs = normalizeHallPassPacks(state.wallet.hallPassPacks);
+    const pack = packs.find((candidate) => candidate.id === packId || candidate.assetAddress === packId);
+    if (!pack) throw new Error("Pack not found.");
+    const ownerWalletAddress = typeof input.ownerWalletAddress === "string" ? input.ownerWalletAddress.trim() : "";
+    if (ownerWalletAddress && pack.ownerWalletAddress && pack.ownerWalletAddress !== ownerWalletAddress) {
+      throw new Error("Pack belongs to a different wallet.");
+    }
+    const id = (input.idempotencyKey || `hall-pass-pack-open:${pack.id}`).trim();
+    if (!id) throw new Error("Pack open idempotency key is required.");
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
+    if (existing) {
+      const cards = normalizeHallPassCards(state.wallet.hallPassCards)
+        .filter((card) => card.grantTransactionId === existing.id);
+      return { state, applied: false, transaction: existing, pack, cards };
+    }
+    if (pack.status !== "active") throw new Error("Pack is already opened.");
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    const openSignature = typeof input.openSignature === "string" ? input.openSignature.trim() : "";
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind: "hall-pass-pack-open",
+      at,
+      hallPasses: 0,
+      source: input.source ?? "hall-pass-pack",
+      description: input.description ?? `Ruby High Pack #${String(pack.serial).padStart(6, "0")} opened`,
+      metadata: {
+        ...(input.metadata ?? {}),
+        packOpened: true,
+        packId: pack.id,
+        productId: pack.productId,
+        packCount: pack.packCount,
+        cardCount: pack.cardCount,
+        ownerWalletAddress: pack.ownerWalletAddress,
+        packAssetAddress: pack.assetAddress,
+        packMintSignature: pack.mintSignature,
+        packMetadataUri: pack.metadataUri,
+        ...(openSignature ? { openSignature } : {}),
+      },
+    };
+    const cards = issueHallPassCardsForTransaction(state, transaction, pack.cardCount);
+    attachHallPassCardMetadata(transaction, cards);
+    pack.status = "opened";
+    pack.openedAt = at;
+    pack.updatedAt = at;
+    pack.openTransactionId = id;
+    if (openSignature) pack.openSignature = openSignature;
+    state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
+    recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: transaction.source ?? "hall-pass-pack",
+      feature: "hall-pass-pack-open",
+      status: "success",
+      hallPassesDelta: 0,
+      metadata: { transactionId: transaction.id, packId: pack.id, cardCount: pack.cardCount },
+    });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction, pack, cards };
   }
 
   spendHallPasses(sessionId: string, input: HallPassMutationInput): HallPassMutationResult {
@@ -5173,7 +5391,7 @@ function normalizedHallPassCardStatus(value: unknown): RubyHighHallPassCardStatu
 }
 
 function normalizedHallPassCardRole(value: unknown): RubyHighHallPassCardRole {
-  return value === "teacher" || value === "special" ? value : "student";
+  return value === "teacher" || value === "item" || value === "location" || value === "special" ? value : "student";
 }
 
 function normalizedHallPassCardRarity(value: unknown): RubyHighHallPassCardRarity {
@@ -5220,6 +5438,10 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   }
   const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
   if (Number.isFinite(burnedAt) && burnedAt > 0) entry.burnedAt = burnedAt;
+  if (card.artSheet === "items" || card.artSheet === "locations") entry.artSheet = card.artSheet;
+  if (typeof card.artPosition === "string" && card.artPosition.trim()) {
+    entry.artPosition = card.artPosition.trim().slice(0, 32);
+  }
   return entry;
 }
 
@@ -5276,14 +5498,17 @@ function normalizeHallPassPack(raw: unknown): RubyHighHallPassPack | null {
   if (!ownerWalletAddress || !assetAddress || !mintSignature || !metadataUri) return null;
   const issuedAt = Math.max(0, Math.floor(Number(pack.issuedAt ?? pack.createdAt ?? 0)));
   const updatedAt = Math.max(issuedAt, Math.floor(Number(pack.updatedAt ?? issuedAt)));
+  const packCount = Math.max(1, Math.floor(Number(pack.packCount ?? 1)));
+  const rawCardCount = Math.max(1, Math.floor(Number(pack.cardCount ?? packCount * HALL_PASS_CARDS_PER_PACK)));
+  const cardCount = Math.max(rawCardCount, packCount * HALL_PASS_CARDS_PER_PACK);
   const entry: RubyHighHallPassPack = {
     id,
     serial: Math.max(1, Math.floor(Number(pack.serial ?? 1))),
     productId: typeof pack.productId === "string" && pack.productId.trim()
       ? pack.productId.trim().slice(0, 96)
       : "card-pack-1",
-    packCount: Math.max(1, Math.floor(Number(pack.packCount ?? 1))),
-    cardCount: Math.max(1, Math.floor(Number(pack.cardCount ?? 4))),
+    packCount,
+    cardCount,
     status: normalizedHallPassPackStatus(pack.status),
     issuedAt: Number.isFinite(issuedAt) && issuedAt > 0 ? issuedAt : Date.now(),
     updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : Date.now(),
@@ -5308,7 +5533,10 @@ function normalizeHallPassPacks(value: unknown): RubyHighHallPassPack[] {
   const byId = new Map<string, RubyHighHallPassPack>();
   for (const raw of value) {
     const entry = normalizeHallPassPack(raw);
-    if (entry) byId.set(entry.id, entry);
+    if (!entry) continue;
+    const key = entry.assetAddress || entry.id;
+    const existing = byId.get(key);
+    if (!existing || entry.updatedAt >= existing.updatedAt) byId.set(key, entry);
   }
   const packs = [...byId.values()].sort((a, b) => a.issuedAt - b.issuedAt || a.serial - b.serial);
   const active = packs.filter((pack) => pack.status === "active");
@@ -5336,14 +5564,16 @@ function pickCatalogEntry(entries: HallPassCardCatalogEntry[], seed: string): Ha
 }
 
 function hallPassCardPackEntries(seed: string): HallPassCardCatalogEntry[] {
-  const teacher = hashInteger(`${seed}:super-rare`) % 64 === 0
-    ? pickCatalogEntry(HALL_PASS_CARD_SUPER_RARES, `${seed}:super`)
+  const superRareTeachers = HALL_PASS_CARD_SUPER_RARES.filter((entry) => entry.role === "teacher");
+  const teacher = hashInteger(`${seed}:super-rare`) % 64 === 0 && superRareTeachers.length > 0
+    ? pickCatalogEntry(superRareTeachers, `${seed}:super`)
     : pickCatalogEntry(HALL_PASS_CARD_TEACHERS, `${seed}:teacher`);
   const students = HALL_PASS_CARD_STUDENTS
     .slice()
     .sort((a, b) => hashInteger(`${seed}:student:${a.characterId}`) - hashInteger(`${seed}:student:${b.characterId}`))
     .slice(0, 3);
-  return [teacher, ...students];
+  const itemOrLocation = pickCatalogEntry(HALL_PASS_CARD_ITEM_LOCATIONS, `${seed}:utility`);
+  return [teacher, ...students, itemOrLocation];
 }
 
 function issueHallPassCardsForTransaction(
@@ -5359,7 +5589,7 @@ function issueHallPassCardsForTransaction(
   for (let i = 0; i < cardCount; i += 1) {
     const id = hallPassCardId(transaction.id, i);
     if (existingIds.has(id)) continue;
-    const packIndex = Math.floor(i / 4);
+    const packIndex = Math.floor(i / HALL_PASS_CARDS_PER_PACK);
     let packEntries = packCache.get(packIndex);
     if (!packEntries) {
       packEntries = hallPassCardPackEntries(packIndex === 0 ? transaction.id : `${transaction.id}:pack:${packIndex}`);
@@ -5383,6 +5613,8 @@ function issueHallPassCardsForTransaction(
       updatedAt: issuedAt,
       ...(transaction.source ? { source: transaction.source } : {}),
       grantTransactionId: transaction.id,
+      ...(catalog.artSheet ? { artSheet: catalog.artSheet } : {}),
+      ...(catalog.artPosition ? { artPosition: catalog.artPosition } : {}),
       ...(typeof transaction.metadata?.ownerWalletAddress === "string" && transaction.metadata.ownerWalletAddress
         ? { ownerWalletAddress: transaction.metadata.ownerWalletAddress }
         : {}),

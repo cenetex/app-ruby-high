@@ -74,6 +74,53 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     return true;
   }
 
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/open-pack`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const packId = typeof body.packId === "string" ? body.packId.trim().slice(0, 96) : "";
+    const ownerWalletAddress = cleanOwnerWalletAddress(
+      typeof body.ownerWalletAddress === "string" ? body.ownerWalletAddress : "",
+    );
+    if (!packId) {
+      ctx.error(ctx.res, "Pack id is required.", 400);
+      return true;
+    }
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    try {
+      const result = deps.ruby.openHallPassPack(stateKey, {
+        packId,
+        ...(ownerWalletAddress ? { ownerWalletAddress } : {}),
+      });
+      await deps.ruby.flushSession(stateKey);
+      ctx.json(ctx.res, {
+        ok: true,
+        applied: result.applied,
+        pack: result.pack,
+        cards: (result.cards ?? []).map((card) => ({
+          id: card.id,
+          serial: card.serial,
+          title: card.title,
+          characterId: card.characterId,
+          characterName: card.characterName,
+          role: card.role,
+          rarity: card.rarity,
+          status: card.status,
+          artSheet: card.artSheet ?? null,
+          artPosition: card.artPosition ?? null,
+        })),
+        cardCount: result.cards?.length ?? Number(result.transaction.metadata?.cardCount ?? 0),
+      });
+    } catch (err) {
+      ctx.error(ctx.res, publicNftErrorMessage(err), 400);
+    }
+    return true;
+  }
+
   if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-pack`) {
     const status = hallPassNftStatus();
     if (!status.configured) {

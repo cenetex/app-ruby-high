@@ -223,10 +223,10 @@ describe("billing products", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.configured).toBe(false);
     expect(lastResponse?.body.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses])).toEqual([
-      [1, 4, 4],
-      [3, 12, 12],
-      [5, 20, 20],
-      [10, 40, 40],
+      [1, 5, 5],
+      [3, 15, 15],
+      [5, 25, 25],
+      [10, 50, 50],
     ]);
     expect(lastResponse?.body.solana).toMatchObject({
       configured: true,
@@ -236,10 +236,10 @@ describe("billing products", () => {
       decimals: 6,
     });
     expect(lastResponse?.body.solana.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses, p.tokenAmount])).toEqual([
-      [1, 4, 4, "100000"],
-      [3, 12, 12, "100000"],
-      [5, 20, 20, "100000"],
-      [10, 40, 40, "100000"],
+      [1, 5, 5, "100000"],
+      [3, 15, 15, "100000"],
+      [5, 25, 25, "100000"],
+      [10, 50, 50, "100000"],
     ]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
     expect(lastResponse?.body.courseSlotCost).toBe(3);
@@ -403,15 +403,15 @@ describe("Stripe Checkout", () => {
     expect(params.get("metadata[ruby_high_session_id]")).toBe(stateKey);
     expect(params.get("metadata[card_pack_id]")).toBe("card-pack-5");
     expect(params.get("metadata[pack_count]")).toBe("5");
-    expect(params.get("metadata[card_count]")).toBe("20");
+    expect(params.get("metadata[card_count]")).toBe("25");
     expect(params.get("metadata[hall_pass_pack_id]")).toBe("card-pack-5");
-    expect(params.get("metadata[hall_passes]")).toBe("20");
+    expect(params.get("metadata[hall_passes]")).toBe("25");
     expect(params.get("payment_intent_data[metadata][ruby_high_session_id]")).toBe(stateKey);
     expect(params.get("payment_intent_data[metadata][card_pack_id]")).toBe("card-pack-5");
     expect(params.get("payment_intent_data[metadata][pack_count]")).toBe("5");
-    expect(params.get("payment_intent_data[metadata][card_count]")).toBe("20");
+    expect(params.get("payment_intent_data[metadata][card_count]")).toBe("25");
     expect(params.get("payment_intent_data[metadata][hall_pass_pack_id]")).toBe("card-pack-5");
-    expect(params.get("payment_intent_data[metadata][hall_passes]")).toBe("20");
+    expect(params.get("payment_intent_data[metadata][hall_passes]")).toBe("25");
     expect(params.get("line_items[0][price_data][unit_amount]")).toBe("1499");
   });
 });
@@ -434,9 +434,9 @@ describe("Stripe webhook", () => {
             ruby_high_session_id: stateKey,
             card_pack_id: "card-pack-5",
             pack_count: "5",
-            card_count: "20",
+            card_count: "25",
             hall_pass_pack_id: "card-pack-5",
-            hall_passes: "20",
+            hall_passes: "25",
           },
         },
       },
@@ -452,7 +452,7 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 5 } });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(20);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(25);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
@@ -463,7 +463,7 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 5 } });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(20);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(25);
   });
 
   it("rejects signed Checkout webhooks when pack metadata does not match the paid amount", async () => {
@@ -483,9 +483,9 @@ describe("Stripe webhook", () => {
             ruby_high_session_id: stateKey,
             card_pack_id: "card-pack-5",
             pack_count: "5",
-            card_count: "20",
+            card_count: "25",
             hall_pass_pack_id: "card-pack-5",
-            hall_passes: "20",
+            hall_passes: "25",
           },
         },
       },
@@ -565,7 +565,7 @@ describe("Solana Hall Pass billing", () => {
       expected: {
         productId: "card-pack-5",
         packCount: 5,
-        cardCount: 20,
+        cardCount: 25,
         ownerWalletAddress: TEST_SOLANA_OWNER,
       },
     });
@@ -588,8 +588,8 @@ describe("Solana Hall Pass billing", () => {
       product: {
         id: "card-pack-5",
         packCount: 5,
-        cardCount: 20,
-        hallPasses: 20,
+        cardCount: 25,
+        hallPasses: 25,
         tokenAmount: "100000",
         tokenAmountBaseUnits: "100000000000",
         tokenSymbol: "RUBY",
@@ -637,7 +637,7 @@ describe("Solana Hall Pass billing", () => {
       expect(input).toMatchObject({
         productId: "card-pack-1",
         packCount: 1,
-        cardCount: 4,
+        cardCount: 5,
         ownerWalletAddress,
         tokenMint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
         tokenRecipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
@@ -650,7 +650,7 @@ describe("Solana Hall Pass billing", () => {
       return {
         ownerWalletAddress,
         assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
-        metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=4",
+        metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5",
         sourceTokenAccountAddress: "FNhC7aog7542La3isBvGF5fd1myzahUwAyUWfoNNHhYV",
         destinationTokenAccountAddress: "3brqp4DSMX92bCRhSDYNowFr1zGbcR7DVA5jMdUKiwyh",
         transactionBase64: "AQID",
@@ -766,7 +766,7 @@ describe("Solana Hall Pass billing", () => {
     const stateKey = signInUser("solana-atomic-paid");
     const ownerWalletAddress = TEST_SOLANA_OWNER;
     const packAssetAddress = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
-    const packMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-3/456789.json?packs=3&cards=12";
+    const packMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-3/456789.json?packs=3&cards=15";
     stubCorePackPurchaseBuilderForTest({
       expected: {
         productId: "card-pack-3",
@@ -779,7 +779,7 @@ describe("Solana Hall Pass billing", () => {
       expect(input).toMatchObject({
         productId: "card-pack-3",
         packCount: 3,
-        cardCount: 12,
+        cardCount: 15,
         ownerWalletAddress,
         assetAddress: packAssetAddress,
         metadataUri: packMetadataUri,
@@ -853,10 +853,10 @@ describe("Solana Hall Pass billing", () => {
         ok: true,
         applied: true,
         sessionId: stateKey,
-        amount: 12,
+        amount: 15,
         productId: "card-pack-3",
         packCount: 3,
-        cardCount: 12,
+        cardCount: 15,
         packAssetAddress,
         packMintSignature: signature,
         packMetadataUri,
@@ -887,7 +887,7 @@ describe("Solana Hall Pass billing", () => {
 
     expect(lastResponse).toMatchObject({
       status: 200,
-      body: { ok: true, applied: false, sessionId: stateKey, amount: 12, hallPasses: 5 },
+      body: { ok: true, applied: false, sessionId: stateKey, amount: 15, hallPasses: 5 },
     });
   });
 

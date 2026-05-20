@@ -495,7 +495,7 @@ export type RubyHighWalletTransactionKind =
   | "photo-day-refund";
 
 export type RubyHighHallPassCardStatus = "active" | "redeemed" | "void";
-export type RubyHighHallPassCardRole = "student" | "teacher" | "special";
+export type RubyHighHallPassCardRole = "student" | "teacher" | "item" | "location" | "special";
 export type RubyHighHallPassCardRarity = "common" | "rare" | "super-rare";
 
 export interface RubyHighHallPassCard {
@@ -519,6 +519,8 @@ export interface RubyHighHallPassCard {
   mintAddress?: string;
   mintSignature?: string;
   metadataUri?: string;
+  artSheet?: "items" | "locations";
+  artPosition?: string;
   burnSignature?: string;
   burnedAt?: number;
 }

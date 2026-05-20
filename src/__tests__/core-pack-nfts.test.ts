@@ -35,7 +35,7 @@ describe("Core pack NFT checkout transactions", () => {
     const prepared = await buildCorePackPurchaseTransaction({
       productId: "card-pack-1",
       packCount: 1,
-      cardCount: 4,
+      cardCount: 5,
       ownerWalletAddress,
       paymentReference,
       tokenMint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
