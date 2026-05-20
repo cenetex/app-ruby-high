@@ -461,6 +461,7 @@ export function runViewerClient(bootstrap) {
   const WELCOME_HALL_PASS_POPUP_KEY_PREFIX = "rh_welcome_hall_passes_seen:";
   const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png";
   const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
+  const CARD_BACK_ART_URL = apiBase + "/assets/nft/ruby-high-card-back.png?v=card-back-v1";
   const ITEM_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-item-cards.png";
   const LOCATION_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-location-cards.png";
   const CARD_NFT_ART_VERSION = "card-v2";
@@ -2040,7 +2041,7 @@ export function runViewerClient(bootstrap) {
     const entitlement = hostedImageEntitlement(kind);
     const cost = Math.max(1, Math.floor(Number(entitlement && entitlement.cost || 1)));
     const usesHallPass = !usePhotoDayCredit && canSpendHallPasses(cost);
-    const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : usesHallPass ? hallPassCostLabel(cost) : formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s");
+    const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : usesHallPass ? hallPassCostLabel(cost) : formatWholeNumber(cost) + " minted Card" + (cost === 1 ? "" : "s");
     const spendKind = usePhotoDayCredit ? "photo-day credit" : usesHallPass ? "Hall Pass" : "card burn";
     const isCharacterPortrait = action === "Custom character portrait";
     const detail = isCharacterPortrait
@@ -2060,7 +2061,9 @@ export function runViewerClient(bootstrap) {
     return confirmInApp({
       kicker: spendKind,
       title: action + "?",
-      copy: "If the image completes, Ruby High will " + (usesHallPass ? "spend " : "burn ") + spendLabel + ".",
+      copy: usesHallPass
+        ? "If the image completes, Ruby High will spend " + spendLabel + "."
+        : "Ruby High will burn " + spendLabel + " for Hall Passes, then spend those Hall Passes if the image completes.",
       detail,
       confirmText,
       focus: "confirm",
@@ -2085,7 +2088,7 @@ export function runViewerClient(bootstrap) {
     const cost = entitlement.cost || 1;
     if (!getStoredApiKey()) return canSpendHallPasses(cost)
       ? "Hosted image generation spends a Hall Pass when it completes."
-      : "Hosted image generation burns a minted Card when it completes.";
+      : "Burn a minted Card into a Hall Pass before hosted image generation.";
     return "Uses your AI key. No cards are burned.";
   }
 
@@ -2258,10 +2261,10 @@ export function runViewerClient(bootstrap) {
     const canBurnCard = canBurnCollectibleCards(cost);
     let status = "Offline mode";
     let meta = "Spend " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
-    let primaryLabel = canUseHallPass ? "Use Hall Pass" : "Burn Card";
+    let primaryLabel = canUseHallPass ? "Use Hall Pass" : "Burn for Pass";
     let primaryTitle = canUseHallPass
       ? "Spend " + costLabel + " for " + durationLabel + " of AI access."
-      : "Burn " + formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s") + " for " + durationLabel + " of AI access.";
+      : "Burn " + formatWholeNumber(cost) + " Card" + (cost === 1 ? "" : "s") + " into Hall Passes for " + durationLabel + " of AI access.";
     let primaryDisabled = !authed || billingBusy || localAiEnabled || ai.active || !ai.configured || (!canUseHallPass && !canBurnCard);
     let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect AI key";
     let secondaryDisabled = !authed || localAiEnabled;
@@ -2273,7 +2276,7 @@ export function runViewerClient(bootstrap) {
       secondaryLabel = "Connect AI key";
     } else if (hasBrowserKey && aiEnabled) {
       status = "AI key connected";
-      meta = "Teacher chat and character text rerolls use your browser key. Hall Passes and card burns are still available for hosted play.";
+      meta = "Teacher chat and character text rerolls use your browser key. Hall Passes are still available for hosted play.";
     } else if (ai.active || hostedAiActive) {
       status = "AI Access active";
       meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
@@ -2281,7 +2284,7 @@ export function runViewerClient(bootstrap) {
       primaryTitle = "";
     } else if (activeTeacherUsesServerAi()) {
       status = "Teacher AI connected";
-      meta = "This server can speak for teachers. Use a Hall Pass, burn a card, or connect your own AI key for browser-owned AI features.";
+      meta = "This server can speak for teachers. Use a Hall Pass, burn a card into one, or connect your own AI key for browser-owned AI features.";
     } else if (!ai.configured) {
       meta = "Hosted AI is not configured on this server. Connect your own AI key.";
       primaryTitle = "Hosted AI is not configured on this server.";
@@ -2375,11 +2378,11 @@ export function runViewerClient(bootstrap) {
         els.accountMintCards.textContent = billingBusy ? "Connecting..." : "Connect Wallet";
         els.accountMintCards.title = "Connect a Solana wallet before opening packs or minting card NFTs.";
       } else if (pendingMints.length > 0) {
-        els.accountMintCards.textContent = billingBusy ? "Minting..." : "Mint Card NFTs";
-        els.accountMintCards.title = "Retry minting pending Ruby High card NFTs.";
+        els.accountMintCards.textContent = billingBusy ? "Minting..." : "Reveal Card";
+        els.accountMintCards.title = "Mint the next face-down Ruby High card NFT to reveal it.";
       } else {
-        els.accountMintCards.textContent = "Buy Packs";
-        els.accountMintCards.title = "Buy Ruby High card packs.";
+        els.accountMintCards.textContent = "Buy Hall Passes";
+        els.accountMintCards.title = "Buy Hall Passes for hosted AI and creator features.";
       }
     }
     els.accountHallPassCards.replaceChildren();
@@ -2394,7 +2397,7 @@ export function runViewerClient(bootstrap) {
     if (shownPacks.length === 0 && shown.length === 0) {
       const empty = document.createElement("div");
       empty.className = "account-empty";
-      empty.textContent = "Buy a pack to show collectibles here.";
+      empty.textContent = "No card collectibles in this wallet yet.";
       els.accountHallPassCards.appendChild(empty);
       return;
     }
@@ -2600,15 +2603,19 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildHallPassCard(card) {
+    const faceDown = !card.mintAddress || !card.mintSignature || card.characterId === "card-back";
     const item = document.createElement("article");
     item.className = "account-card-tile is-" + String(card.status || "active")
       + " is-" + String(card.role || "student")
-      + " rarity-" + String(card.rarity || "common").replace(/[^a-z0-9-]/gi, "");
-    const artUrl = hallPassCardArtUrl(card);
+      + " rarity-" + String(card.rarity || "common").replace(/[^a-z0-9-]/gi, "")
+      + (faceDown ? " is-face-down" : "");
+    const artUrl = faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
     if (artUrl) {
       const img = document.createElement("img");
       img.className = "account-card-tile-art";
-      img.alt = card.characterName ? card.characterName + " Ruby High card" : "Ruby High card";
+      img.alt = faceDown
+        ? "Face-down Ruby High card"
+        : card.characterName ? card.characterName + " Ruby High card" : "Ruby High card";
       img.loading = "lazy";
       img.src = artUrl;
       item.appendChild(img);
@@ -2622,14 +2629,54 @@ export function runViewerClient(bootstrap) {
     meta.className = "account-card-tile-meta";
     const title = document.createElement("div");
     title.className = "account-card-tile-title";
-    title.textContent = card.characterName || "Ruby High Card";
+    title.textContent = faceDown ? "Mystery Card" : card.characterName || "Ruby High Card";
     const detail = document.createElement("div");
     detail.className = "account-card-tile-detail";
     const status = card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
-    const chain = card.mintAddress ? "minted" : "in-app";
-    detail.textContent = String(card.rarity || "common") + " · " + status + " · " + chain + " · #" + String(card.serial || card.id || "").slice(-6);
+    detail.textContent = faceDown
+      ? "Face down · mint to reveal · #" + String(card.serial || card.id || "").slice(-6)
+      : String(card.rarity || "common") + " · " + status + " · minted · #" + String(card.serial || card.id || "").slice(-6);
     meta.appendChild(title);
     meta.appendChild(detail);
+    if (faceDown && card.status === "active") {
+      const reveal = document.createElement("button");
+      reveal.type = "button";
+      reveal.className = "account-card-tile-reveal";
+      reveal.textContent = billingBusy ? "Minting..." : "Mint to Reveal";
+      reveal.disabled = !authed || billingBusy;
+      reveal.title = "Mint this card NFT with your Solana wallet to reveal it.";
+      reveal.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void mintHallPassCardFromAccount(card.id);
+      });
+      meta.appendChild(reveal);
+    } else if (!faceDown && card.status === "active" && card.mintAddress && card.mintSignature) {
+      const burn = document.createElement("button");
+      burn.type = "button";
+      burn.className = "account-card-tile-reveal";
+      burn.textContent = billingBusy ? "Burning..." : "Burn for Hall Pass";
+      burn.disabled = !authed || billingBusy;
+      burn.title = "Burn this card NFT for 1 Hall Pass.";
+      burn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (billingBusy) return;
+        billingBusy = true;
+        renderAccountPage();
+        void convertHallPassCardsToHallPasses(1, {
+          presetCards: [card],
+          status: (message, invalid) => setPrivyStatus(message, invalid),
+        }).catch((err) => {
+          setPrivyStatus("Card burn failed · " + (err && err.message ? err.message : "error"), true);
+        }).finally(() => {
+          billingBusy = false;
+          renderAccountPage();
+          if (billingProductsCache) renderBillingProducts(billingProductsCache);
+        });
+      });
+      meta.appendChild(burn);
+    }
     item.appendChild(meta);
     return item;
   }
@@ -2871,7 +2918,7 @@ export function runViewerClient(bootstrap) {
     if (transactions.length === 0) {
       const empty = document.createElement("div");
       empty.className = "account-empty";
-      empty.textContent = "No card purchases or burns yet.";
+      empty.textContent = "No wallet activity yet.";
       els.accountHistoryList.appendChild(empty);
       return;
     }
@@ -2919,6 +2966,10 @@ export function runViewerClient(bootstrap) {
     if (tx.kind === "hall-pass-spend") return walletTransactionCardCount(tx) < 0 ? "Card burn" : "Hall Pass spend";
     if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
     if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
+    if (tx.kind === "hall-pass-card-burn") return "Card burned for Hall Pass";
+    if (tx.kind === "hall-pass-pack-mint") return "Pack minted";
+    if (tx.kind === "hall-pass-pack-open") return "Pack opened";
+    if (tx.kind === "hall-pass-card-mint") return "Card minted";
     if (tx.kind === "photo-day-spend") return "Photo Day credit";
     if (tx.kind === "photo-day-refund") return "Photo Day refund";
     return "Wallet update";
@@ -3122,8 +3173,8 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Opening pack. Minting five card NFTs...");
-    setPrivyStatus("Opening pack and minting card NFTs...", false);
+    showPackMintProgress("Opening pack. Laying out five face-down cards...");
+    setPrivyStatus("Opening pack...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       const r = await apiFetch(apiBase + "/nft/open-pack", {
@@ -3138,19 +3189,73 @@ export function runViewerClient(bootstrap) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) throw new Error(data.error || "open pack " + r.status);
       const count = Math.max(0, Math.floor(Number(data.cardCount || (Array.isArray(data.cards) ? data.cards.length : 0))));
-      const mintedCount = Math.max(0, Math.floor(Number(Array.isArray(data.minted) ? data.minted.length : 0)));
       const openedText = data.applied ? "Pack opened." : "Pack was already opened.";
-      updatePackMintProgress(data.warning
-        ? "Pack opened, but card minting needs attention."
-        : "Cards minted. Updating your locker...");
-      setPrivyStatus(data.warning
-        ? openedText + " " + formatWholeNumber(mintedCount) + " of " + formatWholeNumber(count) + " card NFT" + (count === 1 ? "" : "s") + " minted · " + data.warning
-        : openedText + " " + formatWholeNumber(mintedCount || count) + " card NFT" + ((mintedCount || count) === 1 ? "" : "s") + " minted.", !!data.warning);
+      updatePackMintProgress("Pack opened. Updating your locker...");
+      setPrivyStatus(openedText + " " + formatWholeNumber(count) + " face-down card" + (count === 1 ? "" : "s") + " ready to reveal.", false);
       await fetchSession();
       renderAccountPage();
     } catch (err) {
       hidePackMintProgress();
       setPrivyStatus("Open pack failed · " + (err && err.message ? err.message : "error"), true);
+    } finally {
+      hidePackMintProgress(900);
+      billingBusy = false;
+      renderAccountHallPassCards();
+    }
+  }
+
+  async function mintHallPassCardFromAccount(cardId) {
+    const cleanCardId = String(cardId || "").trim();
+    if (!authed || !cleanCardId || billingBusy) return;
+    if (!knownSolanaOwnerWalletAddress()) {
+      const connected = await ensureSolanaWalletFromAccount();
+      if (!connected) return;
+    }
+    billingBusy = true;
+    renderAccountHallPassCards();
+    showPackMintProgress("Opening wallet to mint this card...");
+    setPrivyStatus("Minting card NFT to reveal it...", false);
+    try {
+      const ownerWalletAddress = knownSolanaOwnerWalletAddress();
+      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before minting card NFTs.");
+      const client = await getPrivyClient();
+      if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
+        throw new Error("Solana card mint is unavailable.");
+      }
+      const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 30000,
+        body: JSON.stringify({ cardId: cleanCardId, ownerWalletAddress }),
+      });
+      const preparedData = await prepared.json().catch(() => ({}));
+      if (!prepared.ok || !preparedData || !preparedData.ok || !preparedData.mint) {
+        throw new Error(preparedData.error || "prepare card mint " + prepared.status);
+      }
+      updatePackMintProgress("Confirm the mint in your wallet...");
+      const payment = await client.signAndSendSolanaTransaction(preparedData.mint);
+      updatePackMintProgress("Mint confirmed. Revealing card...");
+      const confirmed = await apiFetch(apiBase + "/nft/mint-card-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 90000,
+        body: JSON.stringify({
+          cardId: cleanCardId,
+          ownerWalletAddress: payment.walletAddress || ownerWalletAddress,
+          mintAddress: preparedData.mint.mintAddress,
+          mintSignature: payment.signature,
+          metadataUri: preparedData.mint.metadataUri,
+        }),
+      });
+      const data = await confirmed.json().catch(() => ({}));
+      if (!confirmed.ok || !data || !data.ok) throw new Error(data.error || "confirm card mint " + confirmed.status);
+      const name = data.card && data.card.characterName ? data.card.characterName : "Card";
+      setPrivyStatus(name + " revealed.", false);
+      await fetchSession();
+      renderAccountPage();
+    } catch (err) {
+      hidePackMintProgress();
+      setPrivyStatus("Card reveal failed · " + (err && err.message ? err.message : "error"), true);
     } finally {
       hidePackMintProgress(900);
       billingBusy = false;
@@ -3165,48 +3270,7 @@ export function runViewerClient(bootstrap) {
       openBilling();
       return;
     }
-    if (!knownSolanaOwnerWalletAddress()) {
-      const connected = await ensureSolanaWalletFromAccount();
-      if (!connected) return;
-    }
-    billingBusy = true;
-    renderAccountHallPassCards();
-    showPackMintProgress("Minting pending card NFTs...");
-    setPrivyStatus("Minting pending card NFTs...", false);
-    try {
-      const ownerWalletAddress = knownSolanaOwnerWalletAddress();
-      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before minting card NFTs.");
-      const r = await apiFetch(apiBase + "/nft/mint-pack", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        timeoutMs: 90000,
-        body: JSON.stringify({ ownerWalletAddress }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok) throw new Error(data.error || "mint cards " + r.status);
-      const mintedCount = Math.max(0, Math.floor(Number(Array.isArray(data.minted) ? data.minted.length : 0)));
-      const remaining = Math.max(0, Math.floor(Number(data.remaining || 0)));
-      updatePackMintProgress(data.warning
-        ? "Some card NFTs still need attention."
-        : remaining > 0
-          ? "Batch minted. More cards are waiting..."
-          : "Card NFTs minted. Updating your locker...");
-      const base = mintedCount + " card NFT" + (mintedCount === 1 ? "" : "s") + " minted";
-      setPrivyStatus(data.warning
-        ? base + " · " + data.warning
-        : remaining > 0
-          ? base + " · " + formatWholeNumber(remaining) + " still pending."
-          : base + ".", !!data.warning);
-      await fetchSession();
-      renderAccountPage();
-    } catch (err) {
-      hidePackMintProgress();
-      setPrivyStatus("Card NFT mint failed · " + (err && err.message ? err.message : "error"), true);
-    } finally {
-      hidePackMintProgress(900);
-      billingBusy = false;
-      renderAccountHallPassCards();
-    }
+    await mintHallPassCardFromAccount(pending[0].id);
   }
 
   function handleAccountAiAction() {
@@ -3250,7 +3314,7 @@ export function runViewerClient(bootstrap) {
     const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
     const products = Array.isArray(payload && payload.products) ? payload.products : [];
     if (products.length === 0) {
-      setBillingStatus("No card packs are available.", true);
+      setBillingStatus("No Hall Passes are available.", true);
       return;
     }
     if (selectedBillingProductId && !products.some((product) => product.id === selectedBillingProductId)) {
@@ -3263,14 +3327,11 @@ export function runViewerClient(bootstrap) {
       const body = document.createElement("div");
       const title = document.createElement("div");
       title.className = "billing-product-title";
-      title.textContent = product.name || packCountLabel(productPackCount(product));
+      title.textContent = product.name || hallPassCostLabel(productHallPassCount(product));
       const meta = document.createElement("div");
       meta.className = "billing-product-meta";
       const solanaProduct = matchingSolanaProduct(solanaProducts, product);
-      const cryptoPrice = solana && solana.configured && solanaProduct
-        ? " or " + formatTokenAmount(solanaProduct.tokenAmount, solanaProduct.tokenSymbol || solana.symbol)
-        : "";
-      meta.textContent = formatMoney(product.unitAmount, product.currency) + cryptoPrice + " · " + formatWholeNumber(productCardCount(product)) + " cards inside";
+      meta.textContent = formatMoney(product.unitAmount, product.currency) + " · " + hallPassCostLabel(productHallPassCount(product));
       body.appendChild(title);
       body.appendChild(meta);
       const buy = document.createElement("button");
@@ -3287,8 +3348,8 @@ export function runViewerClient(bootstrap) {
       }
     });
     setBillingStatus(
-      payload.configured || (solana && solana.configured) ? "" : "Checkout is not configured on this server.",
-      !payload.configured && !(solana && solana.configured),
+      payload.configured ? "" : "Stripe checkout is not configured on this server.",
+      !payload.configured,
     );
   }
 
@@ -3299,24 +3360,13 @@ export function runViewerClient(bootstrap) {
 
   function matchingSolanaProduct(solanaProducts, product) {
     if (!Array.isArray(solanaProducts) || !product) return null;
-    return solanaProducts.find((entry) => entry && entry.id === product.id)
-      || solanaProducts.find((entry) => entry && Number(entry.packCount || 0) === productPackCount(product))
-      || solanaProducts.find((entry) => entry && Number(entry.cardCount || 0) === productCardCount(product))
-      || solanaProducts.find((entry) => entry && Number(entry.hallPasses || 0) === Number(product.hallPasses || 0))
-      || null;
+    return solanaProducts.find((entry) => entry && entry.id === product.id) || null;
   }
 
-  function productPackCount(product) {
-    const explicit = Number(product && product.packCount);
+  function productHallPassCount(product) {
+    const explicit = Number(product && product.hallPasses);
     if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
-    const cards = productCardCount(product);
-    return Math.max(1, Math.ceil(cards / HALL_PASS_CARDS_PER_PACK));
-  }
-
-  function productCardCount(product) {
-    const explicit = Number(product && (product.cardCount || product.hallPasses));
-    if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
-    return HALL_PASS_CARDS_PER_PACK;
+    return 1;
   }
 
   function packCountLabel(count) {
@@ -3329,20 +3379,16 @@ export function runViewerClient(bootstrap) {
     panel.className = "billing-payment-choice";
     const title = document.createElement("div");
     title.className = "billing-payment-title";
-    title.textContent = "Choose payment for " + packCountLabel(productPackCount(product));
+    title.textContent = "Buy " + hallPassCostLabel(productHallPassCount(product));
     const meta = document.createElement("div");
     meta.className = "billing-product-meta";
-    const prices = [formatMoney(product.unitAmount, product.currency)];
-    if (solana && solana.configured && solanaProduct) {
-      prices.push(formatTokenAmount(solanaProduct.tokenAmount, solanaProduct.tokenSymbol || solana.symbol));
-    }
-    meta.textContent = prices.join(" or ");
+    meta.textContent = formatMoney(product.unitAmount, product.currency);
     const actions = document.createElement("div");
     actions.className = "billing-payment-actions";
     const stripe = document.createElement("button");
     stripe.type = "button";
     stripe.className = "billing-buy";
-    stripe.textContent = "Stripe";
+    stripe.textContent = "Checkout";
     stripe.disabled = !payload.configured || billingBusy;
     stripe.title = payload.configured ? "Pay by card with Stripe." : "Stripe checkout is not configured.";
     stripe.addEventListener("click", () => startCheckout(product.id));
@@ -3373,7 +3419,7 @@ export function runViewerClient(bootstrap) {
   }
 
   async function loadBillingProducts() {
-    setBillingStatus("Loading card packs...", false);
+    setBillingStatus("Loading Hall Passes...", false);
     try {
       const r = await apiFetch(apiBase + "/billing/products", { timeoutMs: 8000 });
       const data = await r.json().catch(() => ({}));
@@ -3691,7 +3737,10 @@ export function runViewerClient(bootstrap) {
     if (opts && typeof opts.status === "function") {
       opts.status("Choose " + (needed === 1 ? "a card" : needed + " cards") + " to burn...", false);
     }
-    const selectedCards = await selectHallPassCardsForBurn(cards, needed);
+    const presetCards = opts && Array.isArray(opts.presetCards) ? opts.presetCards.filter(Boolean).slice(0, needed) : [];
+    const selectedCards = presetCards.length === needed
+      ? presetCards
+      : await selectHallPassCardsForBurn(cards, needed);
     if (!selectedCards) throw new Error("Card burn canceled.");
     if (opts && typeof opts.status === "function") {
       opts.status(
@@ -3726,6 +3775,39 @@ export function runViewerClient(bootstrap) {
     }));
     for (const burn of burns) await confirmHallPassCardBurn(burn);
     return burns;
+  }
+
+  async function convertHallPassCardsToHallPasses(count, opts) {
+    const needed = positiveWholeNumber(count, 1);
+    if (needed <= 0) return null;
+    const status = opts && typeof opts.status === "function" ? opts.status : setBillingStatus;
+    status("Burning " + needed + " card" + (needed === 1 ? "" : "s") + " for Hall Passes...", false);
+    const burns = await burnHallPassCardsForSpend(needed, opts);
+    let data = null;
+    let lastError = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (attempt > 0) await waitForSolanaConfirmation(1200 + attempt * 500);
+      const r = await apiFetch(apiBase + "/billing/card-burn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 15000,
+        body: JSON.stringify({ hallPassBurns: burns }),
+      });
+      data = await r.json().catch(() => ({}));
+      if (r.ok && data && data.ok) {
+        const amount = Math.max(0, Math.floor(Number(data.amount || needed)));
+        status("Added " + hallPassCostLabel(amount) + " from burned card" + (amount === 1 ? "" : "s") + ".", false);
+        await fetchSession();
+        await deriveAuth();
+        renderAccountPage();
+        if (billingProductsCache) renderBillingProducts(billingProductsCache);
+        return data;
+      }
+      lastError = new Error(data.error || "card burn " + r.status);
+      if (!/not found yet|confirmation|try again|rpc/i.test(lastError.message) || attempt === 3) throw lastError;
+      status("Waiting for card burn confirmation...", false);
+    }
+    throw lastError || new Error("Card burn could not be credited.");
   }
 
   async function confirmHallPassCardBurn(burn) {
@@ -3771,16 +3853,16 @@ export function runViewerClient(bootstrap) {
       }
       const aiCost = aiStatus.cost;
       const useHallPass = canSpendHallPasses(aiCost);
-      if (fromAccount) setPrivyStatus(useHallPass ? "Using Hall Pass for AI access..." : "Burning card for AI access...", false);
-      setBillingStatus(useHallPass ? "Using Hall Pass for AI access..." : "Burning card for AI access...", false);
-      const burns = useHallPass
-        ? []
-        : await burnHallPassCardsForSpend(aiCost, {
+      if (fromAccount) setPrivyStatus(useHallPass ? "Using Hall Pass for AI access..." : "Burning card for Hall Passes...", false);
+      setBillingStatus(useHallPass ? "Using Hall Pass for AI access..." : "Burning card for Hall Passes...", false);
+      if (!useHallPass) {
+        await convertHallPassCardsToHallPasses(aiCost, {
           status: (message, invalid) => {
             setBillingStatus(message, invalid);
             if (fromAccount) setPrivyStatus(message, invalid);
           },
         });
+      }
       let data = null;
       let lastError = null;
       for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -3789,7 +3871,7 @@ export function runViewerClient(bootstrap) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           timeoutMs: 12000,
-          body: JSON.stringify(burns.length > 0 ? { hallPassBurns: burns } : {}),
+          body: JSON.stringify({}),
         });
         data = await r.json().catch(() => ({}));
         if (r.ok && data && data.ok) {
@@ -6586,17 +6668,16 @@ export function runViewerClient(bootstrap) {
             }
             const diplomaEntitlement = hostedImageEntitlement("diploma") || {};
             const diplomaCost = diplomaEntitlement.cost || 3;
-            const hallPassBurns = usingHostedImageGeneration("diploma") && !canSpendHallPasses(diplomaCost)
-              ? await burnHallPassCardsForSpend(diplomaCost, {
+            if (usingHostedImageGeneration("diploma") && !canSpendHallPasses(diplomaCost)) {
+              await convertHallPassCardsToHallPasses(diplomaCost, {
                 status: (message) => { if (btn) btn.textContent = message; },
-              })
-              : [];
+              });
+            }
             const r = await apiFetch("/api/apps/ruby-high/chat/character/diploma", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 requestId: imageRequestId("diploma"),
-                ...(hallPassBurns.length > 0 ? { hallPassBurns } : {}),
               }),
             });
             if (!r.ok) throw new Error("diploma " + r.status);
@@ -7856,7 +7937,6 @@ export function runViewerClient(bootstrap) {
         !!(hostedImageEntitlement("portrait") && hostedImageEntitlement("portrait").configured) &&
         characterSlotTelemetry().photoDayCredits > 0;
       if (!(await confirmHostedCreditSpend("Custom character portrait", "portrait", usePhotoDayCredit))) return;
-      let hallPassBurns = [];
       inFlight.portrait = true;
       portraitBtn.textContent = "✨ Generating…";
       portraitStatus.textContent = "";
@@ -7865,14 +7945,14 @@ export function runViewerClient(bootstrap) {
       try {
         const portraitEntitlement = hostedImageEntitlement("portrait") || {};
         const portraitCost = portraitEntitlement.cost || 1;
-        hallPassBurns = !usePhotoDayCredit && usingHostedImageGeneration("portrait") && !canSpendHallPasses(portraitCost)
-          ? await burnHallPassCardsForSpend(portraitCost, {
+        if (!usePhotoDayCredit && usingHostedImageGeneration("portrait") && !canSpendHallPasses(portraitCost)) {
+          await convertHallPassCardsToHallPasses(portraitCost, {
             status: (message, invalid) => {
               portraitStatus.textContent = message;
               portraitStatus.classList.toggle("is-invalid", !!invalid);
             },
-          })
-          : [];
+          });
+        }
         const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -7882,7 +7962,6 @@ export function runViewerClient(bootstrap) {
             playbookId: rolled.playbookId,
             personality: rolled.personality,
             stats: rolled.stats,
-            ...(hallPassBurns.length > 0 ? { hallPassBurns } : {}),
           }),
         });
         if (!r.ok) {
@@ -9244,7 +9323,6 @@ export function runViewerClient(bootstrap) {
       return;
     }
     if (!(await confirmHostedCreditSpend("Custom teacher image generation", "portrait"))) return;
-    let hallPassBurns = [];
     const runId = ++pendingTeacherImageRunId;
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     pendingTeacherImageAbortController = controller;
@@ -9255,15 +9333,15 @@ export function runViewerClient(bootstrap) {
     try {
       const portraitEntitlement = hostedImageEntitlement("portrait") || {};
       const portraitCost = portraitEntitlement.cost || 1;
-      hallPassBurns = usingHostedImageGeneration("portrait") && !canSpendHallPasses(portraitCost)
-        ? await burnHallPassCardsForSpend(portraitCost, {
+      if (usingHostedImageGeneration("portrait") && !canSpendHallPasses(portraitCost)) {
+        await convertHallPassCardsToHallPasses(portraitCost, {
           status: (message, invalid) => {
             pendingTeacherImageStatus = message;
             pendingTeacherImageInvalid = !!invalid;
             renderPackTeacherEditor();
           },
-        })
-        : [];
+        });
+      }
       const r = await apiFetch("/api/apps/ruby-high/chat/teacher/portrait", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -9272,7 +9350,6 @@ export function runViewerClient(bootstrap) {
           requestId: imageRequestId("teacher-portrait"),
           name: pendingTeacherRoll.displayName,
           personality: pendingTeacherRoll.description,
-          ...(hallPassBurns.length > 0 ? { hallPassBurns } : {}),
         }),
       });
       const data = await r.json().catch(() => ({}));

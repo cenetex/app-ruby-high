@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StateStore } from "../services/state-store.js";
 import type { QuizState } from "../types.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 let tmpDir: string;
 let storePath: string;
@@ -54,7 +55,7 @@ function fakePack(id: string): ContentPack {
       bio: "test",
       accent: "#123456",
       systemPrompt: "teach this imported deck",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [],
     }],
     rooms: [{

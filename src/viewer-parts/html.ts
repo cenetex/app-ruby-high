@@ -194,6 +194,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
+          <button type="button" id="privy-phantom-login" hidden>Phantom</button>
           <button type="button" id="privy-login-widget">Sign in with Privy</button>
           <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
         </div>
@@ -267,8 +268,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay" id="billing-overlay">
   <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card billing-card">
-    <h2>Mint Cards</h2>
-    <p class="sub">Buy packs, send collectible cards to your wallet, and burn cards after your Hall Passes run out.</p>
+    <h2>Buy Hall Passes</h2>
+    <p class="sub">Hall Passes unlock hosted AI, creator slots, and image generation. Minted cards can be burned into Hall Passes.</p>
     <div class="wallet-panel" id="billing-wallet">0 Hall Passes · 0 Cards</div>
     <div class="billing-costs" id="billing-costs"></div>
     <div class="billing-products" id="billing-products"></div>

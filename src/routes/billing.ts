@@ -228,6 +228,29 @@ function solanaMemecoinDecimals(): number {
 export function billingProducts(): BillingProduct[] {
   const currency = billingCurrency();
   const product = (
+    hallPasses: number,
+    unitAmount: number,
+  ): BillingProduct => ({
+    id: `hall-pass-${hallPasses}`,
+    name: `${hallPasses} Hall Pass${hallPasses === 1 ? "" : "es"}`,
+    packCount: 0,
+    cardCount: 0,
+    hallPasses,
+    unitAmount,
+    currency,
+    description: `${hallPasses} Ruby High Hall Pass${hallPasses === 1 ? "" : "es"} for hosted AI and creator features.`,
+  });
+  return [
+    product(5, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_5_CENTS", 199)),
+    product(20, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_20_CENTS", 699)),
+    product(50, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_50_CENTS", 1499)),
+    product(100, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_100_CENTS", 2499)),
+  ];
+}
+
+function solanaPackProducts(): BillingProduct[] {
+  const currency = billingCurrency();
+  const product = (
     packCount: number,
     unitAmount: number,
   ): BillingProduct => {
@@ -301,7 +324,7 @@ function solanaBillingConfig(): SolanaBillingConfig {
   const mint = solanaMemecoinMint();
   const recipient = solanaTreasuryOwner();
   const symbol = solanaMemecoinSymbol();
-  const products = billingProducts().flatMap((product): SolanaBillingProduct[] => {
+  const products = solanaPackProducts().flatMap((product): SolanaBillingProduct[] => {
     const price = solanaTokenAmountForProduct(product, decimals);
     if (!price) return [];
     return [{
@@ -621,27 +644,31 @@ function billingProductById(productId: string | undefined | null): BillingProduc
   const direct = products.find((product) => product.id === id);
   if (direct) return direct;
   const normalized = id.toLowerCase();
-  const legacy: Record<string, { cards: number; centsEnv: string; fallbackCents: number }> = {
-    "hall-pass-5": { cards: 5, centsEnv: "RUBY_HIGH_HALL_PASS_5_CENTS", fallbackCents: 199 },
-    "hall_pass_5": { cards: 5, centsEnv: "RUBY_HIGH_HALL_PASS_5_CENTS", fallbackCents: 199 },
-    "hall-pass-20": { cards: 20, centsEnv: "RUBY_HIGH_HALL_PASS_20_CENTS", fallbackCents: 699 },
-    "hall_pass_20": { cards: 20, centsEnv: "RUBY_HIGH_HALL_PASS_20_CENTS", fallbackCents: 699 },
-    "hall-pass-50": { cards: 50, centsEnv: "RUBY_HIGH_HALL_PASS_50_CENTS", fallbackCents: 1499 },
-    "hall_pass_50": { cards: 50, centsEnv: "RUBY_HIGH_HALL_PASS_50_CENTS", fallbackCents: 1499 },
-    "hall-pass-100": { cards: 100, centsEnv: "RUBY_HIGH_HALL_PASS_100_CENTS", fallbackCents: 2499 },
-    "hall_pass_100": { cards: 100, centsEnv: "RUBY_HIGH_HALL_PASS_100_CENTS", fallbackCents: 2499 },
+  const legacy: Record<string, { hallPasses: number; centsEnv: string; fallbackCents: number }> = {
+    "hall_pass_5": { hallPasses: 5, centsEnv: "RUBY_HIGH_HALL_PASS_5_CENTS", fallbackCents: 199 },
+    "hall_pass_20": { hallPasses: 20, centsEnv: "RUBY_HIGH_HALL_PASS_20_CENTS", fallbackCents: 699 },
+    "hall_pass_50": { hallPasses: 50, centsEnv: "RUBY_HIGH_HALL_PASS_50_CENTS", fallbackCents: 1499 },
+    "hall_pass_100": { hallPasses: 100, centsEnv: "RUBY_HIGH_HALL_PASS_100_CENTS", fallbackCents: 2499 },
+    "card-pack-1": { hallPasses: 5, centsEnv: "RUBY_HIGH_HALL_PASS_5_CENTS", fallbackCents: 199 },
+    "card_pack_1": { hallPasses: 5, centsEnv: "RUBY_HIGH_HALL_PASS_5_CENTS", fallbackCents: 199 },
+    "card-pack-3": { hallPasses: 15, centsEnv: "RUBY_HIGH_HALL_PASS_20_CENTS", fallbackCents: 699 },
+    "card_pack_3": { hallPasses: 15, centsEnv: "RUBY_HIGH_HALL_PASS_20_CENTS", fallbackCents: 699 },
+    "card-pack-5": { hallPasses: 25, centsEnv: "RUBY_HIGH_HALL_PASS_50_CENTS", fallbackCents: 1499 },
+    "card_pack_5": { hallPasses: 25, centsEnv: "RUBY_HIGH_HALL_PASS_50_CENTS", fallbackCents: 1499 },
+    "card-pack-10": { hallPasses: 50, centsEnv: "RUBY_HIGH_HALL_PASS_100_CENTS", fallbackCents: 2499 },
+    "card_pack_10": { hallPasses: 50, centsEnv: "RUBY_HIGH_HALL_PASS_100_CENTS", fallbackCents: 2499 },
   };
   const legacyProduct = legacy[normalized];
   if (!legacyProduct) return null;
   return {
     id,
-    name: `${legacyProduct.cards} Card Legacy Pack`,
-    packCount: Math.ceil(legacyProduct.cards / HALL_PASS_CARDS_PER_PACK),
-    cardCount: legacyProduct.cards,
-    hallPasses: legacyProduct.cards,
+    name: `${legacyProduct.hallPasses} Hall Pass Legacy Pack`,
+    packCount: 0,
+    cardCount: 0,
+    hallPasses: legacyProduct.hallPasses,
     unitAmount: readPositiveIntEnv(legacyProduct.centsEnv, legacyProduct.fallbackCents),
     currency: billingCurrency(),
-    description: `${legacyProduct.cards} Ruby High cards.`,
+    description: `${legacyProduct.hallPasses} Ruby High Hall Passes.`,
   };
 }
 
@@ -650,24 +677,24 @@ function integerField(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function validateStripeCheckoutPack(session: StripeCheckoutSession, metadata: Record<string, string | undefined>): BillingProduct {
-  const product = billingProductById(metadata.card_pack_id ?? metadata.hall_pass_pack_id);
-  if (!product) throw new Error("Stripe checkout session references an unknown card pack.");
-  const metadataCardCount = integerField(metadata.card_count ?? metadata.hall_passes);
-  if (metadataCardCount !== product.cardCount) {
-    throw new Error("Stripe checkout session card metadata does not match its pack.");
-  }
-  const metadataPackCount = integerField(metadata.pack_count);
-  if (metadataPackCount != null && metadataPackCount !== product.packCount) {
-    throw new Error("Stripe checkout session pack metadata does not match its pack.");
+function validateStripeCheckoutHallPasses(session: StripeCheckoutSession, metadata: Record<string, string | undefined>): BillingProduct {
+  const product = billingProductById(
+    metadata.hall_pass_product_id
+      ?? metadata.hall_pass_pack_id
+      ?? metadata.card_pack_id,
+  );
+  if (!product) throw new Error("Stripe checkout session references an unknown Hall Pass product.");
+  const metadataHallPasses = integerField(metadata.hall_passes ?? metadata.card_count);
+  if (metadataHallPasses !== product.hallPasses) {
+    throw new Error("Stripe checkout session Hall Pass metadata does not match its product.");
   }
   const amountTotal = integerField(session.amount_total);
   if (amountTotal !== product.unitAmount) {
-    throw new Error("Stripe checkout session amount does not match its pack.");
+    throw new Error("Stripe checkout session amount does not match its Hall Pass product.");
   }
   const currency = typeof session.currency === "string" ? session.currency.trim().toLowerCase() : "";
   if (currency !== product.currency) {
-    throw new Error("Stripe checkout session currency does not match its pack.");
+    throw new Error("Stripe checkout session currency does not match its Hall Pass product.");
   }
   return product;
 }
@@ -730,24 +757,23 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
   const sessionId = metadata.ruby_high_session_id || session.client_reference_id || "";
   if (!session.id) throw new Error("Stripe checkout session is missing an id.");
   if (!sessionId) throw new Error("Stripe checkout session is missing a Ruby High session id.");
-  const product = validateStripeCheckoutPack(session, metadata);
-  const result = ruby.grantHallPassCards(sessionId, {
-    cardCount: product.cardCount,
+  const product = validateStripeCheckoutHallPasses(session, metadata);
+  const result = ruby.grantHallPasses(sessionId, {
+    amount: product.hallPasses,
     idempotencyKey: `stripe:checkout:${session.id}`,
     source: "stripe",
-    description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"}`,
+    description: `${product.hallPasses} Ruby High Hall Pass${product.hallPasses === 1 ? "" : "es"}`,
     metadata: {
       stripeCheckoutSessionId: session.id,
-      packCount: product.packCount,
-      cardCount: product.cardCount,
-      hallPassPackId: product.id,
+      hallPassProductId: product.id,
+      hallPasses: product.hallPasses,
       amountTotal: session.amount_total ?? null,
       currency: session.currency ?? null,
     },
   });
   return {
     sessionId,
-    amount: product.cardCount,
+    amount: product.hallPasses,
     productId: product.id,
     packCount: product.packCount,
     cardCount: product.cardCount,
@@ -1052,6 +1078,14 @@ async function verifyHallPassBurns(burns: HallPassCardBurnInput[]): Promise<void
   for (const burn of burns) {
     await verifyHallPassCardBurn(burn);
   }
+}
+
+function hallPassBurnConversionKey(burns: HallPassCardBurnInput[]): string {
+  const stable = burns
+    .map((burn) => `${burn.cardId}:${burn.mintAddress}:${burn.burnSignature}`)
+    .sort()
+    .join("|");
+  return `hall-pass-card-burn:${createHash("sha256").update(stable).digest("hex").slice(0, 32)}`;
 }
 
 export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps): Promise<boolean> {
@@ -1459,6 +1493,54 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     return true;
   }
 
+  if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/card-burn`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const burns = hallPassBurnsFromBody(body);
+    if (burns.length <= 0) {
+      ctx.error(ctx.res, "Burn at least one minted card for Hall Passes.", 400);
+      return true;
+    }
+    const idempotencyKey = typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+      ? body.idempotencyKey.trim().slice(0, 160)
+      : hallPassBurnConversionKey(burns);
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    try {
+      await verifyHallPassBurns(burns);
+      const result = deps.ruby.convertBurnedHallPassCardsToHallPasses(stateKey, {
+        burns,
+        idempotencyKey,
+        source: "hall-pass-card",
+        description: `${burns.length} Card${burns.length === 1 ? "" : "s"} burned for ${burns.length} Hall Pass${burns.length === 1 ? "" : "es"}`,
+      });
+      await deps.ruby.flushSession(stateKey);
+      const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
+      ctx.json(ctx.res, {
+        ok: true,
+        applied: result.applied,
+        sessionId: stateKey,
+        amount: burns.length,
+        hallPasses: result.state.wallet.hallPasses,
+        burnedCards: result.cards?.map((card) => ({
+          cardId: card.id,
+          characterId: card.characterId,
+          characterName: card.characterName,
+          burnSignature: card.burnSignature,
+        })) ?? [],
+        entitlements,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      ctx.error(ctx.res, message, /not found yet|confirmation|rpc/i.test(message) ? 502 : 400);
+    }
+    return true;
+  }
+
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/checkout`) {
     const stripeKey = envTrim("RUBY_HIGH_STRIPE_SECRET_KEY");
     if (!stripeKey) {
@@ -1475,7 +1557,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const productId = typeof body.productId === "string" ? body.productId : "";
     const product = billingProducts().find((p) => p.id === productId);
     if (!product) {
-      ctx.error(ctx.res, "Unknown card pack.", 400);
+      ctx.error(ctx.res, "Unknown Hall Pass product.", 400);
       return true;
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
@@ -1498,16 +1580,10 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     params.set("line_items[0][price_data][product_data][name]", product.name);
     params.set("line_items[0][price_data][product_data][description]", product.description);
     params.set("metadata[ruby_high_session_id]", stateKey);
-    params.set("metadata[card_pack_id]", product.id);
-    params.set("metadata[pack_count]", String(product.packCount));
-    params.set("metadata[card_count]", String(product.cardCount));
-    params.set("metadata[hall_pass_pack_id]", product.id);
+    params.set("metadata[hall_pass_product_id]", product.id);
     params.set("metadata[hall_passes]", String(product.hallPasses));
     params.set("payment_intent_data[metadata][ruby_high_session_id]", stateKey);
-    params.set("payment_intent_data[metadata][card_pack_id]", product.id);
-    params.set("payment_intent_data[metadata][pack_count]", String(product.packCount));
-    params.set("payment_intent_data[metadata][card_count]", String(product.cardCount));
-    params.set("payment_intent_data[metadata][hall_pass_pack_id]", product.id);
+    params.set("payment_intent_data[metadata][hall_pass_product_id]", product.id);
     params.set("payment_intent_data[metadata][hall_passes]", String(product.hallPasses));
 
     const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {

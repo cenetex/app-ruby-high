@@ -17,7 +17,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in by email, creates or reuses an embedded wallet, and stores only the verified Privy user/wallet identity server-side. Browser-owned OpenRouter keys still live in localStorage; the server never holds them. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys still live in localStorage; the server never holds them. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
 
 The standalone viewer is installable as a PWA from `/api/apps/ruby-high/viewer`. The service worker is scoped to `/api/apps/ruby-high/`, caches the shell and core assets, and keeps auth, chat, pack management, and session state requests network-only. Full offline gameplay still requires the Ruby High server because the authoritative school state lives there.
 
@@ -99,7 +99,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` in local mode | Local OpenAI-compatible base URL. Values ending in `/v1` or `/chat/completions` are both accepted. |
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
 | `RUBY_HIGH_LLM_API_KEY` | `local` in local mode | Optional bearer token for local servers configured with an API key. |
-| `RUBY_HIGH_STUDENT_MODEL` | `anthropic/claude-haiku-4.5` | Model used for NPC opinion responses. |
+| `RUBY_HIGH_STUDENT_MODEL` | `google/gemini-3.5-flash` | Model used for NPC opinion responses. |
 | `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for hosted AI Access and hosted portrait/diploma generation. Server-hosted text AI is available only while the signed-in session has active AI Access. Browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
@@ -113,7 +113,9 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for Metaplex Core pack minting. |
 | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs. Set via secrets only. |
+| `RUBY_HIGH_PACK_REVEAL_SECRET` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Server-only HMAC secret for deterministic pack-to-card mapping. Set a stable production secret so the mapping remains fair and non-public. |
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |
+| `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` | — | Metaplex Token Metadata collection mint for Ruby High card NFTs. Create once with `npm run nft:create-card-collection`, then set this value so cards verify into `Ruby High`. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_MINT` | `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump` | SPL-token mint accepted for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY` | Treasury wallet owner that must receive the SPL-token transfer. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL` | `RUBY` | Display symbol for the Solana token. |
@@ -133,7 +135,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_COURSE_SLOT_HALL_PASS_COST` | `3` | Hall Pass cost to reserve/publish one creator course slot. The legacy `RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST` is still honored as a fallback. |
 | `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | — | Required Authorization header value for `/api/apps/ruby-high/billing/revenuecat/webhook`. The route accepts either this exact value or `Bearer <value>`. |
 | `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE` | `HLP` | RevenueCat Virtual Currency code to credit as Hall Passes when using RevenueCat Virtual Currency events. |
-| `RUBY_HIGH_CREATOR_DEFAULT_MODEL` | `anthropic/claude-haiku-4.5` | Default OpenRouter model for local teacher drafts created in Edit Pack. |
+| `RUBY_HIGH_CREATOR_DEFAULT_MODEL` | `google/gemini-3.5-flash` | Default OpenRouter model for local teacher drafts created in Edit Pack. |
 | `RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY` | `5` | Per-teacher daily cap for draft question/course generation. |
 | `RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT` | `18` | Default number of questions requested by AI course generation, clamped to 4–24. |
 | `RUBY_HIGH_ALLOW_HTTP_MATERIAL_URLS` | — | Set to `true` only in trusted local/dev environments. Remote course-material imports require HTTPS by default and reject localhost/private/reserved hosts. |
@@ -150,24 +152,28 @@ Ruby High now has two currencies:
 - **Merit Stars** are earned by play and mirror the visible session-score payout.
 - **Hall Passes** are paid/entitlement currency for hosted AI windows, creator course slots, extra student slots, and hosted image generation.
 
-Web purchases use Stripe Checkout:
+Web purchases use Stripe Checkout for Hall Passes only:
 
-- `GET /api/apps/ruby-high/billing/products` returns Hall Pass packs, AI Access cost/duration, and hosted image costs.
+- `GET /api/apps/ruby-high/billing/products` returns Hall Pass top-ups, AI Access cost/duration, hosted image costs, and the separate Solana pack-NFT quote surface.
 - `POST /api/apps/ruby-high/billing/ai-pass` spends Hall Passes to activate server-hosted text AI for the signed-in Ruby High cookie session. A second call while active returns the existing expiry and does not spend again.
 - Publishing a draft course reserves a creator course slot for 3 Hall Passes. BYOK/local course generation does not spend Hall Passes.
 - Generate More Questions is free with browser OpenRouter or local LLM access; when it uses the server-hosted OpenRouter key, it spends 1 Hall Pass per run.
 - Unlocking an extra student slot costs 1 Hall Pass and grants a Photo Day credit; hosted character portraits consume that credit before spending a Hall Pass.
-- `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for the signed-in Ruby High cookie session.
-- `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata.
+- `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for Hall Passes for the signed-in Ruby High cookie session.
+- `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata. Stripe does not sell card packs or NFTs.
+- `POST /api/apps/ruby-high/billing/card-burn` verifies owner-signed card burns and credits 1 Hall Pass per burned card. Hosted features then spend Hall Passes normally.
 
 Stripe webhook events to send: `checkout.session.completed` and, if using asynchronous payment methods, `checkout.session.async_payment_succeeded`.
 
-Solana purchases use the configured SPL token and mint a Metaplex Core pack NFT:
+Solana purchases are separate from Stripe and use the configured SPL token to mint a Metaplex Core pack NFT:
 
 - The default token is `$RUBY` mint `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump`.
 - The default treasury wallet is `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY`.
 - Every built-in pack defaults to `100000` `$RUBY`.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
+- Create the card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` to the printed address so card NFTs verify into `Ruby High`.
+- Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Card identities are HMAC-selected from the server-only `RUBY_HIGH_PACK_REVEAL_SECRET` mapping.
+- Each face-down card is minted and revealed one at a time. The connected user wallet is the transaction fee payer, so failed or unfunded mints leave the card face-down and retryable instead of creating a partial server-funded batch.
 - `POST /api/apps/ruby-high/billing/solana/quote` accepts the connected owner wallet and returns the treasury wallet, mint, per-session payment reference, token amount, prepared payment-plus-pack-NFT transaction, and Solana Pay URL for a selected pack.
 - `POST /api/apps/ruby-high/billing/solana/confirm` accepts the signed transaction signature, owner wallet, prepared pack asset address, and metadata URI, then verifies that the transaction contains the payment reference and pack NFT before recording it idempotently.
 

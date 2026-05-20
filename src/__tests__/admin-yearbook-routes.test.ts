@@ -343,6 +343,56 @@ describe("admin metrics route", () => {
     });
   });
 
+  it("accepts Privy wallet auth diagnostics as durable error metrics", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    const response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      visitorHeader: "rhv_privy_diag_test_visitor",
+      body: {
+        type: "privy_auth_error",
+        diagnosticType: "phantom.siws.authenticate.error",
+        level: "error",
+        stage: "authenticate",
+        errorMessage: "Could not log in with wallet",
+        dataMessage: "Solana wallet auth is disabled",
+        privyErrorCode: "ERROR_WALLET_CONNECTION",
+        walletClientType: "phantom",
+        connectorType: "injected",
+        provider: "privy",
+        phantomAvailable: true,
+        hasWindowPhantom: true,
+        hasSignMessage: true,
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const events = await store.loadMetricEvents();
+    const diagnostic = events.find((event) => event.name === "error");
+    expect(diagnostic).toMatchObject({
+      name: "error",
+      source: "viewer",
+      feature: "privy_wallet_auth",
+      step: "phantom.siws.authenticate.error",
+      status: "error",
+      metadata: expect.objectContaining({
+        diagnosticType: "phantom.siws.authenticate.error",
+        errorMessage: "Could not log in with wallet",
+        dataMessage: "Solana wallet auth is disabled",
+        privyErrorCode: "ERROR_WALLET_CONNECTION",
+        walletClientType: "phantom",
+        connectorType: "injected",
+        provider: "privy",
+        phantomAvailable: true,
+        hasWindowPhantom: true,
+        hasSignMessage: true,
+      }),
+    });
+  });
+
   it("computes event-backed visitor and character D1 retention", async () => {
     vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
     const base = Date.UTC(2026, 4, 1, 12);

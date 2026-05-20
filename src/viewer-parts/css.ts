@@ -3218,7 +3218,8 @@ export const VIEWER_CSS = `
       0 14px 34px rgba(0,0,0,0.36),
       0 0 22px color-mix(in srgb, var(--hall-pass-card-color, var(--accent)) 22%, transparent);
   }
-  .account-hall-pass-card.rarity-super-rare {
+  .account-hall-pass-card.rarity-super-rare,
+  .account-hall-pass-card.rarity-ultra-rare {
     background:
       radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--hall-pass-card-color, #f0b441) 42%, transparent), transparent 36%),
       radial-gradient(circle at 18% 22%, rgba(255,255,255,0.26), transparent 2px),
@@ -3284,7 +3285,8 @@ export const VIEWER_CSS = `
     text-transform: uppercase;
     text-shadow: 1px 1px 0 rgba(255,255,255,0.72);
   }
-  .rarity-super-rare .account-hall-pass-card-name {
+  .rarity-super-rare .account-hall-pass-card-name,
+  .rarity-ultra-rare .account-hall-pass-card-name {
     color: #fff4cc;
     text-shadow: 2px 2px 0 rgba(0,0,0,0.55);
   }
@@ -3479,6 +3481,9 @@ export const VIEWER_CSS = `
     opacity: 0.66;
     filter: grayscale(0.35);
   }
+  .account-card-tile.is-face-down {
+    border-color: rgba(241,201,92,0.54);
+  }
   .account-pack-tile-art,
   .account-card-tile-art {
     display: block;
@@ -3544,7 +3549,19 @@ export const VIEWER_CSS = `
     font-size: 12px;
     font-weight: 950;
   }
-  .account-pack-tile-open:disabled {
+  .account-card-tile-reveal {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid rgba(241,201,92,0.36);
+    border-radius: 7px;
+    background: #f1c95c;
+    color: #120b08;
+    font-size: 12px;
+    font-weight: 950;
+  }
+  .account-pack-tile-open:disabled,
+  .account-card-tile-reveal:disabled {
     opacity: 0.58;
     cursor: not-allowed;
   }
@@ -3629,7 +3646,8 @@ export const VIEWER_CSS = `
     .account-card-tile-meta > * {
       width: 100%;
     }
-    .account-pack-tile-open {
+    .account-pack-tile-open,
+    .account-card-tile-reveal {
       width: 100%;
     }
   }

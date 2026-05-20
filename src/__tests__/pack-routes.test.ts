@@ -13,6 +13,7 @@ import {
   resetActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 // Pack-routes integration tests. Auth is exercised; file-based pack imports
 // are intentionally absent from the product surface.
@@ -228,7 +229,7 @@ function syntheticPack(id: string): ContentPack {
       bio: "—",
       accent: "#000",
       systemPrompt: "—",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [],
     }],
     rooms: [{

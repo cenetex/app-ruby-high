@@ -15,6 +15,7 @@ import {
   setCorePackNftVerifierForTest,
   setCorePackPurchaseTransactionBuilderForTest,
 } from "../services/core-pack-nfts.js";
+import { setHallPassNftBurnVerifierForTest } from "../services/hall-pass-nfts.js";
 import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
@@ -50,6 +51,7 @@ const ORIGINAL_ENV = {
 let restoreCorePackMinter: (() => void) | null = null;
 let restoreCorePackPurchaseBuilder: (() => void) | null = null;
 let restoreCorePackVerifier: (() => void) | null = null;
+let restoreHallPassBurnVerifier: (() => void) | null = null;
 const TEST_SOLANA_OWNER = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
 const TEST_PACK_ASSET = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
 const TEST_SOURCE_TOKEN_ACCOUNT = "FNhC7aog7542La3isBvGF5fd1myzahUwAyUWfoNNHhYV";
@@ -190,6 +192,12 @@ beforeEach(async () => {
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
   restoreCorePackMinter = setCorePackNftMinterForTest(async (input) => deterministicCorePackMintForTest(input));
+  restoreHallPassBurnVerifier = setHallPassNftBurnVerifierForTest(async (burn) => ({
+    signature: burn.burnSignature,
+    ownerWalletAddress: burn.ownerWalletAddress,
+    mintAddress: burn.mintAddress,
+    slot: 123,
+  }));
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-billing-routes-"));
   await getActivePack();
   const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
@@ -203,9 +211,11 @@ afterEach(async () => {
   if (restoreCorePackMinter) restoreCorePackMinter();
   if (restoreCorePackPurchaseBuilder) restoreCorePackPurchaseBuilder();
   if (restoreCorePackVerifier) restoreCorePackVerifier();
+  if (restoreHallPassBurnVerifier) restoreHallPassBurnVerifier();
   restoreCorePackMinter = null;
   restoreCorePackPurchaseBuilder = null;
   restoreCorePackVerifier = null;
+  restoreHallPassBurnVerifier = null;
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
@@ -222,11 +232,11 @@ describe("billing products", () => {
     expect(handled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.configured).toBe(false);
-    expect(lastResponse?.body.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses])).toEqual([
-      [1, 5, 5],
-      [3, 15, 15],
-      [5, 25, 25],
-      [10, 50, 50],
+    expect(lastResponse?.body.products.map((p: any) => [p.id, p.packCount, p.cardCount, p.hallPasses])).toEqual([
+      ["hall-pass-5", 0, 0, 5],
+      ["hall-pass-20", 0, 0, 20],
+      ["hall-pass-50", 0, 0, 50],
+      ["hall-pass-100", 0, 0, 100],
     ]);
     expect(lastResponse?.body.solana).toMatchObject({
       configured: true,
@@ -393,7 +403,7 @@ describe("Stripe Checkout", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/checkout",
       cookie: "rh_session=alice",
-      body: { productId: "card-pack-5" },
+      body: { productId: "hall-pass-50" },
     }), deps());
 
     expect(handled).toBe(true);
@@ -401,17 +411,17 @@ describe("Stripe Checkout", () => {
     const params = new URLSearchParams(capturedBody);
     expect(params.get("client_reference_id")).toBe(stateKey);
     expect(params.get("metadata[ruby_high_session_id]")).toBe(stateKey);
-    expect(params.get("metadata[card_pack_id]")).toBe("card-pack-5");
-    expect(params.get("metadata[pack_count]")).toBe("5");
-    expect(params.get("metadata[card_count]")).toBe("25");
-    expect(params.get("metadata[hall_pass_pack_id]")).toBe("card-pack-5");
-    expect(params.get("metadata[hall_passes]")).toBe("25");
+    expect(params.get("metadata[hall_pass_product_id]")).toBe("hall-pass-50");
+    expect(params.get("metadata[card_pack_id]")).toBeNull();
+    expect(params.get("metadata[pack_count]")).toBeNull();
+    expect(params.get("metadata[card_count]")).toBeNull();
+    expect(params.get("metadata[hall_passes]")).toBe("50");
     expect(params.get("payment_intent_data[metadata][ruby_high_session_id]")).toBe(stateKey);
-    expect(params.get("payment_intent_data[metadata][card_pack_id]")).toBe("card-pack-5");
-    expect(params.get("payment_intent_data[metadata][pack_count]")).toBe("5");
-    expect(params.get("payment_intent_data[metadata][card_count]")).toBe("25");
-    expect(params.get("payment_intent_data[metadata][hall_pass_pack_id]")).toBe("card-pack-5");
-    expect(params.get("payment_intent_data[metadata][hall_passes]")).toBe("25");
+    expect(params.get("payment_intent_data[metadata][hall_pass_product_id]")).toBe("hall-pass-50");
+    expect(params.get("payment_intent_data[metadata][card_pack_id]")).toBeNull();
+    expect(params.get("payment_intent_data[metadata][pack_count]")).toBeNull();
+    expect(params.get("payment_intent_data[metadata][card_count]")).toBeNull();
+    expect(params.get("payment_intent_data[metadata][hall_passes]")).toBe("50");
     expect(params.get("line_items[0][price_data][unit_amount]")).toBe("1499");
   });
 });
@@ -432,11 +442,8 @@ describe("Stripe webhook", () => {
           currency: "usd",
           metadata: {
             ruby_high_session_id: stateKey,
-            card_pack_id: "card-pack-5",
-            pack_count: "5",
-            card_count: "25",
-            hall_pass_pack_id: "card-pack-5",
-            hall_passes: "25",
+            hall_pass_product_id: "hall-pass-50",
+            hall_passes: "50",
           },
         },
       },
@@ -450,9 +457,9 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 5 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(25);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 55, amount: 50 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(55);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1") ?? []).toHaveLength(0);
 
     await handleBillingRoutes(makeCtx({
       method: "POST",
@@ -461,9 +468,9 @@ describe("Stripe webhook", () => {
       stripeSignature: signature,
     }), deps());
 
-    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 5 } });
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1")).toHaveLength(25);
+    expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 55, amount: 50 } });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(55);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1") ?? []).toHaveLength(0);
   });
 
   it("rejects signed Checkout webhooks when pack metadata does not match the paid amount", async () => {
@@ -527,6 +534,54 @@ describe("Stripe webhook", () => {
 
     expect(lastResponse?.status).toBe(400);
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
+  });
+});
+
+describe("card burn Hall Pass conversion", () => {
+  it("credits one Hall Pass per owner-signed card burn", async () => {
+    const stateKey = signInUser("card-burn-credit");
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 2,
+      idempotencyKey: "solana:pack:test-card-burn-credit",
+      source: "solana",
+    });
+    const card = grant.cards![0]!;
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    ruby.recordHallPassCardMint(stateKey, {
+      cardId: card.id,
+      ownerWalletAddress: TEST_SOLANA_OWNER,
+      mintAddress,
+      mintSignature: "5mMintSignature111111111111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/card-burn",
+      cookie: "rh_session=card-burn-credit",
+      body: {
+        hallPassBurns: [{
+          cardId: card.id,
+          ownerWalletAddress: TEST_SOLANA_OWNER,
+          mintAddress,
+          burnSignature: "44444444444444444444444444444444444444444444444444444444444444444444",
+        }],
+      },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        applied: true,
+        amount: 1,
+        hallPasses: 6,
+      },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.find((candidate) => candidate.id === card.id)).toMatchObject({
+      status: "redeemed",
+      redeemTransactionId: expect.stringMatching(/^hall-pass-card-burn:/),
+    });
   });
 });
 

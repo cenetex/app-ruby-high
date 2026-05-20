@@ -8,6 +8,7 @@ import {
 import { DynamoStateStore, type DynamoDBDocumentClientLike } from "../services/dynamo-state-store.js";
 import type { QuizState } from "../types.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 /**
  * In-memory fake of the DynamoDBDocumentClient. Stores items by primary key,
@@ -175,7 +176,7 @@ function fakePack(id: string): ContentPack {
       bio: "test",
       accent: "#123456",
       systemPrompt: "teach this imported deck",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [],
     }],
     rooms: [{

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { handlePackLibraryRoutes, type PackLibraryRouteContext } from "../pack-library-routes.js";
 import { ORIGINAL_PACK_ID, getActivePack, getPackByIdForSession, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { AuthService } from "../services/auth-service.js";
 import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
@@ -80,7 +81,7 @@ function fakePack(id: string): ContentPack {
       bio: "Test teacher.",
       accent: "#d22a2a",
       systemPrompt: "Teach the test pack.",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [],
     }],
     rooms: [{

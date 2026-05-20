@@ -9,4 +9,5 @@ coverage
 .vscode
 .idea
 test-outputs
+tmp
 .ruby-high

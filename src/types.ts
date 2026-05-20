@@ -496,7 +496,7 @@ export type RubyHighWalletTransactionKind =
 
 export type RubyHighHallPassCardStatus = "active" | "redeemed" | "void";
 export type RubyHighHallPassCardRole = "student" | "teacher" | "item" | "location" | "special";
-export type RubyHighHallPassCardRarity = "common" | "rare" | "super-rare";
+export type RubyHighHallPassCardRarity = "common" | "rare" | "super-rare" | "ultra-rare";
 
 export interface RubyHighHallPassCard {
   id: string;
@@ -515,6 +515,10 @@ export interface RubyHighHallPassCard {
   source?: RubyHighWalletTransaction["source"];
   grantTransactionId?: string;
   redeemTransactionId?: string;
+  packId?: string;
+  slotIndex?: number;
+  revealCommitment?: string;
+  revealedAt?: number;
   ownerWalletAddress?: string;
   mintAddress?: string;
   mintSignature?: string;

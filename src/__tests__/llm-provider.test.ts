@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchLlmChatCompletions,
   llmChatCompletionsUrl,
+  llmProviderInfo,
   llmHeaders,
   llmProviderKind,
   resolveLlmApiKey,
   resolveLlmModel,
+  resolveStudentModel,
 } from "../services/llm-provider.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -17,6 +20,9 @@ describe("llm-provider", () => {
   it("defaults to OpenRouter when no local endpoint is configured", () => {
     expect(llmProviderKind()).toBe("openrouter");
     expect(llmChatCompletionsUrl()).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(llmProviderInfo().defaultModel).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(resolveLlmModel("")).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(resolveStudentModel()).toBe(DEFAULT_OPENROUTER_MODEL);
     expect(resolveLlmModel("custom/model")).toBe("custom/model");
     expect(resolveLlmApiKey("sk-user")).toBe("sk-user");
   });
@@ -44,7 +50,7 @@ describe("llm-provider", () => {
     await fetchLlmChatCompletions({
       apiKey: null,
       body: {
-        model: "anthropic/claude-haiku-4.5",
+        model: DEFAULT_OPENROUTER_MODEL,
         messages: [{ role: "user", content: "hi" }],
       },
     });

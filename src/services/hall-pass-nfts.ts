@@ -10,17 +10,19 @@ import {
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
   getTransactionEncoder,
+  partiallySignTransactionMessageWithSigners,
   pipe,
   setTransactionMessageFeePayer,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import type { Instruction } from "@solana/kit";
+import type { Instruction, TransactionSigner } from "@solana/kit";
 import {
   TokenStandard,
   createNft,
   fetchDigitalAsset,
+  fetchDigitalAssetWithAssociatedToken,
   findMasterEditionPda,
   findMetadataPda,
   getBurnV1InstructionAsync,
@@ -31,6 +33,13 @@ import {
   TOKEN_PROGRAM_ADDRESS,
 } from "@solana-program/token";
 import type { RubyHighHallPassCard } from "../types.js";
+import {
+  hallPassCardCatalogEntry,
+  hallPassCardImagePath,
+  hallPassCardMetadataDescription,
+  hallPassCardRarityLabel,
+  hallPassCardRoleLabel,
+} from "./hall-pass-card-catalog.js";
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -40,218 +49,15 @@ const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CARD_IMAGE_VERSION = "card-v2";
-const CARD_COLLECTION_NAME = "Ruby High: First Bell";
+const CARD_COLLECTION_NAME = "Ruby High";
 const CARD_COLLECTION_FAMILY = "Ruby High";
 const CARD_COLLECTION_SERIES = "First Bell";
 const CARD_COLLECTION_EDITION = "Student & Faculty Edition";
 const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1";
 const CARD_COLLECTION_METADATA_URI_PATH = `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`;
+const CARD_BACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1";
 const ESTIMATED_CARD_MINT_LAMPORTS = 10_000_000n;
 const MINT_AUTHORITY_RESERVE_LAMPORTS = 5_000_000n;
-
-type HallPassNftProfile = {
-  name: string;
-  role: string;
-  rarity: string;
-  description: string;
-  imagePath: string;
-  imageMime: string;
-};
-
-const HALL_PASS_NFT_CARD_PROFILES: Record<string, HallPassNftProfile> = {
-  lyra: {
-    name: "Lyra",
-    role: "Student",
-    rarity: "Common",
-    description: "Lyra slipped this one into the stack.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/lyra.png",
-    imageMime: "image/png",
-  },
-  sami: {
-    name: "Sami",
-    role: "Student",
-    rarity: "Common",
-    description: "Sami slipped this one into the stack.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/sami.png",
-    imageMime: "image/png",
-  },
-  ravi: {
-    name: "Ravi",
-    role: "Student",
-    rarity: "Common",
-    description: "Ravi slipped this one into the stack.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/ravi.png",
-    imageMime: "image/png",
-  },
-  indra: {
-    name: "Indra",
-    role: "Student",
-    rarity: "Rare",
-    description: "Indra noticed the pattern before anyone clapped.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/indra.png",
-    imageMime: "image/png",
-  },
-  mika: {
-    name: "Mika",
-    role: "Student",
-    rarity: "Rare",
-    description: "Mika says you are absolutely cleared for this.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/mika.png",
-    imageMime: "image/png",
-  },
-  noor: {
-    name: "Noor",
-    role: "Student",
-    rarity: "Rare",
-    description: "Noor called it a plot hole and walked through it.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/noor.png",
-    imageMime: "image/png",
-  },
-  ruby: {
-    name: "Ruby",
-    role: "Teacher",
-    rarity: "Common",
-    description: "Ruby stamped this one before the late bell could object.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/ruby.png",
-    imageMime: "image/png",
-  },
-  "sally-science": {
-    name: "Sally Science",
-    role: "Teacher",
-    rarity: "Common",
-    description: "Good for one escape from sloppy variables.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/sally-science.png",
-    imageMime: "image/png",
-  },
-  "professor-edward": {
-    name: "Professor Edward",
-    role: "Teacher",
-    rarity: "Common",
-    description: "Please return before the footnotes start breeding.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/professor-edward.png",
-    imageMime: "image/png",
-  },
-  "captain-null": {
-    name: "Captain Null",
-    role: "Teacher",
-    rarity: "Super Rare",
-    description: "Find page 10 and the hallway forgets your name.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/captain-null.png",
-    imageMime: "image/png",
-  },
-  eliza: {
-    name: "Eliza",
-    role: "Teacher",
-    rarity: "Super Rare",
-    description: "Make the system legible, then make it sing.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/eliza.png",
-    imageMime: "image/png",
-  },
-  rati: {
-    name: "Rati",
-    role: "Teacher",
-    rarity: "Super Rare",
-    description: "Hold the signal. Build the world.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/rati.png",
-    imageMime: "image/png",
-  },
-  "item-hall-pass": {
-    name: "Hall Pass",
-    role: "Item",
-    rarity: "Common",
-    description: "Sometimes the smartest move is stepping out and coming back better.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-hall-pass.png",
-    imageMime: "image/png",
-  },
-  "item-flashcards": {
-    name: "Flashcards",
-    role: "Item",
-    rarity: "Common",
-    description: "Shuffle. Repeat. Survive.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-flashcards.png",
-    imageMime: "image/png",
-  },
-  "item-library-card": {
-    name: "Library Card",
-    role: "Item",
-    rarity: "Common",
-    description: "If the answer exists, this helps you find it.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-library-card.png",
-    imageMime: "image/png",
-  },
-  "item-lab-flask": {
-    name: "Lab Flask",
-    role: "Item",
-    rarity: "Rare",
-    description: "Observe first. Guess later.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-lab-flask.png",
-    imageMime: "image/png",
-  },
-  "item-lunch-tray": {
-    name: "Lunch Tray",
-    role: "Item",
-    rarity: "Rare",
-    description: "Half the social game happens between bites.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-lunch-tray.png",
-    imageMime: "image/png",
-  },
-  "item-notebook": {
-    name: "Notebook",
-    role: "Item",
-    rarity: "Rare",
-    description: "Messy notes still count as evidence of life.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/item-notebook.png",
-    imageMime: "image/png",
-  },
-  "location-homeroom": {
-    name: "Homeroom",
-    role: "Location",
-    rarity: "Common",
-    description: "Where every day begins, and every question gets a room.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-homeroom.png",
-    imageMime: "image/png",
-  },
-  "location-science-lab": {
-    name: "Science Lab",
-    role: "Location",
-    rarity: "Common",
-    description: "Observe. Test. Explain. Repeat.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-science-lab.png",
-    imageMime: "image/png",
-  },
-  "location-library": {
-    name: "Library",
-    role: "Location",
-    rarity: "Common",
-    description: "If it matters, someone wrote it down.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-library.png",
-    imageMime: "image/png",
-  },
-  "location-cafeteria": {
-    name: "Cafeteria",
-    role: "Location",
-    rarity: "Rare",
-    description: "Half the school day happens between bites.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-cafeteria.png",
-    imageMime: "image/png",
-  },
-  "location-greenhouse": {
-    name: "Greenhouse",
-    role: "Location",
-    rarity: "Rare",
-    description: "Some lessons grow slowly.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-greenhouse.png",
-    imageMime: "image/png",
-  },
-  "location-courtyard": {
-    name: "Courtyard",
-    role: "Location",
-    rarity: "Rare",
-    description: "Every hallway leads somewhere. Every path leads to someone.",
-    imagePath: "/api/apps/ruby-high/assets/nft/cards/location-courtyard.png",
-    imageMime: "image/png",
-  },
-};
 
 export interface HallPassNftStatus {
   configured: boolean;
@@ -281,6 +87,26 @@ export interface HallPassNftMintResult {
   metadataUri: string;
 }
 
+export interface HallPassCardMintTransaction {
+  cardId: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  metadataUri: string;
+  transactionBase64: string;
+  transactionEncoding: "base64";
+  chain: "solana:mainnet";
+  rpcUrl: string;
+}
+
+export interface HallPassCardMintVerification {
+  signature: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  metadataUri: string;
+  slot?: number;
+  blockTime?: number;
+}
+
 export interface HallPassCollectionCreateResult {
   collectionAddress: string;
   signature: string;
@@ -308,6 +134,16 @@ type HallPassNftMinter = (
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
 ) => Promise<HallPassNftMintResult>;
+type HallPassNftMintTransactionBuilder = (
+  card: RubyHighHallPassCard,
+  ownerWalletAddress: string,
+) => Promise<HallPassCardMintTransaction>;
+type HallPassNftMintVerifier = (input: {
+  ownerWalletAddress: string;
+  mintAddress: string;
+  mintSignature: string;
+  metadataUri: string;
+}) => Promise<HallPassCardMintVerification>;
 type HallPassNftBurnTransactionBuilder = (
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
@@ -319,6 +155,8 @@ type HallPassNftBurnVerifier = (input: {
 }) => Promise<HallPassNftBurnVerification>;
 
 let minterOverride: HallPassNftMinter | null = null;
+let mintTransactionBuilderOverride: HallPassNftMintTransactionBuilder | null = null;
+let mintVerifierOverride: HallPassNftMintVerifier | null = null;
 let burnTransactionBuilderOverride: HallPassNftBurnTransactionBuilder | null = null;
 let burnVerifierOverride: HallPassNftBurnVerifier | null = null;
 let authorityBalanceOverride: (() => Promise<bigint>) | null = null;
@@ -328,6 +166,24 @@ export function setHallPassNftMinterForTest(minter: HallPassNftMinter | null): (
   minterOverride = minter;
   return () => {
     minterOverride = previous;
+  };
+}
+
+export function setHallPassNftMintTransactionBuilderForTest(
+  builder: HallPassNftMintTransactionBuilder | null,
+): () => void {
+  const previous = mintTransactionBuilderOverride;
+  mintTransactionBuilderOverride = builder;
+  return () => {
+    mintTransactionBuilderOverride = previous;
+  };
+}
+
+export function setHallPassNftMintVerifierForTest(verifier: HallPassNftMintVerifier | null): () => void {
+  const previous = mintVerifierOverride;
+  mintVerifierOverride = verifier;
+  return () => {
+    mintVerifierOverride = previous;
   };
 }
 
@@ -411,15 +267,15 @@ export function publicHallPassNftStatus(env: NodeJS.ProcessEnv = process.env): P
 
 export function hallPassNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string {
   const base = publicBaseUrlFromEnv(env);
-  const characterId = encodeURIComponent(card.characterId || "ruby");
-  const serial = encodeURIComponent(String(card.serial || 1));
-  return `${base}${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/${characterId}/${serial}.json`;
+  const cardId = encodeURIComponent(cleanCardId(card.id));
+  return `${base}${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/card/${cardId}.json`;
 }
 
 export function hallPassCollectionMetadataForRoute(args: {
   publicBaseUrl?: string;
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
+  const website = publicWebsiteUrl(publicBaseUrl);
   const image = `${publicBaseUrl}${CARD_COLLECTION_IMAGE_ASSET_PATH}`;
   const collection = {
     name: CARD_COLLECTION_NAME,
@@ -428,20 +284,53 @@ export function hallPassCollectionMetadataForRoute(args: {
   return {
     name: CARD_COLLECTION_NAME,
     symbol: nftSymbol(process.env),
-    description: "Student & Faculty Edition collectible card collection for Ruby High.",
+    description: "Official collectible card collection for Ruby High.",
     image,
-    external_url: `${publicBaseUrl}/`,
+    external_url: website,
     collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Type", value: "Card Collection" },
       { trait_type: "Series", value: CARD_COLLECTION_SERIES },
       { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
+      { trait_type: "Website", value: website },
     ],
     properties: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
+      website,
       collection,
+    },
+  };
+}
+
+export function hallPassCardBackMetadataForRoute(args: {
+  cardId?: string;
+  serial?: string;
+  publicBaseUrl?: string;
+}): Record<string, unknown> {
+  const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
+  const website = publicWebsiteUrl(publicBaseUrl);
+  const serial = normalizeSerial(args.serial || "1");
+  const image = `${publicBaseUrl}${CARD_BACK_IMAGE_ASSET_PATH}`;
+  return {
+    name: `Ruby High Mystery Card #${serial}`,
+    symbol: nftSymbol(process.env),
+    description: "A sealed Ruby High card. Mint confirmation reveals the card.",
+    image,
+    external_url: website,
+    attributes: [
+      { trait_type: "School", value: "Ruby High" },
+      { trait_type: "Collection", value: CARD_COLLECTION_NAME },
+      { trait_type: "State", value: "Face Down" },
+      { trait_type: "Serial", value: serial },
+      { trait_type: "Website", value: website },
+      ...(args.cardId ? [{ trait_type: "Card Id", value: args.cardId }] : []),
+    ],
+    properties: {
+      category: "image",
+      files: [{ uri: image, type: "image/png" }],
+      website,
     },
   };
 }
@@ -450,36 +339,164 @@ export function hallPassNftMetadataForRoute(args: {
   characterId: string;
   serial: string;
   publicBaseUrl?: string;
-}): Record<string, unknown> {
+}): Record<string, unknown> | null {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
-  const profile = hallPassNftProfile(args.characterId);
+  const website = publicWebsiteUrl(publicBaseUrl);
+  const profile = hallPassCardCatalogEntry(args.characterId);
+  if (!profile) return null;
   const serial = normalizeSerial(args.serial);
-  const image = `${publicBaseUrl}${versionedImagePath(profile.imagePath)}`;
+  const image = `${publicBaseUrl}${versionedImagePath(hallPassCardImagePath(profile))}`;
   const collection = {
     name: CARD_COLLECTION_NAME,
     family: CARD_COLLECTION_FAMILY,
   };
   return {
-    name: `${profile.name} Ruby High Card #${serial}`,
+    name: hallPassCardNftName(profile.characterName, serial),
     symbol: nftSymbol(process.env),
-    description: `${profile.description} Part of the ${CARD_COLLECTION_NAME} collection.`,
+    description: `${hallPassCardMetadataDescription(profile)} Part of the ${CARD_COLLECTION_SERIES} ${CARD_COLLECTION_EDITION} set.`,
     image,
-    external_url: `${publicBaseUrl}/`,
+    external_url: website,
     collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Collection", value: CARD_COLLECTION_NAME },
       { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
-      { trait_type: "Character", value: profile.name },
-      { trait_type: "Role", value: profile.role },
-      { trait_type: "Rarity", value: profile.rarity },
+      { trait_type: "Title", value: profile.title },
+      { trait_type: "Character", value: profile.characterName },
+      { trait_type: "Role", value: hallPassCardRoleLabel(profile.role) },
+      { trait_type: "Rarity", value: hallPassCardRarityLabel(profile.rarity) },
       { trait_type: "Serial", value: serial },
+      { trait_type: "Website", value: website },
     ],
     properties: {
       category: "image",
-      files: [{ uri: image, type: profile.imageMime }],
+      files: [{ uri: image, type: "image/png" }],
+      website,
       collection,
     },
+  };
+}
+
+export async function buildHallPassCardMintTransaction(
+  card: RubyHighHallPassCard,
+  ownerWalletAddress: string,
+): Promise<HallPassCardMintTransaction> {
+  if (mintTransactionBuilderOverride) return mintTransactionBuilderOverride(card, ownerWalletAddress);
+  const config = readMintConfig();
+  const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
+  const ownerSigner = createNoopSigner(owner);
+  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
+  const mint = await generateKeyPairSigner();
+  const metadataUri = hallPassNftMetadataUri(card);
+  const [createInstruction, mintInstruction] = await createNft({
+    mint,
+    authority,
+    payer: ownerSigner,
+    updateAuthority: authority,
+    name: hallPassCardOnChainName(card),
+    symbol: config.symbol,
+    uri: metadataUri,
+    sellerFeeBasisPoints: 0,
+    creators: null,
+    primarySaleHappened: true,
+    isMutable: false,
+    collection: null,
+    uses: null,
+    collectionDetails: null,
+    ruleSet: null,
+    decimals: null,
+    printSupply: null,
+    tokenOwner: owner,
+  });
+  const instructions: Instruction[] = [createInstruction, mintInstruction];
+  if (config.collectionAddress) {
+    instructions.push(await collectionVerificationInstruction({
+      authority,
+      payer: ownerSigner,
+      collectionAddress: config.collectionAddress,
+      mintAddress: mint.address,
+    }));
+  }
+  const { value: latestBlockhash } = await createSolanaRpc(config.rpcUrl).getLatestBlockhash().send();
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (tx) => setTransactionMessageFeePayerSigner(ownerSigner, tx),
+    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+    (tx) => appendTransactionMessageInstructions(instructions, tx),
+  );
+  const signed = await partiallySignTransactionMessageWithSigners(message);
+  return {
+    cardId: card.id,
+    ownerWalletAddress: owner,
+    mintAddress: mint.address,
+    metadataUri,
+    transactionBase64: getBase64EncodedWireTransaction(signed),
+    transactionEncoding: "base64",
+    chain: "solana:mainnet",
+    rpcUrl: config.rpcUrl,
+  };
+}
+
+export async function verifyHallPassCardMint(input: {
+  ownerWalletAddress: string;
+  mintAddress: string;
+  mintSignature: string;
+  metadataUri: string;
+}): Promise<HallPassCardMintVerification> {
+  if (mintVerifierOverride) return mintVerifierOverride(input);
+  const config = readMintConfig();
+  const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
+  const mintAddress = cleanSolanaAddress(input.mintAddress, "Card mint");
+  const signature = cleanSignature(input.mintSignature, "Solana card mint signature");
+  const metadataUri = input.metadataUri.trim();
+  if (!metadataUri) throw new Error("Card metadata URI is required.");
+  let transaction: Record<string, any> | null = null;
+  let asset: any = null;
+  let lastError: unknown = null;
+  const rpc = createSolanaRpc(config.rpcUrl);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (attempt > 0) await sleep(Math.min(3000, 650 + attempt * 400));
+    try {
+      transaction = await fetchParsedTransaction(config.rpcUrl, signature);
+      asset = await fetchDigitalAssetWithAssociatedToken(rpc, address(mintAddress), address(ownerWalletAddress));
+      if (transaction && asset) break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (!transaction) {
+    const detail = lastError instanceof Error ? lastError.message : "";
+    throw new Error(detail ? `Card mint transaction was not found yet. ${detail}` : "Card mint transaction was not found yet.");
+  }
+  if (transaction.meta?.err != null) throw new Error("Solana card mint transaction failed on-chain.");
+  const signatures = Array.isArray(transaction.transaction?.signatures) ? transaction.transaction.signatures : [];
+  if (!signatures.includes(signature)) throw new Error("Solana RPC returned a different card mint transaction.");
+  if (!asset) throw new Error("Card NFT was not found on-chain yet. Try again after confirmation.");
+  if (String(asset.metadata?.mint ?? "") !== mintAddress) throw new Error("Card NFT metadata mint does not match this reveal.");
+  const actualUri = String(asset.metadata?.uri ?? "").trim();
+  if (actualUri !== metadataUri) throw new Error("Card NFT metadata does not match this reveal.");
+  const expectedAuthority = addressFromPublicKeyBytes(config.authoritySecret);
+  if (String(asset.metadata?.updateAuthority ?? "") !== expectedAuthority) {
+    throw new Error("Card NFT was not minted by Ruby High.");
+  }
+  const tokenOwner = String(asset.token?.owner ?? "").trim();
+  if (tokenOwner !== ownerWalletAddress) throw new Error("Card NFT owner does not match the connected wallet.");
+  if (typeof asset.token?.amount === "bigint" && asset.token.amount !== 1n) {
+    throw new Error("Card NFT token balance is invalid.");
+  }
+  if (config.collectionAddress) {
+    const collection = optionValue(asset.metadata?.collection);
+    if (!collection || String(collection.key ?? "") !== config.collectionAddress || !collection.verified) {
+      throw new Error("Card NFT is not verified into the Ruby High collection.");
+    }
+  }
+  return {
+    signature,
+    ownerWalletAddress,
+    mintAddress,
+    metadataUri,
+    ...(typeof transaction.slot === "number" ? { slot: transaction.slot } : {}),
+    ...(typeof transaction.blockTime === "number" ? { blockTime: transaction.blockTime } : {}),
   };
 }
 
@@ -499,7 +516,7 @@ export async function mintHallPassCardNft(
     authority,
     payer: authority,
     updateAuthority: authority,
-    name: `${card.characterName} Ruby High Card #${card.serial}`,
+    name: hallPassCardOnChainName(card),
     symbol: config.symbol,
     uri: metadataUri,
     sellerFeeBasisPoints: 0,
@@ -518,6 +535,7 @@ export async function mintHallPassCardNft(
   if (config.collectionAddress) {
     instructions.push(await collectionVerificationInstruction({
       authority,
+      payer: authority,
       collectionAddress: config.collectionAddress,
       mintAddress: mint.address,
     }));
@@ -710,7 +728,7 @@ export async function verifyHallPassCardBurn(input: {
   const config = readMintConfig();
   const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
   const mintAddress = cleanSolanaAddress(input.mintAddress, "Card mint");
-  const signature = cleanSignature(input.burnSignature);
+  const signature = cleanSignature(input.burnSignature, "Solana burn signature");
   let transaction: Record<string, any> | null = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (attempt > 0) await sleep(1000 + attempt * 500);
@@ -750,12 +768,17 @@ function readMintConfig(): {
   };
 }
 
-function hallPassNftProfile(characterId: string): HallPassNftProfile {
-  return HALL_PASS_NFT_CARD_PROFILES[characterId] ?? HALL_PASS_NFT_CARD_PROFILES.ruby!;
-}
-
 function versionedImagePath(path: string): string {
   return `${path}${path.includes("?") ? "&" : "?"}v=${CARD_IMAGE_VERSION}`;
+}
+
+function hallPassCardNftName(characterName: string, serial: string): string {
+  return `Ruby High: ${characterName} #${serial}`;
+}
+
+function hallPassCardOnChainName(card: RubyHighHallPassCard): string {
+  const serial = normalizeSerial(String(card.serial || "1"));
+  return `${card.characterName || "Ruby High Card"} #${serial}`.slice(0, 32);
 }
 
 function hallPassCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
@@ -769,6 +792,10 @@ function normalizeSerial(serial: string): string {
 
 function publicBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   return cleanBaseUrl(cleanEnv(env.RUBY_HIGH_PUBLIC_BASE_URL) || DEFAULT_PUBLIC_BASE_URL);
+}
+
+function publicWebsiteUrl(publicBaseUrl: string): string {
+  return `${cleanBaseUrl(publicBaseUrl)}/`;
 }
 
 function nftRpcUrl(env: NodeJS.ProcessEnv): string {
@@ -809,13 +836,26 @@ function cleanSolanaAddress(value: string, label: string): string {
   return clean;
 }
 
-function cleanSignature(value: string): string {
+function cleanCardId(value: string): string {
+  const clean = value.trim().slice(0, 96);
+  if (!clean || !/^[a-zA-Z0-9:_-]+$/.test(clean)) throw new Error("Card id is invalid.");
+  return clean;
+}
+
+function cleanSignature(value: string, label = "Solana signature"): string {
   const clean = value.trim();
-  if (clean.length < 64 || clean.length > 96) throw new Error("Solana burn signature is invalid.");
+  if (clean.length < 64 || clean.length > 96) throw new Error(`${label} is invalid.`);
   for (const char of clean) {
-    if (!BASE58_INDEX.has(char)) throw new Error("Solana burn signature is invalid.");
+    if (!BASE58_INDEX.has(char)) throw new Error(`${label} is invalid.`);
   }
   return clean;
+}
+
+function optionValue<T = any>(value: unknown): T | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if ("__option" in record) return record.__option === "Some" ? (record.value as T) ?? null : null;
+  return value as T;
 }
 
 async function fetchParsedTransaction(rpcUrl: string, signature: string): Promise<Record<string, any> | null> {
@@ -847,6 +887,7 @@ async function fetchParsedTransaction(rpcUrl: string, signature: string): Promis
 
 async function collectionVerificationInstruction(input: {
   authority: Awaited<ReturnType<typeof createKeyPairSignerFromBytes>>;
+  payer?: TransactionSigner;
   collectionAddress: string;
   mintAddress: string;
 }): Promise<Instruction> {
@@ -858,7 +899,7 @@ async function collectionVerificationInstruction(input: {
   return getSetAndVerifySizedCollectionItemInstruction({
     metadata,
     collectionAuthority: input.authority,
-    payer: input.authority,
+    payer: input.payer ?? input.authority,
     updateAuthority: input.authority.address,
     collectionMint,
     collection: collectionMetadata,
@@ -902,7 +943,10 @@ function transactionBurnsMintFromOwner(
       ? info.owner
       : typeof info.authority === "string"
         ? info.authority
-        : "";
+        : typeof info.multisigAuthority === "string"
+          ? info.multisigAuthority
+          : "";
+    const signers = Array.isArray(info.signers) ? info.signers.filter((signer): signer is string => typeof signer === "string") : [];
     const tokenAmount = info.tokenAmount && typeof info.tokenAmount === "object"
       ? info.tokenAmount as Record<string, unknown>
       : {};
@@ -911,7 +955,7 @@ function transactionBurnsMintFromOwner(
       : typeof tokenAmount.amount === "string" || typeof tokenAmount.amount === "number" || typeof tokenAmount.amount === "bigint"
         ? String(tokenAmount.amount)
         : "";
-    return mint === mintAddress && owner === ownerWalletAddress && amount === "1";
+    return mint === mintAddress && (owner === ownerWalletAddress || signers.includes(ownerWalletAddress)) && amount === "1";
   });
 }
 

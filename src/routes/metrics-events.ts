@@ -18,6 +18,26 @@ type MetricsEventBody = {
   grade?: unknown;
   packId?: unknown;
   repeatRate?: unknown;
+  diagnosticType?: unknown;
+  level?: unknown;
+  stage?: unknown;
+  errorMessage?: unknown;
+  errorName?: unknown;
+  errorCode?: unknown;
+  dataError?: unknown;
+  dataMessage?: unknown;
+  causeMessage?: unknown;
+  privyErrorCode?: unknown;
+  walletClientType?: unknown;
+  connectorType?: unknown;
+  provider?: unknown;
+  addressPreview?: unknown;
+  phantomAvailable?: unknown;
+  hasWindowPhantom?: unknown;
+  hasWindowSolana?: unknown;
+  providerIsPhantom?: unknown;
+  hasConnect?: unknown;
+  hasSignMessage?: unknown;
 };
 
 export async function handleMetricsEventRoute(
@@ -94,6 +114,19 @@ export async function handleMetricsEventRoute(
       },
     }));
   }
+  if (type === "privy_auth_error") {
+    return await respondAfterMetricPersist(ctx, async () => {
+      await deps.ruby.recordMetricEventDurably("error", {
+        sessionId: deps.sessionId,
+        ...(visitorHash ? { visitorHash } : {}),
+        source: "viewer",
+        feature: "privy_wallet_auth",
+        step: requestString(body.diagnosticType) || requestString(body.stage) || "privy_auth_error",
+        status: "error",
+        metadata: privyAuthErrorMetadata(body),
+      });
+    });
+  }
   ctx.error(ctx.res, "Unknown metrics event type.", 400);
   return true;
 }
@@ -106,6 +139,56 @@ function requestHeaderString(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && typeof value[0] === "string") return value[0];
   return undefined;
+}
+
+function requestString(value: unknown): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const text = String(value).replace(/\s+/g, " ").trim();
+  return text || undefined;
+}
+
+function requestBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+function privyAuthErrorMetadata(body: MetricsEventBody): Record<string, string | boolean> {
+  const metadata: Record<string, string | boolean> = {};
+  const stringFields: Array<keyof MetricsEventBody> = [
+    "diagnosticType",
+    "level",
+    "stage",
+    "errorMessage",
+    "errorName",
+    "errorCode",
+    "dataError",
+    "dataMessage",
+    "causeMessage",
+    "privyErrorCode",
+    "walletClientType",
+    "connectorType",
+    "provider",
+    "addressPreview",
+  ];
+  for (const field of stringFields) {
+    const value = requestString(body[field]);
+    if (value) metadata[field] = value;
+  }
+  const booleanFields: Array<keyof MetricsEventBody> = [
+    "phantomAvailable",
+    "hasWindowPhantom",
+    "hasWindowSolana",
+    "providerIsPhantom",
+    "hasConnect",
+    "hasSignMessage",
+  ];
+  for (const field of booleanFields) {
+    const value = requestBoolean(body[field]);
+    if (value != null) metadata[field] = value;
+  }
+  return metadata;
 }
 
 async function respondAfterMetricPersist(ctx: RouteContext, persist: () => Promise<void>): Promise<true> {

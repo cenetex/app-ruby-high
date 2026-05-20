@@ -14,6 +14,7 @@ import type {
   StoredTeacherRecord,
 } from "../services/state-store.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import type { QuizState } from "../types.js";
 
 afterEach(() => {
@@ -123,7 +124,7 @@ function singleQuestionPack(): ContentPack {
       bio: "Test teacher.",
       accent: "#d22a2a",
       systemPrompt: "Teach the test card.",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [{
         id: "route-test-q1",
         prompt: "What is 1 + 1?",
@@ -185,7 +186,7 @@ function sourceCardPack(): ContentPack {
       bio: "Test teacher for source cards.",
       accent: "#3aa3e0",
       systemPrompt: "Teach the source card.",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [],
       sourceCards: [{
         id: "route-test-source-card-1",

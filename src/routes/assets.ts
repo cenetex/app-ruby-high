@@ -78,6 +78,8 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby-high-logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "nft/ruby-high-pack.png": { file: "nft/ruby-high-pack.png", mime: "image/png" },
+  "nft/ruby-high-pack-opened.png": { file: "nft/ruby-high-pack-opened.png", mime: "image/png" },
+  "nft/ruby-high-card-back.png": { file: "nft/ruby-high-card-back.png", mime: "image/png" },
   "nft/ruby-high-pack-promo.png": { file: "nft/ruby-high-pack-promo.png", mime: "image/png" },
   "nft/ruby-high-first-bell-collection.png": { file: "nft/ruby-high-first-bell-collection.png", mime: "image/png" },
   "nft/ruby-high-student-cards.png": { file: "nft/ruby-high-student-cards.png", mime: "image/png" },

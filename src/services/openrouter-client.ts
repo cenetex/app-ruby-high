@@ -1,6 +1,7 @@
 import { log } from "./logger.js";
+import { DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
 
-export const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? "anthropic/claude-haiku-4.5";
+export const STUDENT_MODEL = process.env.RUBY_HIGH_STUDENT_MODEL ?? DEFAULT_STUDENT_MODEL;
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const REFERER = process.env.RUBY_HIGH_OPENROUTER_REFERER ?? "https://ruby-high.local";
 export const TITLE = process.env.RUBY_HIGH_OPENROUTER_TITLE ?? "Ruby High";

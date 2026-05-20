@@ -12,6 +12,7 @@ import {
 import { StateStore } from "../services/state-store.js";
 import { MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { dailyKey } from "../types.js";
 
 let tmpDir: string;
@@ -269,6 +270,53 @@ describe("Hall Pass wallet", () => {
     expect(spend.transaction.metadata?.burnSignatures).toBe(`${burnSignature},${burnSignature}`);
   });
 
+  it("converts owner-signed NFT card burns into Hall Passes", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:nft-burn-convert";
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const grant = ruby.grantHallPassCards(sid, {
+      cardCount: 1,
+      idempotencyKey: "solana:pack:nft-burn-convert",
+      source: "solana",
+    });
+    const card = grant.cards![0]!;
+    ruby.recordHallPassCardMint(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mMintSignatureConvert111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    });
+
+    const converted = ruby.convertBurnedHallPassCardsToHallPasses(sid, {
+      burns: [{
+        cardId: card.id,
+        ownerWalletAddress,
+        mintAddress,
+        burnSignature: "4mBurnSignatureConvert111111111111111111111111111111111111",
+      }],
+      idempotencyKey: "hall-pass-card-burn:convert",
+      source: "hall-pass-card",
+    });
+
+    expect(converted.applied).toBe(true);
+    expect(converted.state.wallet.hallPasses).toBe(6);
+    expect(converted.transaction).toMatchObject({
+      kind: "hall-pass-card-burn",
+      hallPasses: 1,
+      source: "hall-pass-card",
+    });
+    expect(converted.transaction.metadata).toMatchObject({
+      cardBurnConversion: true,
+      hallPassCardIds: card.id,
+    });
+    expect(converted.state.wallet.hallPassCards?.find((candidate) => candidate.id === card.id)).toMatchObject({
+      status: "redeemed",
+      redeemTransactionId: "hall-pass-card-burn:convert",
+    });
+  });
+
   it("keeps wallet idempotency after the visible transaction list rotates", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:wallet-ledger";
@@ -302,7 +350,7 @@ describe("Hall Pass wallet", () => {
     expect(repeat.state.wallet.hallPasses).toBe(230);
   });
 
-  it("packs three students, one teacher, and one item or location into each Hall Pass set", async () => {
+  it("packs three students, one teacher, and one utility or special card into each Hall Pass set", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:super-rare-cards";
 
@@ -317,10 +365,10 @@ describe("Hall Pass wallet", () => {
       const pack = grant.cards!.slice(i, i + HALL_PASS_CARDS_PER_PACK);
       expect(pack.filter((card) => card.role === "student")).toHaveLength(3);
       expect(pack.filter((card) => card.role === "teacher")).toHaveLength(1);
-      expect(pack.filter((card) => card.role === "item" || card.role === "location")).toHaveLength(1);
+      expect(pack.filter((card) => card.role === "item" || card.role === "location" || card.role === "special")).toHaveLength(1);
     }
-    expect(grant.cards?.filter((card) => card.rarity === "super-rare").length).toBeGreaterThanOrEqual(1);
-    expect(grant.cards?.some((card) => ["eliza", "rati"].includes(card.characterId))).toBe(true);
+    expect(grant.cards?.filter((card) => card.rarity === "ultra-rare").length).toBeGreaterThanOrEqual(1);
+    expect(grant.cards?.some((card) => card.characterId === "captain-null" && card.role === "special")).toBe(true);
     expect(grant.cards?.find((card) => card.characterId === "mika")?.rarity).toBe("rare");
   });
 
@@ -362,7 +410,7 @@ describe("Hall Pass wallet", () => {
     });
     expect(opened.cards?.filter((card) => card.role === "student")).toHaveLength(3);
     expect(opened.cards?.filter((card) => card.role === "teacher")).toHaveLength(1);
-    expect(opened.cards?.filter((card) => card.role === "item" || card.role === "location")).toHaveLength(1);
+    expect(opened.cards?.filter((card) => card.role === "item" || card.role === "location" || card.role === "special")).toHaveLength(1);
 
     const repeat = ruby.openHallPassPack(sid, {
       packId: recorded.pack!.id,
@@ -482,7 +530,7 @@ function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"):
       bio: "Sally teaching an imported deck.",
       accent: "#3aa3e0",
       systemPrompt: "You are Sally Science teaching the imported VOCAB deck.",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [{
         id: questionId,
         prompt: "What does ephemeral mean?",
@@ -553,7 +601,7 @@ function fakeAnkiSourcePack(id = "anki:vocab-source", cardId = "anki-vocab-card-
       bio: "Sally teaching imported source cards.",
       accent: "#3aa3e0",
       systemPrompt: "You are Sally Science teaching imported source cards.",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [],
       sourceCards: [{
         id: cardId,
@@ -635,7 +683,7 @@ function fakeLeveledPack(id = "pack:level-test"): ContentPack {
       bio: "A tiny level-gated bank.",
       accent: "#d22a2a",
       systemPrompt: "You are Ruby testing level-gated picks.",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [
         {
           id: "level-easy",

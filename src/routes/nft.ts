@@ -8,14 +8,15 @@ import {
 } from "../services/core-pack-nfts.js";
 import {
   HALL_PASS_NFT_PREFIX,
-  assertHallPassMintAuthorityCapacity,
+  buildHallPassCardMintTransaction,
   hallPassCollectionMetadataForRoute,
+  hallPassCardBackMetadataForRoute,
+  hallPassNftMetadataUri,
   buildHallPassCardsBurnTransaction,
-  ensureHallPassCardCollectionVerified,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
-  mintHallPassCardNft,
   publicHallPassNftStatus,
+  verifyHallPassCardMint,
   verifyHallPassCardBurn,
 } from "../services/hall-pass-nfts.js";
 import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
@@ -36,6 +37,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (!ctx.pathname.startsWith(HALL_PASS_NFT_PREFIX)) return false;
 
   if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/metadata/core/collection.json`) {
+    setNftMetadataCacheHeaders(ctx.res);
     ctx.json(ctx.res, corePackCollectionMetadataForRoute({
       publicBaseUrl: publicBaseUrlForRequest(ctx),
     }));
@@ -43,6 +45,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   }
 
   if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`) {
+    setNftMetadataCacheHeaders(ctx.res);
     ctx.json(ctx.res, hallPassCollectionMetadataForRoute({
       publicBaseUrl: publicBaseUrlForRequest(ctx),
     }));
@@ -55,13 +58,48 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "GET" && corePackMetadataMatch) {
     const productId = decodeURIComponent(corePackMetadataMatch[1] ?? "card-pack-1");
     const serial = decodeURIComponent(corePackMetadataMatch[2] ?? "1");
+    const knownPack = deps.ruby.findHallPassPackByMetadata(productId, Math.max(1, Math.floor(Number(serial || 1))));
+    setNftMetadataCacheHeaders(ctx.res);
     ctx.json(ctx.res, corePackNftMetadataForRoute({
       productId,
       serial,
       packCount: ctx.url?.searchParams.get("packs") ?? undefined,
       cardCount: ctx.url?.searchParams.get("cards") ?? undefined,
       publicBaseUrl: publicBaseUrlForRequest(ctx),
+      opened: knownPack?.status === "opened",
     }));
+    return true;
+  }
+
+  const cardMetadataMatch = ctx.pathname.match(
+    /^\/api\/apps\/ruby-high\/nft\/metadata\/hall-pass\/card\/([^/]+)\.json$/,
+  );
+  if (ctx.method === "GET" && cardMetadataMatch) {
+    const cardId = decodeURIComponent(cardMetadataMatch[1] ?? "");
+    const card = deps.ruby.findHallPassCardById(cardId);
+    if (!card) {
+      ctx.error(ctx.res, "Unknown Ruby High card metadata id.", 404);
+      return true;
+    }
+    setNftMetadataCacheHeaders(ctx.res);
+    if (card?.mintAddress && card.mintSignature) {
+      const metadata = hallPassNftMetadataForRoute({
+        characterId: card.characterId,
+        serial: String(card.serial),
+        publicBaseUrl: publicBaseUrlForRequest(ctx),
+      });
+      if (!metadata) {
+        ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
+        return true;
+      }
+      ctx.json(ctx.res, metadata);
+    } else {
+      ctx.json(ctx.res, hallPassCardBackMetadataForRoute({
+        cardId,
+        serial: String(card.serial),
+        publicBaseUrl: publicBaseUrlForRequest(ctx),
+      }));
+    }
     return true;
   }
 
@@ -71,11 +109,17 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "GET" && metadataMatch) {
     const characterId = decodeURIComponent(metadataMatch[1] ?? "ruby");
     const serial = decodeURIComponent(metadataMatch[2] ?? "1");
-    ctx.json(ctx.res, hallPassNftMetadataForRoute({
+    const metadata = hallPassNftMetadataForRoute({
       characterId,
       serial,
       publicBaseUrl: publicBaseUrlForRequest(ctx),
-    }));
+    });
+    if (!metadata) {
+      ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
+      return true;
+    }
+    setNftMetadataCacheHeaders(ctx.res);
+    ctx.json(ctx.res, metadata);
     return true;
   }
 
@@ -196,92 +240,145 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
     try {
-      const knownPack = deps.ruby.hallPassPacks(stateKey)
-        .find((candidate) => candidate.id === packId || candidate.assetAddress === packId);
-      const pendingForPack = knownPack?.status === "opened" && knownPack.openTransactionId
-        ? deps.ruby.mintableHallPassCards(stateKey).filter((card) => card.grantTransactionId === knownPack.openTransactionId).length
-        : knownPack?.cardCount ?? 0;
-      await assertHallPassMintAuthorityCapacity(pendingForPack);
       const result = deps.ruby.openHallPassPack(stateKey, {
         packId,
         ownerWalletAddress,
       });
-      const minted = [];
-      let mintError: unknown = null;
-      for (const card of result.cards ?? []) {
-        if (card.mintAddress && card.mintSignature) {
-          minted.push({
-            cardId: card.id,
-            characterId: card.characterId,
-            characterName: card.characterName,
-            mintAddress: card.mintAddress,
-            mintSignature: card.mintSignature,
-            metadataUri: card.metadataUri,
-          });
-          continue;
-        }
-        let mint;
-        try {
-          mint = await mintHallPassCardNft(card, ownerWalletAddress);
-        } catch (err) {
-          mintError = err;
-          console.error("[ruby-high] hall-pass-pack.open-card-mint-failed", {
-            packId,
-            cardId: card.id,
-            message: err instanceof Error ? err.message : String(err),
-          });
-          break;
-        }
-        const recorded = deps.ruby.recordHallPassCardMint(stateKey, {
-          cardId: card.id,
-          ownerWalletAddress: mint.ownerWalletAddress,
-          mintAddress: mint.mintAddress,
-          mintSignature: mint.mintSignature,
-          metadataUri: mint.metadataUri,
-        });
-        Object.assign(card, recorded.card);
-        minted.push({
-          cardId: recorded.card.id,
-          characterId: recorded.card.characterId,
-          characterName: recorded.card.characterName,
-          mintAddress: recorded.card.mintAddress,
-          mintSignature: recorded.card.mintSignature,
-          metadataUri: recorded.card.metadataUri,
-        });
-      }
-      const collectionRepaired = await repairOwnedCardCollections(
-        deps,
-        stateKey,
-        ownerWalletAddress,
-        new Set((result.cards ?? []).map((card) => card.id)),
-      );
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
         applied: result.applied,
         ownerWalletAddress,
         pack: result.pack,
-        cards: (result.cards ?? []).map((card) => ({
-          id: card.id,
-          serial: card.serial,
-          title: card.title,
-          characterId: card.characterId,
-          characterName: card.characterName,
-          role: card.role,
-          rarity: card.rarity,
-          status: card.status,
-          artSheet: card.artSheet ?? null,
-          artPosition: card.artPosition ?? null,
-          mintAddress: card.mintAddress ?? null,
-          mintSignature: card.mintSignature ?? null,
-          metadataUri: card.metadataUri ?? null,
-        })),
-        minted,
+        cards: (result.cards ?? []).map(hiddenCardPayload),
+        minted: [],
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
-        ...(mintError ? { warning: publicNftErrorMessage(mintError) } : {}),
-        ...(collectionRepaired > 0 ? { collectionRepaired } : {}),
         status: publicHallPassNftStatus(),
         cardCount: result.cards?.length ?? Number(result.transaction.metadata?.cardCount ?? 0),
+      });
+    } catch (err) {
+      ctx.error(ctx.res, publicNftErrorMessage(err), 400);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-card-prepare`) {
+    const status = hallPassNftStatus();
+    if (!status.configured) {
+      ctx.error(ctx.res, status.reason || "Card minting is not configured.", 503);
+      return true;
+    }
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    const cardId = typeof body.cardId === "string" ? body.cardId.trim().slice(0, 96) : "";
+    const ownerWalletAddress = cleanOwnerWalletAddress(
+      typeof body.ownerWalletAddress === "string" && body.ownerWalletAddress.trim()
+        ? body.ownerWalletAddress
+        : record.walletChainType === "solana"
+          ? deps.auth.walletAddressForRecord(record)
+          : "",
+    );
+    if (!cardId) {
+      ctx.error(ctx.res, "Card id is required.", 400);
+      return true;
+    }
+    if (!ownerWalletAddress) {
+      ctx.error(ctx.res, "Connect a Solana wallet before minting cards.", 400);
+      return true;
+    }
+    const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
+    if (!card) {
+      ctx.error(ctx.res, "No face-down card is available to mint.", 404);
+      return true;
+    }
+    if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
+      ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
+      return true;
+    }
+    try {
+      const mint = await buildHallPassCardMintTransaction(card, ownerWalletAddress);
+      const { rpcUrl: _rpcUrl, ...publicMint } = mint;
+      ctx.json(ctx.res, {
+        ok: true,
+        card: hiddenCardPayload(card),
+        mint: publicMint,
+      });
+    } catch (err) {
+      ctx.error(ctx.res, publicNftErrorMessage(err), 502);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-card-confirm`) {
+    const status = hallPassNftStatus();
+    if (!status.configured) {
+      ctx.error(ctx.res, status.reason || "Card minting is not configured.", 503);
+      return true;
+    }
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    const cardId = typeof body.cardId === "string" ? body.cardId.trim().slice(0, 96) : "";
+    const ownerWalletAddress = cleanOwnerWalletAddress(typeof body.ownerWalletAddress === "string" ? body.ownerWalletAddress : "");
+    const mintAddress = cleanOwnerWalletAddress(typeof body.mintAddress === "string" ? body.mintAddress : "");
+    const mintSignature = typeof body.mintSignature === "string" ? body.mintSignature.trim() : "";
+    const metadataUri = typeof body.metadataUri === "string" ? body.metadataUri.trim() : "";
+    if (!cardId || !ownerWalletAddress || !mintAddress || !mintSignature || !metadataUri) {
+      ctx.error(ctx.res, "Card mint confirmation is incomplete.", 400);
+      return true;
+    }
+    const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
+    if (!card) {
+      ctx.error(ctx.res, "No face-down card matches this mint.", 404);
+      return true;
+    }
+    if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
+      ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
+      return true;
+    }
+    if (metadataUri !== hallPassNftMetadataUri(card)) {
+      ctx.error(ctx.res, "Card mint metadata does not match this card.", 400);
+      return true;
+    }
+    try {
+      const verified = await verifyHallPassCardMint({
+        ownerWalletAddress,
+        mintAddress,
+        mintSignature,
+        metadataUri,
+      });
+      const recorded = deps.ruby.recordHallPassCardMint(stateKey, {
+        cardId,
+        ownerWalletAddress: verified.ownerWalletAddress,
+        mintAddress: verified.mintAddress,
+        mintSignature: verified.signature,
+        metadataUri: verified.metadataUri,
+      });
+      await deps.ruby.flushSession(stateKey);
+      ctx.json(ctx.res, {
+        ok: true,
+        card: revealedCardPayload(recorded.card),
+        minted: [{
+          cardId: recorded.card.id,
+          characterId: recorded.card.characterId,
+          characterName: recorded.card.characterName,
+          mintAddress: recorded.card.mintAddress,
+          mintSignature: recorded.card.mintSignature,
+          metadataUri: recorded.card.metadataUri,
+        }],
+        remaining: deps.ruby.mintableHallPassCards(stateKey).length,
+        status: publicHallPassNftStatus(),
       });
     } catch (err) {
       ctx.error(ctx.res, publicNftErrorMessage(err), 400);
@@ -315,51 +412,30 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     try {
-      const pending = deps.ruby.mintableHallPassCards(stateKey).slice(0, MAX_MINTS_PER_REQUEST);
-      await assertHallPassMintAuthorityCapacity(pending.length);
-      const minted = [];
-      let mintError: unknown = null;
-      for (const card of pending) {
-        let result;
-        try {
-          result = await mintHallPassCardNft(card, ownerWalletAddress);
-        } catch (err) {
-          mintError = err;
-          console.error("[ruby-high] hall-pass-nft.mint-failed", {
-            cardId: card.id,
-            message: err instanceof Error ? err.message : String(err),
-          });
-          break;
-        }
-        const recorded = deps.ruby.recordHallPassCardMint(stateKey, {
-          cardId: card.id,
-          ownerWalletAddress: result.ownerWalletAddress,
-          mintAddress: result.mintAddress,
-          mintSignature: result.mintSignature,
-          metadataUri: result.metadataUri,
+      const card = deps.ruby.mintableHallPassCards(stateKey).slice(0, MAX_MINTS_PER_REQUEST)[0];
+      if (!card) {
+        ctx.json(ctx.res, {
+          ok: true,
+          ownerWalletAddress,
+          minted: [],
+          remaining: 0,
+          status: publicHallPassNftStatus(),
         });
-        minted.push({
-          cardId: recorded.card.id,
-          characterId: recorded.card.characterId,
-          characterName: recorded.card.characterName,
-          mintAddress: recorded.card.mintAddress,
-          mintSignature: recorded.card.mintSignature,
-          metadataUri: recorded.card.metadataUri,
-        });
-      }
-      const collectionRepaired = await repairOwnedCardCollections(deps, stateKey, ownerWalletAddress);
-      await deps.ruby.flushSession(stateKey);
-      if (mintError && minted.length <= 0) {
-        ctx.error(ctx.res, publicNftErrorMessage(mintError), 502);
         return true;
       }
+      if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
+        ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
+        return true;
+      }
+      const mint = await buildHallPassCardMintTransaction(card, ownerWalletAddress);
+      const { rpcUrl: _rpcUrl, ...publicMint } = mint;
       ctx.json(ctx.res, {
         ok: true,
         ownerWalletAddress,
-        minted,
+        minted: [],
+        card: hiddenCardPayload(card),
+        mint: publicMint,
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
-        ...(mintError ? { warning: publicNftErrorMessage(mintError) } : {}),
-        ...(collectionRepaired > 0 ? { collectionRepaired } : {}),
         status: publicHallPassNftStatus(),
       });
     } catch (err) {
@@ -492,6 +568,10 @@ function publicBaseUrlForRequest(ctx: RouteContext): string | undefined {
   return `${ctx.url.protocol}//${ctx.url.host}`;
 }
 
+function setNftMetadataCacheHeaders(response: unknown): void {
+  (response as { setHeader?: (name: string, value: string) => void }).setHeader?.("Cache-Control", "no-cache");
+}
+
 function readBurnInput(body: Record<string, unknown>): HallPassCardBurnInput | null {
   const cardId = typeof body.cardId === "string" ? body.cardId.trim() : "";
   const ownerWalletAddress = cleanOwnerWalletAddress(typeof body.ownerWalletAddress === "string" ? body.ownerWalletAddress : "");
@@ -513,6 +593,62 @@ function readCardIds(body: Record<string, unknown>): string[] {
     ids.push(id);
   }
   return ids;
+}
+
+function hiddenCardPayload(card: { id: string; serial: number; status: string; issuedAt: number; updatedAt: number; grantTransactionId?: string; packId?: string; slotIndex?: number; ownerWalletAddress?: string }): Record<string, unknown> {
+  return {
+    id: card.id,
+    serial: card.serial,
+    title: "Ruby High Mystery Card",
+    characterId: "card-back",
+    characterName: "Mystery Card",
+    role: "special",
+    rarity: "common",
+    blurb: "Mint this card NFT to reveal it.",
+    color: "#8f1d1d",
+    status: card.status,
+    issuedAt: card.issuedAt,
+    updatedAt: card.updatedAt,
+    mintAddress: null,
+    mintSignature: null,
+    metadataUri: null,
+    ...(card.grantTransactionId ? { grantTransactionId: card.grantTransactionId } : {}),
+    ...(card.packId ? { packId: card.packId } : {}),
+    ...(typeof card.slotIndex === "number" ? { slotIndex: card.slotIndex } : {}),
+    ...(card.ownerWalletAddress ? { ownerWalletAddress: card.ownerWalletAddress } : {}),
+  };
+}
+
+function revealedCardPayload(card: {
+  id: string;
+  serial: number;
+  title: string;
+  characterId: string;
+  characterName: string;
+  role: string;
+  rarity: string;
+  status: string;
+  artSheet?: string;
+  artPosition?: string;
+  mintAddress?: string;
+  mintSignature?: string;
+  metadataUri?: string;
+}): Record<string, unknown> {
+  return {
+    id: card.id,
+    serial: card.serial,
+    title: card.title,
+    characterId: card.characterId,
+    characterName: card.characterName,
+    role: card.role,
+    rarity: card.rarity,
+    status: card.status,
+    artSheet: card.artSheet ?? null,
+    artPosition: card.artPosition ?? null,
+    mintAddress: card.mintAddress ?? null,
+    mintSignature: card.mintSignature ?? null,
+    metadataUri: card.metadataUri ?? null,
+  };
 }
 
 function packPayload(pack: RubyHighHallPassPack): Record<string, unknown> {
@@ -541,35 +677,11 @@ function publicPackSyncErrorMessage(err: unknown): string {
 
 function publicNftErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
-  if (/insufficient funds|Attempt to debit|0x1\b|Card mint authority balance is/i.test(raw)) {
-    return "Card mint authority needs more SOL before cards can be minted.";
+  if (/insufficient funds|Attempt to debit|0x1\b/i.test(raw)) {
+    return "Connected Solana wallet needs more SOL to mint this card.";
   }
   if (/403|forbidden/i.test(raw)) {
     return "Solana RPC rejected the request. Check the configured Helius/Solana RPC key.";
   }
   return raw || "Card NFT request failed.";
-}
-
-async function repairOwnedCardCollections(
-  deps: NftDeps,
-  stateKey: string,
-  ownerWalletAddress: string,
-  onlyCardIds?: Set<string>,
-): Promise<number> {
-  const mintedCards = deps.ruby.burnableHallPassCards(stateKey, ownerWalletAddress)
-    .filter((card) => !!card.mintAddress && (!onlyCardIds || onlyCardIds.has(card.id)))
-    .slice(0, MAX_MINTS_PER_REQUEST);
-  let repaired = 0;
-  for (const card of mintedCards) {
-    try {
-      if (await ensureHallPassCardCollectionVerified(card.mintAddress!)) repaired += 1;
-    } catch (err) {
-      console.error("[ruby-high] hall-pass-card.collection-verify-failed", {
-        cardId: card.id,
-        mintAddress: card.mintAddress,
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  return repaired;
 }

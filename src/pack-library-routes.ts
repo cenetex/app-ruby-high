@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { DEFAULT_CREATOR_MODEL } from "./model-defaults.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { log } from "./services/logger.js";
@@ -1814,7 +1815,7 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
         "Teach from these course materials when relevant:",
         teacher.materials.slice(0, 6000),
       ].filter(Boolean).join("\n\n"),
-      defaultModel: process.env.RUBY_HIGH_CREATOR_DEFAULT_MODEL || "anthropic/claude-haiku-4.5",
+      defaultModel: process.env.RUBY_HIGH_CREATOR_DEFAULT_MODEL || DEFAULT_CREATOR_MODEL,
       provider: { kind: "openrouter" as const, supportsTools: true },
       questions,
       sourceCards,

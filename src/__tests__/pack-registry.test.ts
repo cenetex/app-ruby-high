@@ -14,6 +14,7 @@ import {
   resetActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 // Multi-pack registry tests. Built-in pack is owned by null and pinned;
 // session-scoped packs are owned by sessionId and visible only to that
@@ -37,7 +38,7 @@ function fakePack(id: string): ContentPack {
       bio: "—",
       accent: "#000",
       systemPrompt: "—",
-      defaultModel: "anthropic/claude-haiku-4.5",
+      defaultModel: DEFAULT_OPENROUTER_MODEL,
       questions: [],
     }],
     rooms: [{

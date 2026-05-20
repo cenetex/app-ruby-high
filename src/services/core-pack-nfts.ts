@@ -32,6 +32,7 @@ const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CORE_PACK_CARDS_PER_PACK = 5;
 const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
+const PACK_OPENED_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v1";
 const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1";
 const ASSOCIATED_TOKEN_PROGRAM_ADDRESS = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
@@ -259,31 +260,36 @@ export function corePackNftMetadataForRoute(args: {
   packCount?: string;
   cardCount?: string;
   publicBaseUrl?: string;
+  opened?: boolean;
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
+  const website = publicWebsiteUrl(publicBaseUrl);
   const packCount = Math.max(1, Math.floor(Number(args.packCount ?? 1)));
   const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * CORE_PACK_CARDS_PER_PACK)));
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = normalizeSerial(args.serial);
   const name = packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`;
-  const image = `${publicBaseUrl}${PACK_IMAGE_ASSET_PATH}`;
+  const image = `${publicBaseUrl}${args.opened ? PACK_OPENED_IMAGE_ASSET_PATH : PACK_IMAGE_ASSET_PATH}`;
   return {
     name,
     symbol: nftSymbol(process.env),
     description: `${packCount} Ruby High ${packCount === 1 ? "pack" : "packs"} with ${cardCount} cards inside.`,
     image,
-    external_url: `${publicBaseUrl}/`,
+    external_url: website,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Type", value: "Pack" },
       { trait_type: "Product", value: cleanProductId(args.productId) },
       { trait_type: "Packs", value: packCount },
       { trait_type: "Cards Inside", value: cardCount },
+      { trait_type: "State", value: args.opened ? "Opened" : "Sealed" },
       { trait_type: "Serial", value: serial },
+      { trait_type: "Website", value: website },
     ],
     properties: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
+      website,
     },
   };
 }
@@ -292,20 +298,23 @@ export function corePackCollectionMetadataForRoute(args: {
   publicBaseUrl?: string;
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
+  const website = publicWebsiteUrl(publicBaseUrl);
   const image = `${publicBaseUrl}${PACK_PROMO_IMAGE_ASSET_PATH}`;
   return {
     name: "Ruby High Packs",
     symbol: nftSymbol(process.env),
     description: "Ruby High card packs.",
     image,
-    external_url: `${publicBaseUrl}/`,
+    external_url: website,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Type", value: "Pack Collection" },
+      { trait_type: "Website", value: website },
     ],
     properties: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
+      website,
     },
   };
 }
@@ -886,6 +895,10 @@ function normalizeSerial(serial: string): string {
 
 function publicBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   return cleanBaseUrl(cleanEnv(env.RUBY_HIGH_PUBLIC_BASE_URL) || DEFAULT_PUBLIC_BASE_URL);
+}
+
+function publicWebsiteUrl(publicBaseUrl: string): string {
+  return `${cleanBaseUrl(publicBaseUrl)}/`;
 }
 
 function nftRpcUrl(env: NodeJS.ProcessEnv): string {

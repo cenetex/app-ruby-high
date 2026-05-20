@@ -1,7 +1,7 @@
 /**
  * AI student personas — the player's cohort. Each one is a high-schooler at
  * Ruby High who chimes in during class. They run on a cheap fast model
- * (default: anthropic/claude-haiku-4.5) and respond to triggers with short
+ * (the default OpenRouter model) and respond to triggers with short
  * teen-voice one-liners.
  */
 export interface StudentCharacter {

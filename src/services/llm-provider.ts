@@ -1,9 +1,9 @@
 import { log } from "./logger.js";
+import { DEFAULT_OPENROUTER_MODEL, DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
 const DEFAULT_LOCAL_MODEL = "ruby-high-local";
-const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-haiku-4.5";
 
 export type LlmProviderKind = "openrouter" | "local";
 
@@ -69,7 +69,7 @@ export function resolveLlmModel(requested: string | undefined | null): string {
 }
 
 export function resolveStudentModel(): string {
-  return resolveLlmModel(process.env.RUBY_HIGH_STUDENT_MODEL ?? DEFAULT_OPENROUTER_MODEL);
+  return resolveLlmModel(process.env.RUBY_HIGH_STUDENT_MODEL ?? DEFAULT_STUDENT_MODEL);
 }
 
 export function resolveLlmApiKey(userApiKey?: string | null): string | null {

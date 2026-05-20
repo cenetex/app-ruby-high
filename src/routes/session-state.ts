@@ -22,6 +22,7 @@ import {
   type NpcStudentState,
   type PlayerCharacter,
   type QuizState,
+  type RubyHighHallPassCard,
   type RubyHighWallet,
   type StudentPoolEntry,
 } from "../types.js";
@@ -468,10 +469,12 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
       .map((pack) => typeof pack.openTransactionId === "string" ? pack.openTransactionId : "")
       .filter(Boolean),
   );
-  const visibleCards = cards.filter((card) => (
-    (!!card.mintAddress && !!card.mintSignature) ||
-    (typeof card.grantTransactionId === "string" && openedPackTransactions.has(card.grantTransactionId))
-  ));
+  const visibleCards = cards
+    .filter((card) => (
+      (!!card.mintAddress && !!card.mintSignature) ||
+      (typeof card.grantTransactionId === "string" && openedPackTransactions.has(card.grantTransactionId))
+    ))
+    .map((card) => card.mintAddress && card.mintSignature ? card : hiddenHallPassCardForTelemetry(card));
   return {
     meritStars: Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0))),
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
@@ -490,6 +493,29 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
     ...(Array.isArray(state.wallet?.transactions) && state.wallet.transactions.length > 0
       ? { transactions: state.wallet.transactions.slice(-80) }
       : {}),
+  };
+}
+
+function hiddenHallPassCardForTelemetry(card: RubyHighHallPassCard): RubyHighHallPassCard {
+  return {
+    id: card.id,
+    serial: card.serial,
+    title: "Ruby High Mystery Card",
+    characterId: "card-back",
+    characterName: "Mystery Card",
+    role: "special" as const,
+    rarity: "common" as const,
+    blurb: "Mint this card NFT to reveal it.",
+    color: "#8f1d1d",
+    hallPasses: card.hallPasses,
+    status: card.status,
+    issuedAt: card.issuedAt,
+    updatedAt: card.updatedAt,
+    ...(card.source ? { source: card.source } : {}),
+    ...(card.grantTransactionId ? { grantTransactionId: card.grantTransactionId } : {}),
+    ...(card.packId ? { packId: card.packId } : {}),
+    ...(typeof card.slotIndex === "number" ? { slotIndex: card.slotIndex } : {}),
+    ...(card.ownerWalletAddress ? { ownerWalletAddress: card.ownerWalletAddress } : {}),
   };
 }
 

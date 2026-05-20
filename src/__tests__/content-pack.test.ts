@@ -25,6 +25,7 @@ import {
   setActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 // The pack abstraction's contract: swapping the active pack swaps the
 // faculty list, the question banks, and the room layout — the rest of
@@ -100,7 +101,7 @@ describe("FacultyService — pack-driven", () => {
           bio: "A fake teacher.",
           accent: "#000000",
           systemPrompt: "You are a fake teacher.",
-          defaultModel: "anthropic/claude-haiku-4.5",
+          defaultModel: DEFAULT_OPENROUTER_MODEL,
           questions: [
             {
               id: "fake-1",
@@ -152,7 +153,7 @@ describe("registry sync accessors — pack-swap propagates everywhere", () => {
           bio: "—",
           accent: "#000",
           systemPrompt: "—",
-          defaultModel: "anthropic/claude-haiku-4.5",
+          defaultModel: DEFAULT_OPENROUTER_MODEL,
           questions: [],
         },
       ],
