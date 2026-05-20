@@ -12,7 +12,12 @@ import {
   questionGenerationCost,
 } from "../hosted-entitlements.js";
 import { publicHallPassNftStatus, verifyHallPassCardBurn } from "../services/hall-pass-nfts.js";
-import { mintCorePackNft, publicCorePackNftStatus } from "../services/core-pack-nfts.js";
+import {
+  buildCorePackPurchaseTransaction,
+  mintCorePackNft,
+  publicCorePackNftStatus,
+  verifyCorePackNftMint,
+} from "../services/core-pack-nfts.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
@@ -373,6 +378,11 @@ function solanaTransactionHasReference(transaction: SolanaParsedTransaction, ref
   return Array.isArray(accountKeys) && accountKeys.some((entry) => accountKeyPubkey(entry) === reference);
 }
 
+function solanaTransactionHasAccount(transaction: SolanaParsedTransaction, address: string): boolean {
+  const accountKeys = transaction.transaction?.message?.accountKeys;
+  return Array.isArray(accountKeys) && accountKeys.some((entry) => accountKeyPubkey(entry) === address);
+}
+
 function tokenBalanceAmount(balance: SolanaTokenBalance): bigint {
   const amount = balance.uiTokenAmount?.amount;
   if (typeof amount !== "string" || !/^\d+$/.test(amount)) return 0n;
@@ -434,6 +444,7 @@ async function verifySolanaPayment(
   product: SolanaBillingProduct,
   sessionId: string,
   signature: string,
+  expectedPackAssetAddress = "",
 ): Promise<{ reference: string; receivedBaseUnits: string; slot?: number; blockTime?: number | null }> {
   const cleanSignature = signature.trim();
   if (!isSolanaSignature(cleanSignature)) throw new Error("Invalid Solana transaction signature.");
@@ -447,6 +458,9 @@ async function verifySolanaPayment(
   const reference = solanaPaymentReference(sessionId, product.id);
   if (!solanaTransactionHasReference(transaction, reference)) {
     throw new Error("Solana transaction is missing this Ruby High payment reference.");
+  }
+  if (expectedPackAssetAddress && !solanaTransactionHasAccount(transaction, expectedPackAssetAddress)) {
+    throw new Error("Solana transaction is missing this Ruby High pack NFT.");
   }
   const received = solanaTreasuryTokenDelta(transaction, config);
   const required = BigInt(product.tokenAmountBaseUnits);
@@ -1031,7 +1045,32 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ctx.error(ctx.res, "Unknown Solana card pack.", 400);
       return true;
     }
+    const ownerWalletAddress = typeof body.ownerWalletAddress === "string" && isBase58Address(body.ownerWalletAddress.trim())
+      ? body.ownerWalletAddress.trim()
+      : "";
     const reference = solanaPaymentReference(stateKey, product.id);
+    let preparedTransaction = {};
+    if (ownerWalletAddress) {
+      try {
+        preparedTransaction = await buildCorePackPurchaseTransaction({
+          productId: product.id,
+          packCount: product.packCount,
+          cardCount: product.cardCount,
+          ownerWalletAddress,
+          paymentReference: reference,
+          tokenMint: solana.mint,
+          tokenRecipient: solana.recipient,
+          tokenAmount: product.tokenAmount,
+          tokenAmountBaseUnits: product.tokenAmountBaseUnits,
+          tokenDecimals: solana.decimals,
+          tokenSymbol: solana.symbol,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.error(ctx.res, message, message.startsWith("Need ") ? 402 : 502);
+        return true;
+      }
+    }
     ctx.json(ctx.res, {
       ok: true,
       product,
@@ -1042,6 +1081,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       rpcUrl: solana.rpcUrl,
       reference,
       solanaPayUrl: solanaPayUrl(solana, product, reference),
+      ...preparedTransaction,
     });
     return true;
   }
@@ -1066,6 +1106,12 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const signature = typeof body.signature === "string" ? body.signature.trim() : "";
     const ownerWalletAddress = typeof body.ownerWalletAddress === "string" && isBase58Address(body.ownerWalletAddress.trim())
       ? body.ownerWalletAddress.trim()
+      : "";
+    const packAssetAddress = typeof body.packAssetAddress === "string" && isBase58Address(body.packAssetAddress.trim())
+      ? body.packAssetAddress.trim()
+      : "";
+    const packMetadataUri = typeof body.packMetadataUri === "string" && body.packMetadataUri.trim()
+      ? body.packMetadataUri.trim()
       : "";
     const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
     if (!product) {
@@ -1108,14 +1154,24 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     try {
-      const verification = await verifySolanaPayment(solana, product, stateKey, signature);
-      const packMint = await mintCorePackNft({
-        productId: product.id,
-        packCount: product.packCount,
-        cardCount: product.cardCount,
-        ownerWalletAddress,
-        paymentSignature: signature,
-      });
+      const verification = await verifySolanaPayment(solana, product, stateKey, signature, packAssetAddress);
+      const packMint = packAssetAddress
+        ? await verifyCorePackNftMint({
+          productId: product.id,
+          packCount: product.packCount,
+          cardCount: product.cardCount,
+          ownerWalletAddress,
+          assetAddress: packAssetAddress,
+          metadataUri: packMetadataUri,
+          paymentSignature: signature,
+        })
+        : await mintCorePackNft({
+          productId: product.id,
+          packCount: product.packCount,
+          cardCount: product.cardCount,
+          ownerWalletAddress,
+          paymentSignature: signature,
+        });
       const result = deps.ruby.recordHallPassPackMint(stateKey, {
         productId: product.id,
         packCount: product.packCount,

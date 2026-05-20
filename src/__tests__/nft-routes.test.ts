@@ -130,6 +130,32 @@ describe("Hall Pass NFT routes", () => {
     });
   });
 
+  it("serves Core pack metadata with Ruby High pack artwork", async () => {
+    const collectionHandled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/core/collection.json",
+    }), deps());
+
+    expect(collectionHandled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body).toMatchObject({
+      name: "Ruby High Packs",
+      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png",
+    });
+
+    const packHandled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json",
+    }), deps());
+
+    expect(packHandled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body).toMatchObject({
+      name: "Ruby High Pack #123456",
+      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png",
+    });
+  });
+
   it("mints unminted active Hall Pass cards and records signatures", async () => {
     const stateKey = signInUser("alice");
     const grant = ruby.grantHallPassCards(stateKey, {

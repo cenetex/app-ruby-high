@@ -3067,11 +3067,12 @@ export function runViewerClient(bootstrap) {
         }
       }
       setBillingStatus("Preparing crypto payment...", false);
+      const ownerWalletAddress = connectedSolanaWalletAddress();
       const r = await apiFetch(apiBase + "/billing/solana/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         timeoutMs: 12000,
-        body: JSON.stringify({ productId }),
+        body: JSON.stringify({ productId, ownerWalletAddress }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) throw new Error(data.error || "solana quote " + r.status);
@@ -3081,7 +3082,7 @@ export function runViewerClient(bootstrap) {
       const payment = await client.paySolanaQuote(data);
       const signature = payment && payment.signature ? payment.signature : "";
       setBillingStatus("Payment sent. Verifying on-chain...", false);
-      await confirmSolanaPayment(productId, signature, payment && payment.walletAddress);
+      await confirmSolanaPayment(productId, signature, payment && payment.walletAddress, data);
     } catch (err) {
       setBillingStatus("Crypto payment failed · " + (err && err.message ? err.message : "error"), true);
     } finally {
@@ -3105,7 +3106,7 @@ export function runViewerClient(bootstrap) {
     return !!walletSnapshot && !!connectedSolanaWalletAddress();
   }
 
-  async function confirmSolanaPayment(productId, signature, ownerWalletAddress) {
+  async function confirmSolanaPayment(productId, signature, ownerWalletAddress, quote) {
     const cleanSignature = String(signature || "").trim();
     if (!productId || !cleanSignature) throw new Error("Wallet did not return a Solana payment confirmation.");
     const maxAttempts = 6;
@@ -3117,7 +3118,13 @@ export function runViewerClient(bootstrap) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         timeoutMs: 15000,
-        body: JSON.stringify({ productId, signature: cleanSignature, ownerWalletAddress: ownerWalletAddress || null }),
+        body: JSON.stringify({
+          productId,
+          signature: cleanSignature,
+          ownerWalletAddress: ownerWalletAddress || null,
+          packAssetAddress: quote && quote.assetAddress ? quote.assetAddress : null,
+          packMetadataUri: quote && quote.metadataUri ? quote.metadataUri : null,
+        }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) {

@@ -69,6 +69,9 @@ interface SolanaPaymentQuote {
   decimals?: number;
   reference?: string;
   rpcUrl?: string;
+  transaction?: string;
+  transactionBase64?: string;
+  chain?: "solana:mainnet" | "solana:devnet" | "solana:testnet";
 }
 
 interface SolanaPaymentResult {
@@ -266,11 +269,13 @@ function RubyHighPrivyBridge(props: {
     if (!solanaWallets.ready) throw new Error("Solana wallets are still starting.");
     const wallet = selectSolanaWallet(solanaWalletsRef.current);
     if (!wallet) throw new Error("Connect a Solana wallet first.");
-    const transaction = await buildSplTokenPaymentTransaction(quote, wallet.address);
+    const transaction = quote.transactionBase64 || quote.transaction
+      ? base64Decode(quote.transactionBase64 || quote.transaction || "")
+      : await buildSplTokenPaymentTransaction(quote, wallet.address);
     const result = await signAndSendTransaction({
       transaction,
       wallet,
-      chain: "solana:mainnet",
+      chain: quote.chain || "solana:mainnet",
     });
     return {
       signature: base58Encode(result.signature),

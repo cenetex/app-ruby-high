@@ -1,7 +1,19 @@
 import { createHash } from "node:crypto";
-import { create, createCollection, fetchCollectionV1, mplCore } from "@metaplex-foundation/mpl-core";
-import { generateSigner, keypairIdentity, publicKey, type TransactionBuilder, type Umi } from "@metaplex-foundation/umi";
+import { create, createCollection, fetchAssetV1, fetchCollectionV1, mplCore } from "@metaplex-foundation/mpl-core";
+import {
+  createNoopSigner,
+  createSignerFromKeypair,
+  generateSigner,
+  keypairIdentity,
+  publicKey,
+  signTransaction,
+  type Instruction,
+  type TransactionBuilder,
+  type Umi,
+} from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { address as kitAddress } from "@solana/kit";
+import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -10,6 +22,10 @@ const BASE58_INDEX = new Map(BASE58_ALPHABET.split("").map((char, index) => [cha
 const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
+const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png";
+const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png";
+const ASSOCIATED_TOKEN_PROGRAM_ADDRESS = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
 
 export interface CorePackNftStatus {
   configured: boolean;
@@ -47,6 +63,44 @@ export interface CorePackNftMintResult {
   metadataUri: string;
 }
 
+export interface CorePackPurchaseTransactionInput {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  ownerWalletAddress: string;
+  paymentReference: string;
+  tokenMint: string;
+  tokenRecipient: string;
+  tokenAmount: string;
+  tokenAmountBaseUnits: string;
+  tokenDecimals: number;
+  tokenSymbol: string;
+  sourceTokenAccountAddress?: string;
+  latestBlockhash?: { blockhash: string; lastValidBlockHeight: number };
+}
+
+export interface CorePackPurchaseTransactionResult {
+  ownerWalletAddress: string;
+  assetAddress: string;
+  metadataUri: string;
+  sourceTokenAccountAddress: string;
+  destinationTokenAccountAddress: string;
+  transactionBase64: string;
+  transactionEncoding: "base64";
+  chain: "solana:mainnet";
+  rpcUrl: string;
+}
+
+export interface CorePackNftVerifyInput {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  ownerWalletAddress: string;
+  assetAddress: string;
+  metadataUri?: string;
+  paymentSignature: string;
+}
+
 export interface CoreCollectionCreateResult {
   collectionAddress: string;
   signature: string;
@@ -54,14 +108,38 @@ export interface CoreCollectionCreateResult {
 }
 
 type CorePackNftMinter = (input: CorePackNftMintInput) => Promise<CorePackNftMintResult>;
+type CorePackPurchaseTransactionBuilder = (
+  input: CorePackPurchaseTransactionInput,
+) => Promise<CorePackPurchaseTransactionResult>;
+type CorePackNftVerifier = (input: CorePackNftVerifyInput) => Promise<CorePackNftMintResult>;
 
 let packMinterOverride: CorePackNftMinter | null = null;
+let packPurchaseTransactionBuilderOverride: CorePackPurchaseTransactionBuilder | null = null;
+let packVerifierOverride: CorePackNftVerifier | null = null;
 
 export function setCorePackNftMinterForTest(minter: CorePackNftMinter | null): () => void {
   const previous = packMinterOverride;
   packMinterOverride = minter;
   return () => {
     packMinterOverride = previous;
+  };
+}
+
+export function setCorePackPurchaseTransactionBuilderForTest(
+  builder: CorePackPurchaseTransactionBuilder | null,
+): () => void {
+  const previous = packPurchaseTransactionBuilderOverride;
+  packPurchaseTransactionBuilderOverride = builder;
+  return () => {
+    packPurchaseTransactionBuilderOverride = previous;
+  };
+}
+
+export function setCorePackNftVerifierForTest(verifier: CorePackNftVerifier | null): () => void {
+  const previous = packVerifierOverride;
+  packVerifierOverride = verifier;
+  return () => {
+    packVerifierOverride = previous;
   };
 }
 
@@ -154,11 +232,12 @@ export function corePackNftMetadataForRoute(args: {
   const cardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * 4)));
   const serial = normalizeSerial(args.serial);
   const name = packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`;
+  const image = `${publicBaseUrl}${PACK_IMAGE_ASSET_PATH}`;
   return {
     name,
     symbol: nftSymbol(process.env),
     description: `${packCount} Ruby High ${packCount === 1 ? "pack" : "packs"} with ${cardCount} cards inside.`,
-    image: `${publicBaseUrl}/api/apps/ruby-high/assets/welcome-hall-passes.png`,
+    image,
     external_url: `${publicBaseUrl}/`,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
@@ -170,7 +249,7 @@ export function corePackNftMetadataForRoute(args: {
     ],
     properties: {
       category: "image",
-      files: [{ uri: `${publicBaseUrl}/api/apps/ruby-high/assets/welcome-hall-passes.png`, type: "image/png" }],
+      files: [{ uri: image, type: "image/png" }],
     },
   };
 }
@@ -179,11 +258,12 @@ export function corePackCollectionMetadataForRoute(args: {
   publicBaseUrl?: string;
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
+  const image = `${publicBaseUrl}${PACK_PROMO_IMAGE_ASSET_PATH}`;
   return {
     name: "Ruby High Packs",
     symbol: nftSymbol(process.env),
     description: "Ruby High card packs.",
-    image: `${publicBaseUrl}/api/apps/ruby-high/assets/ruby-high-logo.png`,
+    image,
     external_url: `${publicBaseUrl}/`,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
@@ -191,7 +271,7 @@ export function corePackCollectionMetadataForRoute(args: {
     ],
     properties: {
       category: "image",
-      files: [{ uri: `${publicBaseUrl}/api/apps/ruby-high/assets/ruby-high-logo.png`, type: "image/png" }],
+      files: [{ uri: image, type: "image/png" }],
     },
   };
 }
@@ -223,6 +303,146 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
     assetAddress: asset.publicKey,
     mintSignature: base58Encode(sent.signature),
     metadataUri,
+  };
+}
+
+export async function buildCorePackPurchaseTransaction(
+  input: CorePackPurchaseTransactionInput,
+): Promise<CorePackPurchaseTransactionResult> {
+  if (packPurchaseTransactionBuilderOverride) return packPurchaseTransactionBuilderOverride(input);
+  const config = readCoreMintConfig();
+  const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
+  const tokenMint = cleanSolanaAddress(input.tokenMint, "Solana token mint");
+  const tokenRecipient = cleanSolanaAddress(input.tokenRecipient, "Solana token recipient");
+  const paymentReference = cleanSolanaAddress(input.paymentReference, "Solana payment reference");
+  const tokenDecimals = readTokenDecimals(input.tokenDecimals);
+  const tokenAmountBaseUnits = readBaseUnits(input.tokenAmountBaseUnits);
+  const source = input.sourceTokenAccountAddress && isBase58ishAddress(input.sourceTokenAccountAddress)
+    ? { tokenAccountAddress: input.sourceTokenAccountAddress.trim(), balanceBaseUnits: tokenAmountBaseUnits }
+    : await findOwnerTokenAccountForPayment({
+      rpcUrl: config.rpcUrl,
+      ownerWalletAddress,
+      tokenMint,
+      requiredBaseUnits: tokenAmountBaseUnits,
+      tokenAmount: input.tokenAmount,
+      tokenSymbol: input.tokenSymbol,
+    });
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  const authority = createSignerFromKeypair(umi, authorityKeypair);
+  const owner = publicKey(ownerWalletAddress);
+  const ownerSigner = createNoopSigner(owner);
+  const collection = {
+    publicKey: publicKey(config.collectionAddress),
+    oracles: [],
+    lifecycleHooks: [],
+  };
+  const asset = generateSigner(umi);
+  const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const metadataUri = corePackNftMetadataUri({
+    productId: input.productId,
+    packCount,
+    cardCount: input.cardCount,
+    paymentSignature: asset.publicKey,
+  });
+  const [destinationTokenAccountAddress] = await findAssociatedTokenPda({
+    owner: kitAddress(tokenRecipient),
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    mint: kitAddress(tokenMint),
+  });
+  const createDestinationAta = createAssociatedTokenAccountIdempotentInstruction({
+    payer: authority.publicKey,
+    ata: destinationTokenAccountAddress,
+    owner: tokenRecipient,
+    mint: tokenMint,
+  });
+  const transfer = transferCheckedInstruction({
+    source: source.tokenAccountAddress,
+    mint: tokenMint,
+    destination: destinationTokenAccountAddress,
+    authority: ownerWalletAddress,
+    amount: tokenAmountBaseUnits,
+    decimals: tokenDecimals,
+    reference: paymentReference,
+  });
+  const createPack = create(umi, {
+    asset,
+    collection,
+    authority,
+    payer: authority,
+    owner,
+    name: packCount === 1 ? `Ruby High Pack #${packSerial(asset.publicKey)}` : `Ruby High ${packCount}-Pack #${packSerial(asset.publicKey)}`,
+    uri: metadataUri,
+  });
+  const builder = createPack
+    .prepend([
+      { instruction: createDestinationAta, signers: [authority], bytesCreatedOnChain: 0 },
+      { instruction: transfer, signers: [], bytesCreatedOnChain: 0 },
+    ])
+    .setFeePayer(ownerSigner);
+  const transaction = input.latestBlockhash
+    ? builder.setBlockhash(input.latestBlockhash).build(umi)
+    : await builder.buildWithLatestBlockhash(umi);
+  const signed = await signTransaction(transaction, [authority, asset]);
+  return {
+    ownerWalletAddress,
+    assetAddress: asset.publicKey,
+    metadataUri,
+    sourceTokenAccountAddress: source.tokenAccountAddress,
+    destinationTokenAccountAddress,
+    transactionBase64: Buffer.from(umi.transactions.serialize(signed)).toString("base64"),
+    transactionEncoding: "base64",
+    chain: "solana:mainnet",
+    rpcUrl: config.rpcUrl,
+  };
+}
+
+export async function verifyCorePackNftMint(input: CorePackNftVerifyInput): Promise<CorePackNftMintResult> {
+  if (packVerifierOverride) return packVerifierOverride(input);
+  const config = readCoreMintConfig();
+  const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
+  const assetAddress = cleanSolanaAddress(input.assetAddress, "Pack asset address");
+  const expectedUri = input.metadataUri?.trim() || corePackNftMetadataUri({
+    productId: input.productId,
+    packCount: input.packCount,
+    cardCount: input.cardCount,
+    paymentSignature: assetAddress,
+  });
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  let asset;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (attempt > 0) await sleep(900 + attempt * 400);
+    try {
+      asset = await fetchAssetV1(umi, publicKey(assetAddress), { commitment: "confirmed" });
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (!asset) {
+    throw new Error(lastError instanceof Error ? lastError.message : "Pack NFT was not found on-chain yet.");
+  }
+  if (String(asset.owner) !== ownerWalletAddress) {
+    throw new Error("Pack NFT owner does not match the connected wallet.");
+  }
+  if (String(asset.uri) !== expectedUri) {
+    throw new Error("Pack NFT metadata does not match this checkout.");
+  }
+  const updateAuthority = asset.updateAuthority as { __kind?: string; fields?: unknown[]; type?: string; address?: unknown };
+  const collectionAddress = updateAuthority.type === "Collection" && updateAuthority.address
+    ? String(updateAuthority.address)
+    : updateAuthority.__kind === "Collection" && Array.isArray(updateAuthority.fields)
+      ? String(updateAuthority.fields[0] ?? "")
+      : "";
+  if (collectionAddress !== config.collectionAddress) {
+    throw new Error("Pack NFT is not in the Ruby High collection.");
+  }
+  return {
+    ownerWalletAddress,
+    assetAddress,
+    mintSignature: input.paymentSignature,
+    metadataUri: expectedUri,
   };
 }
 
@@ -283,6 +503,123 @@ async function sendAndConfirmCoreTransaction(umi: Umi, builder: TransactionBuild
 function isPreflightUnsupportedError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? "");
   return /preflight check is not supported/i.test(message);
+}
+
+function createAssociatedTokenAccountIdempotentInstruction(input: {
+  payer: string;
+  ata: string;
+  owner: string;
+  mint: string;
+}): Instruction {
+  return {
+    programId: publicKey(ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
+    keys: [
+      { pubkey: publicKey(input.payer), isSigner: true, isWritable: true },
+      { pubkey: publicKey(input.ata), isSigner: false, isWritable: true },
+      { pubkey: publicKey(input.owner), isSigner: false, isWritable: false },
+      { pubkey: publicKey(input.mint), isSigner: false, isWritable: false },
+      { pubkey: publicKey(SYSTEM_PROGRAM_ADDRESS), isSigner: false, isWritable: false },
+      { pubkey: publicKey(TOKEN_PROGRAM_ADDRESS), isSigner: false, isWritable: false },
+    ],
+    data: Uint8Array.of(1),
+  };
+}
+
+function transferCheckedInstruction(input: {
+  source: string;
+  mint: string;
+  destination: string;
+  authority: string;
+  amount: bigint;
+  decimals: number;
+  reference: string;
+}): Instruction {
+  return {
+    programId: publicKey(TOKEN_PROGRAM_ADDRESS),
+    keys: [
+      { pubkey: publicKey(input.source), isSigner: false, isWritable: true },
+      { pubkey: publicKey(input.mint), isSigner: false, isWritable: false },
+      { pubkey: publicKey(input.destination), isSigner: false, isWritable: true },
+      { pubkey: publicKey(input.authority), isSigner: true, isWritable: false },
+      { pubkey: publicKey(input.reference), isSigner: false, isWritable: false },
+    ],
+    data: transferCheckedData(input.amount, input.decimals),
+  };
+}
+
+function transferCheckedData(amount: bigint, decimals: number): Uint8Array {
+  const data = new Uint8Array(10);
+  data[0] = 12;
+  const view = new DataView(data.buffer);
+  view.setBigUint64(1, amount, true);
+  data[9] = decimals;
+  return data;
+}
+
+async function findOwnerTokenAccountForPayment(input: {
+  rpcUrl: string;
+  ownerWalletAddress: string;
+  tokenMint: string;
+  requiredBaseUnits: bigint;
+  tokenAmount: string;
+  tokenSymbol: string;
+}): Promise<{ tokenAccountAddress: string; balanceBaseUnits: bigint }> {
+  const response = await fetch(input.rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-pack-payment-accounts",
+      method: "getTokenAccountsByOwner",
+      params: [
+        input.ownerWalletAddress,
+        { mint: input.tokenMint },
+        { encoding: "jsonParsed", commitment: "confirmed" },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
+  const payload = await response.json().catch(() => ({})) as {
+    error?: { message?: string; code?: number };
+    result?: { value?: Array<{ pubkey?: string; account?: { data?: { parsed?: { info?: { tokenAmount?: { amount?: string } } } } } }> };
+  };
+  if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
+  let best: { tokenAccountAddress: string; balanceBaseUnits: bigint } | null = null;
+  for (const account of payload.result?.value ?? []) {
+    const tokenAccountAddress = typeof account.pubkey === "string" ? account.pubkey.trim() : "";
+    const amount = account.account?.data?.parsed?.info?.tokenAmount?.amount;
+    if (!tokenAccountAddress || typeof amount !== "string" || !/^\d+$/.test(amount)) continue;
+    const balanceBaseUnits = BigInt(amount);
+    if (balanceBaseUnits < input.requiredBaseUnits) continue;
+    if (!best || balanceBaseUnits > best.balanceBaseUnits) {
+      best = { tokenAccountAddress, balanceBaseUnits };
+    }
+  }
+  if (!best) {
+    const amount = input.tokenAmount.trim() || input.requiredBaseUnits.toString();
+    throw new Error(`Need ${amount} ${input.tokenSymbol || DEFAULT_SYMBOL} in this Solana wallet before minting a pack.`);
+  }
+  return best;
+}
+
+function readBaseUnits(value: string): bigint {
+  const raw = value.trim();
+  if (!/^\d+$/.test(raw)) throw new Error("Solana payment amount is missing.");
+  const amount = BigInt(raw);
+  if (amount <= 0n) throw new Error("Solana payment amount must be positive.");
+  return amount;
+}
+
+function readTokenDecimals(value: number): number {
+  const decimals = Math.floor(Number(value));
+  if (!Number.isFinite(decimals) || decimals < 0 || decimals > 18) {
+    throw new Error("Solana token decimals are invalid.");
+  }
+  return decimals;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function readCollectionCreateConfig(): {
@@ -351,10 +688,15 @@ function cleanEnv(value: string | undefined): string {
 
 function cleanSolanaAddress(value: string, label: string): string {
   const clean = value.trim();
-  if (!clean || clean.length < 32 || clean.length > 44 || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(clean)) {
+  if (!isBase58ishAddress(clean)) {
     throw new Error(`${label} is invalid.`);
   }
   return clean;
+}
+
+function isBase58ishAddress(value: string): boolean {
+  const clean = value.trim();
+  return clean.length >= 32 && clean.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(clean);
 }
 
 function parseSecretKeyBytes(raw: string): Uint8Array {
