@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { Transaction } from "@solana/web3.js";
-import { buildCorePackPurchaseTransaction, corePackNftMetadataUri } from "../services/core-pack-nfts.js";
+import { buildCorePackPurchaseTransaction, corePackNftMetadataUri, fetchOwnedCorePackNfts } from "../services/core-pack-nfts.js";
 
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
@@ -91,5 +91,47 @@ describe("Core pack NFT checkout transactions", () => {
       paymentReference,
     ]));
     expect(prepared.assetAddress).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
+  });
+
+  it("syncs owned Core packs from DAS owner lookups", async () => {
+    process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    process.env.RUBY_HIGH_SOLANA_RPC_URL = "https://beta.helius-rpc.com/?api-key=test";
+    const ownerWalletAddress = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-pack-sync",
+      result: {
+        items: [
+          {
+            id: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+            burnt: false,
+            content: {
+              json_uri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
+              metadata: { name: "Ruby High Pack #570329" },
+            },
+            ownership: { owner: ownerWalletAddress },
+            grouping: [
+              { group_key: "collection", group_value: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" },
+            ],
+          },
+        ],
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    const owned = await fetchOwnedCorePackNfts(ownerWalletAddress);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(owned).toEqual([expect.objectContaining({
+      ownerWalletAddress,
+      assetAddress: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      serial: 570329,
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
+    })]);
   });
 });

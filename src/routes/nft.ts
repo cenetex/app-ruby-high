@@ -154,6 +154,10 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         importedCount: imported.length,
       });
     } catch (err) {
+      console.error("[ruby-high] hall-pass-pack.sync-failed", {
+        ownerWalletAddress,
+        message: err instanceof Error ? err.message : String(err),
+      });
       ctx.error(ctx.res, publicPackSyncErrorMessage(err), 502);
     }
     return true;

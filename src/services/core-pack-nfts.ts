@@ -486,14 +486,31 @@ export async function fetchOwnedCorePackNfts(ownerWalletAddress: string): Promis
   if (packOwnerFetcherOverride) return packOwnerFetcherOverride(ownerWalletAddress);
   const config = readCoreSyncConfig();
   const owner = publicKey(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
-  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const das = await tryFetchOwnedCorePackNftsViaDas(config.rpcUrl, config.collectionAddress, String(owner));
+  if (das.ok && das.items.length > 0) return das.items;
+  try {
+    const assets = await fetchOwnedCorePackNftsViaGpa(config.rpcUrl, config.collectionAddress, owner);
+    if (assets.length > 0) return assets;
+    return das.ok ? das.items : assets;
+  } catch (err) {
+    if (das.ok) return das.items;
+    throw err;
+  }
+}
+
+async function fetchOwnedCorePackNftsViaGpa(
+  rpcUrl: string,
+  collectionAddress: string,
+  owner: ReturnType<typeof publicKey>,
+): Promise<OwnedCorePackNft[]> {
+  const umi = createUmi(rpcUrl).use(mplCore());
   const assets = await getAssetV1GpaBuilder(umi)
     .whereField("key", Key.AssetV1)
     .whereField("owner", owner)
     .getDeserialized({ commitment: "confirmed" });
   return assets.flatMap((asset) => {
-    const collectionAddress = coreAssetCollectionAddress(asset.updateAuthority);
-    if (collectionAddress !== config.collectionAddress) return [];
+    const assetCollectionAddress = coreAssetCollectionAddress(asset.updateAuthority);
+    if (assetCollectionAddress !== collectionAddress) return [];
     const metadataUri = typeof asset.uri === "string" ? asset.uri.trim() : "";
     if (!metadataUri) return [];
     const parsed = corePackInfoFromMetadataUri(metadataUri, asset.name);
@@ -506,6 +523,110 @@ export async function fetchOwnedCorePackNfts(ownerWalletAddress: string): Promis
       name: typeof asset.name === "string" && asset.name.trim() ? asset.name.trim() : "Ruby High Pack",
     }];
   });
+}
+
+async function tryFetchOwnedCorePackNftsViaDas(
+  rpcUrl: string,
+  collectionAddress: string,
+  ownerWalletAddress: string,
+): Promise<{ ok: true; items: OwnedCorePackNft[] } | { ok: false; error: unknown }> {
+  try {
+    return {
+      ok: true,
+      items: await fetchOwnedCorePackNftsViaDas(rpcUrl, collectionAddress, ownerWalletAddress),
+    };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+async function fetchOwnedCorePackNftsViaDas(
+  rpcUrl: string,
+  collectionAddress: string,
+  ownerWalletAddress: string,
+): Promise<OwnedCorePackNft[]> {
+  const items: OwnedCorePackNft[] = [];
+  const limit = 1000;
+  let page = 1;
+  while (true) {
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "ruby-high-pack-sync",
+        method: "getAssetsByOwner",
+        params: {
+          ownerAddress: ownerWalletAddress,
+          page,
+          limit,
+          options: {
+            showUnverifiedCollections: true,
+            showCollectionMetadata: true,
+          },
+        },
+      }),
+    });
+    const json = await response.json().catch(() => ({})) as {
+      error?: { message?: string; code?: number };
+      result?: { items?: unknown[] };
+    };
+    if (!response.ok) {
+      throw new Error(`getAssetsByOwner failed with ${response.status}`);
+    }
+    if (json?.error) {
+      throw new Error(json.error.message || `getAssetsByOwner failed with ${json.error.code ?? "unknown error"}`);
+    }
+    const pageItems = Array.isArray(json?.result?.items) ? json.result.items : [];
+    for (const raw of pageItems) {
+      const item = raw as {
+        id?: unknown;
+        burnt?: boolean;
+        content?: { json_uri?: unknown; metadata?: { name?: unknown } };
+        ownership?: { owner?: unknown };
+        grouping?: Array<{ group_key?: unknown; group_value?: unknown }>;
+      };
+      if (item?.burnt) continue;
+      const grouped = Array.isArray(item?.grouping) ? item.grouping : [];
+      const inCollection = grouped.some((group) => (
+        String(group?.group_key || "") === "collection"
+        && String(group?.group_value || "") === collectionAddress
+      ));
+      if (!inCollection) continue;
+      const metadataUri = typeof item?.content?.json_uri === "string" ? item.content.json_uri.trim() : "";
+      if (!metadataUri) continue;
+      const parsed = corePackInfoFromMetadataUri(
+        metadataUri,
+        typeof item?.content?.metadata?.name === "string" ? item.content.metadata.name : undefined,
+      );
+      if (!parsed) continue;
+      const assetAddress = typeof item?.id === "string" ? item.id.trim() : "";
+      if (!assetAddress) continue;
+      items.push({
+        ...parsed,
+        ownerWalletAddress: typeof item?.ownership?.owner === "string" && item.ownership.owner.trim()
+          ? item.ownership.owner.trim()
+          : ownerWalletAddress,
+        assetAddress,
+        metadataUri,
+        name: typeof item?.content?.metadata?.name === "string" && item.content.metadata.name.trim()
+          ? item.content.metadata.name.trim()
+          : "Ruby High Pack",
+      });
+    }
+    if (pageItems.length < limit) break;
+    page += 1;
+  }
+  return dedupeOwnedCorePackNfts(items);
+}
+
+function dedupeOwnedCorePackNfts(items: OwnedCorePackNft[]): OwnedCorePackNft[] {
+  const byAsset = new Map<string, OwnedCorePackNft>();
+  for (const item of items) {
+    if (!item.assetAddress) continue;
+    byAsset.set(item.assetAddress, item);
+  }
+  return Array.from(byAsset.values()).sort((a, b) => a.serial - b.serial || a.assetAddress.localeCompare(b.assetAddress));
 }
 
 export async function createCorePackCollection(): Promise<CoreCollectionCreateResult> {
