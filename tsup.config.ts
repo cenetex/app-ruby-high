@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
-    entry: ["src/index.ts", "src/routes.ts"],
+    entry: ["src/index.ts", "src/routes.ts", "src/services/core-pack-nfts.ts"],
     format: ["esm"],
     dts: true,
     clean: true,
