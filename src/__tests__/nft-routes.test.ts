@@ -8,6 +8,7 @@ import { getActivePack } from "../content/registry.js";
 import { setOwnedCorePackNftFetcherForTest } from "../services/core-pack-nfts.js";
 import {
   deterministicMintSignatureForTest,
+  setHallPassNftAuthorityBalanceForTest,
   setHallPassNftBurnTransactionBuilderForTest,
   setHallPassNftBurnVerifierForTest,
   setHallPassNftMinterForTest,
@@ -24,10 +25,12 @@ let restoreMinter: (() => void) | null = null;
 let restoreBurnBuilder: (() => void) | null = null;
 let restoreBurnVerifier: (() => void) | null = null;
 let restorePackFetcher: (() => void) | null = null;
+let restoreAuthorityBalance: (() => void) | null = null;
 
 const OWNER = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
+  RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
 };
 
@@ -78,6 +81,7 @@ beforeEach(async () => {
   restoreEnv();
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
+  restoreAuthorityBalance = setHallPassNftAuthorityBalanceForTest(async () => 1_000_000_000n);
   restoreMinter = setHallPassNftMinterForTest(async (card, ownerWalletAddress) => (
     deterministicMintSignatureForTest(card, ownerWalletAddress)
   ));
@@ -105,6 +109,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   restoreEnv();
+  restoreAuthorityBalance?.();
+  restoreAuthorityBalance = null;
   restoreMinter?.();
   restoreMinter = null;
   restoreBurnBuilder?.();
@@ -351,6 +357,66 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.minted).toHaveLength(2);
     expect(lastResponse?.body.warning).toContain("SOL");
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(2);
+  });
+
+  it("blocks opening a pack when the mint authority cannot afford all five cards", async () => {
+    restoreAuthorityBalance?.();
+    restoreAuthorityBalance = setHallPassNftAuthorityBalanceForTest(async () => 8_309_352n);
+    const stateKey = signInUser("open-low-balance");
+    const pack = ruby.recordHallPassPackMint(stateKey, {
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      ownerWalletAddress: OWNER,
+      assetAddress: "LowBalancePack1111111111111111111111111111111",
+      mintSignature: "5mPackMintLowBalance1111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/999999.json?packs=1&cards=5",
+      idempotencyKey: "solana:spl-token-transfer:open-pack-low-balance",
+      source: "solana",
+    }).pack!;
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/open-pack",
+      cookie: "rh_session=open-low-balance",
+      body: { packId: pack.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 400,
+      body: { error: "Card mint authority needs more SOL before cards can be minted." },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
+      id: pack.id,
+      status: "active",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards ?? []).toHaveLength(0);
+  });
+
+  it("blocks retry minting when the mint authority cannot afford the pending cards", async () => {
+    restoreAuthorityBalance?.();
+    restoreAuthorityBalance = setHallPassNftAuthorityBalanceForTest(async () => 8_309_352n);
+    const stateKey = signInUser("mint-low-balance");
+    ruby.grantHallPassCards(stateKey, {
+      cardCount: 5,
+      idempotencyKey: "stripe:checkout:cs_mint_low_balance",
+      source: "stripe",
+    });
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-pack",
+      cookie: "rh_session=mint-low-balance",
+      body: { ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 502,
+      body: { error: "Card mint authority needs more SOL before cards can be minted." },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
 
   it("prepares and confirms owner-signed card burns", async () => {

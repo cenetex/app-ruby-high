@@ -8,8 +8,10 @@ import {
 } from "../services/core-pack-nfts.js";
 import {
   HALL_PASS_NFT_PREFIX,
+  assertHallPassMintAuthorityCapacity,
   hallPassCollectionMetadataForRoute,
   buildHallPassCardsBurnTransaction,
+  ensureHallPassCardCollectionVerified,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
   mintHallPassCardNft,
@@ -194,6 +196,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
     try {
+      const knownPack = deps.ruby.hallPassPacks(stateKey)
+        .find((candidate) => candidate.id === packId || candidate.assetAddress === packId);
+      const pendingForPack = knownPack?.status === "opened" && knownPack.openTransactionId
+        ? deps.ruby.mintableHallPassCards(stateKey).filter((card) => card.grantTransactionId === knownPack.openTransactionId).length
+        : knownPack?.cardCount ?? 0;
+      await assertHallPassMintAuthorityCapacity(pendingForPack);
       const result = deps.ruby.openHallPassPack(stateKey, {
         packId,
         ownerWalletAddress,
@@ -241,6 +249,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           metadataUri: recorded.card.metadataUri,
         });
       }
+      const collectionRepaired = await repairOwnedCardCollections(
+        deps,
+        stateKey,
+        ownerWalletAddress,
+        new Set((result.cards ?? []).map((card) => card.id)),
+      );
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
@@ -265,6 +279,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         minted,
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
         ...(mintError ? { warning: publicNftErrorMessage(mintError) } : {}),
+        ...(collectionRepaired > 0 ? { collectionRepaired } : {}),
         status: publicHallPassNftStatus(),
         cardCount: result.cards?.length ?? Number(result.transaction.metadata?.cardCount ?? 0),
       });
@@ -301,6 +316,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     try {
       const pending = deps.ruby.mintableHallPassCards(stateKey).slice(0, MAX_MINTS_PER_REQUEST);
+      await assertHallPassMintAuthorityCapacity(pending.length);
       const minted = [];
       let mintError: unknown = null;
       for (const card of pending) {
@@ -331,6 +347,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           metadataUri: recorded.card.metadataUri,
         });
       }
+      const collectionRepaired = await repairOwnedCardCollections(deps, stateKey, ownerWalletAddress);
       await deps.ruby.flushSession(stateKey);
       if (mintError && minted.length <= 0) {
         ctx.error(ctx.res, publicNftErrorMessage(mintError), 502);
@@ -342,6 +359,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         minted,
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
         ...(mintError ? { warning: publicNftErrorMessage(mintError) } : {}),
+        ...(collectionRepaired > 0 ? { collectionRepaired } : {}),
         status: publicHallPassNftStatus(),
       });
     } catch (err) {
@@ -523,11 +541,35 @@ function publicPackSyncErrorMessage(err: unknown): string {
 
 function publicNftErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
-  if (/insufficient funds|Attempt to debit|0x1\b/i.test(raw)) {
+  if (/insufficient funds|Attempt to debit|0x1\b|Card mint authority balance is/i.test(raw)) {
     return "Card mint authority needs more SOL before cards can be minted.";
   }
   if (/403|forbidden/i.test(raw)) {
     return "Solana RPC rejected the request. Check the configured Helius/Solana RPC key.";
   }
   return raw || "Card NFT request failed.";
+}
+
+async function repairOwnedCardCollections(
+  deps: NftDeps,
+  stateKey: string,
+  ownerWalletAddress: string,
+  onlyCardIds?: Set<string>,
+): Promise<number> {
+  const mintedCards = deps.ruby.burnableHallPassCards(stateKey, ownerWalletAddress)
+    .filter((card) => !!card.mintAddress && (!onlyCardIds || onlyCardIds.has(card.id)))
+    .slice(0, MAX_MINTS_PER_REQUEST);
+  let repaired = 0;
+  for (const card of mintedCards) {
+    try {
+      if (await ensureHallPassCardCollectionVerified(card.mintAddress!)) repaired += 1;
+    } catch (err) {
+      console.error("[ruby-high] hall-pass-card.collection-verify-failed", {
+        cardId: card.id,
+        mintAddress: card.mintAddress,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return repaired;
 }

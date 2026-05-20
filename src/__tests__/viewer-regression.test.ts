@@ -89,6 +89,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="privy-action"');
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
+    expect(html).toContain('id="privy-phantom-login"');
     expect(html).toContain('id="privy-login-widget"');
     expect(html).not.toContain('id="privy-connect-solana"');
     expect(html).toContain('id="account-ai-use-pass"');
@@ -109,8 +110,15 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("const loadViewerModule = (url) => import(url)");
     expect(script).not.toContain("loadViewerModule(PRIVY_CLIENT_URL)");
     expectScriptToContain(script, "client.login()");
+    expectScriptToContain(script, "client.onDiagnostic(reportPrivyDiagnostic)");
+    expectScriptToContain(script, 'postViewerMetricEvent("privy_auth_error"');
+    expectScriptToContain(script, "client.loginWithPhantom()");
     expectScriptToContain(script, "client.connectSolanaWallet()");
+    expectScriptToContain(script, "function phantomWalletAvailable()");
+    expectScriptToContain(script, "function reportPrivyDiagnostic(event)");
+    expectScriptToContain(script, "Trying Phantom directly...");
     expectScriptToContain(script, "startPrivyLogin");
+    expectScriptToContain(script, "startPhantomLogin");
     expectScriptToContain(script, "startSolanaWalletConnect");
     expectScriptToContain(script, 'apiBase + "/auth/privy"');
     expectScriptToContain(script, "initializePrivyFromStoredSession();");
@@ -124,6 +132,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function connectedSolanaWalletAddress()");
     expectScriptToContain(script, "function selectBillingProduct(productId)");
     expectScriptToContain(script, "function renderAccountHallPassCards()");
+    expectScriptToContain(script, "async function ensureSolanaWalletFromAccount()");
     expectScriptToContain(script, "accountHallPassCards");
     expectScriptToContain(script, 'buy.addEventListener("click", () => selectBillingProduct(product.id))');
     expectScriptToContain(script, "buildBillingPaymentChoice(payload, product, solana, solanaProduct)");
@@ -139,6 +148,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "async function ensureSolanaWalletForBilling()");
     expectScriptToContain(script, "function connectedSolanaWalletAddress() {\n    return privyState.solanaWalletAddress || null;\n  }");
     expectScriptToContain(script, "function knownSolanaOwnerWalletAddress()");
+    expectScriptToContain(script, '"Connect a Solana wallet to open packs and mint card NFTs."');
+    expectScriptToContain(script, '"Privy account · no Solana wallet"');
     expectScriptToContain(script, "function hallPassPacksForTelemetry(t)");
     expectScriptToContain(script, "function buildHallPassPack(pack)");
     expectScriptToContain(script, "No pack or card collectibles in this wallet yet.");
@@ -202,6 +213,8 @@ describe("viewer regression guardrails", () => {
 
   it("keeps Privy modal actions from getting stuck while Privy owns Solana wallet selection", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
+    expect(PRIVY_CLIENT_SOURCE).toContain("useLoginWithSiws");
+    expect(PRIVY_CLIENT_SOURCE).toContain("getIdentityToken");
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_LOGIN_METHODS: NonNullable<PrivyClientConfig["loginMethods"]> = ["wallet", "email", "google", "twitter"];');
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];');
     expect(PRIVY_CLIENT_SOURCE).toContain("loginMethods: RUBY_HIGH_LOGIN_METHODS");
@@ -216,13 +229,22 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("const raw = record.chainType ?? record.chain_type;");
     expect(PRIVY_CLIENT_SOURCE).toContain('return raw === "ethereum" || raw === "solana" ? raw : null;');
     expect(PRIVY_CLIENT_SOURCE).toContain("const solanaWalletAddress = connectedSolanaWalletAddress;");
+    expect(PRIVY_CLIENT_SOURCE).toContain("loginWithInjectedPhantom");
+    expect(PRIVY_CLIENT_SOURCE).toContain("onDiagnostic(listener)");
+    expect(PRIVY_CLIENT_SOURCE).toContain("diagnosticFromError");
+    expect(PRIVY_CLIENT_SOURCE).toContain("sanitizeDiagnosticEvent");
+    expect(PRIVY_CLIENT_SOURCE).toContain("phantom.siws.authenticate.error");
+    expect(PRIVY_CLIENT_SOURCE).toContain('walletClientType: "phantom"');
+    expect(PRIVY_CLIENT_SOURCE).toContain('connectorType: "injected"');
+    expect(PRIVY_CLIENT_SOURCE).toContain("identityToken");
     expect(PRIVY_CLIENT_SOURCE).not.toContain("linkedSolanaWallet");
     expect(PRIVY_CLIENT_SOURCE).not.toContain("function solanaWalletFromUser");
     expect(PRIVY_CLIENT_SOURCE).toContain("const PRIVY_ACTION_TIMEOUT_MS = 30_000;");
     expect(PRIVY_CLIENT_SOURCE).toContain("Privy sign-in did not open. Refresh Ruby High and try again.");
     expect(PRIVY_CLIENT_SOURCE).toContain("Solana wallet connection did not open. Refresh Ruby High and try again.");
     expect(PRIVY_CLIENT_SOURCE).toContain("Privy connected a wallet, but did not expose a Solana signer.");
-    expect(PRIVY_CLIENT_SOURCE).toContain("Promise.resolve(result).catch((err) => rejectPendingLogin(err))");
+    expect(PRIVY_CLIENT_SOURCE).toContain('diagnosticFromError("privy.login.promise_error"');
+    expect(PRIVY_CLIENT_SOURCE).toContain("rejectPendingLogin(err);");
     expect(PRIVY_CLIENT_SOURCE).toContain("Promise.resolve(result).catch((err) => rejectPendingWalletConnect(err))");
     expect(PRIVY_CLIENT_SOURCE).toContain("if (modal.isOpen) {");
     expect(PRIVY_CLIENT_SOURCE).toContain("if (pendingLogin.current) modalOpenedForLogin.current = true;");

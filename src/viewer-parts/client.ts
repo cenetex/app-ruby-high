@@ -516,9 +516,27 @@ export function runViewerClient(bootstrap) {
     { id: "mika",  name: "Mika",   color: "#52c673" },
     { id: "noor",  name: "Noor",   color: "#ec4f9e" },
   ];
-  const STUDENT_LINES_RIGHT = ["nice","yo same","easy","ok smart kid","first try??","atta way","lock in","bro really did that","fr"];
-  const STUDENT_LINES_WRONG = ["ouch","i picked the same","tricky","happens","hated that one","next time fr","ngl me too"];
-  const STUDENT_LINES_GREET = ["yo","hey","what's up","let's go","first one easy plz","ready"];
+  const STUDENT_LINES_RIGHT = [
+    "okay wait, nice one.",
+    "nah, that was clean.",
+    "you actually cooked there.",
+    "all right, first try is nasty.",
+    "okay, smart kid energy.",
+  ];
+  const STUDENT_LINES_WRONG = [
+    "ugh, that one was mean.",
+    "nah, i was about to miss that too.",
+    "okay, that question was rude.",
+    "happens - next one.",
+    "wait, i hated that one too.",
+  ];
+  const STUDENT_LINES_GREET = [
+    "okay, what are we doing.",
+    "all right, first bell energy.",
+    "im here - dont make it weird.",
+    "ready when you are.",
+    "okay wait, im listening.",
+  ];
   const pickRandom = (a) => a[Math.floor(Math.random() * a.length)];
   function studentNameById(id) {
     const s = STUDENTS.find((entry) => entry.id === id);
@@ -614,6 +632,7 @@ export function runViewerClient(bootstrap) {
     privyOverlay: $("privy-overlay"),
     privyClose: $("privy-close"),
     privyWallet: $("privy-wallet"),
+    privyPhantomLogin: $("privy-phantom-login"),
     privyLoginWidget: $("privy-login-widget"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
@@ -2326,6 +2345,8 @@ export function runViewerClient(bootstrap) {
     const active = cards.filter((card) => card.status === "active");
     const minted = cards.filter((card) => card.mintAddress && card.mintSignature);
     const pendingMints = pendingHallPassCardMintsForTelemetry();
+    const hasSolanaWallet = !!knownSolanaOwnerWalletAddress();
+    const needsWalletConnection = !hasSolanaWallet && (activePacks.length > 0 || pendingMints.length > 0);
     const shown = cards
       .slice()
       .sort((a, b) => {
@@ -2342,13 +2363,18 @@ export function runViewerClient(bootstrap) {
         if (minted.length > 0) pieces.push(minted.length + " minted");
         if (pendingMints.length > 0) pieces.push(pendingMints.length + " pending NFT mint" + (pendingMints.length === 1 ? "" : "s"));
       }
-      els.accountCardSummary.textContent = pieces.length === 0
+      els.accountCardSummary.textContent = needsWalletConnection
+        ? "Connect a Solana wallet to open packs and mint card NFTs."
+        : pieces.length === 0
         ? "No pack or card collectibles in this wallet yet."
         : pieces.join(" · ");
     }
     if (els.accountMintCards) {
       els.accountMintCards.disabled = !authed || billingBusy;
-      if (pendingMints.length > 0) {
+      if (needsWalletConnection) {
+        els.accountMintCards.textContent = billingBusy ? "Connecting..." : "Connect Wallet";
+        els.accountMintCards.title = "Connect a Solana wallet before opening packs or minting card NFTs.";
+      } else if (pendingMints.length > 0) {
         els.accountMintCards.textContent = billingBusy ? "Minting..." : "Mint Card NFTs";
         els.accountMintCards.title = "Retry minting pending Ruby High card NFTs.";
       } else {
@@ -2547,15 +2573,24 @@ export function runViewerClient(bootstrap) {
     copy.appendChild(detail);
     meta.appendChild(copy);
     if (pack.status === "active") {
+      const walletReady = !!knownSolanaOwnerWalletAddress();
       const open = document.createElement("button");
       open.type = "button";
       open.className = "account-pack-tile-open";
-      open.textContent = billingBusy ? "Opening..." : "Open Pack";
+      open.textContent = walletReady
+        ? (billingBusy ? "Opening..." : "Open Pack")
+        : (billingBusy ? "Connecting..." : "Connect Wallet");
       open.disabled = !authed || billingBusy;
-      open.title = "Open this Ruby High pack and mint its cards.";
+      open.title = walletReady
+        ? "Open this Ruby High pack and mint its cards."
+        : "Connect a Solana wallet before opening this Ruby High pack.";
       open.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (!walletReady) {
+          void ensureSolanaWalletFromAccount();
+          return;
+        }
         void openHallPassPackFromAccount(pack.id);
       });
       meta.appendChild(open);
@@ -3045,9 +3080,46 @@ export function runViewerClient(bootstrap) {
     }
   }
 
+  async function ensureSolanaWalletFromAccount() {
+    if (knownSolanaOwnerWalletAddress()) return true;
+    if (!privyConfig) {
+      setPrivyStatus("Wallet connection is not configured.", true);
+      return false;
+    }
+    if (billingBusy) return false;
+    billingBusy = true;
+    renderAccountPage();
+    try {
+      if (!privyState.authenticated) {
+        setPrivyStatus("Sign in to connect a Solana wallet.", false);
+        const loginSnapshot = await startPrivyLogin({ source: "account-wallet" });
+        if (!loginSnapshot && !privyState.authenticated) return false;
+      }
+      if (knownSolanaOwnerWalletAddress()) {
+        setPrivyStatus("Wallet ready.", false);
+        return true;
+      }
+      setPrivyStatus("Connect a Solana wallet to continue.", false);
+      const walletSnapshot = await startSolanaWalletConnect({ source: "account-wallet" });
+      if (!walletSnapshot || !knownSolanaOwnerWalletAddress()) return false;
+      setPrivyStatus("Solana wallet connected.", false);
+      return true;
+    } catch (err) {
+      setPrivyStatus("Wallet connection failed · " + (err && err.message ? err.message : "error"), true);
+      return false;
+    } finally {
+      billingBusy = false;
+      renderAccountPage();
+    }
+  }
+
   async function openHallPassPackFromAccount(packId) {
     const cleanPackId = String(packId || "").trim();
     if (!authed || !cleanPackId || billingBusy) return;
+    if (!knownSolanaOwnerWalletAddress()) {
+      const connected = await ensureSolanaWalletFromAccount();
+      if (!connected) return;
+    }
     billingBusy = true;
     renderAccountHallPassCards();
     showPackMintProgress("Opening pack. Minting five card NFTs...");
@@ -3093,16 +3165,17 @@ export function runViewerClient(bootstrap) {
       openBilling();
       return;
     }
-    const ownerWalletAddress = knownSolanaOwnerWalletAddress();
-    if (!ownerWalletAddress) {
-      setPrivyStatus("Connect a Solana wallet before minting card NFTs.", true);
-      return;
+    if (!knownSolanaOwnerWalletAddress()) {
+      const connected = await ensureSolanaWalletFromAccount();
+      if (!connected) return;
     }
     billingBusy = true;
     renderAccountHallPassCards();
     showPackMintProgress("Minting pending card NFTs...");
     setPrivyStatus("Minting pending card NFTs...", false);
     try {
+      const ownerWalletAddress = knownSolanaOwnerWalletAddress();
+      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before minting card NFTs.");
       const r = await apiFetch(apiBase + "/nft/mint-pack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -10151,6 +10224,43 @@ export function runViewerClient(bootstrap) {
       || (privyState.walletChainType === "solana" ? privyState.walletAddress : null)
       || null;
   }
+  function phantomWalletAvailable() {
+    const provider = (window.phantom && window.phantom.solana) || window.solana;
+    return !!(provider && provider.isPhantom && typeof provider.connect === "function" && typeof provider.signMessage === "function");
+  }
+  function looksLikeWalletLoginFailure(err) {
+    const message = String((err && (err.message || err.toString && err.toString())) || "");
+    return /wallet|phantom|solana/i.test(message);
+  }
+  function sanitizePrivyDiagnostic(event) {
+    const source = event && typeof event === "object" ? event : {};
+    const payload = {};
+    Object.keys(source).forEach((key) => {
+      if (/token|secret|signature$|siws|messageText/i.test(key)) return;
+      const value = source[key];
+      if (value == null || typeof value === "boolean" || typeof value === "number") {
+        payload[key] = value;
+      } else if (typeof value === "string") {
+        const compact = value.replace(/\s+/g, " ").trim();
+        payload[key] = compact.length > 240 ? compact.slice(0, 239) + "..." : compact;
+      }
+    });
+    payload.privyAuthenticated = !!privyState.authenticated;
+    payload.phantomAvailable = phantomWalletAvailable();
+    return payload;
+  }
+  function reportPrivyDiagnostic(event) {
+    const payload = sanitizePrivyDiagnostic(event);
+    const label = payload.type || "privy.diagnostic";
+    if (payload.level === "error") {
+      console.error("[ruby-high:privy]", label, payload);
+      const metricPayload = Object.assign({ diagnosticType: label }, payload);
+      delete metricPayload.type;
+      postViewerMetricEvent("privy_auth_error", metricPayload);
+    } else if (console.info) {
+      console.info("[ruby-high:privy]", label, payload);
+    }
+  }
   function applyPrivyState(next) {
     if (next && typeof next === "object") {
       const authenticated = !!next.authenticated;
@@ -10180,12 +10290,23 @@ export function runViewerClient(bootstrap) {
         : privyState.walletAddress
         ? shortWallet(privyState.walletAddress) + " · " + (privyState.walletChainType || "wallet")
         : privyState.authenticated
-          ? "Signed in"
+          ? "Privy account · no Solana wallet"
           : privyState.configured
             ? "Not connected"
             : "Privy not configured";
     }
-    if (els.privyLoginWidget) els.privyLoginWidget.hidden = !privyState.configured || privyState.authenticated;
+    if (els.privyLoginWidget) {
+      const needsWalletConnect = privyState.authenticated && !solanaAddress;
+      els.privyLoginWidget.hidden = !privyState.configured || (privyState.authenticated && !needsWalletConnect);
+      els.privyLoginWidget.textContent = needsWalletConnect ? "Connect Wallet" : "Sign in with Privy";
+      els.privyLoginWidget.title = needsWalletConnect
+        ? "Connect a Solana wallet to open packs and mint card NFTs."
+        : "Sign in with Privy";
+    }
+    if (els.privyPhantomLogin) {
+      els.privyPhantomLogin.hidden = !privyState.configured || privyState.authenticated || !phantomWalletAvailable();
+      els.privyPhantomLogin.title = "Sign in directly with the Phantom Solana wallet.";
+    }
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
     if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
     applyAuthUI();
@@ -10201,6 +10322,9 @@ export function runViewerClient(bootstrap) {
           privyClient = client;
           if (typeof client.onSession === "function") {
             client.onSession((snapshot) => handlePrivySession(snapshot, { source: "event" }));
+          }
+          if (typeof client.onDiagnostic === "function") {
+            client.onDiagnostic(reportPrivyDiagnostic);
           }
           return client;
         })
@@ -10297,8 +10421,36 @@ export function runViewerClient(bootstrap) {
       if (fromBilling) reportStatus("Account connected. Continue with crypto checkout.", false);
       return snapshot;
     } catch (err) {
+      if (!fromBilling && looksLikeWalletLoginFailure(err) && phantomWalletAvailable()) {
+        reportStatus("Trying Phantom directly...", false);
+        const snapshot = await startPhantomLogin({ source: "privy-fallback" });
+        if (snapshot) return snapshot;
+      }
       if (!fromBilling && els.privyOverlay) els.privyOverlay.classList.add("is-open");
       reportStatus(err && err.message ? err.message : "Privy sign-in failed", true);
+      return null;
+    } finally {
+      setPrivyBusy(false);
+    }
+  }
+  async function startPhantomLogin(opts) {
+    if (!privyConfig) return;
+    const fromFallback = opts && opts.source === "privy-fallback";
+    setPrivyBusy(true);
+    setPrivyStatus(fromFallback ? "Confirming Phantom..." : "Opening Phantom...", false);
+    try {
+      const client = await getPrivyClient();
+      if (!client || typeof client.loginWithPhantom !== "function") throw new Error("Phantom login is unavailable.");
+      const snapshot = await client.loginWithPhantom();
+      if (!snapshot) {
+        setPrivyStatus("Phantom sign-in closed.", false);
+        return null;
+      }
+      await handlePrivySession(snapshot, { source: "login" });
+      setPrivyStatus("Account connected.", false);
+      return snapshot;
+    } catch (err) {
+      setPrivyStatus(err && err.message ? err.message : "Phantom sign-in failed", true);
       return null;
     } finally {
       setPrivyBusy(false);
@@ -10336,7 +10488,11 @@ export function runViewerClient(bootstrap) {
       await initializePrivyFromStoredSession();
       if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
       els.privyOverlay?.setAttribute("aria-hidden", "false");
-      setPrivyStatus(privyState.authenticated ? "Account connected." : "", false);
+      setPrivyStatus(privyState.authenticated
+        ? knownSolanaOwnerWalletAddress()
+          ? "Account connected."
+          : "Connect a Solana wallet to open packs and mint card NFTs."
+        : "", false);
       renderAccountPage();
       void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
@@ -10352,6 +10508,7 @@ export function runViewerClient(bootstrap) {
     setPrivyStatus("", false);
   }
   function setPrivyBusy(busy) {
+    if (els.privyPhantomLogin) els.privyPhantomLogin.disabled = !!busy;
     if (els.privyLoginWidget) els.privyLoginWidget.disabled = !!busy;
     if (els.privySignout) els.privySignout.disabled = !!busy;
   }
@@ -11009,7 +11166,14 @@ export function runViewerClient(bootstrap) {
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
-    if (pendingHallPassCardMintsForTelemetry().length > 0) {
+    const hasWallet = !!knownSolanaOwnerWalletAddress();
+    const hasPendingMints = pendingHallPassCardMintsForTelemetry().length > 0;
+    const hasActivePack = hallPassPacksForTelemetry().some((pack) => pack.status === "active");
+    if (!hasWallet && (hasPendingMints || hasActivePack)) {
+      await ensureSolanaWalletFromAccount();
+      return;
+    }
+    if (hasPendingMints) {
       await mintPendingCardNftsFromAccount();
       return;
     }
@@ -11029,7 +11193,16 @@ export function runViewerClient(bootstrap) {
   if (els.privyOverlay) els.privyOverlay.addEventListener("click", (e) => {
     if (e.target === els.privyOverlay) closePrivyAccount();
   });
-  if (els.privyLoginWidget) els.privyLoginWidget.addEventListener("click", startPrivyLogin);
+  if (els.privyLoginWidget) els.privyLoginWidget.addEventListener("click", async () => {
+    if (privyState.authenticated) {
+      await ensureSolanaWalletFromAccount();
+      return;
+    }
+    await startPrivyLogin();
+  });
+  if (els.privyPhantomLogin) els.privyPhantomLogin.addEventListener("click", async () => {
+    await startPhantomLogin({ source: "account" });
+  });
   if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 
   // Click your name/avatar to open the character sheet.

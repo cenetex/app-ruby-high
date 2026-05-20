@@ -17,7 +17,15 @@ import {
   signTransactionMessageWithSigners,
 } from "@solana/kit";
 import type { Instruction } from "@solana/kit";
-import { TokenStandard, createNft, getBurnV1InstructionAsync } from "@metaplex-foundation/mpl-token-metadata-kit";
+import {
+  TokenStandard,
+  createNft,
+  fetchDigitalAsset,
+  findMasterEditionPda,
+  findMetadataPda,
+  getBurnV1InstructionAsync,
+  getSetAndVerifySizedCollectionItemInstruction,
+} from "@metaplex-foundation/mpl-token-metadata-kit";
 import {
   findAssociatedTokenPda,
   TOKEN_PROGRAM_ADDRESS,
@@ -37,6 +45,9 @@ const CARD_COLLECTION_FAMILY = "Ruby High";
 const CARD_COLLECTION_SERIES = "First Bell";
 const CARD_COLLECTION_EDITION = "Student & Faculty Edition";
 const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1";
+const CARD_COLLECTION_METADATA_URI_PATH = `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`;
+const ESTIMATED_CARD_MINT_LAMPORTS = 10_000_000n;
+const MINT_AUTHORITY_RESERVE_LAMPORTS = 5_000_000n;
 
 type HallPassNftProfile = {
   name: string;
@@ -248,6 +259,7 @@ export interface HallPassNftStatus {
   rpcUrl: string;
   symbol: string;
   authorityAddress?: string;
+  collectionAddress?: string;
   reason?: string;
 }
 
@@ -258,6 +270,7 @@ export interface PublicHallPassNftStatus {
   rpcHost: string;
   symbol: string;
   authorityAddress?: string;
+  collectionAddress?: string;
   reason?: string;
 }
 
@@ -265,6 +278,12 @@ export interface HallPassNftMintResult {
   ownerWalletAddress: string;
   mintAddress: string;
   mintSignature: string;
+  metadataUri: string;
+}
+
+export interface HallPassCollectionCreateResult {
+  collectionAddress: string;
+  signature: string;
   metadataUri: string;
 }
 
@@ -302,6 +321,7 @@ type HallPassNftBurnVerifier = (input: {
 let minterOverride: HallPassNftMinter | null = null;
 let burnTransactionBuilderOverride: HallPassNftBurnTransactionBuilder | null = null;
 let burnVerifierOverride: HallPassNftBurnVerifier | null = null;
+let authorityBalanceOverride: (() => Promise<bigint>) | null = null;
 
 export function setHallPassNftMinterForTest(minter: HallPassNftMinter | null): () => void {
   const previous = minterOverride;
@@ -329,10 +349,19 @@ export function setHallPassNftBurnVerifierForTest(verifier: HallPassNftBurnVerif
   };
 }
 
+export function setHallPassNftAuthorityBalanceForTest(fetcher: (() => Promise<bigint>) | null): () => void {
+  const previous = authorityBalanceOverride;
+  authorityBalanceOverride = fetcher;
+  return () => {
+    authorityBalanceOverride = previous;
+  };
+}
+
 export function hallPassNftStatus(env: NodeJS.ProcessEnv = process.env): HallPassNftStatus {
   const publicBaseUrl = publicBaseUrlFromEnv(env);
   const rpcUrl = nftRpcUrl(env);
   const symbol = nftSymbol(env);
+  const collectionAddress = cleanEnv(env.RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS);
   const secret = cleanEnv(env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY);
   if (!secret) {
     return {
@@ -345,12 +374,14 @@ export function hallPassNftStatus(env: NodeJS.ProcessEnv = process.env): HallPas
   }
   try {
     const bytes = parseSecretKeyBytes(secret);
+    if (collectionAddress) cleanSolanaAddress(collectionAddress, "Card collection address");
     return {
       configured: true,
       publicBaseUrl,
       rpcUrl,
       symbol,
       authorityAddress: addressFromPublicKeyBytes(bytes),
+      ...(collectionAddress ? { collectionAddress } : {}),
     };
   } catch (err) {
     return {
@@ -358,6 +389,7 @@ export function hallPassNftStatus(env: NodeJS.ProcessEnv = process.env): HallPas
       publicBaseUrl,
       rpcUrl,
       symbol,
+      ...(collectionAddress ? { collectionAddress } : {}),
       reason: err instanceof Error ? err.message : String(err),
     };
   }
@@ -372,6 +404,7 @@ export function publicHallPassNftStatus(env: NodeJS.ProcessEnv = process.env): P
     rpcHost: rpcHostForPublicStatus(status.rpcUrl),
     symbol: status.symbol,
     ...(status.authorityAddress ? { authorityAddress: status.authorityAddress } : {}),
+    ...(status.collectionAddress ? { collectionAddress: status.collectionAddress } : {}),
     ...(status.reason ? { reason: status.reason } : {}),
   };
 }
@@ -460,6 +493,7 @@ export async function mintHallPassCardNft(
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
   const mint = await generateKeyPairSigner();
   const metadataUri = hallPassNftMetadataUri(card);
+  const instructions: Instruction[] = [];
   const [createInstruction, mintInstruction] = await createNft({
     mint,
     authority,
@@ -480,12 +514,20 @@ export async function mintHallPassCardNft(
     printSupply: null,
     tokenOwner: owner,
   });
+  instructions.push(createInstruction, mintInstruction);
+  if (config.collectionAddress) {
+    instructions.push(await collectionVerificationInstruction({
+      authority,
+      collectionAddress: config.collectionAddress,
+      mintAddress: mint.address,
+    }));
+  }
   const { value: latestBlockhash } = await createSolanaRpc(config.rpcUrl).getLatestBlockhash().send();
   const message = pipe(
     createTransactionMessage({ version: 0 }),
     (tx) => setTransactionMessageFeePayerSigner(authority, tx),
     (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-    (tx) => appendTransactionMessageInstructions([createInstruction, mintInstruction], tx),
+    (tx) => appendTransactionMessageInstructions(instructions, tx),
   );
   const signed = await signTransactionMessageWithSigners(message);
   const signature = await createSolanaRpc(config.rpcUrl)
@@ -499,6 +541,105 @@ export async function mintHallPassCardNft(
     ownerWalletAddress: owner,
     mintAddress: mint.address,
     mintSignature: String(signature),
+    metadataUri,
+  };
+}
+
+export async function ensureHallPassCardCollectionVerified(mintAddress: string): Promise<boolean> {
+  const config = readMintConfig();
+  if (!config.collectionAddress) return false;
+  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
+  const mint = address(cleanSolanaAddress(mintAddress, "Card mint"));
+  const rpc = createSolanaRpc(config.rpcUrl);
+  const asset = await fetchDigitalAsset(rpc, mint);
+  const currentCollection = (() => {
+    const raw = asset.metadata.collection as any;
+    if (!raw || typeof raw !== "object") return null;
+    if ("__option" in raw) return raw.__option === "Some" ? raw.value ?? null : null;
+    return raw;
+  })();
+  if (
+    currentCollection &&
+    currentCollection.verified &&
+    String(currentCollection.key) === config.collectionAddress
+  ) {
+    return false;
+  }
+  const instruction = await collectionVerificationInstruction({
+    authority,
+    collectionAddress: config.collectionAddress,
+    mintAddress: mint,
+  });
+  const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (tx) => setTransactionMessageFeePayerSigner(authority, tx),
+    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+    (tx) => appendTransactionMessageInstructions([instruction], tx),
+  );
+  const signed = await signTransactionMessageWithSigners(message);
+  await rpc.sendTransaction(getBase64EncodedWireTransaction(signed), {
+    encoding: "base64",
+    maxRetries: 3n,
+    skipPreflight: true,
+  }).send();
+  return true;
+}
+
+export async function assertHallPassMintAuthorityCapacity(cardCount: number): Promise<void> {
+  const normalized = Math.max(0, Math.floor(Number(cardCount || 0)));
+  if (normalized <= 0) return;
+  const balanceLamports = await mintAuthorityBalanceLamports();
+  const requiredLamports = MINT_AUTHORITY_RESERVE_LAMPORTS + BigInt(normalized) * ESTIMATED_CARD_MINT_LAMPORTS;
+  if (balanceLamports >= requiredLamports) return;
+  throw new Error(
+    `Card mint authority balance is ${formatLamportsAsSol(balanceLamports)} SOL but needs at least ${formatLamportsAsSol(requiredLamports)} SOL to mint ${normalized} card NFT${normalized === 1 ? "" : "s"}.`,
+  );
+}
+
+export async function createHallPassCardCollection(): Promise<HallPassCollectionCreateResult> {
+  const config = readMintConfig();
+  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
+  const mint = await generateKeyPairSigner();
+  const metadataUri = hallPassCollectionMetadataUri();
+  const [createInstruction, mintInstruction] = await createNft({
+    mint,
+    authority,
+    payer: authority,
+    updateAuthority: authority,
+    name: CARD_COLLECTION_NAME,
+    symbol: config.symbol,
+    uri: metadataUri,
+    sellerFeeBasisPoints: 0,
+    creators: null,
+    primarySaleHappened: true,
+    isMutable: false,
+    collection: null,
+    uses: null,
+    collectionDetails: { __kind: "V1", size: 0n },
+    ruleSet: null,
+    decimals: null,
+    printSupply: null,
+    tokenOwner: authority.address,
+    isCollection: true,
+  });
+  const rpc = createSolanaRpc(config.rpcUrl);
+  const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (tx) => setTransactionMessageFeePayerSigner(authority, tx),
+    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+    (tx) => appendTransactionMessageInstructions([createInstruction, mintInstruction], tx),
+  );
+  const signed = await signTransactionMessageWithSigners(message);
+  const signature = await rpc.sendTransaction(getBase64EncodedWireTransaction(signed), {
+    encoding: "base64",
+    maxRetries: 3n,
+    skipPreflight: true,
+  }).send();
+  return {
+    collectionAddress: mint.address,
+    signature: String(signature),
     metadataUri,
   };
 }
@@ -596,6 +737,7 @@ function readMintConfig(): {
   authoritySecret: Uint8Array;
   rpcUrl: string;
   symbol: string;
+  collectionAddress?: string;
 } {
   const status = hallPassNftStatus();
   if (!status.configured) throw new Error(status.reason || "Card minting is not configured.");
@@ -604,6 +746,7 @@ function readMintConfig(): {
     authoritySecret: parseSecretKeyBytes(secret),
     rpcUrl: status.rpcUrl,
     symbol: status.symbol,
+    ...(status.collectionAddress ? { collectionAddress: status.collectionAddress } : {}),
   };
 }
 
@@ -613,6 +756,10 @@ function hallPassNftProfile(characterId: string): HallPassNftProfile {
 
 function versionedImagePath(path: string): string {
   return `${path}${path.includes("?") ? "&" : "?"}v=${CARD_IMAGE_VERSION}`;
+}
+
+function hallPassCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
+  return `${publicBaseUrlFromEnv(env)}${CARD_COLLECTION_METADATA_URI_PATH}`;
 }
 
 function normalizeSerial(serial: string): string {
@@ -696,6 +843,39 @@ async function fetchParsedTransaction(rpcUrl: string, signature: string): Promis
   };
   if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
   return payload.result ?? null;
+}
+
+async function collectionVerificationInstruction(input: {
+  authority: Awaited<ReturnType<typeof createKeyPairSignerFromBytes>>;
+  collectionAddress: string;
+  mintAddress: string;
+}): Promise<Instruction> {
+  const mint = address(input.mintAddress);
+  const collectionMint = address(cleanSolanaAddress(input.collectionAddress, "Card collection address"));
+  const [metadata] = await findMetadataPda({ mint });
+  const [collectionMetadata] = await findMetadataPda({ mint: collectionMint });
+  const [collectionMasterEdition] = await findMasterEditionPda({ mint: collectionMint });
+  return getSetAndVerifySizedCollectionItemInstruction({
+    metadata,
+    collectionAuthority: input.authority,
+    payer: input.authority,
+    updateAuthority: input.authority.address,
+    collectionMint,
+    collection: collectionMetadata,
+    collectionMasterEditionAccount: collectionMasterEdition,
+  });
+}
+
+async function mintAuthorityBalanceLamports(): Promise<bigint> {
+  if (authorityBalanceOverride) return authorityBalanceOverride();
+  const config = readMintConfig();
+  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
+  const { value } = await createSolanaRpc(config.rpcUrl).getBalance(authority.address).send();
+  return BigInt(value);
+}
+
+function formatLamportsAsSol(value: bigint): string {
+  return (Number(value) / 1_000_000_000).toFixed(6);
 }
 
 function sleep(ms: number): Promise<void> {

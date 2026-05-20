@@ -935,6 +935,56 @@ describe("chat event context", () => {
     ))).toBe(true);
   });
 
+  it("replaces one-word student chimes with a fuller fallback line", async () => {
+    const token = "route-student-chime-fallback-token";
+    const record = {
+      userId: "route-student-chime-fallback-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Student Chime Fallback",
+    };
+    auth.injectSessionForTest(token, record);
+    ruby.createCharacter(auth.stateKeyForRecord(record), {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "yo" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/student-chime"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          studentId: "mika",
+          situation: "answer-correct",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    expect(JSON.stringify(capturedChatRequest.body.messages)).toContain("At least 4 words");
+    expect(JSON.parse(res.body).line).toBe("okay Vince, nice one - that answer was clean.");
+  });
+
   it("shows the same completed class report board to the player avatar prompt", async () => {
     const token = "route-player-line-report-board-token";
     auth.injectSessionForTest(token, {

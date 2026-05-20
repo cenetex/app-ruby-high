@@ -3014,10 +3014,23 @@ export const VIEWER_CSS = `
     font-size: 15px;
   }
   .signin-card .secondary-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
+  #privy-overlay {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
   .privy-card { max-width: 460px; }
   .privy-card.account-card {
     width: min(860px, calc(100vw - 28px));
     max-width: 860px;
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 28px);
+    padding-bottom: calc(var(--safe-bot) + 14px);
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  @supports (height: 100svh) {
+    .privy-card.account-card {
+      max-height: calc(100svh - var(--safe-top) - var(--safe-bot) - 28px);
+    }
   }
   .account-header-row {
     display: flex;
@@ -3577,6 +3590,13 @@ export const VIEWER_CSS = `
     margin-top: 0;
   }
   @media (max-width: 760px) {
+    #privy-overlay {
+      align-items: flex-start;
+      padding: calc(var(--safe-top) + 10px) 10px calc(var(--safe-bot) + 10px);
+    }
+    .privy-card.account-card {
+      width: min(860px, calc(100vw - 20px));
+    }
     .account-header-row {
       flex-direction: column;
     }
@@ -3589,12 +3609,32 @@ export const VIEWER_CSS = `
       align-items: flex-start;
       flex-direction: column;
     }
+    .account-hall-pass-cards {
+      grid-template-columns: 1fr;
+    }
     .account-section-head button,
     .account-section-actions {
       width: 100%;
     }
+    .account-pack-tile-meta,
+    .account-card-tile-meta {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .account-history-row {
+      align-items: flex-start;
+      grid-template-columns: 1fr;
+    }
+    .account-pack-tile-copy,
+    .account-card-tile-meta > * {
+      width: 100%;
+    }
+    .account-pack-tile-open {
+      width: 100%;
+    }
   }
   #privy-login-widget:disabled,
+  #privy-phantom-login:disabled,
   #privy-signout:disabled,
   #account-ai-use-pass:disabled,
   #account-ai-action:disabled,
@@ -3886,10 +3926,22 @@ export const VIEWER_CSS = `
       align-items: flex-start;
       padding: calc(var(--safe-top) + 10px) 8px calc(var(--safe-bot) + 10px);
     }
+    #privy-overlay {
+      padding: calc(var(--safe-top) + 8px) 8px calc(var(--safe-bot) + 8px);
+    }
     .sheet-card {
       max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 20px);
       padding: 14px;
       border-radius: 14px;
+    }
+    .privy-card.account-card {
+      width: calc(100vw - 16px);
+    }
+    @supports (height: 100svh) {
+      .sheet-card,
+      .privy-card.account-card {
+        max-height: calc(100svh - var(--safe-top) - var(--safe-bot) - 20px);
+      }
     }
     .sheet-card.is-card-deck-sheet {
       max-width: calc(100vw - 16px);

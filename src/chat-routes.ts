@@ -628,7 +628,10 @@ async function generateStudentLine(args: {
     teacherSaidContext,
     playerSaidContext,
     noteContext,
-    "React in one short line — like a text in a group chat. Lowercase, 12 words max. Address whoever just acted by name when natural. If you genuinely have nothing, 'lol' or 'idk' or 'fr' is plenty.",
+    "React in one short line - like a real text in a group chat.",
+    "Lowercase. One complete thought. At least 4 words, at most 16 words.",
+    "Address whoever just acted by name when natural.",
+    "Do not answer with a filler-only fragment like 'yo', 'we', 'fr', 'lol', or 'idk'.",
   ].filter(Boolean).join("\n");
 
   const body = await llmJson<OpenRouterChatCompletion>({
@@ -646,7 +649,45 @@ async function generateStudentLine(args: {
   });
   const text = body.choices?.[0]?.message?.content?.trim() ?? "";
   // Strip wrapping quotes if model added them.
-  return text.replace(/^["'\s]+|["'\s]+$/g, "");
+  const cleaned = text.replace(/^["'\s]+|["'\s]+$/g, "").replace(/\s+/g, " ").trim();
+  return studentChimeLooksTooThin(cleaned)
+    ? fallbackStudentChime(args)
+    : cleaned;
+}
+
+function studentChimeLooksTooThin(text: string): boolean {
+  if (!text) return true;
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return true;
+  const words = cleaned.split(" ").filter(Boolean);
+  if (words.length < 4) return true;
+  if (cleaned.length < 16) return true;
+  return false;
+}
+
+function fallbackStudentChime(args: {
+  student: StudentCharacter;
+  situation: string;
+  playerName?: string;
+  teacherSaid?: string;
+}): string {
+  const player = (args.playerName || "you").trim().split(/\s+/)[0] || "you";
+  if (args.situation === "answer-correct") {
+    return `okay ${player}, nice one - that answer was clean.`;
+  }
+  if (args.situation === "answer-wrong") {
+    return `nah ${player}, that one was mean - i almost missed it too.`;
+  }
+  if (args.situation === "player-asked-hint") {
+    return `wait ${player}, check the wording first - that's where the trap is.`;
+  }
+  if (args.situation === "mention" || args.situation === "player-chat") {
+    return `okay ${player}, i get what you're saying - that actually tracks.`;
+  }
+  if (args.teacherSaid) {
+    return `wait, that tracks with what the teacher just said.`;
+  }
+  return `okay wait, i actually have a take on that.`;
 }
 
 function playerIntentForPhase(state: QuizState): PlayerChatIntent {
