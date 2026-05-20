@@ -22,14 +22,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   return `
 (() => {
   const bootstrap = ${bootstrap};
-  const loadViewerModule = (url) => import(url);
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
   const createViewerApiClient = ${createViewerApiClient.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};
-  runViewerClient(bootstrap, loadViewerModule);
+  runViewerClient(bootstrap);
 })();`;
 }
 

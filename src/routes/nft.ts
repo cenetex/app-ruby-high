@@ -1,5 +1,10 @@
 import type { AuthService } from "../services/auth-service.js";
 import {
+  corePackCollectionMetadataForRoute,
+  corePackNftMetadataForRoute,
+  publicCorePackNftStatus,
+} from "../services/core-pack-nfts.js";
+import {
   HALL_PASS_NFT_PREFIX,
   buildHallPassCardsBurnTransaction,
   hallPassNftMetadataForRoute,
@@ -24,6 +29,29 @@ const BASE58ISH = /^[1-9A-HJ-NP-Za-km-z]+$/;
 export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise<boolean> {
   if (!ctx.pathname.startsWith(HALL_PASS_NFT_PREFIX)) return false;
 
+  if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/metadata/core/collection.json`) {
+    ctx.json(ctx.res, corePackCollectionMetadataForRoute({
+      publicBaseUrl: publicBaseUrlForRequest(ctx),
+    }));
+    return true;
+  }
+
+  const corePackMetadataMatch = ctx.pathname.match(
+    /^\/api\/apps\/ruby-high\/nft\/metadata\/core\/pack\/([^/]+)\/([^/]+)\.json$/,
+  );
+  if (ctx.method === "GET" && corePackMetadataMatch) {
+    const productId = decodeURIComponent(corePackMetadataMatch[1] ?? "card-pack-1");
+    const serial = decodeURIComponent(corePackMetadataMatch[2] ?? "1");
+    ctx.json(ctx.res, corePackNftMetadataForRoute({
+      productId,
+      serial,
+      packCount: ctx.url?.searchParams.get("packs") ?? undefined,
+      cardCount: ctx.url?.searchParams.get("cards") ?? undefined,
+      publicBaseUrl: publicBaseUrlForRequest(ctx),
+    }));
+    return true;
+  }
+
   const metadataMatch = ctx.pathname.match(
     /^\/api\/apps\/ruby-high\/nft\/metadata\/hall-pass\/([^/]+)\/([^/]+)\.json$/,
   );
@@ -39,7 +67,10 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   }
 
   if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/status`) {
-    ctx.json(ctx.res, publicHallPassNftStatus());
+    ctx.json(ctx.res, {
+      ...publicHallPassNftStatus(),
+      corePacks: publicCorePackNftStatus(),
+    });
     return true;
   }
 

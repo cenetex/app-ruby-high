@@ -11,7 +11,7 @@ import {
   VIEWER_PATH,
 } from "./constants.js";
 
-const SERVICE_WORKER_CACHE = "ruby-high-pwa-v3";
+const SERVICE_WORKER_CACHE = "ruby-high-pwa-v4";
 const VIEWER_SECURITY_CSP_DIRECTIVES = [
   "default-src 'self'",
   "base-uri 'none'",
@@ -39,7 +39,8 @@ const FIRST_BELL_PAGE_FILES = Object.fromEntries(
 ) as Record<string, { file: string; mime: string }>;
 
 const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string }> = {
-  "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache" },
+  "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-store" },
+  "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-store" },
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby.png": { file: "ruby-classroom.png", mime: "image/png" },
   "welcome-hall-passes.png": { file: "welcome-hall-passes.png", mime: "image/png" },
@@ -298,15 +299,18 @@ self.addEventListener("activate", (event) => {
 });
 
 function isNetworkOnly(url) {
-  return url.pathname.startsWith(APP_BASE + "auth/")
+  return url.pathname === VIEWER_PATH
+    || url.pathname.startsWith(APP_BASE + "auth/")
     || url.pathname.startsWith(APP_BASE + "chat/")
     || url.pathname.startsWith(APP_BASE + "packs/")
     || url.pathname.startsWith(APP_BASE + "session/")
-    || url.pathname === ASSET_PREFIX + "privy-client.js";
+    || url.pathname === ASSET_PREFIX + "privy-client.js"
+    || url.pathname === ASSET_PREFIX + "privy-client.global.js";
 }
 
 async function putOk(cache, request, response) {
   if (!response || !response.ok) return;
+  if ((response.headers.get("cache-control") || "").toLowerCase().includes("no-store")) return;
   try {
     await cache.put(request, response.clone());
   } catch (_err) {
@@ -326,21 +330,6 @@ async function staleWhileRevalidate(request) {
   return cached || await refresh || Response.error();
 }
 
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  try {
-    const response = await fetch(request);
-    await putOk(cache, request, response);
-    return response;
-  } catch (_err) {
-    const cached = await cache.match(request, { ignoreSearch: true });
-    return cached || new Response("Ruby High is offline. Reconnect to resume class.", {
-      status: 503,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
-  }
-}
-
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
@@ -349,11 +338,6 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith(APP_BASE)) return;
   if (isNetworkOnly(url)) return;
-
-  if (url.pathname === VIEWER_PATH) {
-    event.respondWith(networkFirst(request));
-    return;
-  }
 
   if (url.pathname === MANIFEST_PATH || url.pathname.startsWith(ASSET_PREFIX)) {
     event.respondWith(staleWhileRevalidate(request));

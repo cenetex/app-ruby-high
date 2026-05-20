@@ -11,7 +11,8 @@ export default defineConfig([
   },
   {
     entry: ["src/viewer-privy-client.ts"],
-    format: ["esm"],
+    format: ["esm", "iife"],
+    globalName: "RubyHighPrivyClientModule",
     dts: true,
     clean: false,
     splitting: false,

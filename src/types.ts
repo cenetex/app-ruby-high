@@ -487,6 +487,8 @@ export type RubyHighWalletTransactionKind =
   | "hall-pass-spend"
   | "hall-pass-refund"
   | "hall-pass-revoke"
+  | "hall-pass-pack-mint"
+  | "hall-pass-pack-open"
   | "hall-pass-card-mint"
   | "hall-pass-card-burn"
   | "photo-day-spend"
@@ -521,6 +523,28 @@ export interface RubyHighHallPassCard {
   burnedAt?: number;
 }
 
+export type RubyHighHallPassPackStatus = "active" | "opened" | "void";
+
+export interface RubyHighHallPassPack {
+  id: string;
+  serial: number;
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  status: RubyHighHallPassPackStatus;
+  issuedAt: number;
+  updatedAt: number;
+  source?: RubyHighWalletTransaction["source"];
+  ownerWalletAddress: string;
+  assetAddress: string;
+  mintSignature: string;
+  metadataUri: string;
+  grantTransactionId?: string;
+  openTransactionId?: string;
+  openedAt?: number;
+  openSignature?: string;
+}
+
 export interface RubyHighWalletTransaction {
   id: string;
   kind: RubyHighWalletTransactionKind;
@@ -531,7 +555,7 @@ export interface RubyHighWalletTransaction {
   hallPasses?: number;
   /** Positive for refunds, negative for spends. */
   photoDayCredits?: number;
-  source?: "stripe" | "solana" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "hall-pass-card" | "admin" | "system";
+  source?: "stripe" | "solana" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "hall-pass-pack" | "hall-pass-card" | "admin" | "system";
   description?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }
@@ -547,6 +571,8 @@ export interface RubyHighWallet {
   hostedAiAccessExpiresAt?: number;
   /** Collectible Hall Pass cards granted in packs. Redeemed cards are kept as recent history. */
   hallPassCards?: RubyHighHallPassCard[];
+  /** Metaplex Core pack NFTs purchased before opening into cards. */
+  hallPassPacks?: RubyHighHallPassPack[];
   /** Server-side pack cards that have not been minted on-chain and should not render as owned NFTs. */
   unmintedHallPassCardCount?: number;
   /** Idempotency ledger for paid currency grants/spends. */

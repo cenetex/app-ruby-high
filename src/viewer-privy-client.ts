@@ -410,7 +410,7 @@ function RubyHighPrivyBridge(props: {
         const result = connectWallet({
           walletChainType: "solana-only",
           walletList: RUBY_HIGH_SOLANA_WALLET_LIST,
-          description: "Connect Phantom or another Solana wallet to mint Ruby High cards.",
+          description: "Connect Phantom or another Solana wallet to buy Ruby High packs.",
         }) as unknown;
         if (result && typeof (result as PromiseLike<unknown>).then === "function") {
           void Promise.resolve(result).catch((err) => rejectPendingWalletConnect(err));

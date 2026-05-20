@@ -463,7 +463,7 @@ export function buildSessionState(args: {
 function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
   const cards = Array.isArray(state.wallet?.hallPassCards) ? state.wallet.hallPassCards : [];
   const mintedCards = cards.filter((card) => !!card.mintAddress && !!card.mintSignature);
-  const unmintedCardCount = cards.filter((card) => card.status === "active" && !card.mintAddress && !card.mintSignature).length;
+  const packs = Array.isArray(state.wallet?.hallPassPacks) ? state.wallet.hallPassPacks : [];
   return {
     meritStars: Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0))),
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
@@ -476,8 +476,8 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
     ...(mintedCards.length > 0
       ? { hallPassCards: mintedCards }
       : {}),
-    ...(unmintedCardCount > 0
-      ? { unmintedHallPassCardCount: unmintedCardCount }
+    ...(packs.length > 0
+      ? { hallPassPacks: packs }
       : {}),
     ...(Array.isArray(state.wallet?.transactions) && state.wallet.transactions.length > 0
       ? { transactions: state.wallet.transactions.slice(-80) }

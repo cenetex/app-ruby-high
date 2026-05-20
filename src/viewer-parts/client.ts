@@ -2,7 +2,7 @@
 // Browser client body for the inline Ruby High viewer. This is real JavaScript
 // now, not a template-string blob; keep imports out of this file because
 // viewerScript serializes runViewerClient with Function#toString().
-export function runViewerClient(bootstrap, loadViewerModule) {
+export function runViewerClient(bootstrap) {
   const apiBase = bootstrap.apiBase;
   const sessionId = bootstrap.sessionId;
   const role = bootstrap.role;
@@ -20,6 +20,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         return;
       }
       navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })
+        .then((reg) => { reg.update().catch(() => {}); })
         .catch(() => {});
     });
   }
@@ -480,7 +481,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       return false;
     }
   }
-  const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.js?v=" + encodeURIComponent(buildId);
+  const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.global.js?v=" + encodeURIComponent(buildId);
+  const PRIVY_CLIENT_GLOBAL = "RubyHighPrivyClientModule";
   const COMMAND_TIMEOUT_MS = 15000;
   const PLAYER_LINE_TIMEOUT_MS = 12000;
   const STREAM_CONNECT_TIMEOUT_MS = 15000;
@@ -1814,14 +1816,12 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return mintedCardCount(t);
   }
 
-  function mintedCardCount(t) {
-    return hallPassCardsForTelemetry(t).filter((card) => card.status === "active" && card.mintAddress && card.mintSignature).length;
+  function walletPackCount(t) {
+    return hallPassPacksForTelemetry(t).filter((pack) => pack.status === "active").length;
   }
 
-  function unmintedCardCount(t) {
-    const src = t || lastTelemetry;
-    const wallet = src && src.wallet && typeof src.wallet === "object" ? src.wallet : {};
-    return Math.max(0, Math.floor(Number(wallet.unmintedHallPassCardCount || 0)));
+  function mintedCardCount(t) {
+    return hallPassCardsForTelemetry(t).filter((card) => card.status === "active" && card.mintAddress && card.mintSignature).length;
   }
 
   function canSpendHallPasses(cost, t) {
@@ -1993,9 +1993,11 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   function syncBillingWallet(t) {
     if (!els.billingWallet) return;
     const cardCount = walletCardCount(t || lastTelemetry);
+    const packCount = walletPackCount(t || lastTelemetry);
     const hallPasses = walletNumbers(t || lastTelemetry).hallPasses;
     const ai = hostedAiTelemetry(t || lastTelemetry);
     els.billingWallet.textContent = formatWholeNumber(hallPasses) + " Hall Pass" + (hallPasses === 1 ? "" : "es")
+      + " · " + formatWholeNumber(packCount) + " Pack" + (packCount === 1 ? "" : "s")
       + " · " + formatWholeNumber(cardCount) + " Card" + (cardCount === 1 ? "" : "s")
       + (ai.active ? " · AI active " + formatRelativeExpiry(ai.expiresAt) : "");
     renderAccountWallet();
@@ -2150,11 +2152,19 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return cards.filter((card) => card && typeof card === "object" && card.id);
   }
 
+  function hallPassPacksForTelemetry(t) {
+    const src = t || lastTelemetry;
+    const wallet = src && src.wallet && typeof src.wallet === "object" ? src.wallet : {};
+    const packs = Array.isArray(wallet.hallPassPacks) ? wallet.hallPassPacks.slice() : [];
+    return packs.filter((pack) => pack && typeof pack === "object" && pack.id && pack.assetAddress && pack.mintSignature);
+  }
+
   function renderAccountHallPassCards() {
     if (!els.accountHallPassCards) return;
     const cards = hallPassCardsForTelemetry();
+    const packs = hallPassPacksForTelemetry();
+    const activePacks = packs.filter((pack) => pack.status === "active");
     const active = cards.filter((card) => card.status === "active" && card.mintAddress && card.mintSignature);
-    const mintableCount = unmintedCardCount();
     const minted = cards.filter((card) => card.mintAddress && card.mintSignature);
     const shown = cards
       .filter((card) => card.mintAddress && card.mintSignature)
@@ -2166,25 +2176,37 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       })
       .slice(0, 24);
     if (els.accountCardSummary) {
-      els.accountCardSummary.textContent = minted.length === 0
-        ? "No minted cards in this wallet yet."
-        : active.length + " active minted · " + minted.length + " minted total";
+      const pieces = [];
+      if (packs.length > 0) pieces.push(activePacks.length + " active pack" + (activePacks.length === 1 ? "" : "s"));
+      if (minted.length > 0) pieces.push(active.length + " active card" + (active.length === 1 ? "" : "s"));
+      els.accountCardSummary.textContent = pieces.length === 0
+        ? "No minted pack or card NFTs in this wallet yet."
+        : pieces.join(" · ");
     }
     if (els.accountMintCards) {
       els.accountMintCards.disabled = !authed || billingBusy;
-      els.accountMintCards.textContent = mintableCount > 0 ? "Mint " + mintableCount + " Cards" : "Mint Pack";
-      els.accountMintCards.title = mintableCount > 0
-        ? "Send purchased pack cards to your Solana wallet."
-        : "Buy a Ruby High card pack.";
+      els.accountMintCards.textContent = "Buy Packs";
+      els.accountMintCards.title = "Buy Ruby High card packs.";
     }
     els.accountHallPassCards.replaceChildren();
-    if (shown.length === 0) {
+    const shownPacks = packs
+      .slice()
+      .sort((a, b) => {
+        const activeDelta = (b.status === "active" ? 1 : 0) - (a.status === "active" ? 1 : 0);
+        if (activeDelta) return activeDelta;
+        return Number(b.updatedAt || b.issuedAt || 0) - Number(a.updatedAt || a.issuedAt || 0);
+      })
+      .slice(0, 12);
+    if (shownPacks.length === 0 && shown.length === 0) {
       const empty = document.createElement("div");
       empty.className = "account-empty";
-      empty.textContent = "Mint a pack to show cards here.";
+      empty.textContent = "Buy a pack to show NFTs here.";
       els.accountHallPassCards.appendChild(empty);
       return;
     }
+    shownPacks.forEach((pack) => {
+      els.accountHallPassCards.appendChild(buildHallPassPack(pack));
+    });
     shown.forEach((card) => {
       els.accountHallPassCards.appendChild(buildHallPassCard(card));
     });
@@ -2258,6 +2280,59 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       quote: "the test designer is in this room and is laughing.",
     },
   };
+
+  function buildHallPassPack(pack) {
+    const item = document.createElement("article");
+    item.className = "account-hall-pass-card account-hall-pass-pack is-" + String(pack.status || "active");
+    item.style.setProperty("--hall-pass-card-color", "#f1c95c");
+    const top = document.createElement("div");
+    top.className = "account-hall-pass-card-top";
+    const crest = document.createElement("div");
+    crest.className = "account-hall-pass-card-crest";
+    crest.textContent = "RH";
+    const head = document.createElement("div");
+    head.className = "account-hall-pass-card-head";
+    const role = document.createElement("div");
+    role.className = "account-hall-pass-card-role";
+    role.textContent = "PACK NFT";
+    const name = document.createElement("div");
+    name.className = "account-hall-pass-card-name";
+    const packs = Math.max(1, Math.floor(Number(pack.packCount || 1)));
+    name.textContent = packs === 1 ? "Ruby High Pack" : "Ruby High " + packs + "-Pack";
+    const subtitle = document.createElement("div");
+    subtitle.className = "account-hall-pass-card-subtitle";
+    subtitle.textContent = formatWholeNumber(Math.max(1, Math.floor(Number(pack.cardCount || packs * 4)))) + " cards inside";
+    head.appendChild(role);
+    head.appendChild(name);
+    head.appendChild(subtitle);
+    top.appendChild(crest);
+    top.appendChild(head);
+    const art = document.createElement("div");
+    art.className = "account-hall-pass-card-art";
+    const img = document.createElement("img");
+    img.alt = "";
+    img.loading = "lazy";
+    img.src = WELCOME_HALL_PASS_ART_URL;
+    art.appendChild(img);
+    const body = document.createElement("div");
+    body.className = "account-hall-pass-card-body";
+    const blurb = document.createElement("div");
+    blurb.className = "account-hall-pass-card-blurb";
+    blurb.textContent = pack.status === "opened" ? "Opened at the counter." : "Ready to open at Ruby High.";
+    const quote = document.createElement("div");
+    quote.className = "account-hall-pass-card-quote";
+    quote.textContent = "Asset " + shortWallet(pack.assetAddress || "");
+    body.appendChild(blurb);
+    body.appendChild(quote);
+    const foot = document.createElement("div");
+    foot.className = "account-hall-pass-card-foot";
+    foot.textContent = "Serial #" + String(pack.serial || "").padStart(6, "0");
+    item.appendChild(top);
+    item.appendChild(art);
+    item.appendChild(body);
+    item.appendChild(foot);
+    return item;
+  }
 
   function buildHallPassCard(card) {
     const item = document.createElement("div");
@@ -3030,28 +3105,6 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     return !!walletSnapshot && !!connectedSolanaWalletAddress();
   }
 
-  async function ensureSolanaWalletAddressForMint() {
-    const existing = knownSolanaOwnerWalletAddress();
-    if (existing) return existing;
-    if (!privyConfig) throw new Error("Card minting needs a Solana wallet.");
-    if (!privyState.authenticated) {
-      setPrivyStatus("Opening sign-in for card minting...", false);
-      const loginSnapshot = await startPrivyLogin({ source: "billing" });
-      if (!loginSnapshot && !privyState.authenticated) return "";
-    }
-    const afterLogin = knownSolanaOwnerWalletAddress();
-    if (afterLogin) {
-      setPrivyStatus("Solana wallet ready. Minting cards...", false);
-      return afterLogin;
-    }
-    setPrivyStatus("Opening wallet connection for card minting...", false);
-    const walletSnapshot = await startSolanaWalletConnect({ source: "billing" });
-    if (!walletSnapshot && !knownSolanaOwnerWalletAddress()) return "";
-    const afterConnect = knownSolanaOwnerWalletAddress() || "";
-    if (afterConnect) setPrivyStatus("Solana wallet ready. Minting cards...", false);
-    return afterConnect;
-  }
-
   async function confirmSolanaPayment(productId, signature, ownerWalletAddress) {
     const cleanSignature = String(signature || "").trim();
     if (!productId || !cleanSignature) throw new Error("Wallet did not return a Solana payment confirmation.");
@@ -3075,11 +3128,8 @@ export function runViewerClient(bootstrap, loadViewerModule) {
       const packText = data && Number(data.packCount || 0) > 0
         ? packCountLabel(Number(data.packCount || 0))
         : "Pack";
-      setBillingStatus(data.applied ? packText + " credited from Solana payment." : "Solana payment was already credited.", false);
+      setBillingStatus(data.applied ? packText + " minted from Solana payment." : "Solana payment was already minted.", false);
       await fetchSession();
-      if (ownerWalletAddress) {
-        await mintPurchasedHallPassCards(ownerWalletAddress, { source: "billing" });
-      }
       await deriveAuth();
       if (billingProductsCache) await loadBillingProducts();
       return;
@@ -3089,31 +3139,6 @@ export function runViewerClient(bootstrap, loadViewerModule) {
 
   function waitForSolanaConfirmation(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  async function mintPurchasedHallPassCards(ownerWalletAddress, opts) {
-    const cleanOwner = String(ownerWalletAddress || connectedSolanaWalletAddress() || "").trim();
-    if (!cleanOwner) throw new Error("Connect a Solana wallet before minting cards.");
-    const fromAccount = !!(opts && opts.source === "account");
-    if (fromAccount) setPrivyStatus("Minting cards...", false);
-    setBillingStatus("Minting cards...", false);
-    const r = await apiFetch(apiBase + "/nft/mint-pack", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      timeoutMs: 90_000,
-      body: JSON.stringify({ ownerWalletAddress: cleanOwner }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data || !data.ok) throw new Error(data.error || "card mint " + r.status);
-    const minted = Array.isArray(data.minted) ? data.minted.length : 0;
-    const message = minted > 0
-      ? "Minted " + minted + " card" + (minted === 1 ? "" : "s") + "."
-      : "No pack cards ready to mint.";
-    setBillingStatus(message, false);
-    if (fromAccount) setPrivyStatus(message, false);
-    await fetchSession();
-    renderAccountPage();
-    return data;
   }
 
   function activeMintedHallPassCardsForWallet(ownerWalletAddress) {
@@ -3270,7 +3295,6 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     const ownerWalletAddress = connectedSolanaWalletAddress();
     const cards = activeMintedHallPassCardsForWallet(ownerWalletAddress);
     if (cards.length < needed) {
-      if (unmintedCardCount() > 0) throw new Error("Mint a card pack before burning a card.");
       throw new Error("No minted card is available to burn from this wallet.");
     }
     const client = await getPrivyClient();
@@ -9857,7 +9881,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
     if (!privyConfig) return null;
     if (privyClient) return privyClient;
     if (!privyClientPromise) {
-      privyClientPromise = loadViewerModule(PRIVY_CLIENT_URL)
+      privyClientPromise = loadScriptGlobal(PRIVY_CLIENT_URL, PRIVY_CLIENT_GLOBAL)
         .then((mod) => mod.createRubyHighPrivyClient(privyConfig))
         .then((client) => {
           privyClient = client;
@@ -9871,6 +9895,26 @@ export function runViewerClient(bootstrap, loadViewerModule) {
         });
     }
     return privyClientPromise;
+  }
+  function loadScriptGlobal(url, globalName) {
+    const existing = window[globalName];
+    if (existing && typeof existing.createRubyHighPrivyClient === "function") return Promise.resolve(existing);
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = url;
+      script.async = true;
+      script.dataset.rubyHighPrivyClient = "true";
+      script.onload = () => {
+        const mod = window[globalName];
+        if (mod && typeof mod.createRubyHighPrivyClient === "function") {
+          resolve(mod);
+          return;
+        }
+        reject(new Error("Privy account bundle loaded without a client."));
+      };
+      script.onerror = () => reject(new Error("Could not load the Privy account bundle."));
+      document.head.appendChild(script);
+    });
   }
   async function handlePrivySession(snapshot, opts) {
     if (!snapshot || !snapshot.authenticated) {
@@ -10649,28 +10693,7 @@ export function runViewerClient(bootstrap, loadViewerModule) {
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", openPrivyAccount);
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
-    const mintableCount = unmintedCardCount();
-    if (mintableCount === 0) {
-      openBilling();
-      return;
-    }
-    billingBusy = true;
-    renderAccountPage();
-    try {
-      const ownerWalletAddress = await ensureSolanaWalletAddressForMint();
-      if (!ownerWalletAddress) {
-        setPrivyStatus("Card mint canceled.", false);
-        return;
-      }
-      await mintPurchasedHallPassCards(ownerWalletAddress, { source: "account" });
-    } catch (err) {
-      const message = "Card mint failed · " + (err && err.message ? err.message : "error");
-      setPrivyStatus(message, true);
-      setBillingStatus(message, true);
-    } finally {
-      billingBusy = false;
-      renderAccountPage();
-    }
+    openBilling();
   });
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);

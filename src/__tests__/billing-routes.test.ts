@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleBillingRoutes } from "../routes/billing.js";
 import type { RouteContext } from "../routes/context.js";
 import { AuthService } from "../services/auth-service.js";
+import { deterministicCorePackMintForTest, setCorePackNftMinterForTest } from "../services/core-pack-nfts.js";
 import { RubyHighService, WELCOME_HALL_PASS_GRANT } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
@@ -34,7 +35,11 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS,
   RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS,
   RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS,
+  RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
+  RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
 };
+
+let restoreCorePackMinter: (() => void) | null = null;
 
 function restoreEnv(): void {
   for (const [key, value] of Object.entries(ORIGINAL_ENV)) {
@@ -120,6 +125,9 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS;
   delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS;
   delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS;
+  process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
+  process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
+  restoreCorePackMinter = setCorePackNftMinterForTest(async (input) => deterministicCorePackMintForTest(input));
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-billing-routes-"));
   await getActivePack();
   const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
@@ -130,6 +138,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   restoreEnv();
+  if (restoreCorePackMinter) restoreCorePackMinter();
+  restoreCorePackMinter = null;
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
@@ -506,8 +516,9 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.rpcUrl).toBe("https://solana-mainnet.rpc.privy.systems?privyAppId=privy-app-test");
   });
 
-  it("verifies an on-chain token transfer and grants Hall Passes idempotently", async () => {
+  it("verifies an on-chain token transfer and mints a Pack NFT idempotently", async () => {
     const stateKey = signInUser("solana-paid");
+    const ownerWalletAddress = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/quote",
@@ -559,7 +570,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-paid",
-      body: { productId: "card-pack-5", signature },
+      body: { productId: "card-pack-5", signature, ownerWalletAddress },
     }), deps());
 
     expect(lastResponse).toMatchObject({
@@ -573,15 +584,20 @@ describe("Solana Hall Pass billing", () => {
         productId: "card-pack-5",
         packCount: 5,
         cardCount: 20,
+        packAssetAddress: expect.any(String),
+        packMintSignature: expect.any(String),
       },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(5);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === `solana:spl-token-transfer:${signature}`)).toHaveLength(20);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards ?? []).toHaveLength(0);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.filter((pack) => pack.grantTransactionId === `solana:spl-token-transfer:${signature}`)).toHaveLength(1);
     expect(ruby.walletTransaction(stateKey, `solana:spl-token-transfer:${signature}`)).toMatchObject({
       source: "solana",
       hallPasses: 0,
       metadata: {
-        hallPassCardCount: 20,
+        packNft: true,
+        cardCount: 20,
+        packAssetAddress: expect.any(String),
         solanaRequiredBaseUnits: "100000000000",
         solanaReceivedBaseUnits: "100000000000",
         solanaReference: reference,
@@ -592,7 +608,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-paid",
-      body: { productId: "card-pack-5", signature },
+      body: { productId: "card-pack-5", signature, ownerWalletAddress },
     }), deps());
 
     expect(lastResponse).toMatchObject({
@@ -628,7 +644,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-wrong-ref",
-      body: { productId: "card-pack-5", signature },
+      body: { productId: "card-pack-5", signature, ownerWalletAddress: "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP" },
     }), deps());
 
     expect(lastResponse?.status).toBe(400);

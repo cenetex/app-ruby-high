@@ -12,6 +12,7 @@ import {
   questionGenerationCost,
 } from "../hosted-entitlements.js";
 import { publicHallPassNftStatus, verifyHallPassCardBurn } from "../services/hall-pass-nfts.js";
+import { mintCorePackNft, publicCorePackNftStatus } from "../services/core-pack-nfts.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
@@ -969,20 +970,25 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   if (ctx.method === "GET" && ctx.pathname === `${BILLING_PREFIX}/products`) {
     const entitlements = optionalEntitlementsForRequest(ctx, deps);
     const solana = solanaBillingConfig();
+    const corePacks = publicCorePackNftStatus();
     ctx.json(ctx.res, {
       ok: true,
       configured: !!envTrim("RUBY_HIGH_STRIPE_SECRET_KEY"),
       currency: billingCurrency(),
       products: billingProducts(),
       solana: {
-        configured: solana.configured,
+        configured: solana.configured && corePacks.configured,
         recipient: solana.recipient,
         mint: solana.mint,
         symbol: solana.symbol,
         decimals: solana.decimals,
+        packNfts: corePacks,
         products: solana.products,
       },
-      nfts: publicHallPassNftStatus(),
+      nfts: {
+        ...publicHallPassNftStatus(),
+        corePacks,
+      },
       imageCosts: {
         portrait: hostedImageCost("portrait"),
         diploma: hostedImageCost("diploma"),
@@ -1007,6 +1013,11 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const solana = solanaBillingConfig();
     if (!solana.configured) {
       ctx.error(ctx.res, "Solana card billing is not configured.", 503);
+      return true;
+    }
+    const packNfts = publicCorePackNftStatus();
+    if (!packNfts.configured) {
+      ctx.error(ctx.res, packNfts.reason || "Pack NFT minting is not configured.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -1041,6 +1052,11 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ctx.error(ctx.res, "Solana card billing is not configured.", 503);
       return true;
     }
+    const packNfts = publicCorePackNftStatus();
+    if (!packNfts.configured) {
+      ctx.error(ctx.res, packNfts.reason || "Pack NFT minting is not configured.", 503);
+      return true;
+    }
     const stateKey = authenticatedStateKey(ctx, deps);
     if (!stateKey) {
       ctx.error(ctx.res, "Not authenticated.", 401);
@@ -1058,6 +1074,10 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     if (!signature) {
       ctx.error(ctx.res, "Solana transaction signature is required.", 400);
+      return true;
+    }
+    if (!ownerWalletAddress) {
+      ctx.error(ctx.res, "Solana wallet address is required to mint the pack NFT.", 400);
       return true;
     }
     const idempotencyKey = solanaTransactionKey(signature);
@@ -1081,14 +1101,29 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         productId: existing.transaction.metadata?.hallPassPackId ?? product.id,
         packCount: product.packCount,
         cardCount: product.cardCount,
+        packAssetAddress: existing.transaction.metadata?.packAssetAddress ?? null,
+        packMintSignature: existing.transaction.metadata?.packMintSignature ?? null,
         entitlements,
       });
       return true;
     }
     try {
       const verification = await verifySolanaPayment(solana, product, stateKey, signature);
-      const result = deps.ruby.grantHallPassCards(stateKey, {
+      const packMint = await mintCorePackNft({
+        productId: product.id,
+        packCount: product.packCount,
         cardCount: product.cardCount,
+        ownerWalletAddress,
+        paymentSignature: signature,
+      });
+      const result = deps.ruby.recordHallPassPackMint(stateKey, {
+        productId: product.id,
+        packCount: product.packCount,
+        cardCount: product.cardCount,
+        ownerWalletAddress: packMint.ownerWalletAddress,
+        assetAddress: packMint.assetAddress,
+        mintSignature: packMint.mintSignature,
+        metadataUri: packMint.metadataUri,
         idempotencyKey,
         source: "solana",
         description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"} via ${solana.symbol}`,
@@ -1104,7 +1139,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
           packCount: product.packCount,
           cardCount: product.cardCount,
           hallPassPackId: product.id,
-          ...(ownerWalletAddress ? { solanaPayer: ownerWalletAddress } : {}),
+          solanaPayer: ownerWalletAddress,
           ...(verification.slot != null ? { solanaSlot: verification.slot } : {}),
           ...(verification.blockTime != null ? { solanaBlockTime: verification.blockTime } : {}),
         },
@@ -1120,11 +1155,19 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         productId: product.id,
         packCount: product.packCount,
         cardCount: product.cardCount,
+        packAssetAddress: packMint.assetAddress,
+        packMintSignature: packMint.mintSignature,
+        packMetadataUri: packMint.metadataUri,
         entitlements,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      ctx.error(ctx.res, message, message.includes("too small") ? 402 : 400);
+      const status = message.includes("too small")
+        ? 402
+        : /mint|nft|rpc|insufficient funds|Attempt to debit|forbidden|403/i.test(message)
+          ? 502
+          : 400;
+      ctx.error(ctx.res, message, status);
     }
     return true;
   }

@@ -70,6 +70,8 @@ import {
   type RubyHighHallPassCardRarity,
   type RubyHighHallPassCardRole,
   type RubyHighHallPassCardStatus,
+  type RubyHighHallPassPack,
+  type RubyHighHallPassPackStatus,
   type RubyHighWalletTransaction,
   type RubyHighWalletTransactionKind,
 } from "../types.js";
@@ -433,6 +435,8 @@ export interface HallPassMutationResult {
   applied: boolean;
   transaction: RubyHighWalletTransaction;
   cards?: RubyHighHallPassCard[];
+  pack?: RubyHighHallPassPack;
+  packs?: RubyHighHallPassPack[];
 }
 
 export interface HallPassCardBurnInput {
@@ -458,6 +462,21 @@ export interface HallPassCardMintInput {
   mintSignature: string;
   metadataUri: string;
   idempotencyKey?: string;
+  at?: number;
+}
+
+export interface HallPassPackMintInput {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  ownerWalletAddress: string;
+  assetAddress: string;
+  mintSignature: string;
+  metadataUri: string;
+  idempotencyKey: string;
+  source?: RubyHighWalletTransaction["source"];
+  description?: string;
+  metadata?: RubyHighWalletTransaction["metadata"];
   at?: number;
 }
 
@@ -1537,6 +1556,79 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction, cards };
+  }
+
+  recordHallPassPackMint(sessionId: string, input: HallPassPackMintInput): HallPassMutationResult {
+    const state = this.getOrCreate(sessionId);
+    const id = input.idempotencyKey.trim();
+    if (!id) throw new Error("Pack mint idempotency key is required.");
+    const ownerWalletAddress = input.ownerWalletAddress.trim();
+    const assetAddress = input.assetAddress.trim();
+    const mintSignature = input.mintSignature.trim();
+    const metadataUri = input.metadataUri.trim();
+    if (!ownerWalletAddress || !assetAddress || !mintSignature || !metadataUri) {
+      throw new Error("Pack mint record is incomplete.");
+    }
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
+    const packs = normalizeHallPassPacks(state.wallet.hallPassPacks);
+    const existingPack = packs.find((pack) => pack.grantTransactionId === id || pack.assetAddress === assetAddress);
+    if (existing) {
+      return { state, applied: false, transaction: existing, ...(existingPack ? { pack: existingPack } : {}) };
+    }
+    if (existingPack) throw new Error("Pack NFT is already recorded.");
+    const packCount = normalizePositiveInteger(input.packCount, "Pack count");
+    const cardCount = normalizePositiveInteger(input.cardCount, "Card count");
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    const pack: RubyHighHallPassPack = {
+      id: hallPassPackId(id, assetAddress),
+      serial: hashInteger(`${id}:${assetAddress}`) % 900000 + 100000,
+      productId: input.productId.trim().slice(0, 96) || `card-pack-${packCount}`,
+      packCount,
+      cardCount,
+      status: "active",
+      issuedAt: at,
+      updatedAt: at,
+      ...(input.source ? { source: input.source } : {}),
+      ownerWalletAddress,
+      assetAddress,
+      mintSignature,
+      metadataUri,
+      grantTransactionId: id,
+    };
+    packs.push(pack);
+    state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind: "hall-pass-pack-mint",
+      at,
+      hallPasses: 0,
+      source: input.source ?? "hall-pass-pack",
+      ...(input.description ? { description: input.description } : {}),
+      metadata: {
+        ...(input.metadata ?? {}),
+        packNft: true,
+        productId: pack.productId,
+        packCount,
+        cardCount,
+        ownerWalletAddress,
+        packAssetAddress: assetAddress,
+        packMintSignature: mintSignature,
+        packMetadataUri: metadataUri,
+      },
+    };
+    recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: transaction.source ?? "hall-pass-pack",
+      feature: "hall-pass-pack-mint",
+      status: "success",
+      hallPassesDelta: 0,
+      metadata: { transactionId: transaction.id, packCount, cardCount },
+    });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction, pack, packs: state.wallet.hallPassPacks };
   }
 
   spendHallPasses(sessionId: string, input: HallPassMutationInput): HallPassMutationResult {
@@ -5066,6 +5158,7 @@ function normalizedWalletSource(value: unknown): NonNullable<RubyHighWalletTrans
     "character-slot",
     "course-slot",
     "photo-day",
+    "hall-pass-pack",
     "hall-pass-card",
     "admin",
     "system",
@@ -5167,8 +5260,71 @@ function normalizeHallPassCards(value: unknown): RubyHighHallPassCard[] {
   return [...active, ...inactive].sort((a, b) => a.issuedAt - b.issuedAt || a.serial - b.serial);
 }
 
+function normalizedHallPassPackStatus(value: unknown): RubyHighHallPassPackStatus {
+  return value === "opened" || value === "void" ? value : "active";
+}
+
+function normalizeHallPassPack(raw: unknown): RubyHighHallPassPack | null {
+  if (!raw || typeof raw !== "object") return null;
+  const pack = raw as Record<string, unknown>;
+  const id = typeof pack.id === "string" ? pack.id.trim().slice(0, 96) : "";
+  if (!id) return null;
+  const ownerWalletAddress = typeof pack.ownerWalletAddress === "string" ? pack.ownerWalletAddress.trim().slice(0, 96) : "";
+  const assetAddress = typeof pack.assetAddress === "string" ? pack.assetAddress.trim().slice(0, 96) : "";
+  const mintSignature = typeof pack.mintSignature === "string" ? pack.mintSignature.trim().slice(0, 140) : "";
+  const metadataUri = typeof pack.metadataUri === "string" ? pack.metadataUri.trim().slice(0, 320) : "";
+  if (!ownerWalletAddress || !assetAddress || !mintSignature || !metadataUri) return null;
+  const issuedAt = Math.max(0, Math.floor(Number(pack.issuedAt ?? pack.createdAt ?? 0)));
+  const updatedAt = Math.max(issuedAt, Math.floor(Number(pack.updatedAt ?? issuedAt)));
+  const entry: RubyHighHallPassPack = {
+    id,
+    serial: Math.max(1, Math.floor(Number(pack.serial ?? 1))),
+    productId: typeof pack.productId === "string" && pack.productId.trim()
+      ? pack.productId.trim().slice(0, 96)
+      : "card-pack-1",
+    packCount: Math.max(1, Math.floor(Number(pack.packCount ?? 1))),
+    cardCount: Math.max(1, Math.floor(Number(pack.cardCount ?? 4))),
+    status: normalizedHallPassPackStatus(pack.status),
+    issuedAt: Number.isFinite(issuedAt) && issuedAt > 0 ? issuedAt : Date.now(),
+    updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : Date.now(),
+    ownerWalletAddress,
+    assetAddress,
+    mintSignature,
+    metadataUri,
+  };
+  const source = normalizedWalletSource(pack.source);
+  if (source) entry.source = source;
+  for (const field of ["grantTransactionId", "openTransactionId", "openSignature"] as const) {
+    const value = pack[field];
+    if (typeof value === "string" && value.trim()) entry[field] = value.trim().slice(0, 240);
+  }
+  const openedAt = Math.floor(Number(pack.openedAt ?? 0));
+  if (Number.isFinite(openedAt) && openedAt > 0) entry.openedAt = openedAt;
+  return entry;
+}
+
+function normalizeHallPassPacks(value: unknown): RubyHighHallPassPack[] {
+  if (!Array.isArray(value)) return [];
+  const byId = new Map<string, RubyHighHallPassPack>();
+  for (const raw of value) {
+    const entry = normalizeHallPassPack(raw);
+    if (entry) byId.set(entry.id, entry);
+  }
+  const packs = [...byId.values()].sort((a, b) => a.issuedAt - b.issuedAt || a.serial - b.serial);
+  const active = packs.filter((pack) => pack.status === "active");
+  const inactive = packs
+    .filter((pack) => pack.status !== "active")
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, HALL_PASS_REDEEMED_CARD_LIMIT);
+  return [...active, ...inactive].sort((a, b) => a.issuedAt - b.issuedAt || a.serial - b.serial);
+}
+
 function hashInteger(seed: string): number {
   return Number.parseInt(createHash("sha256").update(seed).digest("hex").slice(0, 8), 16);
+}
+
+function hallPassPackId(transactionId: string, assetAddress: string): string {
+  return `hpp_${createHash("sha256").update(`${transactionId}:${assetAddress}`).digest("hex").slice(0, 18)}`;
 }
 
 function hallPassCardId(transactionId: string, index: number): string {
@@ -5265,6 +5421,8 @@ function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | n
     "hall-pass-spend",
     "hall-pass-refund",
     "hall-pass-revoke",
+    "hall-pass-pack-mint",
+    "hall-pass-pack-open",
     "hall-pass-card-mint",
     "hall-pass-card-burn",
     "photo-day-spend",
@@ -5338,6 +5496,7 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
   const hallPasses = Math.max(0, Math.floor(Number(src.hallPasses ?? 0)));
   const hallPassCards = normalizeHallPassCards(src.hallPassCards)
     .filter((card) => card.grantTransactionId !== WELCOME_HALL_PASS_GRANT_ID || !!card.mintAddress || !!card.mintSignature);
+  const hallPassPacks = normalizeHallPassPacks(src.hallPassPacks);
   const welcomeHallPassesGrantedAt = Math.floor(Number(src.welcomeHallPassesGrantedAt ?? 0));
   return {
     meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
@@ -5349,6 +5508,7 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
       ? { hostedAiAccessExpiresAt: Math.max(0, Math.floor(Number(src.hostedAiAccessExpiresAt))) }
       : {}),
     ...(hallPassCards.length > 0 ? { hallPassCards } : {}),
+    ...(hallPassPacks.length > 0 ? { hallPassPacks } : {}),
     ...(transactions.length > 0 ? { transactions } : {}),
     ...(operationLedger ? { operationLedger } : {}),
   };
