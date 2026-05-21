@@ -2070,6 +2070,44 @@ export function runViewerClient(bootstrap) {
     return product.name || packCountLabel(product.packCount);
   }
 
+  function responseErrorText(data) {
+    return data && typeof data === "object" && data.error != null
+      ? String(data.error).trim()
+      : "";
+  }
+
+  function nftHttpErrorMessage(action, response, data, unchanged) {
+    const serverMessage = responseErrorText(data);
+    if (serverMessage) return serverMessage;
+    const status = Number(response && response.status);
+    const safeState = unchanged || "Try again in a minute.";
+    if (status === 401) return "Sign in again before continuing.";
+    if (status === 402) return action + " needs a funded wallet before it can continue.";
+    if (status === 404) return action + " could not find that card or pack. Refresh Ruby High and try again.";
+    if (status === 502 || status === 503 || status === 504) {
+      return action + " is temporarily unavailable. " + safeState;
+    }
+    return action + (status ? " failed (" + status + "). " : " failed. ") + safeState;
+  }
+
+  function friendlySolanaActionError(err, unchanged) {
+    const message = err && err.message ? String(err.message) : String(err || "error");
+    if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
+    if (/mint authority needs more SOL|insufficient funds|Attempt to debit|0x1\b/i.test(message)) {
+      return "Ruby High's mint authority needs more SOL before this NFT can be minted. Your card was not changed.";
+    }
+    if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
+      return "Ruby High's Solana RPC rejected the request. We need to refresh the RPC key; your NFT was not changed.";
+    }
+    if (/not found yet|not found on-chain|confirmation/i.test(message)) {
+      return "Solana has not indexed the transaction yet. Wait a few seconds and try again.";
+    }
+    if (/502|503|504|bad gateway|temporar|rpc|blockhash|preflight|simulation|timed out|timeout|failed to fetch|network/i.test(message)) {
+      return "Ruby High could not reach Solana reliably. " + (unchanged || "Try again in a minute.");
+    }
+    return message || "error";
+  }
+
   function creatorPricing(t) {
     const entitlements = hostedEntitlements(t);
     const creator = entitlements && entitlements.creator && typeof entitlements.creator === "object"
@@ -2355,7 +2393,7 @@ export function runViewerClient(bootstrap) {
         body: JSON.stringify({ ownerWalletAddress }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok) throw new Error(data.error || "pack sync " + r.status);
+      if (!r.ok || !data || !data.ok) throw new Error(nftHttpErrorMessage("Pack sync", r, data, "Your packs were not changed; try again in a minute."));
       const importedCount = Math.max(0, Math.floor(Number(data.importedCount || 0)));
       if (importedCount > 0) {
         setPrivyStatus("Imported " + formatWholeNumber(importedCount) + " pack NFT" + (importedCount === 1 ? "" : "s") + " from this wallet.", false);
@@ -2365,7 +2403,7 @@ export function runViewerClient(bootstrap) {
         renderAccountHallPassCards();
       }
     } catch (err) {
-      setPrivyStatus("Pack sync failed · " + (err && err.message ? err.message : "error"), true);
+      setPrivyStatus("Pack sync failed · " + friendlySolanaActionError(err, "Your packs were not changed; try again in a minute."), true);
       renderAccountHallPassCards();
     } finally {
       packSyncBusy = false;
@@ -2875,7 +2913,7 @@ export function runViewerClient(bootstrap) {
         setPrivyStatus("Card burn canceled.", false);
         return;
       }
-      setPrivyStatus("Card burn failed · " + message, true);
+      setPrivyStatus("Card burn failed · " + friendlySolanaActionError(err, "Your card was not burned; try again in a minute."), true);
     }).finally(() => {
       billingBusy = false;
       renderAccountPage();
@@ -3545,7 +3583,7 @@ export function runViewerClient(bootstrap) {
         }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok) throw new Error(data.error || "open pack " + r.status);
+      if (!r.ok || !data || !data.ok) throw new Error(nftHttpErrorMessage("Pack opening", r, data, "Your pack was not opened; try again in a minute."));
       const count = Math.max(0, Math.floor(Number(data.cardCount || (Array.isArray(data.cards) ? data.cards.length : 0))));
       const openedText = data.applied ? "Pack opened." : "Pack was already opened.";
       updatePackMintProgress("Pack opened. Updating your locker...");
@@ -3554,7 +3592,7 @@ export function runViewerClient(bootstrap) {
       renderAccountPage();
     } catch (err) {
       hidePackMintProgress();
-      setPrivyStatus("Open pack failed · " + (err && err.message ? err.message : "error"), true);
+      setPrivyStatus("Open pack failed · " + friendlySolanaActionError(err, "Your pack was not opened; try again in a minute."), true);
     } finally {
       hidePackMintProgress(900);
       billingBusy = false;
@@ -3584,7 +3622,7 @@ export function runViewerClient(bootstrap) {
       });
       const preparedData = await prepared.json().catch(() => ({}));
       if (!prepared.ok || !preparedData || !preparedData.ok || !preparedData.mint) {
-        throw new Error(preparedData.error || "prepare card mint " + prepared.status);
+        throw new Error(nftHttpErrorMessage("Card mint", prepared, preparedData, "Your card is still face-down; try again in a minute."));
       }
       if (preparedData.mint.serverMinted || !preparedData.mint.transactionBase64) {
         const name = preparedData.card && preparedData.card.characterName ? preparedData.card.characterName : "Card";
@@ -3634,14 +3672,16 @@ export function runViewerClient(bootstrap) {
         }),
       });
       const data = await confirmed.json().catch(() => ({}));
-      if (!confirmed.ok || !data || !data.ok) throw new Error(data.error || "confirm card mint " + confirmed.status);
+      if (!confirmed.ok || !data || !data.ok) {
+        throw new Error(nftHttpErrorMessage("Card mint confirmation", confirmed, data, "Your card reveal is not recorded yet; try again in a minute."));
+      }
       const name = data.card && data.card.characterName ? data.card.characterName : "Card";
       setPrivyStatus(name + " revealed.", false);
       await fetchSession();
       renderAccountPage();
     } catch (err) {
       hidePackMintProgress();
-      setPrivyStatus("Card reveal failed · " + (err && err.message ? err.message : "error"), true);
+      setPrivyStatus("Card reveal failed · " + friendlySolanaActionError(err, "Your card is still face-down; try again in a minute."), true);
     } finally {
       hidePackMintProgress(900);
       billingBusy = false;
@@ -3954,7 +3994,9 @@ export function runViewerClient(bootstrap) {
         body: JSON.stringify({ productId, ownerWalletAddress }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok) throw new Error(data.error || "solana quote " + r.status);
+      if (!r.ok || !data || !data.ok) {
+        throw new Error(nftHttpErrorMessage("Card pack checkout", r, data, "No Ruby High pack was minted; try again in a minute."));
+      }
       const client = await getPrivyClient();
       if (!client || typeof client.paySolanaQuote !== "function") throw new Error("Solana wallet checkout is unavailable.");
       const product = data.product || {};
@@ -3983,7 +4025,7 @@ export function runViewerClient(bootstrap) {
       await confirmSolanaPayment(productId, signature, payment && payment.walletAddress, data);
     } catch (err) {
       hidePackMintProgress();
-      setBillingStatus("Card pack checkout failed · " + (err && err.message ? err.message : "error"), true);
+      setBillingStatus("Card pack checkout failed · " + friendlySolanaActionError(err, "If your wallet already signed, keep this wallet connected and try again in a minute."), true);
     } finally {
       billingBusy = false;
       renderAccountPage();
@@ -4038,7 +4080,7 @@ export function runViewerClient(bootstrap) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) {
-        lastError = new Error(data.error || "solana confirm " + r.status);
+        lastError = new Error(nftHttpErrorMessage("Card pack confirmation", r, data, "If your wallet already signed, keep this wallet connected and try again in a minute."));
         if ([400, 425, 502, 503].includes(r.status) && /not found yet|not found on-chain|try again|rpc|temporar|confirmation/i.test(lastError.message) && attempt + 1 < maxAttempts) continue;
         throw lastError;
       }
@@ -4250,7 +4292,9 @@ export function runViewerClient(bootstrap) {
         body: JSON.stringify({ cardIds: [selectedCard.id], ownerWalletAddress }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok || !data.burn) throw new Error(data.error || "card burn " + r.status);
+      if (!r.ok || !data || !data.ok || !data.burn) {
+        throw new Error(nftHttpErrorMessage("Card burn", r, data, "Your card was not burned; try again in a minute."));
+      }
       const preparedCard = Array.isArray(data.cards) && data.cards.length > 0
         ? data.cards[0]
         : {
@@ -4319,7 +4363,7 @@ export function runViewerClient(bootstrap) {
         if (billingProductsCache) renderBillingProducts(billingProductsCache);
         return data;
       }
-      lastError = new Error(data.error || "card burn " + r.status);
+      lastError = new Error(nftHttpErrorMessage("Card burn credit", r, data, "If your wallet already signed, keep this wallet connected and try again in a minute."));
       if (!/not found yet|confirmation|try again|rpc/i.test(lastError.message) || attempt === 3) throw lastError;
       status("Waiting for card burn confirmation...", false);
     }
@@ -4338,7 +4382,7 @@ export function runViewerClient(bootstrap) {
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok && data && data.ok) return data;
-      lastError = new Error(data.error || "card burn confirm " + r.status);
+      lastError = new Error(nftHttpErrorMessage("Card burn confirmation", r, data, "If your wallet already signed, keep this wallet connected and try again in a minute."));
       if (!/not found yet|confirmation|try again|rpc/i.test(lastError.message)) break;
     }
     throw lastError || new Error("Card burn could not be confirmed.");

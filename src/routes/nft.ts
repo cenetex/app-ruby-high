@@ -21,6 +21,7 @@ import {
 } from "../services/hall-pass-nfts.js";
 import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import type { RubyHighService } from "../services/ruby-high-service.js";
+import { log } from "../services/logger.js";
 import type { RubyHighHallPassPack } from "../types.js";
 import type { RouteContext } from "./context.js";
 
@@ -200,9 +201,9 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         importedCount: imported.length,
       });
     } catch (err) {
-      console.error("[ruby-high] hall-pass-pack.sync-failed", {
+      log.error("nft.pack-sync-failed", err, {
+        sessionId: stateKey,
         ownerWalletAddress,
-        message: err instanceof Error ? err.message : String(err),
       });
       ctx.error(ctx.res, publicPackSyncErrorMessage(err), 502);
     }
@@ -257,6 +258,11 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         cardCount: result.cards?.length ?? Number(result.transaction.metadata?.cardCount ?? 0),
       });
     } catch (err) {
+      log.error("nft.pack-open-failed", err, {
+        sessionId: stateKey,
+        packId,
+        ownerWalletAddress,
+      });
       ctx.error(ctx.res, publicNftErrorMessage(err), 400);
     }
     return true;
@@ -334,6 +340,11 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         status: publicHallPassNftStatus(),
       });
     } catch (err) {
+      log.error("nft.card-mint-prepare-failed", err, {
+        sessionId: stateKey,
+        cardId,
+        ownerWalletAddress,
+      });
       ctx.error(ctx.res, publicNftErrorMessage(err), 502);
     }
     return true;
@@ -405,6 +416,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         status: publicHallPassNftStatus(),
       });
     } catch (err) {
+      log.error("nft.card-mint-confirm-failed", err, {
+        sessionId: stateKey,
+        cardId,
+        ownerWalletAddress,
+        mintAddress,
+      });
       ctx.error(ctx.res, publicNftErrorMessage(err), 400);
     }
     return true;
@@ -484,6 +501,10 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         status: publicHallPassNftStatus(),
       });
     } catch (err) {
+      log.error("nft.legacy-mint-pack-failed", err, {
+        sessionId: stateKey,
+        ownerWalletAddress,
+      });
       ctx.error(ctx.res, publicNftErrorMessage(err), 502);
     }
     return true;
@@ -550,6 +571,11 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         burn,
       });
     } catch (err) {
+      log.error("nft.card-burn-prepare-failed", err, {
+        sessionId: stateKey,
+        cardIds,
+        ownerWalletAddress,
+      });
       ctx.error(ctx.res, publicNftErrorMessage(err), 502);
     }
     return true;
@@ -591,6 +617,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         },
       });
     } catch (err) {
+      log.error("nft.card-burn-confirm-failed", err, {
+        sessionId: stateKey,
+        cardId: burn.cardId,
+        ownerWalletAddress: burn.ownerWalletAddress,
+        mintAddress: burn.mintAddress,
+      });
       ctx.error(ctx.res, publicNftErrorMessage(err), 400);
     }
     return true;
@@ -725,8 +757,20 @@ function publicNftErrorMessage(err: unknown): string {
   if (/insufficient funds|Attempt to debit|0x1\b/i.test(raw)) {
     return "Ruby High mint authority needs more SOL to mint this card.";
   }
+  if (/Solana RPC failed with (?:429|5\d\d)|429|too many requests|rate.?limit/i.test(raw)) {
+    return "Solana RPC is temporarily unavailable. Your NFT was not changed; try again in a minute.";
+  }
+  if (/fetch failed|network|timed out|timeout|ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i.test(raw)) {
+    return "Solana RPC did not answer. Your NFT was not changed; try again in a minute.";
+  }
+  if (/blockhash|recent blockhash/i.test(raw)) {
+    return "Solana could not provide a recent blockhash. Your NFT was not changed; try again in a minute.";
+  }
   if (/403|forbidden/i.test(raw)) {
     return "Solana RPC rejected the request. Check the configured Helius/Solana RPC key.";
+  }
+  if (/preflight|simulation/i.test(raw)) {
+    return "Solana rejected the transaction preview. Your NFT was not changed; try again in a minute.";
   }
   return raw || "Card NFT request failed.";
 }

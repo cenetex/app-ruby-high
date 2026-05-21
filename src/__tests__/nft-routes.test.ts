@@ -526,6 +526,34 @@ describe("Hall Pass NFT routes", () => {
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
 
+  it("returns retryable Solana RPC mint errors without mutating the card", async () => {
+    restoreMintBuilder?.();
+    restoreMintBuilder = setHallPassNftMinterForTest(async () => {
+      throw new Error("Solana RPC failed with 502.");
+    });
+    const stateKey = signInUser("mint-user-rpc-502");
+    ruby.grantHallPassCards(stateKey, {
+      cardCount: 5,
+      idempotencyKey: "stripe:checkout:cs_mint_user_rpc_502",
+      source: "stripe",
+    });
+    const card = ruby.mintableHallPassCards(stateKey)[0]!;
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-prepare",
+      cookie: "rh_session=mint-user-rpc-502",
+      body: { cardId: card.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 502,
+      body: { error: "Solana RPC is temporarily unavailable. Your NFT was not changed; try again in a minute." },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
+  });
+
   it("prepares and confirms owner-signed card burns", async () => {
     const stateKey = signInUser("burn");
     const grant = ruby.grantHallPassCards(stateKey, {

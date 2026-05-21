@@ -136,7 +136,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function renderAccountHallPassCards()");
     expectScriptToContain(script, "async function ensureSolanaWalletFromAccount()");
     expectScriptToContain(script, "function confirmWalletTransactionPreview(opts)");
+    expectScriptToContain(script, "function nftHttpErrorMessage(action, response, data, unchanged)");
+    expectScriptToContain(script, "function friendlySolanaActionError(err, unchanged)");
     expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
+    expectScriptToContain(script, "Your card is still face-down; try again in a minute.");
     expectScriptToContain(script, "accountHallPassCards");
     expectScriptToContain(script, 'buy.addEventListener("click", () => selectBillingProduct(product.id))');
     expectScriptToContain(script, 'mode === "card-packs"');
@@ -213,6 +216,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'prompt: "Phantom should show one token-transfer transaction."');
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
+    expect(script).not.toContain('"prepare card mint " + prepared.status');
+    expect(script).not.toContain('"solana quote " + r.status');
     expect(PRIVY_CLIENT_SOURCE).toContain('useSignTransaction');
     expect(PRIVY_CLIENT_SOURCE).toContain('/billing/solana/submit');
     expect(script).not.toContain('buy.textContent = "Pay with wallet"');
