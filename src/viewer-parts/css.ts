@@ -3024,10 +3024,12 @@ export const VIEWER_CSS = `
     max-width: 860px;
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 28px);
     padding-bottom: calc(var(--safe-bot) + 14px);
+    display: flex;
+    flex-direction: column;
     scrollbar-gutter: stable;
+    overflow: hidden;
     overflow-anchor: none;
     overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
   }
   @supports (height: 100svh) {
     .privy-card.account-card {
@@ -3035,6 +3037,7 @@ export const VIEWER_CSS = `
     }
   }
   .account-header-row {
+    flex: 0 0 auto;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -3061,6 +3064,66 @@ export const VIEWER_CSS = `
   }
   .privy-card .sheet-actions {
     justify-content: space-between;
+  }
+  .account-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 5px;
+    margin: 0 0 10px;
+    padding: 4px;
+    overflow-x: auto;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.035);
+    scrollbar-width: none;
+  }
+  .account-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .account-tab {
+    appearance: none;
+    flex: 0 0 auto;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-mute);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 900;
+    min-height: 34px;
+    padding: 0 11px;
+  }
+  .account-tab:hover,
+  .account-tab:focus-visible {
+    color: var(--text);
+    border-color: rgba(255,255,255,0.16);
+    outline: none;
+  }
+  .account-tab.is-active {
+    background: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 70%, #fff);
+    color: #fff;
+  }
+  .account-workspace {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overflow-anchor: none;
+    overscroll-behavior: contain;
+    padding-right: 2px;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
+  .account-panel {
+    display: none;
+    min-width: 0;
+  }
+  .account-panel.is-active {
+    display: block;
+  }
+  .account-panel > .account-section:first-child {
+    margin-top: 0;
   }
   .account-section {
     border: 1px solid var(--line);
@@ -3105,6 +3168,35 @@ export const VIEWER_CSS = `
     color: #ffe08a;
     font-weight: 900;
     font-size: 15px;
+  }
+  .account-wallet-rules {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .account-wallet-rules div {
+    min-width: 0;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.035);
+  }
+  .account-wallet-rules strong,
+  .account-wallet-rules span {
+    display: block;
+    min-width: 0;
+  }
+  .account-wallet-rules strong {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .account-wallet-rules span {
+    margin-top: 3px;
+    color: var(--text-mute);
+    font-size: 12px;
+    line-height: 1.35;
   }
   .account-card .sheet-actions {
     margin-top: 10px;
@@ -3645,6 +3737,54 @@ export const VIEWER_CSS = `
   }
   .account-history-row.is-credit .account-history-delta { color: #8fdc9b; }
   .account-history-row.is-debit .account-history-delta { color: #f2b26d; }
+  .account-trust-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+  }
+  .account-trust-row {
+    display: grid;
+    grid-template-columns: minmax(96px, 0.42fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+  }
+  .account-trust-key {
+    color: var(--text-mute);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .account-trust-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 850;
+    text-align: right;
+  }
+  a.account-trust-value {
+    color: #9fddff;
+    text-decoration: none;
+  }
+  a.account-trust-value:hover {
+    text-decoration: underline;
+  }
+  .account-trust-note {
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(241,201,92,0.24);
+    background: rgba(241,201,92,0.08);
+    color: var(--text-soft);
+    font-size: 12px;
+    line-height: 1.4;
+  }
   .account-empty {
     color: var(--text-mute);
     font-size: 13px;
@@ -3675,6 +3815,9 @@ export const VIEWER_CSS = `
       align-items: flex-start;
       flex-direction: column;
     }
+    .account-wallet-rules {
+      grid-template-columns: 1fr;
+    }
     .account-hall-pass-cards {
       grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
     }
@@ -3697,6 +3840,13 @@ export const VIEWER_CSS = `
     .account-card-tile-reveal {
       width: 100%;
     }
+    .account-trust-row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+    .account-trust-value {
+      text-align: left;
+    }
   }
   #privy-login-widget:disabled,
   #privy-phantom-login:disabled,
@@ -3705,6 +3855,7 @@ export const VIEWER_CSS = `
   #account-ai-action:disabled,
   #account-use-pass:disabled,
   #account-buy-passes:disabled,
+  #account-mint-cards:disabled,
   #account-create-character:disabled,
   #account-unlock-slot:disabled {
     opacity: 0.45;

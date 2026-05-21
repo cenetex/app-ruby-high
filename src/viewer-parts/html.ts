@@ -190,7 +190,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <button class="sheet-close" id="privy-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card privy-card account-card">
     <div class="account-header-row">
-      <h2>Ruby High Account</h2>
+      <h2>Account</h2>
       <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
@@ -200,65 +200,97 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
       </div>
     </div>
-    <section class="account-section account-character-section">
-      <div class="account-section-head">
-        <div>
-          <div class="account-section-title">Characters</div>
-          <div class="account-section-sub" id="account-character-summary"></div>
-        </div>
-        <div class="account-section-actions">
-          <button type="button" id="account-create-character">Create Character</button>
-          <button type="button" class="secondary" id="account-unlock-slot">Unlock Slot</button>
-        </div>
+    <div class="account-tabs" role="tablist" aria-label="Account areas">
+      <button type="button" class="account-tab is-active" id="account-tab-account" data-account-tab="account" role="tab" aria-selected="true" aria-controls="account-panel-account">Account</button>
+      <button type="button" class="account-tab" id="account-tab-wallet" data-account-tab="wallet" role="tab" aria-selected="false" aria-controls="account-panel-wallet">Wallet</button>
+      <button type="button" class="account-tab" id="account-tab-cards" data-account-tab="cards" role="tab" aria-selected="false" aria-controls="account-panel-cards">Cards</button>
+      <button type="button" class="account-tab" id="account-tab-library" data-account-tab="library" role="tab" aria-selected="false" aria-controls="account-panel-library">Library</button>
+      <button type="button" class="account-tab" id="account-tab-receipts" data-account-tab="receipts" role="tab" aria-selected="false" aria-controls="account-panel-receipts">Receipts</button>
+      <button type="button" class="account-tab" id="account-tab-trust" data-account-tab="trust" role="tab" aria-selected="false" aria-controls="account-panel-trust">Trust</button>
+    </div>
+    <div class="account-workspace">
+      <div class="account-panel is-active" id="account-panel-account" data-account-panel="account" role="tabpanel" aria-labelledby="account-tab-account">
+        <section class="account-section account-character-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Characters</div>
+              <div class="account-section-sub" id="account-character-summary"></div>
+            </div>
+            <div class="account-section-actions">
+              <button type="button" id="account-create-character">Create Character</button>
+              <button type="button" class="secondary" id="account-unlock-slot">Unlock Slot</button>
+            </div>
+          </div>
+          <div class="account-character-grid" id="account-character-grid"></div>
+        </section>
       </div>
-      <div class="account-character-grid" id="account-character-grid"></div>
-    </section>
-    <section class="account-section account-wallet-section">
-      <div class="account-section-head">
-        <div>
-          <div class="account-section-title">Wallet</div>
-        </div>
-        <div class="account-section-actions">
-          <button type="button" id="account-buy-passes">Buy Hall Passes</button>
-        </div>
+      <div class="account-panel" id="account-panel-wallet" data-account-panel="wallet" role="tabpanel" aria-labelledby="account-tab-wallet" hidden>
+        <section class="account-section account-wallet-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Wallet</div>
+            </div>
+            <div class="account-section-actions">
+              <button type="button" id="account-buy-passes">Buy Hall Passes</button>
+            </div>
+          </div>
+          <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
+          <div class="account-wallet-meta" id="account-wallet-meta"></div>
+          <div class="account-wallet-rules">
+            <div><strong>Cards burn into passes</strong><span>1 minted card adds 5 Hall Passes.</span></div>
+            <div><strong>Server credits are authoritative</strong><span>Payments and burns settle into this wallet ledger.</span></div>
+          </div>
+        </section>
+        <section class="account-section account-ai-section">
+          <div class="account-section-title">AI Access</div>
+          <div class="account-ai-status" id="account-ai-status">Checking...</div>
+          <div class="account-ai-meta" id="account-ai-meta"></div>
+          <div class="sheet-actions">
+            <button type="button" id="account-ai-use-pass">Use Hall Pass</button>
+            <button type="button" class="secondary" id="account-ai-action">Connect AI key</button>
+          </div>
+        </section>
       </div>
-      <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
-      <div class="account-wallet-meta" id="account-wallet-meta"></div>
-    </section>
-    <section class="account-section account-hall-pass-card-section">
-      <div class="account-section-head">
-        <div>
-          <div class="account-section-title">Cards</div>
-          <div class="account-section-sub" id="account-card-summary"></div>
-        </div>
-        <div class="account-section-actions">
-          <button type="button" class="secondary" id="account-mint-cards">Mint Pack</button>
-        </div>
+      <div class="account-panel" id="account-panel-cards" data-account-panel="cards" role="tabpanel" aria-labelledby="account-tab-cards" hidden>
+        <section class="account-section account-hall-pass-card-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Cards</div>
+              <div class="account-section-sub" id="account-card-summary"></div>
+            </div>
+            <div class="account-section-actions">
+              <button type="button" class="secondary" id="account-mint-cards">Mint Pack</button>
+            </div>
+          </div>
+          <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>
+        </section>
       </div>
-      <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>
-    </section>
-    <section class="account-section">
-      <div class="account-section-title">Purchase History</div>
-      <div class="account-history-list" id="account-history-list"></div>
-    </section>
-    <section class="account-section account-comics-section">
-      <div class="account-section-head">
-        <div>
-          <div class="account-section-title">Comics</div>
-          <div class="account-section-sub" id="account-comic-summary"></div>
-        </div>
+      <div class="account-panel" id="account-panel-library" data-account-panel="library" role="tabpanel" aria-labelledby="account-tab-library" hidden>
+        <section class="account-section account-comics-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Comics</div>
+              <div class="account-section-sub" id="account-comic-summary"></div>
+            </div>
+          </div>
+          <div id="account-comics"></div>
+        </section>
       </div>
-      <div id="account-comics"></div>
-    </section>
-    <section class="account-section account-ai-section">
-      <div class="account-section-title">AI Access</div>
-      <div class="account-ai-status" id="account-ai-status">Checking...</div>
-      <div class="account-ai-meta" id="account-ai-meta"></div>
-      <div class="sheet-actions">
-        <button type="button" id="account-ai-use-pass">Use Hall Pass</button>
-        <button type="button" class="secondary" id="account-ai-action">Connect AI key</button>
+      <div class="account-panel" id="account-panel-receipts" data-account-panel="receipts" role="tabpanel" aria-labelledby="account-tab-receipts" hidden>
+        <section class="account-section account-receipts-section">
+          <div class="account-section-title">Receipts</div>
+          <div class="account-section-sub">Purchases, grants, burns, spends, mints, and refunds.</div>
+          <div class="account-history-list" id="account-history-list"></div>
+        </section>
       </div>
-    </section>
+      <div class="account-panel" id="account-panel-trust" data-account-panel="trust" role="tabpanel" aria-labelledby="account-tab-trust" hidden>
+        <section class="account-section account-trust-section">
+          <div class="account-section-title">Trust</div>
+          <div class="account-section-sub">Official links, wallet safety, and current on-chain configuration.</div>
+          <div class="account-trust-list" id="account-trust-list"></div>
+        </section>
+      </div>
+    </div>
     <div id="privy-status" class="stat-budget" aria-live="polite"></div>
     </div>
 </div>

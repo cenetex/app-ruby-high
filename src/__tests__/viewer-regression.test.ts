@@ -283,20 +283,36 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).not.toContain("modalOpenedForWalletConnect.current = true;\n      connectWallet({");
   });
 
-  it("makes Account the character home before wallet, history, comics, and AI access", () => {
+  it("keeps Account split into focused account, wallet, cards, library, receipts, and trust panes", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
     const script = inlineScript(html);
     const characters = html.indexOf('class="account-section account-character-section"');
     const wallet = html.indexOf('class="account-section account-wallet-section"');
+    const cards = html.indexOf('class="account-section account-hall-pass-card-section"');
     const history = html.indexOf('id="account-history-list"');
     const comics = html.indexOf('class="account-section account-comics-section"');
     const ai = html.indexOf('class="account-section account-ai-section"');
 
+    expect(html).toContain('data-account-tab="account"');
+    expect(html).toContain('data-account-tab="wallet"');
+    expect(html).toContain('data-account-tab="cards"');
+    expect(html).toContain('data-account-tab="library"');
+    expect(html).toContain('data-account-tab="receipts"');
+    expect(html).toContain('data-account-tab="trust"');
+    expect(html).toContain('id="account-trust-list"');
+    expect(html).toContain("Receipts");
     expect(characters).toBeGreaterThan(-1);
     expect(wallet).toBeGreaterThan(characters);
-    expect(history).toBeGreaterThan(wallet);
-    expect(comics).toBeGreaterThan(history);
-    expect(ai).toBeGreaterThan(comics);
+    expect(ai).toBeGreaterThan(wallet);
+    expect(cards).toBeGreaterThan(ai);
+    expect(comics).toBeGreaterThan(cards);
+    expect(history).toBeGreaterThan(comics);
+    expectScriptToContain(script, "function setAccountPane(pane)");
+    expectScriptToContain(script, "function renderAccountTrust()");
+    expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
+    expect(VIEWER_CSS).toContain(".account-tabs");
+    expect(VIEWER_CSS).toContain(".account-workspace");
+    expect(VIEWER_CSS).toContain(".account-trust-row");
     expectScriptToContain(script, "function openCharacterCreationFromAccount()");
     expect(html).toContain('id="blackboard-empty-action"');
     expectScriptToContain(script, "Create your first Ruby High student.");

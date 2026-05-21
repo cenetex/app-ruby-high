@@ -638,6 +638,9 @@ export function runViewerClient(bootstrap) {
     privyLoginWidget: $("privy-login-widget"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
+    accountWorkspace: document.querySelector(".account-workspace"),
+    accountTabs: Array.from(document.querySelectorAll("[data-account-tab]")),
+    accountPanels: Array.from(document.querySelectorAll("[data-account-panel]")),
     accountAiStatus: $("account-ai-status"),
     accountAiMeta: $("account-ai-meta"),
     accountAiUsePass: $("account-ai-use-pass"),
@@ -655,6 +658,7 @@ export function runViewerClient(bootstrap) {
     accountComicSummary: $("account-comic-summary"),
     accountComics: $("account-comics"),
     accountHistoryList: $("account-history-list"),
+    accountTrustList: $("account-trust-list"),
     checking: $("checking"),
     scrim: $("scrim"),
     congrats: $("congrats-toast"),
@@ -814,6 +818,7 @@ export function runViewerClient(bootstrap) {
   let billingMode = "hall-passes";
   let billingBusy = false;
   let selectedBillingProductId = null;
+  let activeAccountPane = "account";
   let packSyncBusy = false;
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
@@ -2245,13 +2250,48 @@ export function runViewerClient(bootstrap) {
     return hours + "h";
   }
 
+  function normalizeAccountPane(pane) {
+    const value = String(pane || "account");
+    return ["account", "wallet", "cards", "library", "receipts", "trust"].includes(value) ? value : "account";
+  }
+
+  function setAccountPane(pane) {
+    const next = normalizeAccountPane(pane);
+    const changed = activeAccountPane !== next;
+    activeAccountPane = next;
+    renderAccountPaneState();
+    if (changed && els.accountWorkspace) els.accountWorkspace.scrollTop = 0;
+    if (activeAccountPane === "trust") void loadAccountTrustConfig();
+  }
+
+  function renderAccountPaneState() {
+    const active = normalizeAccountPane(activeAccountPane);
+    if (Array.isArray(els.accountTabs)) {
+      els.accountTabs.forEach((tab) => {
+        const selected = tab && tab.getAttribute("data-account-tab") === active;
+        tab.classList.toggle("is-active", !!selected);
+        tab.setAttribute("aria-selected", selected ? "true" : "false");
+        tab.tabIndex = selected ? 0 : -1;
+      });
+    }
+    if (Array.isArray(els.accountPanels)) {
+      els.accountPanels.forEach((panel) => {
+        const selected = panel && panel.getAttribute("data-account-panel") === active;
+        panel.classList.toggle("is-active", !!selected);
+        panel.hidden = !selected;
+      });
+    }
+  }
+
   function renderAccountPage() {
+    renderAccountPaneState();
     renderAccountAi();
     renderAccountWallet();
     renderAccountHallPassCards();
     renderAccountCharacters();
     renderAccountComics();
     renderAccountHistory();
+    renderAccountTrust();
   }
 
   async function syncWalletPackNftsFromAccount(opts) {
@@ -2355,6 +2395,74 @@ export function runViewerClient(bootstrap) {
         ? slots.photoDayCredits + " Photo Day " + (slots.photoDayCredits === 1 ? "credit" : "credits")
         : "Hall Passes cover hosted AI and images. Burned card NFTs add 5 Hall Passes each.";
     }
+  }
+
+  let accountTrustLoadInFlight = false;
+  async function loadAccountTrustConfig() {
+    if (accountTrustLoadInFlight || (billingProductsCache && billingProductsCache.nfts)) return;
+    accountTrustLoadInFlight = true;
+    try {
+      await ensureBillingProductsForCreditWarning();
+    } finally {
+      accountTrustLoadInFlight = false;
+      renderAccountTrust();
+    }
+  }
+
+  function officialRubyHighWebsite() {
+    return "https://ruby-high.ai/";
+  }
+
+  function solanaAccountLink(address) {
+    const raw = String(address || "").trim();
+    if (!raw) return "";
+    return "https://solscan.io/account/" + encodeURIComponent(raw);
+  }
+
+  function appendAccountTrustRow(label, value, href) {
+    if (!els.accountTrustList) return;
+    const row = document.createElement("div");
+    row.className = "account-trust-row";
+    const key = document.createElement("div");
+    key.className = "account-trust-key";
+    key.textContent = label;
+    const val = href ? document.createElement("a") : document.createElement("div");
+    val.className = "account-trust-value";
+    val.textContent = value || "Unavailable";
+    if (href) {
+      val.href = href;
+      val.target = "_blank";
+      val.rel = "noopener noreferrer";
+    }
+    row.appendChild(key);
+    row.appendChild(val);
+    els.accountTrustList.appendChild(row);
+  }
+
+  function appendAccountTrustNote(text) {
+    if (!els.accountTrustList) return;
+    const note = document.createElement("div");
+    note.className = "account-trust-note";
+    note.textContent = text;
+    els.accountTrustList.appendChild(note);
+  }
+
+  function renderAccountTrust() {
+    if (!els.accountTrustList) return;
+    const payload = billingProductsCache && typeof billingProductsCache === "object" ? billingProductsCache : null;
+    const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
+    const nfts = payload && payload.nfts && typeof payload.nfts === "object" ? payload.nfts : null;
+    const corePacks = nfts && nfts.corePacks && typeof nfts.corePacks === "object" ? nfts.corePacks : solana && solana.packNfts;
+    const connectedWallet = knownSolanaOwnerWalletAddress();
+    els.accountTrustList.replaceChildren();
+    appendAccountTrustRow("Official website", officialRubyHighWebsite(), officialRubyHighWebsite());
+    appendAccountTrustRow("Current build", buildId || "dev");
+    appendAccountTrustRow("Connected wallet", connectedWallet ? shortWallet(connectedWallet) : "Not connected", solanaAccountLink(connectedWallet));
+    appendAccountTrustRow("Treasury", solana && solana.recipient ? shortWallet(solana.recipient) : "Shown before wallet payment", solana && solana.recipient ? solanaAccountLink(solana.recipient) : "");
+    appendAccountTrustRow("RUBY token", solana && solana.mint ? shortWallet(solana.mint) : "Shown before wallet payment", solana && solana.mint ? solanaAccountLink(solana.mint) : "");
+    appendAccountTrustRow("Pack collection", corePacks && corePacks.collectionAddress ? shortWallet(corePacks.collectionAddress) : "Loading configuration", corePacks && corePacks.collectionAddress ? solanaAccountLink(corePacks.collectionAddress) : "");
+    appendAccountTrustRow("Card collection", nfts && nfts.collectionAddress ? shortWallet(nfts.collectionAddress) : "Loading configuration", nfts && nfts.collectionAddress ? solanaAccountLink(nfts.collectionAddress) : "");
+    appendAccountTrustNote("Ruby High never asks for a seed phrase. Wallet prompts should be limited to sign-in, pack payment, pack opening, card minting, or card burning.");
   }
 
   function hallPassCardsForTelemetry(t) {
@@ -10854,6 +10962,7 @@ export function runViewerClient(bootstrap) {
           : "Connect a Solana wallet to open packs and mint card NFTs."
         : "", false);
       renderAccountPage();
+      if (els.accountWorkspace) els.accountWorkspace.scrollTop = 0;
       void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
       if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
@@ -11524,6 +11633,11 @@ export function runViewerClient(bootstrap) {
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
   if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", () => openBilling({ mode: "card-packs" }));
+  if (Array.isArray(els.accountTabs)) {
+    els.accountTabs.forEach((tab) => {
+      tab.addEventListener("click", () => setAccountPane(tab.getAttribute("data-account-tab")));
+    });
+  }
   if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }));
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
