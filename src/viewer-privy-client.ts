@@ -8,7 +8,6 @@ import {
   useModalStatus,
   usePrivy,
   type LinkedAccountWithMetadata,
-  type PrivyClientConfig,
   type User,
   type WalletListEntry,
 } from "@privy-io/react-auth";
@@ -121,7 +120,6 @@ interface PendingLogin {
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const PRIVY_ACTION_TIMEOUT_MS = 30_000;
 const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;
-const RUBY_HIGH_LOGIN_METHODS: NonNullable<PrivyClientConfig["loginMethods"]> = ["wallet", "email", "google", "twitter"];
 const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];
 
 let mountedRoot: Root | null = null;
@@ -194,7 +192,6 @@ export async function createRubyHighPrivyClient(
           appId: config.appId,
           clientId: config.clientId,
           config: {
-            loginMethods: RUBY_HIGH_LOGIN_METHODS,
             embeddedWallets: {
               ethereum: { createOnLogin: "off" },
               solana: { createOnLogin: "off" },
@@ -205,7 +202,6 @@ export async function createRubyHighPrivyClient(
             appearance: {
               theme: "dark",
               accentColor: "#df2f2f",
-              showWalletLoginFirst: true,
               walletChainType: "solana-only",
               walletList: RUBY_HIGH_SOLANA_WALLET_LIST,
             },
@@ -413,7 +409,7 @@ function RubyHighPrivyBridge(props: {
           connectorType: "privy_modal",
           provider: "privy",
         });
-        const result = login({ loginMethods: RUBY_HIGH_LOGIN_METHODS, walletChainType: "solana-only" }) as unknown;
+        const result = login() as unknown;
         if (result && typeof (result as PromiseLike<unknown>).then === "function") {
           void Promise.resolve(result).catch((err) => {
             props.diagnose(diagnosticFromError("privy.login.promise_error", err, { stage: "modal" }));

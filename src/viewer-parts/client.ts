@@ -10900,6 +10900,16 @@ export function runViewerClient(bootstrap) {
       console.info("[ruby-high:privy]", label, payload);
     }
   }
+  function friendlyPrivyAccountError(err, fallback) {
+    const message = err && err.message ? String(err.message) : String(err || "");
+    if (/disallowed_login_method/i.test(message)) {
+      return "Privy rejected a disabled sign-in method. Refresh Ruby High and try again.";
+    }
+    if (/popup|modal|did not open/i.test(message)) {
+      return "Privy sign-in did not open. Refresh Ruby High and try again.";
+    }
+    return message || fallback || "Privy sign-in failed";
+  }
   function applyPrivyState(next) {
     if (next && typeof next === "object") {
       const authenticated = !!next.authenticated;
@@ -11034,7 +11044,7 @@ export function runViewerClient(bootstrap) {
     } catch (err) {
       applyPrivyState({ configured: true, authenticated: false, ready: true });
       if (els.privyOverlay && els.privyOverlay.classList.contains("is-open")) {
-        setPrivyStatus("Privy unavailable · " + (err && err.message ? err.message : "error"), true);
+        setPrivyStatus("Privy unavailable · " + friendlyPrivyAccountError(err, "error"), true);
       }
     }
   }
@@ -11057,7 +11067,7 @@ export function runViewerClient(bootstrap) {
       return snapshot;
     } catch (err) {
       if (!fromBilling && els.privyOverlay) els.privyOverlay.classList.add("is-open");
-      reportStatus(err && err.message ? err.message : "Privy sign-in failed", true);
+      reportStatus(friendlyPrivyAccountError(err, "Privy sign-in failed"), true);
       return null;
     } finally {
       setPrivyBusy(false);
@@ -11083,7 +11093,7 @@ export function runViewerClient(bootstrap) {
       if (!fromBilling) void syncWalletPackNftsFromAccount({ force: true });
       return snapshot;
     } catch (err) {
-      reportStatus(err && err.message ? err.message : "Solana wallet connection failed", true);
+      reportStatus(friendlyPrivyAccountError(err, "Solana wallet connection failed"), true);
       return null;
     } finally {
       setPrivyBusy(false);
@@ -11106,7 +11116,7 @@ export function runViewerClient(bootstrap) {
     } catch (err) {
       if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
       els.privyOverlay?.setAttribute("aria-hidden", "false");
-      setPrivyStatus(err && err.message ? err.message : "Privy error", true);
+      setPrivyStatus(friendlyPrivyAccountError(err, "Privy error"), true);
     }
   }
   function closePrivyAccount() {

@@ -118,6 +118,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function reportPrivyDiagnostic(event)");
     expectScriptToContain(script, "startPrivyLogin");
     expectScriptToContain(script, "startSolanaWalletConnect");
+    expectScriptToContain(script, "function friendlyPrivyAccountError(err, fallback)");
+    expectScriptToContain(script, "Privy rejected a disabled sign-in method. Refresh Ruby High and try again.");
+    expect(script).not.toContain('reportStatus(err && err.message ? err.message : "Privy sign-in failed", true)');
     expect(script).not.toContain("client.loginWithPhantom()");
     expect(script).not.toContain("function phantomWalletAvailable()");
     expect(script).not.toContain("Trying Phantom directly...");
@@ -252,13 +255,14 @@ describe("viewer regression guardrails", () => {
   it("keeps Privy modal actions from getting stuck while Privy owns Solana wallet selection", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
     expect(PRIVY_CLIENT_SOURCE).toContain("getIdentityToken");
-    expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_LOGIN_METHODS: NonNullable<PrivyClientConfig["loginMethods"]> = ["wallet", "email", "google", "twitter"];');
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];');
-    expect(PRIVY_CLIENT_SOURCE).toContain("loginMethods: RUBY_HIGH_LOGIN_METHODS");
-    expect(PRIVY_CLIENT_SOURCE).toContain('login({ loginMethods: RUBY_HIGH_LOGIN_METHODS, walletChainType: "solana-only" })');
+    expect(PRIVY_CLIENT_SOURCE).toContain("const result = login() as unknown;");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("RUBY_HIGH_LOGIN_METHODS");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("loginMethods:");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("login({ loginMethods:");
     expect(PRIVY_CLIENT_SOURCE).toContain('walletChainType: "solana-only"');
     expect(PRIVY_CLIENT_SOURCE).toContain("walletList: RUBY_HIGH_SOLANA_WALLET_LIST");
-    expect(PRIVY_CLIENT_SOURCE).toContain("showWalletLoginFirst: true");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("showWalletLoginFirst");
     expect(PRIVY_CLIENT_SOURCE).toContain('ethereum: { createOnLogin: "off" }');
     expect(PRIVY_CLIENT_SOURCE).toContain("const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;");
     expect(PRIVY_CLIENT_SOURCE).toContain("const solanaWalletsRef = useRef<ConnectedStandardSolanaWallet[]>([]);");
