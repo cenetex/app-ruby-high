@@ -515,6 +515,17 @@ function hiddenHallPassCardForTelemetry(card: RubyHighHallPassCard): RubyHighHal
     ...(card.grantTransactionId ? { grantTransactionId: card.grantTransactionId } : {}),
     ...(card.packId ? { packId: card.packId } : {}),
     ...(typeof card.slotIndex === "number" ? { slotIndex: card.slotIndex } : {}),
+    ...(card.revealCommitment ? { revealCommitment: card.revealCommitment } : {}),
+    ...(card.packRevealVersion ? { packRevealVersion: card.packRevealVersion } : {}),
+    ...(card.catalogHash ? { catalogHash: card.catalogHash } : {}),
+    ...(card.commitment ? { commitment: card.commitment } : {}),
+    ...(card.entropySource ? { entropySource: card.entropySource } : {}),
+    ...(card.revealSeed ? { revealSeed: card.revealSeed } : {}),
+    ...(card.revealProof ? { revealProof: card.revealProof } : {}),
+    ...(card.packAssetAddress ? { packAssetAddress: card.packAssetAddress } : {}),
+    ...(typeof card.revealSlot === "number" ? { revealSlot: card.revealSlot } : {}),
+    ...(card.randomnessAccount ? { randomnessAccount: card.randomnessAccount } : {}),
+    ...(card.revealTransaction ? { revealTransaction: card.revealTransaction } : {}),
     ...(card.ownerWalletAddress ? { ownerWalletAddress: card.ownerWalletAddress } : {}),
   };
 }

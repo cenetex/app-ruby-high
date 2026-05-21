@@ -24,6 +24,12 @@ import {
   TransactionInstruction as Web3TransactionInstruction,
 } from "@solana/web3.js";
 import { isPreflightUnsupportedError } from "./solana-errors.js";
+import {
+  type HallPassRevealProvenance,
+  HALL_PASS_PACK_REVEAL_ALGORITHM,
+  revealProvenanceAttributes,
+  revealProvenanceProperties,
+} from "./hall-pass-reveal-provenance.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -33,6 +39,7 @@ const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CORE_PACK_CARDS_PER_PACK = 5;
+const NFT_SELLER_FEE_BASIS_POINTS = 0;
 const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
 const PACK_OPENED_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2";
 const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1";
@@ -237,6 +244,21 @@ export function publicCorePackNftStatus(env: NodeJS.ProcessEnv = process.env): P
   };
 }
 
+function nftMetadataCreators(env: NodeJS.ProcessEnv = process.env): Array<{ address: string; share: number; verified: boolean }> {
+  const secret = cleanEnv(env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY);
+  if (!secret) return [];
+  try {
+    return [{ address: addressFromPublicKeyBytes(parseSecretKeyBytes(secret)), share: 100, verified: true }];
+  } catch {
+    return [];
+  }
+}
+
+function metadataCreatorProperties(env: NodeJS.ProcessEnv = process.env): { creators?: Array<{ address: string; share: number; verified: boolean }> } {
+  const creators = nftMetadataCreators(env);
+  return creators.length > 0 ? { creators } : {};
+}
+
 export function corePackNftMetadataUri(args: {
   productId: string;
   packCount: number;
@@ -263,7 +285,7 @@ export function corePackNftMetadataForRoute(args: {
   cardCount?: string;
   publicBaseUrl?: string;
   opened?: boolean;
-}): Record<string, unknown> {
+} & HallPassRevealProvenance): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const website = publicWebsiteUrl(publicBaseUrl);
   const packCount = Math.max(1, Math.floor(Number(args.packCount ?? 1)));
@@ -279,6 +301,7 @@ export function corePackNftMetadataForRoute(args: {
     image,
     category: "image",
     external_url: website,
+    seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Type", value: "Pack" },
@@ -288,11 +311,17 @@ export function corePackNftMetadataForRoute(args: {
       { trait_type: "State", value: args.opened ? "Opened" : "Sealed" },
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
+      ...revealProvenanceAttributes(args),
     ],
     properties: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
+      ...metadataCreatorProperties(),
+      provenance: {
+        algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
+        ...(revealProvenanceProperties(args) ?? {}),
+      },
     },
   };
 }
@@ -310,6 +339,7 @@ export function corePackCollectionMetadataForRoute(args: {
     image,
     category: "image",
     external_url: website,
+    seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Type", value: "Pack Collection" },
@@ -319,6 +349,7 @@ export function corePackCollectionMetadataForRoute(args: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
+      ...metadataCreatorProperties(),
     },
   };
 }
@@ -626,6 +657,13 @@ export async function createCorePackCollection(): Promise<CoreCollectionCreateRe
     payer: umi.payer,
     name: "Ruby High Packs",
     uri: metadataUri,
+    plugins: [
+      { type: "ImmutableMetadata" },
+      {
+        type: "VerifiedCreators",
+        signatures: [{ address: umi.identity.publicKey, verified: true }],
+      },
+    ],
   }));
   return {
     collectionAddress: collection.publicKey,

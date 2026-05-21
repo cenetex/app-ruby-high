@@ -152,6 +152,15 @@ import {
   HALL_PASS_CARD_TEACHERS,
   type HallPassCardCatalogEntry,
 } from "./hall-pass-card-catalog.js";
+import {
+  HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE,
+  HALL_PASS_PACK_REVEAL_VERSION,
+  hallPassCatalogHash,
+  packRevealCommitment,
+  packRevealSeed,
+  packSlotRevealProof,
+  sha256Hex,
+} from "./hall-pass-reveal-provenance.js";
 
 export interface PoseInput {
   prompt: string;
@@ -318,6 +327,11 @@ export interface HallPassPackOpenInput {
   ownerWalletAddress?: string;
   idempotencyKey?: string;
   openSignature?: string;
+  entropySource?: string;
+  revealSeed?: string;
+  revealSlot?: number;
+  randomnessAccount?: string;
+  revealTransaction?: string;
   source?: RubyHighWalletTransaction["source"];
   description?: string;
   metadata?: RubyHighWalletTransaction["metadata"];
@@ -1487,6 +1501,16 @@ export class RubyHighService extends Service {
       packCount * HALL_PASS_CARDS_PER_PACK,
     );
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    const catalogHash = hallPassCatalogHash();
+    const commitment = packRevealCommitment({
+      catalogHash,
+      assetAddress,
+      mintSignature,
+      ownerWalletAddress,
+      productId: input.productId.trim().slice(0, 96) || `card-pack-${packCount}`,
+      cardCount,
+      nonce: packRevealNonce(id, assetAddress, mintSignature, ownerWalletAddress),
+    });
     const pack: RubyHighHallPassPack = {
       id: hallPassPackId(id, assetAddress),
       serial: hallPassPackSerial(input.serial, metadataUri, id, assetAddress),
@@ -1501,6 +1525,10 @@ export class RubyHighService extends Service {
       assetAddress,
       mintSignature,
       metadataUri,
+      packRevealVersion: HALL_PASS_PACK_REVEAL_VERSION,
+      catalogHash,
+      commitment,
+      entropySource: HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE,
       grantTransactionId: id,
     };
     packs.push(pack);
@@ -1523,6 +1551,10 @@ export class RubyHighService extends Service {
         packAssetAddress: assetAddress,
         packMintSignature: mintSignature,
         packMetadataUri: metadataUri,
+        packRevealVersion: HALL_PASS_PACK_REVEAL_VERSION,
+        catalogHash,
+        commitment,
+        entropySource: HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE,
       },
     };
     recordWalletTransaction(state, transaction);
@@ -1562,6 +1594,29 @@ export class RubyHighService extends Service {
     if (pack.status !== "active") throw new Error("Pack is already opened.");
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
     const openSignature = typeof input.openSignature === "string" ? input.openSignature.trim() : "";
+    const fallbackCommitment = packRevealCommitment({
+      catalogHash: hallPassCatalogHash(),
+      assetAddress: pack.assetAddress,
+      mintSignature: pack.mintSignature,
+      ownerWalletAddress: pack.ownerWalletAddress,
+      productId: pack.productId,
+      cardCount: pack.cardCount,
+      nonce: packRevealNonce(pack.grantTransactionId ?? pack.id, pack.assetAddress, pack.mintSignature, pack.ownerWalletAddress),
+    });
+    const packRevealVersion = cleanRevealString(pack.packRevealVersion) || HALL_PASS_PACK_REVEAL_VERSION;
+    const catalogHash = cleanRevealString(pack.catalogHash) || hallPassCatalogHash();
+    const commitment = cleanRevealString(pack.commitment) || fallbackCommitment;
+    const entropySource = cleanRevealString(input.entropySource) || cleanRevealString(pack.entropySource) || HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE;
+    const revealSeed = cleanRevealString(input.revealSeed, 256) || packRevealSeed({
+      commitment,
+      assetAddress: pack.assetAddress,
+      transactionId: id,
+      openSignature,
+      nonce: packRevealNonce(id, pack.assetAddress, pack.mintSignature, pack.ownerWalletAddress),
+    });
+    const revealSlot = Math.floor(Number(input.revealSlot));
+    const randomnessAccount = cleanRevealString(input.randomnessAccount);
+    const revealTransaction = cleanRevealString(input.revealTransaction) || openSignature || id;
     const transaction: RubyHighWalletTransaction = {
       id,
       kind: "hall-pass-pack-open",
@@ -1580,6 +1635,14 @@ export class RubyHighService extends Service {
         packAssetAddress: pack.assetAddress,
         packMintSignature: pack.mintSignature,
         packMetadataUri: pack.metadataUri,
+        packRevealVersion,
+        catalogHash,
+        commitment,
+        entropySource,
+        revealSeed,
+        revealTransaction,
+        ...(Number.isFinite(revealSlot) && revealSlot >= 0 ? { revealSlot } : {}),
+        ...(randomnessAccount ? { randomnessAccount } : {}),
         ...(openSignature ? { openSignature } : {}),
       },
     };
@@ -1589,6 +1652,14 @@ export class RubyHighService extends Service {
     pack.openedAt = at;
     pack.updatedAt = at;
     pack.openTransactionId = id;
+    pack.packRevealVersion = packRevealVersion;
+    pack.catalogHash = catalogHash;
+    pack.commitment = commitment;
+    pack.entropySource = entropySource;
+    pack.revealSeed = revealSeed;
+    pack.revealTransaction = revealTransaction;
+    if (Number.isFinite(revealSlot) && revealSlot >= 0) pack.revealSlot = revealSlot;
+    if (randomnessAccount) pack.randomnessAccount = randomnessAccount;
     if (openSignature) pack.openSignature = openSignature;
     state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
     recordWalletTransaction(state, transaction);
@@ -1788,6 +1859,22 @@ export class RubyHighService extends Service {
     return null;
   }
 
+  findHallPassCardByMetadata(characterId: string, serial: number): RubyHighHallPassCard | null {
+    const wantedCharacter = typeof characterId === "string" ? characterId.trim() : "";
+    const wantedSerial = Math.max(1, Math.floor(Number(serial || 0)));
+    if (!wantedCharacter || !Number.isFinite(wantedSerial)) return null;
+    let fallback: RubyHighHallPassCard | null = null;
+    for (const state of this.sessions.values()) {
+      state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+      const card = normalizeHallPassCards(state.wallet.hallPassCards)
+        .find((candidate) => candidate.characterId === wantedCharacter && candidate.serial === wantedSerial);
+      if (!card) continue;
+      if (card.mintAddress && card.mintSignature) return card;
+      fallback ??= card;
+    }
+    return fallback;
+  }
+
   findHallPassPackByMetadata(productId: string, serial: number): RubyHighHallPassPack | null {
     const product = typeof productId === "string" ? productId.trim() : "";
     const wantedSerial = Math.max(1, Math.floor(Number(serial || 0)));
@@ -1840,6 +1927,16 @@ export class RubyHighService extends Service {
         mintAddress: card.mintAddress,
         mintSignature: card.mintSignature,
         metadataUri: card.metadataUri,
+        ...(card.packRevealVersion ? { packRevealVersion: card.packRevealVersion } : {}),
+        ...(card.catalogHash ? { catalogHash: card.catalogHash } : {}),
+        ...(card.commitment ? { commitment: card.commitment } : {}),
+        ...(card.entropySource ? { entropySource: card.entropySource } : {}),
+        ...(card.revealSeed ? { revealSeed: card.revealSeed } : {}),
+        ...(card.revealProof ? { revealProof: card.revealProof } : {}),
+        ...(card.packAssetAddress ? { packAssetAddress: card.packAssetAddress } : {}),
+        ...(typeof card.revealSlot === "number" ? { revealSlot: card.revealSlot } : {}),
+        ...(card.randomnessAccount ? { randomnessAccount: card.randomnessAccount } : {}),
+        ...(card.revealTransaction ? { revealTransaction: card.revealTransaction } : {}),
       },
     };
     recordWalletTransaction(state, transaction);
@@ -5285,6 +5382,15 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
     "redeemTransactionId",
     "packId",
     "revealCommitment",
+    "packRevealVersion",
+    "catalogHash",
+    "commitment",
+    "entropySource",
+    "revealSeed",
+    "revealProof",
+    "packAssetAddress",
+    "randomnessAccount",
+    "revealTransaction",
     "ownerWalletAddress",
     "mintAddress",
     "mintSignature",
@@ -5296,6 +5402,8 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   }
   const slotIndex = Math.floor(Number(card.slotIndex));
   if (Number.isFinite(slotIndex) && slotIndex >= 0) entry.slotIndex = slotIndex;
+  const revealSlot = Math.floor(Number(card.revealSlot));
+  if (Number.isFinite(revealSlot) && revealSlot >= 0) entry.revealSlot = revealSlot;
   const revealedAt = Math.floor(Number(card.revealedAt ?? 0));
   if (Number.isFinite(revealedAt) && revealedAt > 0) entry.revealedAt = revealedAt;
   const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
@@ -5407,10 +5515,23 @@ function normalizeHallPassPack(raw: unknown): RubyHighHallPassPack | null {
   };
   const source = normalizedWalletSource(pack.source);
   if (source) entry.source = source;
-  for (const field of ["grantTransactionId", "openTransactionId", "openSignature"] as const) {
+  for (const field of [
+    "packRevealVersion",
+    "catalogHash",
+    "commitment",
+    "entropySource",
+    "revealSeed",
+    "randomnessAccount",
+    "revealTransaction",
+    "grantTransactionId",
+    "openTransactionId",
+    "openSignature",
+  ] as const) {
     const value = pack[field];
     if (typeof value === "string" && value.trim()) entry[field] = value.trim().slice(0, 240);
   }
+  const revealSlot = Math.floor(Number(pack.revealSlot));
+  if (Number.isFinite(revealSlot) && revealSlot >= 0) entry.revealSlot = revealSlot;
   const openedAt = Math.floor(Number(pack.openedAt ?? 0));
   if (Number.isFinite(openedAt) && openedAt > 0) entry.openedAt = openedAt;
   return entry;
@@ -5439,6 +5560,10 @@ function hashInteger(seed: string): number {
   return Number.parseInt(createHash("sha256").update(seed).digest("hex").slice(0, 8), 16);
 }
 
+function cleanRevealString(value: unknown, maxLength = 240): string {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : "";
+}
+
 function secretHash(seed: string): string {
   const explicit = typeof process.env.RUBY_HIGH_PACK_REVEAL_SECRET === "string"
     ? process.env.RUBY_HIGH_PACK_REVEAL_SECRET.trim()
@@ -5454,6 +5579,10 @@ function secretHashInteger(seed: string): number {
   return Number.parseInt(secretHash(seed).slice(0, 8), 16);
 }
 
+function packRevealNonce(...parts: string[]): string {
+  return secretHash([HALL_PASS_PACK_REVEAL_VERSION, ...parts].join("|"));
+}
+
 function hallPassPackId(transactionId: string, assetAddress: string): string {
   return `hpp_${createHash("sha256").update(`${transactionId}:${assetAddress}`).digest("hex").slice(0, 18)}`;
 }
@@ -5462,23 +5591,41 @@ function hallPassCardId(transactionId: string, index: number): string {
   return `hpc_${createHash("sha256").update(`${transactionId}:${index}`).digest("hex").slice(0, 18)}`;
 }
 
-function pickCatalogEntry(entries: HallPassCardCatalogEntry[], seed: string): HallPassCardCatalogEntry {
-  return entries[secretHashInteger(seed) % entries.length] ?? entries[0]!;
+type SeedIntegerFn = (seed: string) => number;
+
+function pickCatalogEntry(
+  entries: HallPassCardCatalogEntry[],
+  seed: string,
+  seedInteger: SeedIntegerFn = secretHashInteger,
+): HallPassCardCatalogEntry {
+  return entries[seedInteger(seed) % entries.length] ?? entries[0]!;
 }
 
-function hallPassCardPackEntries(seed: string, options: { forceSpecialCard?: boolean } = {}): HallPassCardCatalogEntry[] {
-  const teacher = secretHashInteger(`${seed}:super-rare-teacher`) % 64 === 0 && HALL_PASS_CARD_SUPER_RARE_TEACHERS.length > 0
-    ? pickCatalogEntry(HALL_PASS_CARD_SUPER_RARE_TEACHERS, `${seed}:super-teacher`)
-    : pickCatalogEntry(HALL_PASS_CARD_TEACHERS, `${seed}:teacher`);
+function hallPassCardPackEntries(
+  seed: string,
+  options: { forceSpecialCard?: boolean } = {},
+  seedInteger: SeedIntegerFn = secretHashInteger,
+): HallPassCardCatalogEntry[] {
+  const teacher = seedInteger(`${seed}:super-rare-teacher`) % 64 === 0 && HALL_PASS_CARD_SUPER_RARE_TEACHERS.length > 0
+    ? pickCatalogEntry(HALL_PASS_CARD_SUPER_RARE_TEACHERS, `${seed}:super-teacher`, seedInteger)
+    : pickCatalogEntry(HALL_PASS_CARD_TEACHERS, `${seed}:teacher`, seedInteger);
   const students = HALL_PASS_CARD_STUDENTS
     .slice()
-    .sort((a, b) => secretHashInteger(`${seed}:student:${a.characterId}`) - secretHashInteger(`${seed}:student:${b.characterId}`))
+    .sort((a, b) => seedInteger(`${seed}:student:${a.characterId}`) - seedInteger(`${seed}:student:${b.characterId}`))
     .slice(0, 3);
-  const specialCard = (options.forceSpecialCard || secretHashInteger(`${seed}:special-card`) % 64 === 0) && HALL_PASS_CARD_SPECIALS.length > 0
-    ? pickCatalogEntry(HALL_PASS_CARD_SPECIALS, `${seed}:special`)
+  const specialCard = (options.forceSpecialCard || seedInteger(`${seed}:special-card`) % 64 === 0) && HALL_PASS_CARD_SPECIALS.length > 0
+    ? pickCatalogEntry(HALL_PASS_CARD_SPECIALS, `${seed}:special`, seedInteger)
     : null;
-  const finalSlot = specialCard ?? pickCatalogEntry(HALL_PASS_CARD_ITEM_LOCATIONS, `${seed}:utility`);
+  const finalSlot = specialCard ?? pickCatalogEntry(HALL_PASS_CARD_ITEM_LOCATIONS, `${seed}:utility`, seedInteger);
   return [teacher, ...students, finalSlot];
+}
+
+function transactionMetadataString(
+  transaction: RubyHighWalletTransaction,
+  field: string,
+  maxLength = 240,
+): string {
+  return cleanRevealString(transaction.metadata?.[field], maxLength);
 }
 
 function issueHallPassCardsForTransaction(
@@ -5493,19 +5640,47 @@ function issueHallPassCardsForTransaction(
   const packCache = new Map<number, HallPassCardCatalogEntry[]>();
   const packCount = Math.ceil(cardCount / HALL_PASS_CARDS_PER_PACK);
   const guaranteedSpecialPackIndex = cardCount >= HALL_PASS_CARDS_PER_PACK * 5 ? packCount - 1 : -1;
+  const packRevealVersion = transactionMetadataString(transaction, "packRevealVersion");
+  const catalogHash = transactionMetadataString(transaction, "catalogHash");
+  const commitment = transactionMetadataString(transaction, "commitment");
+  const entropySource = transactionMetadataString(transaction, "entropySource");
+  const revealSeed = transactionMetadataString(transaction, "revealSeed", 256);
+  const packAssetAddress = transactionMetadataString(transaction, "packAssetAddress");
+  const randomnessAccount = transactionMetadataString(transaction, "randomnessAccount");
+  const revealTransaction = transactionMetadataString(transaction, "revealTransaction")
+    || transactionMetadataString(transaction, "openSignature")
+    || transaction.id;
+  const revealSlot = Math.floor(Number(transaction.metadata?.revealSlot));
+  const usesPackReveal = packRevealVersion === HALL_PASS_PACK_REVEAL_VERSION
+    && !!catalogHash
+    && !!commitment
+    && !!revealSeed
+    && !!packAssetAddress;
+  const seedInteger = usesPackReveal ? hashInteger : secretHashInteger;
   for (let i = 0; i < cardCount; i += 1) {
     const id = hallPassCardId(transaction.id, i);
     if (existingIds.has(id)) continue;
     const packIndex = Math.floor(i / HALL_PASS_CARDS_PER_PACK);
     let packEntries = packCache.get(packIndex);
     if (!packEntries) {
-      packEntries = hallPassCardPackEntries(packIndex === 0 ? transaction.id : `${transaction.id}:pack:${packIndex}`, {
+      const packSeed = usesPackReveal
+        ? packSlotRevealProof({
+          commitment,
+          revealSeed,
+          assetAddress: packAssetAddress,
+          slotIndex: packIndex * HALL_PASS_CARDS_PER_PACK,
+        })
+        : packIndex === 0 ? transaction.id : `${transaction.id}:pack:${packIndex}`;
+      packEntries = hallPassCardPackEntries(packSeed, {
         forceSpecialCard: packIndex === guaranteedSpecialPackIndex,
-      });
+      }, seedInteger);
       packCache.set(packIndex, packEntries);
     }
     const catalog = packEntries[i % packEntries.length]!;
     const issuedAt = transaction.at;
+    const revealProof = usesPackReveal
+      ? packSlotRevealProof({ commitment, revealSeed, assetAddress: packAssetAddress, slotIndex: i })
+      : sha256Hex(secretHash(`${transaction.id}:${i}`));
     const card: RubyHighHallPassCard = {
       id,
       serial: hashInteger(id) % 900000 + 100000,
@@ -5534,7 +5709,19 @@ function issueHallPassCardsForTransaction(
         ? { packId: transaction.metadata.packId }
         : {}),
       slotIndex: i,
-      revealCommitment: createHash("sha256").update(secretHash(`${transaction.id}:${i}`)).digest("hex").slice(0, 24),
+      revealCommitment: revealProof.slice(0, 24),
+      ...(usesPackReveal ? {
+        packRevealVersion,
+        catalogHash,
+        commitment,
+        entropySource,
+        revealSeed,
+        revealProof,
+        packAssetAddress,
+        revealTransaction,
+        ...(Number.isFinite(revealSlot) && revealSlot >= 0 ? { revealSlot } : {}),
+        ...(randomnessAccount ? { randomnessAccount } : {}),
+      } : {}),
     };
     created.push(card);
     cards.push(card);

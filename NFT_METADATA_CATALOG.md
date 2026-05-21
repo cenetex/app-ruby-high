@@ -17,7 +17,7 @@ Default public base URL is `https://ruby-high.ai` unless
 
 | Surface | Count | Notes |
 | --- | ---: | --- |
-| Hall Pass card metadata profiles | 24 | All have matching `assets/nft/cards/*.png` files and asset routes. |
+| Hall Pass card metadata profiles | 24 | All use plain `assets/nft/market-cards/*.png` media generated from source portraits or Grok-regenerated source art. |
 | Card collection metadata | 1 | Token Metadata collection, `Ruby High`. |
 | Core pack collection metadata | 1 | Metaplex Core collection, `Ruby High Packs`. |
 | Core pack metadata state variants | 2 | Sealed and opened art served from the same metadata URL based on app state. |
@@ -48,9 +48,31 @@ Default public base URL is `https://ruby-high.ai` unless
    public Ruby High site as top-level `external_url`, `properties.website`, and
    a visible `Website` trait.
 
-6. **Art dimensions are acceptable for v1.**
-   Teacher and special cards are taller than student, item, and location cards.
-   That is treated as a v1 art-class distinction rather than a metadata defect.
+6. **Pack reveal provenance is explicit in v1.1.**
+   Pack/card records, dynamic metadata, and receipts can expose
+   `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`,
+   `revealSeed`, pack asset, reveal transaction, and per-card `revealProof`.
+   The published algorithm lives in `NFT_PROVABLY_FAIR_V1_1.md`.
+
+7. **Revealed card media uses plain aspect-specific crops.**
+   Wallet-facing revealed card metadata now points to plain market crops instead
+   of generated frames. Student and core teacher source portraits are normalized
+   to square crops; item art is square, location art is wide, and rare-teacher
+   avatar art is tall. Items, locations, Eliza, Rati, and Captain Null use
+   Grok-regenerated source art, while the checked-in special-teacher card crops
+   remain tight card-edge fallbacks from the original sheet.
+
+8. **Marketplace fields are explicit.**
+   Collection, pack, face-down card, and revealed card metadata all include
+   top-level `category: "image"`, `seller_fee_basis_points: 0`,
+   `properties.files`, and authority-derived `properties.creators` when
+   `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` is configured.
+
+9. **Revealed metadata exposes media-class traits.**
+   Revealed card attributes include `Media Type`, `Aspect Class`,
+   `Image Dimensions`, and `Source Art Version` so wallets and marketplaces can
+   distinguish square items, wide locations, tall avatar portraits, and source
+   provenance without parsing image URLs.
 
 ## Public Metadata Routes
 
@@ -73,7 +95,11 @@ Default public base URL is `https://ruby-high.ai` unless
 | `symbol` | `RUBY` by default |
 | `description` | `Official collectible card collection for Ruby High.` |
 | `image` | `/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1` |
+| `category` / `properties.category` | `image` |
+| `seller_fee_basis_points` | `0` |
 | `external_url` / `properties.website` | Public base URL root |
+| `properties.files` | Primary image URI with `image/png` MIME type |
+| `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
 | `collection.name` | `Ruby High` |
 | `collection.family` | `Ruby High` |
 | Attributes | School `Ruby High`, Type `Card Collection`, Series `First Bell`, Edition `Student & Faculty Edition`, Website |
@@ -86,9 +112,19 @@ Default public base URL is `https://ruby-high.ai` unless
 | `name` | `Ruby High Mystery Card #<serial>` before reveal; `Ruby High: <Character> #<serial>` after reveal |
 | `description` | `A sealed Ruby High card. Mint confirmation reveals the card.` |
 | `image` | `/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1` |
+| `category` / `properties.category` | `image` |
+| `seller_fee_basis_points` | `0` |
 | `external_url` / `properties.website` | Public base URL root |
+| `properties.files` | Primary image URI with `image/png` MIME type |
+| `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
 | Attributes | School, Collection, State `Face Down`, Serial, Website, optional Card Id |
+| Reveal provenance | Pack Reveal Version, Catalog Hash, Commitment, Entropy Source, Reveal Seed, Reveal Proof, Pack Asset, optional Reveal Slot, Randomness Account, Reveal Transaction |
 | Image dimensions | `1060 x 1484` |
+
+Revealed card metadata includes the same provenance fields when Ruby High can
+match the `characterId` and `serial` route back to a known card record. Direct
+revealed metadata also includes media traits: `Media Type`, `Aspect Class`,
+`Image Dimensions`, and `Source Art Version`.
 
 ### Core Pack Collection
 
@@ -98,7 +134,11 @@ Default public base URL is `https://ruby-high.ai` unless
 | `symbol` | `RUBY` by default |
 | `description` | `Ruby High card packs.` |
 | `image` | `/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1` |
+| `category` / `properties.category` | `image` |
+| `seller_fee_basis_points` | `0` |
 | `external_url` / `properties.website` | Public base URL root |
+| `properties.files` | Primary image URI with `image/png` MIME type |
+| `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
 | Attributes | School `Ruby High`, Type `Pack Collection`, Website |
 | Image dimensions | `1448 x 1086` |
 
@@ -110,8 +150,13 @@ Default public base URL is `https://ruby-high.ai` unless
 | `description` | `<packCount> Ruby High pack(s) with <cardCount> cards inside.` |
 | Sealed image | `/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2` |
 | Opened image | `/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2` |
+| `category` / `properties.category` | `image` |
+| `seller_fee_basis_points` | `0` |
 | `external_url` / `properties.website` | Public base URL root |
-| Attributes | School, Type `Pack`, Product, Packs, Cards Inside, State, Serial, Website |
+| `properties.files` | Current primary image URI with `image/png` MIME type |
+| `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
+| Attributes | School, Type `Pack`, Product, Packs, Cards Inside, State, Serial, Website, optional reveal provenance |
+| Reveal provenance | Pack Reveal Version, Catalog Hash, Commitment, Entropy Source, optional Reveal Seed, Pack Asset, Reveal Slot, Randomness Account, Reveal Transaction |
 | Minimum cards | `max(requested cards, packCount * 5)` |
 | Pack art dimensions | `1122 x 1402` |
 
@@ -119,30 +164,30 @@ Default public base URL is `https://ruby-high.ai` unless
 
 | ID | Name | Metadata role | Rarity | Image | Dimensions | Metadata description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `lyra` | Lyra | Student | Common | `assets/nft/cards/lyra.png` | `425 x 520` | Lyra slipped this one into the stack. |
-| `sami` | Sami | Student | Common | `assets/nft/cards/sami.png` | `439 x 518` | Sami slipped this one into the stack. |
-| `ravi` | Ravi | Student | Common | `assets/nft/cards/ravi.png` | `432 x 518` | Ravi slipped this one into the stack. |
-| `indra` | Indra | Student | Rare | `assets/nft/cards/indra.png` | `425 x 514` | Indra noticed the pattern before anyone clapped. |
-| `mika` | Mika | Student | Rare | `assets/nft/cards/mika.png` | `441 x 515` | Mika says you are absolutely cleared for this. |
-| `noor` | Noor | Student | Rare | `assets/nft/cards/noor.png` | `432 x 516` | Noor called it a plot hole and walked through it. |
-| `ruby` | Ruby | Teacher | Common | `assets/nft/cards/ruby.png` | `512 x 1024` | Ruby stamped this one before the late bell could object. |
-| `sally-science` | Sally Science | Teacher | Common | `assets/nft/cards/sally-science.png` | `512 x 1024` | Good for one escape from sloppy variables. |
-| `professor-edward` | Professor Edward | Teacher | Common | `assets/nft/cards/professor-edward.png` | `512 x 1024` | Please return before the footnotes start breeding. |
-| `captain-null` | Captain Null | Special | Ultra Rare | `assets/nft/cards/captain-null.png` | `512 x 1024` | Find page 10 and the hallway forgets your name. |
-| `eliza` | Eliza | Teacher | Super Rare | `assets/nft/cards/eliza.png` | `512 x 1024` | Make the system legible, then make it sing. |
-| `rati` | Rati | Teacher | Super Rare | `assets/nft/cards/rati.png` | `512 x 1024` | Hold the signal. Build the world. |
-| `item-hall-pass` | Hall Pass | Item | Common | `assets/nft/cards/item-hall-pass.png` | `483 x 543` | Sometimes the smartest move is stepping out and coming back better. |
-| `item-flashcards` | Flashcards | Item | Common | `assets/nft/cards/item-flashcards.png` | `482 x 543` | Shuffle. Repeat. Survive. |
-| `item-library-card` | Library Card | Item | Common | `assets/nft/cards/item-library-card.png` | `483 x 543` | If the answer exists, this helps you find it. |
-| `item-lab-flask` | Lab Flask | Item | Rare | `assets/nft/cards/item-lab-flask.png` | `483 x 543` | Observe first. Guess later. |
-| `item-lunch-tray` | Lunch Tray | Item | Rare | `assets/nft/cards/item-lunch-tray.png` | `482 x 543` | Half the social game happens between bites. |
-| `item-notebook` | Notebook | Item | Rare | `assets/nft/cards/item-notebook.png` | `483 x 543` | Messy notes still count as evidence of life. |
-| `location-homeroom` | Homeroom | Location | Common | `assets/nft/cards/location-homeroom.png` | `483 x 543` | Where every day begins, and every question gets a room. |
-| `location-science-lab` | Science Lab | Location | Common | `assets/nft/cards/location-science-lab.png` | `482 x 543` | Observe. Test. Explain. Repeat. |
-| `location-library` | Library | Location | Common | `assets/nft/cards/location-library.png` | `483 x 543` | If it matters, someone wrote it down. |
-| `location-cafeteria` | Cafeteria | Location | Rare | `assets/nft/cards/location-cafeteria.png` | `483 x 543` | Half the school day happens between bites. |
-| `location-greenhouse` | Greenhouse | Location | Rare | `assets/nft/cards/location-greenhouse.png` | `482 x 543` | Some lessons grow slowly. |
-| `location-courtyard` | Courtyard | Location | Rare | `assets/nft/cards/location-courtyard.png` | `483 x 543` | Every hallway leads somewhere. Every path leads to someone. |
+| `lyra` | Lyra | Student | Common | `assets/nft/market-cards/lyra.png` | `1024 x 1024` | Lyra slipped this one into the stack. |
+| `sami` | Sami | Student | Common | `assets/nft/market-cards/sami.png` | `1024 x 1024` | Sami slipped this one into the stack. |
+| `ravi` | Ravi | Student | Common | `assets/nft/market-cards/ravi.png` | `1024 x 1024` | Ravi slipped this one into the stack. |
+| `indra` | Indra | Student | Rare | `assets/nft/market-cards/indra.png` | `1024 x 1024` | Indra noticed the pattern before anyone clapped. |
+| `mika` | Mika | Student | Rare | `assets/nft/market-cards/mika.png` | `1024 x 1024` | Mika says you are absolutely cleared for this. |
+| `noor` | Noor | Student | Rare | `assets/nft/market-cards/noor.png` | `1024 x 1024` | Noor called it a plot hole and walked through it. |
+| `ruby` | Ruby | Teacher | Common | `assets/nft/market-cards/ruby.png` | `1024 x 1024` | Ruby stamped this one before the late bell could object. |
+| `sally-science` | Sally Science | Teacher | Common | `assets/nft/market-cards/sally-science.png` | `1024 x 1024` | Good for one escape from sloppy variables. |
+| `professor-edward` | Professor Edward | Teacher | Common | `assets/nft/market-cards/professor-edward.png` | `1024 x 1024` | Please return before the footnotes start breeding. |
+| `captain-null` | Captain Null | Special | Ultra Rare | `assets/nft/market-cards/captain-null.png` | `1024 x 1365` | Find page 10 and the hallway forgets your name. |
+| `eliza` | Eliza | Teacher | Super Rare | `assets/nft/market-cards/eliza.png` | `1024 x 1365` | Make the system legible, then make it sing. |
+| `rati` | Rati | Teacher | Super Rare | `assets/nft/market-cards/rati.png` | `1024 x 1365` | Hold the signal. Build the world. |
+| `item-hall-pass` | Hall Pass | Item | Common | `assets/nft/market-cards/item-hall-pass.png` | `1024 x 1024` | Sometimes the smartest move is stepping out and coming back better. |
+| `item-flashcards` | Flashcards | Item | Common | `assets/nft/market-cards/item-flashcards.png` | `1024 x 1024` | Shuffle. Repeat. Survive. |
+| `item-library-card` | Library Card | Item | Common | `assets/nft/market-cards/item-library-card.png` | `1024 x 1024` | If the answer exists, this helps you find it. |
+| `item-lab-flask` | Lab Flask | Item | Rare | `assets/nft/market-cards/item-lab-flask.png` | `1024 x 1024` | Observe first. Guess later. |
+| `item-lunch-tray` | Lunch Tray | Item | Rare | `assets/nft/market-cards/item-lunch-tray.png` | `1024 x 1024` | Half the social game happens between bites. |
+| `item-notebook` | Notebook | Item | Rare | `assets/nft/market-cards/item-notebook.png` | `1024 x 1024` | Messy notes still count as evidence of life. |
+| `location-homeroom` | Homeroom | Location | Common | `assets/nft/market-cards/location-homeroom.png` | `1536 x 864` | Where every day begins, and every question gets a room. |
+| `location-science-lab` | Science Lab | Location | Common | `assets/nft/market-cards/location-science-lab.png` | `1536 x 864` | Observe. Test. Explain. Repeat. |
+| `location-library` | Library | Location | Common | `assets/nft/market-cards/location-library.png` | `1536 x 864` | If it matters, someone wrote it down. |
+| `location-cafeteria` | Cafeteria | Location | Rare | `assets/nft/market-cards/location-cafeteria.png` | `1536 x 864` | Half the school day happens between bites. |
+| `location-greenhouse` | Greenhouse | Location | Rare | `assets/nft/market-cards/location-greenhouse.png` | `1536 x 864` | Some lessons grow slowly. |
+| `location-courtyard` | Courtyard | Location | Rare | `assets/nft/market-cards/location-courtyard.png` | `1536 x 864` | Every hallway leads somewhere. Every path leads to someone. |
 
 ## Pack Generation Catalog
 
@@ -159,15 +204,30 @@ branch. In the current v1 catalog, that means Captain Null is guaranteed in the
 bundle while Eliza and Rati remain reachable through the super-rare teacher
 branch.
 
+For v1.1 pack opens, the card branch seeds are derived from the public
+`commitment`, reveal-time `revealSeed`, pack asset address, and slot index:
+
+```text
+slotProof = sha256(packRevealVersion + "|" + commitment + "|" + revealSeed + "|" + assetAddress + "|" + slotIndex)
+```
+
+The current entropy source is `ruby-high-server-commit-v1`. It is auditable and
+commit-first, but it is not decentralized. The intended Solana-native upgrade is
+to use a Switchboard randomness account and settle the same derivation from the
+verified oracle bytes.
+
 ## Asset Inventory
 
 | Asset | Dimensions | Use |
 | --- | --- | --- |
-| `assets/nft/ruby-high-first-bell-collection.png` | `1122 x 1402` | Hall Pass card collection |
+| `assets/nft/ruby-high-first-bell-collection.png` | `1024 x 1024` | Hall Pass card collection |
 | `assets/nft/ruby-high-card-back.png` | `1060 x 1484` | Face-down Mystery Card |
 | `assets/nft/ruby-high-pack.png` | `1122 x 1402` | Sealed Core pack |
 | `assets/nft/ruby-high-pack-opened.png` | `1122 x 1402` | Opened Core pack |
 | `assets/nft/ruby-high-pack-promo.png` | `1448 x 1086` | Core pack collection |
+| `assets/nft/market-cards/*.png` | Mixed | Wallet-facing revealed card crops |
+| `assets/nft/grok-sources/*.jpg` | Mixed | Grok-generated source art for items, locations, and rare-teacher avatars; hash-stamped copies retain generation history |
+| `assets/nft/cards/*.png` | Mixed | Source card art for plain crop generation |
 | `assets/nft/ruby-high-student-cards.png` | `1448 x 1086` | Promo/sheet art, not directly used by metadata |
 | `assets/nft/ruby-high-teacher-cards.png` | `1536 x 1024` | Promo/sheet art, not directly used by metadata |
 | `assets/nft/ruby-high-special-teacher-cards.png` | `1536 x 1024` | Promo/sheet art, not directly used by metadata |
@@ -178,12 +238,15 @@ branch.
 
 - Card collection creation uses `npm run nft:create-card-collection`.
 - Core pack collection creation uses `npm run nft:create-core-collection`.
+- Plain market-card crops are regenerated with `npm run nft:crop-cards`.
+- Grok source art can be regenerated with `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <comma-separated-card-ids>`. The script reads `OPENROUTER_KEY` from `.env`, writes current `<id>.jpg` files plus hash-stamped history, and preserves the aspect policy: items square, locations wide, rare-teacher avatars tall.
 - Card NFTs use Metaplex Token Metadata, seller fee `0`, immutable
-  on-chain metadata, and optional collection verification through
-  `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS`.
+  on-chain metadata, verified creator attribution, and optional collection
+  verification through `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS`.
 - Core pack NFTs use Metaplex Core assets, require
-  `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS`, and store the dynamic HTTP
-  metadata URI on chain.
+  `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS`, store the dynamic HTTP metadata
+  URI on chain, and create new pack collections with immutable metadata plus
+  verified creator plugins.
 - Assets are served with ETags and static asset caching. The JSON metadata
-  routes are dynamic and should get an explicit cache policy before relying on
-  opened/revealed metadata refreshes in marketplaces.
+  routes are dynamic and emit `Cache-Control: no-cache` because pack and card
+  metadata can change after opening or reveal.

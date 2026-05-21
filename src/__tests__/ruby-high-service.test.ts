@@ -446,6 +446,12 @@ describe("Hall Pass wallet", () => {
     });
 
     expect(recorded.pack?.serial).toBe(123456);
+    expect(recorded.pack).toMatchObject({
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      catalogHash: expect.any(String),
+      commitment: expect.any(String),
+      entropySource: "ruby-high-server-commit-v1",
+    });
     const opened = ruby.openHallPassPack(sid, {
       packId: recorded.pack!.id,
       ownerWalletAddress,
@@ -456,6 +462,12 @@ describe("Hall Pass wallet", () => {
     expect(opened.pack).toMatchObject({
       status: "opened",
       openTransactionId: `hall-pass-pack-open:${recorded.pack!.id}`,
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      catalogHash: recorded.pack!.catalogHash,
+      commitment: recorded.pack!.commitment,
+      entropySource: "ruby-high-server-commit-v1",
+      revealSeed: expect.any(String),
+      revealTransaction: `hall-pass-pack-open:${recorded.pack!.id}`,
     });
     expect(opened.transaction).toMatchObject({
       kind: "hall-pass-pack-open",
@@ -464,11 +476,26 @@ describe("Hall Pass wallet", () => {
         packId: recorded.pack!.id,
         cardCount: HALL_PASS_CARDS_PER_PACK,
         hallPassCardCount: HALL_PASS_CARDS_PER_PACK,
+        packRevealVersion: "ruby-high-pack-reveal-v1.1",
+        catalogHash: recorded.pack!.catalogHash,
+        commitment: recorded.pack!.commitment,
+        entropySource: "ruby-high-server-commit-v1",
+        revealSeed: opened.pack!.revealSeed,
       },
     });
     expect(opened.cards?.filter((card) => card.role === "student")).toHaveLength(3);
     expect(opened.cards?.filter((card) => card.role === "teacher")).toHaveLength(1);
     expect(opened.cards?.filter((card) => card.role === "item" || card.role === "location" || card.role === "special")).toHaveLength(1);
+    expect(opened.cards?.[0]).toMatchObject({
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      catalogHash: recorded.pack!.catalogHash,
+      commitment: recorded.pack!.commitment,
+      entropySource: "ruby-high-server-commit-v1",
+      revealSeed: opened.pack!.revealSeed,
+      revealProof: expect.any(String),
+      packAssetAddress: recorded.pack!.assetAddress,
+      revealTransaction: `hall-pass-pack-open:${recorded.pack!.id}`,
+    });
 
     const repeat = ruby.openHallPassPack(sid, {
       packId: recorded.pack!.id,

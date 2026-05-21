@@ -23,7 +23,7 @@ import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import type { RubyHighService } from "../services/ruby-high-service.js";
 import { log } from "../services/logger.js";
 import { solanaErrorMessages } from "../services/solana-errors.js";
-import type { RubyHighHallPassPack } from "../types.js";
+import type { RubyHighHallPassCard, RubyHighHallPassPack } from "../types.js";
 import type { RouteContext } from "./context.js";
 
 interface NftDeps {
@@ -69,6 +69,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       cardCount: ctx.url?.searchParams.get("cards") ?? undefined,
       publicBaseUrl: publicBaseUrlForRequest(ctx),
       opened: knownPack?.status === "opened",
+      ...revealProvenanceFromPack(knownPack),
     }));
     return true;
   }
@@ -89,6 +90,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         characterId: card.characterId,
         serial: String(card.serial),
         publicBaseUrl: publicBaseUrlForRequest(ctx),
+        ...revealProvenanceFromCard(card),
       });
       if (!metadata) {
         ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
@@ -100,6 +102,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         cardId,
         serial: String(card.serial),
         publicBaseUrl: publicBaseUrlForRequest(ctx),
+        ...revealProvenanceFromCard(card),
       }));
     }
     return true;
@@ -111,10 +114,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "GET" && metadataMatch) {
     const characterId = decodeURIComponent(metadataMatch[1] ?? "ruby");
     const serial = decodeURIComponent(metadataMatch[2] ?? "1");
+    const knownCard = deps.ruby.findHallPassCardByMetadata(characterId, Math.max(1, Math.floor(Number(serial || 1))));
     const metadata = hallPassNftMetadataForRoute({
       characterId,
       serial,
       publicBaseUrl: publicBaseUrlForRequest(ctx),
+      ...revealProvenanceFromCard(knownCard),
     });
     if (!metadata) {
       ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
@@ -251,7 +256,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ok: true,
         applied: result.applied,
         ownerWalletAddress,
-        pack: result.pack,
+        pack: result.pack ? packPayload(result.pack) : null,
         cards: (result.cards ?? []).map(hiddenCardPayload),
         minted: [],
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
@@ -673,7 +678,43 @@ function readCardIds(body: Record<string, unknown>): string[] {
   return ids;
 }
 
-function hiddenCardPayload(card: { id: string; serial: number; status: string; issuedAt: number; updatedAt: number; grantTransactionId?: string; packId?: string; slotIndex?: number; ownerWalletAddress?: string }): Record<string, unknown> {
+function revealProvenancePayload(record: {
+  packRevealVersion?: string;
+  catalogHash?: string;
+  commitment?: string;
+  entropySource?: string;
+  revealSeed?: string;
+  revealProof?: string;
+  packAssetAddress?: string;
+  assetAddress?: string;
+  revealSlot?: number;
+  randomnessAccount?: string;
+  revealTransaction?: string;
+} | null | undefined): Record<string, unknown> {
+  if (!record) return {};
+  return {
+    ...(record.packRevealVersion ? { packRevealVersion: record.packRevealVersion } : {}),
+    ...(record.catalogHash ? { catalogHash: record.catalogHash } : {}),
+    ...(record.commitment ? { commitment: record.commitment } : {}),
+    ...(record.entropySource ? { entropySource: record.entropySource } : {}),
+    ...(record.revealSeed ? { revealSeed: record.revealSeed } : {}),
+    ...(record.revealProof ? { revealProof: record.revealProof } : {}),
+    ...(record.packAssetAddress || record.assetAddress ? { packAssetAddress: record.packAssetAddress ?? record.assetAddress } : {}),
+    ...(typeof record.revealSlot === "number" ? { revealSlot: record.revealSlot } : {}),
+    ...(record.randomnessAccount ? { randomnessAccount: record.randomnessAccount } : {}),
+    ...(record.revealTransaction ? { revealTransaction: record.revealTransaction } : {}),
+  };
+}
+
+function revealProvenanceFromPack(pack: RubyHighHallPassPack | null | undefined): Record<string, string | number> {
+  return revealProvenancePayload(pack) as Record<string, string | number>;
+}
+
+function revealProvenanceFromCard(card: RubyHighHallPassCard | null | undefined): Record<string, string | number> {
+  return revealProvenancePayload(card) as Record<string, string | number>;
+}
+
+function hiddenCardPayload(card: RubyHighHallPassCard): Record<string, unknown> {
   return {
     id: card.id,
     serial: card.serial,
@@ -694,24 +735,11 @@ function hiddenCardPayload(card: { id: string; serial: number; status: string; i
     ...(card.packId ? { packId: card.packId } : {}),
     ...(typeof card.slotIndex === "number" ? { slotIndex: card.slotIndex } : {}),
     ...(card.ownerWalletAddress ? { ownerWalletAddress: card.ownerWalletAddress } : {}),
+    ...revealProvenancePayload(card),
   };
 }
 
-function revealedCardPayload(card: {
-  id: string;
-  serial: number;
-  title: string;
-  characterId: string;
-  characterName: string;
-  role: string;
-  rarity: string;
-  status: string;
-  artSheet?: string;
-  artPosition?: string;
-  mintAddress?: string;
-  mintSignature?: string;
-  metadataUri?: string;
-}): Record<string, unknown> {
+function revealedCardPayload(card: RubyHighHallPassCard): Record<string, unknown> {
   return {
     id: card.id,
     serial: card.serial,
@@ -726,6 +754,10 @@ function revealedCardPayload(card: {
     mintAddress: card.mintAddress ?? null,
     mintSignature: card.mintSignature ?? null,
     metadataUri: card.metadataUri ?? null,
+    ...(card.packId ? { packId: card.packId } : {}),
+    ...(typeof card.slotIndex === "number" ? { slotIndex: card.slotIndex } : {}),
+    ...(card.ownerWalletAddress ? { ownerWalletAddress: card.ownerWalletAddress } : {}),
+    ...revealProvenancePayload(card),
   };
 }
 
@@ -742,6 +774,7 @@ function packPayload(pack: RubyHighHallPassPack): Record<string, unknown> {
     metadataUri: pack.metadataUri,
     issuedAt: pack.issuedAt,
     updatedAt: pack.updatedAt,
+    ...revealProvenancePayload(pack),
   };
 }
 

@@ -35,12 +35,22 @@ import {
 import type { RubyHighHallPassCard } from "../types.js";
 import {
   hallPassCardCatalogEntry,
+  hallPassCardAspectClass,
+  hallPassCardImageDimensions,
   hallPassCardImagePath,
   hallPassCardMetadataDescription,
+  hallPassCardMediaType,
   hallPassCardRarityLabel,
   hallPassCardRoleLabel,
+  hallPassCardSourceArtVersion,
 } from "./hall-pass-card-catalog.js";
 import { isPreflightUnsupportedError } from "./solana-errors.js";
+import {
+  type HallPassRevealProvenance,
+  HALL_PASS_PACK_REVEAL_ALGORITHM,
+  revealProvenanceAttributes,
+  revealProvenanceProperties,
+} from "./hall-pass-reveal-provenance.js";
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -49,7 +59,8 @@ const BASE58_INDEX = new Map(BASE58_ALPHABET.split("").map((char, index) => [cha
 const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
-const CARD_IMAGE_VERSION = "card-v2";
+const CARD_IMAGE_VERSION = "card-crop-v1";
+const NFT_SELLER_FEE_BASIS_POINTS = 0;
 const CARD_COLLECTION_NAME = "Ruby High";
 const CARD_COLLECTION_FAMILY = "Ruby High";
 const CARD_COLLECTION_SERIES = "First Bell";
@@ -266,6 +277,25 @@ export function publicHallPassNftStatus(env: NodeJS.ProcessEnv = process.env): P
   };
 }
 
+function nftMetadataCreators(env: NodeJS.ProcessEnv = process.env): Array<{ address: string; share: number; verified: boolean }> {
+  const secret = cleanEnv(env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY);
+  if (!secret) return [];
+  try {
+    return [{ address: addressFromPublicKeyBytes(parseSecretKeyBytes(secret)), share: 100, verified: true }];
+  } catch {
+    return [];
+  }
+}
+
+function metadataCreatorProperties(env: NodeJS.ProcessEnv = process.env): { creators?: Array<{ address: string; share: number; verified: boolean }> } {
+  const creators = nftMetadataCreators(env);
+  return creators.length > 0 ? { creators } : {};
+}
+
+function verifiedCreatorArgs(addressValue: string) {
+  return [{ address: address(addressValue), verified: true, share: 100 }];
+}
+
 export function hallPassNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string {
   const finalUri = hallPassRevealedNftMetadataUri(card, env);
   if (finalUri) return finalUri;
@@ -309,7 +339,9 @@ export function hallPassCollectionMetadataForRoute(args: {
     symbol: nftSymbol(process.env),
     description: "Official collectible card collection for Ruby High.",
     image,
+    category: "image",
     external_url: website,
+    seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
     collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
@@ -323,6 +355,7 @@ export function hallPassCollectionMetadataForRoute(args: {
       files: [{ uri: image, type: "image/png" }],
       website,
       collection,
+      ...metadataCreatorProperties(),
     },
   };
 }
@@ -331,7 +364,7 @@ export function hallPassCardBackMetadataForRoute(args: {
   cardId?: string;
   serial?: string;
   publicBaseUrl?: string;
-}): Record<string, unknown> {
+} & HallPassRevealProvenance): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const website = publicWebsiteUrl(publicBaseUrl);
   const serial = normalizeSerial(args.serial || "1");
@@ -341,7 +374,9 @@ export function hallPassCardBackMetadataForRoute(args: {
     symbol: nftSymbol(process.env),
     description: "A sealed Ruby High card. Mint confirmation reveals the card.",
     image,
+    category: "image",
     external_url: website,
+    seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Collection", value: CARD_COLLECTION_NAME },
@@ -349,11 +384,17 @@ export function hallPassCardBackMetadataForRoute(args: {
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
       ...(args.cardId ? [{ trait_type: "Card Id", value: args.cardId }] : []),
+      ...revealProvenanceAttributes(args),
     ],
     properties: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
+      ...metadataCreatorProperties(),
+      provenance: {
+        algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
+        ...(revealProvenanceProperties(args) ?? {}),
+      },
     },
   };
 }
@@ -362,7 +403,7 @@ export function hallPassNftMetadataForRoute(args: {
   characterId: string;
   serial: string;
   publicBaseUrl?: string;
-}): Record<string, unknown> | null {
+} & HallPassRevealProvenance): Record<string, unknown> | null {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const website = publicWebsiteUrl(publicBaseUrl);
   const profile = hallPassCardCatalogEntry(args.characterId);
@@ -378,7 +419,9 @@ export function hallPassNftMetadataForRoute(args: {
     symbol: nftSymbol(process.env),
     description: `${hallPassCardMetadataDescription(profile)} Part of the ${CARD_COLLECTION_SERIES} ${CARD_COLLECTION_EDITION} set.`,
     image,
+    category: "image",
     external_url: website,
+    seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
     collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
@@ -388,14 +431,24 @@ export function hallPassNftMetadataForRoute(args: {
       { trait_type: "Character", value: profile.characterName },
       { trait_type: "Role", value: hallPassCardRoleLabel(profile.role) },
       { trait_type: "Rarity", value: hallPassCardRarityLabel(profile.rarity) },
+      { trait_type: "Media Type", value: hallPassCardMediaType(profile) },
+      { trait_type: "Aspect Class", value: hallPassCardAspectClass(profile) },
+      { trait_type: "Image Dimensions", value: hallPassCardImageDimensions(profile) },
+      { trait_type: "Source Art Version", value: hallPassCardSourceArtVersion(profile) },
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
+      ...revealProvenanceAttributes(args),
     ],
     properties: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
       collection,
+      ...metadataCreatorProperties(),
+      provenance: {
+        algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
+        ...(revealProvenanceProperties(args) ?? {}),
+      },
     },
   };
 }
@@ -420,7 +473,7 @@ export async function buildHallPassCardMintTransaction(
     symbol: config.symbol,
     uri: metadataUri,
     sellerFeeBasisPoints: 0,
-    creators: null,
+    creators: verifiedCreatorArgs(authority.address),
     primarySaleHappened: true,
     isMutable: false,
     collection: null,
@@ -545,7 +598,7 @@ export async function mintHallPassCardNft(
     symbol: config.symbol,
     uri: metadataUri,
     sellerFeeBasisPoints: 0,
-    creators: null,
+    creators: verifiedCreatorArgs(authority.address),
     primarySaleHappened: true,
     isMutable: false,
     collection: null,
@@ -705,7 +758,7 @@ export async function createHallPassCardCollection(): Promise<HallPassCollection
     symbol: config.symbol,
     uri: metadataUri,
     sellerFeeBasisPoints: 0,
-    creators: null,
+    creators: verifiedCreatorArgs(authority.address),
     primarySaleHappened: true,
     isMutable: false,
     collection: null,

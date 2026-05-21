@@ -318,11 +318,57 @@ export function hallPassCardCatalogEntry(characterId: string): HallPassCardCatal
 }
 
 export function hallPassCardImagePath(entry: HallPassCardCatalogEntry): string {
-  return `/api/apps/ruby-high/assets/nft/cards/${entry.characterId}.png`;
+  return `/api/apps/ruby-high/assets/nft/market-cards/${entry.characterId}.png`;
 }
 
 export function hallPassCardMetadataDescription(entry: HallPassCardCatalogEntry): string {
   return entry.nftDescription ?? entry.blurb;
+}
+
+export function hallPassCardMediaType(entry: HallPassCardCatalogEntry): string {
+  switch (entry.role) {
+    case "item":
+      return "Item Art";
+    case "location":
+      return "Location Art";
+    case "special":
+      return "Special Portrait";
+    case "teacher":
+      return entry.rarity === "super-rare" ? "Rare Teacher Portrait" : "Teacher Portrait";
+    case "student":
+    default:
+      return "Student Portrait";
+  }
+}
+
+export function hallPassCardAspectClass(entry: HallPassCardCatalogEntry): string {
+  if (entry.role === "location") return "Wide";
+  if (entry.role === "special" || entry.rarity === "super-rare") return "Tall";
+  return "Square";
+}
+
+export function hallPassCardImageDimensions(entry: HallPassCardCatalogEntry): string {
+  switch (hallPassCardAspectClass(entry)) {
+    case "Wide":
+      return "1536 x 864";
+    case "Tall":
+      return "1024 x 1365";
+    case "Square":
+    default:
+      return "1024 x 1024";
+  }
+}
+
+export function hallPassCardSourceArtVersion(entry: HallPassCardCatalogEntry): string {
+  if (
+    entry.role === "item" ||
+    entry.role === "location" ||
+    entry.role === "special" ||
+    entry.rarity === "super-rare"
+  ) {
+    return "grok-image-v1";
+  }
+  return "source-portrait-v1";
 }
 
 export function hallPassCardRoleLabel(role: RubyHighHallPassCardRole): string {

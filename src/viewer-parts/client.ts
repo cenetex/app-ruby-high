@@ -465,7 +465,7 @@ export function runViewerClient(bootstrap) {
   const CARD_BACK_ART_URL = apiBase + "/assets/nft/ruby-high-card-back.png?v=card-back-v1";
   const ITEM_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-item-cards.png";
   const LOCATION_CARD_SHEET_URL = apiBase + "/assets/nft/ruby-high-location-cards.png";
-  const CARD_NFT_ART_VERSION = "card-v2";
+  const CARD_NFT_ART_VERSION = "card-crop-v1";
   const CARD_NFT_IMAGE_IDS = [
     "lyra", "sami", "ravi", "indra", "mika", "noor",
     "ruby", "sally-science", "professor-edward", "captain-null", "eliza", "rati",
@@ -3104,7 +3104,7 @@ export function runViewerClient(bootstrap) {
   function hallPassCardNftImageUrl(card) {
     const id = String(card && card.characterId ? card.characterId : "").trim().toLowerCase();
     if (!id || !CARD_NFT_IMAGE_IDS.includes(id)) return "";
-    return apiBase + "/assets/nft/cards/" + encodeURIComponent(id) + ".png?v=" + encodeURIComponent(CARD_NFT_ART_VERSION);
+    return apiBase + "/assets/nft/market-cards/" + encodeURIComponent(id) + ".png?v=" + encodeURIComponent(CARD_NFT_ART_VERSION);
   }
 
   function hallPassCardSheetUrl(card) {
