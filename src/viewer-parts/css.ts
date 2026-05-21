@@ -3756,6 +3756,7 @@ export const VIEWER_CSS = `
   }
   .account-history-row.is-credit .account-history-delta { color: #8fdc9b; }
   .account-history-row.is-debit .account-history-delta { color: #f2b26d; }
+  .account-history-row.is-swap .account-history-delta { color: #ffe08a; }
   .account-trust-list {
     display: grid;
     gap: 7px;
@@ -3873,6 +3874,7 @@ export const VIEWER_CSS = `
   #account-ai-action:disabled,
   #account-use-pass:disabled,
   #account-buy-passes:disabled,
+  #account-buy-card-packs:disabled,
   #account-mint-cards:disabled,
   #account-create-character:disabled,
   #account-unlock-slot:disabled {

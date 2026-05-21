@@ -97,7 +97,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-ai-action"');
     expect(html).not.toContain('id="account-use-pass"');
     expect(html).toContain('id="account-buy-passes"');
-    expect(html).toContain('title="Buy card packs"');
+    expect(html).toContain('id="account-buy-card-packs"');
+    expect(html).toContain('title="Account"');
     expect(html).toContain("Connect AI key");
     expect(html).toContain("Burn Card");
     expect(html).toContain('id="account-create-character"');
@@ -223,7 +224,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, 'title: "Connect Solana wallet?"');
     expectScriptToContain(script, 'title: "Confirm card pack payment?"');
-    expectScriptToContain(script, 'prompt: "Your wallet should show one token-transfer transaction."');
+    expectScriptToContain(script, "Your wallet may show only the RUBY debit; Ruby High files the pack NFT after confirmation.");
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
     expect(script).not.toContain('"prepare card mint " + prepared.status');
@@ -235,8 +236,9 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("Solana transaction signature");
     expect(script).not.toContain("paste the transaction");
     expect(script).not.toContain("Pay Crypto");
-    expectScriptToContain(script, 'els.hallPassBtn.addEventListener("click", () => openBilling({ mode: "card-packs" }))');
+    expectScriptToContain(script, 'setAccountPane("account");');
     expectScriptToContain(script, 'els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }))');
+    expectScriptToContain(script, 'els.accountBuyCardPacks.addEventListener("click", () => openBilling({ mode: "card-packs" }))');
   });
 
   it("shows a thumbnail selector before burning collectible cards", () => {
@@ -350,7 +352,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function claimWelcomeHallPassesFromBilling()");
     expectScriptToContain(script, 'apiBase + "/billing/welcome"');
     expectScriptToContain(script, "No Hall Passes yet");
-    expectScriptToContain(script, "Open Hall Passes");
+    expectScriptToContain(script, "Open Account");
     expectScriptToContain(script, 'if (billingMode === "hall-passes") void claimWelcomeHallPassesFromBilling();');
     expect(script).not.toContain("maybeShowWelcomeHallPassPopup(t);");
     expectScriptToContain(script, 'const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');

@@ -62,6 +62,8 @@ type DiagnosticListener = (event: PrivyDiagnosticEvent) => void | Promise<void>;
 interface SolanaPaymentQuote {
   product?: {
     id?: string;
+    packCount?: number;
+    cardCount?: number;
     hallPasses?: number;
     tokenAmount?: string;
     tokenAmountBaseUnits?: string;

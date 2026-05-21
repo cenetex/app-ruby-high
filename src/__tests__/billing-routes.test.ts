@@ -932,9 +932,12 @@ describe("Solana Hall Pass billing", () => {
         productId: "card-pack-3",
         packCount: 3,
         cardCount: 15,
+        packSerial: 456789,
         packAssetAddress,
         packMintSignature,
         packMetadataUri,
+        tokenAmount: "100000",
+        tokenSymbol: "RUBY",
       },
     });
     expect(ruby.walletTransaction(stateKey, `solana:spl-token-transfer:${signature}`)).toMatchObject({
@@ -943,6 +946,7 @@ describe("Solana Hall Pass billing", () => {
         packAssetAddress,
         packMintSignature,
         packMetadataUri,
+        packSerial: 456789,
         solanaReference: reference,
       },
     });

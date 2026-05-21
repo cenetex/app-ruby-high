@@ -71,7 +71,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">0 Merit Stars · 0 Hall Passes</span>
       </div>
-      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Buy card packs" aria-label="Buy card packs" hidden>
+      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Account" aria-label="Open account" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 9a3 3 0 0 0 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
           <path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>
@@ -258,7 +258,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
               <div class="account-section-sub" id="account-card-summary"></div>
             </div>
             <div class="account-section-actions">
-              <button type="button" class="secondary" id="account-mint-cards">Mint Pack</button>
+              <button type="button" id="account-buy-card-packs">Buy Card Packs</button>
+              <button type="button" class="secondary" id="account-mint-cards">Reveal Card</button>
             </div>
           </div>
           <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>

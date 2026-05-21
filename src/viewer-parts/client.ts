@@ -647,6 +647,7 @@ export function runViewerClient(bootstrap) {
     accountWalletBalance: $("account-wallet-balance"),
     accountWalletMeta: $("account-wallet-meta"),
     accountBuyPasses: $("account-buy-passes"),
+    accountBuyCardPacks: $("account-buy-card-packs"),
     accountMintCards: $("account-mint-cards"),
     accountCardSummary: $("account-card-summary"),
     accountHallPassCards: $("account-hall-pass-cards"),
@@ -2185,11 +2186,14 @@ export function runViewerClient(bootstrap) {
       title: opts && opts.title ? opts.title : "No Hall Passes yet",
       copy: opts && opts.copy ? opts.copy : "Hosted AI needs Hall Passes. Visit Hall Passes for the free starter grant, or keep playing free.",
       detail: opts && opts.detail ? opts.detail : "The classroom loop still works without hosted AI.",
-      confirmText: "Open Hall Passes",
+      confirmText: "Open Account",
       cancelText: "Keep playing",
       focus: "confirm",
     });
-    if (open) openBilling({ mode: "hall-passes" });
+    if (open) {
+      setAccountPane("wallet");
+      void openPrivyAccount();
+    }
     return open;
   }
 
@@ -2262,6 +2266,38 @@ export function runViewerClient(bootstrap) {
     if (!els.billingStatus) return;
     els.billingStatus.textContent = text || "";
     els.billingStatus.classList.toggle("is-invalid", !!invalid);
+  }
+
+  function formatTokenDisplayAmount(value) {
+    const raw = String(value || "").trim();
+    const parsed = Number(raw);
+    if (!raw) return "?";
+    if (!Number.isFinite(parsed) || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(raw)) return raw;
+    if (Number.isInteger(parsed)) return formatWholeNumber(parsed);
+    return parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  }
+
+  function cardPackTokenSymbol(product, solana) {
+    return String((product && product.tokenSymbol) || (solana && solana.symbol) || "RUBY").trim() || "RUBY";
+  }
+
+  function cardPackDebitLabel(product, solana) {
+    const amount = product && product.tokenAmount != null ? product.tokenAmount : solana && solana.tokenAmount;
+    return "-" + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
+  }
+
+  function cardPackCreditLabel(product) {
+    const count = product && Number.isFinite(Number(product.packCount)) ? Number(product.packCount) : 1;
+    return "+" + packCountLabel(count) + " NFT";
+  }
+
+  function cardPackPaymentDeltaLabel(product, solana) {
+    return cardPackDebitLabel(product, solana) + " · " + cardPackCreditLabel(product);
+  }
+
+  function cardPackProductMeta(product, solana) {
+    const cardCount = Math.max(1, Math.floor(Number(product && product.cardCount || HALL_PASS_CARDS_PER_PACK)));
+    return cardPackPaymentDeltaLabel(product, solana) + " · " + formatWholeNumber(cardCount) + " cards";
   }
 
   function formatMoney(cents, currency) {
@@ -2377,13 +2413,14 @@ export function runViewerClient(bootstrap) {
   async function syncWalletPackNftsFromAccount(opts) {
     const ownerWalletAddress = knownSolanaOwnerWalletAddress();
     const force = !!(opts && opts.force);
+    const quiet = !!(opts && opts.quiet);
     if (!authed || !ownerWalletAddress || packSyncBusy) return;
     const now = Date.now();
     if (!force && packSyncWalletAddress === ownerWalletAddress && now - packSyncAt < 60000) return;
     packSyncBusy = true;
     packSyncWalletAddress = ownerWalletAddress;
     packSyncAt = now;
-    if (els.accountCardSummary) els.accountCardSummary.textContent = "Checking wallet for pack NFTs...";
+    if (!quiet && els.accountCardSummary) els.accountCardSummary.textContent = "Checking wallet for pack NFTs...";
     try {
       const r = await apiFetch(apiBase + "/nft/sync-packs", {
         method: "POST",
@@ -2395,14 +2432,14 @@ export function runViewerClient(bootstrap) {
       if (!r.ok || !data || !data.ok) throw new Error(nftHttpErrorMessage("Pack sync", r, data, "Your packs were not changed; try again in a minute."));
       const importedCount = Math.max(0, Math.floor(Number(data.importedCount || 0)));
       if (importedCount > 0) {
-        setPrivyStatus("Imported " + formatWholeNumber(importedCount) + " pack NFT" + (importedCount === 1 ? "" : "s") + " from this wallet.", false);
+        if (!quiet) setPrivyStatus("Imported " + formatWholeNumber(importedCount) + " pack NFT" + (importedCount === 1 ? "" : "s") + " from this wallet.", false);
         await fetchSession();
         renderAccountPage();
       } else if (force) {
         renderAccountHallPassCards();
       }
     } catch (err) {
-      setPrivyStatus("Pack sync failed · " + friendlySolanaActionError(err, "Your packs were not changed; try again in a minute."), true);
+      if (!quiet) setPrivyStatus("Pack sync failed · " + friendlySolanaActionError(err, "Your packs were not changed; try again in a minute."), true);
       renderAccountHallPassCards();
     } finally {
       packSyncBusy = false;
@@ -2620,7 +2657,13 @@ export function runViewerClient(bootstrap) {
         ? "No pack or card collectibles in this wallet yet."
         : pieces.join(" · ");
     }
+    if (els.accountBuyCardPacks) {
+      els.accountBuyCardPacks.disabled = !authed || billingBusy;
+      els.accountBuyCardPacks.textContent = billingBusy && billingMode === "card-packs" ? "Loading..." : "Buy Card Packs";
+      els.accountBuyCardPacks.title = "Buy Ruby High card pack NFTs.";
+    }
     if (els.accountMintCards) {
+      els.accountMintCards.hidden = !needsWalletConnection && pendingMints.length === 0;
       els.accountMintCards.disabled = !authed || billingBusy;
       if (needsWalletConnection) {
         els.accountMintCards.textContent = billingBusy ? "Connecting..." : "Connect Wallet";
@@ -2629,8 +2672,8 @@ export function runViewerClient(bootstrap) {
         els.accountMintCards.textContent = billingBusy ? "Minting..." : "Reveal Card";
         els.accountMintCards.title = "Mint the next face-down Ruby High card NFT to reveal it.";
       } else {
-        els.accountMintCards.textContent = "Buy Card Packs";
-        els.accountMintCards.title = "Buy Ruby High card pack NFTs.";
+        els.accountMintCards.textContent = "Reveal Card";
+        els.accountMintCards.title = "No face-down cards are ready to reveal.";
       }
     }
     els.accountHallPassCards.replaceChildren();
@@ -3318,9 +3361,11 @@ export function runViewerClient(bootstrap) {
     const amount = Number(tx.hallPasses || 0);
     const photoDayAmount = Number(tx.photoDayCredits || 0);
     const cardAmount = walletTransactionCardCount(tx);
+    const isPackPurchase = tx && tx.kind === "hall-pass-pack-mint";
     const visibleAmount = amount || photoDayAmount || cardAmount;
-    if (visibleAmount > 0) row.classList.add("is-credit");
-    if (visibleAmount < 0) row.classList.add("is-debit");
+    if (isPackPurchase) row.classList.add("is-swap");
+    else if (visibleAmount > 0) row.classList.add("is-credit");
+    else if (visibleAmount < 0) row.classList.add("is-debit");
     const main = document.createElement("div");
     main.className = "account-history-main";
     const title = document.createElement("div");
@@ -3333,7 +3378,9 @@ export function runViewerClient(bootstrap) {
     main.appendChild(meta);
     const delta = document.createElement("div");
     delta.className = "account-history-delta";
-    delta.textContent = cardAmount !== 0
+    delta.textContent = isPackPurchase
+      ? walletTransactionPackDeltaText(tx)
+      : cardAmount !== 0
       ? (cardAmount > 0 ? "+" : "") + formatWholeNumber(cardAmount) + " Card" + (Math.abs(cardAmount) === 1 ? "" : "s")
       : amount !== 0
         ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " Hall Pass" + (Math.abs(amount) === 1 ? "" : "es")
@@ -3376,6 +3423,14 @@ export function runViewerClient(bootstrap) {
       : rawCount;
     if (count <= 0) return 0;
     return tx.kind === "hall-pass-spend" || tx.kind === "hall-pass-revoke" ? -count : count;
+  }
+
+  function walletTransactionPackDeltaText(tx) {
+    const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
+    const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
+    const tokenAmount = metadata.solanaTokenAmount || "";
+    const tokenSymbol = metadata.solanaTokenSymbol || "RUBY";
+    return "-" + formatTokenDisplayAmount(tokenAmount) + " " + tokenSymbol + " · +" + packCountLabel(packCount);
   }
 
   function walletTransactionSource(tx) {
@@ -3799,7 +3854,7 @@ export function runViewerClient(bootstrap) {
       const meta = document.createElement("div");
       meta.className = "billing-product-meta";
       meta.textContent = mode === "card-packs"
-        ? (formatWholeNumber(product.cardCount || productHallPassCount(product)) + " cards · " + (product.tokenAmount || "?") + " " + (product.tokenSymbol || (solana && solana.symbol) || "RUBY"))
+        ? cardPackProductMeta(product, solana)
         : formatMoney(product.unitAmount, product.currency) + " · " + hallPassCostLabel(productHallPassCount(product));
       body.appendChild(title);
       body.appendChild(meta);
@@ -3881,7 +3936,7 @@ export function runViewerClient(bootstrap) {
     title.textContent = "Buy " + (product.name || packCountLabel(product.packCount));
     const meta = document.createElement("div");
     meta.className = "billing-product-meta";
-    meta.textContent = formatWholeNumber(product.cardCount || HALL_PASS_CARDS_PER_PACK) + " cards · " + (product.tokenAmount || "?") + " " + (product.tokenSymbol || (solana && solana.symbol) || "RUBY");
+    meta.textContent = cardPackProductMeta(product, solana);
     const actions = document.createElement("div");
     actions.className = "billing-payment-actions";
     const cryptoUnavailable = !privyState.configured;
@@ -4024,13 +4079,14 @@ export function runViewerClient(bootstrap) {
         title: "Confirm card pack payment?",
         action: "Buy " + cardPackProductLabel(product),
         walletAddress: ownerWalletAddress,
-        cost: (product.tokenAmount || data.tokenAmount || "?") + " " + (product.tokenSymbol || data.symbol || "RUBY"),
-        pack: cardPackProductLabel(product),
+        cost: cardPackDebitLabel(product, data),
+        credit: cardPackCreditLabel(product),
+        pack: cardPackProductLabel(product) + " · " + formatWholeNumber(product.cardCount || HALL_PASS_CARDS_PER_PACK) + " cards",
         recipient: data.recipient,
         mint: data.mint,
         reference: data.reference,
-        prompt: "Your wallet should show one token-transfer transaction.",
-        copy: "Ruby High will ask your wallet to pay for a pack NFT. This should not ask for broad approvals.",
+        prompt: "Your wallet may show only the RUBY debit; Ruby High files the pack NFT after confirmation.",
+        copy: "Ruby High will ask your wallet to pay RUBY for a pack NFT. This should not ask for broad approvals.",
         confirmText: "Open wallet",
       });
       if (!approved) {
@@ -4107,11 +4163,22 @@ export function runViewerClient(bootstrap) {
       const packText = data && Number(data.packCount || 0) > 0
         ? packCountLabel(Number(data.packCount || 0))
         : "Pack";
-      setBillingStatus(data.applied ? packText + " minted from Solana payment." : "Solana payment was already minted.", false);
+      const paidProduct = {
+        ...((quote && quote.product) || {}),
+        packCount: data.packCount || (quote && quote.product && quote.product.packCount),
+        cardCount: data.cardCount || (quote && quote.product && quote.product.cardCount),
+        tokenAmount: data.tokenAmount || (quote && quote.product && quote.product.tokenAmount),
+        tokenSymbol: data.tokenSymbol || (quote && quote.product && quote.product.tokenSymbol) || (quote && quote.symbol),
+      };
+      setBillingStatus(
+        (data.applied ? packText + " minted · " : packText + " already minted · ") + cardPackPaymentDeltaLabel(paidProduct, quote),
+        false,
+      );
       updatePackMintProgress(data.applied ? "Pack minted. Filing it in your locker..." : "Pack already minted. Updating your locker...");
       hidePackMintProgress(900);
       await fetchSession();
       await deriveAuth();
+      await syncWalletPackNftsFromAccount({ force: true, quiet: true });
       if (billingProductsCache) await loadBillingProducts();
       return;
     }
@@ -11801,13 +11868,17 @@ export function runViewerClient(bootstrap) {
   if (els.bugReportOverlay) els.bugReportOverlay.addEventListener("click", (e) => {
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
-  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", () => openBilling({ mode: "card-packs" }));
+  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", () => {
+    setAccountPane("account");
+    void openPrivyAccount();
+  });
   if (Array.isArray(els.accountTabs)) {
     els.accountTabs.forEach((tab) => {
       tab.addEventListener("click", () => setAccountPane(tab.getAttribute("data-account-tab")));
     });
   }
   if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }));
+  if (els.accountBuyCardPacks) els.accountBuyCardPacks.addEventListener("click", () => openBilling({ mode: "card-packs" }));
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
     const hasWallet = !!knownSolanaOwnerWalletAddress();
@@ -11819,9 +11890,7 @@ export function runViewerClient(bootstrap) {
     }
     if (hasPendingMints) {
       await mintPendingCardNftsFromAccount();
-      return;
     }
-    openBilling({ mode: "card-packs" });
   });
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);

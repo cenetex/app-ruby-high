@@ -445,6 +445,7 @@ describe("Hall Pass wallet", () => {
       source: "solana",
     });
 
+    expect(recorded.pack?.serial).toBe(123456);
     const opened = ruby.openHallPassPack(sid, {
       packId: recorded.pack!.id,
       ownerWalletAddress,

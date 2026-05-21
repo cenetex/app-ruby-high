@@ -1329,6 +1329,12 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     if (existing) {
       const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
+      const existingPackAsset = typeof existing.transaction.metadata?.packAssetAddress === "string"
+        ? existing.transaction.metadata.packAssetAddress
+        : "";
+      const existingPack = deps.ruby.hallPassPacks(stateKey).find((pack) => (
+        pack.grantTransactionId === idempotencyKey || (!!existingPackAsset && pack.assetAddress === existingPackAsset)
+      ));
       const existingCardCount = Math.max(0, Math.floor(Number(
         existing.transaction.metadata?.cardCount ?? existing.transaction.metadata?.hallPassCardCount ?? 0,
       )));
@@ -1342,8 +1348,11 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         productId: existing.transaction.metadata?.hallPassPackId ?? product.id,
         packCount: product.packCount,
         cardCount: product.cardCount,
+        packSerial: existingPack?.serial ?? existing.transaction.metadata?.packSerial ?? null,
         packAssetAddress: existing.transaction.metadata?.packAssetAddress ?? null,
         packMintSignature: existing.transaction.metadata?.packMintSignature ?? null,
+        tokenAmount: product.tokenAmount,
+        tokenSymbol: solana.symbol,
         entitlements,
       });
       return true;
@@ -1377,6 +1386,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
           solanaReceivedBaseUnits: verification.receivedBaseUnits,
           solanaTokenAmount: product.tokenAmount,
           solanaTokenSymbol: solana.symbol,
+          tokenDebitLabel: `-${product.tokenAmount} ${solana.symbol}`,
+          assetCreditLabel: `+${product.packCount} ${product.packCount === 1 ? "Pack" : "Packs"}`,
           packCount: product.packCount,
           cardCount: product.cardCount,
           hallPassPackId: product.id,
@@ -1396,9 +1407,12 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         productId: product.id,
         packCount: product.packCount,
         cardCount: product.cardCount,
+        packSerial: result.pack?.serial ?? null,
         packAssetAddress: packMint.assetAddress,
         packMintSignature: packMint.mintSignature,
         packMetadataUri: packMint.metadataUri,
+        tokenAmount: product.tokenAmount,
+        tokenSymbol: solana.symbol,
         entitlements,
       });
       log.event("billing.solana.pack-minted", {

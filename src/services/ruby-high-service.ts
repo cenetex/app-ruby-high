@@ -1489,9 +1489,7 @@ export class RubyHighService extends Service {
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
     const pack: RubyHighHallPassPack = {
       id: hallPassPackId(id, assetAddress),
-      serial: Number.isFinite(Number(input.serial)) && Number(input.serial) > 0
-        ? Math.floor(Number(input.serial))
-        : hashInteger(`${id}:${assetAddress}`) % 900000 + 100000,
+      serial: hallPassPackSerial(input.serial, metadataUri, id, assetAddress),
       productId: input.productId.trim().slice(0, 96) || `card-pack-${packCount}`,
       packCount,
       cardCount,
@@ -1520,6 +1518,7 @@ export class RubyHighService extends Service {
         productId: pack.productId,
         packCount,
         cardCount,
+        packSerial: pack.serial,
         ownerWalletAddress,
         packAssetAddress: assetAddress,
         packMintSignature: mintSignature,
@@ -5355,6 +5354,26 @@ function normalizedHallPassPackStatus(value: unknown): RubyHighHallPassPackStatu
   return value === "opened" || value === "void" ? value : "active";
 }
 
+function hallPassPackSerialFromMetadataUri(metadataUri: string): number | null {
+  let pathname = "";
+  try {
+    pathname = new URL(metadataUri).pathname;
+  } catch (_err) {
+    pathname = metadataUri;
+  }
+  const match = pathname.match(/\/metadata\/core\/pack\/[^/]+\/([^/]+)\.json$/);
+  const parsed = Math.floor(Number(decodeURIComponent(match?.[1] ?? "")));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function hallPassPackSerial(inputSerial: unknown, metadataUri: string, id: string, assetAddress: string): number {
+  const metadataSerial = hallPassPackSerialFromMetadataUri(metadataUri);
+  if (metadataSerial) return metadataSerial;
+  const explicit = Math.floor(Number(inputSerial));
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return hashInteger(`${id}:${assetAddress}`) % 900000 + 100000;
+}
+
 function normalizeHallPassPack(raw: unknown): RubyHighHallPassPack | null {
   if (!raw || typeof raw !== "object") return null;
   const pack = raw as Record<string, unknown>;
@@ -5372,7 +5391,7 @@ function normalizeHallPassPack(raw: unknown): RubyHighHallPassPack | null {
   const cardCount = Math.max(rawCardCount, packCount * HALL_PASS_CARDS_PER_PACK);
   const entry: RubyHighHallPassPack = {
     id,
-    serial: Math.max(1, Math.floor(Number(pack.serial ?? 1))),
+    serial: hallPassPackSerial(pack.serial, metadataUri, id, assetAddress),
     productId: typeof pack.productId === "string" && pack.productId.trim()
       ? pack.productId.trim().slice(0, 96)
       : "card-pack-1",
