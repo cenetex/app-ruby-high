@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleNftRoutes } from "../routes/nft.js";
 import type { RouteContext } from "../routes/context.js";
 import { getActivePack } from "../content/registry.js";
-import { setOwnedCorePackNftFetcherForTest } from "../services/core-pack-nfts.js";
+import {
+  setCorePackNftOpenedUpdaterForTest,
+  setOwnedCorePackNftFetcherForTest,
+} from "../services/core-pack-nfts.js";
 import {
   hallPassNftMetadataUri,
   setHallPassNftBurnTransactionBuilderForTest,
@@ -50,10 +53,12 @@ let restoreMintVerifier: (() => void) | null = null;
 let restoreBurnBuilder: (() => void) | null = null;
 let restoreBurnVerifier: (() => void) | null = null;
 let restorePackFetcher: (() => void) | null = null;
+let restorePackOpenedUpdater: (() => void) | null = null;
 
 const OWNER = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
+  RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_PACK_REVEAL_SECRET: process.env.RUBY_HIGH_PACK_REVEAL_SECRET,
   RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
@@ -191,6 +196,8 @@ afterEach(async () => {
   restoreBurnVerifier = null;
   restorePackFetcher?.();
   restorePackFetcher = null;
+  restorePackOpenedUpdater?.();
+  restorePackOpenedUpdater = null;
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
@@ -371,6 +378,16 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.description).toContain("5 cards inside");
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
     expectWebsiteLink(lastResponse?.body);
+
+    const openedUriHandled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5&opened=1",
+    }), deps());
+
+    expect(openedUriHandled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.image).toBe(expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"));
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Opened" });
   });
 
   it("uses stable revealed metadata URIs for future card mints", () => {
@@ -389,6 +406,14 @@ describe("Hall Pass NFT routes", () => {
 
   it("opens an active Pack NFT into deterministic face-down cards", async () => {
     const stateKey = signInUser("open-pack");
+    const openedMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5&opened=1";
+    process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    const updateOpenedPack = vi.fn(async () => ({
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      signature: "5mPackOpenedUpdateSignature11111111111111111111111111111",
+      metadataUri: openedMetadataUri,
+    }));
+    restorePackOpenedUpdater = setCorePackNftOpenedUpdaterForTest(updateOpenedPack);
     const pack = ruby.recordHallPassPackMint(stateKey, {
       productId: "card-pack-1",
       packCount: 1,
@@ -423,8 +448,21 @@ describe("Hall Pass NFT routes", () => {
           commitment: expect.any(String),
           entropySource: "ruby-high-server-commit-v1",
           revealSeed: expect.any(String),
+          metadataUri: openedMetadataUri,
+        },
+        packNftUpdate: {
+          assetAddress: pack.assetAddress,
+          signature: "5mPackOpenedUpdateSignature11111111111111111111111111111",
+          metadataUri: openedMetadataUri,
         },
       },
+    });
+    expect(updateOpenedPack).toHaveBeenCalledWith({
+      assetAddress: pack.assetAddress,
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      serial: 123456,
     });
     expect(lastResponse?.body.cards).toHaveLength(5);
     expect(lastResponse?.body.cards[0]).toMatchObject({

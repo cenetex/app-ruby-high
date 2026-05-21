@@ -5,6 +5,7 @@ import {
   type OwnedCorePackNft,
   fetchOwnedCorePackNfts,
   publicCorePackNftStatus,
+  updateCorePackNftToOpened,
 } from "../services/core-pack-nfts.js";
 import {
   HALL_PASS_NFT_PREFIX,
@@ -71,6 +72,9 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     const productId = decodeURIComponent(corePackMetadataMatch[1] ?? "card-pack-1");
     const serial = decodeURIComponent(corePackMetadataMatch[2] ?? "1");
     const knownPack = deps.ruby.findHallPassPackByMetadata(productId, Math.max(1, Math.floor(Number(serial || 1))));
+    const opened = ctx.url?.searchParams.get("opened") === "1"
+      || ctx.url?.searchParams.get("state") === "opened"
+      || knownPack?.status === "opened";
     setNftMetadataCacheHeaders(ctx.res);
     ctx.json(ctx.res, corePackNftMetadataForRoute({
       productId,
@@ -78,7 +82,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       packCount: ctx.url?.searchParams.get("packs") ?? undefined,
       cardCount: ctx.url?.searchParams.get("cards") ?? undefined,
       publicBaseUrl: publicBaseUrlForRequest(ctx),
-      opened: knownPack?.status === "opened",
+      opened,
       ...revealProvenanceFromPack(knownPack),
     }));
     return true;
@@ -261,12 +265,14 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         packId,
         ownerWalletAddress,
       });
+      const packUpdate = await updateOpenedCorePackNft(stateKey, result.pack);
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
         applied: result.applied,
         ownerWalletAddress,
         pack: result.pack ? packPayload(result.pack) : null,
+        packNftUpdate: packUpdate,
         cards: (result.cards ?? []).map(hiddenCardPayload),
         minted: [],
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
@@ -709,6 +715,37 @@ function cleanOwnerWalletAddress(value: string): string {
   if (!clean) return "";
   if (clean.length < 32 || clean.length > 44 || !BASE58ISH.test(clean)) return "";
   return clean;
+}
+
+async function updateOpenedCorePackNft(
+  sessionId: string,
+  pack: RubyHighHallPassPack | null | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (!pack?.assetAddress) return null;
+  if (!publicCorePackNftStatus().configured) return null;
+  try {
+    const updated = await updateCorePackNftToOpened({
+      assetAddress: pack.assetAddress,
+      productId: pack.productId,
+      packCount: pack.packCount,
+      cardCount: pack.cardCount,
+      serial: pack.serial,
+    });
+    pack.metadataUri = updated.metadataUri;
+    pack.updatedAt = Date.now();
+    return {
+      assetAddress: updated.assetAddress,
+      signature: updated.signature,
+      metadataUri: updated.metadataUri,
+    };
+  } catch (err) {
+    log.error("nft.pack-open-core-update-failed", err, {
+      sessionId,
+      packId: pack.id,
+      assetAddress: pack.assetAddress,
+    });
+    return null;
+  }
 }
 
 function publicBaseUrlForRequest(ctx: RouteContext): string | undefined {

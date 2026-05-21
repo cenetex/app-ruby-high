@@ -7,6 +7,7 @@ import {
   fetchCollectionV1,
   getAssetV1GpaBuilder,
   mplCore,
+  update,
 } from "@metaplex-foundation/mpl-core";
 import {
   generateSigner,
@@ -89,6 +90,20 @@ export interface CorePackNftMintResult {
   metadataUri: string;
 }
 
+export interface CorePackNftOpenedUpdateInput {
+  assetAddress: string;
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: number | string;
+}
+
+export interface CorePackNftOpenedUpdateResult {
+  assetAddress: string;
+  signature: string;
+  metadataUri: string;
+}
+
 export interface CorePackPurchaseTransactionInput {
   productId: string;
   packCount: number;
@@ -145,6 +160,7 @@ export interface OwnedCorePackNft {
 }
 
 type CorePackNftMinter = (input: CorePackNftMintInput) => Promise<CorePackNftMintResult>;
+type CorePackNftOpenedUpdater = (input: CorePackNftOpenedUpdateInput) => Promise<CorePackNftOpenedUpdateResult>;
 type CorePackPurchaseTransactionBuilder = (
   input: CorePackPurchaseTransactionInput,
 ) => Promise<CorePackPurchaseTransactionResult>;
@@ -152,6 +168,7 @@ type CorePackNftVerifier = (input: CorePackNftVerifyInput) => Promise<CorePackNf
 type CorePackNftOwnerFetcher = (ownerWalletAddress: string) => Promise<OwnedCorePackNft[]>;
 
 let packMinterOverride: CorePackNftMinter | null = null;
+let packOpenedUpdaterOverride: CorePackNftOpenedUpdater | null = null;
 let packPurchaseTransactionBuilderOverride: CorePackPurchaseTransactionBuilder | null = null;
 let packVerifierOverride: CorePackNftVerifier | null = null;
 let packOwnerFetcherOverride: CorePackNftOwnerFetcher | null = null;
@@ -161,6 +178,14 @@ export function setCorePackNftMinterForTest(minter: CorePackNftMinter | null): (
   packMinterOverride = minter;
   return () => {
     packMinterOverride = previous;
+  };
+}
+
+export function setCorePackNftOpenedUpdaterForTest(updater: CorePackNftOpenedUpdater | null): () => void {
+  const previous = packOpenedUpdaterOverride;
+  packOpenedUpdaterOverride = updater;
+  return () => {
+    packOpenedUpdaterOverride = previous;
   };
 }
 
@@ -279,6 +304,21 @@ export function corePackNftMetadataUri(args: {
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = encodeURIComponent(packSerial(args.paymentSignature));
   return `${base}${CORE_PACK_NFT_PREFIX}/metadata/core/pack/${productId}/${serial}.json?packs=${encodeURIComponent(String(packCount))}&cards=${encodeURIComponent(String(cardCount))}`;
+}
+
+export function corePackOpenedNftMetadataUri(args: {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: number | string;
+}, env: NodeJS.ProcessEnv = process.env): string {
+  const base = publicBaseUrlFromEnv(env);
+  const productId = encodeURIComponent(cleanProductId(args.productId));
+  const packCount = Math.max(1, Math.floor(Number(args.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = encodeURIComponent(normalizeSerial(String(args.serial || 1)));
+  return `${base}${CORE_PACK_NFT_PREFIX}/metadata/core/pack/${productId}/${serial}.json?packs=${encodeURIComponent(String(packCount))}&cards=${encodeURIComponent(String(cardCount))}&opened=1`;
 }
 
 export function coreCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
@@ -447,6 +487,35 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
     ownerWalletAddress: owner,
     assetAddress: asset.publicKey,
     mintSignature: base58Encode(sent.signature),
+    metadataUri,
+  };
+}
+
+export async function updateCorePackNftToOpened(
+  input: CorePackNftOpenedUpdateInput,
+): Promise<CorePackNftOpenedUpdateResult> {
+  if (packOpenedUpdaterOverride) return packOpenedUpdaterOverride(input);
+  const config = readCoreMintConfig();
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const assetAddress = cleanSolanaAddress(input.assetAddress, "Pack asset address");
+  const collectionAddress = publicKey(config.collectionAddress);
+  const [asset, collection] = await Promise.all([
+    fetchAssetV1(umi, publicKey(assetAddress), { commitment: "confirmed" }),
+    fetchCollectionV1(umi, collectionAddress),
+  ]);
+  const metadataUri = corePackOpenedNftMetadataUri(input);
+  const sent = await sendAndConfirmCoreTransaction(umi, update(umi, {
+    asset,
+    collection,
+    authority: umi.identity,
+    payer: umi.payer,
+    uri: metadataUri,
+  }));
+  return {
+    assetAddress,
+    signature: base58Encode(sent.signature),
     metadataUri,
   };
 }

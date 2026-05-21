@@ -4,6 +4,7 @@ import { Transaction } from "@solana/web3.js";
 import {
   buildCorePackPurchaseTransaction,
   corePackAssetPluginsForMint,
+  corePackOpenedNftMetadataUri,
   corePackNftMetadataUri,
   fetchOwnedCorePackNfts,
 } from "../services/core-pack-nfts.js";
@@ -69,6 +70,17 @@ describe("Core pack NFT checkout transactions", () => {
       cardCount: 4,
       paymentSignature: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
     })).toContain("cards=5");
+  });
+
+  it("builds an opened pack metadata URL that forces opened imagery", () => {
+    process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
+
+    expect(corePackOpenedNftMetadataUri({
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 4,
+      serial: 570329,
+    })).toBe("https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5&opened=1");
   });
 
   it("builds one wallet-only transaction with a RUBY transfer", async () => {

@@ -3730,32 +3730,8 @@ export function runViewerClient(bootstrap) {
       if (!client || typeof client.signSolanaTransaction !== "function") {
         throw new Error("Solana card mint is unavailable.");
       }
-      const cardName = preparedData.card && preparedData.card.characterName
-        ? preparedData.card.characterName
-        : "Mystery Card";
-      hidePackMintProgress();
-      setPrivyStatus("Review the mint preview...", false);
-      const approved = await confirmWalletTransactionPreview({
-        title: "Mint this Card?",
-        action: "Mint Card",
-        walletAddress: ownerWalletAddress,
-        cost: "Network fee only",
-        card: cardName,
-        reference: preparedData.mint.mintAddress,
-        prompt: "Your wallet should show one card-mint transaction.",
-        copy: "Ruby High will ask your wallet to mint this Card so it can be revealed.",
-        confirmText: "Open wallet",
-      });
-      if (!approved) {
-        hidePackMintProgress();
-        setPrivyStatus("Card reveal canceled.", false);
-        return null;
-      }
-      showPackMintProgress("Confirm the mint in your wallet...", {
-        title: "Please wait: minting card",
-        lines: CARD_MINT_STATUS_LINES,
-        rotate: false,
-      });
+      updatePackMintProgress("Review the mint transaction in your wallet...");
+      setPrivyStatus("Review the card mint transaction in your wallet.", false);
       const signed = await withWalletActionTimeout(
         client.signSolanaTransaction(preparedData.mint),
         "Wallet approval timed out. Your card is still face-down; try again when your wallet is ready.",
