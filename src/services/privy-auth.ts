@@ -8,6 +8,7 @@ import {
 export interface PrivyPublicConfig {
   appId: string;
   clientId: string;
+  loginMethods: PrivyPublicLoginMethod[];
 }
 
 interface PrivyServerConfig {
@@ -30,16 +31,60 @@ export interface VerifyPrivyAuthInput {
 }
 
 type PrivyVerifier = (input: VerifyPrivyAuthInput) => Promise<VerifiedPrivyIdentity>;
+export type PrivyPublicLoginMethod =
+  | "wallet"
+  | "email"
+  | "sms"
+  | "google"
+  | "twitter"
+  | "discord"
+  | "github"
+  | "linkedin"
+  | "spotify"
+  | "instagram"
+  | "tiktok"
+  | "line"
+  | "twitch"
+  | "apple"
+  | "farcaster"
+  | "telegram"
+  | "passkey"
+  | `privy:${string}`;
 
 let verifierOverride: PrivyVerifier | null = null;
 let cachedClientKey = "";
 let cachedClient: PrivyClient | null = null;
 
+const DEFAULT_PRIVY_LOGIN_METHODS: PrivyPublicLoginMethod[] = ["wallet"];
+const PRIVY_LOGIN_METHODS = new Set<PrivyPublicLoginMethod>([
+  "wallet",
+  "email",
+  "sms",
+  "google",
+  "twitter",
+  "discord",
+  "github",
+  "linkedin",
+  "spotify",
+  "instagram",
+  "tiktok",
+  "line",
+  "twitch",
+  "apple",
+  "farcaster",
+  "telegram",
+  "passkey",
+]);
+
 export function getPrivyPublicConfigFromEnv(env: NodeJS.ProcessEnv = process.env): PrivyPublicConfig | null {
   const appId = cleanEnv(env.RUBY_HIGH_PRIVY_APP_ID);
   const clientId = cleanEnv(env.RUBY_HIGH_PRIVY_CLIENT_ID);
   if (!appId || !clientId) return null;
-  return { appId, clientId };
+  return {
+    appId,
+    clientId,
+    loginMethods: parsePrivyLoginMethods(env.RUBY_HIGH_PRIVY_LOGIN_METHODS),
+  };
 }
 
 export function privyServerConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -126,6 +171,28 @@ function readServerConfig(env: NodeJS.ProcessEnv = process.env): PrivyServerConf
     ...(cleanEnv(env.RUBY_HIGH_PRIVY_APP_SECRET) ? { appSecret: cleanEnv(env.RUBY_HIGH_PRIVY_APP_SECRET) } : {}),
     ...(cleanEnv(env.RUBY_HIGH_PRIVY_VERIFICATION_KEY) ? { verificationKey: cleanEnv(env.RUBY_HIGH_PRIVY_VERIFICATION_KEY) } : {}),
   };
+}
+
+function parsePrivyLoginMethods(value: string | undefined): PrivyPublicLoginMethod[] {
+  const raw = cleanEnv(value);
+  if (!raw) return [...DEFAULT_PRIVY_LOGIN_METHODS];
+  const methods: PrivyPublicLoginMethod[] = [];
+  for (const part of raw.split(/[\s,]+/)) {
+    const method = normalizePrivyLoginMethod(part);
+    if (method && !methods.includes(method)) methods.push(method);
+  }
+  return methods.length ? methods : [...DEFAULT_PRIVY_LOGIN_METHODS];
+}
+
+function normalizePrivyLoginMethod(value: string): PrivyPublicLoginMethod | null {
+  const method = value.trim().toLowerCase();
+  if (!method) return null;
+  if (method.startsWith("privy:") && method.length > "privy:".length) {
+    return method as PrivyPublicLoginMethod;
+  }
+  return PRIVY_LOGIN_METHODS.has(method as PrivyPublicLoginMethod)
+    ? method as PrivyPublicLoginMethod
+    : null;
 }
 
 function getPrivyClient(config: PrivyServerConfig): PrivyClient {

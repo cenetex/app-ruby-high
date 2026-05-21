@@ -15,7 +15,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
     role,
     build: opts.build ?? "dev",
     privyConfig: opts.privy
-      ? { appId: opts.privy.appId, clientId: opts.privy.clientId }
+      ? { appId: opts.privy.appId, clientId: opts.privy.clientId, loginMethods: opts.privy.loginMethods }
       : null,
   });
 

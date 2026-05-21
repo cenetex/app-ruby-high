@@ -10991,7 +10991,7 @@ export function runViewerClient(bootstrap) {
   function friendlyPrivyAccountError(err, fallback) {
     const message = err && err.message ? String(err.message) : String(err || "");
     if (/disallowed_login_method/i.test(message)) {
-      return "Privy rejected a disabled sign-in method. Refresh Ruby High and try again.";
+      return "Privy blocked wallet sign-in. Enable wallet login in the Privy dashboard, then refresh Ruby High.";
     }
     if (/popup|modal|did not open/i.test(message)) {
       return "Privy sign-in did not open. Refresh Ruby High and try again.";

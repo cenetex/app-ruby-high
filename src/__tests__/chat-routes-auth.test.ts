@@ -10,7 +10,7 @@ import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
-import { setPrivyAuthVerifierForTest } from "../services/privy-auth.js";
+import { getPrivyPublicConfigFromEnv, setPrivyAuthVerifierForTest } from "../services/privy-auth.js";
 import { setHallPassNftBurnVerifierForTest } from "../services/hall-pass-nfts.js";
 
 let tmpDir: string;
@@ -25,6 +25,7 @@ const originalPortraitBucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
 const originalPortraitCost = process.env.RUBY_HIGH_PORTRAIT_HALL_PASS_COST;
 const originalPrivyAppId = process.env.RUBY_HIGH_PRIVY_APP_ID;
 const originalPrivyClientId = process.env.RUBY_HIGH_PRIVY_CLIENT_ID;
+const originalPrivyLoginMethods = process.env.RUBY_HIGH_PRIVY_LOGIN_METHODS;
 const originalPrivyAppSecret = process.env.RUBY_HIGH_PRIVY_APP_SECRET;
 const originalPrivyVerificationKey = process.env.RUBY_HIGH_PRIVY_VERIFICATION_KEY;
 
@@ -144,6 +145,7 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_PORTRAIT_HALL_PASS_COST;
   delete process.env.RUBY_HIGH_PRIVY_APP_ID;
   delete process.env.RUBY_HIGH_PRIVY_CLIENT_ID;
+  delete process.env.RUBY_HIGH_PRIVY_LOGIN_METHODS;
   delete process.env.RUBY_HIGH_PRIVY_APP_SECRET;
   delete process.env.RUBY_HIGH_PRIVY_VERIFICATION_KEY;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-routes-auth-"));
@@ -167,6 +169,7 @@ afterEach(async () => {
   restoreEnv("RUBY_HIGH_PORTRAIT_HALL_PASS_COST", originalPortraitCost);
   restoreEnv("RUBY_HIGH_PRIVY_APP_ID", originalPrivyAppId);
   restoreEnv("RUBY_HIGH_PRIVY_CLIENT_ID", originalPrivyClientId);
+  restoreEnv("RUBY_HIGH_PRIVY_LOGIN_METHODS", originalPrivyLoginMethods);
   restoreEnv("RUBY_HIGH_PRIVY_APP_SECRET", originalPrivyAppSecret);
   restoreEnv("RUBY_HIGH_PRIVY_VERIFICATION_KEY", originalPrivyVerificationKey);
   setPrivyAuthVerifierForTest(null);
@@ -257,6 +260,29 @@ describe("auth origin guard", () => {
 });
 
 describe("Privy auth", () => {
+  it("publishes wallet-only Privy login by default", () => {
+    expect(getPrivyPublicConfigFromEnv({
+      RUBY_HIGH_PRIVY_APP_ID: "privy-app-test",
+      RUBY_HIGH_PRIVY_CLIENT_ID: "privy-client-test",
+    } as NodeJS.ProcessEnv)).toEqual({
+      appId: "privy-app-test",
+      clientId: "privy-client-test",
+      loginMethods: ["wallet"],
+    });
+  });
+
+  it("publishes only supported configured Privy login methods", () => {
+    expect(getPrivyPublicConfigFromEnv({
+      RUBY_HIGH_PRIVY_APP_ID: "privy-app-test",
+      RUBY_HIGH_PRIVY_CLIENT_ID: "privy-client-test",
+      RUBY_HIGH_PRIVY_LOGIN_METHODS: "wallet,google,unknown,privy:cross-app",
+    } as NodeJS.ProcessEnv)).toEqual({
+      appId: "privy-app-test",
+      clientId: "privy-client-test",
+      loginMethods: ["wallet", "google", "privy:cross-app"],
+    });
+  });
+
   it("verifies the Privy token and upgrades the current session to a wallet account", async () => {
     process.env.RUBY_HIGH_PRIVY_APP_ID = "privy-app-test";
     process.env.RUBY_HIGH_PRIVY_CLIENT_ID = "privy-client-test";

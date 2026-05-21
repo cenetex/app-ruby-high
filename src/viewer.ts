@@ -29,6 +29,7 @@ export interface ViewerRenderOptions {
   privy?: {
     appId: string;
     clientId: string;
+    loginMethods?: string[];
   };
 }
 

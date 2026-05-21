@@ -122,7 +122,7 @@ flyctl secrets set --app ruby-high \
   RUBY_HIGH_PRIVY_APP_SECRET=<privy app secret>
 ```
 
-`RUBY_HIGH_PRIVY_APP_SECRET` is the preferred server verifier because the API can also fetch linked user/wallet details. `RUBY_HIGH_PRIVY_VERIFICATION_KEY` is supported as a fallback verifier, but the identity token then needs to include enough linked account detail for wallet display.
+`RUBY_HIGH_PRIVY_APP_SECRET` is the preferred server verifier because the API can also fetch linked user/wallet details. `RUBY_HIGH_PRIVY_VERIFICATION_KEY` is supported as a fallback verifier, but the identity token then needs to include enough linked account detail for wallet display. The viewer defaults `RUBY_HIGH_PRIVY_LOGIN_METHODS` to `wallet`; every configured method must also be enabled in the Privy dashboard.
 
 ## Day-to-day
 
@@ -144,6 +144,7 @@ flyctl secrets set --app ruby-high KEY=value   # update one
 | `RUBY_HIGH_DYNAMO_TABLE` | Not strictly secret, but tied to the AWS environment so it lives with the AWS creds. |
 | `RUBY_HIGH_PUBLIC_BASE` | Tied to the deploy URL; staging vs. prod differ. |
 | `RUBY_HIGH_PRIVY_APP_ID` / `RUBY_HIGH_PRIVY_CLIENT_ID` | Privy app identifiers; stored with secrets so staging/prod can differ without editing `fly.toml`. |
+| `RUBY_HIGH_PRIVY_LOGIN_METHODS` | Optional public login-method allowlist, kept with the Privy app configuration. |
 | `RUBY_HIGH_PRIVY_APP_SECRET` / `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | Server-side Privy token verification. |
 | `RUBY_HIGH_OPENROUTER_API_KEY` | Enables hosted AI Day Passes and hosted image generation. |
 | `RUBY_HIGH_STRIPE_SECRET_KEY` / `RUBY_HIGH_STRIPE_WEBHOOK_SECRET` | Enables web Hall Pass checkout and webhook fulfillment. |
