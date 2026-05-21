@@ -76,6 +76,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function confirmInApp(options)");
     expectScriptToContain(script, "return confirmInApp({");
     expect(VIEWER_CSS).toContain(".app-confirm-overlay");
+    expect(VIEWER_CSS).toContain("white-space: pre-line");
     expect(script).not.toContain("window.confirm");
     expect(script).not.toContain("window.alert");
     expect(script).not.toContain("window.prompt");
@@ -134,6 +135,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function selectBillingProduct(productId)");
     expectScriptToContain(script, "function renderAccountHallPassCards()");
     expectScriptToContain(script, "async function ensureSolanaWalletFromAccount()");
+    expectScriptToContain(script, "function confirmWalletTransactionPreview(opts)");
+    expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
     expectScriptToContain(script, "accountHallPassCards");
     expectScriptToContain(script, 'buy.addEventListener("click", () => selectBillingProduct(product.id))');
     expectScriptToContain(script, 'mode === "card-packs"');
@@ -159,6 +162,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "No pack or card collectibles in this wallet yet.");
     expectScriptToContain(script, "async function openHallPassPackFromAccount(packId)");
     expectScriptToContain(script, 'apiBase + "/nft/open-pack"');
+    expectScriptToContain(script, 'prompt: "No Phantom signature is expected for pack opening."');
     expectScriptToContain(script, "async function syncWalletPackNftsFromAccount(opts)");
     expectScriptToContain(script, 'apiBase + "/nft/sync-packs"');
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
@@ -195,6 +199,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function mintHallPassCardFromAccount(cardId)");
     expectScriptToContain(script, 'apiBase + "/nft/mint-card-prepare"');
     expectScriptToContain(script, 'apiBase + "/nft/mint-card-confirm"');
+    expectScriptToContain(script, 'prompt: "Phantom should show one card-mint transaction."');
     expectScriptToContain(script, "Mint to Reveal");
     expectScriptToContain(script, "Mint the next face-down Ruby High card NFT to reveal it.");
     expect(script).not.toContain("unmintedCardCount");
@@ -203,6 +208,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'await startPrivyLogin({ source: "billing" })');
     expectScriptToContain(script, 'await startSolanaWalletConnect({ source: "billing" })');
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
+    expectScriptToContain(script, 'title: "Connect Solana wallet?"');
+    expectScriptToContain(script, 'title: "Confirm card pack payment?"');
+    expectScriptToContain(script, 'prompt: "Phantom should show one token-transfer transaction."');
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
     expect(PRIVY_CLIENT_SOURCE).toContain('useSignTransaction');
@@ -228,6 +236,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "body: JSON.stringify({ hallPassBurns: burns })");
     expectScriptToContain(script, "async function convertHallPassCardsToHallPasses(count, opts)");
     expectScriptToContain(script, 'apiBase + "/billing/card-burn"');
+    expectScriptToContain(script, 'title: selectedCards.length === 1 ? "Burn this card?"');
+    expectScriptToContain(script, "credit: hallPassCostLabel(hallPassBurnCreditForCards(1))");
+    expectScriptToContain(script, 'prompt: "Phantom should show one card-burn transaction."');
     expect(VIEWER_CSS).toContain(".card-burn-overlay");
     expect(VIEWER_CSS).toContain(".card-burn-grid");
     expect(VIEWER_CSS).toContain(".card-burn-thumb img");

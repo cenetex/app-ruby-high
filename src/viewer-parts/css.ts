@@ -6066,6 +6066,7 @@ export const VIEWER_CSS = `
     border-radius: 8px;
     background: rgba(255,255,255,0.045);
     padding: 10px 11px;
+    white-space: pre-line;
   }
   .app-confirm-actions {
     display: flex;

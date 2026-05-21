@@ -2027,6 +2027,49 @@ export function runViewerClient(bootstrap) {
     return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
   }
 
+  function walletPreviewAddress(address) {
+    const raw = String(address || "").trim();
+    return raw ? shortWallet(raw) : "Not connected";
+  }
+
+  function walletPreviewLine(label, value) {
+    const text = String(value || "").trim();
+    return label + ": " + (text || "Unavailable");
+  }
+
+  function confirmWalletTransactionPreview(opts) {
+    const options = opts && typeof opts === "object" ? opts : {};
+    const walletAddress = options.walletAddress || knownSolanaOwnerWalletAddress() || connectedSolanaWalletAddress();
+    const lines = [
+      walletPreviewLine("Action", options.action),
+      walletPreviewLine("Wallet", walletPreviewAddress(walletAddress)),
+      options.cost ? walletPreviewLine("Cost", options.cost) : "",
+      options.credit ? walletPreviewLine("Credit", options.credit) : "",
+      options.pack ? walletPreviewLine("Pack", options.pack) : "",
+      options.card ? walletPreviewLine("Card", options.card) : "",
+      options.recipient ? walletPreviewLine("Recipient", walletPreviewAddress(options.recipient)) : "",
+      options.mint ? walletPreviewLine("Token", walletPreviewAddress(options.mint)) : "",
+      options.reference ? walletPreviewLine("Reference", walletPreviewAddress(options.reference)) : "",
+      walletPreviewLine("Wallet prompt", options.prompt || "Review the wallet prompt before signing."),
+      "Ruby High never asks for a seed phrase.",
+    ].filter(Boolean);
+    return confirmInApp({
+      kicker: "Wallet preview",
+      title: options.title || "Open wallet?",
+      copy: options.copy || "Review this action before Ruby High opens your wallet.",
+      detail: lines.join("\n"),
+      confirmText: options.confirmText || "Open wallet",
+      cancelText: options.cancelText || "Cancel",
+      tone: options.tone || "",
+      focus: options.focus || "",
+    });
+  }
+
+  function cardPackProductLabel(product) {
+    if (!product) return "Ruby High Pack";
+    return product.name || packCountLabel(product.packCount);
+  }
+
   function creatorPricing(t) {
     const entitlements = hostedEntitlements(t);
     const creator = entitlements && entitlements.creator && typeof entitlements.creator === "object"
@@ -2827,7 +2870,12 @@ export function runViewerClient(bootstrap) {
       presetCards: [card],
       status: (message, invalid) => setPrivyStatus(message, invalid),
     }).catch((err) => {
-      setPrivyStatus("Card burn failed · " + (err && err.message ? err.message : "error"), true);
+      const message = err && err.message ? err.message : "error";
+      if (/canceled/i.test(message)) {
+        setPrivyStatus("Card burn canceled.", false);
+        return;
+      }
+      setPrivyStatus("Card burn failed · " + message, true);
     }).finally(() => {
       billingBusy = false;
       renderAccountPage();
@@ -3435,6 +3483,18 @@ export function runViewerClient(bootstrap) {
         return true;
       }
       setPrivyStatus("Connect a Solana wallet to continue.", false);
+      const approved = await confirmWalletTransactionPreview({
+        title: "Connect Solana wallet?",
+        action: "Connect wallet",
+        cost: "None",
+        prompt: "Phantom should ask to connect an address only.",
+        copy: "Ruby High will ask Phantom for a Solana address. This is not a transaction.",
+        confirmText: "Connect wallet",
+      });
+      if (!approved) {
+        setPrivyStatus("Wallet connection canceled.", false);
+        return false;
+      }
       const walletSnapshot = await startSolanaWalletConnect({ source: "account-wallet" });
       if (!walletSnapshot || !knownSolanaOwnerWalletAddress()) return false;
       setPrivyStatus("Solana wallet connected.", false);
@@ -3455,12 +3515,26 @@ export function runViewerClient(bootstrap) {
       const connected = await ensureSolanaWalletFromAccount();
       if (!connected) return;
     }
+    const ownerWalletAddress = knownSolanaOwnerWalletAddress();
+    const approved = await confirmWalletTransactionPreview({
+      title: "Open this pack?",
+      action: "Open pack",
+      walletAddress: ownerWalletAddress,
+      cost: "No wallet spend",
+      pack: "Ruby High Pack",
+      prompt: "No Phantom signature is expected for pack opening.",
+      copy: "Ruby High will open an owned pack and create five face-down cards in your locker.",
+      confirmText: "Open pack",
+    });
+    if (!approved) {
+      setPrivyStatus("Pack open canceled.", false);
+      return;
+    }
     billingBusy = true;
     renderAccountHallPassCards();
     showPackMintProgress("Opening pack. Laying out five face-down cards...");
     setPrivyStatus("Opening pack...", false);
     try {
-      const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       const r = await apiFetch(apiBase + "/nft/open-pack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3497,8 +3571,8 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Opening wallet to mint this card...");
-    setPrivyStatus("Minting card NFT to reveal it...", false);
+    showPackMintProgress("Preparing card mint...");
+    setPrivyStatus("Preparing card NFT mint...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before minting card NFTs.");
@@ -3524,6 +3598,25 @@ export function runViewerClient(bootstrap) {
       const client = await getPrivyClient();
       if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
         throw new Error("Solana card mint is unavailable.");
+      }
+      const cardName = preparedData.card && preparedData.card.characterName
+        ? preparedData.card.characterName
+        : "Mystery Card";
+      const approved = await confirmWalletTransactionPreview({
+        title: "Mint card NFT?",
+        action: "Mint card NFT",
+        walletAddress: ownerWalletAddress,
+        cost: "Network fee only",
+        card: cardName,
+        reference: preparedData.mint.mintAddress,
+        prompt: "Phantom should show one card-mint transaction.",
+        copy: "Ruby High will ask your wallet to mint this card NFT so it can be revealed.",
+        confirmText: "Open wallet",
+      });
+      if (!approved) {
+        hidePackMintProgress();
+        setPrivyStatus("Card reveal canceled.", false);
+        return;
       }
       updatePackMintProgress("Confirm the mint in your wallet...");
       const payment = await client.signAndSendSolanaTransaction(preparedData.mint);
@@ -3864,6 +3957,24 @@ export function runViewerClient(bootstrap) {
       if (!r.ok || !data || !data.ok) throw new Error(data.error || "solana quote " + r.status);
       const client = await getPrivyClient();
       if (!client || typeof client.paySolanaQuote !== "function") throw new Error("Solana wallet checkout is unavailable.");
+      const product = data.product || {};
+      const approved = await confirmWalletTransactionPreview({
+        title: "Confirm card pack payment?",
+        action: "Buy " + cardPackProductLabel(product),
+        walletAddress: ownerWalletAddress,
+        cost: (product.tokenAmount || data.tokenAmount || "?") + " " + (product.tokenSymbol || data.symbol || "RUBY"),
+        pack: cardPackProductLabel(product),
+        recipient: data.recipient,
+        mint: data.mint,
+        reference: data.reference,
+        prompt: "Phantom should show one token-transfer transaction.",
+        copy: "Ruby High will ask your wallet to pay for a pack NFT. This should not ask for broad approvals.",
+        confirmText: "Open wallet",
+      });
+      if (!approved) {
+        setBillingStatus("Card pack checkout canceled.", false);
+        return;
+      }
       setBillingStatus("Confirm the card pack payment in your wallet...", false);
       const payment = await client.paySolanaQuote(data);
       const signature = payment && payment.signature ? payment.signature : "";
@@ -3890,6 +4001,15 @@ export function runViewerClient(bootstrap) {
     }
     if (connectedSolanaWalletAddress()) return true;
     setBillingStatus("Opening wallet connection for card pack checkout...", false);
+    const approved = await confirmWalletTransactionPreview({
+      title: "Connect Solana wallet?",
+      action: "Connect wallet",
+      cost: "None",
+      prompt: "Phantom should ask to connect an address only.",
+      copy: "Ruby High will ask Phantom for a Solana address. This is not a transaction.",
+      confirmText: "Connect wallet",
+    });
+    if (!approved) return false;
     const walletSnapshot = await startSolanaWalletConnect({ source: "billing" });
     return !!walletSnapshot && !!connectedSolanaWalletAddress();
   }
@@ -4141,6 +4261,23 @@ export function runViewerClient(bootstrap) {
         };
       if (!preparedCard || !preparedCard.cardId || !preparedCard.mintAddress) {
         throw new Error("Card burn changed before signing.");
+      }
+      const approved = await confirmWalletTransactionPreview({
+        title: selectedCards.length === 1 ? "Burn this card?" : "Burn card " + (index + 1) + " of " + selectedCards.length + "?",
+        action: "Burn card for Hall Passes",
+        walletAddress: ownerWalletAddress,
+        cost: "Burn 1 minted card",
+        credit: hallPassCostLabel(hallPassBurnCreditForCards(1)),
+        card: preparedCard.characterName || selectedCard.characterName || "Ruby High Card",
+        reference: preparedCard.mintAddress,
+        prompt: "Phantom should show one card-burn transaction.",
+        copy: "This permanently burns the NFT card. Ruby High credits Hall Passes after the burn confirms.",
+        confirmText: "Open wallet",
+        tone: "danger",
+      });
+      if (!approved) {
+        if (opts && typeof opts.status === "function") opts.status("Card burn canceled.", false);
+        throw new Error("Card burn canceled.");
       }
       const payment = await client.signAndSendSolanaTransaction(data.burn);
       const burn = {
