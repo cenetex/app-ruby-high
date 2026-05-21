@@ -7,6 +7,7 @@ import type { RouteContext } from "../routes/context.js";
 import { getActivePack } from "../content/registry.js";
 import { setOwnedCorePackNftFetcherForTest } from "../services/core-pack-nfts.js";
 import {
+  hallPassNftMetadataUri,
   setHallPassNftBurnTransactionBuilderForTest,
   setHallPassNftBurnVerifierForTest,
   setHallPassNftMinterForTest,
@@ -248,6 +249,7 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High Packs",
+      category: "image",
       image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1",
     });
     expectWebsiteLink(lastResponse?.body);
@@ -261,6 +263,7 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High Pack #123456",
+      category: "image",
       image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
     });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
@@ -276,6 +279,20 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.description).toContain("5 cards inside");
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
     expectWebsiteLink(lastResponse?.body);
+  });
+
+  it("uses stable revealed metadata URIs for future card mints", () => {
+    const stateKey = signInUser("stable-card-uri");
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 1,
+      idempotencyKey: "stripe:checkout:stable-card-uri",
+      source: "stripe",
+    });
+    const card = grant.cards![0]!;
+
+    expect(hallPassNftMetadataUri(card)).toBe(
+      `https://ruby-high.ai/api/apps/ruby-high/nft/metadata/hall-pass/${encodeURIComponent(card.characterId)}/${encodeURIComponent(String(card.serial))}.json`,
+    );
   });
 
   it("opens an active Pack NFT into deterministic face-down cards", async () => {

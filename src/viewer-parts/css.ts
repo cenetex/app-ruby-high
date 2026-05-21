@@ -3640,6 +3640,8 @@ export const VIEWER_CSS = `
   }
   .account-pack-tile-copy {
     min-width: 0;
+    display: grid;
+    gap: 3px;
   }
   .account-card-tile-title {
     min-width: 0;
@@ -3678,6 +3680,23 @@ export const VIEWER_CSS = `
     font-size: 10px;
     font-weight: 750;
     text-transform: capitalize;
+  }
+  .account-chain-link {
+    width: fit-content;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #f1c95c;
+    font-size: 10px;
+    font-weight: 900;
+    text-decoration: none;
+  }
+  .account-chain-link:hover,
+  .account-chain-link:focus-visible {
+    color: #ffe58d;
+    text-decoration: underline;
+    outline: none;
   }
   .account-pack-tile-open {
     flex: 0 0 auto;

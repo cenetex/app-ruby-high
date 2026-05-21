@@ -10,7 +10,7 @@ import {
   HALL_PASS_NFT_PREFIX,
   hallPassCollectionMetadataForRoute,
   hallPassCardBackMetadataForRoute,
-  hallPassNftMetadataUri,
+  hallPassNftMetadataUris,
   buildHallPassCardsBurnTransaction,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
@@ -383,7 +383,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
       return true;
     }
-    if (metadataUri !== hallPassNftMetadataUri(card)) {
+    if (!hallPassNftMetadataUris(card).includes(metadataUri)) {
       ctx.error(ctx.res, "Card mint metadata does not match this card.", 400);
       return true;
     }

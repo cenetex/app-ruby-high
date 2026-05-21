@@ -267,9 +267,31 @@ export function publicHallPassNftStatus(env: NodeJS.ProcessEnv = process.env): P
 }
 
 export function hallPassNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string {
+  const finalUri = hallPassRevealedNftMetadataUri(card, env);
+  if (finalUri) return finalUri;
+  return legacyHallPassNftMetadataUri(card, env);
+}
+
+export function hallPassNftMetadataUris(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string[] {
+  return Array.from(new Set([
+    hallPassNftMetadataUri(card, env),
+    legacyHallPassNftMetadataUri(card, env),
+  ]));
+}
+
+function legacyHallPassNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string {
   const base = publicBaseUrlFromEnv(env);
   const cardId = encodeURIComponent(cleanCardId(card.id));
   return `${base}${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/card/${cardId}.json`;
+}
+
+function hallPassRevealedNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string | null {
+  const characterId = typeof card.characterId === "string" ? card.characterId.trim() : "";
+  if (!characterId || !hallPassCardCatalogEntry(characterId)) return null;
+  const serial = normalizeSerial(String(card.serial || ""));
+  if (!serial) return null;
+  const base = publicBaseUrlFromEnv(env);
+  return `${base}${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/${encodeURIComponent(characterId)}/${encodeURIComponent(serial)}.json`;
 }
 
 export function hallPassCollectionMetadataForRoute(args: {

@@ -277,6 +277,7 @@ export function corePackNftMetadataForRoute(args: {
     symbol: nftSymbol(process.env),
     description: `${packCount} Ruby High ${packCount === 1 ? "pack" : "packs"} with ${cardCount} cards inside.`,
     image,
+    category: "image",
     external_url: website,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
@@ -307,6 +308,7 @@ export function corePackCollectionMetadataForRoute(args: {
     symbol: nftSymbol(process.env),
     description: "Ruby High card packs.",
     image,
+    category: "image",
     external_url: website,
     attributes: [
       { trait_type: "School", value: "Ruby High" },

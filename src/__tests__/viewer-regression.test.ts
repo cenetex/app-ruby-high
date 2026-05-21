@@ -161,6 +161,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "async function ensureSolanaWalletForBilling()");
     expectScriptToContain(script, "function connectedSolanaWalletAddress() {\n    return privyState.solanaWalletAddress || null;\n  }");
     expectScriptToContain(script, "function knownSolanaOwnerWalletAddress()");
+    expectScriptToContain(script, "function appendSolanaProofLink(parent, address, label)");
     expectScriptToContain(script, '"Connect a Solana wallet to open packs and mint card NFTs."');
     expectScriptToContain(script, '"Privy account · no Solana wallet"');
     expectScriptToContain(script, "function hallPassPacksForTelemetry(t)");
@@ -174,9 +175,14 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
     expectScriptToContain(script, 'img.src = PACK_NFT_ART_URL');
     expectScriptToContain(script, 'item.className = "account-pack-tile is-" + String(pack.status || "active")');
+    expectScriptToContain(script, '"On-chain Core NFT"');
+    expectScriptToContain(script, '"Opened pack record"');
+    expectScriptToContain(script, '"View pack NFT"');
     expectScriptToContain(script, 'item.className = "account-card-tile is-" + String(card.status || "active")');
     expectScriptToContain(script, 'item.type = "button"');
     expectScriptToContain(script, 'item.addEventListener("click", () => showHallPassCardReader(card))');
+    expectScriptToContain(script, '"In-app card · mint to reveal · #"');
+    expectScriptToContain(script, '"View card NFT on Solscan"');
     expectScriptToContain(script, "function showHallPassCardReader(card)");
     expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");
     expectScriptToContain(script, "Opening pack. Laying out five face-down cards...");
@@ -195,6 +201,7 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain(".pack-mint-overlay");
     expect(VIEWER_CSS).toContain(".account-pack-tile");
     expect(VIEWER_CSS).toContain(".account-card-tile");
+    expect(VIEWER_CSS).toContain(".account-chain-link");
     expect(VIEWER_CSS).toContain("grid-template-columns: repeat(auto-fill, minmax(72px, 1fr))");
     expect(VIEWER_CSS).toContain(".account-card-reader");
     expect(VIEWER_CSS).toContain(".account-card-tile-reveal");

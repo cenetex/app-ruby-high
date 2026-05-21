@@ -2499,6 +2499,20 @@ export function runViewerClient(bootstrap) {
     return "https://solscan.io/account/" + encodeURIComponent(raw);
   }
 
+  function appendSolanaProofLink(parent, address, label) {
+    const href = solanaAccountLink(address);
+    if (!parent || !href) return null;
+    const link = document.createElement("a");
+    link.className = "account-chain-link";
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = label || "View on Solscan";
+    link.addEventListener("click", (event) => event.stopPropagation());
+    parent.appendChild(link);
+    return link;
+  }
+
   function appendAccountTrustRow(label, value, href) {
     if (!els.accountTrustList) return;
     const row = document.createElement("div");
@@ -2597,8 +2611,8 @@ export function runViewerClient(bootstrap) {
       if (packs.length > 0) pieces.push(activePacks.length + " active pack" + (activePacks.length === 1 ? "" : "s"));
       if (cards.length > 0) {
         pieces.push(active.length + " active card" + (active.length === 1 ? "" : "s"));
-        if (minted.length > 0) pieces.push(minted.length + " minted");
-        if (pendingMints.length > 0) pieces.push(pendingMints.length + " pending NFT mint" + (pendingMints.length === 1 ? "" : "s"));
+        if (minted.length > 0) pieces.push(minted.length + " on-chain card NFT" + (minted.length === 1 ? "" : "s"));
+        if (pendingMints.length > 0) pieces.push(pendingMints.length + " in-app card" + (pendingMints.length === 1 ? "" : "s") + " to mint");
       }
       els.accountCardSummary.textContent = needsWalletConnection
         ? "Connect a Solana wallet to open packs and mint card NFTs."
@@ -2805,9 +2819,12 @@ export function runViewerClient(bootstrap) {
     const detail = document.createElement("div");
     detail.className = "account-pack-tile-detail";
     const status = String(pack.status || "active");
-    detail.textContent = formatWholeNumber(cardCount) + " cards · #" + String(pack.serial || "").padStart(6, "0") + " · " + status;
+    detail.textContent = (status === "active" ? "On-chain Core NFT" : "Opened pack record")
+      + " · " + formatWholeNumber(cardCount)
+      + " cards · #" + String(pack.serial || "").padStart(6, "0");
     copy.appendChild(title);
     copy.appendChild(detail);
+    appendSolanaProofLink(copy, pack.assetAddress, status === "active" ? "View pack NFT" : "Pack proof");
     meta.appendChild(copy);
     if (pack.status === "active") {
       const walletReady = !!knownSolanaOwnerWalletAddress();
@@ -2890,8 +2907,9 @@ export function runViewerClient(bootstrap) {
   }
 
   function hallPassCardDetail(card, faceDown) {
-    if (faceDown) return "Face down · #" + String(card && (card.serial || card.id) || "").slice(-6);
-    return String(card && card.rarity || "common") + " · " + hallPassCardStatus(card) + " · #" + String(card && (card.serial || card.id) || "").slice(-6);
+    if (faceDown) return "In-app card · mint to reveal · #" + String(card && (card.serial || card.id) || "").slice(-6);
+    const chain = card && card.mintAddress && card.mintSignature ? "On-chain NFT" : "In-app card";
+    return chain + " · " + String(card && card.rarity || "common") + " · " + hallPassCardStatus(card) + " · #" + String(card && (card.serial || card.id) || "").slice(-6);
   }
 
   function hallPassCardProfile(card) {
@@ -2969,6 +2987,9 @@ export function runViewerClient(bootstrap) {
     detail.className = "account-card-reader-detail";
     detail.textContent = hallPassCardDetail(card, faceDown);
     body.appendChild(detail);
+    if (!faceDown && card.mintAddress) {
+      appendSolanaProofLink(body, card.mintAddress, "View card NFT on Solscan");
+    }
     if (!faceDown && profile) {
       const teaches = document.createElement("div");
       teaches.className = "account-hall-pass-card-teaches";
