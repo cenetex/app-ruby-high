@@ -230,7 +230,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function mintPendingCardNftsFromAccount()");
     expectScriptToContain(script, "function mintHallPassCardFromAccount(cardId)");
     expectScriptToContain(script, 'apiBase + "/nft/mint-card-prepare"');
-    expectScriptToContain(script, 'apiBase + "/nft/mint-card-confirm"');
+    expectScriptToContain(script, 'apiBase + "/nft/mint-card-submit"');
+    expectScriptToContain(script, 'typeof client.signSolanaTransaction !== "function"');
+    expectScriptToContain(script, "client.signSolanaTransaction(preparedData.mint)");
+    expectScriptToContain(script, "signedTransactionBase64: signed.signedTransactionBase64");
     expectScriptToContain(script, 'prompt: "Your wallet should show one card-mint transaction."');
     expectScriptToContain(script, "Mint to Reveal");
     expectScriptToContain(script, "return hallPassCardById(cleanCardId) || data.card || null");
@@ -253,6 +256,7 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('"solana quote " + r.status');
     expect(PRIVY_CLIENT_SOURCE).toContain('useSignTransaction');
     expect(PRIVY_CLIENT_SOURCE).toContain('/billing/solana/submit');
+    expect(PRIVY_CLIENT_SOURCE).toContain('signSolanaTransaction');
     expect(script).not.toContain('buy.textContent = "Pay with wallet"');
     expect(script).not.toContain("if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0)");
     expect(script).not.toContain("Solana transaction signature");

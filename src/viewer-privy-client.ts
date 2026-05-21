@@ -90,6 +90,11 @@ interface SolanaPaymentResult {
   walletAddress: string;
 }
 
+interface SolanaSignedTransactionResult {
+  signedTransactionBase64: string;
+  walletAddress: string;
+}
+
 interface SolanaPreparedTransaction {
   transaction?: string;
   transactionBase64?: string;
@@ -102,6 +107,7 @@ interface RubyHighPrivyClient {
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
+  signSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaSignedTransactionResult>;
   signAndSendSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaPaymentResult>;
   onSession(listener: SessionListener): () => void;
   onDiagnostic(listener: DiagnosticListener): () => void;
@@ -113,6 +119,7 @@ interface BridgeApi {
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
+  signSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaSignedTransactionResult>;
   signAndSendSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaPaymentResult>;
 }
 
@@ -196,6 +203,7 @@ export async function createRubyHighPrivyClient(
     connectSolanaWallet: () => requireBridge(bridgeApi).connectSolanaWallet(),
     logout: () => requireBridge(bridgeApi).logout(),
     paySolanaQuote: (quote) => requireBridge(bridgeApi).paySolanaQuote(quote),
+    signSolanaTransaction: (transaction) => requireBridge(bridgeApi).signSolanaTransaction(transaction),
     signAndSendSolanaTransaction: (transaction) => requireBridge(bridgeApi).signAndSendSolanaTransaction(transaction),
     onSession(listener) {
       listeners.add(listener);
@@ -358,6 +366,25 @@ function RubyHighPrivyBridge(props: {
     };
   }, [privy.authenticated, privy.ready, signTransaction, solanaWallets.ready]);
 
+  const signSolanaPreparedTransaction = useCallback(async (
+    prepared: SolanaPreparedTransaction,
+  ): Promise<SolanaSignedTransactionResult> => {
+    if (!privy.ready || !privy.authenticated) throw new Error("Connect your Ruby High account first.");
+    if (!solanaWallets.ready) throw new Error("Solana wallets are still starting.");
+    const wallet = selectSolanaWallet(solanaWalletsRef.current);
+    if (!wallet) throw new Error("Connect a Solana wallet first.");
+    const transaction = base64Decode(prepared.transactionBase64 || prepared.transaction || "");
+    const signed = await signTransaction({
+      transaction,
+      wallet,
+      chain: prepared.chain || "solana:mainnet",
+    });
+    return {
+      signedTransactionBase64: base64Encode(signedTransactionBytes(signed)),
+      walletAddress: wallet.address,
+    };
+  }, [privy.authenticated, privy.ready, signTransaction, solanaWallets.ready]);
+
   const signAndSendSolanaPreparedTransaction = useCallback(async (
     prepared: SolanaPreparedTransaction,
   ): Promise<SolanaPaymentResult> => {
@@ -372,7 +399,7 @@ function RubyHighPrivyBridge(props: {
       chain: prepared.chain || "solana:mainnet",
     });
     return {
-      signature: base58Encode(result.signature),
+      signature: solanaSignatureString(result.signature),
       walletAddress: wallet.address,
     };
   }, [privy.authenticated, privy.ready, signAndSendTransaction, solanaWallets.ready]);
@@ -535,6 +562,7 @@ function RubyHighPrivyBridge(props: {
       connectSolanaWallet,
       logout,
       paySolanaQuote,
+      signSolanaTransaction: signSolanaPreparedTransaction,
       signAndSendSolanaTransaction: signAndSendSolanaPreparedTransaction,
     }, privy.ready);
   }, [
@@ -545,6 +573,7 @@ function RubyHighPrivyBridge(props: {
     paySolanaQuote,
     privy.ready,
     props,
+    signSolanaPreparedTransaction,
     signAndSendSolanaPreparedTransaction,
   ]);
 
@@ -599,6 +628,12 @@ function base58Encode(bytes: Uint8Array): string {
     out += BASE58_ALPHABET[digits[i]];
   }
   return out || "1";
+}
+
+function solanaSignatureString(signature: unknown): string {
+  if (typeof signature === "string" && signature.trim()) return signature.trim();
+  if (signature instanceof Uint8Array) return base58Encode(signature);
+  throw new Error("Wallet did not return a Solana transaction signature.");
 }
 
 function base64Encode(bytes: Uint8Array): string {

@@ -47,6 +47,7 @@ export function runViewerClient(bootstrap) {
   const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
   const GRADE_SHORT_LABELS = { "9": "Fresh", "10": "Soph", "11": "Junior", "12": "Senior" };
   const GRADE_ORDER = ["9", "10", "11", "12"];
+  const WALLET_ACTION_TIMEOUT_MS = 120000;
   // Mirrored from types.ts: passed-daily-class gates by year.
   const STREAK_REQUIRED       = { "9": 1, "10": 2, "11": 3, "12": 4 };
   const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
@@ -2103,6 +2104,16 @@ export function runViewerClient(bootstrap) {
     return message || "error";
   }
 
+  function withWalletActionTimeout(promise, message) {
+    let timeoutId = null;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error(message)), WALLET_ACTION_TIMEOUT_MS);
+    });
+    return Promise.race([promise, timeout]).finally(() => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    });
+  }
+
   function creatorPricing(t) {
     const entitlements = hostedEntitlements(t);
     const creator = entitlements && entitlements.creator && typeof entitlements.creator === "object"
@@ -3685,7 +3696,7 @@ export function runViewerClient(bootstrap) {
         return hallPassCardById(cleanCardId) || preparedData.card || null;
       }
       const client = await getPrivyClient();
-      if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
+      if (!client || typeof client.signSolanaTransaction !== "function") {
         throw new Error("Solana card mint is unavailable.");
       }
       const cardName = preparedData.card && preparedData.card.characterName
@@ -3708,18 +3719,21 @@ export function runViewerClient(bootstrap) {
         return null;
       }
       updatePackMintProgress("Confirm the mint in your wallet...");
-      const payment = await client.signAndSendSolanaTransaction(preparedData.mint);
-      updatePackMintProgress("Mint confirmed. Revealing card...");
-      const confirmed = await apiFetch(apiBase + "/nft/mint-card-confirm", {
+      const signed = await withWalletActionTimeout(
+        client.signSolanaTransaction(preparedData.mint),
+        "Wallet approval timed out. Your card is still face-down; try again when your wallet is ready.",
+      );
+      updatePackMintProgress("Submitting mint to Solana...");
+      const confirmed = await apiFetch(apiBase + "/nft/mint-card-submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         timeoutMs: 90000,
         body: JSON.stringify({
           cardId: cleanCardId,
-          ownerWalletAddress: payment.walletAddress || ownerWalletAddress,
+          ownerWalletAddress: signed.walletAddress || ownerWalletAddress,
           mintAddress: preparedData.mint.mintAddress,
-          mintSignature: payment.signature,
           metadataUri: preparedData.mint.metadataUri,
+          signedTransactionBase64: signed.signedTransactionBase64,
         }),
       });
       const data = await confirmed.json().catch(() => ({}));

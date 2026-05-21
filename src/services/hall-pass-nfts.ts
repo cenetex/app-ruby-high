@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import {
   address,
   appendTransactionMessageInstructions,
@@ -150,6 +151,7 @@ type HallPassNftMintTransactionBuilder = (
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
 ) => Promise<HallPassCardMintTransaction>;
+type HallPassNftMintSubmitter = (signedTransactionBase64: string) => Promise<string>;
 type HallPassNftMintVerifier = (input: {
   ownerWalletAddress: string;
   mintAddress: string;
@@ -168,6 +170,7 @@ type HallPassNftBurnVerifier = (input: {
 
 let minterOverride: HallPassNftMinter | null = null;
 let mintTransactionBuilderOverride: HallPassNftMintTransactionBuilder | null = null;
+let mintSubmitterOverride: HallPassNftMintSubmitter | null = null;
 let mintVerifierOverride: HallPassNftMintVerifier | null = null;
 let burnTransactionBuilderOverride: HallPassNftBurnTransactionBuilder | null = null;
 let burnVerifierOverride: HallPassNftBurnVerifier | null = null;
@@ -188,6 +191,14 @@ export function setHallPassNftMintTransactionBuilderForTest(
   mintTransactionBuilderOverride = builder;
   return () => {
     mintTransactionBuilderOverride = previous;
+  };
+}
+
+export function setHallPassNftMintSubmitterForTest(submitter: HallPassNftMintSubmitter | null): () => void {
+  const previous = mintSubmitterOverride;
+  mintSubmitterOverride = submitter;
+  return () => {
+    mintSubmitterOverride = previous;
   };
 }
 
@@ -576,6 +587,47 @@ export async function verifyHallPassCardMint(input: {
     ...(typeof transaction.slot === "number" ? { slot: transaction.slot } : {}),
     ...(typeof transaction.blockTime === "number" ? { blockTime: transaction.blockTime } : {}),
   };
+}
+
+export async function submitSignedHallPassCardMintTransaction(
+  signedTransactionBase64: string,
+  requiredAccounts: string[] = [],
+): Promise<string> {
+  const clean = signedTransactionBase64.trim();
+  if (!clean) throw new Error("Signed card mint transaction is missing.");
+  if (mintSubmitterOverride) return mintSubmitterOverride(clean);
+  requireSignedTransactionAccounts(clean, requiredAccounts);
+  const config = readMintConfig();
+  const signature = await sendBase64TransactionWithPreflightFallback(
+    createSolanaRpc(config.rpcUrl),
+    clean as ReturnType<typeof getBase64EncodedWireTransaction>,
+  );
+  await confirmSubmittedTransaction(config.rpcUrl, String(signature), "Card mint");
+  return String(signature);
+}
+
+function signedSolanaTransactionAccountKeys(transactionBase64: string): string[] {
+  const raw = transactionBase64.trim();
+  if (!raw) throw new Error("Signed card mint transaction is missing.");
+  const bytes = Buffer.from(raw, "base64");
+  if (bytes.length <= 0 || bytes.length > 1232) throw new Error("Signed card mint transaction is invalid.");
+  try {
+    const transaction = VersionedTransaction.deserialize(bytes);
+    return transaction.message.getAccountKeys().staticAccountKeys.map((key) => key.toBase58());
+  } catch {
+    const transaction = Transaction.from(bytes);
+    return transaction.compileMessage().accountKeys.map((key) => key.toBase58());
+  }
+}
+
+function requireSignedTransactionAccounts(transactionBase64: string, accounts: string[]): void {
+  const required = accounts.filter(Boolean);
+  if (required.length <= 0) return;
+  const present = new Set(signedSolanaTransactionAccountKeys(transactionBase64));
+  const missing = required.filter((account) => !present.has(account));
+  if (missing.length > 0) {
+    throw new Error("Signed card mint transaction does not match this Ruby High card.");
+  }
 }
 
 export async function mintHallPassCardNft(
