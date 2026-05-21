@@ -22,6 +22,7 @@ import {
 import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import type { RubyHighService } from "../services/ruby-high-service.js";
 import { log } from "../services/logger.js";
+import { solanaErrorMessages } from "../services/solana-errors.js";
 import type { RubyHighHallPassPack } from "../types.js";
 import type { RouteContext } from "./context.js";
 
@@ -753,7 +754,7 @@ function publicPackSyncErrorMessage(err: unknown): string {
 }
 
 function publicNftErrorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
+  const raw = solanaErrorMessages(err).join(" ") || (err instanceof Error ? err.message : String(err));
   if (/insufficient funds|Attempt to debit|0x1\b/i.test(raw)) {
     return "Ruby High mint authority needs more SOL to mint this card.";
   }

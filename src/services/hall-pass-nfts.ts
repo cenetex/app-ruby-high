@@ -40,6 +40,7 @@ import {
   hallPassCardRarityLabel,
   hallPassCardRoleLabel,
 } from "./hall-pass-card-catalog.js";
+import { isPreflightUnsupportedError } from "./solana-errors.js";
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -580,11 +581,6 @@ async function sendBase64TransactionWithPreflightFallback(
       skipPreflight: true,
     }).send());
   }
-}
-
-function isPreflightUnsupportedError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err ?? "");
-  return /preflight check is not supported/i.test(message);
 }
 
 async function simulateBase64TransactionForSigning(

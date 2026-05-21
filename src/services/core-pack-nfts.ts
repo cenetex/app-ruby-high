@@ -23,6 +23,7 @@ import {
   Transaction as Web3Transaction,
   TransactionInstruction as Web3TransactionInstruction,
 } from "@solana/web3.js";
+import { isPreflightUnsupportedError } from "./solana-errors.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -711,11 +712,6 @@ async function sendAndConfirmCoreTransaction(umi: Umi, builder: TransactionBuild
       confirm: { commitment: "confirmed" },
     });
   }
-}
-
-function isPreflightUnsupportedError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err ?? "");
-  return /preflight check is not supported/i.test(message);
 }
 
 async function fetchLatestBlockhash(rpcUrl: string): Promise<{ blockhash: string; lastValidBlockHeight: number }> {
