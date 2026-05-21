@@ -2107,7 +2107,7 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
-    if (/needs more SOL|insufficient funds|Attempt to debit|0x1\b/i.test(message)) {
+    if (/needs more SOL|insufficient funds|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
       return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
