@@ -65,7 +65,7 @@ Default public base URL is `https://ruby-high.ai` unless
 
 ## Metadata Schema
 
-### Hall Pass Card Collection
+### Card Collection
 
 | Field | Current value |
 | --- | --- |
@@ -109,7 +109,7 @@ Default public base URL is `https://ruby-high.ai` unless
 | `name` | `Ruby High Pack #<serial>` or `Ruby High <packCount>-Pack #<serial>` |
 | `description` | `<packCount> Ruby High pack(s) with <cardCount> cards inside.` |
 | Sealed image | `/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2` |
-| Opened image | `/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v1` |
+| Opened image | `/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2` |
 | `external_url` / `properties.website` | Public base URL root |
 | Attributes | School, Type `Pack`, Product, Packs, Cards Inside, State, Serial, Website |
 | Minimum cards | `max(requested cards, packCount * 5)` |
@@ -178,7 +178,7 @@ branch.
 
 - Card collection creation uses `npm run nft:create-card-collection`.
 - Core pack collection creation uses `npm run nft:create-core-collection`.
-- Hall Pass card NFTs use Metaplex Token Metadata, seller fee `0`, immutable
+- Card NFTs use Metaplex Token Metadata, seller fee `0`, immutable
   on-chain metadata, and optional collection verification through
   `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS`.
 - Core pack NFTs use Metaplex Core assets, require

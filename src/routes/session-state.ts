@@ -505,7 +505,7 @@ function hiddenHallPassCardForTelemetry(card: RubyHighHallPassCard): RubyHighHal
     characterName: "Mystery Card",
     role: "special" as const,
     rarity: "common" as const,
-    blurb: "Mint this card NFT to reveal it.",
+    blurb: "Mint this Card to reveal it.",
     color: "#8f1d1d",
     hallPasses: card.hallPasses,
     status: card.status,

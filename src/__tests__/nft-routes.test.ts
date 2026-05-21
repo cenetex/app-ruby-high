@@ -374,7 +374,7 @@ describe("Hall Pass NFT routes", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.image).toBe("https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v1");
+    expect(lastResponse?.body.image).toBe("https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2");
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Opened" });
     expectWebsiteLink(lastResponse?.body);
     expect(lastHeaders["cache-control"]).toBe("no-cache");

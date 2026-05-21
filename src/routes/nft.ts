@@ -682,7 +682,7 @@ function hiddenCardPayload(card: { id: string; serial: number; status: string; i
     characterName: "Mystery Card",
     role: "special",
     rarity: "common",
-    blurb: "Mint this card NFT to reveal it.",
+    blurb: "Mint this Card to reveal it.",
     color: "#8f1d1d",
     status: card.status,
     issuedAt: card.issuedAt,

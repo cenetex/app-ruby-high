@@ -175,7 +175,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>
-    <p class="sub">Play without AI, burn a card for AI access, or bring your own AI key.</p>
+    <p class="sub">Play free, use Hall Passes for hosted AI, or bring your own AI key.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
       <button id="signin-privy" class="secondary-link" type="button" hidden>Sign in</button>
@@ -236,8 +236,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
           <div class="account-wallet-meta" id="account-wallet-meta"></div>
           <div class="account-wallet-rules">
-            <div><strong>Cards burn into passes</strong><span>1 minted card adds 5 Hall Passes.</span></div>
-            <div><strong>Server credits are authoritative</strong><span>Payments and burns settle into this wallet ledger.</span></div>
+            <div><strong>Hall Passes</strong><span>Hosted AI, images, and creator tools.</span></div>
+            <div><strong>Wallet ledger</strong><span>Purchases and NFT actions settle here.</span></div>
           </div>
         </section>
         <section class="account-section account-ai-section">
@@ -308,7 +308,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card billing-card">
     <h2 id="billing-title">Buy Hall Passes</h2>
-    <p class="sub" id="billing-sub">Hall Passes unlock hosted AI, creator slots, and image generation. Minted cards can be burned into Hall Passes.</p>
+    <p class="sub" id="billing-sub">Buy Hall Passes or burn one Card for 5.</p>
     <div class="wallet-panel" id="billing-wallet">0 Hall Passes · 0 Cards</div>
     <div class="billing-costs" id="billing-costs"></div>
     <div class="billing-products" id="billing-products"></div>

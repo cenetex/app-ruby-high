@@ -34,7 +34,7 @@ const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CORE_PACK_CARDS_PER_PACK = 5;
 const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
-const PACK_OPENED_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v1";
+const PACK_OPENED_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2";
 const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1";
 const ASSOCIATED_TOKEN_PROGRAM_ADDRESS = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
