@@ -61,6 +61,7 @@ import {
   revealProvenanceAttributes,
   revealProvenanceProperties,
 } from "./hall-pass-reveal-provenance.js";
+import { nftImageUri } from "./nft-arweave-assets.js";
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -69,7 +70,7 @@ const BASE58_INDEX = new Map(BASE58_ALPHABET.split("").map((char, index) => [cha
 const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
-const CARD_IMAGE_VERSION = "card-crop-v1";
+const CARD_IMAGE_VERSION = "card-v2";
 const NFT_SELLER_FEE_BASIS_POINTS = 0;
 const CARD_COLLECTION_NAME = FIRST_BELL_SET_NAME;
 const CARD_COLLECTION_FAMILY = FIRST_BELL_SET_FAMILY;
@@ -350,7 +351,7 @@ export function hallPassCollectionMetadataForRoute(args: {
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const website = publicWebsiteUrl(publicBaseUrl);
-  const image = `${publicBaseUrl}${CARD_COLLECTION_IMAGE_ASSET_PATH}`;
+  const image = nftImageUri(publicBaseUrl, CARD_COLLECTION_IMAGE_ASSET_PATH);
   const collection = {
     name: CARD_COLLECTION_NAME,
     family: CARD_COLLECTION_FAMILY,
@@ -393,7 +394,7 @@ export function hallPassCardBackMetadataForRoute(args: {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const website = publicWebsiteUrl(publicBaseUrl);
   const serial = normalizeSerial(args.serial || "1");
-  const image = `${publicBaseUrl}${CARD_BACK_IMAGE_ASSET_PATH}`;
+  const image = nftImageUri(publicBaseUrl, CARD_BACK_IMAGE_ASSET_PATH);
   return {
     name: `Ruby High Mystery Card #${serial}`,
     symbol: nftSymbol(process.env),
@@ -438,7 +439,7 @@ export function hallPassNftMetadataForRoute(args: {
   if (!profile) return null;
   const serial = normalizeSerial(args.serial);
   const cardName = hallPassCardName(profile);
-  const image = `${publicBaseUrl}${versionedImagePath(hallPassCardImagePath(profile))}`;
+  const image = nftImageUri(publicBaseUrl, versionedImagePath(hallPassCardImagePath(profile)));
   const collection = {
     name: CARD_COLLECTION_NAME,
     family: CARD_COLLECTION_FAMILY,

@@ -36,6 +36,7 @@ import {
 } from "../services/hall-pass-card-catalog.js";
 import { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
+import { nftImageUri } from "../services/nft-arweave-assets.js";
 import { StateStore } from "../services/state-store.js";
 
 let tmpDir: string;
@@ -111,6 +112,10 @@ function expectWebsiteLink(metadata: any, website = "https://ruby-high.ai/"): vo
   expect(metadata.external_url).toBe(website);
   expect(metadata.properties).toMatchObject({ website });
   expect(metadata.attributes).toContainEqual({ trait_type: "Website", value: website });
+}
+
+function expectedNftImage(path: string): string {
+  return nftImageUri("https://ruby-high.ai", path);
 }
 
 function expectMarketReadyImageMetadata(metadata: any, image: string): void {
@@ -203,11 +208,11 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       name: FIRST_BELL_SET_NAME,
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
@@ -226,11 +231,11 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High: Lyra #123456",
       symbol: "RUBY",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/lyra.png?v=card-crop-v1",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v2"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/lyra.png?v=card-crop-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v2"),
     );
     expect(lastHeaders["cache-control"]).toBe("no-cache");
     expect(lastResponse?.body.collection).toMatchObject({
@@ -253,11 +258,11 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High: Captain Null #777777",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/captain-null.png?v=card-crop-v1",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/cards/captain-null.png?v=card-v2"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/captain-null.png?v=card-crop-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/cards/captain-null.png?v=card-v2"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Role", value: "Special" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Ultra Rare" });
@@ -291,11 +296,11 @@ describe("Hall Pass NFT routes", () => {
       expect(lastResponse?.status).toBe(200);
       expect(lastResponse?.body).toMatchObject({
         name: `Ruby High: ${entry.characterName} #424242`,
-        image: `https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/${entry.characterId}.png?v=card-crop-v1`,
+        image: expectedNftImage(`/api/apps/ruby-high/assets/nft/cards/${entry.characterId}.png?v=card-v2`),
       });
       expectMarketReadyImageMetadata(
         lastResponse?.body,
-        `https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/${entry.characterId}.png?v=card-crop-v1`,
+        expectedNftImage(`/api/apps/ruby-high/assets/nft/cards/${entry.characterId}.png?v=card-v2`),
       );
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Title", value: entry.title });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
@@ -326,11 +331,11 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body).toMatchObject({
       name: `${FIRST_BELL_SET_NAME} Packs`,
       category: "image",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1"),
     );
     expectWebsiteLink(lastResponse?.body);
 
@@ -344,11 +349,11 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body).toMatchObject({
       name: `${FIRST_BELL_SET_NAME} Pack #123456`,
       category: "image",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
@@ -455,10 +460,10 @@ describe("Hall Pass NFT routes", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.image).toBe("https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1");
+    expect(lastResponse?.body.image).toBe(expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1"));
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Face Down" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Pack Reveal Version", value: "ruby-high-pack-reveal-v1.1" });
@@ -486,10 +491,10 @@ describe("Hall Pass NFT routes", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.image).toBe("https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2");
+    expect(lastResponse?.body.image).toBe(expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"));
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Opened" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Pack Reveal Version", value: "ruby-high-pack-reveal-v1.1" });

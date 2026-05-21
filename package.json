@@ -38,6 +38,8 @@
     "balance:report": "node scripts/balance-report.mjs",
     "nft:create-core-collection": "npm run build && node scripts/create-core-pack-collection.mjs",
     "nft:create-card-collection": "npm run build && node scripts/create-hall-pass-card-collection.mjs",
+    "nft:upload-images:arweave": "node scripts/upload-nft-images-arweave.mjs",
+    "nft:check-image-urls": "node scripts/check-nft-image-urls.mjs",
     "eval:voice": "npm run build && node scripts/eval-voice.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
@@ -64,10 +66,13 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@irys/upload": "^0.0.15",
+    "@irys/upload-solana": "^0.1.8",
     "@types/node": "^22.19.19",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "^4.1.5",
+    "arweave": "^1.15.7",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.5"

@@ -424,7 +424,7 @@ export function hallPassCardSubject(entry: HallPassCardCatalogEntry): string {
 }
 
 export function hallPassCardImagePath(entry: HallPassCardCatalogEntry): string {
-  return `/api/apps/ruby-high/assets/nft/market-cards/${entry.characterId}.png`;
+  return `/api/apps/ruby-high/assets/nft/cards/${entry.characterId}.png`;
 }
 
 export function hallPassCardMetadataDescription(entry: HallPassCardCatalogEntry): string {

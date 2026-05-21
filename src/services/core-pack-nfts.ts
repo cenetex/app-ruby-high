@@ -35,6 +35,7 @@ import {
   FIRST_BELL_SET_FAMILY,
   FIRST_BELL_SET_NAME,
 } from "./hall-pass-card-catalog.js";
+import { nftImageUri } from "./nft-arweave-assets.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -333,7 +334,7 @@ export function corePackNftMetadataForRoute(args: {
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = normalizeSerial(args.serial);
   const name = packCount === 1 ? `${FIRST_BELL_SET_NAME} Pack #${serial}` : `${FIRST_BELL_SET_NAME} ${packCount}-Pack #${serial}`;
-  const image = `${publicBaseUrl}${args.opened ? PACK_OPENED_IMAGE_ASSET_PATH : PACK_IMAGE_ASSET_PATH}`;
+  const image = nftImageUri(publicBaseUrl, args.opened ? PACK_OPENED_IMAGE_ASSET_PATH : PACK_IMAGE_ASSET_PATH);
   const collection = {
     name: PACK_COLLECTION_NAME,
     family: FIRST_BELL_SET_FAMILY,
@@ -380,7 +381,7 @@ export function corePackCollectionMetadataForRoute(args: {
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const website = publicWebsiteUrl(publicBaseUrl);
-  const image = `${publicBaseUrl}${PACK_PROMO_IMAGE_ASSET_PATH}`;
+  const image = nftImageUri(publicBaseUrl, PACK_PROMO_IMAGE_ASSET_PATH);
   return {
     name: PACK_COLLECTION_NAME,
     symbol: nftSymbol(process.env),
