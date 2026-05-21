@@ -469,14 +469,14 @@ export async function buildHallPassCardMintTransaction(
     authority,
     payer: ownerSigner,
     updateAuthority: authority,
-    name: hallPassCardOnChainName(card),
+    name: hallPassCardOnChainNameForMint(card),
     symbol: config.symbol,
     uri: metadataUri,
     sellerFeeBasisPoints: 0,
     creators: verifiedCreatorArgs(authority.address),
     primarySaleHappened: true,
     isMutable: false,
-    collection: null,
+    collection: hallPassCardCollectionForMint(config.collectionAddress),
     uses: null,
     collectionDetails: null,
     ruleSet: null,
@@ -594,14 +594,14 @@ export async function mintHallPassCardNft(
     authority,
     payer: authority,
     updateAuthority: authority,
-    name: hallPassCardOnChainName(card),
+    name: hallPassCardOnChainNameForMint(card),
     symbol: config.symbol,
     uri: metadataUri,
     sellerFeeBasisPoints: 0,
     creators: verifiedCreatorArgs(authority.address),
     primarySaleHappened: true,
     isMutable: false,
-    collection: null,
+    collection: hallPassCardCollectionForMint(config.collectionAddress),
     uses: null,
     collectionDetails: null,
     ruleSet: null,
@@ -907,9 +907,28 @@ function hallPassCardNftName(characterName: string, serial: string): string {
   return `Ruby High: ${characterName} #${serial}`;
 }
 
-function hallPassCardOnChainName(card: RubyHighHallPassCard): string {
+export function hallPassCardOnChainNameForMint(card: Pick<RubyHighHallPassCard, "characterName" | "serial">): string {
   const serial = normalizeSerial(String(card.serial || "1"));
-  return `${card.characterName || "Ruby High Card"} #${serial}`.slice(0, 32);
+  const characterName = (card.characterName || "Card").trim() || "Card";
+  const historicalStyle = `${characterName} Ruby High Card #${serial}`;
+  if (historicalStyle.length <= 32) return historicalStyle;
+  const brandedStyle = `Ruby High: ${characterName} #${serial}`;
+  if (brandedStyle.length <= 32) return brandedStyle;
+  const compactCharacterName = characterName
+    .replace(/^Professor\s+/i, "Prof. ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const compactStyle = `Ruby High: ${compactCharacterName} #${serial}`;
+  if (compactStyle.length <= 32) return compactStyle;
+  return `Ruby High Card #${serial}`;
+}
+
+export function hallPassCardCollectionForMint(collectionAddress?: string): { key: ReturnType<typeof address>; verified: false } | null {
+  if (!collectionAddress) return null;
+  return {
+    key: address(cleanSolanaAddress(collectionAddress, "Card collection address")),
+    verified: false,
+  };
 }
 
 function hallPassCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
