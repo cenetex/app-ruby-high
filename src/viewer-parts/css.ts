@@ -6040,7 +6040,7 @@ export const VIEWER_CSS = `
   .app-confirm-overlay {
     position: fixed;
     inset: 0;
-    z-index: 120;
+    z-index: 130;
     display: grid;
     place-items: center;
     padding: calc(var(--safe-top) + 18px) calc(var(--safe-right) + 18px) calc(var(--safe-bot) + 18px) calc(var(--safe-left) + 18px);

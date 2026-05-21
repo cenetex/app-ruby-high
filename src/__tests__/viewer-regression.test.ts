@@ -210,6 +210,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "Please wait: minting pack");
     expectScriptToContain(script, "Please wait: minting card");
     expectScriptToContain(script, "rotate: false");
+    expectScriptToContain(script, "hidePackMintProgress();\n      setPrivyStatus(\"Review the mint preview...\", false);");
+    expectScriptToContain(script, "showPackMintProgress(\"Confirm the mint in your wallet...\"");
     const packBuilder = script.slice(script.indexOf("function buildHallPassPack(pack)"), script.indexOf("function buildHallPassCard(card)"));
     expect(packBuilder).toContain("PACK_NFT_ART_URL");
     expect(packBuilder).toContain("PACK_OPENED_NFT_ART_URL");
@@ -218,6 +220,7 @@ describe("viewer regression guardrails", () => {
     expect(cardBuilder).toContain("CARD_BACK_ART_URL");
     expect(cardBuilder).not.toContain("faceDown ? PACK_NFT_ART_URL");
     expect(VIEWER_CSS).toContain(".pack-mint-overlay");
+    expect(VIEWER_CSS).toContain("z-index: 130");
     expect(VIEWER_CSS).toContain(".account-pack-tile");
     expect(VIEWER_CSS).toContain(".account-card-tile");
     expect(VIEWER_CSS).toContain(".account-chain-link");

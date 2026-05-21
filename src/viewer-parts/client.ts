@@ -3733,7 +3733,8 @@ export function runViewerClient(bootstrap) {
       const cardName = preparedData.card && preparedData.card.characterName
         ? preparedData.card.characterName
         : "Mystery Card";
-      updatePackMintProgress("Review the mint preview...");
+      hidePackMintProgress();
+      setPrivyStatus("Review the mint preview...", false);
       const approved = await confirmWalletTransactionPreview({
         title: "Mint this Card?",
         action: "Mint Card",
@@ -3750,7 +3751,11 @@ export function runViewerClient(bootstrap) {
         setPrivyStatus("Card reveal canceled.", false);
         return null;
       }
-      updatePackMintProgress("Confirm the mint in your wallet...");
+      showPackMintProgress("Confirm the mint in your wallet...", {
+        title: "Please wait: minting card",
+        lines: CARD_MINT_STATUS_LINES,
+        rotate: false,
+      });
       const signed = await withWalletActionTimeout(
         client.signSolanaTransaction(preparedData.mint),
         "Wallet approval timed out. Your card is still face-down; try again when your wallet is ready.",
