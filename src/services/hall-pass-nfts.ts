@@ -538,7 +538,6 @@ export async function buildHallPassCardMintTransaction(
   );
   const signed = await partiallySignTransactionMessageWithSigners(message);
   const transactionBase64 = getBase64EncodedWireTransaction(signed);
-  await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
   return {
     cardId: card.id,
     ownerWalletAddress: owner,
