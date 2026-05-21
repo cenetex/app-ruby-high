@@ -185,6 +185,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"In-app card · mint to reveal · #"');
     expectScriptToContain(script, '"View card NFT on Solscan"');
     expectScriptToContain(script, "function showHallPassCardReader(card)");
+    expectScriptToContain(script, "const render = (nextCard, opts) =>");
+    expectScriptToContain(script, "const revealedCard = await mintHallPassCardFromAccount(currentCard.id)");
+    expectScriptToContain(script, "render(revealedCard, { flip: true, revealed: true })");
+    expectScriptToContain(script, "function hallPassCardById(cardId)");
     expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");
     expectScriptToContain(script, "Opening pack. Laying out five face-down cards...");
     expectScriptToContain(script, 'const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2"');
@@ -205,6 +209,8 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain(".account-chain-link");
     expect(VIEWER_CSS).toContain("grid-template-columns: repeat(auto-fill, minmax(72px, 1fr))");
     expect(VIEWER_CSS).toContain(".account-card-reader");
+    expect(VIEWER_CSS).toContain(".account-card-reader-art.is-flipped");
+    expect(VIEWER_CSS).toContain("@keyframes accountCardReaderFlip");
     expect(VIEWER_CSS).toContain(".account-card-tile-reveal");
     expect(VIEWER_CSS).toContain("aspect-ratio: 3 / 4");
     expect(VIEWER_CSS).toContain("aspect-ratio: 1122 / 1402");
@@ -215,6 +221,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'apiBase + "/nft/mint-card-confirm"');
     expectScriptToContain(script, 'prompt: "Your wallet should show one card-mint transaction."');
     expectScriptToContain(script, "Mint to Reveal");
+    expectScriptToContain(script, "return hallPassCardById(cleanCardId) || data.card || null");
+    expect(script).not.toContain("remove();\n        void mintHallPassCardFromAccount(card.id);");
     expectScriptToContain(script, "Mint the next face-down Ruby High card NFT to reveal it.");
     expect(script).not.toContain("unmintedCardCount");
     expect(script).not.toContain("/nft/mint-pending");

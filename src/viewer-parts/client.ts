@@ -2983,114 +2983,13 @@ export function runViewerClient(bootstrap) {
 
   function showHallPassCardReader(card) {
     if (!card) return;
-    const faceDown = hallPassCardIsFaceDown(card);
-    const profile = hallPassCardProfile(card);
+    let currentCard = card;
     const overlay = document.createElement("div");
     overlay.className = "account-card-reader";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
-
     const panel = document.createElement("div");
-    panel.className = "account-card-reader-panel";
-    const top = document.createElement("div");
-    top.className = "account-card-reader-top";
-    const title = document.createElement("div");
-    title.className = "account-card-reader-title";
-    title.textContent = hallPassCardTitle(card, faceDown);
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "account-card-reader-close";
-    close.setAttribute("aria-label", "Close card");
-    close.textContent = "X";
-    top.appendChild(title);
-    top.appendChild(close);
-    panel.appendChild(top);
-
-    const main = document.createElement("div");
-    main.className = "account-card-reader-main";
-    const artWrap = document.createElement("div");
-    artWrap.className = "account-card-reader-art";
-    const artUrl = faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
-    if (artUrl) {
-      const img = document.createElement("img");
-      img.alt = hallPassCardTitle(card, faceDown);
-      img.src = artUrl;
-      artWrap.appendChild(img);
-    } else {
-      const fallback = document.createElement("div");
-      fallback.className = "account-card-reader-fallback";
-      fallback.textContent = hallPassCardTitle(card, faceDown).slice(0, 1).toUpperCase();
-      artWrap.appendChild(fallback);
-    }
-    main.appendChild(artWrap);
-
-    const body = document.createElement("div");
-    body.className = "account-card-reader-body";
-    const detail = document.createElement("div");
-    detail.className = "account-card-reader-detail";
-    detail.textContent = hallPassCardDetail(card, faceDown);
-    body.appendChild(detail);
-    if (!faceDown && card.mintAddress) {
-      appendSolanaProofLink(body, card.mintAddress, "View card NFT on Solscan");
-    }
-    if (!faceDown && profile) {
-      const teaches = document.createElement("div");
-      teaches.className = "account-hall-pass-card-teaches";
-      const detailLabel = document.createElement("span");
-      detailLabel.textContent = hallPassCardDetailLabel(card);
-      const detailText = document.createElement("strong");
-      detailText.textContent = profile.teaches || profile.subtitle || "Ruby High";
-      teaches.appendChild(detailLabel);
-      teaches.appendChild(detailText);
-      body.appendChild(teaches);
-      if (profile.stats) body.appendChild(buildHallPassStats(profile.stats));
-      if (profile.quote) {
-        const quote = document.createElement("div");
-        quote.className = "account-hall-pass-card-quote";
-        quote.textContent = "\"" + profile.quote + "\"";
-        body.appendChild(quote);
-      }
-    } else if (faceDown) {
-      const note = document.createElement("div");
-      note.className = "account-card-reader-note";
-      note.textContent = "Mint this card NFT to reveal the character.";
-      body.appendChild(note);
-    }
-
-    const actions = document.createElement("div");
-    actions.className = "account-card-reader-actions";
-    if (faceDown && card.status === "active") {
-      const reveal = document.createElement("button");
-      reveal.type = "button";
-      reveal.className = "account-card-tile-reveal";
-      reveal.textContent = billingBusy ? "Minting..." : "Mint to Reveal";
-      reveal.disabled = !authed || billingBusy;
-      reveal.title = "Mint this card NFT with your Solana wallet to reveal it.";
-      reveal.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        remove();
-        void mintHallPassCardFromAccount(card.id);
-      });
-      actions.appendChild(reveal);
-    } else if (!faceDown && card.status === "active" && card.mintAddress && card.mintSignature) {
-      const burn = document.createElement("button");
-      burn.type = "button";
-      burn.className = "account-card-tile-reveal";
-      burn.textContent = billingBusy ? "Burning..." : "Burn for 5 Passes";
-      burn.disabled = !authed || billingBusy;
-      burn.title = "Burn this card NFT for 5 Hall Passes.";
-      burn.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        remove();
-        burnHallPassCardFromAccount(card);
-      });
-      actions.appendChild(burn);
-    }
-    if (actions.childElementCount > 0) body.appendChild(actions);
-    main.appendChild(body);
-    panel.appendChild(main);
+    let closeButton = null;
     overlay.appendChild(panel);
 
     const remove = () => {
@@ -3100,13 +2999,136 @@ export function runViewerClient(bootstrap) {
     const onKey = (event) => {
       if (event.key === "Escape") remove();
     };
-    close.addEventListener("click", remove);
+    const render = (nextCard, opts) => {
+      currentCard = nextCard || currentCard;
+      const options = opts || {};
+      const faceDown = hallPassCardIsFaceDown(currentCard);
+      const profile = hallPassCardProfile(currentCard);
+      panel.className = "account-card-reader-panel" + (options.revealed ? " is-revealed" : "");
+      panel.replaceChildren();
+
+      const top = document.createElement("div");
+      top.className = "account-card-reader-top";
+      const title = document.createElement("div");
+      title.className = "account-card-reader-title";
+      title.textContent = hallPassCardTitle(currentCard, faceDown);
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "account-card-reader-close";
+      close.setAttribute("aria-label", "Close card");
+      close.textContent = "X";
+      close.addEventListener("click", remove);
+      closeButton = close;
+      top.appendChild(title);
+      top.appendChild(close);
+      panel.appendChild(top);
+
+      const main = document.createElement("div");
+      main.className = "account-card-reader-main";
+      const artWrap = document.createElement("div");
+      artWrap.className = "account-card-reader-art" + (options.flip ? " is-flipped" : "");
+      const artUrl = faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(currentCard);
+      if (artUrl) {
+        const img = document.createElement("img");
+        img.alt = hallPassCardTitle(currentCard, faceDown);
+        img.src = artUrl;
+        artWrap.appendChild(img);
+      } else {
+        const fallback = document.createElement("div");
+        fallback.className = "account-card-reader-fallback";
+        fallback.textContent = hallPassCardTitle(currentCard, faceDown).slice(0, 1).toUpperCase();
+        artWrap.appendChild(fallback);
+      }
+      main.appendChild(artWrap);
+
+      const body = document.createElement("div");
+      body.className = "account-card-reader-body";
+      const detail = document.createElement("div");
+      detail.className = "account-card-reader-detail";
+      detail.textContent = hallPassCardDetail(currentCard, faceDown);
+      body.appendChild(detail);
+      if (!faceDown && currentCard.mintAddress) {
+        appendSolanaProofLink(body, currentCard.mintAddress, "View card NFT on Solscan");
+      }
+      if (!faceDown && profile) {
+        const teaches = document.createElement("div");
+        teaches.className = "account-hall-pass-card-teaches";
+        const detailLabel = document.createElement("span");
+        detailLabel.textContent = hallPassCardDetailLabel(currentCard);
+        const detailText = document.createElement("strong");
+        detailText.textContent = profile.teaches || profile.subtitle || "Ruby High";
+        teaches.appendChild(detailLabel);
+        teaches.appendChild(detailText);
+        body.appendChild(teaches);
+        if (profile.stats) body.appendChild(buildHallPassStats(profile.stats));
+        if (profile.quote) {
+          const quote = document.createElement("div");
+          quote.className = "account-hall-pass-card-quote";
+          quote.textContent = "\"" + profile.quote + "\"";
+          body.appendChild(quote);
+        }
+      } else if (faceDown) {
+        const note = document.createElement("div");
+        note.className = "account-card-reader-note";
+        note.textContent = "Mint this card NFT to reveal the character.";
+        body.appendChild(note);
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "account-card-reader-actions";
+      if (faceDown && currentCard.status === "active") {
+        const reveal = document.createElement("button");
+        reveal.type = "button";
+        reveal.className = "account-card-tile-reveal";
+        reveal.textContent = billingBusy ? "Minting..." : "Mint to Reveal";
+        reveal.disabled = !authed || billingBusy;
+        reveal.title = "Mint this card NFT with your Solana wallet to reveal it.";
+        reveal.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          reveal.disabled = true;
+          reveal.textContent = "Minting...";
+          panel.classList.add("is-minting");
+          const revealedCard = await mintHallPassCardFromAccount(currentCard.id);
+          if (revealedCard) {
+            render(revealedCard, { flip: true, revealed: true });
+            return;
+          }
+          render(currentCard);
+        });
+        actions.appendChild(reveal);
+      } else if (!faceDown && currentCard.status === "active" && currentCard.mintAddress && currentCard.mintSignature) {
+        const burn = document.createElement("button");
+        burn.type = "button";
+        burn.className = "account-card-tile-reveal";
+        burn.textContent = billingBusy ? "Burning..." : "Burn for 5 Passes";
+        burn.disabled = !authed || billingBusy;
+        burn.title = "Burn this card NFT for 5 Hall Passes.";
+        burn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          remove();
+          burnHallPassCardFromAccount(currentCard);
+        });
+        actions.appendChild(burn);
+      }
+      if (actions.childElementCount > 0) body.appendChild(actions);
+      main.appendChild(body);
+      panel.appendChild(main);
+    };
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) remove();
     });
     document.addEventListener("keydown", onKey);
     document.body.appendChild(overlay);
-    close.focus({ preventScroll: true });
+    render(currentCard);
+    if (closeButton) closeButton.focus({ preventScroll: true });
+  }
+
+  function hallPassCardById(cardId) {
+    const cleanCardId = String(cardId || "").trim();
+    if (!cleanCardId) return null;
+    return hallPassCardsForTelemetry().find((card) => String(card.id || "") === cleanCardId) || null;
   }
 
   function hallPassCardArtUrl(card) {
@@ -3677,10 +3699,10 @@ export function runViewerClient(bootstrap) {
 
   async function mintHallPassCardFromAccount(cardId) {
     const cleanCardId = String(cardId || "").trim();
-    if (!authed || !cleanCardId || billingBusy) return;
+    if (!authed || !cleanCardId || billingBusy) return null;
     if (!knownSolanaOwnerWalletAddress()) {
       const connected = await ensureSolanaWalletFromAccount();
-      if (!connected) return;
+      if (!connected) return null;
     }
     billingBusy = true;
     renderAccountHallPassCards();
@@ -3706,7 +3728,7 @@ export function runViewerClient(bootstrap) {
         await fetchSession();
         renderAccountPage();
         hidePackMintProgress(900);
-        return;
+        return hallPassCardById(cleanCardId) || preparedData.card || null;
       }
       const client = await getPrivyClient();
       if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
@@ -3729,7 +3751,7 @@ export function runViewerClient(bootstrap) {
       if (!approved) {
         hidePackMintProgress();
         setPrivyStatus("Card reveal canceled.", false);
-        return;
+        return null;
       }
       updatePackMintProgress("Confirm the mint in your wallet...");
       const payment = await client.signAndSendSolanaTransaction(preparedData.mint);
@@ -3754,9 +3776,11 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus(name + " revealed.", false);
       await fetchSession();
       renderAccountPage();
+      return hallPassCardById(cleanCardId) || data.card || null;
     } catch (err) {
       hidePackMintProgress();
       setPrivyStatus("Card reveal failed · " + friendlySolanaActionError(err, "Your card is still face-down; try again in a minute."), true);
+      return null;
     } finally {
       hidePackMintProgress(900);
       billingBusy = false;

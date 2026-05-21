@@ -6872,6 +6872,11 @@ export const VIEWER_CSS = `
     border-radius: 10px;
     background: #050914;
     border: 1px solid rgba(255,255,255,0.12);
+    transform-style: preserve-3d;
+  }
+  .account-card-reader-art.is-flipped {
+    animation: accountCardReaderFlip 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.20), 0 18px 46px rgba(223,47,47,0.22);
   }
   .account-card-reader-art img,
   .account-card-reader-fallback {
@@ -6908,6 +6913,17 @@ export const VIEWER_CSS = `
   }
   .account-card-reader-actions button {
     min-height: 36px;
+  }
+  @keyframes accountCardReaderFlip {
+    0% {
+      transform: rotateY(0deg) scale(0.98);
+    }
+    50% {
+      transform: rotateY(88deg) scale(1.02);
+    }
+    100% {
+      transform: rotateY(0deg) scale(1);
+    }
   }
   @media (max-width: 560px) {
     .account-card-reader {
