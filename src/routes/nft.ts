@@ -24,6 +24,15 @@ import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import type { RubyHighService } from "../services/ruby-high-service.js";
 import { log } from "../services/logger.js";
 import { solanaErrorMessages } from "../services/solana-errors.js";
+import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_SET_NAME,
+  hallPassCardCatalogEntry,
+  hallPassCardName,
+  hallPassCardProfileId,
+  hallPassCardSetNumber,
+  hallPassCardSubject,
+} from "../services/hall-pass-card-catalog.js";
 import type { RubyHighHallPassCard, RubyHighHallPassPack } from "../types.js";
 import type { RouteContext } from "./context.js";
 
@@ -779,6 +788,8 @@ function hiddenCardPayload(card: RubyHighHallPassCard): Record<string, unknown> 
     title: "Ruby High Mystery Card",
     characterId: "card-back",
     characterName: "Mystery Card",
+    setName: FIRST_BELL_SET_NAME,
+    setCode: FIRST_BELL_SET_CODE,
     role: "special",
     rarity: "common",
     blurb: "Mint this Card to reveal it.",
@@ -798,12 +809,19 @@ function hiddenCardPayload(card: RubyHighHallPassCard): Record<string, unknown> 
 }
 
 function revealedCardPayload(card: RubyHighHallPassCard): Record<string, unknown> {
+  const profile = hallPassCardCatalogEntry(card.characterId);
   return {
     id: card.id,
     serial: card.serial,
     title: card.title,
     characterId: card.characterId,
     characterName: card.characterName,
+    setName: card.setName ?? FIRST_BELL_SET_NAME,
+    setCode: card.setCode ?? FIRST_BELL_SET_CODE,
+    setNumber: card.setNumber ?? (profile ? hallPassCardSetNumber(profile) : null),
+    profileId: card.profileId ?? (profile ? hallPassCardProfileId(profile) : null),
+    cardName: card.cardName ?? (profile ? hallPassCardName(profile) : null),
+    subject: card.subject ?? (profile ? hallPassCardSubject(profile) : null),
     role: card.role,
     rarity: card.rarity,
     status: card.status,

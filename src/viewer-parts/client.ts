@@ -482,6 +482,13 @@ export function runViewerClient(bootstrap) {
     "Asking Solana for a hallway pass...",
     "Filing the pack in your locker...",
   ];
+  const CARD_MINT_STATUS_LINES = [
+    "Preparing the card mint...",
+    "Checking the card metadata...",
+    "Waiting for wallet approval...",
+    "Submitting the signed mint...",
+    "Revealing the card...",
+  ];
   function getStoredApiKey() {
     try { return localStorage.getItem(AUTH_KEY) || null; } catch (e) { return null; }
   }
@@ -825,6 +832,7 @@ export function runViewerClient(bootstrap) {
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
   let packMintProgressEl = null;
+  let packMintProgressTitleEl = null;
   let packMintProgressStatusEl = null;
   let packMintProgressTimer = null;
   let packMintProgressCloseTimer = null;
@@ -866,6 +874,7 @@ export function runViewerClient(bootstrap) {
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
     packMintProgressEl = overlay;
+    packMintProgressTitleEl = title;
     packMintProgressStatusEl = status;
     return overlay;
   }
@@ -874,21 +883,30 @@ export function runViewerClient(bootstrap) {
     const text = String(message || "").trim();
     if (text) packMintProgressStatusEl.textContent = text;
   }
-  function showPackMintProgress(message) {
+  function showPackMintProgress(message, options) {
     const overlay = ensurePackMintProgressOverlay();
     if (packMintProgressCloseTimer) {
       clearTimeout(packMintProgressCloseTimer);
       packMintProgressCloseTimer = null;
     }
+    const title = options && options.title ? String(options.title) : "Please wait: minting pack";
+    const rotate = !options || options.rotate !== false;
+    const lines = options && Array.isArray(options.lines) && options.lines.length > 0
+      ? options.lines
+      : PACK_MINT_STATUS_LINES;
+    if (packMintProgressTitleEl) packMintProgressTitleEl.textContent = title;
     packMintProgressIndex = 0;
-    updatePackMintProgress(message || PACK_MINT_STATUS_LINES[0]);
+    updatePackMintProgress(message || lines[0]);
     overlay.classList.add("is-open");
     overlay.setAttribute("aria-hidden", "false");
     if (packMintProgressTimer) clearInterval(packMintProgressTimer);
-    packMintProgressTimer = setInterval(() => {
-      packMintProgressIndex = (packMintProgressIndex + 1) % PACK_MINT_STATUS_LINES.length;
-      updatePackMintProgress(PACK_MINT_STATUS_LINES[packMintProgressIndex]);
-    }, 1600);
+    packMintProgressTimer = null;
+    if (rotate) {
+      packMintProgressTimer = setInterval(() => {
+        packMintProgressIndex = (packMintProgressIndex + 1) % lines.length;
+        updatePackMintProgress(lines[packMintProgressIndex]);
+      }, 1600);
+    }
   }
   function hidePackMintProgress(delayMs) {
     const close = () => {
@@ -3671,7 +3689,11 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Preparing card mint...");
+    showPackMintProgress("Preparing card mint...", {
+      title: "Please wait: minting card",
+      lines: CARD_MINT_STATUS_LINES,
+      rotate: false,
+    });
     setPrivyStatus("Preparing Card reveal...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();

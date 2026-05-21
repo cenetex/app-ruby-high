@@ -18,6 +18,7 @@ const catalogJs = ts.transpileModule(catalogSource, {
 }).outputText;
 const catalogModule = `data:text/javascript;base64,${Buffer.from(catalogJs, "utf8").toString("base64")}`;
 const {
+  FIRST_BELL_ALTERNATE_ART_PROFILES,
   HALL_PASS_CARD_CATALOG,
   hallPassCardImageDimensions,
 } = await import(catalogModule);
@@ -100,14 +101,23 @@ async function isReadable(path) {
   }
 }
 
-function cropSourcePortrait(source, output) {
+async function generatedSourceFor(id) {
+  for (const ext of ["jpg", "jpeg", "png", "webp"]) {
+    const candidate = join(grokSourceDir, `${id}.${ext}`);
+    if (await isReadable(candidate)) return candidate;
+  }
+  return null;
+}
+
+function cropSourcePortrait(entry, source, output) {
+  const size = hallPassCardImageDimensions(entry).replace(" x ", "x");
   run(magick, [
     "-quiet",
     source,
     "-auto-orient",
-    "-resize", `${outputSize}x${outputSize}^`,
+    "-resize", `${size}^`,
     "-gravity", "north",
-    "-extent", `${outputSize}x${outputSize}`,
+    "-extent", size,
     "-strip",
     output,
   ]);
@@ -118,8 +128,8 @@ await mkdir(outputDir, { recursive: true });
 for (const entry of HALL_PASS_CARD_CATALOG) {
   const output = join(outputDir, `${entry.characterId}.png`);
   if (grokArt[entry.characterId]) {
-    const generatedSource = join(grokSourceDir, `${entry.characterId}.jpg`);
-    if (await isReadable(generatedSource)) {
+    const generatedSource = await generatedSourceFor(entry.characterId);
+    if (generatedSource) {
       normalizeGeneratedArt(entry, generatedSource, output);
       continue;
     }
@@ -127,10 +137,22 @@ for (const entry of HALL_PASS_CARD_CATALOG) {
   }
   const override = sourceArt[entry.characterId];
   if (override) {
-    cropSourcePortrait(join(root, "assets", ...override), output);
+    cropSourcePortrait(entry, join(root, "assets", ...override), output);
     continue;
   }
   normalizeGeneratedArt(entry, join(currentCardDir, `${entry.characterId}.png`), output);
 }
 
-console.log(`Generated ${HALL_PASS_CARD_CATALOG.length} market card crops in ${outputDir}`);
+let alternateCount = 0;
+for (const profile of FIRST_BELL_ALTERNATE_ART_PROFILES) {
+  const imageId = profile.imageId || profile.profileId;
+  const generatedSource = await generatedSourceFor(imageId);
+  if (!generatedSource) {
+    console.warn(`Missing Grok source for alternate ${imageId}; skipping market crop.`);
+    continue;
+  }
+  normalizeGeneratedArt(profile, generatedSource, join(outputDir, `${imageId}.png`));
+  alternateCount += 1;
+}
+
+console.log(`Generated ${HALL_PASS_CARD_CATALOG.length + alternateCount} market card crops in ${outputDir}`);

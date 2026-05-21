@@ -504,6 +504,12 @@ export interface RubyHighHallPassCard {
   title: string;
   characterId: string;
   characterName: string;
+  setName?: string;
+  setCode?: string;
+  setNumber?: string;
+  profileId?: string;
+  cardName?: string;
+  subject?: string;
   role: RubyHighHallPassCardRole;
   rarity: RubyHighHallPassCardRarity;
   blurb: string;

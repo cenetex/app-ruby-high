@@ -7,6 +7,7 @@ import {
   corePackNftMetadataUri,
   fetchOwnedCorePackNfts,
 } from "../services/core-pack-nfts.js";
+import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
@@ -47,8 +48,10 @@ describe("Core pack NFT checkout transactions", () => {
         type: "Attributes",
         attributeList: [
           { key: "School", value: "Ruby High" },
-          { key: "Collection", value: "Ruby High Packs" },
-          { key: "Type", value: "Pack" },
+          { key: "Collection", value: `${FIRST_BELL_SET_NAME} Packs` },
+          { key: "Set", value: "First Bell" },
+          { key: "Set Code", value: FIRST_BELL_SET_CODE },
+          { key: "NFT Type", value: "Pack" },
           { key: "Product", value: "card-pack-3" },
           { key: "Packs", value: "3" },
           { key: "Cards Inside", value: "15" },

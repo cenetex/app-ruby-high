@@ -17,6 +17,29 @@ export interface HallPassCardCatalogEntry {
   nftDescription?: string;
 }
 
+export interface FirstBellSetProfile {
+  setNumber: string;
+  profileId: string;
+  cardName: string;
+  role: RubyHighHallPassCardRole;
+  rarity: RubyHighHallPassCardRarity;
+  subject: string;
+  art: string;
+  mintable: boolean;
+  characterId?: string;
+  imageId?: string;
+  sourceCharacterId?: string;
+  variantOf?: string;
+  variant?: string;
+}
+
+export const FIRST_BELL_SET_NAME = "Ruby High: First Bell";
+export const FIRST_BELL_SET_FAMILY = "Ruby High";
+export const FIRST_BELL_SET_CODE = "FB";
+export const FIRST_BELL_SET_TOTAL_PROFILES = 36;
+export const FIRST_BELL_SET_LIVE_PROFILE_COUNT = 24;
+export const FIRST_BELL_SET_EXPANSION_PROFILE_COUNT = 12;
+
 export const HALL_PASS_CARD_TEACHERS: HallPassCardCatalogEntry[] = [
   {
     characterId: "ruby",
@@ -309,12 +332,95 @@ export const HALL_PASS_CARD_CATALOG: HallPassCardCatalogEntry[] = [
   ...HALL_PASS_CARD_ITEM_LOCATIONS,
 ];
 
+export const FIRST_BELL_BASE_SET_PROFILES: FirstBellSetProfile[] = [
+  { setNumber: "FB-001", profileId: "lyra-color-coded-spare", characterId: "lyra", cardName: "Lyra: Color-Coded Spare", role: "student", rarity: "common", subject: "Homeroom", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-002", profileId: "sami-side-door-whatever", characterId: "sami", cardName: "Sami: Side Door Whatever", role: "student", rarity: "common", subject: "Homeroom", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-003", profileId: "ravi-field-trip-fact-slip", characterId: "ravi", cardName: "Ravi: Field Trip Fact Slip", role: "student", rarity: "common", subject: "Field Trip", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-004", profileId: "indra-quiet-perfect-exit", characterId: "indra", cardName: "Indra: Quiet Perfect Exit", role: "student", rarity: "rare", subject: "Strategy", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-005", profileId: "mika-locker-room-shortcut", characterId: "mika", cardName: "Mika: Locker Room Shortcut", role: "student", rarity: "rare", subject: "Social", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-006", profileId: "noor-deadpan-detour", characterId: "noor", cardName: "Noor: Deadpan Detour", role: "student", rarity: "rare", subject: "Literature", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-007", profileId: "ruby-homeroom-card", characterId: "ruby", cardName: "Ruby: Homeroom Card", role: "teacher", rarity: "common", subject: "Homeroom", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-008", profileId: "sally-lab-sink-shortcut", characterId: "sally-science", cardName: "Sally Science: Lab Sink Shortcut", role: "teacher", rarity: "common", subject: "Science", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-009", profileId: "professor-edward-library-corridor", characterId: "professor-edward", cardName: "Professor Edward: Library Corridor Pass", role: "teacher", rarity: "common", subject: "Literature", art: "Source portrait tall crop", mintable: true },
+  { setNumber: "FB-010", profileId: "eliza-systems-lab-override", characterId: "eliza", cardName: "Eliza: Systems Lab Override", role: "teacher", rarity: "super-rare", subject: "Systems", art: "Grok tall source art", mintable: true },
+  { setNumber: "FB-011", profileId: "rati-signal-studies-pass", characterId: "rati", cardName: "Rati: Signal Studies Pass", role: "teacher", rarity: "super-rare", subject: "Signal Studies", art: "Grok tall source art", mintable: true },
+  { setNumber: "FB-012", profileId: "captain-null-page-10-shadow", characterId: "captain-null", cardName: "Captain Null: Page 10 Shadow Pass", role: "special", rarity: "ultra-rare", subject: "First Bell", art: "Grok tall source art", mintable: true },
+  { setNumber: "FB-013", profileId: "item-hall-pass", characterId: "item-hall-pass", cardName: "Hall Pass: Front Office Reset", role: "item", rarity: "common", subject: "Administration", art: "Grok square source art", mintable: true },
+  { setNumber: "FB-014", profileId: "item-flashcards", characterId: "item-flashcards", cardName: "Flashcards: Study Kit", role: "item", rarity: "common", subject: "Study", art: "Grok square source art", mintable: true },
+  { setNumber: "FB-015", profileId: "item-library-card", characterId: "item-library-card", cardName: "Library Card: Quiet Wing Access", role: "item", rarity: "common", subject: "Library", art: "Grok square source art", mintable: true },
+  { setNumber: "FB-016", profileId: "item-lab-flask", characterId: "item-lab-flask", cardName: "Lab Flask: Science Lab Evidence", role: "item", rarity: "rare", subject: "Science", art: "Grok square source art", mintable: true },
+  { setNumber: "FB-017", profileId: "item-lunch-tray", characterId: "item-lunch-tray", cardName: "Lunch Tray: Commons Diplomacy", role: "item", rarity: "rare", subject: "Cafeteria", art: "Grok square source art", mintable: true },
+  { setNumber: "FB-018", profileId: "item-notebook", characterId: "item-notebook", cardName: "Notebook: Daily Carry", role: "item", rarity: "rare", subject: "Homeroom", art: "Grok square source art", mintable: true },
+  { setNumber: "FB-019", profileId: "location-homeroom", characterId: "location-homeroom", cardName: "Homeroom: Front Door", role: "location", rarity: "common", subject: "Homeroom", art: "Grok wide source art", mintable: true },
+  { setNumber: "FB-020", profileId: "location-science-lab", characterId: "location-science-lab", cardName: "Science Lab: STEM Wing", role: "location", rarity: "common", subject: "Science", art: "Grok wide source art", mintable: true },
+  { setNumber: "FB-021", profileId: "location-library", characterId: "location-library", cardName: "Library: Quiet Wing", role: "location", rarity: "common", subject: "Literature", art: "Grok wide source art", mintable: true },
+  { setNumber: "FB-022", profileId: "location-cafeteria", characterId: "location-cafeteria", cardName: "Cafeteria: Commons", role: "location", rarity: "rare", subject: "Cafeteria", art: "Grok wide source art", mintable: true },
+  { setNumber: "FB-023", profileId: "location-greenhouse", characterId: "location-greenhouse", cardName: "Greenhouse: Garden Annex", role: "location", rarity: "rare", subject: "Science", art: "Grok wide source art", mintable: true },
+  { setNumber: "FB-024", profileId: "location-courtyard", characterId: "location-courtyard", cardName: "Courtyard: Central Grounds", role: "location", rarity: "rare", subject: "Campus", art: "Grok wide source art", mintable: true },
+];
+
+export const FIRST_BELL_ALTERNATE_ART_PROFILES: FirstBellSetProfile[] = [
+  { setNumber: "FB-025", profileId: "homeroom-snow-day", imageId: "homeroom-snow-day", sourceCharacterId: "location-homeroom", variantOf: "location-homeroom", variant: "Snow Day Bell", cardName: "Homeroom: Snow Day Bell", role: "location", rarity: "rare", subject: "Homeroom", art: "Grok wide alternate art", mintable: false },
+  { setNumber: "FB-026", profileId: "science-lab-fair-night", imageId: "science-lab-fair-night", sourceCharacterId: "location-science-lab", variantOf: "location-science-lab", variant: "Fair Night", cardName: "Science Lab: Fair Night", role: "location", rarity: "rare", subject: "Science", art: "Grok wide alternate art", mintable: false },
+  { setNumber: "FB-027", profileId: "library-after-hours", imageId: "library-after-hours", sourceCharacterId: "location-library", variantOf: "location-library", variant: "After Hours", cardName: "Library: After Hours", role: "location", rarity: "rare", subject: "Literature", art: "Grok wide alternate art", mintable: false },
+  { setNumber: "FB-028", profileId: "cafeteria-holiday-lunch", imageId: "cafeteria-holiday-lunch", sourceCharacterId: "location-cafeteria", variantOf: "location-cafeteria", variant: "Holiday Lunch", cardName: "Cafeteria: Holiday Lunch", role: "location", rarity: "rare", subject: "Cafeteria", art: "Grok wide alternate art", mintable: false },
+  { setNumber: "FB-029", profileId: "greenhouse-spring-bloom", imageId: "greenhouse-spring-bloom", sourceCharacterId: "location-greenhouse", variantOf: "location-greenhouse", variant: "Spring Bloom", cardName: "Greenhouse: Spring Bloom", role: "location", rarity: "rare", subject: "Science", art: "Grok wide alternate art", mintable: false },
+  { setNumber: "FB-030", profileId: "courtyard-lantern-festival", imageId: "courtyard-lantern-festival", sourceCharacterId: "location-courtyard", variantOf: "location-courtyard", variant: "Lantern Festival", cardName: "Courtyard: Lantern Festival", role: "location", rarity: "super-rare", subject: "Campus", art: "Grok wide alternate art", mintable: false },
+  { setNumber: "FB-031", profileId: "hall-pass-gold-stamp", imageId: "hall-pass-gold-stamp", sourceCharacterId: "item-hall-pass", variantOf: "item-hall-pass", variant: "Gold Stamp", cardName: "Hall Pass: Gold Stamp", role: "item", rarity: "rare", subject: "Administration", art: "Grok square alternate art", mintable: false },
+  { setNumber: "FB-032", profileId: "flashcards-finals-week", imageId: "flashcards-finals-week", sourceCharacterId: "item-flashcards", variantOf: "item-flashcards", variant: "Finals Week", cardName: "Flashcards: Finals Week", role: "item", rarity: "rare", subject: "Study", art: "Grok square alternate art", mintable: false },
+  { setNumber: "FB-033", profileId: "library-card-midnight", imageId: "library-card-midnight", sourceCharacterId: "item-library-card", variantOf: "item-library-card", variant: "Midnight Loan", cardName: "Library Card: Midnight Loan", role: "item", rarity: "rare", subject: "Library", art: "Grok square alternate art", mintable: false },
+  { setNumber: "FB-034", profileId: "lab-flask-holiday-reaction", imageId: "lab-flask-holiday-reaction", sourceCharacterId: "item-lab-flask", variantOf: "item-lab-flask", variant: "Holiday Reaction", cardName: "Lab Flask: Holiday Reaction", role: "item", rarity: "rare", subject: "Science", art: "Grok square alternate art", mintable: false },
+  { setNumber: "FB-035", profileId: "notebook-spring-notes", imageId: "notebook-spring-notes", sourceCharacterId: "item-notebook", variantOf: "item-notebook", variant: "Spring Notes", cardName: "Notebook: Spring Notes", role: "item", rarity: "rare", subject: "Homeroom", art: "Grok square alternate art", mintable: false },
+  { setNumber: "FB-036", profileId: "captain-null-eclipse", imageId: "captain-null-eclipse", sourceCharacterId: "captain-null", variantOf: "captain-null-page-10-shadow", variant: "Eclipse Pass", cardName: "Captain Null: Eclipse Pass", role: "special", rarity: "ultra-rare", subject: "First Bell", art: "Grok tall alternate art", mintable: false },
+];
+
+export const FIRST_BELL_SET_DRAFT: FirstBellSetProfile[] = [
+  ...FIRST_BELL_BASE_SET_PROFILES,
+  ...FIRST_BELL_ALTERNATE_ART_PROFILES,
+];
+
 const HALL_PASS_CARD_CATALOG_BY_ID = new Map(
   HALL_PASS_CARD_CATALOG.map((entry) => [entry.characterId, entry]),
 );
 
+const FIRST_BELL_SET_PROFILE_BY_CHARACTER_ID = new Map(
+  FIRST_BELL_SET_DRAFT
+    .filter((profile): profile is FirstBellSetProfile & { characterId: string } => !!profile.characterId)
+    .map((profile) => [profile.characterId, profile]),
+);
+
 export function hallPassCardCatalogEntry(characterId: string): HallPassCardCatalogEntry | null {
   return HALL_PASS_CARD_CATALOG_BY_ID.get(characterId) ?? null;
+}
+
+export function hallPassCardSetProfile(entry: HallPassCardCatalogEntry): FirstBellSetProfile {
+  return FIRST_BELL_SET_PROFILE_BY_CHARACTER_ID.get(entry.characterId) ?? {
+    setNumber: `${FIRST_BELL_SET_CODE}-000`,
+    profileId: entry.characterId,
+    cardName: `${entry.characterName}: ${entry.title}`,
+    role: entry.role,
+    rarity: entry.rarity,
+    subject: hallPassCardRoleLabel(entry.role),
+    art: "Runtime catalog",
+    mintable: true,
+    characterId: entry.characterId,
+  };
+}
+
+export function hallPassCardSetNumber(entry: HallPassCardCatalogEntry): string {
+  return hallPassCardSetProfile(entry).setNumber;
+}
+
+export function hallPassCardProfileId(entry: HallPassCardCatalogEntry): string {
+  return hallPassCardSetProfile(entry).profileId;
+}
+
+export function hallPassCardName(entry: HallPassCardCatalogEntry): string {
+  return hallPassCardSetProfile(entry).cardName;
+}
+
+export function hallPassCardSubject(entry: HallPassCardCatalogEntry): string {
+  return hallPassCardSetProfile(entry).subject;
 }
 
 export function hallPassCardImagePath(entry: HallPassCardCatalogEntry): string {
@@ -343,8 +449,8 @@ export function hallPassCardMediaType(entry: HallPassCardCatalogEntry): string {
 
 export function hallPassCardAspectClass(entry: HallPassCardCatalogEntry): string {
   if (entry.role === "location") return "Wide";
-  if (entry.role === "special" || entry.rarity === "super-rare") return "Tall";
-  return "Square";
+  if (entry.role === "item") return "Square";
+  return "Tall";
 }
 
 export function hallPassCardImageDimensions(entry: HallPassCardCatalogEntry): string {

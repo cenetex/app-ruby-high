@@ -35,15 +35,24 @@ import {
 } from "@solana-program/token";
 import type { RubyHighHallPassCard } from "../types.js";
 import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_SET_FAMILY,
+  FIRST_BELL_SET_LIVE_PROFILE_COUNT,
+  FIRST_BELL_SET_NAME,
+  FIRST_BELL_SET_TOTAL_PROFILES,
   hallPassCardCatalogEntry,
   hallPassCardAspectClass,
   hallPassCardImageDimensions,
   hallPassCardImagePath,
   hallPassCardMetadataDescription,
   hallPassCardMediaType,
+  hallPassCardName,
+  hallPassCardProfileId,
   hallPassCardRarityLabel,
   hallPassCardRoleLabel,
+  hallPassCardSetNumber,
   hallPassCardSourceArtVersion,
+  hallPassCardSubject,
 } from "./hall-pass-card-catalog.js";
 import { isPreflightUnsupportedError } from "./solana-errors.js";
 import {
@@ -62,15 +71,16 @@ const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CARD_IMAGE_VERSION = "card-crop-v1";
 const NFT_SELLER_FEE_BASIS_POINTS = 0;
-const CARD_COLLECTION_NAME = "Ruby High";
-const CARD_COLLECTION_FAMILY = "Ruby High";
+const CARD_COLLECTION_NAME = FIRST_BELL_SET_NAME;
+const CARD_COLLECTION_FAMILY = FIRST_BELL_SET_FAMILY;
 const CARD_COLLECTION_SERIES = "First Bell";
-const CARD_COLLECTION_EDITION = "Student & Faculty Edition";
+const CARD_COLLECTION_EDITION = "First Bell Set";
 const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1";
 const CARD_COLLECTION_METADATA_URI_PATH = `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`;
 const CARD_BACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1";
 const ESTIMATED_CARD_MINT_LAMPORTS = 20_000_000n;
 const MINT_AUTHORITY_RESERVE_LAMPORTS = 20_000_000n;
+const SOLANA_RPC_TIMEOUT_MS = 12_000;
 
 export interface HallPassNftStatus {
   configured: boolean;
@@ -348,7 +358,7 @@ export function hallPassCollectionMetadataForRoute(args: {
   return {
     name: CARD_COLLECTION_NAME,
     symbol: nftSymbol(process.env),
-    description: "Official collectible card collection for Ruby High.",
+    description: "Official First Bell collectible set for Ruby High.",
     image,
     category: "image",
     external_url: website,
@@ -356,9 +366,13 @@ export function hallPassCollectionMetadataForRoute(args: {
     collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
-      { trait_type: "Type", value: "Card Collection" },
+      { trait_type: "Set", value: CARD_COLLECTION_SERIES },
+      { trait_type: "Set Code", value: FIRST_BELL_SET_CODE },
+      { trait_type: "Type", value: "Collection" },
       { trait_type: "Series", value: CARD_COLLECTION_SERIES },
       { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
+      { trait_type: "Live Profiles", value: FIRST_BELL_SET_LIVE_PROFILE_COUNT },
+      { trait_type: "Draft Profiles", value: FIRST_BELL_SET_TOTAL_PROFILES },
       { trait_type: "Website", value: website },
     ],
     properties: {
@@ -391,6 +405,9 @@ export function hallPassCardBackMetadataForRoute(args: {
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Collection", value: CARD_COLLECTION_NAME },
+      { trait_type: "Set", value: CARD_COLLECTION_SERIES },
+      { trait_type: "Set Code", value: FIRST_BELL_SET_CODE },
+      { trait_type: "NFT Type", value: "Card" },
       { trait_type: "State", value: "Face Down" },
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
@@ -420,6 +437,7 @@ export function hallPassNftMetadataForRoute(args: {
   const profile = hallPassCardCatalogEntry(args.characterId);
   if (!profile) return null;
   const serial = normalizeSerial(args.serial);
+  const cardName = hallPassCardName(profile);
   const image = `${publicBaseUrl}${versionedImagePath(hallPassCardImagePath(profile))}`;
   const collection = {
     name: CARD_COLLECTION_NAME,
@@ -428,7 +446,7 @@ export function hallPassNftMetadataForRoute(args: {
   return {
     name: hallPassCardNftName(profile.characterName, serial),
     symbol: nftSymbol(process.env),
-    description: `${hallPassCardMetadataDescription(profile)} Part of the ${CARD_COLLECTION_SERIES} ${CARD_COLLECTION_EDITION} set.`,
+    description: `${hallPassCardMetadataDescription(profile)} Part of the ${CARD_COLLECTION_NAME} set.`,
     image,
     category: "image",
     external_url: website,
@@ -437,11 +455,18 @@ export function hallPassNftMetadataForRoute(args: {
     attributes: [
       { trait_type: "School", value: "Ruby High" },
       { trait_type: "Collection", value: CARD_COLLECTION_NAME },
+      { trait_type: "Set", value: CARD_COLLECTION_SERIES },
+      { trait_type: "Set Code", value: FIRST_BELL_SET_CODE },
+      { trait_type: "Set Number", value: hallPassCardSetNumber(profile) },
+      { trait_type: "Card Profile ID", value: hallPassCardProfileId(profile) },
+      { trait_type: "NFT Type", value: "Card" },
       { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
+      { trait_type: "Card Name", value: cardName },
       { trait_type: "Title", value: profile.title },
       { trait_type: "Character", value: profile.characterName },
       { trait_type: "Role", value: hallPassCardRoleLabel(profile.role) },
       { trait_type: "Rarity", value: hallPassCardRarityLabel(profile.rarity) },
+      { trait_type: "Subject", value: hallPassCardSubject(profile) },
       { trait_type: "Media Type", value: hallPassCardMediaType(profile) },
       { trait_type: "Aspect Class", value: hallPassCardAspectClass(profile) },
       { trait_type: "Image Dimensions", value: hallPassCardImageDimensions(profile) },
@@ -504,7 +529,7 @@ export async function buildHallPassCardMintTransaction(
       mintAddress: mint.address,
     }));
   }
-  const { value: latestBlockhash } = await createSolanaRpc(config.rpcUrl).getLatestBlockhash().send();
+  const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card mint");
   const message = pipe(
     createTransactionMessage({ version: 0 }),
     (tx) => setTransactionMessageFeePayerSigner(ownerSigner, tx),
@@ -671,7 +696,7 @@ export async function mintHallPassCardNft(
       mintAddress: mint.address,
     }));
   }
-  const { value: latestBlockhash } = await createSolanaRpc(config.rpcUrl).getLatestBlockhash().send();
+  const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card mint");
   const message = pipe(
     createTransactionMessage({ version: 0 }),
     (tx) => setTransactionMessageFeePayerSigner(authority, tx),
@@ -697,18 +722,63 @@ async function sendBase64TransactionWithPreflightFallback(
   transactionBase64: ReturnType<typeof getBase64EncodedWireTransaction>,
 ): Promise<string> {
   try {
-    return String(await rpc.sendTransaction(transactionBase64, {
+    return String(await withSolanaRpcTimeout(rpc.sendTransaction(transactionBase64, {
       encoding: "base64",
       maxRetries: 3n,
       skipPreflight: false,
-    }).send());
+    }).send(), "Solana timed out while submitting the card mint."));
   } catch (err) {
     if (!isPreflightUnsupportedError(err)) throw err;
-    return String(await rpc.sendTransaction(transactionBase64, {
+    return String(await withSolanaRpcTimeout(rpc.sendTransaction(transactionBase64, {
       encoding: "base64",
       maxRetries: 3n,
       skipPreflight: true,
-    }).send());
+    }).send(), "Solana timed out while submitting the card mint."));
+  }
+}
+
+async function fetchLatestBlockhash(
+  rpcUrl: string,
+  label: string,
+) {
+  const { value } = await withSolanaRpcTimeout(
+    createSolanaRpc(rpcUrl).getLatestBlockhash().send(),
+    `${label} timed out while checking Solana.`,
+  );
+  return value;
+}
+
+async function withSolanaRpcTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), SOLANA_RPC_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function fetchSolanaRpc(rpcUrl: string, body: Record<string, unknown>, label: string): Promise<Response> {
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutId = ctrl
+    ? setTimeout(() => ctrl.abort(), SOLANA_RPC_TIMEOUT_MS)
+    : null;
+  try {
+    return await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      ...(ctrl ? { signal: ctrl.signal } : {}),
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`${label} timed out while checking Solana.`);
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
@@ -717,23 +787,19 @@ async function simulateBase64TransactionForSigning(
   transactionBase64: string,
   label: string,
 ): Promise<void> {
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "ruby-high-card-transaction-simulate",
-      method: "simulateTransaction",
-      params: [
-        transactionBase64,
-        {
-          encoding: "base64",
-          sigVerify: false,
-          commitment: "confirmed",
-        },
-      ],
-    }),
-  });
+  const response = await fetchSolanaRpc(rpcUrl, {
+    jsonrpc: "2.0",
+    id: "ruby-high-card-transaction-simulate",
+    method: "simulateTransaction",
+    params: [
+      transactionBase64,
+      {
+        encoding: "base64",
+        sigVerify: false,
+        commitment: "confirmed",
+      },
+    ],
+  }, label);
   const payload = await response.json().catch(() => ({})) as {
     error?: { message?: string; code?: number };
     result?: { err?: unknown; logs?: string[] };
@@ -907,7 +973,7 @@ export async function buildHallPassCardsBurnTransaction(
       amount: 1n,
     }));
   }
-  const { value: latestBlockhash } = await createSolanaRpc(config.rpcUrl).getLatestBlockhash().send();
+  const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card burn");
   const transactionBytes = pipe(
     createTransactionMessage({ version: 0 }),
     (tx) => setTransactionMessageFeePayer(owner, tx),
@@ -1087,23 +1153,19 @@ function optionValue<T = any>(value: unknown): T | null {
 }
 
 async function fetchParsedTransaction(rpcUrl: string, signature: string): Promise<Record<string, any> | null> {
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "ruby-high-card-burn",
-      method: "getTransaction",
-      params: [
-        signature,
-        {
-          encoding: "jsonParsed",
-          maxSupportedTransactionVersion: 0,
-          commitment: "confirmed",
-        },
-      ],
-    }),
-  });
+  const response = await fetchSolanaRpc(rpcUrl, {
+    jsonrpc: "2.0",
+    id: "ruby-high-card-burn",
+    method: "getTransaction",
+    params: [
+      signature,
+      {
+        encoding: "jsonParsed",
+        maxSupportedTransactionVersion: 0,
+        commitment: "confirmed",
+      },
+    ],
+  }, "Card transaction lookup");
   if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
   const payload = await response.json().catch(() => ({})) as {
     error?: { message?: string; code?: number };

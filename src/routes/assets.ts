@@ -65,6 +65,21 @@ const NFT_CARD_IMAGE_IDS = [
   "location-courtyard",
 ] as const;
 
+const NFT_MARKET_CARD_EXTRA_IMAGE_IDS = [
+  "homeroom-snow-day",
+  "science-lab-fair-night",
+  "library-after-hours",
+  "cafeteria-holiday-lunch",
+  "greenhouse-spring-bloom",
+  "courtyard-lantern-festival",
+  "hall-pass-gold-stamp",
+  "flashcards-finals-week",
+  "library-card-midnight",
+  "lab-flask-holiday-reaction",
+  "notebook-spring-notes",
+  "captain-null-eclipse",
+] as const;
+
 const NFT_CARD_IMAGE_FILES = Object.fromEntries(
   NFT_CARD_IMAGE_IDS.map((id) => [
     `nft/cards/${id}.png`,
@@ -73,7 +88,7 @@ const NFT_CARD_IMAGE_FILES = Object.fromEntries(
 ) as Record<string, { file: string; mime: string }>;
 
 const NFT_MARKET_CARD_IMAGE_FILES = Object.fromEntries(
-  NFT_CARD_IMAGE_IDS.map((id) => [
+  [...NFT_CARD_IMAGE_IDS, ...NFT_MARKET_CARD_EXTRA_IMAGE_IDS].map((id) => [
     `nft/market-cards/${id}.png`,
     { file: `nft/market-cards/${id}.png`, mime: "image/png" },
   ]),

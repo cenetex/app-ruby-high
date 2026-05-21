@@ -145,11 +145,17 @@ import {
 import type { ContentPack, PackSourceCard } from "../content/types.js";
 import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
 import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_SET_NAME,
   HALL_PASS_CARD_ITEM_LOCATIONS,
   HALL_PASS_CARD_SPECIALS,
   HALL_PASS_CARD_STUDENTS,
   HALL_PASS_CARD_SUPER_RARE_TEACHERS,
   HALL_PASS_CARD_TEACHERS,
+  hallPassCardName,
+  hallPassCardProfileId,
+  hallPassCardSetNumber,
+  hallPassCardSubject,
   type HallPassCardCatalogEntry,
 } from "./hall-pass-card-catalog.js";
 import {
@@ -5378,6 +5384,12 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   const source = normalizedWalletSource(card.source);
   if (source) entry.source = source;
   for (const field of [
+    "setName",
+    "setCode",
+    "setNumber",
+    "profileId",
+    "cardName",
+    "subject",
     "grantTransactionId",
     "redeemTransactionId",
     "packId",
@@ -5687,6 +5699,12 @@ function issueHallPassCardsForTransaction(
       title: catalog.title,
       characterId: catalog.characterId,
       characterName: catalog.characterName,
+      setName: FIRST_BELL_SET_NAME,
+      setCode: FIRST_BELL_SET_CODE,
+      setNumber: hallPassCardSetNumber(catalog),
+      profileId: hallPassCardProfileId(catalog),
+      cardName: hallPassCardName(catalog),
+      subject: hallPassCardSubject(catalog),
       role: catalog.role,
       rarity: catalog.rarity,
       blurb: catalog.blurb,

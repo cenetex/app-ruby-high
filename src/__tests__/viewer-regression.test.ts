@@ -206,8 +206,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'const CARD_NFT_ART_VERSION = "card-crop-v1"');
     expectScriptToContain(script, 'apiBase + "/assets/nft/market-cards/"');
     expectScriptToContain(script, "const HALL_PASS_CARDS_PER_PACK = 5");
-    expectScriptToContain(script, "function showPackMintProgress(message)");
+    expectScriptToContain(script, "function showPackMintProgress(message, options)");
     expectScriptToContain(script, "Please wait: minting pack");
+    expectScriptToContain(script, "Please wait: minting card");
+    expectScriptToContain(script, "rotate: false");
     const packBuilder = script.slice(script.indexOf("function buildHallPassPack(pack)"), script.indexOf("function buildHallPassCard(card)"));
     expect(packBuilder).toContain("PACK_NFT_ART_URL");
     expect(packBuilder).toContain("PACK_OPENED_NFT_ART_URL");

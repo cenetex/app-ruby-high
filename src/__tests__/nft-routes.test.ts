@@ -15,13 +15,24 @@ import {
   setHallPassNftMintVerifierForTest,
 } from "../services/hall-pass-nfts.js";
 import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_ALTERNATE_ART_PROFILES,
+  FIRST_BELL_SET_DRAFT,
+  FIRST_BELL_SET_EXPANSION_PROFILE_COUNT,
+  FIRST_BELL_SET_LIVE_PROFILE_COUNT,
+  FIRST_BELL_SET_NAME,
+  FIRST_BELL_SET_TOTAL_PROFILES,
   HALL_PASS_CARD_CATALOG,
   hallPassCardAspectClass,
   hallPassCardImageDimensions,
   hallPassCardMediaType,
+  hallPassCardName,
+  hallPassCardProfileId,
   hallPassCardRarityLabel,
   hallPassCardRoleLabel,
+  hallPassCardSetNumber,
   hallPassCardSourceArtVersion,
+  hallPassCardSubject,
 } from "../services/hall-pass-card-catalog.js";
 import { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
@@ -191,14 +202,18 @@ describe("Hall Pass NFT routes", () => {
     expect(collectionHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
-      name: "Ruby High",
+      name: FIRST_BELL_SET_NAME,
       image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1",
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
       "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1",
     );
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Edition", value: "Student & Faculty Edition" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Edition", value: "First Bell Set" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Live Profiles", value: FIRST_BELL_SET_LIVE_PROFILE_COUNT });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Draft Profiles", value: FIRST_BELL_SET_TOTAL_PROFILES });
     expectWebsiteLink(lastResponse?.body);
 
     const handled = await handleNftRoutes(makeCtx({
@@ -219,10 +234,14 @@ describe("Hall Pass NFT routes", () => {
     );
     expect(lastHeaders["cache-control"]).toBe("no-cache");
     expect(lastResponse?.body.collection).toMatchObject({
-      name: "Ruby High",
+      name: FIRST_BELL_SET_NAME,
       family: "Ruby High",
     });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Collection", value: "Ruby High" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Collection", value: FIRST_BELL_SET_NAME });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Number", value: "FB-001" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Profile ID", value: "lyra-color-coded-spare" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Name", value: "Lyra: Color-Coded Spare" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Subject", value: "Homeroom" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Common" });
     expectWebsiteLink(lastResponse?.body);
 
@@ -256,7 +275,11 @@ describe("Hall Pass NFT routes", () => {
   });
 
   it("serves every canonical revealed card metadata profile", async () => {
-    expect(HALL_PASS_CARD_CATALOG).toHaveLength(24);
+    expect(HALL_PASS_CARD_CATALOG).toHaveLength(FIRST_BELL_SET_LIVE_PROFILE_COUNT);
+    expect(FIRST_BELL_SET_DRAFT).toHaveLength(FIRST_BELL_SET_TOTAL_PROFILES);
+    expect(FIRST_BELL_SET_DRAFT.filter((profile) => profile.mintable)).toHaveLength(FIRST_BELL_SET_LIVE_PROFILE_COUNT);
+    expect(FIRST_BELL_ALTERNATE_ART_PROFILES).toHaveLength(FIRST_BELL_SET_EXPANSION_PROFILE_COUNT);
+    expect(new Set(FIRST_BELL_ALTERNATE_ART_PROFILES.map((profile) => profile.imageId ?? profile.profileId)).size).toBe(FIRST_BELL_SET_EXPANSION_PROFILE_COUNT);
 
     for (const entry of HALL_PASS_CARD_CATALOG) {
       const handled = await handleNftRoutes(makeCtx({
@@ -275,8 +298,14 @@ describe("Hall Pass NFT routes", () => {
         `https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/${entry.characterId}.png?v=card-crop-v1`,
       );
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Title", value: entry.title });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Number", value: hallPassCardSetNumber(entry) });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Profile ID", value: hallPassCardProfileId(entry) });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Name", value: hallPassCardName(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Role", value: hallPassCardRoleLabel(entry.role) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: hallPassCardRarityLabel(entry.rarity) });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Subject", value: hallPassCardSubject(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Media Type", value: hallPassCardMediaType(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Aspect Class", value: hallPassCardAspectClass(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Image Dimensions", value: hallPassCardImageDimensions(entry) });
@@ -295,7 +324,7 @@ describe("Hall Pass NFT routes", () => {
     expect(collectionHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
-      name: "Ruby High Packs",
+      name: `${FIRST_BELL_SET_NAME} Packs`,
       category: "image",
       image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1",
     });
@@ -313,7 +342,7 @@ describe("Hall Pass NFT routes", () => {
     expect(packHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
-      name: "Ruby High Pack #123456",
+      name: `${FIRST_BELL_SET_NAME} Pack #123456`,
       category: "image",
       image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
     });
@@ -321,6 +350,9 @@ describe("Hall Pass NFT routes", () => {
       lastResponse?.body,
       "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
     );
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "NFT Type", value: "Pack" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
     expectWebsiteLink(lastResponse?.body);
 

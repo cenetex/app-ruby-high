@@ -30,6 +30,11 @@ import {
   revealProvenanceAttributes,
   revealProvenanceProperties,
 } from "./hall-pass-reveal-provenance.js";
+import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_SET_FAMILY,
+  FIRST_BELL_SET_NAME,
+} from "./hall-pass-card-catalog.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -40,6 +45,7 @@ const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CORE_PACK_CARDS_PER_PACK = 5;
 const NFT_SELLER_FEE_BASIS_POINTS = 0;
+const PACK_COLLECTION_NAME = `${FIRST_BELL_SET_NAME} Packs`;
 const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
 const PACK_OPENED_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2";
 const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1";
@@ -299,8 +305,10 @@ export function corePackAssetPluginsForMint(args: {
       type: "Attributes" as const,
       attributeList: [
         { key: "School", value: "Ruby High" },
-        { key: "Collection", value: "Ruby High Packs" },
-        { key: "Type", value: "Pack" },
+        { key: "Collection", value: PACK_COLLECTION_NAME },
+        { key: "Set", value: "First Bell" },
+        { key: "Set Code", value: FIRST_BELL_SET_CODE },
+        { key: "NFT Type", value: "Pack" },
         { key: "Product", value: productId },
         { key: "Packs", value: String(packCount) },
         { key: "Cards Inside", value: String(cardCount) },
@@ -324,19 +332,27 @@ export function corePackNftMetadataForRoute(args: {
   const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * CORE_PACK_CARDS_PER_PACK)));
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = normalizeSerial(args.serial);
-  const name = packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`;
+  const name = packCount === 1 ? `${FIRST_BELL_SET_NAME} Pack #${serial}` : `${FIRST_BELL_SET_NAME} ${packCount}-Pack #${serial}`;
   const image = `${publicBaseUrl}${args.opened ? PACK_OPENED_IMAGE_ASSET_PATH : PACK_IMAGE_ASSET_PATH}`;
+  const collection = {
+    name: PACK_COLLECTION_NAME,
+    family: FIRST_BELL_SET_FAMILY,
+  };
   return {
     name,
     symbol: nftSymbol(process.env),
-    description: `${packCount} Ruby High ${packCount === 1 ? "pack" : "packs"} with ${cardCount} cards inside.`,
+    description: `${packCount} ${FIRST_BELL_SET_NAME} ${packCount === 1 ? "pack" : "packs"} with ${cardCount} cards inside.`,
     image,
     category: "image",
     external_url: website,
     seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
+    collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
-      { trait_type: "Type", value: "Pack" },
+      { trait_type: "Collection", value: PACK_COLLECTION_NAME },
+      { trait_type: "Set", value: "First Bell" },
+      { trait_type: "Set Code", value: FIRST_BELL_SET_CODE },
+      { trait_type: "NFT Type", value: "Pack" },
       { trait_type: "Product", value: cleanProductId(args.productId) },
       { trait_type: "Packs", value: packCount },
       { trait_type: "Cards Inside", value: cardCount },
@@ -349,6 +365,7 @@ export function corePackNftMetadataForRoute(args: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
+      collection,
       ...metadataCreatorProperties(),
       provenance: {
         algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
@@ -365,15 +382,18 @@ export function corePackCollectionMetadataForRoute(args: {
   const website = publicWebsiteUrl(publicBaseUrl);
   const image = `${publicBaseUrl}${PACK_PROMO_IMAGE_ASSET_PATH}`;
   return {
-    name: "Ruby High Packs",
+    name: PACK_COLLECTION_NAME,
     symbol: nftSymbol(process.env),
-    description: "Ruby High card packs.",
+    description: `${FIRST_BELL_SET_NAME} card packs.`,
     image,
     category: "image",
     external_url: website,
     seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
+      { trait_type: "Collection", value: PACK_COLLECTION_NAME },
+      { trait_type: "Set", value: "First Bell" },
+      { trait_type: "Set Code", value: FIRST_BELL_SET_CODE },
       { trait_type: "Type", value: "Pack Collection" },
       { trait_type: "Website", value: website },
     ],
@@ -381,6 +401,10 @@ export function corePackCollectionMetadataForRoute(args: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
+      collection: {
+        name: PACK_COLLECTION_NAME,
+        family: FIRST_BELL_SET_FAMILY,
+      },
       ...metadataCreatorProperties(),
     },
   };
@@ -407,7 +431,7 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
     authority: umi.identity,
     payer: umi.payer,
     owner,
-    name: packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`,
+    name: packCount === 1 ? `${FIRST_BELL_SET_NAME} Pack #${serial}` : `${FIRST_BELL_SET_NAME} ${packCount}-Pack #${serial}`,
     uri: metadataUri,
     plugins: corePackAssetPluginsForMint({
       authorityAddress: String(umi.identity.publicKey),
@@ -577,7 +601,7 @@ async function fetchOwnedCorePackNftsViaGpa(
       ownerWalletAddress: String(owner),
       assetAddress: String(asset.publicKey),
       metadataUri,
-      name: typeof asset.name === "string" && asset.name.trim() ? asset.name.trim() : "Ruby High Pack",
+      name: typeof asset.name === "string" && asset.name.trim() ? asset.name.trim() : `${FIRST_BELL_SET_NAME} Pack`,
     }];
   });
 }
@@ -668,7 +692,7 @@ async function fetchOwnedCorePackNftsViaDas(
         metadataUri,
         name: typeof item?.content?.metadata?.name === "string" && item.content.metadata.name.trim()
           ? item.content.metadata.name.trim()
-          : "Ruby High Pack",
+          : `${FIRST_BELL_SET_NAME} Pack`,
       });
     }
     if (pageItems.length < limit) break;
@@ -697,7 +721,7 @@ export async function createCorePackCollection(): Promise<CoreCollectionCreateRe
     collection,
     updateAuthority: umi.identity.publicKey,
     payer: umi.payer,
-    name: "Ruby High Packs",
+    name: PACK_COLLECTION_NAME,
     uri: metadataUri,
     plugins: [
       { type: "ImmutableMetadata" },

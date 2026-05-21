@@ -13,13 +13,19 @@ Default public base URL is `https://ruby-high.ai` unless
 `RUBY_HIGH_PUBLIC_BASE_URL` is set. Default NFT symbol is `RUBY` unless
 `RUBY_HIGH_SOLANA_NFT_SYMBOL` is set.
 
+The proposed production set expansion lives in
+[`NFT_FIRST_BELL_SET_DRAFT.md`](./NFT_FIRST_BELL_SET_DRAFT.md). The runtime
+manifest in `src/services/hall-pass-card-catalog.ts` now carries the 36-profile
+First Bell draft: 24 currently mintable cards and 12 alternate-art expansion
+profiles.
+
 ## Summary
 
 | Surface | Count | Notes |
 | --- | ---: | --- |
-| Hall Pass card metadata profiles | 24 | All use plain `assets/nft/market-cards/*.png` media generated from source portraits or Grok-regenerated source art. |
-| Card collection metadata | 1 | Token Metadata collection, `Ruby High`. |
-| Core pack collection metadata | 1 | Metaplex Core collection, `Ruby High Packs`. |
+| Hall Pass card metadata profiles | 24 live / 36 draft | All live profiles use plain `assets/nft/market-cards/*.png` media generated from source portraits or Grok-regenerated source art. |
+| Card collection metadata | 1 | Token Metadata collection, `Ruby High: First Bell`. |
+| Core pack collection metadata | 1 | Metaplex Core collection, `Ruby High: First Bell Packs`. |
 | Core pack metadata state variants | 2 | Sealed and opened art served from the same metadata URL based on app state. |
 | Face-down card metadata | Dynamic | Served for unminted card ids through the card-id metadata route. |
 
@@ -56,9 +62,9 @@ Default public base URL is `https://ruby-high.ai` unless
 
 7. **Revealed card media uses plain aspect-specific crops.**
    Wallet-facing revealed card metadata now points to plain market crops instead
-   of generated frames. Student and core teacher source portraits are normalized
-   to square crops; item art is square, location art is wide, and rare-teacher
-   avatar art is tall. Items, locations, Eliza, Rati, and Captain Null use
+   of generated frames. Student, teacher, and special portraits are normalized
+   to tall crops; item art is square, and location art is wide. Items,
+   locations, Eliza, Rati, and Captain Null use
    Grok-regenerated source art, while the checked-in special-teacher card crops
    remain tight card-edge fallbacks from the original sheet.
 
@@ -73,6 +79,11 @@ Default public base URL is `https://ruby-high.ai` unless
    `Image Dimensions`, and `Source Art Version` so wallets and marketplaces can
    distinguish square items, wide locations, tall avatar portraits, and source
    provenance without parsing image URLs.
+
+10. **First Bell set fields are explicit.**
+    Collection, pack, face-down card, and revealed card metadata expose
+    `Set`, `Set Code`, and `NFT Type`. Revealed cards also expose `Set Number`,
+    `Card Profile ID`, `Card Name`, and `Subject`.
 
 ## Public Metadata Routes
 
@@ -91,19 +102,19 @@ Default public base URL is `https://ruby-high.ai` unless
 
 | Field | Current value |
 | --- | --- |
-| `name` | `Ruby High` |
+| `name` | `Ruby High: First Bell` |
 | `symbol` | `RUBY` by default |
-| `description` | `Official collectible card collection for Ruby High.` |
+| `description` | `Official First Bell collectible set for Ruby High.` |
 | `image` | `/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1` |
 | `category` / `properties.category` | `image` |
 | `seller_fee_basis_points` | `0` |
 | `external_url` / `properties.website` | Public base URL root |
 | `properties.files` | Primary image URI with `image/png` MIME type |
 | `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
-| `collection.name` | `Ruby High` |
+| `collection.name` | `Ruby High: First Bell` |
 | `collection.family` | `Ruby High` |
-| Attributes | School `Ruby High`, Type `Card Collection`, Series `First Bell`, Edition `Student & Faculty Edition`, Website |
-| Image dimensions | `1122 x 1402` |
+| Attributes | School `Ruby High`, Set `First Bell`, Set Code `FB`, Type `Collection`, Series `First Bell`, Edition `First Bell Set`, Live Profiles, Draft Profiles, Website |
+| Image dimensions | `1024 x 1024` |
 
 ### Face-Down Card
 
@@ -117,37 +128,38 @@ Default public base URL is `https://ruby-high.ai` unless
 | `external_url` / `properties.website` | Public base URL root |
 | `properties.files` | Primary image URI with `image/png` MIME type |
 | `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
-| Attributes | School, Collection, State `Face Down`, Serial, Website, optional Card Id |
+| Attributes | School, Collection, Set `First Bell`, Set Code `FB`, NFT Type `Card`, State `Face Down`, Serial, Website, optional Card Id |
 | Reveal provenance | Pack Reveal Version, Catalog Hash, Commitment, Entropy Source, Reveal Seed, Reveal Proof, Pack Asset, optional Reveal Slot, Randomness Account, Reveal Transaction |
 | Image dimensions | `1060 x 1484` |
 
 Revealed card metadata includes the same provenance fields when Ruby High can
 match the `characterId` and `serial` route back to a known card record. Direct
 revealed metadata also includes media traits: `Media Type`, `Aspect Class`,
-`Image Dimensions`, and `Source Art Version`.
+`Image Dimensions`, `Source Art Version`, `Set Number`, `Card Profile ID`,
+`Card Name`, and `Subject`.
 
 ### Core Pack Collection
 
 | Field | Current value |
 | --- | --- |
-| `name` | `Ruby High Packs` |
+| `name` | `Ruby High: First Bell Packs` |
 | `symbol` | `RUBY` by default |
-| `description` | `Ruby High card packs.` |
+| `description` | `Ruby High: First Bell card packs.` |
 | `image` | `/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1` |
 | `category` / `properties.category` | `image` |
 | `seller_fee_basis_points` | `0` |
 | `external_url` / `properties.website` | Public base URL root |
 | `properties.files` | Primary image URI with `image/png` MIME type |
 | `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
-| Attributes | School `Ruby High`, Type `Pack Collection`, Website |
+| Attributes | School `Ruby High`, Collection, Set `First Bell`, Set Code `FB`, Type `Pack Collection`, Website |
 | Image dimensions | `1448 x 1086` |
 
 ### Core Pack
 
 | Field | Current value |
 | --- | --- |
-| `name` | `Ruby High Pack #<serial>` or `Ruby High <packCount>-Pack #<serial>` |
-| `description` | `<packCount> Ruby High pack(s) with <cardCount> cards inside.` |
+| `name` | `Ruby High: First Bell Pack #<serial>` or `Ruby High: First Bell <packCount>-Pack #<serial>` |
+| `description` | `<packCount> Ruby High: First Bell pack(s) with <cardCount> cards inside.` |
 | Sealed image | `/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2` |
 | Opened image | `/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2` |
 | `category` / `properties.category` | `image` |
@@ -155,7 +167,7 @@ revealed metadata also includes media traits: `Media Type`, `Aspect Class`,
 | `external_url` / `properties.website` | Public base URL root |
 | `properties.files` | Current primary image URI with `image/png` MIME type |
 | `properties.creators` | Mint authority address, share `100`, verified `true` when authority secret is configured |
-| Attributes | School, Type `Pack`, Product, Packs, Cards Inside, State, Serial, Website, optional reveal provenance |
+| Attributes | School, Collection, Set `First Bell`, Set Code `FB`, NFT Type `Pack`, Product, Packs, Cards Inside, State, Serial, Website, optional reveal provenance |
 | Reveal provenance | Pack Reveal Version, Catalog Hash, Commitment, Entropy Source, optional Reveal Seed, Pack Asset, Reveal Slot, Randomness Account, Reveal Transaction |
 | Minimum cards | `max(requested cards, packCount * 5)` |
 | Pack art dimensions | `1122 x 1402` |
@@ -164,15 +176,15 @@ revealed metadata also includes media traits: `Media Type`, `Aspect Class`,
 
 | ID | Name | Metadata role | Rarity | Image | Dimensions | Metadata description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `lyra` | Lyra | Student | Common | `assets/nft/market-cards/lyra.png` | `1024 x 1024` | Lyra slipped this one into the stack. |
-| `sami` | Sami | Student | Common | `assets/nft/market-cards/sami.png` | `1024 x 1024` | Sami slipped this one into the stack. |
-| `ravi` | Ravi | Student | Common | `assets/nft/market-cards/ravi.png` | `1024 x 1024` | Ravi slipped this one into the stack. |
-| `indra` | Indra | Student | Rare | `assets/nft/market-cards/indra.png` | `1024 x 1024` | Indra noticed the pattern before anyone clapped. |
-| `mika` | Mika | Student | Rare | `assets/nft/market-cards/mika.png` | `1024 x 1024` | Mika says you are absolutely cleared for this. |
-| `noor` | Noor | Student | Rare | `assets/nft/market-cards/noor.png` | `1024 x 1024` | Noor called it a plot hole and walked through it. |
-| `ruby` | Ruby | Teacher | Common | `assets/nft/market-cards/ruby.png` | `1024 x 1024` | Ruby stamped this one before the late bell could object. |
-| `sally-science` | Sally Science | Teacher | Common | `assets/nft/market-cards/sally-science.png` | `1024 x 1024` | Good for one escape from sloppy variables. |
-| `professor-edward` | Professor Edward | Teacher | Common | `assets/nft/market-cards/professor-edward.png` | `1024 x 1024` | Please return before the footnotes start breeding. |
+| `lyra` | Lyra | Student | Common | `assets/nft/market-cards/lyra.png` | `1024 x 1365` | Lyra slipped this one into the stack. |
+| `sami` | Sami | Student | Common | `assets/nft/market-cards/sami.png` | `1024 x 1365` | Sami slipped this one into the stack. |
+| `ravi` | Ravi | Student | Common | `assets/nft/market-cards/ravi.png` | `1024 x 1365` | Ravi slipped this one into the stack. |
+| `indra` | Indra | Student | Rare | `assets/nft/market-cards/indra.png` | `1024 x 1365` | Indra noticed the pattern before anyone clapped. |
+| `mika` | Mika | Student | Rare | `assets/nft/market-cards/mika.png` | `1024 x 1365` | Mika says you are absolutely cleared for this. |
+| `noor` | Noor | Student | Rare | `assets/nft/market-cards/noor.png` | `1024 x 1365` | Noor called it a plot hole and walked through it. |
+| `ruby` | Ruby | Teacher | Common | `assets/nft/market-cards/ruby.png` | `1024 x 1365` | Ruby stamped this one before the late bell could object. |
+| `sally-science` | Sally Science | Teacher | Common | `assets/nft/market-cards/sally-science.png` | `1024 x 1365` | Good for one escape from sloppy variables. |
+| `professor-edward` | Professor Edward | Teacher | Common | `assets/nft/market-cards/professor-edward.png` | `1024 x 1365` | Please return before the footnotes start breeding. |
 | `captain-null` | Captain Null | Special | Ultra Rare | `assets/nft/market-cards/captain-null.png` | `1024 x 1365` | Find page 10 and the hallway forgets your name. |
 | `eliza` | Eliza | Teacher | Super Rare | `assets/nft/market-cards/eliza.png` | `1024 x 1365` | Make the system legible, then make it sing. |
 | `rati` | Rati | Teacher | Super Rare | `assets/nft/market-cards/rati.png` | `1024 x 1365` | Hold the signal. Build the world. |
@@ -188,6 +200,26 @@ revealed metadata also includes media traits: `Media Type`, `Aspect Class`,
 | `location-cafeteria` | Cafeteria | Location | Rare | `assets/nft/market-cards/location-cafeteria.png` | `1536 x 864` | Half the school day happens between bites. |
 | `location-greenhouse` | Greenhouse | Location | Rare | `assets/nft/market-cards/location-greenhouse.png` | `1536 x 864` | Some lessons grow slowly. |
 | `location-courtyard` | Courtyard | Location | Rare | `assets/nft/market-cards/location-courtyard.png` | `1536 x 864` | Every hallway leads somewhere. Every path leads to someone. |
+
+## Alternate-Art Expansion
+
+These 12 profiles are generated and served as market-card assets, but are not
+currently mintable by the live pack algorithm until the drop plan is updated.
+
+| ID | Name | Metadata role | Rarity | Image | Dimensions | Variant of |
+| --- | --- | --- | --- | --- | --- | --- |
+| `homeroom-snow-day` | Homeroom: Snow Day Bell | Location | Rare | `assets/nft/market-cards/homeroom-snow-day.png` | `1536 x 864` | `location-homeroom` |
+| `science-lab-fair-night` | Science Lab: Fair Night | Location | Rare | `assets/nft/market-cards/science-lab-fair-night.png` | `1536 x 864` | `location-science-lab` |
+| `library-after-hours` | Library: After Hours | Location | Rare | `assets/nft/market-cards/library-after-hours.png` | `1536 x 864` | `location-library` |
+| `cafeteria-holiday-lunch` | Cafeteria: Holiday Lunch | Location | Rare | `assets/nft/market-cards/cafeteria-holiday-lunch.png` | `1536 x 864` | `location-cafeteria` |
+| `greenhouse-spring-bloom` | Greenhouse: Spring Bloom | Location | Rare | `assets/nft/market-cards/greenhouse-spring-bloom.png` | `1536 x 864` | `location-greenhouse` |
+| `courtyard-lantern-festival` | Courtyard: Lantern Festival | Location | Super Rare | `assets/nft/market-cards/courtyard-lantern-festival.png` | `1536 x 864` | `location-courtyard` |
+| `hall-pass-gold-stamp` | Hall Pass: Gold Stamp | Item | Rare | `assets/nft/market-cards/hall-pass-gold-stamp.png` | `1024 x 1024` | `item-hall-pass` |
+| `flashcards-finals-week` | Flashcards: Finals Week | Item | Rare | `assets/nft/market-cards/flashcards-finals-week.png` | `1024 x 1024` | `item-flashcards` |
+| `library-card-midnight` | Library Card: Midnight Loan | Item | Rare | `assets/nft/market-cards/library-card-midnight.png` | `1024 x 1024` | `item-library-card` |
+| `lab-flask-holiday-reaction` | Lab Flask: Holiday Reaction | Item | Rare | `assets/nft/market-cards/lab-flask-holiday-reaction.png` | `1024 x 1024` | `item-lab-flask` |
+| `notebook-spring-notes` | Notebook: Spring Notes | Item | Rare | `assets/nft/market-cards/notebook-spring-notes.png` | `1024 x 1024` | `item-notebook` |
+| `captain-null-eclipse` | Captain Null: Eclipse Pass | Special | Ultra Rare | `assets/nft/market-cards/captain-null-eclipse.png` | `1024 x 1365` | `captain-null-page-10-shadow` |
 
 ## Pack Generation Catalog
 
