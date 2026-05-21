@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { Transaction } from "@solana/web3.js";
-import { buildCorePackPurchaseTransaction, corePackNftMetadataUri, fetchOwnedCorePackNfts } from "../services/core-pack-nfts.js";
+import {
+  buildCorePackPurchaseTransaction,
+  corePackAssetPluginsForMint,
+  corePackNftMetadataUri,
+  fetchOwnedCorePackNfts,
+} from "../services/core-pack-nfts.js";
 
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
@@ -23,6 +28,36 @@ afterEach(() => {
 });
 
 describe("Core pack NFT checkout transactions", () => {
+  it("adds creator and attribute plugins to Core pack assets", () => {
+    const umi = createUmi("https://rpc.test");
+    const authority = umi.eddsa.generateKeypair();
+
+    expect(corePackAssetPluginsForMint({
+      authorityAddress: String(authority.publicKey),
+      productId: "card-pack-3",
+      packCount: 3,
+      cardCount: 12,
+      serial: "123456",
+    })).toEqual([
+      {
+        type: "VerifiedCreators",
+        signatures: [{ address: authority.publicKey, verified: true }],
+      },
+      {
+        type: "Attributes",
+        attributeList: [
+          { key: "School", value: "Ruby High" },
+          { key: "Collection", value: "Ruby High Packs" },
+          { key: "Type", value: "Pack" },
+          { key: "Product", value: "card-pack-3" },
+          { key: "Packs", value: "3" },
+          { key: "Cards Inside", value: "15" },
+          { key: "Serial", value: "123456" },
+        ],
+      },
+    ]);
+  });
+
   it("normalizes legacy one-pack metadata URLs to five cards", () => {
     process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
     expect(corePackNftMetadataUri({

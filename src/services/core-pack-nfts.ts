@@ -278,6 +278,38 @@ export function coreCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env):
   return `${publicBaseUrlFromEnv(env)}${CORE_PACK_NFT_PREFIX}/metadata/core/collection.json`;
 }
 
+export function corePackAssetPluginsForMint(args: {
+  authorityAddress: string;
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: string;
+}) {
+  const packCount = Math.max(1, Math.floor(Number(args.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const productId = cleanProductId(args.productId);
+  const serial = normalizeSerial(args.serial);
+  return [
+    {
+      type: "VerifiedCreators" as const,
+      signatures: [{ address: publicKey(args.authorityAddress), verified: true }],
+    },
+    {
+      type: "Attributes" as const,
+      attributeList: [
+        { key: "School", value: "Ruby High" },
+        { key: "Collection", value: "Ruby High Packs" },
+        { key: "Type", value: "Pack" },
+        { key: "Product", value: productId },
+        { key: "Packs", value: String(packCount) },
+        { key: "Cards Inside", value: String(cardCount) },
+        { key: "Serial", value: serial },
+      ],
+    },
+  ];
+}
+
 export function corePackNftMetadataForRoute(args: {
   productId: string;
   serial: string;
@@ -366,14 +398,24 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
   const asset = generateSigner(umi);
   const metadataUri = corePackNftMetadataUri(input);
   const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = packSerial(input.paymentSignature);
   const builder = create(umi, {
     asset,
     collection,
     authority: umi.identity,
     payer: umi.payer,
     owner,
-    name: packCount === 1 ? `Ruby High Pack #${packSerial(input.paymentSignature)}` : `Ruby High ${packCount}-Pack #${packSerial(input.paymentSignature)}`,
+    name: packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`,
     uri: metadataUri,
+    plugins: corePackAssetPluginsForMint({
+      authorityAddress: String(umi.identity.publicKey),
+      productId: input.productId,
+      packCount,
+      cardCount,
+      serial,
+    }),
   });
   const sent = await sendAndConfirmCoreTransaction(umi, builder);
   return {
