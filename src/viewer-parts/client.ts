@@ -2088,8 +2088,8 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
-    if (/mint authority needs more SOL|insufficient funds|Attempt to debit|0x1\b/i.test(message)) {
-      return "Ruby High's mint authority needs more SOL before this NFT can be minted. Your card was not changed.";
+    if (/needs more SOL|insufficient funds|Attempt to debit|0x1\b/i.test(message)) {
+      return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
       return "Ruby High's Solana RPC rejected the request. We need to refresh the RPC key; your NFT was not changed.";

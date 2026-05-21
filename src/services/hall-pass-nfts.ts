@@ -68,8 +68,8 @@ const CARD_COLLECTION_EDITION = "Student & Faculty Edition";
 const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1";
 const CARD_COLLECTION_METADATA_URI_PATH = `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`;
 const CARD_BACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1";
-const ESTIMATED_CARD_MINT_LAMPORTS = 10_000_000n;
-const MINT_AUTHORITY_RESERVE_LAMPORTS = 5_000_000n;
+const ESTIMATED_CARD_MINT_LAMPORTS = 20_000_000n;
+const MINT_AUTHORITY_RESERVE_LAMPORTS = 20_000_000n;
 
 export interface HallPassNftStatus {
   configured: boolean;
@@ -584,6 +584,7 @@ export async function mintHallPassCardNft(
 ): Promise<HallPassNftMintResult> {
   if (minterOverride) return minterOverride(card, ownerWalletAddress);
   const config = readMintConfig();
+  await assertHallPassMintAuthorityCapacity(1);
   const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
   const mint = await generateKeyPairSigner();
@@ -630,6 +631,7 @@ export async function mintHallPassCardNft(
     createSolanaRpc(config.rpcUrl),
     getBase64EncodedWireTransaction(signed),
   );
+  await confirmSubmittedTransaction(config.rpcUrl, String(signature), "Card mint");
   return {
     ownerWalletAddress: owner,
     mintAddress: mint.address,
@@ -690,6 +692,30 @@ async function simulateBase64TransactionForSigning(
     const logs = Array.isArray(payload.result.logs) ? ` ${payload.result.logs.slice(-3).join(" ")}` : "";
     throw new Error(`${label} failed Solana preflight simulation.${logs}`.trim());
   }
+}
+
+async function confirmSubmittedTransaction(
+  rpcUrl: string,
+  signature: string,
+  label: string,
+): Promise<Record<string, any>> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (attempt > 0) await sleep(Math.min(2500, 700 + attempt * 300));
+    try {
+      const transaction = await fetchParsedTransaction(rpcUrl, signature);
+      if (!transaction) continue;
+      if (transaction.meta?.err != null) {
+        throw new Error(`${label} failed on-chain. ${transactionFailureDetail(transaction)}`.trim());
+      }
+      return transaction;
+    } catch (err) {
+      lastError = err;
+      if (err instanceof Error && /failed on-chain/i.test(err.message)) throw err;
+    }
+  }
+  const detail = lastError instanceof Error ? ` ${lastError.message}` : "";
+  throw new Error(`${label} transaction was not confirmed yet.${detail}`.trim());
 }
 
 export async function ensureHallPassCardCollectionVerified(mintAddress: string): Promise<boolean> {
@@ -1033,6 +1059,21 @@ async function fetchParsedTransaction(rpcUrl: string, signature: string): Promis
   };
   if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
   return payload.result ?? null;
+}
+
+function transactionFailureDetail(transaction: Record<string, any>): string {
+  const logs: string[] = Array.isArray(transaction.meta?.logMessages)
+    ? transaction.meta.logMessages.filter((line: unknown): line is string => typeof line === "string")
+    : [];
+  const insufficientLamports = logs.find((line) => /insufficient lamports|Attempt to debit/i.test(line));
+  if (insufficientLamports) return insufficientLamports;
+  const tail = logs.slice(-4).join(" ");
+  if (tail) return tail;
+  try {
+    return `Solana error ${JSON.stringify(transaction.meta?.err)}`;
+  } catch {
+    return "Solana transaction failed.";
+  }
 }
 
 async function collectionVerificationInstruction(input: {

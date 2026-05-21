@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  assertHallPassMintAuthorityCapacity,
   hallPassCardCollectionForMint,
   hallPassCardOnChainNameForMint,
+  setHallPassNftAuthorityBalanceForTest,
   verifyHallPassCardBurn,
 } from "../services/hall-pass-nfts.js";
 
@@ -39,6 +41,17 @@ describe("verifyHallPassCardBurn", () => {
       key: "Bu43twu7FsZUHVnYLWuAHLGzseSywm6uHTcD6EDAcX8Q",
       verified: false,
     });
+  });
+
+  it("requires enough authority SOL before server-side card mints", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
+    const restore = setHallPassNftAuthorityBalanceForTest(async () => 39_999_999n);
+    await expect(assertHallPassMintAuthorityCapacity(1)).rejects.toThrow(/needs at least 0.040000 SOL/);
+    restore();
+
+    const restoreFunded = setHallPassNftAuthorityBalanceForTest(async () => 40_000_000n);
+    await expect(assertHallPassMintAuthorityCapacity(1)).resolves.toBeUndefined();
+    restoreFunded();
   });
 
   it("accepts parsed burn instructions whose wallet is in multisigAuthority/signers", async () => {
