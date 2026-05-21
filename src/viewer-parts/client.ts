@@ -634,7 +634,6 @@ export function runViewerClient(bootstrap) {
     privyOverlay: $("privy-overlay"),
     privyClose: $("privy-close"),
     privyWallet: $("privy-wallet"),
-    privyPhantomLogin: $("privy-phantom-login"),
     privyLoginWidget: $("privy-login-widget"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
@@ -3525,8 +3524,8 @@ export function runViewerClient(bootstrap) {
         title: "Connect Solana wallet?",
         action: "Connect wallet",
         cost: "None",
-        prompt: "Phantom should ask to connect an address only.",
-        copy: "Ruby High will ask Phantom for a Solana address. This is not a transaction.",
+        prompt: "Your wallet should ask to connect an address only.",
+        copy: "Ruby High will ask Privy for a Solana wallet address. This is not a transaction.",
         confirmText: "Connect wallet",
       });
       if (!approved) {
@@ -3560,7 +3559,7 @@ export function runViewerClient(bootstrap) {
       walletAddress: ownerWalletAddress,
       cost: "No wallet spend",
       pack: "Ruby High Pack",
-      prompt: "No Phantom signature is expected for pack opening.",
+      prompt: "No wallet signature is expected for pack opening.",
       copy: "Ruby High will open an owned pack and create five face-down cards in your locker.",
       confirmText: "Open pack",
     });
@@ -3647,7 +3646,7 @@ export function runViewerClient(bootstrap) {
         cost: "Network fee only",
         card: cardName,
         reference: preparedData.mint.mintAddress,
-        prompt: "Phantom should show one card-mint transaction.",
+        prompt: "Your wallet should show one card-mint transaction.",
         copy: "Ruby High will ask your wallet to mint this card NFT so it can be revealed.",
         confirmText: "Open wallet",
       });
@@ -4009,7 +4008,7 @@ export function runViewerClient(bootstrap) {
         recipient: data.recipient,
         mint: data.mint,
         reference: data.reference,
-        prompt: "Phantom should show one token-transfer transaction.",
+        prompt: "Your wallet should show one token-transfer transaction.",
         copy: "Ruby High will ask your wallet to pay for a pack NFT. This should not ask for broad approvals.",
         confirmText: "Open wallet",
       });
@@ -4047,8 +4046,8 @@ export function runViewerClient(bootstrap) {
       title: "Connect Solana wallet?",
       action: "Connect wallet",
       cost: "None",
-      prompt: "Phantom should ask to connect an address only.",
-      copy: "Ruby High will ask Phantom for a Solana address. This is not a transaction.",
+      prompt: "Your wallet should ask to connect an address only.",
+      copy: "Ruby High will ask Privy for a Solana wallet address. This is not a transaction.",
       confirmText: "Connect wallet",
     });
     if (!approved) return false;
@@ -4314,7 +4313,7 @@ export function runViewerClient(bootstrap) {
         credit: hallPassCostLabel(hallPassBurnCreditForCards(1)),
         card: preparedCard.characterName || selectedCard.characterName || "Ruby High Card",
         reference: preparedCard.mintAddress,
-        prompt: "Phantom should show one card-burn transaction.",
+        prompt: "Your wallet should show one card-burn transaction.",
         copy: "This permanently burns the NFT card. Ruby High credits Hall Passes after the burn confirms.",
         confirmText: "Open wallet",
         tone: "danger",
@@ -10873,14 +10872,6 @@ export function runViewerClient(bootstrap) {
       || (privyState.walletChainType === "solana" ? privyState.walletAddress : null)
       || null;
   }
-  function phantomWalletAvailable() {
-    const provider = (window.phantom && window.phantom.solana) || window.solana;
-    return !!(provider && provider.isPhantom && typeof provider.connect === "function" && typeof provider.signMessage === "function");
-  }
-  function looksLikeWalletLoginFailure(err) {
-    const message = String((err && (err.message || err.toString && err.toString())) || "");
-    return /wallet|phantom|solana/i.test(message);
-  }
   function sanitizePrivyDiagnostic(event) {
     const source = event && typeof event === "object" ? event : {};
     const payload = {};
@@ -10895,7 +10886,6 @@ export function runViewerClient(bootstrap) {
       }
     });
     payload.privyAuthenticated = !!privyState.authenticated;
-    payload.phantomAvailable = phantomWalletAvailable();
     return payload;
   }
   function reportPrivyDiagnostic(event) {
@@ -10951,10 +10941,6 @@ export function runViewerClient(bootstrap) {
       els.privyLoginWidget.title = needsWalletConnect
         ? "Connect a Solana wallet to open packs and mint card NFTs."
         : "Sign in with Privy";
-    }
-    if (els.privyPhantomLogin) {
-      els.privyPhantomLogin.hidden = !privyState.configured || privyState.authenticated || !phantomWalletAvailable();
-      els.privyPhantomLogin.title = "Sign in directly with the Phantom Solana wallet.";
     }
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
     if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
@@ -11070,36 +11056,8 @@ export function runViewerClient(bootstrap) {
       if (fromBilling) reportStatus("Account connected. Continue with card pack checkout.", false);
       return snapshot;
     } catch (err) {
-      if (!fromBilling && looksLikeWalletLoginFailure(err) && phantomWalletAvailable()) {
-        reportStatus("Trying Phantom directly...", false);
-        const snapshot = await startPhantomLogin({ source: "privy-fallback" });
-        if (snapshot) return snapshot;
-      }
       if (!fromBilling && els.privyOverlay) els.privyOverlay.classList.add("is-open");
       reportStatus(err && err.message ? err.message : "Privy sign-in failed", true);
-      return null;
-    } finally {
-      setPrivyBusy(false);
-    }
-  }
-  async function startPhantomLogin(opts) {
-    if (!privyConfig) return;
-    const fromFallback = opts && opts.source === "privy-fallback";
-    setPrivyBusy(true);
-    setPrivyStatus(fromFallback ? "Confirming Phantom..." : "Opening Phantom...", false);
-    try {
-      const client = await getPrivyClient();
-      if (!client || typeof client.loginWithPhantom !== "function") throw new Error("Phantom login is unavailable.");
-      const snapshot = await client.loginWithPhantom();
-      if (!snapshot) {
-        setPrivyStatus("Phantom sign-in closed.", false);
-        return null;
-      }
-      await handlePrivySession(snapshot, { source: "login" });
-      setPrivyStatus("Account connected.", false);
-      return snapshot;
-    } catch (err) {
-      setPrivyStatus(err && err.message ? err.message : "Phantom sign-in failed", true);
       return null;
     } finally {
       setPrivyBusy(false);
@@ -11158,7 +11116,6 @@ export function runViewerClient(bootstrap) {
     setPrivyStatus("", false);
   }
   function setPrivyBusy(busy) {
-    if (els.privyPhantomLogin) els.privyPhantomLogin.disabled = !!busy;
     if (els.privyLoginWidget) els.privyLoginWidget.disabled = !!busy;
     if (els.privySignout) els.privySignout.disabled = !!busy;
   }
@@ -11855,9 +11812,6 @@ export function runViewerClient(bootstrap) {
       return;
     }
     await startPrivyLogin();
-  });
-  if (els.privyPhantomLogin) els.privyPhantomLogin.addEventListener("click", async () => {
-    await startPhantomLogin({ source: "account" });
   });
   if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 

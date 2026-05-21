@@ -3849,7 +3849,6 @@ export const VIEWER_CSS = `
     }
   }
   #privy-login-widget:disabled,
-  #privy-phantom-login:disabled,
   #privy-signout:disabled,
   #account-ai-use-pass:disabled,
   #account-ai-action:disabled,

@@ -90,7 +90,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="privy-action"');
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
-    expect(html).toContain('id="privy-phantom-login"');
+    expect(html).not.toContain('id="privy-phantom-login"');
     expect(html).toContain('id="privy-login-widget"');
     expect(html).not.toContain('id="privy-connect-solana"');
     expect(html).toContain('id="account-ai-use-pass"');
@@ -114,14 +114,14 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "client.login()");
     expectScriptToContain(script, "client.onDiagnostic(reportPrivyDiagnostic)");
     expectScriptToContain(script, 'postViewerMetricEvent("privy_auth_error"');
-    expectScriptToContain(script, "client.loginWithPhantom()");
     expectScriptToContain(script, "client.connectSolanaWallet()");
-    expectScriptToContain(script, "function phantomWalletAvailable()");
     expectScriptToContain(script, "function reportPrivyDiagnostic(event)");
-    expectScriptToContain(script, "Trying Phantom directly...");
     expectScriptToContain(script, "startPrivyLogin");
-    expectScriptToContain(script, "startPhantomLogin");
     expectScriptToContain(script, "startSolanaWalletConnect");
+    expect(script).not.toContain("client.loginWithPhantom()");
+    expect(script).not.toContain("function phantomWalletAvailable()");
+    expect(script).not.toContain("Trying Phantom directly...");
+    expect(script).not.toContain("startPhantomLogin");
     expectScriptToContain(script, 'apiBase + "/auth/privy"');
     expectScriptToContain(script, "initializePrivyFromStoredSession();");
     expect(script).not.toContain("sendEmailCode");
@@ -165,7 +165,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "No pack or card collectibles in this wallet yet.");
     expectScriptToContain(script, "async function openHallPassPackFromAccount(packId)");
     expectScriptToContain(script, 'apiBase + "/nft/open-pack"');
-    expectScriptToContain(script, 'prompt: "No Phantom signature is expected for pack opening."');
+    expectScriptToContain(script, 'prompt: "No wallet signature is expected for pack opening."');
     expectScriptToContain(script, "async function syncWalletPackNftsFromAccount(opts)");
     expectScriptToContain(script, 'apiBase + "/nft/sync-packs"');
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
@@ -202,7 +202,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function mintHallPassCardFromAccount(cardId)");
     expectScriptToContain(script, 'apiBase + "/nft/mint-card-prepare"');
     expectScriptToContain(script, 'apiBase + "/nft/mint-card-confirm"');
-    expectScriptToContain(script, 'prompt: "Phantom should show one card-mint transaction."');
+    expectScriptToContain(script, 'prompt: "Your wallet should show one card-mint transaction."');
     expectScriptToContain(script, "Mint to Reveal");
     expectScriptToContain(script, "Mint the next face-down Ruby High card NFT to reveal it.");
     expect(script).not.toContain("unmintedCardCount");
@@ -213,7 +213,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, 'title: "Connect Solana wallet?"');
     expectScriptToContain(script, 'title: "Confirm card pack payment?"');
-    expectScriptToContain(script, 'prompt: "Phantom should show one token-transfer transaction."');
+    expectScriptToContain(script, 'prompt: "Your wallet should show one token-transfer transaction."');
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
     expect(script).not.toContain('"prepare card mint " + prepared.status');
@@ -243,7 +243,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'apiBase + "/billing/card-burn"');
     expectScriptToContain(script, 'title: selectedCards.length === 1 ? "Burn this card?"');
     expectScriptToContain(script, "credit: hallPassCostLabel(hallPassBurnCreditForCards(1))");
-    expectScriptToContain(script, 'prompt: "Phantom should show one card-burn transaction."');
+    expectScriptToContain(script, 'prompt: "Your wallet should show one card-burn transaction."');
     expect(VIEWER_CSS).toContain(".card-burn-overlay");
     expect(VIEWER_CSS).toContain(".card-burn-grid");
     expect(VIEWER_CSS).toContain(".card-burn-thumb img");
@@ -251,7 +251,6 @@ describe("viewer regression guardrails", () => {
 
   it("keeps Privy modal actions from getting stuck while Privy owns Solana wallet selection", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
-    expect(PRIVY_CLIENT_SOURCE).toContain("useLoginWithSiws");
     expect(PRIVY_CLIENT_SOURCE).toContain("getIdentityToken");
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_LOGIN_METHODS: NonNullable<PrivyClientConfig["loginMethods"]> = ["wallet", "email", "google", "twitter"];');
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];');
@@ -267,13 +266,16 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("const raw = record.chainType ?? record.chain_type;");
     expect(PRIVY_CLIENT_SOURCE).toContain('return raw === "ethereum" || raw === "solana" ? raw : null;');
     expect(PRIVY_CLIENT_SOURCE).toContain("const solanaWalletAddress = connectedSolanaWalletAddress;");
-    expect(PRIVY_CLIENT_SOURCE).toContain("loginWithInjectedPhantom");
     expect(PRIVY_CLIENT_SOURCE).toContain("onDiagnostic(listener)");
     expect(PRIVY_CLIENT_SOURCE).toContain("diagnosticFromError");
     expect(PRIVY_CLIENT_SOURCE).toContain("sanitizeDiagnosticEvent");
-    expect(PRIVY_CLIENT_SOURCE).toContain("phantom.siws.authenticate.error");
-    expect(PRIVY_CLIENT_SOURCE).toContain('walletClientType: "phantom"');
-    expect(PRIVY_CLIENT_SOURCE).toContain('connectorType: "injected"');
+    expect(PRIVY_CLIENT_SOURCE).toContain("Connect a Solana wallet through Privy to buy Ruby High packs.");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("useLoginWithSiws");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("loginWithPhantom");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("loginWithInjectedPhantom");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain("phantom.siws.authenticate.error");
+    expect(PRIVY_CLIENT_SOURCE).not.toContain('walletClientType: "phantom"');
+    expect(PRIVY_CLIENT_SOURCE).not.toContain('connectorType: "injected"');
     expect(PRIVY_CLIENT_SOURCE).toContain("identityToken");
     expect(PRIVY_CLIENT_SOURCE).not.toContain("linkedSolanaWallet");
     expect(PRIVY_CLIENT_SOURCE).not.toContain("function solanaWalletFromUser");

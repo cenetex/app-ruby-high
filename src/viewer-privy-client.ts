@@ -5,7 +5,6 @@ import {
   PrivyProvider,
   useConnectWallet,
   useLogin,
-  useLoginWithSiws,
   useModalStatus,
   usePrivy,
   type LinkedAccountWithMetadata,
@@ -57,12 +56,6 @@ interface PrivyDiagnosticEvent {
   addressPreview?: string | null;
   userIdPreview?: string | null;
   signatureBytes?: number;
-  hasWindowPhantom?: boolean;
-  hasWindowSolana?: boolean;
-  providerIsPhantom?: boolean;
-  hasConnect?: boolean;
-  hasSignMessage?: boolean;
-  hasPublicKey?: boolean;
 }
 
 type DiagnosticListener = (event: PrivyDiagnosticEvent) => void | Promise<void>;
@@ -102,7 +95,6 @@ interface SolanaPreparedTransaction {
 interface RubyHighPrivyClient {
   current(): Promise<RubyHighPrivySession>;
   login(): Promise<RubyHighPrivySession | null>;
-  loginWithPhantom(): Promise<RubyHighPrivySession | null>;
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
@@ -114,7 +106,6 @@ interface RubyHighPrivyClient {
 interface BridgeApi {
   current(): Promise<RubyHighPrivySession>;
   login(): Promise<RubyHighPrivySession | null>;
-  loginWithPhantom(): Promise<RubyHighPrivySession | null>;
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
@@ -158,7 +149,6 @@ export async function createRubyHighPrivyClient(
   const client: RubyHighPrivyClient = {
     current: () => requireBridge(bridgeApi).current(),
     login: () => requireBridge(bridgeApi).login(),
-    loginWithPhantom: () => requireBridge(bridgeApi).loginWithPhantom(),
     connectSolanaWallet: () => requireBridge(bridgeApi).connectSolanaWallet(),
     logout: () => requireBridge(bridgeApi).logout(),
     paySolanaQuote: (quote) => requireBridge(bridgeApi).paySolanaQuote(quote),
@@ -238,7 +228,6 @@ function RubyHighPrivyBridge(props: {
   register: (api: BridgeApi, ready: boolean) => void;
 }): null {
   const privy = usePrivy();
-  const siws = useLoginWithSiws();
   const modal = useModalStatus();
   const solanaWallets = useSolanaWallets();
   const { signTransaction } = useSignTransaction();
@@ -420,7 +409,7 @@ function RubyHighPrivyBridge(props: {
           type: "privy.login.start",
           level: "info",
           stage: "modal",
-          walletClientType: "phantom",
+          walletClientType: "solana_wallet",
           connectorType: "privy_modal",
           provider: "privy",
         });
@@ -437,26 +426,6 @@ function RubyHighPrivyBridge(props: {
       }
     });
   }, [current, login, privy.authenticated, privy.ready, privy.user]);
-
-  const loginWithPhantom = useCallback((): Promise<RubyHighPrivySession | null> => {
-    if (!privy.ready) return Promise.reject(new Error("Privy is still starting."));
-    const provider = readInjectedPhantomProvider();
-    props.diagnose({
-      type: provider ? "phantom.injected_provider.found" : "phantom.injected_provider.missing",
-      level: provider ? "info" : "error",
-      stage: "provider",
-      provider: "phantom",
-      ...phantomProviderSnapshot(provider),
-    });
-    if (!provider) return Promise.reject(new Error("Phantom wallet is not available in this browser."));
-    return loginWithInjectedPhantom(provider, siws, props.diagnose).then((result) => {
-      if (!result) return null;
-      return current(result.user, undefined, result.address).then((session) => {
-        props.notify(session);
-        return session;
-      });
-    });
-  }, [current, privy.ready, props, siws]);
 
   const connectSolanaWallet = useCallback((): Promise<RubyHighPrivySession | null> => {
     if (!privy.ready) return Promise.reject(new Error("Privy is still starting."));
@@ -492,7 +461,7 @@ function RubyHighPrivyBridge(props: {
         const result = connectWallet({
           walletChainType: "solana-only",
           walletList: RUBY_HIGH_SOLANA_WALLET_LIST,
-          description: "Connect Phantom or another Solana wallet to buy Ruby High packs.",
+          description: "Connect a Solana wallet through Privy to buy Ruby High packs.",
         }) as unknown;
         if (result && typeof (result as PromiseLike<unknown>).then === "function") {
           void Promise.resolve(result).catch((err) => rejectPendingWalletConnect(err));
@@ -515,7 +484,6 @@ function RubyHighPrivyBridge(props: {
     props.register({
       current,
       login: openLogin,
-      loginWithPhantom,
       connectSolanaWallet,
       logout,
       paySolanaQuote,
@@ -524,7 +492,6 @@ function RubyHighPrivyBridge(props: {
   }, [
     connectSolanaWallet,
     current,
-    loginWithPhantom,
     logout,
     openLogin,
     paySolanaQuote,
@@ -590,146 +557,6 @@ function base64Encode(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return window.btoa(binary);
-}
-
-interface InjectedPhantomProvider {
-  isPhantom?: boolean;
-  publicKey?: { toString(): string } | null;
-  connect(input?: { onlyIfTrusted?: boolean }): Promise<{ publicKey?: { toString(): string } | null } | void>;
-  signMessage(message: Uint8Array, display?: string): Promise<{ signature?: Uint8Array } | Uint8Array>;
-}
-
-function readInjectedPhantomProvider(): InjectedPhantomProvider | null {
-  const win = window as unknown as {
-    phantom?: { solana?: unknown };
-    solana?: unknown;
-  };
-  const candidates = [win.phantom?.solana, win.solana];
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const provider = candidate as InjectedPhantomProvider;
-    if (provider.isPhantom && typeof provider.connect === "function" && typeof provider.signMessage === "function") {
-      return provider;
-    }
-  }
-  return null;
-}
-
-async function loginWithInjectedPhantom(
-  provider: InjectedPhantomProvider,
-  siws: ReturnType<typeof useLoginWithSiws>,
-  diagnose: (event: PrivyDiagnosticEvent) => void,
-): Promise<{ user: User; address: string } | null> {
-  diagnose({ type: "phantom.siws.connect.start", level: "info", stage: "connect", provider: "phantom", ...phantomProviderSnapshot(provider) });
-  let connected: { publicKey?: { toString(): string } | null } | void;
-  try {
-    connected = await provider.connect({ onlyIfTrusted: false });
-  } catch (err) {
-    diagnose(diagnosticFromError("phantom.siws.connect.error", err, { stage: "connect", provider: "phantom" }));
-    throw err;
-  }
-  const address = publicKeyString(connected && typeof connected === "object" ? connected.publicKey : null)
-    || publicKeyString(provider.publicKey);
-  diagnose({
-    type: address ? "phantom.siws.connect.success" : "phantom.siws.connect.no_address",
-    level: address ? "info" : "error",
-    stage: "connect",
-    provider: "phantom",
-    addressPreview: shortIdentifier(address),
-  });
-  if (!address) throw new Error("Phantom did not return a Solana address.");
-
-  let message: string;
-  try {
-    diagnose({ type: "phantom.siws.message.start", level: "info", stage: "message", provider: "privy", addressPreview: shortIdentifier(address) });
-    message = await siws.generateSiwsMessage({ address });
-    diagnose({ type: "phantom.siws.message.success", level: "info", stage: "message", provider: "privy", addressPreview: shortIdentifier(address) });
-  } catch (err) {
-    diagnose(diagnosticFromError("phantom.siws.message.error", err, { stage: "message", provider: "privy", addressPreview: shortIdentifier(address) }));
-    throw err;
-  }
-
-  let signed: { signature?: Uint8Array } | Uint8Array;
-  try {
-    diagnose({ type: "phantom.siws.sign.start", level: "info", stage: "sign", provider: "phantom", addressPreview: shortIdentifier(address) });
-    signed = await provider.signMessage(new TextEncoder().encode(message), "utf8");
-  } catch (err) {
-    diagnose(diagnosticFromError("phantom.siws.sign.error", err, { stage: "sign", provider: "phantom", addressPreview: shortIdentifier(address) }));
-    throw err;
-  }
-  const signature = signed instanceof Uint8Array ? signed : signed?.signature;
-  diagnose({
-    type: signature instanceof Uint8Array ? "phantom.siws.sign.success" : "phantom.siws.sign.no_signature",
-    level: signature instanceof Uint8Array ? "info" : "error",
-    stage: "sign",
-    provider: "phantom",
-    addressPreview: shortIdentifier(address),
-    signatureBytes: signature instanceof Uint8Array ? signature.length : undefined,
-  });
-  if (!(signature instanceof Uint8Array)) throw new Error("Phantom did not return a signature.");
-
-  let user: User;
-  try {
-    diagnose({
-      type: "phantom.siws.authenticate.start",
-      level: "info",
-      stage: "authenticate",
-      provider: "privy",
-      walletClientType: "phantom",
-      connectorType: "injected",
-      addressPreview: shortIdentifier(address),
-    });
-    user = await siws.loginWithSiws({
-      message,
-      signature: base64Encode(signature),
-      walletClientType: "phantom",
-      connectorType: "injected",
-    });
-  } catch (err) {
-    diagnose(diagnosticFromError("phantom.siws.authenticate.error", err, {
-      stage: "authenticate",
-      provider: "privy",
-      walletClientType: "phantom",
-      connectorType: "injected",
-      addressPreview: shortIdentifier(address),
-    }));
-    throw err;
-  }
-  diagnose({
-    type: "phantom.siws.authenticate.success",
-    level: "info",
-    stage: "authenticate",
-    provider: "privy",
-    walletClientType: "phantom",
-    connectorType: "injected",
-    addressPreview: shortIdentifier(address),
-    userIdPreview: shortIdentifier(user.id),
-  });
-  return { user, address };
-}
-
-function publicKeyString(value: { toString(): string } | null | undefined): string {
-  try {
-    const text = value?.toString().trim() ?? "";
-    return text || "";
-  } catch (_err) {
-    return "";
-  }
-}
-
-function phantomProviderSnapshot(provider: InjectedPhantomProvider | null): Partial<PrivyDiagnosticEvent> {
-  const win = window as unknown as {
-    phantom?: { solana?: unknown };
-    solana?: unknown;
-  };
-  return {
-    hasWindowPhantom: !!win.phantom?.solana,
-    hasWindowSolana: !!win.solana,
-    providerIsPhantom: !!provider?.isPhantom,
-    hasConnect: typeof provider?.connect === "function",
-    hasSignMessage: typeof provider?.signMessage === "function",
-    hasPublicKey: !!provider?.publicKey,
-  };
 }
 
 function diagnosticFromError(
