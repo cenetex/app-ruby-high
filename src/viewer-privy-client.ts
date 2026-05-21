@@ -289,6 +289,7 @@ function RubyHighPrivyBridge(props: {
   const pendingWalletConnect = useRef<PendingLogin | null>(null);
   const modalOpenedForLogin = useRef(false);
   const modalOpenedForWalletConnect = useRef(false);
+  const initialSessionChecked = useRef(false);
   const solanaWalletsRef = useRef<ConnectedStandardSolanaWallet[]>([]);
 
   useEffect(() => {
@@ -374,16 +375,24 @@ function RubyHighPrivyBridge(props: {
     const wallet = selectSolanaWallet(solanaWalletsRef.current);
     if (!wallet) throw new Error("Connect a Solana wallet first.");
     const transaction = base64Decode(prepared.transactionBase64 || prepared.transaction || "");
-    const signed = await signTransaction({
-      transaction,
-      wallet,
-      chain: prepared.chain || "solana:mainnet",
-    });
-    return {
-      signedTransactionBase64: base64Encode(signedTransactionBytes(signed)),
-      walletAddress: wallet.address,
-    };
-  }, [privy.authenticated, privy.ready, signTransaction, solanaWallets.ready]);
+    try {
+      const signed = await signTransaction({
+        transaction,
+        wallet,
+        chain: prepared.chain || "solana:mainnet",
+      });
+      return {
+        signedTransactionBase64: base64Encode(signedTransactionBytes(signed)),
+        walletAddress: wallet.address,
+      };
+    } catch (err) {
+      props.diagnose(diagnosticFromError("privy.sign_transaction.error", err, { stage: "sign_transaction" }));
+      if (/429|too many requests|rate.?limit/i.test(err instanceof Error ? err.message : String(err || ""))) {
+        throw new Error("Privy is rate limiting wallet requests. Wait a minute, then try again.");
+      }
+      throw err;
+    }
+  }, [privy.authenticated, privy.ready, props, signTransaction, solanaWallets.ready]);
 
   const signAndSendSolanaPreparedTransaction = useCallback(async (
     prepared: SolanaPreparedTransaction,
@@ -597,6 +606,8 @@ function RubyHighPrivyBridge(props: {
 
   useEffect(() => {
     if (!privy.ready) return;
+    if (initialSessionChecked.current) return;
+    initialSessionChecked.current = true;
     void current().then((session) => {
       if (session.authenticated) props.notify(session);
     });

@@ -785,6 +785,11 @@ export function runViewerClient(bootstrap) {
   let hostedAiActive = false;
   let privyClient = null;
   let privyClientPromise = null;
+  let privyRefreshPromise = null;
+  let lastPrivyRefreshAt = 0;
+  let lastPrivyRateLimitedAt = 0;
+  const PRIVY_REFRESH_MIN_INTERVAL_MS = 60 * 1000;
+  const PRIVY_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000;
   let privyState = {
     configured: !!privyConfig,
     authenticated: false,
@@ -2112,6 +2117,9 @@ export function runViewerClient(bootstrap) {
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
       return "Ruby High's Solana RPC rejected the request. We need to refresh the RPC key; your NFT was not changed.";
+    }
+    if (/429|too many requests|rate.?limit/i.test(message)) {
+      return "Privy is rate limiting wallet requests. Wait a minute, then try again.";
     }
     if (/not found yet|not found on-chain|confirmation/i.test(message)) {
       return "Solana has not indexed the transaction yet. Wait a few seconds and try again.";
@@ -3698,6 +3706,7 @@ export function runViewerClient(bootstrap) {
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before revealing Cards.");
+      updatePackMintProgress("Preparing wallet transaction...");
       const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3724,6 +3733,7 @@ export function runViewerClient(bootstrap) {
       const cardName = preparedData.card && preparedData.card.characterName
         ? preparedData.card.characterName
         : "Mystery Card";
+      updatePackMintProgress("Review the mint preview...");
       const approved = await confirmWalletTransactionPreview({
         title: "Mint this Card?",
         action: "Mint Card",
@@ -11053,6 +11063,9 @@ export function runViewerClient(bootstrap) {
   }
   function friendlyPrivyAccountError(err, fallback) {
     const message = err && err.message ? String(err.message) : String(err || "");
+    if (/429|too many requests|rate.?limit/i.test(message)) {
+      return "Privy is rate limiting wallet requests. Wait a minute, then try again.";
+    }
     if (/disallowed_login_method/i.test(message)) {
       return "Privy blocked wallet sign-in. Enable wallet login in the Privy dashboard, then refresh Ruby High.";
     }
@@ -11186,18 +11199,32 @@ export function runViewerClient(bootstrap) {
       applyPrivyState({ configured: false, authenticated: false, ready: true });
       return;
     }
-    try {
-      const client = await getPrivyClient();
-      if (!client) return;
-      const snapshot = await client.current();
-      applyPrivyState({ ...snapshot, configured: true, ready: true });
-      if (snapshot.authenticated) await syncPrivyServerSession(snapshot);
-    } catch (err) {
-      applyPrivyState({ configured: true, authenticated: false, ready: true });
-      if (els.privyOverlay && els.privyOverlay.classList.contains("is-open")) {
-        setPrivyStatus("Privy unavailable · " + friendlyPrivyAccountError(err, "error"), true);
+    const now = Date.now();
+    if (billingBusy) return privyRefreshPromise;
+    if (privyRefreshPromise) return privyRefreshPromise;
+    if (lastPrivyRateLimitedAt > 0 && now - lastPrivyRateLimitedAt < PRIVY_RATE_LIMIT_BACKOFF_MS) return null;
+    if (lastPrivyRefreshAt > 0 && now - lastPrivyRefreshAt < PRIVY_REFRESH_MIN_INTERVAL_MS) return null;
+    lastPrivyRefreshAt = now;
+    privyRefreshPromise = (async () => {
+      try {
+        const client = await getPrivyClient();
+        if (!client) return;
+        const snapshot = await client.current();
+        applyPrivyState({ ...snapshot, configured: true, ready: true });
+        if (snapshot.authenticated) await syncPrivyServerSession(snapshot);
+      } catch (err) {
+        if (/429|too many requests|rate.?limit/i.test(err && err.message ? String(err.message) : String(err || ""))) {
+          lastPrivyRateLimitedAt = Date.now();
+        }
+        if (!privyState.authenticated) applyPrivyState({ configured: true, authenticated: false, ready: true });
+        if (els.privyOverlay && els.privyOverlay.classList.contains("is-open")) {
+          setPrivyStatus("Privy unavailable · " + friendlyPrivyAccountError(err, "error"), true);
+        }
+      } finally {
+        privyRefreshPromise = null;
       }
-    }
+    })();
+    return privyRefreshPromise;
   }
   async function startPrivyLogin(opts) {
     if (!privyConfig) return;
