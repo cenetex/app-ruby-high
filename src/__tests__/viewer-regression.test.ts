@@ -82,6 +82,15 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("window.prompt");
   });
 
+  it("keeps lounge mode out of the empty-board class-start CTA", () => {
+    const script = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, 'const isLounge = !!((faculty && faculty.id === LOUNGE_ID) || (!faculty && lastTelemetry && lastTelemetry.faculty === LOUNGE_ID));');
+    expectScriptToContain(script, "Lounge mode: hide blackboard and show the faculty lounge roster.");
+    expectScriptToContain(script, "t.faculty === LOUNGE_ID ? \"teachers' lounge\"");
+    expectScriptToContain(script, 'const roster = (t.faculty_roster || []).filter((f) => f && f.id !== LOUNGE_ID);');
+  });
+
   it("wires the Privy account UI through the lazy widget bundle", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test", loginMethods: ["wallet"] } });
     const script = inlineScript(html);

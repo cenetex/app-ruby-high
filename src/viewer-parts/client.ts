@@ -4756,7 +4756,7 @@ export function runViewerClient(bootstrap) {
   let lastLoungeSig = "";
   function renderLoungeFigures() {
     const t = lastTelemetry || {};
-    const roster = t.faculty_roster || [];
+    const roster = (t.faculty_roster || []).filter((f) => f && f.id !== LOUNGE_ID);
     const sig = roster.map((f) => f.id).join("|");
     if (sig === lastLoungeSig && els.loungeFigures.children.length) return;
     lastLoungeSig = sig;
@@ -4811,8 +4811,11 @@ export function runViewerClient(bootstrap) {
   }
 
   function renderBlackboard(question, faculty, currentGrade) {
-    if (faculty && faculty.id === LOUNGE_ID) {
-      // Lounge mode: hide blackboard, show lounge stage with all three figures.
+    const isLounge = !!((faculty && faculty.id === LOUNGE_ID) || (!faculty && lastTelemetry && lastTelemetry.faculty === LOUNGE_ID));
+    if (isLounge) {
+      // Lounge mode: hide blackboard and show the faculty lounge roster.
+      // Telemetry does not put the synthetic lounge row in faculty_roster, so
+      // callers often pass faculty=null while t.faculty is still "lounge".
       setLoungeMode(true);
       renderTeacherFigure(null);
       activeQuestionId = null;
@@ -6198,7 +6201,9 @@ export function runViewerClient(bootstrap) {
     const subjectStatus = subjectProgress
       ? subjectStatusText(subjectProgress)
       : (t.current_grade ? "Grade " + t.current_grade : "settling in");
-    els.channelSub.textContent = fac
+    els.channelSub.textContent = t.faculty === LOUNGE_ID
+      ? "teachers' lounge"
+      : fac
       ? fac.displayName + " · " + subjectStatus
       : "loading…";
     renderArcIndicator(t);

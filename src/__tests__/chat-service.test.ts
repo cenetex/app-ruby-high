@@ -300,6 +300,51 @@ describe("ChatService.send — message composition", () => {
     expect(captured?.body.tool_choice).toBe("auto");
   });
 
+  it("keeps no-tool provider prompts free of board tool advice", async () => {
+    mockOpenRouter(buildSseChunk([{ content: "No-tool provider recovered.", finish: "stop" }]));
+    const { ruby, chat } = await makeServices();
+    const sid = "session:no-tool-provider-chat";
+    const pack = fakeImportedPack();
+    pack.id = "agent:no-tool-provider";
+    pack.faculty[0] = {
+      ...pack.faculty[0]!,
+      id: "no-tool-teacher",
+      displayName: "No Tool Teacher",
+      systemPrompt: [
+        "NO TOOL TEACHER PROMPT.",
+        "Use pick_from_bank and pose_question when useful.",
+        "Tools (only when THIS TURN explicitly invites them):",
+        "- pick_from_bank — draws a card.",
+        "- pose_question — writes one.",
+      ].join("\n"),
+      provider: {
+        kind: "openrouter",
+        supportsTools: false,
+      },
+    };
+    pack.courses![0] = { ...pack.courses![0]!, facultyId: "no-tool-teacher", id: "no-tool-teacher" };
+    pack.rooms[0] = { ...pack.rooms[0]!, teacherId: "no-tool-teacher" };
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "t-no-tool-provider",
+      agentSessionId: sid,
+      faculty: "no-tool-teacher",
+      systemEventNote: "Call pick_from_bank exactly once. Do not call tools or put another question on the board.",
+    })) { /* consume */ }
+
+    expect(captured).not.toBeNull();
+    expect(captured!.body.tools).toEqual([]);
+    expect(captured!.body.tool_choice).toBeUndefined();
+    const promptText = JSON.stringify(captured!.body.messages);
+    expect(promptText).toContain("NO TOOL TEACHER PROMPT");
+    expect(promptText).toContain("Ruby High will handle any board state outside this turn");
+    expect(promptText).not.toMatch(/pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty/);
+    expect(promptText).not.toMatch(/tools? (are|is) not available/i);
+  });
+
   it("describes imported decks as no due cards, not exhausted", async () => {
     mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
     const { ruby, chat } = await makeServices();
