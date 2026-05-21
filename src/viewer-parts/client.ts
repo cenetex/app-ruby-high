@@ -3689,19 +3689,19 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Preparing card mint...", {
+    showPackMintProgress("Minting card on Solana...", {
       title: "Please wait: minting card",
       lines: CARD_MINT_STATUS_LINES,
       rotate: false,
     });
-    setPrivyStatus("Preparing Card reveal...", false);
+    setPrivyStatus("Minting Card reveal...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before revealing Cards.");
       const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        timeoutMs: 30000,
+        timeoutMs: 120000,
         body: JSON.stringify({ cardId: cleanCardId, ownerWalletAddress }),
       });
       const preparedData = await prepared.json().catch(() => ({}));

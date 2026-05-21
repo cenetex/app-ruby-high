@@ -15,6 +15,7 @@ import {
   buildHallPassCardsBurnTransaction,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
+  mintHallPassCardNft,
   publicHallPassNftStatus,
   submitSignedHallPassCardMintTransaction,
   verifyHallPassCardMint,
@@ -324,21 +325,34 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     try {
-      const mint = await buildHallPassCardMintTransaction(card, ownerWalletAddress);
+      const mint = await mintHallPassCardNft(card, ownerWalletAddress);
+      const recorded = deps.ruby.recordHallPassCardMint(stateKey, {
+        cardId,
+        ownerWalletAddress: mint.ownerWalletAddress,
+        mintAddress: mint.mintAddress,
+        mintSignature: mint.mintSignature,
+        metadataUri: mint.metadataUri,
+      });
+      await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
-        card: revealedCardPayload(card),
-        minted: [],
+        card: revealedCardPayload(recorded.card),
+        minted: [{
+          cardId: recorded.card.id,
+          characterId: recorded.card.characterId,
+          characterName: recorded.card.characterName,
+          mintAddress: recorded.card.mintAddress,
+          mintSignature: recorded.card.mintSignature,
+          metadataUri: recorded.card.metadataUri,
+        }],
         mint: {
           cardId: card.id,
           ownerWalletAddress: mint.ownerWalletAddress,
           mintAddress: mint.mintAddress,
           metadataUri: mint.metadataUri,
-          transactionBase64: mint.transactionBase64,
-          transactionEncoding: mint.transactionEncoding,
-          chain: mint.chain,
-          rpcUrl: mint.rpcUrl,
-          serverMinted: false,
+          mintSignature: mint.mintSignature,
+          chain: "solana:mainnet",
+          serverMinted: true,
         },
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
         status: publicHallPassNftStatus(),

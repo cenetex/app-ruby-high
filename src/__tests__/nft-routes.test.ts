@@ -10,6 +10,7 @@ import {
   hallPassNftMetadataUri,
   setHallPassNftBurnTransactionBuilderForTest,
   setHallPassNftBurnVerifierForTest,
+  setHallPassNftMinterForTest,
   setHallPassNftMintTransactionBuilderForTest,
   setHallPassNftMintSubmitterForTest,
   setHallPassNftMintVerifierForTest,
@@ -43,6 +44,7 @@ let auth: AuthService;
 let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
 let lastHeaders: Record<string, string> = {};
+let restoreMinter: (() => void) | null = null;
 let restoreMintBuilder: (() => void) | null = null;
 let restoreMintSubmitter: (() => void) | null = null;
 let restoreMintVerifier: (() => void) | null = null;
@@ -130,6 +132,12 @@ beforeEach(async () => {
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_PACK_REVEAL_SECRET = "nft-route-test-reveal-secret";
   process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
+  restoreMinter = setHallPassNftMinterForTest(async (card, ownerWalletAddress) => ({
+    ownerWalletAddress,
+    mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+    mintSignature: "5mServerMintSignature111111111111111111111111111111111",
+    metadataUri: `https://ruby-high.ai/api/apps/ruby-high/nft/metadata/hall-pass/card/${encodeURIComponent(card.id)}.json`,
+  }));
   restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async (card, ownerWalletAddress) => ({
     cardId: card.id,
     ownerWalletAddress,
@@ -174,6 +182,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   restoreEnv();
+  restoreMinter?.();
+  restoreMinter = null;
   restoreMintBuilder?.();
   restoreMintBuilder = null;
   restoreMintSubmitter?.();
@@ -567,7 +577,7 @@ describe("Hall Pass NFT routes", () => {
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks).toHaveLength(1);
   });
 
-  it("prepares one owner-paid card mint transaction for the connected wallet", async () => {
+  it("server-mints one card to the connected wallet during card mint prepare", async () => {
     const stateKey = signInUser("alice");
     const grant = ruby.grantHallPassCards(stateKey, {
       cardCount: 20,
@@ -590,22 +600,22 @@ describe("Hall Pass NFT routes", () => {
       id: grant.cards![0]!.id,
       characterId: grant.cards![0]!.characterId,
       characterName: grant.cards![0]!.characterName,
+      mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      mintSignature: "5mServerMintSignature111111111111111111111111111111111",
     });
     expect(lastResponse?.body.mint).toMatchObject({
       cardId: grant.cards![0]!.id,
       ownerWalletAddress: OWNER,
       mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-      transactionBase64: "AQID",
-      transactionEncoding: "base64",
+      mintSignature: "5mServerMintSignature111111111111111111111111111111111",
       chain: "solana:mainnet",
-      rpcUrl: "https://rpc.example",
-      serverMinted: false,
+      serverMinted: true,
     });
-    expect(lastResponse?.body.minted).toHaveLength(0);
-    expect(lastResponse?.body.remaining).toBe(20);
+    expect(lastResponse?.body.minted).toHaveLength(1);
+    expect(lastResponse?.body.remaining).toBe(19);
     const cards = ruby.getOrCreate(stateKey).wallet.hallPassCards ?? [];
-    expect(cards.filter((card) => card.mintAddress && card.mintSignature && card.metadataUri)).toHaveLength(0);
-    expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(false);
+    expect(cards.filter((card) => card.mintAddress && card.mintSignature && card.metadataUri)).toHaveLength(1);
+    expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(true);
   });
 
   it("records one owner-paid card mint only after confirmation", async () => {
@@ -718,8 +728,8 @@ describe("Hall Pass NFT routes", () => {
   });
 
   it("returns card mint transaction build errors without mutating the card", async () => {
-    restoreMintBuilder?.();
-    restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async () => {
+    restoreMinter?.();
+    restoreMinter = setHallPassNftMinterForTest(async () => {
       throw new Error("insufficient funds for rent");
     });
     const stateKey = signInUser("mint-user-low-balance");
@@ -746,8 +756,8 @@ describe("Hall Pass NFT routes", () => {
   });
 
   it("returns retryable Solana RPC mint errors without mutating the card", async () => {
-    restoreMintBuilder?.();
-    restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async () => {
+    restoreMinter?.();
+    restoreMinter = setHallPassNftMinterForTest(async () => {
       throw new Error("Solana RPC failed with 502.");
     });
     const stateKey = signInUser("mint-user-rpc-502");
