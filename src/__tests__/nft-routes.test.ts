@@ -135,6 +135,24 @@ function expectMarketReadyImageMetadata(metadata: any, image: string): void {
   });
 }
 
+function expectNoVisibleProvenanceTraits(metadata: any): void {
+  const hiddenTraits = new Set([
+    "Pack Reveal Version",
+    "Catalog Hash",
+    "Commitment",
+    "Entropy Source",
+    "Reveal Seed",
+    "Reveal Proof",
+    "Pack Asset",
+    "Reveal Slot",
+    "Randomness Account",
+    "Reveal Transaction",
+  ]);
+  for (const attribute of metadata?.attributes ?? []) {
+    expect(hiddenTraits.has(attribute.trait_type)).toBe(false);
+  }
+}
+
 beforeEach(async () => {
   restoreEnv();
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
@@ -252,6 +270,7 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Collection", value: FIRST_BELL_SET_NAME });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Number", value: "FB-001" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Profile ID", value: "lyra-color-coded-spare" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Revealed" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Name", value: "Lyra: Color-Coded Spare" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Subject", value: "Homeroom" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Common" });
@@ -375,7 +394,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(legacyUriHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.description).toContain("5 cards inside");
+    expect(lastResponse?.body.description).toContain("5 revealable cards");
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
     expectWebsiteLink(lastResponse?.body);
 
@@ -504,9 +523,10 @@ describe("Hall Pass NFT routes", () => {
       expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Face Down" });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Pack Reveal Version", value: "ruby-high-pack-reveal-v1.1" });
+    expectNoVisibleProvenanceTraits(lastResponse?.body);
     expect(lastResponse?.body.properties.provenance).toMatchObject({
       algorithm: "sha256(version + commitment + revealSeed + assetAddress + slotIndex)",
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
       revealSeed: expect.any(String),
       packAssetAddress: pack.assetAddress,
     });
@@ -535,9 +555,10 @@ describe("Hall Pass NFT routes", () => {
       expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Opened" });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Pack Reveal Version", value: "ruby-high-pack-reveal-v1.1" });
+    expectNoVisibleProvenanceTraits(lastResponse?.body);
     expect(lastResponse?.body.properties.provenance).toMatchObject({
       algorithm: "sha256(version + commitment + revealSeed + assetAddress + slotIndex)",
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
       revealSeed: expect.any(String),
       packAssetAddress: pack.assetAddress,
     });

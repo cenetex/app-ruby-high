@@ -58,7 +58,6 @@ import { isPreflightUnsupportedError } from "./solana-errors.js";
 import {
   type HallPassRevealProvenance,
   HALL_PASS_PACK_REVEAL_ALGORITHM,
-  revealProvenanceAttributes,
   revealProvenanceProperties,
 } from "./hall-pass-reveal-provenance.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
@@ -359,7 +358,7 @@ export function hallPassCollectionMetadataForRoute(args: {
   return {
     name: CARD_COLLECTION_NAME,
     symbol: nftSymbol(process.env),
-    description: "Official First Bell collectible set for Ruby High.",
+    description: "Official First Bell collectible set for Ruby High: student, teacher, location, and item cards earned through Ruby High gameplay.",
     image,
     category: "image",
     external_url: website,
@@ -413,7 +412,6 @@ export function hallPassCardBackMetadataForRoute(args: {
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
       ...(args.cardId ? [{ trait_type: "Card Id", value: args.cardId }] : []),
-      ...revealProvenanceAttributes(args),
     ],
     properties: {
       category: "image",
@@ -461,6 +459,7 @@ export function hallPassNftMetadataForRoute(args: {
       { trait_type: "Set Number", value: hallPassCardSetNumber(profile) },
       { trait_type: "Card Profile ID", value: hallPassCardProfileId(profile) },
       { trait_type: "NFT Type", value: "Card" },
+      { trait_type: "State", value: "Revealed" },
       { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
       { trait_type: "Card Name", value: cardName },
       { trait_type: "Title", value: profile.title },
@@ -474,7 +473,6 @@ export function hallPassNftMetadataForRoute(args: {
       { trait_type: "Source Art Version", value: hallPassCardSourceArtVersion(profile) },
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
-      ...revealProvenanceAttributes(args),
     ],
     properties: {
       category: "image",

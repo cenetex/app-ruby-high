@@ -28,7 +28,6 @@ import { isPreflightUnsupportedError } from "./solana-errors.js";
 import {
   type HallPassRevealProvenance,
   HALL_PASS_PACK_REVEAL_ALGORITHM,
-  revealProvenanceAttributes,
   revealProvenanceProperties,
 } from "./hall-pass-reveal-provenance.js";
 import {
@@ -382,7 +381,7 @@ export function corePackNftMetadataForRoute(args: {
   return {
     name,
     symbol: nftSymbol(process.env),
-    description: `${packCount} ${FIRST_BELL_SET_NAME} ${packCount === 1 ? "pack" : "packs"} with ${cardCount} cards inside.`,
+    description: `A Ruby High: First Bell pack receipt for ${cardCount} revealable cards. Open it in Ruby High to reveal the cards.`,
     image,
     category: "image",
     external_url: website,
@@ -400,7 +399,6 @@ export function corePackNftMetadataForRoute(args: {
       { trait_type: "State", value: args.opened ? "Opened" : "Sealed" },
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
-      ...revealProvenanceAttributes(args),
     ],
     properties: {
       category: "image",
@@ -425,7 +423,7 @@ export function corePackCollectionMetadataForRoute(args: {
   return {
     name: PACK_COLLECTION_NAME,
     symbol: nftSymbol(process.env),
-    description: `${FIRST_BELL_SET_NAME} card packs.`,
+    description: "Official Ruby High: First Bell pack receipts. Open packs in Ruby High to reveal collectible cards.",
     image,
     category: "image",
     external_url: website,
