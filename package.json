@@ -65,17 +65,17 @@
   "devDependencies": {
     "@irys/upload": "^0.0.15",
     "@irys/upload-solana": "^0.1.8",
-    "@privy-io/react-auth": "^3.26.1",
+    "@privy-io/react-auth": "^3.27.1",
     "@tanstack/react-query": "^5.100.11",
-    "@types/node": "^22.19.19",
-    "@types/react": "^19.2.14",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-v8": "^4.1.7",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tsup": "^8.0.0",
-    "typescript": "^5.4.0",
-    "vitest": "^4.1.5"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   },
   "overrides": {
     "@reown/appkit": "1.8.19",
