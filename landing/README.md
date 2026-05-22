@@ -1,17 +1,18 @@
 # Ruby High Landing
 
-Static Cloudflare Pages surface for `rubyhighai.com`.
+Static landing surface served at the root of `ruby-high.ai` by the runtime server (`scripts/server.mjs` → `scripts/landing.mjs`). The Fly app handles `/`, `/index.html`, `/styles.css`, and `/assets/*` from this directory; everything under `/api/apps/ruby-high/*` is the app itself.
 
 Local preview:
 
 ```sh
-RUBY_HIGH_LANDING_HOSTS=localhost PORT=4175 npm run dev:server
+PORT=3000 npm run dev:server
+# then open http://localhost:3000/
 ```
 
-Cloudflare Pages:
+Updating copy or assets:
 
-- Project root/output directory: `landing`
-- Build command: none
-- Runtime app CTA: `https://ruby-high.ai/api/apps/ruby-high/viewer`
+- Edit `index.html` / `styles.css` / `assets/*` in place.
+- Bump the `?v=` cache-buster on `styles.css` when the stylesheet changes.
+- Push to `main` — `deploy-fly.yml` ships it with the rest of the app.
 
-Keep app runtime, auth, billing, and API traffic on `ruby-high.ai`. The `_redirects` file forwards old Ruby High app paths from the landing domain to the runtime domain during the compatibility window.
+The CTA links (`Attend today's class`, footer) stay same-origin so they work behind any host that points at the Fly app.

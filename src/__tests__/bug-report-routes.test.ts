@@ -21,7 +21,7 @@ function makeHarness(body: unknown, opts: {
   const ctx: RouteContext = {
     method: "POST",
     pathname: "/api/apps/ruby-high/bug-report",
-    url: new URL(`${opts.urlOrigin ?? "https://rubyhighai.com"}/api/apps/ruby-high/bug-report`),
+    url: new URL(`${opts.urlOrigin ?? "https://ruby-high.ai"}/api/apps/ruby-high/bug-report`),
     runtime: null,
     res: {
       setHeader(name: string, value: string) {
@@ -31,8 +31,8 @@ function makeHarness(body: unknown, opts: {
     cookieHeader: "rh_session=test-cookie",
     clientIp: opts.clientIp ?? "203.0.113.10",
     contentTypeHeader: opts.contentType === undefined ? "application/json" : opts.contentType,
-    originHeader: opts.origin === undefined ? "https://rubyhighai.com" : opts.origin,
-    callbackUrlBuilder: (path: string) => `${opts.callbackOrigin ?? "https://rubyhighai.com"}${path}`,
+    originHeader: opts.origin === undefined ? "https://ruby-high.ai" : opts.origin,
+    callbackUrlBuilder: (path: string) => `${opts.callbackOrigin ?? "https://ruby-high.ai"}${path}`,
     error: (_res, message, status = 500) => {
       response = { status, body: { error: message }, headers };
     },
@@ -70,7 +70,7 @@ describe("bug report route", () => {
     const harness = makeHarness({
       description: "Teacher leaked sk-openrouter-test123456789 in chat.",
       context: {
-        url: "https://rubyhighai.com/api/apps/ruby-high/viewer?code=oauth-secret",
+        url: "https://ruby-high.ai/api/apps/ruby-high/viewer?code=oauth-secret",
         userAgent: "Vitest",
         timestamp: "2026-05-14T00:00:00.000Z",
         session: true,
@@ -178,8 +178,8 @@ describe("bug report route", () => {
     const harness = makeHarness({ description: "custom domain" }, {
       clientIp: "203.0.113.15",
       callbackOrigin: "https://ruby-high.fly.dev",
-      origin: "https://rubyhighai.com",
-      urlOrigin: "http://rubyhighai.com",
+      origin: "https://ruby-high.ai",
+      urlOrigin: "http://ruby-high.ai",
     });
 
     await handleAppRoutes(harness.ctx);

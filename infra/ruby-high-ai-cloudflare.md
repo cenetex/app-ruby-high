@@ -17,7 +17,7 @@ The records point the new apex and `www` host at the current Fly app:
 | `_acme-challenge.ruby-high.ai` | `CNAME` | `ruby-high.ai.56xn59q.flydns.net` |
 | `_acme-challenge.www.ruby-high.ai` | `CNAME` | `www.ruby-high.ai.56xn59q.flydns.net` |
 
-This keeps the existing `rubyhighai.com` DNS untouched. During the compatibility window, both the old domain and the new domain can point at the same Fly app.
+`rubyhighai.com` is no longer under our control and is treated as dead — do not depend on it for anything. `ruby-high.ai` is the canonical host and serves both the landing page (at `/`) and the runtime app (under `/api/apps/ruby-high/*`).
 
 Cloudflare DNS imports do not encode the orange-cloud proxy state. After import, leave the A/AAAA records DNS-only while Fly certificate issuance is being checked, then switch `ruby-high.ai` and `www.ruby-high.ai` to **Proxied** if you want Cloudflare Redirect Rules, WAF, or cache controls to run at the edge. Keep the `_fly-ownership` TXT records if Cloudflare proxying is enabled.
 
@@ -41,12 +41,3 @@ DNS does not perform HTTP forwarding. Use Cloudflare Redirect Rules for host can
 | Rule | When incoming request matches | Redirect target |
 |---|---|---|
 | `www to apex` | Hostname equals `www.ruby-high.ai` | `https://ruby-high.ai${uri.path_and_query}` |
-
-When ready to make the old domain canonical, add equivalent redirect rules in the existing `rubyhighai.com` Cloudflare zone:
-
-| Rule | When incoming request matches | Redirect target |
-|---|---|---|
-| `old apex to new apex` | Hostname equals `rubyhighai.com` | `https://ruby-high.ai${uri.path_and_query}` |
-| `old www to new apex` | Hostname equals `www.rubyhighai.com` | `https://ruby-high.ai${uri.path_and_query}` |
-
-Do not add the old-domain redirect rules until the app has accepted `ruby-high.ai` as `RUBY_HIGH_PUBLIC_BASE` and OpenRouter/Privy callback origins include the new host.

@@ -8,15 +8,13 @@
 import { createServer } from "node:http";
 import { URL } from "node:url";
 import { bodyLimitForPath } from "./http-limits.mjs";
-import { isLandingHost, serveLandingRequest } from "./landing.mjs";
+import { serveLandingRequest } from "./landing.mjs";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? "0.0.0.0";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH
   ?? (process.env.RUBY_HIGH_DATA_DIR ? `${process.env.RUBY_HIGH_DATA_DIR}/state.json` : null);
 const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? null;
-const ROOT_REDIRECT = process.env.RUBY_HIGH_ROOT_REDIRECT ?? "/api/apps/ruby-high/viewer";
-const APP_BASE = process.env.RUBY_HIGH_APP_BASE ?? "https://ruby-high.ai";
 const APP_ROUTE_PREFIX = "/api/apps/ruby-high";
 const VIEWER_PATH = `${APP_ROUTE_PREFIX}/viewer`;
 
@@ -304,13 +302,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (isLandingHost(req) && await serveLandingRequest(req, res, url, { appBase: APP_BASE })) {
-    return;
-  }
-
-  if (url.pathname === "/" || url.pathname === "/index.html") {
-    res.writeHead(302, { Location: ROOT_REDIRECT });
-    res.end();
+  if (await serveLandingRequest(req, res, url)) {
     return;
   }
 

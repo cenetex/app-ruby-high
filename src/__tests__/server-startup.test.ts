@@ -44,10 +44,11 @@ describe("production startup guardrails", () => {
     }
   });
 
-  it("serves the old domain as the static landing page from Fly", () => {
-    expect(serverEntry).toContain('import { isLandingHost, serveLandingRequest } from "./landing.mjs";');
-    expect(serverEntry).toContain('const APP_BASE = process.env.RUBY_HIGH_APP_BASE ?? "https://ruby-high.ai";');
-    expect(serverEntry).toMatch(/isLandingHost\(req\)[\s\S]+serveLandingRequest\(req, res, url, \{ appBase: APP_BASE \}\)/);
+  it("serves the static landing page at the root from Fly", () => {
+    expect(serverEntry).toContain('import { serveLandingRequest } from "./landing.mjs";');
+    expect(serverEntry).toMatch(/await serveLandingRequest\(req, res, url\)/);
+    expect(serverEntry).not.toContain("isLandingHost");
+    expect(serverEntry).not.toContain("ROOT_REDIRECT");
     expect(dockerfile).toContain("COPY landing ./landing");
   });
 
