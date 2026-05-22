@@ -33,7 +33,7 @@ describe("NFT metadata storage", () => {
       fallbackUri: "https://ruby-high.ai/card.json",
       assetKey: "api/apps/ruby-high/nft/metadata/hall-pass/lyra/1.json",
       metadata: { symbol: "RUBY", name: "Ruby High: Lyra #1" },
-      env: { RUBY_HIGH_NFT_METADATA_STORAGE: "irys-solana" },
+      env: { RUBY_HIGH_NFT_METADATA_STORAGE: "arweave" },
     })).resolves.toBe("https://arweave.net/uploaded-json");
 
     expect(uploader).toHaveBeenCalledWith(expect.objectContaining({
@@ -60,5 +60,14 @@ describe("NFT metadata storage", () => {
       fallbackUri: "https://ruby-high.ai/pack.json",
       metadataJson: "{\"name\":\"Ruby High: First Bell Pack #123456\",\"symbol\":\"RUBY\"}",
     }));
+  });
+
+  it("rejects unsupported durable metadata modes", async () => {
+    await expect(durableNftMetadataUri({
+      fallbackUri: "https://ruby-high.ai/card.json",
+      assetKey: "api/apps/ruby-high/nft/metadata/hall-pass/lyra/1.json",
+      metadata: { name: "Ruby High: Lyra #1" },
+      env: { RUBY_HIGH_NFT_METADATA_STORAGE: "irys-solana" },
+    })).rejects.toThrow(/Unsupported NFT metadata storage mode/);
   });
 });
