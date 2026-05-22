@@ -114,10 +114,8 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for NFT minting. |
 | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs and Token Metadata card NFTs. Set via secrets only. |
-| `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads or `irys-solana` for Irys uploads; unset keeps app-hosted metadata JSON. |
+| `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads; unset keeps app-hosted metadata JSON. |
 | `RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK` | — | Arweave RSA JWK JSON used when `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`. `RUBY_HIGH_ARWEAVE_JWK`, `RUBY_HIGH_ARWEAVE_WALLET_JWK`, and `ARWEAVE_JWK` are also accepted. |
-| `RUBY_HIGH_NFT_METADATA_IRYS_SOLANA_PRIVATE_KEY` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Optional Solana private key for Irys metadata JSON uploads. Use a separately funded upload wallet if possible. |
-| `RUBY_HIGH_NFT_METADATA_IRYS_RPC_URL` | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | Optional Irys Solana RPC override. |
 | `RUBY_HIGH_NFT_METADATA_GATEWAY` | `https://arweave.net` | Gateway prefix returned for uploaded metadata JSON. |
 | `RUBY_HIGH_PACK_REVEAL_SECRET` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Server-only HMAC secret for deterministic pack-to-card mapping. Set a stable production secret so the mapping remains fair and non-public. |
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |

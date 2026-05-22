@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { Uploader } from "@irys/upload";
-import { Solana } from "@irys/upload-solana";
 import Arweave from "arweave";
+import type { JWKInterface } from "arweave/node/lib/wallet";
 import { log } from "./logger.js";
 
 const DEFAULT_ARWEAVE_GATEWAY = "https://arweave.net";
@@ -21,7 +20,6 @@ export interface NftMetadataUploadPayload {
   metadataHash: string;
 }
 
-let irysClientPromise: Promise<any> | null = null;
 let uploaderOverride: ((payload: NftMetadataUploadPayload) => Promise<string>) | null = null;
 const uploadedMetadataUris = new Map<string, Promise<string>>();
 
@@ -38,15 +36,17 @@ export function setNftMetadataUploaderForTest(
 }
 
 export function nftMetadataStorageEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const mode = cleanEnv(env.RUBY_HIGH_NFT_METADATA_STORAGE).toLowerCase();
-  if (!mode) return false;
-  return mode === "irys" || mode === "irys-solana" || mode === "arweave";
+  return metadataStorageMode(env) === "arweave";
 }
 
 export async function durableNftMetadataUri(input: DurableNftMetadataInput): Promise<string> {
   const env = input.env ?? process.env;
   const fallbackUri = input.fallbackUri.trim();
-  if (!nftMetadataStorageEnabled(env)) return fallbackUri;
+  const mode = metadataStorageMode(env);
+  if (!mode) return fallbackUri;
+  if (mode !== "arweave") {
+    throw new Error(`Unsupported NFT metadata storage mode "${mode}". Use "arweave" or unset RUBY_HIGH_NFT_METADATA_STORAGE.`);
+  }
   if (!input.metadata) return fallbackUri;
   const assetKey = normalizeAssetKey(input.assetKey);
   const metadata = input.metadata;
@@ -69,27 +69,7 @@ export async function durableNftMetadataUri(input: DurableNftMetadataInput): Pro
 
 async function uploadDurableJson(payload: NftMetadataUploadPayload, env: NodeJS.ProcessEnv): Promise<string> {
   if (uploaderOverride) return uploaderOverride(payload);
-  const mode = cleanEnv(env.RUBY_HIGH_NFT_METADATA_STORAGE).toLowerCase();
-  if (mode === "arweave") return uploadDirectArweaveJson(payload, env);
-  if (mode !== "irys" && mode !== "irys-solana") return payload.fallbackUri;
-  const irys = await irysClient(env);
-  const data = Buffer.from(payload.metadataJson, "utf8");
-  const tags = tagsForMetadata(payload);
-  const price = await irys.getPrice(data.length, { tags });
-  const balance = await irys.getLoadedBalance();
-  if (typeof balance?.lt === "function" && balance.lt(price)) {
-    throw new Error(`Irys metadata balance is short. Required ${price.toString()} atomic units, available ${balance.toString()}.`);
-  }
-  const receipt = await irys.upload(data, { tags });
-  if (!receipt?.id) throw new Error("Irys metadata upload did not return an id.");
-  const uri = `${metadataGateway(env)}/${receipt.id}`;
-  log.event("nft.metadata-uploaded", {
-    provider: "irys",
-    assetKey: payload.assetKey,
-    uri,
-    metadataHash: payload.metadataHash,
-  });
-  return uri;
+  return uploadDirectArweaveJson(payload, env);
 }
 
 async function uploadDirectArweaveJson(payload: NftMetadataUploadPayload, env: NodeJS.ProcessEnv): Promise<string> {
@@ -114,48 +94,12 @@ async function uploadDirectArweaveJson(payload: NftMetadataUploadPayload, env: N
   return uri;
 }
 
-async function irysClient(env: NodeJS.ProcessEnv): Promise<any> {
-  if (irysClientPromise) return irysClientPromise;
-  irysClientPromise = (async () => {
-    let builder = Uploader(Solana)
-      .withWallet(metadataSolanaWallet(env))
-      .timeout(120_000)
-      .withTokenOptions({ finality: "confirmed" });
-    const network = cleanEnv(env.RUBY_HIGH_NFT_METADATA_IRYS_NETWORK).toLowerCase();
-    builder = network === "devnet" ? builder.devnet() : builder.mainnet();
-    builder = builder.withRpc(metadataRpcUrl(env));
-    return builder;
-  })();
-  return irysClientPromise;
-}
-
-function metadataSolanaWallet(env: NodeJS.ProcessEnv): string | number[] {
-  const raw = cleanEnv(env.RUBY_HIGH_NFT_METADATA_IRYS_SOLANA_PRIVATE_KEY)
-    || cleanEnv(env.SOLANA_PRIVATE_KEY)
-    || cleanEnv(env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY);
-  if (!raw) {
-    throw new Error("NFT metadata storage is enabled but no Solana upload wallet is configured.");
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed.map((value) => Number(value));
-    if (Array.isArray(parsed?.secretKey)) return parsed.secretKey.map((value: unknown) => Number(value));
-    if (typeof parsed?.privateKey === "string") return parsed.privateKey;
-  } catch {
-    // Treat non-JSON values as wallet strings accepted by the Irys Solana SDK.
-  }
-  return raw;
-}
-
-function metadataRpcUrl(env: NodeJS.ProcessEnv): string {
-  return cleanEnv(env.RUBY_HIGH_NFT_METADATA_IRYS_RPC_URL)
-    || cleanEnv(env.RUBY_HIGH_SOLANA_NFT_RPC_URL)
-    || cleanEnv(env.RUBY_HIGH_SOLANA_RPC_URL)
-    || "https://api.mainnet-beta.solana.com";
-}
-
 function metadataGateway(env: NodeJS.ProcessEnv): string {
   return cleanBaseUrl(cleanEnv(env.RUBY_HIGH_NFT_METADATA_GATEWAY) || DEFAULT_ARWEAVE_GATEWAY);
+}
+
+function metadataStorageMode(env: NodeJS.ProcessEnv): string {
+  return cleanEnv(env.RUBY_HIGH_NFT_METADATA_STORAGE).toLowerCase();
 }
 
 function arweaveClient(env: NodeJS.ProcessEnv) {
@@ -168,7 +112,7 @@ function arweaveClient(env: NodeJS.ProcessEnv) {
   });
 }
 
-function arweaveJwk(env: NodeJS.ProcessEnv): Record<string, unknown> {
+function arweaveJwk(env: NodeJS.ProcessEnv): JWKInterface {
   const raw = cleanEnv(env.RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK)
     || cleanEnv(env.RUBY_HIGH_ARWEAVE_JWK)
     || cleanEnv(env.RUBY_HIGH_ARWEAVE_WALLET_JWK)
@@ -182,10 +126,10 @@ function arweaveJwk(env: NodeJS.ProcessEnv): Record<string, unknown> {
   return jwk;
 }
 
-function findJwk(value: unknown): Record<string, unknown> | null {
+function findJwk(value: unknown): JWKInterface | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  if (record.kty === "RSA" && record.n && record.e && record.d) return record;
+  if (record.kty === "RSA" && record.n && record.e && record.d) return record as unknown as JWKInterface;
   for (const key of ["jwk", "wallet", "walletJwk", "arweaveWallet", "arweave_wallet", "privateKey"]) {
     const child = record[key];
     if (typeof child === "string") {
