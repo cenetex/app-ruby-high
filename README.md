@@ -124,10 +124,10 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY` | Treasury wallet owner that must receive the SPL-token transfer. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL` | `RUBY` | Display symbol for the Solana token. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS` | `6` | SPL-token decimal places used when converting quoted token amounts to base units. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS` | `100000` | `$RUBY` price for the 5 Hall Pass pack. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS` | `100000` | `$RUBY` price for the 20 Hall Pass pack. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS` | `100000` | `$RUBY` price for the 50 Hall Pass pack. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS` | `100000` | `$RUBY` price for the 100 Hall Pass pack. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS` | `1000000` | `$RUBY` price for the 1-pack / 5 Hall Pass tier. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS` | `3000000` | `$RUBY` price for the 3-pack / 20 Hall Pass tier. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS` | `5000000` | `$RUBY` price for the 5-pack / 50 Hall Pass tier. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS` | `10000000` | `$RUBY` price for the 10-pack / 100 Hall Pass tier. |
 | `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Hall Pass cost to activate server-hosted text AI for one timed window. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Hosted AI Access duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Optional exact hosted AI pass duration override. |
