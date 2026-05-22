@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Uploader } from "@irys/upload";
 import { Solana } from "@irys/upload-solana";
+import Arweave from "arweave";
 import { log } from "./logger.js";
 
 const DEFAULT_ARWEAVE_GATEWAY = "https://arweave.net";
@@ -39,7 +40,7 @@ export function setNftMetadataUploaderForTest(
 export function nftMetadataStorageEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const mode = cleanEnv(env.RUBY_HIGH_NFT_METADATA_STORAGE).toLowerCase();
   if (!mode) return false;
-  return mode === "irys" || mode === "irys-solana";
+  return mode === "irys" || mode === "irys-solana" || mode === "arweave";
 }
 
 export async function durableNftMetadataUri(input: DurableNftMetadataInput): Promise<string> {
@@ -69,6 +70,7 @@ export async function durableNftMetadataUri(input: DurableNftMetadataInput): Pro
 async function uploadDurableJson(payload: NftMetadataUploadPayload, env: NodeJS.ProcessEnv): Promise<string> {
   if (uploaderOverride) return uploaderOverride(payload);
   const mode = cleanEnv(env.RUBY_HIGH_NFT_METADATA_STORAGE).toLowerCase();
+  if (mode === "arweave") return uploadDirectArweaveJson(payload, env);
   if (mode !== "irys" && mode !== "irys-solana") return payload.fallbackUri;
   const irys = await irysClient(env);
   const data = Buffer.from(payload.metadataJson, "utf8");
@@ -82,6 +84,29 @@ async function uploadDurableJson(payload: NftMetadataUploadPayload, env: NodeJS.
   if (!receipt?.id) throw new Error("Irys metadata upload did not return an id.");
   const uri = `${metadataGateway(env)}/${receipt.id}`;
   log.event("nft.metadata-uploaded", {
+    provider: "irys",
+    assetKey: payload.assetKey,
+    uri,
+    metadataHash: payload.metadataHash,
+  });
+  return uri;
+}
+
+async function uploadDirectArweaveJson(payload: NftMetadataUploadPayload, env: NodeJS.ProcessEnv): Promise<string> {
+  const arweave = arweaveClient(env);
+  const jwk = arweaveJwk(env);
+  const tx = await arweave.createTransaction({
+    data: Buffer.from(payload.metadataJson, "utf8"),
+  }, jwk);
+  for (const tag of tagsForMetadata(payload)) tx.addTag(tag.name, tag.value);
+  await arweave.transactions.sign(tx, jwk);
+  const response = await arweave.transactions.post(tx);
+  if (![200, 202].includes(response.status)) {
+    throw new Error(`Arweave metadata upload failed with ${response.status} ${response.statusText || ""}`.trim());
+  }
+  const uri = `${metadataGateway(env)}/${tx.id}`;
+  log.event("nft.metadata-uploaded", {
+    provider: "arweave",
     assetKey: payload.assetKey,
     uri,
     metadataHash: payload.metadataHash,
@@ -133,6 +158,47 @@ function metadataGateway(env: NodeJS.ProcessEnv): string {
   return cleanBaseUrl(cleanEnv(env.RUBY_HIGH_NFT_METADATA_GATEWAY) || DEFAULT_ARWEAVE_GATEWAY);
 }
 
+function arweaveClient(env: NodeJS.ProcessEnv) {
+  return Arweave.init({
+    host: cleanEnv(env.RUBY_HIGH_NFT_METADATA_ARWEAVE_HOST) || "arweave.net",
+    port: Math.max(1, Math.floor(Number(cleanEnv(env.RUBY_HIGH_NFT_METADATA_ARWEAVE_PORT) || 443))),
+    protocol: cleanEnv(env.RUBY_HIGH_NFT_METADATA_ARWEAVE_PROTOCOL) || "https",
+    timeout: 120_000,
+    logging: false,
+  });
+}
+
+function arweaveJwk(env: NodeJS.ProcessEnv): Record<string, unknown> {
+  const raw = cleanEnv(env.RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK)
+    || cleanEnv(env.RUBY_HIGH_ARWEAVE_JWK)
+    || cleanEnv(env.RUBY_HIGH_ARWEAVE_WALLET_JWK)
+    || cleanEnv(env.ARWEAVE_JWK);
+  if (!raw) {
+    throw new Error("NFT metadata storage is set to arweave but no Arweave JWK secret is configured.");
+  }
+  const parsed = parseJson(raw, "Arweave JWK");
+  const jwk = findJwk(parsed);
+  if (!jwk) throw new Error("Configured Arweave secret does not contain an RSA JWK.");
+  return jwk;
+}
+
+function findJwk(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (record.kty === "RSA" && record.n && record.e && record.d) return record;
+  for (const key of ["jwk", "wallet", "walletJwk", "arweaveWallet", "arweave_wallet", "privateKey"]) {
+    const child = record[key];
+    if (typeof child === "string") {
+      const found = findJwk(parseJson(child, key));
+      if (found) return found;
+    } else {
+      const found = findJwk(child);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 function tagsForMetadata(payload: NftMetadataUploadPayload): Array<{ name: string; value: string }> {
   return [
     { name: "Content-Type", value: "application/json" },
@@ -167,4 +233,12 @@ function cleanBaseUrl(value: string): string {
 
 function cleanEnv(value: string | undefined): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseJson(text: string, label: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    throw new Error(`${label} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

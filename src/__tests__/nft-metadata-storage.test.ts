@@ -43,5 +43,22 @@ describe("NFT metadata storage", () => {
       metadataHash: expect.any(String),
     }));
   });
-});
 
+  it("supports direct Arweave as a durable metadata mode", async () => {
+    const uploader = vi.fn(async () => "https://arweave.net/direct-arweave-json");
+    restoreUploader = setNftMetadataUploaderForTest(uploader);
+
+    await expect(durableNftMetadataUri({
+      fallbackUri: "https://ruby-high.ai/pack.json",
+      assetKey: "api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.opened.json",
+      metadata: { name: "Ruby High: First Bell Pack #123456", symbol: "RUBY" },
+      env: { RUBY_HIGH_NFT_METADATA_STORAGE: "arweave" },
+    })).resolves.toBe("https://arweave.net/direct-arweave-json");
+
+    expect(uploader).toHaveBeenCalledWith(expect.objectContaining({
+      assetKey: "api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.opened.json",
+      fallbackUri: "https://ruby-high.ai/pack.json",
+      metadataJson: "{\"name\":\"Ruby High: First Bell Pack #123456\",\"symbol\":\"RUBY\"}",
+    }));
+  });
+});

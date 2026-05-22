@@ -114,7 +114,8 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for NFT minting. |
 | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs and Token Metadata card NFTs. Set via secrets only. |
-| `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `irys-solana` after funding the Irys uploader wallet; unset keeps app-hosted metadata JSON. |
+| `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads or `irys-solana` for Irys uploads; unset keeps app-hosted metadata JSON. |
+| `RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK` | — | Arweave RSA JWK JSON used when `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`. `RUBY_HIGH_ARWEAVE_JWK`, `RUBY_HIGH_ARWEAVE_WALLET_JWK`, and `ARWEAVE_JWK` are also accepted. |
 | `RUBY_HIGH_NFT_METADATA_IRYS_SOLANA_PRIVATE_KEY` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Optional Solana private key for Irys metadata JSON uploads. Use a separately funded upload wallet if possible. |
 | `RUBY_HIGH_NFT_METADATA_IRYS_RPC_URL` | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | Optional Irys Solana RPC override. |
 | `RUBY_HIGH_NFT_METADATA_GATEWAY` | `https://arweave.net` | Gateway prefix returned for uploaded metadata JSON. |
@@ -181,7 +182,7 @@ Solana purchases are separate from Stripe and use the configured SPL token to mi
 - Wallet-facing card crops are plain images, not cards inside cards: students, teachers, and specials are tall avatar crops; items are square; locations are wide. Regenerate crops with `npm run nft:crop-cards` after changing source art.
 - Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Pack/card records and receipts carry `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`, and reveal-time `revealSeed` provenance; see [`NFT_PROVABLY_FAIR_V1_1.md`](./NFT_PROVABLY_FAIR_V1_1.md) for the published algorithm.
 - Marketplace submission copy, collection addresses, and Magic Eden verification steps are tracked in [`NFT_MARKETPLACE_VERIFICATION.md`](./NFT_MARKETPLACE_VERIFICATION.md).
-- To mint with durable JSON, fund the Irys uploader wallet, set `RUBY_HIGH_NFT_METADATA_STORAGE=irys-solana`, and verify a fresh pack/card mint returns an `https://arweave.net/...` metadata URI. Leave the flag unset if Irys funding is not ready.
+- To mint with durable JSON directly on Arweave, fund the Arweave wallet, set `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`, add the JWK secret, and verify a fresh pack/card mint returns an `https://arweave.net/...` metadata URI. Leave the flag unset if durable storage funding is not ready.
 - Wallet-signed pack checkout is payment-only: the prepared transaction creates the treasury ATA if needed and transfers the configured SPL token with the Ruby High payment reference. The server verifies the payment and mints the Metaplex Core pack NFT afterward.
 - Each face-down card is minted and revealed one at a time by the Ruby High mint authority to the connected wallet. The player wallet is the recipient, not the mint fee payer.
 - Owner-signed card burns are prepared one card per wallet prompt and preflighted before signing; `POST /api/apps/ruby-high/billing/card-burn` verifies the burn signature and credits 5 Hall Passes per burned card.

@@ -78,7 +78,7 @@ Provable-fair data must remain available, but it should not clutter wallet trait
 Durability requirement:
 
 - Images must resolve through Irys/Arweave gateway URLs.
-- Minted metadata JSON should also be uploaded to durable storage before minting. Set `RUBY_HIGH_NFT_METADATA_STORAGE=irys-solana` after the uploader wallet has Irys balance.
+- Minted metadata JSON should also be uploaded to durable storage before minting. Prefer direct Arweave with `RUBY_HIGH_NFT_METADATA_STORAGE=arweave` plus `RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK`; `irys-solana` remains available if using a funded Irys uploader.
 - The app-hosted JSON routes are acceptable for previews and emergency backfill, but relying on mutable `ruby-high.ai` metadata is a major marketplace indexing risk.
 
 ## Magic Eden Plan
