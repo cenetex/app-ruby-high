@@ -331,9 +331,16 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     try {
       const mint = await buildHallPassCardMintTransaction(card, ownerWalletAddress);
+      const preparedCard = deps.ruby.recordHallPassCardMintPreparation(stateKey, {
+        cardId: card.id,
+        ownerWalletAddress: mint.ownerWalletAddress,
+        mintAddress: mint.mintAddress,
+        metadataUri: mint.metadataUri,
+      });
+      await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
-        card: revealedCardPayload(card),
+        card: revealedCardPayload(preparedCard),
         minted: [],
         mint: {
           cardId: card.id,
@@ -392,7 +399,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
       return true;
     }
-    if (!hallPassNftMetadataUris(card).includes(metadataUri)) {
+    if (!hallPassCardMintMetadataMatches(card, { ownerWalletAddress, mintAddress, metadataUri })) {
       ctx.error(ctx.res, "Card mint metadata does not match this card.", 400);
       return true;
     }
@@ -473,7 +480,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
       return true;
     }
-    if (!hallPassNftMetadataUris(card).includes(metadataUri)) {
+    if (!hallPassCardMintMetadataMatches(card, { ownerWalletAddress, mintAddress, metadataUri })) {
       ctx.error(ctx.res, "Card mint metadata does not match this card.", 400);
       return true;
     }
@@ -560,11 +567,18 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         return true;
       }
       const mint = await buildHallPassCardMintTransaction(card, ownerWalletAddress);
+      const preparedCard = deps.ruby.recordHallPassCardMintPreparation(stateKey, {
+        cardId: card.id,
+        ownerWalletAddress: mint.ownerWalletAddress,
+        mintAddress: mint.mintAddress,
+        metadataUri: mint.metadataUri,
+      });
+      await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
         ownerWalletAddress,
         minted: [],
-        card: revealedCardPayload(card),
+        card: revealedCardPayload(preparedCard),
         mint: {
           cardId: card.id,
           ownerWalletAddress: mint.ownerWalletAddress,
@@ -717,6 +731,23 @@ function cleanOwnerWalletAddress(value: string): string {
   return clean;
 }
 
+function hallPassCardMintMetadataMatches(
+  card: RubyHighHallPassCard,
+  input: { ownerWalletAddress: string; mintAddress: string; metadataUri: string },
+): boolean {
+  const metadataUri = input.metadataUri.trim();
+  if (!metadataUri) return false;
+  if (hallPassNftMetadataUris(card).includes(metadataUri)) return true;
+  return (
+    typeof card.pendingMintMetadataUri === "string" &&
+    card.pendingMintMetadataUri.trim() === metadataUri &&
+    typeof card.pendingMintAddress === "string" &&
+    card.pendingMintAddress.trim() === input.mintAddress &&
+    typeof card.pendingMintOwnerWalletAddress === "string" &&
+    card.pendingMintOwnerWalletAddress.trim() === input.ownerWalletAddress
+  );
+}
+
 async function updateOpenedCorePackNft(
   sessionId: string,
   pack: RubyHighHallPassPack | null | undefined,
@@ -730,6 +761,7 @@ async function updateOpenedCorePackNft(
       packCount: pack.packCount,
       cardCount: pack.cardCount,
       serial: pack.serial,
+      ...revealProvenanceFromPack(pack),
     });
     pack.metadataUri = updated.metadataUri;
     pack.updatedAt = Date.now();

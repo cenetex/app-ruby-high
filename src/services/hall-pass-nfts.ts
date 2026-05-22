@@ -61,6 +61,7 @@ import {
   revealProvenanceProperties,
 } from "./hall-pass-reveal-provenance.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
+import { durableNftMetadataUri } from "./nft-metadata-storage.js";
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -313,6 +314,21 @@ function metadataCreatorProperties(env: NodeJS.ProcessEnv = process.env): { crea
   return creators.length > 0 ? { creators } : {};
 }
 
+function revealProvenanceFromCard(card: RubyHighHallPassCard): HallPassRevealProvenance {
+  return {
+    ...(card.packRevealVersion ? { packRevealVersion: card.packRevealVersion } : {}),
+    ...(card.catalogHash ? { catalogHash: card.catalogHash } : {}),
+    ...(card.commitment ? { commitment: card.commitment } : {}),
+    ...(card.entropySource ? { entropySource: card.entropySource } : {}),
+    ...(card.revealSeed ? { revealSeed: card.revealSeed } : {}),
+    ...(card.revealProof ? { revealProof: card.revealProof } : {}),
+    ...(card.packAssetAddress ? { packAssetAddress: card.packAssetAddress } : {}),
+    ...(typeof card.revealSlot === "number" ? { revealSlot: card.revealSlot } : {}),
+    ...(card.randomnessAccount ? { randomnessAccount: card.randomnessAccount } : {}),
+    ...(card.revealTransaction ? { revealTransaction: card.revealTransaction } : {}),
+  };
+}
+
 function verifiedCreatorArgs(addressValue: string) {
   return [{ address: address(addressValue), verified: true, share: 100 }];
 }
@@ -327,6 +343,9 @@ export function hallPassNftMetadataUris(card: RubyHighHallPassCard, env: NodeJS.
   return Array.from(new Set([
     hallPassNftMetadataUri(card, env),
     legacyHallPassNftMetadataUri(card, env),
+    ...(typeof card.metadataUri === "string" && card.metadataUri.trim()
+      ? [card.metadataUri.trim()]
+      : []),
   ]));
 }
 
@@ -343,6 +362,21 @@ function hallPassRevealedNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.
   if (!serial) return null;
   const base = publicBaseUrlFromEnv(env);
   return `${base}${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/${encodeURIComponent(characterId)}/${encodeURIComponent(serial)}.json`;
+}
+
+async function hallPassNftMetadataUriForMint(card: RubyHighHallPassCard): Promise<string> {
+  const fallbackUri = hallPassNftMetadataUri(card);
+  const metadata = hallPassNftMetadataForRoute({
+    characterId: card.characterId,
+    serial: String(card.serial),
+    ...revealProvenanceFromCard(card),
+  });
+  if (!metadata) return fallbackUri;
+  return durableNftMetadataUri({
+    fallbackUri,
+    metadata,
+    assetKey: `api/apps/ruby-high/nft/metadata/hall-pass/${encodeURIComponent(card.characterId)}/${encodeURIComponent(String(card.serial))}.json`,
+  });
 }
 
 export function hallPassCollectionMetadataForRoute(args: {
@@ -498,7 +532,7 @@ export async function buildHallPassCardMintTransaction(
   const ownerSigner = createNoopSigner(owner);
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
   const mint = await generateKeyPairSigner();
-  const metadataUri = hallPassNftMetadataUri(card);
+  const metadataUri = await hallPassNftMetadataUriForMint(card);
   const [createInstruction, mintInstruction] = await createNft({
     mint,
     authority,
@@ -663,7 +697,7 @@ export async function mintHallPassCardNft(
   const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
   const mint = await generateKeyPairSigner();
-  const metadataUri = hallPassNftMetadataUri(card);
+  const metadataUri = await hallPassNftMetadataUriForMint(card);
   const instructions: Instruction[] = [];
   const [createInstruction, mintInstruction] = await createNft({
     mint,

@@ -78,7 +78,8 @@ Provable-fair data must remain available, but it should not clutter wallet trait
 Durability requirement:
 
 - Images must resolve through Irys/Arweave gateway URLs.
-- Minted metadata JSON should also be uploaded to durable storage before minting. The app-hosted JSON routes are acceptable for previews and emergency backfill, but relying on mutable `ruby-high.ai` metadata is a major marketplace indexing risk.
+- Minted metadata JSON should also be uploaded to durable storage before minting. Set `RUBY_HIGH_NFT_METADATA_STORAGE=irys-solana` after the uploader wallet has Irys balance.
+- The app-hosted JSON routes are acceptable for previews and emergency backfill, but relying on mutable `ruby-high.ai` metadata is a major marketplace indexing risk.
 
 ## Magic Eden Plan
 
@@ -107,5 +108,5 @@ Before sending users to mint again:
 - Opening a pack updates the pack to the opened artwork.
 - A newly minted card appears with `Ruby High: First Bell`, the revealed card artwork, `State = Revealed`, and a verified collection grouping.
 - Wallet and marketplace traits do not show proof hashes as normal traits.
-- Helius/DAS for the mint returns non-empty `content.files`, a durable image URL, and the expected collection grouping.
+- Helius/DAS for the mint returns non-empty `content.files`, a durable image URL, a durable metadata JSON URL, and the expected collection grouping.
 - Magic Eden shows the collection as listed before asking users to rely on marketplace discovery.

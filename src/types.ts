@@ -536,6 +536,10 @@ export interface RubyHighHallPassCard {
   revealTransaction?: string;
   revealedAt?: number;
   ownerWalletAddress?: string;
+  pendingMintOwnerWalletAddress?: string;
+  pendingMintAddress?: string;
+  pendingMintMetadataUri?: string;
+  pendingMintPreparedAt?: number;
   mintAddress?: string;
   mintSignature?: string;
   metadataUri?: string;

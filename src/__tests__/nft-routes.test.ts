@@ -476,13 +476,15 @@ describe("Hall Pass NFT routes", () => {
         },
       },
     });
-    expect(updateOpenedPack).toHaveBeenCalledWith({
+    expect(updateOpenedPack).toHaveBeenCalledWith(expect.objectContaining({
       assetAddress: pack.assetAddress,
       productId: "card-pack-1",
       packCount: 1,
       cardCount: 5,
       serial: 123456,
-    });
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      revealSeed: expect.any(String),
+    }));
     expect(lastResponse?.body.cards).toHaveLength(5);
     expect(lastResponse?.body.cards[0]).toMatchObject({
       title: "Ruby High Mystery Card",
@@ -669,7 +671,75 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.remaining).toBe(20);
     const cards = ruby.getOrCreate(stateKey).wallet.hallPassCards ?? [];
     expect(cards.filter((card) => card.mintAddress && card.mintSignature && card.metadataUri)).toHaveLength(0);
+    expect(cards.find((card) => card.id === grant.cards![0]!.id)).toMatchObject({
+      pendingMintOwnerWalletAddress: OWNER,
+      pendingMintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      pendingMintMetadataUri: lastResponse?.body.mint.metadataUri,
+      pendingMintPreparedAt: expect.any(Number),
+    });
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(false);
+  });
+
+  it("accepts the prepared durable metadata URI for owner-paid card mint submission", async () => {
+    const durableMetadataUri = "https://arweave.net/ruby-high-card-metadata-json";
+    restoreMintBuilder?.();
+    restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async (card, ownerWalletAddress) => ({
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress: "PreparedMint11111111111111111111111111111",
+      metadataUri: durableMetadataUri,
+      transactionBase64: "AQID",
+      transactionEncoding: "base64",
+      chain: "solana:mainnet",
+      rpcUrl: "https://rpc.example",
+    }));
+    const stateKey = signInUser("owner-paid-durable-submit");
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 1,
+      idempotencyKey: "stripe:checkout:owner_paid_durable_submit",
+      source: "stripe",
+    });
+    const card = grant.cards![0]!;
+
+    await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-prepare",
+      cookie: "rh_session=owner-paid-durable-submit",
+      body: { cardId: card.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.mint.metadataUri).toBe(durableMetadataUri);
+    const recordedCard = ruby.getOrCreate(stateKey).wallet.hallPassCards?.find((candidate) => candidate.id === card.id);
+    expect(recordedCard).toMatchObject({
+      pendingMintAddress: "PreparedMint11111111111111111111111111111",
+      pendingMintMetadataUri: durableMetadataUri,
+    });
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-submit",
+      cookie: "rh_session=owner-paid-durable-submit",
+      body: {
+        cardId: card.id,
+        ownerWalletAddress: OWNER,
+        mintAddress: "PreparedMint11111111111111111111111111111",
+        metadataUri: durableMetadataUri,
+        signedTransactionBase64: "AQID",
+      },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.card).toMatchObject({
+      id: card.id,
+      mintAddress: "PreparedMint11111111111111111111111111111",
+      metadataUri: durableMetadataUri,
+    });
+    const mintedCard = ruby.getOrCreate(stateKey).wallet.hallPassCards?.find((candidate) => candidate.id === card.id);
+    expect(mintedCard).toMatchObject({ metadataUri: durableMetadataUri });
+    expect(mintedCard).not.toHaveProperty("pendingMintAddress");
+    expect(mintedCard).not.toHaveProperty("pendingMintMetadataUri");
   });
 
   it("records one owner-paid card mint only after confirmation", async () => {

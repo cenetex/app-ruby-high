@@ -36,6 +36,7 @@ import {
   FIRST_BELL_SET_NAME,
 } from "./hall-pass-card-catalog.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
+import { durableNftMetadataUri } from "./nft-metadata-storage.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -89,7 +90,7 @@ export interface CorePackNftMintResult {
   metadataUri: string;
 }
 
-export interface CorePackNftOpenedUpdateInput {
+export interface CorePackNftOpenedUpdateInput extends HallPassRevealProvenance {
   assetAddress: string;
   productId: string;
   packCount: number;
@@ -290,6 +291,21 @@ function metadataCreatorProperties(env: NodeJS.ProcessEnv = process.env): { crea
   return creators.length > 0 ? { creators } : {};
 }
 
+function revealProvenanceFromPack(pack: HallPassRevealProvenance): HallPassRevealProvenance {
+  return {
+    ...(pack.packRevealVersion ? { packRevealVersion: pack.packRevealVersion } : {}),
+    ...(pack.catalogHash ? { catalogHash: pack.catalogHash } : {}),
+    ...(pack.commitment ? { commitment: pack.commitment } : {}),
+    ...(pack.entropySource ? { entropySource: pack.entropySource } : {}),
+    ...(pack.revealSeed ? { revealSeed: pack.revealSeed } : {}),
+    ...(pack.revealProof ? { revealProof: pack.revealProof } : {}),
+    ...(pack.packAssetAddress ? { packAssetAddress: pack.packAssetAddress } : {}),
+    ...(typeof pack.revealSlot === "number" ? { revealSlot: pack.revealSlot } : {}),
+    ...(pack.randomnessAccount ? { randomnessAccount: pack.randomnessAccount } : {}),
+    ...(pack.revealTransaction ? { revealTransaction: pack.revealTransaction } : {}),
+  };
+}
+
 export function corePackNftMetadataUri(args: {
   productId: string;
   packCount: number;
@@ -318,6 +334,44 @@ export function corePackOpenedNftMetadataUri(args: {
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = encodeURIComponent(normalizeSerial(String(args.serial || 1)));
   return `${base}${CORE_PACK_NFT_PREFIX}/metadata/core/pack/${productId}/${serial}.json?packs=${encodeURIComponent(String(packCount))}&cards=${encodeURIComponent(String(cardCount))}&opened=1`;
+}
+
+async function corePackNftMetadataUriForMint(input: CorePackNftMintInput): Promise<string> {
+  const fallbackUri = corePackNftMetadataUri(input);
+  const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = packSerial(input.paymentSignature);
+  return durableNftMetadataUri({
+    fallbackUri,
+    metadata: corePackNftMetadataForRoute({
+      productId: input.productId,
+      serial,
+      packCount: String(packCount),
+      cardCount: String(cardCount),
+    }),
+    assetKey: `api/apps/ruby-high/nft/metadata/core/pack/${encodeURIComponent(cleanProductId(input.productId))}/${encodeURIComponent(serial)}.sealed.json`,
+  });
+}
+
+async function corePackOpenedNftMetadataUriForUpdate(input: CorePackNftOpenedUpdateInput): Promise<string> {
+  const fallbackUri = corePackOpenedNftMetadataUri(input);
+  const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = normalizeSerial(String(input.serial || 1));
+  return durableNftMetadataUri({
+    fallbackUri,
+    metadata: corePackNftMetadataForRoute({
+      productId: input.productId,
+      serial,
+      packCount: String(packCount),
+      cardCount: String(cardCount),
+      opened: true,
+      ...revealProvenanceFromPack(input),
+    }),
+    assetKey: `api/apps/ruby-high/nft/metadata/core/pack/${encodeURIComponent(cleanProductId(input.productId))}/${encodeURIComponent(serial)}.opened.json`,
+  });
 }
 
 export function coreCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
@@ -459,7 +513,7 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
   const collectionAddress = publicKey(config.collectionAddress);
   const collection = await fetchCollectionV1(umi, collectionAddress);
   const asset = generateSigner(umi);
-  const metadataUri = corePackNftMetadataUri(input);
+  const metadataUri = await corePackNftMetadataUriForMint(input);
   const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
   const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
@@ -503,7 +557,7 @@ export async function updateCorePackNftToOpened(
     fetchAssetV1(umi, publicKey(assetAddress), { commitment: "confirmed" }),
     fetchCollectionV1(umi, collectionAddress),
   ]);
-  const metadataUri = corePackOpenedNftMetadataUri(input);
+  const metadataUri = await corePackOpenedNftMetadataUriForUpdate(input);
   const sent = await sendAndConfirmCoreTransaction(umi, update(umi, {
     asset,
     collection,
