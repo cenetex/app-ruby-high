@@ -171,13 +171,13 @@ const SOLANA_TOKEN_PRICE_ENVS: Record<string, string> = {
 
 const SOLANA_TOKEN_PRICE_DEFAULTS: Record<string, string> = {
   "card-pack-1": "1000000",
-  "card-pack-3": "3000000",
-  "card-pack-5": "5000000",
-  "card-pack-10": "10000000",
+  "card-pack-3": "2800000",
+  "card-pack-5": "4500000",
+  "card-pack-10": "8500000",
   "hall-pass-5": "1000000",
-  "hall-pass-20": "3000000",
-  "hall-pass-50": "5000000",
-  "hall-pass-100": "10000000",
+  "hall-pass-20": "2800000",
+  "hall-pass-50": "4500000",
+  "hall-pass-100": "8500000",
 };
 
 function envTrim(name: string): string | null {
