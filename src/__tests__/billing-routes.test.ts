@@ -237,9 +237,9 @@ describe("billing products", () => {
     });
     expect(lastResponse?.body.solana.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses, p.tokenAmount])).toEqual([
       [1, 5, 5, "1000000"],
-      [3, 15, 15, "3000000"],
-      [5, 25, 25, "5000000"],
-      [10, 50, 50, "10000000"],
+      [3, 15, 15, "2800000"],
+      [5, 25, 25, "4500000"],
+      [10, 50, 50, "8500000"],
     ]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
     expect(lastResponse?.body.courseSlotCost).toBe(3);
@@ -674,8 +674,8 @@ describe("Solana Hall Pass billing", () => {
         packCount: 5,
         cardCount: 25,
         hallPasses: 25,
-        tokenAmount: "5000000",
-        tokenAmountBaseUnits: "5000000000000",
+        tokenAmount: "4500000",
+        tokenAmountBaseUnits: "4500000000000",
         tokenSymbol: "RUBY",
       },
       ownerWalletAddress: TEST_SOLANA_OWNER,
@@ -897,7 +897,7 @@ describe("Solana Hall Pass billing", () => {
               accountIndex: 3,
               mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
               owner: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
-              uiTokenAmount: { amount: "3000000000000", decimals: 6 },
+              uiTokenAmount: { amount: "2800000000000", decimals: 6 },
             },
           ],
         },
@@ -940,7 +940,7 @@ describe("Solana Hall Pass billing", () => {
         catalogHash: expect.any(String),
         commitment: expect.any(String),
         entropySource: "ruby-high-server-commit-v1",
-        tokenAmount: "3000000",
+        tokenAmount: "2800000",
         tokenSymbol: "RUBY",
       },
     });
