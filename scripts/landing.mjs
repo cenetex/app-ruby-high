@@ -1,8 +1,5 @@
 import { readFile } from "node:fs/promises";
 
-const DEFAULT_LANDING_HOSTS = "rubyhighai.com,www.rubyhighai.com";
-const DEFAULT_APP_BASE = "https://ruby-high.ai";
-const APP_ROUTE_PREFIX = "/api/apps/ruby-high";
 const LANDING_ROOT = new URL("../landing/", import.meta.url);
 
 const CONTENT_TYPES = new Map([
@@ -17,27 +14,6 @@ const CONTENT_TYPES = new Map([
   [".txt", "text/plain; charset=utf-8"],
   [".webp", "image/webp"],
 ]);
-
-function firstHeader(value) {
-  if (Array.isArray(value)) return value[0] ?? "";
-  return value ?? "";
-}
-
-function normalizeHostname(raw) {
-  const first = raw.split(",")[0]?.trim().toLowerCase() ?? "";
-  if (!first) return "";
-  if (first.startsWith("[") && first.includes("]")) return first.slice(1, first.indexOf("]"));
-  return first.split(":")[0] ?? "";
-}
-
-function landingHosts(env = process.env) {
-  return new Set(
-    (env.RUBY_HIGH_LANDING_HOSTS ?? DEFAULT_LANDING_HOSTS)
-      .split(",")
-      .map((host) => host.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
 
 function fileUrlForPath(pathname) {
   let decoded = "";
@@ -103,30 +79,14 @@ async function sendLandingFile(req, res, pathname) {
   }
 }
 
-export function requestHostname(req) {
-  return normalizeHostname(firstHeader(req.headers["x-forwarded-host"] ?? req.headers.host));
-}
-
-export function isLandingHost(req, env = process.env) {
-  const host = requestHostname(req);
-  return !!host && landingHosts(env).has(host);
-}
-
-export async function serveLandingRequest(req, res, url, opts = {}) {
-  if (!isLandingHost(req, opts.env ?? process.env)) return false;
-
-  if (url.pathname.startsWith(APP_ROUTE_PREFIX)) {
-    const appBase = opts.appBase ?? process.env.RUBY_HIGH_APP_BASE ?? DEFAULT_APP_BASE;
-    const location = new URL(`${url.pathname}${url.search}`, appBase).toString();
-    res.writeHead(req.method === "GET" || req.method === "HEAD" ? 302 : 307, { Location: location });
-    res.end();
-    return true;
-  }
-
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    sendPlain(res, 405, "Method not allowed");
-    return true;
-  }
+/**
+ * Serve a request from the static landing bundle when the path is the root,
+ * the shared stylesheet, or anything under /assets. Returns true when the
+ * response was written so the caller can stop; returns false otherwise so
+ * the app routes can handle it.
+ */
+export async function serveLandingRequest(req, res, url) {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
     await sendLandingFile(req, res, "/index.html");
@@ -138,11 +98,5 @@ export async function serveLandingRequest(req, res, url, opts = {}) {
     return true;
   }
 
-  if (!extension(url.pathname)) {
-    await sendLandingFile(req, res, "/index.html");
-    return true;
-  }
-
-  sendPlain(res, 404, "Not found");
-  return true;
+  return false;
 }

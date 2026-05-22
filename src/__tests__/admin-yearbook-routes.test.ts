@@ -36,7 +36,7 @@ function route(opts: {
 }): { ctx: RouteContext; response: () => { status: number; body: any; headers: Record<string, string> } | null } {
   let response: { status: number; body: any; headers: Record<string, string> } | null = null;
   const headers: Record<string, string> = {};
-  const url = new URL(opts.path, "https://rubyhighai.com");
+  const url = new URL(opts.path, "https://ruby-high.ai");
   const res = {
     setHeader(name: string, value: string) {
       headers[name.toLowerCase()] = value;
@@ -57,7 +57,7 @@ function route(opts: {
     userAgentHeader: opts.userAgentHeader ?? null,
     visitorHeader: opts.visitorHeader ?? null,
     clientIp: opts.clientIp ?? null,
-    callbackUrlBuilder: (path) => `https://rubyhighai.com${path}`,
+    callbackUrlBuilder: (path) => `https://ruby-high.ai${path}`,
     error: (_res, message, status = 500) => {
       response = { status, body: { error: message }, headers };
     },

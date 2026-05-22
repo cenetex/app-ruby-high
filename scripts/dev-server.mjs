@@ -4,7 +4,7 @@
 import { createServer } from "node:http";
 import { URL } from "node:url";
 import { bodyLimitForPath } from "./http-limits.mjs";
-import { isLandingHost, serveLandingRequest } from "./landing.mjs";
+import { serveLandingRequest } from "./landing.mjs";
 import {
   AuthService,
   ChatService,
@@ -20,7 +20,6 @@ const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "localhost";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
 const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? `http://${HOST}:${PORT}`;
-const APP_BASE = process.env.RUBY_HIGH_APP_BASE ?? "https://ruby-high.ai";
 
 const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
 console.log(`[ruby-high] state store: ${stateStore.describe()}`);
@@ -154,13 +153,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (isLandingHost(req) && await serveLandingRequest(req, res, url, { appBase: APP_BASE })) {
-    return;
-  }
-
-  if (url.pathname === "/" || url.pathname === "/index.html") {
-    res.writeHead(302, { Location: "/api/apps/ruby-high/viewer" });
-    res.end();
+  if (await serveLandingRequest(req, res, url)) {
     return;
   }
 
