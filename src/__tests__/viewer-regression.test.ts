@@ -205,7 +205,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'const CARD_BACK_ART_URL = apiBase + "/assets/nft/ruby-high-card-back.png?v=card-back-v1"');
     expectScriptToContain(script, 'const CARD_NFT_ART_VERSION = "card-crop-v1"');
     expectScriptToContain(script, 'apiBase + "/assets/nft/market-cards/"');
-    expectScriptToContain(script, "const HALL_PASS_CARDS_PER_PACK = 5");
+    // HALL_PASS_CARDS_PER_PACK is now declared via VIEWER_CONSTANTS destructure
+    // by viewer-parts/script.ts → client-pure.ts. Assert both halves so the
+    // binding is visible to the IIFE scope at runtime.
+    expectScriptToContain(script, '"HALL_PASS_CARDS_PER_PACK":5');
+    expect(script).toMatch(/const \{[^}]*\bHALL_PASS_CARDS_PER_PACK\b[^}]*\} = VIEWER_CONSTANTS/);
     expectScriptToContain(script, "function showPackMintProgress(message, options)");
     expectScriptToContain(script, "Please wait: minting pack");
     expectScriptToContain(script, "Please wait: minting card");
