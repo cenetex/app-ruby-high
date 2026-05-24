@@ -14,6 +14,10 @@ type MetricsEventBody = {
   reason?: unknown;
   path?: unknown;
   referrer?: unknown;
+  ref?: unknown;
+  destination?: unknown;
+  kind?: unknown;
+  landing?: unknown;
   shareId?: unknown;
   grade?: unknown;
   packId?: unknown;
@@ -69,7 +73,23 @@ export async function handleMetricsEventRoute(
       visitorHash,
       path: typeof body.path === "string" ? body.path : undefined,
       referrer: typeof body.referrer === "string" ? body.referrer : undefined,
+      ref: typeof body.ref === "string" ? body.ref : undefined,
       userAgent: requestHeaderString(ctx.userAgentHeader),
+    }));
+  }
+  if (type === "share_initiated") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordShareInitiatedDurably(deps.sessionId, {
+      visitorHash,
+      shareId: typeof body.shareId === "string" ? body.shareId : undefined,
+      destination: typeof body.destination === "string" ? body.destination : undefined,
+      kind: typeof body.kind === "string" ? body.kind : undefined,
+    }));
+  }
+  if (type === "share_link_visited") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordShareLinkVisitedDurably(deps.sessionId, {
+      visitorHash,
+      ref: typeof body.ref === "string" ? body.ref : undefined,
+      landing: typeof body.landing === "string" ? body.landing : undefined,
     }));
   }
   if (type === "session_resume") {

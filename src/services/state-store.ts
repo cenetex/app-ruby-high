@@ -136,6 +136,9 @@ export type StoredMetricEventName =
   | "funnel_step"
   | "yearbook_open"
   | "yearbook_copy"
+  | "share_artifact_created"
+  | "share_initiated"
+  | "share_link_visited"
   | "guest_spotlight_seen"
   | "guest_spotlight_started"
   | "guest_pack_override_set"
@@ -667,6 +670,9 @@ export function isStoredMetricEventName(value: unknown): value is StoredMetricEv
     value === "funnel_step" ||
     value === "yearbook_open" ||
     value === "yearbook_copy" ||
+    value === "share_artifact_created" ||
+    value === "share_initiated" ||
+    value === "share_link_visited" ||
     value === "guest_spotlight_seen" ||
     value === "guest_spotlight_started" ||
     value === "guest_pack_override_set" ||

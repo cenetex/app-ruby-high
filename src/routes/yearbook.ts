@@ -1,7 +1,7 @@
 import type { Grade } from "../types.js";
 import { GRADES, GRADE_LABELS } from "../types.js";
 import type { RubyHighService, YearbookShareCard } from "../services/ruby-high-service.js";
-import { APP_DISPLAY_NAME, APP_ROUTE_PREFIX } from "./constants.js";
+import { APP_DISPLAY_NAME, APP_ROUTE_PREFIX, VIEWER_PATH } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
 const YEARBOOK_PREFIX = `${APP_ROUTE_PREFIX}/yearbook`;
@@ -64,6 +64,7 @@ function renderHtml(ctx: RouteContext, card: YearbookShareCard): string {
     ? card.superlatives.map((line) => `<li>${escapeHtml(line)}</li>`).join("")
     : "<li>Paper card sealed.</li>";
   const subjects = subjectRows(card).map((line) => `<li>${escapeHtml(line)}</li>`).join("");
+  const playUrl = absoluteUrl(ctx, `${VIEWER_PATH}?ref=yb_${encodeURIComponent(card.shareId)}`);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -89,6 +90,8 @@ function renderHtml(ctx: RouteContext, card: YearbookShareCard): string {
     dd { margin: 0; }
     ul { margin: 0; padding-left: 20px; }
     footer { padding: 16px 28px; border-top: 1px solid rgba(37,29,26,0.18); font-weight: 800; }
+    .play { display: inline-block; margin-top: 18px; padding: 14px 24px; background: #c9252d; color: #fffaf1; font-weight: 800; text-decoration: none; border-radius: 8px; }
+    .play:hover { background: #a81d24; }
   </style>
 </head>
 <body>
@@ -111,6 +114,7 @@ function renderHtml(ctx: RouteContext, card: YearbookShareCard): string {
       </section>
       <footer>Ruby High yearbook card</footer>
     </article>
+    <a class="play" href="${escapeHtml(playUrl)}">Play ${escapeHtml(APP_DISPLAY_NAME)}</a>
   </main>
 </body>
 </html>`;
