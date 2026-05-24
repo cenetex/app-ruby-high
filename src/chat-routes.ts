@@ -48,7 +48,7 @@ import {
   type Question,
   type QuizState,
 } from "./types.js";
-import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "./content/registry.js";
+import { facultyByIdForSession, facultyForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "./content/registry.js";
 import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
@@ -451,18 +451,62 @@ function answerGradedContextMatchesReveal(state: QuizState, context: AnswerGrade
   return true;
 }
 
-function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string): string {
-  const TEACHERS = ["ruby", "sally-science", "professor-edward"];
+const CORE_LOUNGE_TEACHERS = ["ruby", "sally-science", "professor-edward"];
+
+function loungeTeacherIdsForState(state: QuizState): string[] {
+  const roster = facultyForSession(state)
+    .map((f) => f.id)
+    .filter((id) => id && id !== "lounge");
+  const ordered = [
+    ...CORE_LOUNGE_TEACHERS.filter((id) => roster.includes(id)),
+    ...roster.filter((id) => !CORE_LOUNGE_TEACHERS.includes(id)),
+  ];
+  return ordered.length > 0 ? ordered : CORE_LOUNGE_TEACHERS;
+}
+
+function loungeTeacherName(state: QuizState, facultyId: string): string {
+  const faculty = facultyByIdForSession(state, facultyId);
+  if (faculty) return faculty.shortName || faculty.displayName || faculty.id;
+  const teacher = teacherById(facultyId);
+  return teacher.shortName || teacher.displayName || facultyId;
+}
+
+function joinHumanList(values: string[]): string {
+  if (values.length <= 1) return values[0] ?? "";
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+function loungeSystemContext(state: QuizState, teacherIds: string[]): string {
+  const names = teacherIds.map((id) => loungeTeacherName(state, id));
+  return [
+    `LOUNGE CONTEXT: You're hanging out in the Ruby High teachers' lounge with ${joinHumanList(names)}.`,
+    "This is downtime; do not use the blackboard, start a class, or narrate UI controls.",
+    "Chat in 1-2 short sentences in your voice: riff on a student you saw, ask a colleague's opinion, or share a small observation.",
+    "Address colleagues by name when natural. The student is lurking and may chime in.",
+  ].join(" ");
+}
+
+function loungeEnterDirective(state: QuizState, speaker: string, teacherIds: string[]): string {
+  const colleagues = teacherIds.filter((id) => id !== speaker).map((id) => loungeTeacherName(state, id));
+  const colleagueLine = colleagues.length > 0
+    ? ` Open a quick chat thread with ${joinHumanList(colleagues)}; they will each chime in after.`
+    : "";
+  return `The student just walked in. You go first.${colleagueLine}`;
+}
+
+function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string, teacherIds: string[]): string {
+  const teachers = teacherIds.length > 0 ? teacherIds : CORE_LOUNGE_TEACHERS;
   const history = chat.history({ sessionToken, faculty: "lounge" });
   // Find the last assistant message and pick the next teacher in rotation.
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i];
     if (m && m.role === "assistant" && m.faculty) {
-      const idx = TEACHERS.indexOf(m.faculty);
-      return TEACHERS[(idx + 1) % TEACHERS.length] ?? "ruby";
+      const idx = teachers.indexOf(m.faculty);
+      if (idx >= 0) return teachers[(idx + 1) % teachers.length] ?? teachers[0] ?? "ruby";
     }
   }
-  return "ruby";
+  return teachers[0] ?? "ruby";
 }
 
 /** Have the teacher grade all opinion responses in one call. Returns
@@ -1937,15 +1981,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
 
-    // ── Teachers' Lounge: round-robin three teachers in a shared bucket. ───
+    // ── Teachers' Lounge: round-robin active faculty in a shared bucket. ───
     if (faculty === "lounge") {
-      const TEACHERS = ["ruby", "sally-science", "professor-edward"];
+      const loungeState = ruby.getOrCreate(sessionId);
+      const teacherIds = loungeTeacherIdsForState(loungeState);
       const order = trigger === "lounge-enter"
-        ? TEACHERS
-        : [pickNextLoungeSpeaker(chat, token)];
+        ? teacherIds
+        : [pickNextLoungeSpeaker(chat, token, teacherIds)];
       const playerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
-      const loungeSystem =
-        "LOUNGE CONTEXT: You're hanging out in the Ruby High teachers' lounge with the other faculty (Ruby, Sally Science, Professor Edward). This is downtime — just conversation, no blackboard, no tools. Chat in 1-2 short sentences in your voice — riff on a student you saw, ask a colleague's opinion, share a small observation. Address colleagues by name when natural. The student is lurking and may chime in.";
+      const loungeSystem = loungeSystemContext(loungeState, teacherIds);
 
       // For lounge-enter, log the event so each speaker's first-turn
       // synopsis includes "the student just walked in."
@@ -1962,12 +2006,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         for (const speaker of order) {
           send("speaker", { facultyId: speaker });
           // The "Ruby goes first" kickoff is a per-turn directive for
-          // Ruby only, on a lounge-enter trigger. Sally + Edward pick
+          // the first speaker only, on a lounge-enter trigger. Later speakers pick
           // up the room state from RECENT EVENTS + the prior speakers'
           // utterances in history.
           const turnDirective =
-            trigger === "lounge-enter" && speaker === "ruby"
-              ? "The student just walked in. You go first — open a quick chat thread with Sally and Edward. They'll each chime in after."
+            trigger === "lounge-enter" && speaker === order[0]
+              ? loungeEnterDirective(loungeState, speaker, teacherIds)
               : playerLine
               ? "The student just spoke in the lounge. Reply to them directly in character in 1-2 short sentences, then keep the faculty-room scene moving."
               : undefined;

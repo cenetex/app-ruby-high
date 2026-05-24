@@ -169,6 +169,17 @@ const SOLANA_TOKEN_PRICE_ENVS: Record<string, string> = {
   "hall-pass-100": "RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS",
 };
 
+const SOLANA_TOKEN_PRICE_DEFAULTS: Record<string, string> = {
+  "card-pack-1": "1000000",
+  "card-pack-3": "2800000",
+  "card-pack-5": "4500000",
+  "card-pack-10": "8500000",
+  "hall-pass-5": "1000000",
+  "hall-pass-20": "2800000",
+  "hall-pass-50": "4500000",
+  "hall-pass-100": "8500000",
+};
+
 function envTrim(name: string): string | null {
   const value = process.env[name]?.trim();
   return value ? value : null;
@@ -316,7 +327,7 @@ function formatTokenAmount(units: bigint, decimals: number): string {
 function solanaTokenAmountForProduct(product: BillingProduct, decimals: number): { display: string; baseUnits: string } | null {
   const envName = SOLANA_TOKEN_PRICE_ENVS[product.id];
   if (!envName) return null;
-  const raw = envTrim(envName) ?? "100000";
+  const raw = envTrim(envName) ?? SOLANA_TOKEN_PRICE_DEFAULTS[product.id] ?? "1000000";
   const baseUnits = parseTokenAmountToBaseUnits(raw, decimals);
   if (!baseUnits) return null;
   return {

@@ -82,6 +82,15 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("window.prompt");
   });
 
+  it("keeps lounge mode out of the empty-board class-start CTA", () => {
+    const script = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, 'const isLounge = !!((faculty && faculty.id === LOUNGE_ID) || (!faculty && lastTelemetry && lastTelemetry.faculty === LOUNGE_ID));');
+    expectScriptToContain(script, "Lounge mode: hide blackboard and show the faculty lounge roster.");
+    expectScriptToContain(script, "t.faculty === LOUNGE_ID ? \"teachers' lounge\"");
+    expectScriptToContain(script, 'const roster = (t.faculty_roster || []).filter((f) => f && f.id !== LOUNGE_ID);');
+  });
+
   it("wires the Privy account UI through the lazy widget bundle", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test", loginMethods: ["wallet"] } });
     const script = inlineScript(html);
@@ -207,9 +216,19 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'const CARD_BACK_ART_URL = apiBase + "/assets/nft/ruby-high-card-back.png?v=card-back-v1"');
     expectScriptToContain(script, 'const CARD_NFT_ART_VERSION = "card-crop-v1"');
     expectScriptToContain(script, 'apiBase + "/assets/nft/market-cards/"');
-    expectScriptToContain(script, "const HALL_PASS_CARDS_PER_PACK = 5");
-    expectScriptToContain(script, "function showPackMintProgress(message)");
+    // HALL_PASS_CARDS_PER_PACK is now declared via VIEWER_CONSTANTS destructure
+    // by viewer-parts/script.ts → client-pure.ts. Assert both halves so the
+    // binding is visible to the IIFE scope at runtime.
+    expectScriptToContain(script, '"HALL_PASS_CARDS_PER_PACK":5');
+    expect(script).toMatch(/const \{[^}]*\bHALL_PASS_CARDS_PER_PACK\b[^}]*\} = VIEWER_CONSTANTS/);
+    expectScriptToContain(script, "function showPackMintProgress(message, options)");
     expectScriptToContain(script, "Please wait: minting pack");
+    expectScriptToContain(script, "Please wait: minting card");
+    expectScriptToContain(script, "rotate: false");
+    expectScriptToContain(script, "updatePackMintProgress(\"Review the mint transaction in your wallet...\")");
+    expectScriptToContain(script, "setPrivyStatus(\"Review the card mint transaction in your wallet.\", false)");
+    expect(script).not.toContain("Review the mint preview...");
+    expect(script).not.toContain("Confirm the mint in your wallet...");
     const packBuilder = script.slice(script.indexOf("function buildHallPassPack(pack)"), script.indexOf("function buildHallPassCard(card)"));
     expect(packBuilder).toContain("PACK_NFT_ART_URL");
     expect(packBuilder).toContain("PACK_OPENED_NFT_ART_URL");
@@ -218,6 +237,7 @@ describe("viewer regression guardrails", () => {
     expect(cardBuilder).toContain("CARD_BACK_ART_URL");
     expect(cardBuilder).not.toContain("faceDown ? PACK_NFT_ART_URL");
     expect(VIEWER_CSS).toContain(".pack-mint-overlay");
+    expect(VIEWER_CSS).toContain("z-index: 130");
     expect(VIEWER_CSS).toContain(".account-pack-tile");
     expect(VIEWER_CSS).toContain(".account-card-tile");
     expect(VIEWER_CSS).toContain(".account-chain-link");
@@ -232,8 +252,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function mintPendingCardNftsFromAccount()");
     expectScriptToContain(script, "function mintHallPassCardFromAccount(cardId)");
     expectScriptToContain(script, 'apiBase + "/nft/mint-card-prepare"');
-    expectScriptToContain(script, 'apiBase + "/nft/mint-card-confirm"');
-    expectScriptToContain(script, 'prompt: "Your wallet should show one card-mint transaction."');
+    expectScriptToContain(script, 'apiBase + "/nft/mint-card-submit"');
+    expectScriptToContain(script, 'typeof client.signSolanaTransaction !== "function"');
+    expectScriptToContain(script, "client.signSolanaTransaction(preparedData.mint)");
+    expectScriptToContain(script, "signedTransactionBase64: signed.signedTransactionBase64");
+    expect(script).not.toContain('prompt: "Your wallet should show one card-mint transaction."');
     expectScriptToContain(script, "Mint to Reveal");
     expectScriptToContain(script, "return hallPassCardById(cleanCardId) || data.card || null");
     expect(script).not.toContain("remove();\n        void mintHallPassCardFromAccount(card.id);");
@@ -255,6 +278,7 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('"solana quote " + r.status');
     expect(PRIVY_CLIENT_SOURCE).toContain('useSignTransaction');
     expect(PRIVY_CLIENT_SOURCE).toContain('/billing/solana/submit');
+    expect(PRIVY_CLIENT_SOURCE).toContain('signSolanaTransaction');
     expect(script).not.toContain('buy.textContent = "Pay with wallet"');
     expect(script).not.toContain("if (solanaWalletAddress && solana && solana.configured && solanaProducts.length > 0)");
     expect(script).not.toContain("Solana transaction signature");

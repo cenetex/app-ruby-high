@@ -90,6 +90,11 @@ interface SolanaPaymentResult {
   walletAddress: string;
 }
 
+interface SolanaSignedTransactionResult {
+  signedTransactionBase64: string;
+  walletAddress: string;
+}
+
 interface SolanaPreparedTransaction {
   transaction?: string;
   transactionBase64?: string;
@@ -102,6 +107,7 @@ interface RubyHighPrivyClient {
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
+  signSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaSignedTransactionResult>;
   signAndSendSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaPaymentResult>;
   onSession(listener: SessionListener): () => void;
   onDiagnostic(listener: DiagnosticListener): () => void;
@@ -113,6 +119,7 @@ interface BridgeApi {
   connectSolanaWallet(): Promise<RubyHighPrivySession | null>;
   logout(): Promise<void>;
   paySolanaQuote(quote: SolanaPaymentQuote): Promise<SolanaPaymentResult>;
+  signSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaSignedTransactionResult>;
   signAndSendSolanaTransaction(transaction: SolanaPreparedTransaction): Promise<SolanaPaymentResult>;
 }
 
@@ -196,6 +203,7 @@ export async function createRubyHighPrivyClient(
     connectSolanaWallet: () => requireBridge(bridgeApi).connectSolanaWallet(),
     logout: () => requireBridge(bridgeApi).logout(),
     paySolanaQuote: (quote) => requireBridge(bridgeApi).paySolanaQuote(quote),
+    signSolanaTransaction: (transaction) => requireBridge(bridgeApi).signSolanaTransaction(transaction),
     signAndSendSolanaTransaction: (transaction) => requireBridge(bridgeApi).signAndSendSolanaTransaction(transaction),
     onSession(listener) {
       listeners.add(listener);
@@ -281,6 +289,7 @@ function RubyHighPrivyBridge(props: {
   const pendingWalletConnect = useRef<PendingLogin | null>(null);
   const modalOpenedForLogin = useRef(false);
   const modalOpenedForWalletConnect = useRef(false);
+  const initialSessionChecked = useRef(false);
   const solanaWalletsRef = useRef<ConnectedStandardSolanaWallet[]>([]);
 
   useEffect(() => {
@@ -358,6 +367,33 @@ function RubyHighPrivyBridge(props: {
     };
   }, [privy.authenticated, privy.ready, signTransaction, solanaWallets.ready]);
 
+  const signSolanaPreparedTransaction = useCallback(async (
+    prepared: SolanaPreparedTransaction,
+  ): Promise<SolanaSignedTransactionResult> => {
+    if (!privy.ready || !privy.authenticated) throw new Error("Connect your Ruby High account first.");
+    if (!solanaWallets.ready) throw new Error("Solana wallets are still starting.");
+    const wallet = selectSolanaWallet(solanaWalletsRef.current);
+    if (!wallet) throw new Error("Connect a Solana wallet first.");
+    const transaction = base64Decode(prepared.transactionBase64 || prepared.transaction || "");
+    try {
+      const signed = await signTransaction({
+        transaction,
+        wallet,
+        chain: prepared.chain || "solana:mainnet",
+      });
+      return {
+        signedTransactionBase64: base64Encode(signedTransactionBytes(signed)),
+        walletAddress: wallet.address,
+      };
+    } catch (err) {
+      props.diagnose(diagnosticFromError("privy.sign_transaction.error", err, { stage: "sign_transaction" }));
+      if (/429|too many requests|rate.?limit/i.test(err instanceof Error ? err.message : String(err || ""))) {
+        throw new Error("Privy is rate limiting wallet requests. Wait a minute, then try again.");
+      }
+      throw err;
+    }
+  }, [privy.authenticated, privy.ready, props, signTransaction, solanaWallets.ready]);
+
   const signAndSendSolanaPreparedTransaction = useCallback(async (
     prepared: SolanaPreparedTransaction,
   ): Promise<SolanaPaymentResult> => {
@@ -372,7 +408,7 @@ function RubyHighPrivyBridge(props: {
       chain: prepared.chain || "solana:mainnet",
     });
     return {
-      signature: base58Encode(result.signature),
+      signature: solanaSignatureString(result.signature),
       walletAddress: wallet.address,
     };
   }, [privy.authenticated, privy.ready, signAndSendTransaction, solanaWallets.ready]);
@@ -535,6 +571,7 @@ function RubyHighPrivyBridge(props: {
       connectSolanaWallet,
       logout,
       paySolanaQuote,
+      signSolanaTransaction: signSolanaPreparedTransaction,
       signAndSendSolanaTransaction: signAndSendSolanaPreparedTransaction,
     }, privy.ready);
   }, [
@@ -545,6 +582,7 @@ function RubyHighPrivyBridge(props: {
     paySolanaQuote,
     privy.ready,
     props,
+    signSolanaPreparedTransaction,
     signAndSendSolanaPreparedTransaction,
   ]);
 
@@ -568,6 +606,8 @@ function RubyHighPrivyBridge(props: {
 
   useEffect(() => {
     if (!privy.ready) return;
+    if (initialSessionChecked.current) return;
+    initialSessionChecked.current = true;
     void current().then((session) => {
       if (session.authenticated) props.notify(session);
     });
@@ -599,6 +639,12 @@ function base58Encode(bytes: Uint8Array): string {
     out += BASE58_ALPHABET[digits[i]];
   }
   return out || "1";
+}
+
+function solanaSignatureString(signature: unknown): string {
+  if (typeof signature === "string" && signature.trim()) return signature.trim();
+  if (signature instanceof Uint8Array) return base58Encode(signature);
+  throw new Error("Wallet did not return a Solana transaction signature.");
 }
 
 function base64Encode(bytes: Uint8Array): string {

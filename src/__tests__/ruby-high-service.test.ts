@@ -12,6 +12,7 @@ import {
 import { StateStore } from "../services/state-store.js";
 import { MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { dailyKey } from "../types.js";
 
@@ -487,6 +488,12 @@ describe("Hall Pass wallet", () => {
     expect(opened.cards?.filter((card) => card.role === "teacher")).toHaveLength(1);
     expect(opened.cards?.filter((card) => card.role === "item" || card.role === "location" || card.role === "special")).toHaveLength(1);
     expect(opened.cards?.[0]).toMatchObject({
+      setName: FIRST_BELL_SET_NAME,
+      setCode: FIRST_BELL_SET_CODE,
+      setNumber: expect.stringMatching(/^FB-\d{3}$/),
+      profileId: expect.any(String),
+      cardName: expect.any(String),
+      subject: expect.any(String),
       packRevealVersion: "ruby-high-pack-reveal-v1.1",
       catalogHash: recorded.pack!.catalogHash,
       commitment: recorded.pack!.commitment,

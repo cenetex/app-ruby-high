@@ -3,10 +3,115 @@ import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
 import { runViewerClient } from "./client.js";
+import * as Pure from "./client-pure.js";
 
 // Returns the SPA viewer's inline JS as a string. The heavy browser client
 // lives in client.ts as real JavaScript, then gets serialized here so Ruby
 // High can keep the current no-extra-asset viewer delivery path.
+//
+// Pure helpers + constants live in client-pure.ts; they're stringified
+// alongside runViewerClient so all of them end up as siblings at the IIFE
+// scope. That means call sites inside runViewerClient still reference them
+// by their original bare names — no `.helpers.x` dispatch.
+
+// Every named export of client-pure.ts that's a function. Constants are
+// emitted separately from VIEWER_CONSTANTS via JSON.stringify.
+const PURE_HELPER_NAMES = [
+  "statLabel",
+  "scoreAwardLabel",
+  "letterGradePasses",
+  "letterGradeForScore",
+  "streakScoreMultiplier",
+  "formatClassScore",
+  "todayCorrectSummary",
+  "makeVisitorId",
+  "getVisitorId",
+  "attachVisitorHeader",
+  "teacherShortName",
+  "earnedCourseGrade",
+  "subjectProgressShortLabel",
+  "subjectProgressLongLabel",
+  "subjectStandingLabel",
+  "subjectStatusText",
+  "questionsLeftInClass",
+  "questionsLeftText",
+  "questionsLeftSentence",
+  "formatWholeNumber",
+  "formatMoney",
+  "formatTokenAmount",
+  "formatTokenDisplayAmount",
+  "formatDuration",
+  "formatRelativeExpiry",
+  "packCountLabel",
+  "cardPackTokenSymbol",
+  "cardPackDebitLabel",
+  "cardPackCreditLabel",
+  "cardPackPaymentDeltaLabel",
+  "cardPackProductMeta",
+  "escapeHtml",
+  "escape",
+  "safeMarkdownHref",
+  "sanitizeVisibleChatText",
+  "markdownInlineHtml",
+  "appendMarkdownInline",
+  "renderMarkdownInto",
+  "positiveWholeNumber",
+  "hallPassCostLabel",
+  "clipPlayerContext",
+  "imageRequestId",
+  "shortWallet",
+  "walletPreviewAddress",
+  "walletPreviewLine",
+  "formatAccountDate",
+  "formatSealedDate",
+  "nextGradeAfterClient",
+  "fmtStat",
+  "fmtRewardStat",
+  "seededShuffle",
+  "hashCeremonySeed",
+  "essayScoreText",
+  "essayLetter",
+  "clipEssayText",
+] as const;
+
+function serializePureHelpers(): string {
+  // Each helper is referenced two ways inside the IIFE, so it must be declared
+  // under both. esbuild renames colliding module-scope identifiers when the
+  // same name exists in another bundled module (e.g. escapeHtml -> escapeHtml4,
+  // escape -> escape2 collide with server-side helpers). Sibling helpers in
+  // client-pure.ts call each other through those *renamed* bindings, while
+  // runViewerClient in client.ts calls them by their *source* names as free
+  // globals (it never imports them — it relies on them being IIFE siblings).
+  // Declaring only one name leaves the other unresolved, throwing a
+  // ReferenceError that crashes the viewer at boot.
+  const declared = new Set<string>();
+  const lines: string[] = [];
+  for (const name of PURE_HELPER_NAMES) {
+    const fn = (Pure as Record<string, unknown>)[name] as { name?: string } | undefined;
+    if (typeof fn !== "function") {
+      throw new Error(`viewerScript: expected client-pure export "${name}" to be a function`);
+    }
+    const bindingName = fn.name || name;
+    if (!declared.has(bindingName)) {
+      lines.push(`const ${bindingName} = ${fn.toString()};`);
+      declared.add(bindingName);
+    }
+    if (name !== bindingName && !declared.has(name)) {
+      lines.push(`const ${name} = ${bindingName};`);
+      declared.add(name);
+    }
+  }
+  return lines.join("\n  ");
+}
+
+function serializeConstants(): string {
+  const keys = Object.keys(Pure.VIEWER_CONSTANTS);
+  return [
+    `const VIEWER_CONSTANTS = ${scriptJson(Pure.VIEWER_CONSTANTS)};`,
+    `const { ${keys.join(", ")} } = VIEWER_CONSTANTS;`,
+  ].join("\n  ");
+}
+
 export function viewerScript(opts: ViewerRenderOptions): string {
   const role = opts.role === "agent" ? "agent" : "human";
   const bootstrap = scriptJson({
@@ -22,6 +127,8 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   return `
 (() => {
   const bootstrap = ${bootstrap};
+  ${serializeConstants()}
+  ${serializePureHelpers()}
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
   const createViewerApiClient = ${createViewerApiClient.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};

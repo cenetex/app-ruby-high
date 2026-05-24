@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { verifyHallPassCardBurn } from "../services/hall-pass-nfts.js";
+import {
+  assertHallPassMintAuthorityCapacity,
+  hallPassCardCollectionForMint,
+  hallPassCardOnChainNameForMint,
+  setHallPassNftAuthorityBalanceForTest,
+  verifyHallPassCardBurn,
+} from "../services/hall-pass-nfts.js";
 
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
@@ -19,6 +25,35 @@ afterEach(() => {
 });
 
 describe("verifyHallPassCardBurn", () => {
+  it("uses branded, market-friendly on-chain card names within Token Metadata limits", () => {
+    expect(hallPassCardOnChainNameForMint({ characterName: "Mika", serial: 823842 } as any)).toBe("Mika Ruby High Card #823842");
+    expect(hallPassCardOnChainNameForMint({ characterName: "Library Card", serial: 254854 } as any)).toBe("Ruby High: Library Card #254854");
+    expect(hallPassCardOnChainNameForMint({ characterName: "Professor Edward", serial: 424242 } as any)).toBe("Ruby High: Prof. Edward #424242");
+
+    for (const characterName of ["Mika", "Library Card", "Professor Edward", "Captain Null"]) {
+      expect(hallPassCardOnChainNameForMint({ characterName, serial: 424242 } as any).length).toBeLessThanOrEqual(32);
+    }
+  });
+
+  it("sets an unverified Token Metadata collection at create time for later verification", () => {
+    expect(hallPassCardCollectionForMint(undefined)).toBeNull();
+    expect(hallPassCardCollectionForMint("Bu43twu7FsZUHVnYLWuAHLGzseSywm6uHTcD6EDAcX8Q")).toMatchObject({
+      key: "Bu43twu7FsZUHVnYLWuAHLGzseSywm6uHTcD6EDAcX8Q",
+      verified: false,
+    });
+  });
+
+  it("requires enough authority SOL before server-side card mints", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
+    const restore = setHallPassNftAuthorityBalanceForTest(async () => 39_999_999n);
+    await expect(assertHallPassMintAuthorityCapacity(1)).rejects.toThrow(/needs at least 0.040000 SOL/);
+    restore();
+
+    const restoreFunded = setHallPassNftAuthorityBalanceForTest(async () => 40_000_000n);
+    await expect(assertHallPassMintAuthorityCapacity(1)).resolves.toBeUndefined();
+    restoreFunded();
+  });
+
   it("accepts parsed burn instructions whose wallet is in multisigAuthority/signers", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";

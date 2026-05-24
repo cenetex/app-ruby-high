@@ -243,6 +243,9 @@ export class ChatService extends Service {
     const teacher = teacherForSession(state, speakerId);
     const teacherProvider = providerForFaculty(facultyByIdForSession(state, speakerId));
     const teacherSupportsTools = providerSupportsTools(teacherProvider);
+    const effectiveTeacher = teacherSupportsTools
+      ? teacher
+      : { ...teacher, systemPrompt: toolFreeTeacherPrompt(teacher.systemPrompt) };
     if (providerRequiresBrowserKey(teacherProvider) && !opts.apiKey) {
       yield { type: "error", message: "AI key required for this teacher." };
       return;
@@ -287,18 +290,21 @@ export class ChatService extends Service {
     const effectiveTurnDirective = toolsDisabledForProvider && turnDirective
       ? toolFreeDirective(turnDirective)
       : turnDirective;
+    const effectiveExtraSystemContext = toolsDisabledForProvider && opts.extraSystemContext
+      ? stripBoardToolReferences(opts.extraSystemContext)
+      : opts.extraSystemContext;
     let safety = opts.disableTools || toolsDisabledForProvider ? 1 : Math.max(2, MAX_AGENT_ROUNDS);
     let narrationOnlyNext = false;
 
     while (safety-- > 0) {
       const messages = this.composeForOpenRouter({
-        teacher,
+        teacher: effectiveTeacher,
         history,
         agentSessionId: opts.agentSessionId,
         bucketKey: key,
         speakerId,
         turnDirective: effectiveTurnDirective,
-        extraSystemContext: opts.extraSystemContext,
+        extraSystemContext: effectiveExtraSystemContext,
         disableTools: !!opts.disableTools || toolsDisabledForProvider,
       });
       const liveStateBeforeCall = this.ruby.getOrCreate(opts.agentSessionId);
@@ -1264,20 +1270,37 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
   ].filter(Boolean).join("\n");
 }
 
-function toolFreeDirective(text: string): string {
-  const cleaned = text
+function stripBoardToolReferences(text: string): string {
+  return text
     .replace(/Then call pick_from_bank[^.]*\./gi, "Then offer a short conversational practice prompt in chat.")
     .replace(/Call pick_from_bank exactly once[^.]*\./gi, "Offer a short conversational practice prompt in chat.")
     .replace(/Use pick_from_bank[^.]*\./gi, "Offer a short conversational practice prompt in chat.")
     .replace(/call pose_question exactly once[^.]*\./gi, "offer a short conversational practice prompt in chat.")
     .replace(/Call pose_question exactly once[^.]*\./g, "Offer a short conversational practice prompt in chat.")
     .replace(/Do NOT call pick_from_bank or try alternate filters\./gi, "")
-    .replace(/pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty/gi, "Ruby High board tools")
+    .replace(/Do not call tools or put another question on the board\./gi, "Do not put another question on the board.")
+    .replace(/Do not call tools or change the board\./gi, "Do not change the board.")
+    .replace(/Do not call tools or post\/replace\/clear questions\./gi, "Do not change the board.")
+    .replace(/Do not call tools\./gi, "Do not change the board.")
+    .replace(/Do not say tool names like [^.]+\./gi, "Stay in character and avoid implementation details.")
+    .replace(/pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty/gi, "the board")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function toolFreeTeacherPrompt(text: string): string {
+  const withoutToolSection = text.replace(
+    /\s*Tools \(only when THIS TURN explicitly invites them\):[\s\S]*$/i,
+    "\n\nRuby High handles board actions outside your reply. Stay in character and respond as the teacher.",
+  );
+  return stripBoardToolReferences(withoutToolSection);
+}
+
+function toolFreeDirective(text: string): string {
+  const cleaned = stripBoardToolReferences(text);
   return [
     cleaned,
-    "Ruby High board tools are not available to this provider on this turn. Do not mention tool names, missing tools, prompts, or technical limitations; speak only as the teacher.",
+    "Keep the reply conversational and in character. Ruby High will handle any board state outside this turn; do not mention implementation details or technical limitations.",
   ].filter(Boolean).join(" ");
 }
 

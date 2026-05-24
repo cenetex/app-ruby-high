@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { Transaction } from "@solana/web3.js";
-import { buildCorePackPurchaseTransaction, corePackNftMetadataUri, fetchOwnedCorePackNfts } from "../services/core-pack-nfts.js";
+import {
+  buildCorePackPurchaseTransaction,
+  corePackAssetPluginsForMint,
+  corePackOpenedNftMetadataUri,
+  corePackNftMetadataUri,
+  fetchOwnedCorePackNfts,
+} from "../services/core-pack-nfts.js";
+import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
@@ -23,6 +30,38 @@ afterEach(() => {
 });
 
 describe("Core pack NFT checkout transactions", () => {
+  it("adds creator and attribute plugins to Core pack assets", () => {
+    const umi = createUmi("https://rpc.test");
+    const authority = umi.eddsa.generateKeypair();
+
+    expect(corePackAssetPluginsForMint({
+      authorityAddress: String(authority.publicKey),
+      productId: "card-pack-3",
+      packCount: 3,
+      cardCount: 12,
+      serial: "123456",
+    })).toEqual([
+      {
+        type: "VerifiedCreators",
+        signatures: [{ address: authority.publicKey, verified: true }],
+      },
+      {
+        type: "Attributes",
+        attributeList: [
+          { key: "School", value: "Ruby High" },
+          { key: "Collection", value: `${FIRST_BELL_SET_NAME} Packs` },
+          { key: "Set", value: "First Bell" },
+          { key: "Set Code", value: FIRST_BELL_SET_CODE },
+          { key: "NFT Type", value: "Pack" },
+          { key: "Product", value: "card-pack-3" },
+          { key: "Packs", value: "3" },
+          { key: "Cards Inside", value: "15" },
+          { key: "Serial", value: "123456" },
+        ],
+      },
+    ]);
+  });
+
   it("normalizes legacy one-pack metadata URLs to five cards", () => {
     process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
     expect(corePackNftMetadataUri({
@@ -31,6 +70,17 @@ describe("Core pack NFT checkout transactions", () => {
       cardCount: 4,
       paymentSignature: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
     })).toContain("cards=5");
+  });
+
+  it("builds an opened pack metadata URL that forces opened imagery", () => {
+    process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
+
+    expect(corePackOpenedNftMetadataUri({
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 4,
+      serial: 570329,
+    })).toBe("https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5&opened=1");
   });
 
   it("builds one wallet-only transaction with a RUBY transfer", async () => {

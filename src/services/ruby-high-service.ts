@@ -147,11 +147,17 @@ import {
 import type { ContentPack, PackSourceCard } from "../content/types.js";
 import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
 import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_SET_NAME,
   HALL_PASS_CARD_ITEM_LOCATIONS,
   HALL_PASS_CARD_SPECIALS,
   HALL_PASS_CARD_STUDENTS,
   HALL_PASS_CARD_SUPER_RARE_TEACHERS,
   HALL_PASS_CARD_TEACHERS,
+  hallPassCardName,
+  hallPassCardProfileId,
+  hallPassCardSetNumber,
+  hallPassCardSubject,
   type HallPassCardCatalogEntry,
 } from "./hall-pass-card-catalog.js";
 import {
@@ -447,6 +453,14 @@ export interface HallPassCardMintInput {
   mintSignature: string;
   metadataUri: string;
   idempotencyKey?: string;
+  at?: number;
+}
+
+export interface HallPassCardMintPreparationInput {
+  cardId: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  metadataUri: string;
   at?: number;
 }
 
@@ -1969,6 +1983,33 @@ export class RubyHighService extends Service {
     return null;
   }
 
+  recordHallPassCardMintPreparation(sessionId: string, input: HallPassCardMintPreparationInput): RubyHighHallPassCard {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const card = cards.find((candidate) => candidate.id === input.cardId);
+    if (!card) throw new Error("Card not found.");
+    if (card.status !== "active") throw new Error("Only active cards can be prepared for minting.");
+    if (card.mintAddress || card.mintSignature) throw new Error("Card is already minted.");
+    const ownerWalletAddress = input.ownerWalletAddress.trim();
+    const mintAddress = input.mintAddress.trim();
+    const metadataUri = input.metadataUri.trim();
+    if (!ownerWalletAddress || !mintAddress || !metadataUri) throw new Error("Card mint preparation is incomplete.");
+    if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
+      throw new Error("Card belongs to a different wallet.");
+    }
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    card.pendingMintOwnerWalletAddress = ownerWalletAddress;
+    card.pendingMintAddress = mintAddress;
+    card.pendingMintMetadataUri = metadataUri;
+    card.pendingMintPreparedAt = at;
+    card.updatedAt = at;
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return card;
+  }
+
   recordHallPassCardMint(sessionId: string, input: HallPassCardMintInput): {
     state: QuizState;
     applied: boolean;
@@ -1993,6 +2034,10 @@ export class RubyHighService extends Service {
     card.mintAddress = input.mintAddress.trim();
     card.mintSignature = input.mintSignature.trim();
     card.metadataUri = input.metadataUri.trim();
+    delete card.pendingMintOwnerWalletAddress;
+    delete card.pendingMintAddress;
+    delete card.pendingMintMetadataUri;
+    delete card.pendingMintPreparedAt;
     card.revealedAt = at;
     card.updatedAt = at;
     state.wallet.hallPassCards = normalizeHallPassCards(cards);
@@ -5721,6 +5766,12 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   const source = normalizedWalletSource(card.source);
   if (source) entry.source = source;
   for (const field of [
+    "setName",
+    "setCode",
+    "setNumber",
+    "profileId",
+    "cardName",
+    "subject",
     "grantTransactionId",
     "redeemTransactionId",
     "packId",
@@ -5735,6 +5786,9 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
     "randomnessAccount",
     "revealTransaction",
     "ownerWalletAddress",
+    "pendingMintOwnerWalletAddress",
+    "pendingMintAddress",
+    "pendingMintMetadataUri",
     "mintAddress",
     "mintSignature",
     "metadataUri",
@@ -5749,6 +5803,8 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   if (Number.isFinite(revealSlot) && revealSlot >= 0) entry.revealSlot = revealSlot;
   const revealedAt = Math.floor(Number(card.revealedAt ?? 0));
   if (Number.isFinite(revealedAt) && revealedAt > 0) entry.revealedAt = revealedAt;
+  const pendingMintPreparedAt = Math.floor(Number(card.pendingMintPreparedAt ?? 0));
+  if (Number.isFinite(pendingMintPreparedAt) && pendingMintPreparedAt > 0) entry.pendingMintPreparedAt = pendingMintPreparedAt;
   const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
   if (Number.isFinite(burnedAt) && burnedAt > 0) entry.burnedAt = burnedAt;
   if (
@@ -6030,6 +6086,12 @@ function issueHallPassCardsForTransaction(
       title: catalog.title,
       characterId: catalog.characterId,
       characterName: catalog.characterName,
+      setName: FIRST_BELL_SET_NAME,
+      setCode: FIRST_BELL_SET_CODE,
+      setNumber: hallPassCardSetNumber(catalog),
+      profileId: hallPassCardProfileId(catalog),
+      cardName: hallPassCardName(catalog),
+      subject: hallPassCardSubject(catalog),
       role: catalog.role,
       rarity: catalog.rarity,
       blurb: catalog.blurb,

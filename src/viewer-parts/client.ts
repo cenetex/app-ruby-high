@@ -43,96 +43,15 @@ export function runViewerClient(bootstrap) {
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const metricsEventUrl = apiBase + "/metrics/event";
-  const VISITOR_ID_KEY = "ruby-high:visitor-id";
+  // VIEWER_CONSTANTS (VISITOR_ID_KEY, GRADE_LABELS, STAT_META, …) and pure
+  // helpers (statLabel, letterGradeForScore, makeVisitorId, getVisitorId,
+  // attachVisitorHeader, …) are declared in the surrounding IIFE by
+  // viewer-parts/script.ts → client-pure.ts. They're in scope here.
   const DEFAULT_RUBY_TOKEN_MINT = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
   const JUPITER_SOL_TO_RUBY_SWAP_PREFIX = "https://jup.ag/swap/SOL-";
-  const GRADE_LABELS = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
-  const GRADE_SHORT_LABELS = { "9": "Fresh", "10": "Soph", "11": "Junior", "12": "Senior" };
-  const GRADE_ORDER = ["9", "10", "11", "12"];
-  // Mirrored from types.ts: passed daily-class days required by year.
-  const STREAK_REQUIRED       = { "9": 1, "10": 1, "11": 2, "12": 3 };
-  const TEACHING_FACULTY_IDS  = ["ruby", "sally-science", "professor-edward"];
-  const TEACHING_FACULTY_LABELS = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
-  const LOUNGE_ID = "lounge";
-  const FIRST_BELL_PAGE_COUNT = 12;
-  const FIRST_BELL_PAGE_TITLES = {
-    1: "Ruby High: Book One - First Bell",
-    2: "First-Day Survival Kit",
-    3: "Release Notes: New Faces on Campus",
-    4: "A Normal First Day",
-    5: "New School, New People",
-    6: "New Rooms, New Faces",
-    7: "Lunch Table Theory",
-    8: "First Day Debrief",
-    9: "End-of-Day Debrief",
-    10: "Captain Null: The Star That Cast a Shadow",
-    11: "Ruby's Locker Notes",
-    12: "Ruby High Student Cards",
-  };
-  const STAT_META = {
-    head:   { emoji: "🧠", label: "Head" },
-    heart:  { emoji: "💗", label: "Heart" },
-    hustle: { emoji: "⚡", label: "Hustle" },
-    honor:  { emoji: "🛡️", label: "Honor" },
-  };
-  function statLabel(stat) {
-    const meta = STAT_META[String(stat || "").toLowerCase()];
-    return meta ? meta.emoji + " " + meta.label : "🧠 Head";
-  }
-  function scoreAwardLabel(award) {
-    if (!award) return "";
-    const points = Math.max(0, Math.round(Number(award.points || 0)));
-    const mult = Math.max(1, Math.round(Number(award.multiplier || 1)));
-    if (mult >= 5) return "+" + points + " Merit Stars · Daily Class ×5";
-    return "+" + points + " Merit Stars" + (mult > 1 ? " · ×" + mult : "");
-  }
-  function letterGradePasses(grade) {
-    return /^[ABC]/.test(String(grade || ""));
-  }
-  function letterGradeForScore(score) {
-    const n = Number(score);
-    if (!Number.isFinite(n)) return "—";
-    if (n >= 90) return "A";
-    if (n >= 80) return "B";
-    if (n >= 67) return "C";
-    if (n > 0) return "D";
-    return "F";
-  }
-  function streakScoreMultiplier(count) {
-    const n = Math.max(0, Math.floor(Number(count || 0)));
-    if (n >= 4) return 5;
-    if (n >= 3) return 3;
-    if (n >= 2) return 2;
-    return 1;
-  }
-  function makeVisitorId() {
-    const cryptoObj = window.crypto || window.msCrypto;
-    if (cryptoObj && typeof cryptoObj.randomUUID === "function") return "rhv_" + cryptoObj.randomUUID();
-    const random = Math.random().toString(36).slice(2, 12);
-    return "rhv_" + Date.now().toString(36) + "_" + random;
-  }
-  function getVisitorId() {
-    try {
-      const existing = localStorage.getItem(VISITOR_ID_KEY);
-      if (existing && /^[A-Za-z0-9._:-]{8,128}$/.test(existing)) return existing;
-      const next = makeVisitorId();
-      localStorage.setItem(VISITOR_ID_KEY, next);
-      return next;
-    } catch (_err) {
-      return "";
-    }
-  }
-  function attachVisitorHeader(headers) {
-    const visitorId = getVisitorId();
-    if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);
-    return headers;
-  }
   function subjectProgressForFaculty(fid) {
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     return roster.find((f) => f.id === fid) || null;
-  }
-  function teacherShortName(faculty, fallback) {
-    return (faculty && (faculty.shortName || faculty.displayName)) || fallback || "Teacher";
   }
   function subjectDisplayName(fid, progress) {
     const known = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
@@ -140,64 +59,9 @@ export function runViewerClient(bootstrap) {
     const p = progress || subjectProgressForFaculty(fid);
     return (p && (p.displayName || p.shortName)) || fid || "Subject";
   }
-  function questionsLeftInClass(today) {
-    const total = Number(today && today.totalQuestions || 3);
-    const done = Number(today && today.questionCount || 0);
-    return Math.max(0, total - done);
-  }
-  function questionsLeftText(today) {
-    const left = questionsLeftInClass(today);
-    if (left <= 0) return "daily class complete";
-    return left + " " + (left === 1 ? "question" : "questions") + " left";
-  }
-  function questionsLeftSentence(today) {
-    const left = questionsLeftInClass(today);
-    if (left <= 0) return "Daily class complete";
-    return (left === 1 ? "There is " : "There are ") + questionsLeftText(today);
-  }
-  function earnedCourseGrade(progress) {
-    if (!progress) return "";
-    const grade = progress.courseGrade || progress.grade || "";
-    if (!grade || grade === "—") return "";
-    const completed = Number(progress.completedClasses || 0);
-    const required = Number(progress.requiredClasses || 0);
-    if (required > 0 && completed < required) return "";
-    return grade;
-  }
-  function subjectProgressShortLabel(progress) {
-    if (!progress) return "—";
-    const required = Math.max(0, Math.floor(Number(progress.requiredClasses || 0)));
-    const completed = Math.max(0, Math.floor(Number(progress.completedClasses || 0)));
-    if (required > 0) return Math.min(completed, required) + "/" + required;
-    return earnedCourseGrade(progress) || "—";
-  }
-  function subjectProgressLongLabel(progress) {
-    if (!progress) return "course pending";
-    const required = Math.max(0, Math.floor(Number(progress.requiredClasses || 0)));
-    if (required > 0) return subjectProgressShortLabel(progress) + " daily classes";
-    return "course pending";
-  }
-  function subjectStandingLabel(progress) {
-    return earnedCourseGrade(progress) || subjectProgressLongLabel(progress);
-  }
   function classGradeForFaculty(fid) {
     const progress = subjectProgressForFaculty(fid);
     return earnedCourseGrade(progress) || "—";
-  }
-  function subjectStatusText(progress) {
-    if (!progress) return "settling in";
-    const standing = subjectStandingLabel(progress);
-    const done = Number(progress.completedClasses || 0);
-    const required = Number(progress.requiredClasses || 0);
-    const today = progress.today || {};
-    if (today.status === "complete") {
-      return "daily class complete" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + standing;
-    }
-    if (today.status === "active") {
-      return questionsLeftText(today) + " · " + standing;
-    }
-    if (required > 0) return Math.min(done, required) + "/" + required + " daily classes";
-    return standing;
   }
   function postClassState(t) {
     const progress = t && t.active_course_progress;
@@ -342,26 +206,7 @@ export function runViewerClient(bootstrap) {
     if (currentRevealMatches(t) || t.status === "revealed") return "revealed";
     return "in-room";
   }
-  function formatClassScore(score) {
-    const n = Number(score);
-    return Number.isFinite(n) ? Math.round(n) + "%" : "—";
-  }
-  function todayCorrectSummary(today) {
-    const answered = Math.max(0, Math.floor(Number(today && today.questionCount || 0)));
-    const total = Math.max(answered, Math.floor(Number(today && today.totalQuestions || 3)));
-    const correct = Math.max(0, Math.min(answered, Math.floor(Number(today && today.correctCount || 0))));
-    const answeredText = answered === 1 ? "1 of " + total + " answered" : answered + " of " + total + " answered";
-    return {
-      value: correct + "/" + answered,
-      detail: answered > 0 ? answeredText : "class not started",
-      met: answered > 0 && correct === answered,
-    };
-  }
-  function formatWholeNumber(value) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return "0";
-    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  }
+  // formatClassScore, todayCorrectSummary, formatWholeNumber are in client-pure.
 
   // Build compact empty-board status from the active course roster.
   // subjectGateMetaFor and makeSubjectGradeChip are defined further down
@@ -523,7 +368,7 @@ export function runViewerClient(bootstrap) {
     "item-hall-pass", "item-flashcards", "item-library-card", "item-lab-flask", "item-lunch-tray", "item-notebook",
     "location-homeroom", "location-science-lab", "location-library", "location-cafeteria", "location-greenhouse", "location-courtyard",
   ];
-  const HALL_PASS_CARDS_PER_PACK = 5;
+  // HALL_PASS_CARDS_PER_PACK is in VIEWER_CONSTANTS.
   const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
   const PACK_MINT_STATUS_LINES = [
     "Checking the attendance ledger...",
@@ -531,6 +376,13 @@ export function runViewerClient(bootstrap) {
     "Printing the Ruby High wrapper...",
     "Asking Solana for a hallway pass...",
     "Filing the pack in your locker...",
+  ];
+  const CARD_MINT_STATUS_LINES = [
+    "Preparing the card mint...",
+    "Checking the card metadata...",
+    "Waiting for wallet approval...",
+    "Submitting the signed mint...",
+    "Revealing the card...",
   ];
   function getStoredApiKey() {
     try { return localStorage.getItem(AUTH_KEY) || null; } catch (e) { return null; }
@@ -829,6 +681,11 @@ export function runViewerClient(bootstrap) {
   let hostedAiActive = false;
   let privyClient = null;
   let privyClientPromise = null;
+  let privyRefreshPromise = null;
+  let lastPrivyRefreshAt = 0;
+  let lastPrivyRateLimitedAt = 0;
+  const PRIVY_REFRESH_MIN_INTERVAL_MS = 60 * 1000;
+  const PRIVY_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000;
   let privyState = {
     configured: !!privyConfig,
     authenticated: false,
@@ -877,6 +734,7 @@ export function runViewerClient(bootstrap) {
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
   let packMintProgressEl = null;
+  let packMintProgressTitleEl = null;
   let packMintProgressStatusEl = null;
   let packMintProgressTimer = null;
   let packMintProgressCloseTimer = null;
@@ -918,6 +776,7 @@ export function runViewerClient(bootstrap) {
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
     packMintProgressEl = overlay;
+    packMintProgressTitleEl = title;
     packMintProgressStatusEl = status;
     return overlay;
   }
@@ -926,21 +785,30 @@ export function runViewerClient(bootstrap) {
     const text = String(message || "").trim();
     if (text) packMintProgressStatusEl.textContent = text;
   }
-  function showPackMintProgress(message) {
+  function showPackMintProgress(message, options) {
     const overlay = ensurePackMintProgressOverlay();
     if (packMintProgressCloseTimer) {
       clearTimeout(packMintProgressCloseTimer);
       packMintProgressCloseTimer = null;
     }
+    const title = options && options.title ? String(options.title) : "Please wait: minting pack";
+    const rotate = !options || options.rotate !== false;
+    const lines = options && Array.isArray(options.lines) && options.lines.length > 0
+      ? options.lines
+      : PACK_MINT_STATUS_LINES;
+    if (packMintProgressTitleEl) packMintProgressTitleEl.textContent = title;
     packMintProgressIndex = 0;
-    updatePackMintProgress(message || PACK_MINT_STATUS_LINES[0]);
+    updatePackMintProgress(message || lines[0]);
     overlay.classList.add("is-open");
     overlay.setAttribute("aria-hidden", "false");
     if (packMintProgressTimer) clearInterval(packMintProgressTimer);
-    packMintProgressTimer = setInterval(() => {
-      packMintProgressIndex = (packMintProgressIndex + 1) % PACK_MINT_STATUS_LINES.length;
-      updatePackMintProgress(PACK_MINT_STATUS_LINES[packMintProgressIndex]);
-    }, 1600);
+    packMintProgressTimer = null;
+    if (rotate) {
+      packMintProgressTimer = setInterval(() => {
+        packMintProgressIndex = (packMintProgressIndex + 1) % lines.length;
+        updatePackMintProgress(lines[packMintProgressIndex]);
+      }, 1600);
+    }
   }
   function hidePackMintProgress(delayMs) {
     const close = () => {
@@ -1131,12 +999,7 @@ export function runViewerClient(bootstrap) {
     const ch = lastTelemetry && lastTelemetry.character;
     return playerDisplayName() + ":" + (ch && ch.portraitDataUrl ? ch.portraitDataUrl.length : 0);
   }
-  function clipPlayerContext(text, max) {
-    const raw = String(text || "").replace(/\s+/g, " ").trim();
-    if (!raw) return "";
-    const limit = max || 150;
-    return raw.length > limit ? raw.slice(0, limit - 1) + "…" : raw;
-  }
+  // clipPlayerContext is in client-pure.
   function facultyDisplayName(facultyId) {
     const fid = facultyId || (lastTelemetry && lastTelemetry.faculty);
     const fac = (lastTelemetry && lastTelemetry.faculty_roster || []).find((f) => f.id === fid);
@@ -1418,13 +1281,7 @@ export function runViewerClient(bootstrap) {
     }).catch(() => {});
   }
 
-  function imageRequestId(prefix) {
-    const cryptoObj = window.crypto || window.msCrypto;
-    if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
-      return String(prefix || "image") + "-" + cryptoObj.randomUUID();
-    }
-    return String(prefix || "image") + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
-  }
+  // imageRequestId is in client-pure.
 
   async function command(payload) {
     return apiClient.command(payload);
@@ -1590,156 +1447,9 @@ export function runViewerClient(bootstrap) {
     }
     els.stream.appendChild(wrap);
   }
-  function escape(s) { return escapeHtml(s); }
-  function escapeHtml(value) {
-    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-    return String(value == null ? "" : value).replace(/[&<>"']/g, (c) => map[c]);
-  }
-  function safeMarkdownHref(href) {
-    const raw = String(href || "").trim();
-    if (!raw) return null;
-    try {
-      const url = new URL(raw, window.location.href);
-      return (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") ? raw : null;
-    } catch (_e) {
-      return null;
-    }
-  }
-  function markdownInlineHtml(value) {
-    const start = String.fromCharCode(0xe000);
-    const end = String.fromCharCode(0xe001);
-    const tick = String.fromCharCode(96);
-    const placeholders = [];
-    let text = sanitizeVisibleChatText(value);
-    const stash = (html) => {
-      const key = start + placeholders.length + end;
-      placeholders.push(html);
-      return key;
-    };
-    const codePattern = new RegExp(tick + "([^" + tick + "\n]+)" + tick, "g");
-    text = text.replace(codePattern, (_match, code) => stash("<code>" + escapeHtml(code) + "</code>"));
-    text = text.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (match, label, href) => {
-      const safeHref = safeMarkdownHref(href);
-      if (!safeHref) return match;
-      return stash('<a href="' + escapeHtml(safeHref) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label) + "</a>");
-    });
-    let html = escapeHtml(text);
-    html = html
-      .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/__([^_\n]+)__/g, "<strong>$1</strong>")
-      .replace(/~~([^~\n]+)~~/g, "<del>$1</del>")
-      .replace(/(^|[^\w])\*([^*\n]+)\*(?=$|[^\w])/g, "$1<em>$2</em>")
-      .replace(/(^|[^\w])_([^_\n]+)_(?=$|[^\w])/g, "$1<em>$2</em>")
-      .replace(/\n/g, "<br>");
-    const placeholderPattern = new RegExp(start + "(\d+)" + end, "g");
-    return html.replace(placeholderPattern, (_match, index) => placeholders[Number(index)] || "");
-  }
-  function appendMarkdownInline(parent, text) {
-    const span = document.createElement("span");
-    span.innerHTML = markdownInlineHtml(text);
-    while (span.firstChild) parent.appendChild(span.firstChild);
-  }
-  function renderMarkdownInto(el, source, options) {
-    if (!el) return;
-    const opts = options || {};
-    el.classList.add("markdown");
-    el.classList.toggle("markdown-inline", !!opts.inline);
-    el.replaceChildren();
-    const text = sanitizeVisibleChatText(source).replace(/\r\n?/g, "\n");
-    if (!text) return;
-    if (opts.inline) {
-      appendMarkdownInline(el, text);
-      return;
-    }
-    const lines = text.split("\n");
-    const fence = String.fromCharCode(96).repeat(3);
-    const startsBlock = (line) =>
-      /^\s{0,3}#{1,4}\s+/.test(line) ||
-      /^\s{0,3}>\s?/.test(line) ||
-      /^\s{0,3}[-*+]\s+/.test(line) ||
-      /^\s{0,3}\d+[.)]\s+/.test(line) ||
-      line.trim().slice(0, 3) === fence;
-    const appendParagraph = (chunk) => {
-      const p = document.createElement("p");
-      appendMarkdownInline(p, chunk);
-      el.appendChild(p);
-    };
-    let i = 0;
-    while (i < lines.length) {
-      if (!lines[i].trim()) { i += 1; continue; }
-      if (lines[i].trim().slice(0, 3) === fence) {
-        i += 1;
-        const codeLines = [];
-        while (i < lines.length && lines[i].trim().slice(0, 3) !== fence) {
-          codeLines.push(lines[i]);
-          i += 1;
-        }
-        if (i < lines.length) i += 1;
-        const pre = document.createElement("pre");
-        const code = document.createElement("code");
-        code.textContent = codeLines.join("\n");
-        pre.appendChild(code);
-        el.appendChild(pre);
-        continue;
-      }
-      if (/^\s{0,3}#{1,4}\s+/.test(lines[i])) {
-        const raw = lines[i].replace(/^\s{0,3}/, "");
-        const depth = Math.min(4, raw.match(/^#+/)[0].length);
-        const heading = document.createElement("h" + depth);
-        appendMarkdownInline(heading, raw.replace(/^#{1,4}\s+/, ""));
-        el.appendChild(heading);
-        i += 1;
-        continue;
-      }
-      if (/^\s{0,3}>\s?/.test(lines[i])) {
-        const quoteLines = [];
-        while (i < lines.length && /^\s{0,3}>\s?/.test(lines[i])) {
-          quoteLines.push(lines[i].replace(/^\s{0,3}>\s?/, ""));
-          i += 1;
-        }
-        const quote = document.createElement("blockquote");
-        renderMarkdownInto(quote, quoteLines.join("\n"));
-        el.appendChild(quote);
-        continue;
-      }
-      if (/^\s{0,3}[-*+]\s+/.test(lines[i])) {
-        const list = document.createElement("ul");
-        while (i < lines.length && /^\s{0,3}[-*+]\s+/.test(lines[i])) {
-          const li = document.createElement("li");
-          appendMarkdownInline(li, lines[i].replace(/^\s{0,3}[-*+]\s+/, ""));
-          list.appendChild(li);
-          i += 1;
-        }
-        el.appendChild(list);
-        continue;
-      }
-      if (/^\s{0,3}\d+[.)]\s+/.test(lines[i])) {
-        const list = document.createElement("ol");
-        while (i < lines.length && /^\s{0,3}\d+[.)]\s+/.test(lines[i])) {
-          const li = document.createElement("li");
-          appendMarkdownInline(li, lines[i].replace(/^\s{0,3}\d+[.)]\s+/, ""));
-          list.appendChild(li);
-          i += 1;
-        }
-        el.appendChild(list);
-        continue;
-      }
-      const paraLines = [];
-      while (i < lines.length && lines[i].trim() && !startsBlock(lines[i])) {
-        paraLines.push(lines[i]);
-        i += 1;
-      }
-      appendParagraph(paraLines.join("\n"));
-    }
-  }
-
-  function sanitizeVisibleChatText(value) {
-    let text = String(value == null ? "" : value);
-    const tags = "pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty";
-    text = text.replace(new RegExp("<\\s*(" + tags + ")\\b[^>]*>[\\s\\S]*?<\\s*/\\s*\\1\\s*>", "gi"), "");
-    text = text.replace(new RegExp("<\\s*/?\\s*(?:" + tags + ")\\b[^>]*\\/?>", "gi"), "");
-    return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  }
+  // escape, escapeHtml, safeMarkdownHref, sanitizeVisibleChatText,
+  // markdownInlineHtml, appendMarkdownInline, renderMarkdownInto are
+  // in client-pure.ts.
 
   // ── blackboard panel (single, persistent, updates in place) ─────────────
   function showBlackboardEmpty(reset) {
@@ -2074,25 +1784,8 @@ export function runViewerClient(bootstrap) {
     return formatWholeNumber(cost) + " Hall Pass" + (cost === 1 ? "" : "es");
   }
 
-  function positiveWholeNumber(value, fallback) {
-    const parsed = Math.round(Number(value));
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  function hallPassCostLabel(cost) {
-    const normalized = positiveWholeNumber(cost, 1);
-    return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
-  }
-
-  function walletPreviewAddress(address) {
-    const raw = String(address || "").trim();
-    return raw ? shortWallet(raw) : "Not connected";
-  }
-
-  function walletPreviewLine(label, value) {
-    const text = String(value || "").trim();
-    return label + ": " + (text || "Unavailable");
-  }
+  // positiveWholeNumber, hallPassCostLabel, walletPreviewAddress,
+  // walletPreviewLine are in client-pure.
 
   function confirmWalletTransactionPreview(opts) {
     const options = opts && typeof opts === "object" ? opts : {};
@@ -2150,11 +1843,14 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
-    if (/mint authority needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|balance is .* needs at least .* SOL/i.test(message)) {
-      return "Ruby High's mint authority needs more SOL before this NFT can be minted. Your card was not changed.";
+    if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
+      return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
       return "Ruby High's Solana RPC rejected the request. We need to refresh the RPC key; your NFT was not changed.";
+    }
+    if (/429|too many requests|rate.?limit/i.test(message)) {
+      return "Privy is rate limiting wallet requests. Wait a minute, then try again.";
     }
     if (/not found yet|not found on-chain|confirmation/i.test(message)) {
       return "Solana has not indexed the transaction yet. Wait a few seconds and try again.";
@@ -2168,6 +1864,16 @@ export function runViewerClient(bootstrap) {
   function isRetryableSolanaMintConfirm(status, message) {
     if ([425, 429, 500, 502, 503, 504].includes(Number(status || 0))) return true;
     return /not found yet|not found on-chain|confirmation|rpc|temporar|timed out|timeout|failed to fetch|network|blockhash|preflight|simulation|rate.?limit/i.test(String(message || ""));
+  }
+
+  function withWalletActionTimeout(promise, message) {
+    let timeoutId = null;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error(message)), WALLET_ACTION_TIMEOUT_MS);
+    });
+    return Promise.race([promise, timeout]).finally(() => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    });
   }
 
   function creatorPricing(t) {
@@ -2329,38 +2035,9 @@ export function runViewerClient(bootstrap) {
     els.billingStatus.classList.toggle("is-invalid", !!invalid);
   }
 
-  function formatTokenDisplayAmount(value) {
-    const raw = String(value || "").trim();
-    const parsed = Number(raw);
-    if (!raw) return "?";
-    if (!Number.isFinite(parsed) || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(raw)) return raw;
-    if (Number.isInteger(parsed)) return formatWholeNumber(parsed);
-    return parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
-  }
-
-  function cardPackTokenSymbol(product, solana) {
-    return String((product && product.tokenSymbol) || (solana && solana.symbol) || "RUBY").trim() || "RUBY";
-  }
-
-  function cardPackDebitLabel(product, solana) {
-    const amount = product && product.tokenAmount != null ? product.tokenAmount : solana && solana.tokenAmount;
-    return "-" + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
-  }
-
-  function cardPackCreditLabel(product) {
-    const count = product && Number.isFinite(Number(product.packCount)) ? Number(product.packCount) : 1;
-    return "+" + packCountLabel(count) + " NFT";
-  }
-
-  function cardPackPaymentDeltaLabel(product, solana) {
-    return cardPackDebitLabel(product, solana) + " · " + cardPackCreditLabel(product);
-  }
-
-  function cardPackProductMeta(product, solana) {
-    const cardCount = Math.max(1, Math.floor(Number(product && product.cardCount || HALL_PASS_CARDS_PER_PACK)));
-    return cardPackPaymentDeltaLabel(product, solana) + " · " + formatWholeNumber(cardCount) + " cards";
-  }
-
+  // formatTokenDisplayAmount, cardPackTokenSymbol, cardPackDebitLabel,
+  // cardPackCreditLabel, cardPackPaymentDeltaLabel, cardPackProductMeta,
+  // formatMoney, formatTokenAmount are in client-pure.ts.
   function currentRubyTokenMintFromSolana(solana) {
     if (!solana || typeof solana !== "object") return "";
     const mint = typeof solana.mint === "string" ? solana.mint.trim() : "";
@@ -2406,24 +2083,6 @@ export function runViewerClient(bootstrap) {
     return link;
   }
 
-  function formatMoney(cents, currency) {
-    const amount = Number(cents || 0) / 100;
-    const code = String(currency || "usd").toUpperCase();
-    try {
-      return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(amount);
-    } catch (_e) {
-      return code + " " + amount.toFixed(2);
-    }
-  }
-
-  function formatTokenAmount(amount, symbol) {
-    const numeric = Number(amount);
-    const text = Number.isFinite(numeric)
-      ? numeric.toLocaleString(undefined, { maximumFractionDigits: 9 })
-      : String(amount || "0");
-    return text + " $" + String(symbol || "RUBY").toUpperCase();
-  }
-
   function hostedAiTelemetry(t) {
     const entitlements = hostedEntitlements(t);
     const ai = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
@@ -2451,26 +2110,7 @@ export function runViewerClient(bootstrap) {
     }
   }
 
-  function formatDuration(ms) {
-    const hours = Math.max(1, Math.round(Number(ms || 0) / 3600000));
-    if (hours % 24 === 0) {
-      const days = Math.max(1, Math.round(hours / 24));
-      if (days % 7 === 0) {
-        const weeks = Math.max(1, Math.round(days / 7));
-        return weeks + " week" + (weeks === 1 ? "" : "s");
-      }
-      return days + " day" + (days === 1 ? "" : "s");
-    }
-    return hours + " hour" + (hours === 1 ? "" : "s");
-  }
-
-  function formatRelativeExpiry(expiresAt) {
-    const ms = Math.max(0, Number(expiresAt || 0) - Date.now());
-    if (ms <= 0) return "";
-    const hours = Math.ceil(ms / 3600000);
-    if (hours >= 24) return Math.ceil(hours / 24) + "d";
-    return hours + "h";
-  }
+  // formatDuration, formatRelativeExpiry are in client-pure.ts.
 
   function normalizeAccountPane(pane) {
     const value = String(pane || "account");
@@ -3685,15 +3325,7 @@ export function runViewerClient(bootstrap) {
     document.body.appendChild(overlay);
   }
 
-  function formatAccountDate(ts) {
-    const n = Number(ts || 0);
-    if (!Number.isFinite(n) || n <= 0) return "unknown date";
-    try {
-      return new Date(n).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-    } catch (_err) {
-      return "unknown date";
-    }
-  }
+  // formatAccountDate is in client-pure.
 
   async function unlockCharacterSlotFromAccount() {
     if (!authed || billingBusy) return;
@@ -3822,15 +3454,20 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Preparing card mint...");
-    setPrivyStatus("Preparing Card reveal...", false);
+    showPackMintProgress("Minting card on Solana...", {
+      title: "Please wait: minting card",
+      lines: CARD_MINT_STATUS_LINES,
+      rotate: false,
+    });
+    setPrivyStatus("Minting Card reveal...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
       if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before revealing Cards.");
+      updatePackMintProgress("Preparing wallet transaction...");
       const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        timeoutMs: 30000,
+        timeoutMs: 120000,
         body: JSON.stringify({ cardId: cleanCardId, ownerWalletAddress }),
       });
       const preparedData = await prepared.json().catch(() => ({}));
@@ -3847,38 +3484,32 @@ export function runViewerClient(bootstrap) {
         return hallPassCardById(cleanCardId) || preparedData.card || null;
       }
       const client = await getPrivyClient();
-      if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
+      if (!client || typeof client.signSolanaTransaction !== "function") {
         throw new Error("Solana card mint is unavailable.");
       }
-      const cardName = preparedData.card && preparedData.card.characterName
-        ? preparedData.card.characterName
-        : "Mystery Card";
-      const approved = await confirmWalletTransactionPreview({
-        title: "Mint this Card?",
-        action: "Mint Card",
-        walletAddress: ownerWalletAddress,
-        cost: "Network fee only",
-        card: cardName,
-        reference: preparedData.mint.mintAddress,
-        prompt: "Your wallet should show one card-mint transaction.",
-        copy: "Ruby High will ask your wallet to mint this Card so it can be revealed.",
-        confirmText: "Open wallet",
+      updatePackMintProgress("Review the mint transaction in your wallet...");
+      setPrivyStatus("Review the card mint transaction in your wallet.", false);
+      const signed = await withWalletActionTimeout(
+        client.signSolanaTransaction(preparedData.mint),
+        "Wallet approval timed out. Your card is still face-down; try again when your wallet is ready.",
+      );
+      updatePackMintProgress("Submitting mint to Solana...");
+      const confirmed = await apiFetch(apiBase + "/nft/mint-card-submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 90000,
+        body: JSON.stringify({
+          cardId: cleanCardId,
+          ownerWalletAddress: signed.walletAddress || ownerWalletAddress,
+          mintAddress: preparedData.mint.mintAddress,
+          metadataUri: preparedData.mint.metadataUri,
+          signedTransactionBase64: signed.signedTransactionBase64,
+        }),
       });
-      if (!approved) {
-        hidePackMintProgress();
-        setPrivyStatus("Card reveal canceled.", false);
-        return null;
+      const data = await confirmed.json().catch(() => ({}));
+      if (!confirmed.ok || !data || !data.ok) {
+        throw new Error(nftHttpErrorMessage("Card mint confirmation", confirmed, data, "Your card reveal is not recorded yet; try again in a minute."));
       }
-      updatePackMintProgress("Confirm the mint in your wallet...");
-      const payment = await client.signAndSendSolanaTransaction(preparedData.mint);
-      updatePackMintProgress("Mint confirmed. Revealing card...");
-      const data = await confirmHallPassCardMint({
-        cardId: cleanCardId,
-        ownerWalletAddress: payment.walletAddress || ownerWalletAddress,
-        mintAddress: preparedData.mint.mintAddress,
-        mintSignature: payment.signature,
-        metadataUri: preparedData.mint.metadataUri,
-      });
       const name = data.card && data.card.characterName ? data.card.characterName : "Card";
       setPrivyStatus(name + " revealed.", false);
       await fetchSession();
@@ -4068,10 +3699,7 @@ export function runViewerClient(bootstrap) {
     return 1;
   }
 
-  function packCountLabel(count) {
-    const n = Number.isFinite(Number(count)) && Number(count) > 0 ? Math.floor(Number(count)) : 1;
-    return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
-  }
+  // packCountLabel is in client-pure.ts.
 
   function buildBillingPaymentChoice(payload, product) {
     const panel = document.createElement("div");
@@ -4954,7 +4582,7 @@ export function runViewerClient(bootstrap) {
   let lastLoungeSig = "";
   function renderLoungeFigures() {
     const t = lastTelemetry || {};
-    const roster = t.faculty_roster || [];
+    const roster = (t.faculty_roster || []).filter((f) => f && f.id !== LOUNGE_ID);
     const sig = roster.map((f) => f.id).join("|");
     if (sig === lastLoungeSig && els.loungeFigures.children.length) return;
     lastLoungeSig = sig;
@@ -5009,10 +4637,12 @@ export function runViewerClient(bootstrap) {
   }
 
   function renderBlackboard(question, faculty, currentGrade) {
-    if (faculty && faculty.id === LOUNGE_ID) {
-      // Lounge mode owns a compact guest-teacher panel; do not carry over
+    const isLounge = !!((faculty && faculty.id === LOUNGE_ID) || (!faculty && lastTelemetry && lastTelemetry.faculty === LOUNGE_ID));
+    if (isLounge) {
+      // Lounge mode: hide blackboard and show the faculty lounge roster.
+      // Keep the compact guest-teacher panel and do not carry over
       // stale classroom start/progress chrome above it.
-      setLoungeMode(false);
+      setLoungeMode(true);
       renderTeacherFigure(null);
       els.blackboardPanel.dataset.faculty = LOUNGE_ID;
       showBlackboardEmpty(true);
@@ -6398,7 +6028,9 @@ export function runViewerClient(bootstrap) {
     const subjectStatus = subjectProgress
       ? subjectStatusText(subjectProgress)
       : (t.current_grade ? "Grade " + t.current_grade : "settling in");
-    els.channelSub.textContent = fac
+    els.channelSub.textContent = t.faculty === LOUNGE_ID
+      ? "teachers' lounge"
+      : fac
       ? fac.displayName + " · " + subjectStatus
       : "loading…";
     renderArcIndicator(t);
@@ -7304,18 +6936,12 @@ export function runViewerClient(bootstrap) {
     return { rungs, graduated: graduatedFor(c) };
   }
 
-  function nextGradeAfterClient(grade) {
-    const order = ["9", "10", "11", "12"];
-    const idx = order.indexOf(String(grade));
-    return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
-  }
+  // nextGradeAfterClient is in client-pure.
   function facultyLabel(fid) {
     const fac = ((lastTelemetry && lastTelemetry.faculty_roster) || []).find((f) => f.id === fid);
     return fac ? (fac.shortName || fac.displayName || fid) : (TEACHING_FACULTY_LABELS[fid] || fid);
   }
-  function fmtRewardStat(stat, value) {
-    return stat.toUpperCase() + " " + fmtStat(value) + " → " + fmtStat(Math.min(3, value + 1));
-  }
+  // fmtRewardStat is in client-pure.
   function buildGraduationCeremony(c, grade, opts) {
       const ready = (lastTelemetry && lastTelemetry.graduation_ready) || c.pendingGraduation;
       if (!ready) return null;
@@ -7466,32 +7092,7 @@ export function runViewerClient(bootstrap) {
   // (same readyAt) draws the same three rewards every time it re-renders.
   // Without this, polling re-renders would reshuffle the modal under the
   // player's cursor.
-  function seededShuffle(arr, seedInput) {
-    const out = arr.slice();
-    let s = (Number(seedInput) | 0) || 1;
-    const rand = () => {
-      s = (s + 0x6D2B79F5) | 0;
-      let t = s;
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-    for (let i = out.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      const tmp = out[i];
-      out[i] = out[j];
-      out[j] = tmp;
-    }
-    return out;
-  }
-  function hashCeremonySeed(s) {
-    let h = 2166136261 | 0;
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return h | 0;
-  }
+  // seededShuffle, hashCeremonySeed are in client-pure.
 
   function renderSheetReadonly(c, playbooks) {
     // Current character-sheet model:
@@ -7803,17 +7404,7 @@ export function runViewerClient(bootstrap) {
       .slice()
       .sort((a, b) => Number(a.gradedAt || 0) - Number(b.gradedAt || 0));
   }
-  function essayScoreText(score) {
-    if (score === null || score === undefined || score === "") return "—";
-    const n = Number(score);
-    if (!Number.isFinite(n)) return "—";
-    const rounded = Math.round(n * 10) / 10;
-    return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + "/10";
-  }
-  function essayLetter(score) {
-    const n = Number(score);
-    return Number.isFinite(n) ? letterGradeForScore(n * 10) : "—";
-  }
+  // essayScoreText, essayLetter are in client-pure.
   function essayAverage(reports) {
     const scores = reports
       .map((r) => Number(r.score))
@@ -7826,11 +7417,7 @@ export function runViewerClient(bootstrap) {
     if (id === "player") return playerDisplayName();
     return studentNameById(id);
   }
-  function clipEssayText(value, max) {
-    const text = String(value || "").replace(/\s+/g, " ").trim();
-    if (text.length <= max) return text;
-    return text.slice(0, Math.max(0, max - 1)).trim() + "…";
-  }
+  // clipEssayText is in client-pure.
   function essayRivalryText(recent) {
     if (!recent.length) return "No essay results yet.";
     let playerWins = 0;
@@ -8468,15 +8055,7 @@ export function runViewerClient(bootstrap) {
     return card;
   }
 
-  function formatSealedDate(ts) {
-    if (!ts) return "—";
-    try {
-      const d = new Date(ts);
-      const m = d.toLocaleDateString(undefined, { month: "short" });
-      return m + " " + d.getFullYear();
-    } catch { return "—"; }
-  }
-  function fmtStat(n) { return (n >= 0 ? "+" : "") + n; }
+  // formatSealedDate, fmtStat are in client-pure.
 
   // ── default-pack portraits ──────────────────────────────────────────────
   // Every playbook owns one of the six unused student portraits in
@@ -11245,10 +10824,7 @@ export function runViewerClient(bootstrap) {
     els.privyStatus.textContent = text || "";
     els.privyStatus.classList.toggle("is-invalid", !!invalid);
   }
-  function shortWallet(address) {
-    const raw = String(address || "");
-    return raw.length > 12 ? raw.slice(0, 6) + "..." + raw.slice(-4) : raw;
-  }
+  // shortWallet is in client-pure.
   function connectedSolanaWalletAddress() {
     return privyState.solanaWalletAddress || null;
   }
@@ -11288,6 +10864,9 @@ export function runViewerClient(bootstrap) {
   }
   function friendlyPrivyAccountError(err, fallback) {
     const message = err && err.message ? String(err.message) : String(err || "");
+    if (/429|too many requests|rate.?limit/i.test(message)) {
+      return "Privy is rate limiting wallet requests. Wait a minute, then try again.";
+    }
     if (/disallowed_login_method/i.test(message)) {
       return "Privy blocked wallet sign-in. Enable wallet login in the Privy dashboard, then refresh Ruby High.";
     }
@@ -11421,18 +11000,32 @@ export function runViewerClient(bootstrap) {
       applyPrivyState({ configured: false, authenticated: false, ready: true });
       return;
     }
-    try {
-      const client = await getPrivyClient();
-      if (!client) return;
-      const snapshot = await client.current();
-      applyPrivyState({ ...snapshot, configured: true, ready: true });
-      if (snapshot.authenticated) await syncPrivyServerSession(snapshot);
-    } catch (err) {
-      applyPrivyState({ configured: true, authenticated: false, ready: true });
-      if (els.privyOverlay && els.privyOverlay.classList.contains("is-open")) {
-        setPrivyStatus("Privy unavailable · " + friendlyPrivyAccountError(err, "error"), true);
+    const now = Date.now();
+    if (billingBusy) return privyRefreshPromise;
+    if (privyRefreshPromise) return privyRefreshPromise;
+    if (lastPrivyRateLimitedAt > 0 && now - lastPrivyRateLimitedAt < PRIVY_RATE_LIMIT_BACKOFF_MS) return null;
+    if (lastPrivyRefreshAt > 0 && now - lastPrivyRefreshAt < PRIVY_REFRESH_MIN_INTERVAL_MS) return null;
+    lastPrivyRefreshAt = now;
+    privyRefreshPromise = (async () => {
+      try {
+        const client = await getPrivyClient();
+        if (!client) return;
+        const snapshot = await client.current();
+        applyPrivyState({ ...snapshot, configured: true, ready: true });
+        if (snapshot.authenticated) await syncPrivyServerSession(snapshot);
+      } catch (err) {
+        if (/429|too many requests|rate.?limit/i.test(err && err.message ? String(err.message) : String(err || ""))) {
+          lastPrivyRateLimitedAt = Date.now();
+        }
+        if (!privyState.authenticated) applyPrivyState({ configured: true, authenticated: false, ready: true });
+        if (els.privyOverlay && els.privyOverlay.classList.contains("is-open")) {
+          setPrivyStatus("Privy unavailable · " + friendlyPrivyAccountError(err, "error"), true);
+        }
+      } finally {
+        privyRefreshPromise = null;
       }
-    }
+    })();
+    return privyRefreshPromise;
   }
   async function startPrivyLogin(opts) {
     if (!privyConfig) return;
@@ -11907,7 +11500,6 @@ export function runViewerClient(bootstrap) {
       if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
       agentTurn.finish();
-      syncChatComposerDisabled();
       if (!els.chatInput.disabled) els.chatInput.focus();
     }
   }

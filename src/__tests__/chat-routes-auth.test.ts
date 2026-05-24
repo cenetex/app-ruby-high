@@ -9,7 +9,8 @@ import { ChatService } from "../services/chat-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
-import { getActivePack } from "../content/registry.js";
+import { getActivePack, registerPublicPack, resetActivePack } from "../content/registry.js";
+import type { ContentPack } from "../content/types.js";
 import { getPrivyPublicConfigFromEnv, setPrivyAuthVerifierForTest } from "../services/privy-auth.js";
 import { setHallPassNftBurnVerifierForTest } from "../services/hall-pass-nfts.js";
 
@@ -118,6 +119,43 @@ function buildSseChunk(text: string): Uint8Array {
   ].join(""));
 }
 
+function fakePublicGuestPack(): ContentPack {
+  return {
+    id: "teacher:route-lounge-guest",
+    name: "Extraterrestrial Life",
+    description: "Guest astrobiology week.",
+    version: "1.0.0",
+    faculty: [{
+      id: "route-lounge-guest-teacher",
+      displayName: "Dr. Cassandra Wells",
+      shortName: "Dr. Wells",
+      subjects: ["astrobiology"],
+      bio: "Astrobiology guest faculty.",
+      accent: "#7c66ff",
+      systemPrompt: "You are Dr. Cassandra Wells, Ruby High's guest astrobiology teacher.",
+      defaultModel: "test/guest-model",
+      questions: [{
+        id: "astro-q1",
+        faculty: "route-lounge-guest-teacher",
+        subject: "astrobiology",
+        difficulty: "easy",
+        prompt: "What makes a planet a plausible target for life?",
+        options: { A: "Stable energy and chemistry", B: "Only purple rocks", C: "No atmosphere", D: "Random noise" },
+        correct: "A",
+        explanation: "Habitability starts with available energy, chemistry, and stable conditions.",
+      }],
+    }],
+    rooms: [{
+      id: "astro-room",
+      name: "Astrobiology",
+      channelName: "guest",
+      teacherId: "route-lounge-guest-teacher",
+      description: "Guest astrobiology room",
+      teaches: true,
+    }],
+  };
+}
+
 function hostedImageSpendKey(route: string, requestId: string): string {
   const digest = createHash("sha256").update(`${route}:${requestId}`).digest("hex").slice(0, 32);
   return `hosted-image:${route}:${digest}`;
@@ -150,6 +188,7 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_PRIVY_VERIFICATION_KEY;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-routes-auth-"));
   capturedChatRequest = null;
+  resetActivePack();
   await getActivePack();
   const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
   auth = await AuthService.start({} as never, store);
@@ -180,6 +219,7 @@ afterEach(async () => {
   await chat.stop();
   await ruby.flush();
   await rm(tmpDir, { recursive: true, force: true });
+  resetActivePack();
 });
 
 function restoreEnv(key: string, value: string | undefined): void {
@@ -1438,6 +1478,59 @@ describe("chat event context", () => {
     const promptText = JSON.stringify(messages);
     expect(promptText).toContain("The student just spoke in the lounge");
     expect(capturedChatRequest.body.tools).toEqual([]);
+  });
+
+  it("includes the active guest teacher in lounge enter turns", async () => {
+    registerPublicPack(fakePublicGuestPack(), 1_000);
+    const token = "route-lounge-guest-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-lounge-guest-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Lounge Guest",
+    });
+    const calls: any[] = [];
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      calls.push(capturedChatRequest);
+      return new Response(buildSseChunk("The lounge keeps odd hours.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "lounge",
+          trigger: "lounge-enter",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"facultyId":"guest"');
+    expect(calls).toHaveLength(4);
+    const loungeContexts = calls.flatMap((call) =>
+      (call.body.messages as Array<{ role?: string; content?: string }>)
+        .filter((m) => typeof m.content === "string" && m.content.startsWith("LOUNGE CONTEXT"))
+        .map((m) => m.content as string)
+    );
+    expect(loungeContexts.length).toBeGreaterThan(0);
+    expect(loungeContexts[0]).toContain("Dr. Wells");
+    expect(loungeContexts[0]).not.toMatch(/\btools?\b/i);
+    expect(capturedChatRequest.body.model).toBe("test/guest-model");
   });
 
   it("threads classroom Chat button player lines into the teacher turn", async () => {

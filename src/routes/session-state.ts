@@ -504,6 +504,8 @@ function hiddenHallPassCardForTelemetry(card: RubyHighHallPassCard): RubyHighHal
     title: "Ruby High Mystery Card",
     characterId: "card-back",
     characterName: "Mystery Card",
+    setName: "Ruby High: First Bell",
+    setCode: "FB",
     role: "special" as const,
     rarity: "common" as const,
     blurb: "Mint this Card to reveal it.",

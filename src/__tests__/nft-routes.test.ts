@@ -5,25 +5,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleNftRoutes } from "../routes/nft.js";
 import type { RouteContext } from "../routes/context.js";
 import { getActivePack } from "../content/registry.js";
-import { setOwnedCorePackNftFetcherForTest } from "../services/core-pack-nfts.js";
+import {
+  setCorePackNftOpenedUpdaterForTest,
+  setOwnedCorePackNftFetcherForTest,
+} from "../services/core-pack-nfts.js";
 import {
   hallPassNftMetadataUri,
   setHallPassNftBurnTransactionBuilderForTest,
   setHallPassNftBurnVerifierForTest,
-  setHallPassNftMinterForTest,
+  setHallPassNftMintTransactionBuilderForTest,
+  setHallPassNftMintSubmitterForTest,
   setHallPassNftMintVerifierForTest,
 } from "../services/hall-pass-nfts.js";
 import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_ALTERNATE_ART_PROFILES,
+  FIRST_BELL_SET_DRAFT,
+  FIRST_BELL_SET_EXPANSION_PROFILE_COUNT,
+  FIRST_BELL_SET_LIVE_PROFILE_COUNT,
+  FIRST_BELL_SET_NAME,
+  FIRST_BELL_SET_TOTAL_PROFILES,
   HALL_PASS_CARD_CATALOG,
   hallPassCardAspectClass,
   hallPassCardImageDimensions,
   hallPassCardMediaType,
+  hallPassCardName,
+  hallPassCardProfileId,
   hallPassCardRarityLabel,
   hallPassCardRoleLabel,
+  hallPassCardSetNumber,
   hallPassCardSourceArtVersion,
+  hallPassCardSubject,
 } from "../services/hall-pass-card-catalog.js";
 import { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
+import { nftImageUri } from "../services/nft-arweave-assets.js";
 import { StateStore } from "../services/state-store.js";
 
 let tmpDir: string;
@@ -32,14 +48,17 @@ let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
 let lastHeaders: Record<string, string> = {};
 let restoreMintBuilder: (() => void) | null = null;
+let restoreMintSubmitter: (() => void) | null = null;
 let restoreMintVerifier: (() => void) | null = null;
 let restoreBurnBuilder: (() => void) | null = null;
 let restoreBurnVerifier: (() => void) | null = null;
 let restorePackFetcher: (() => void) | null = null;
+let restorePackOpenedUpdater: (() => void) | null = null;
 
 const OWNER = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
+  RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_PACK_REVEAL_SECRET: process.env.RUBY_HIGH_PACK_REVEAL_SECRET,
   RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
@@ -100,6 +119,10 @@ function expectWebsiteLink(metadata: any, website = "https://ruby-high.ai/"): vo
   expect(metadata.attributes).toContainEqual({ trait_type: "Website", value: website });
 }
 
+function expectedNftImage(path: string): string {
+  return nftImageUri("https://ruby-high.ai", path);
+}
+
 function expectMarketReadyImageMetadata(metadata: any, image: string): void {
   expect(metadata).toMatchObject({
     category: "image",
@@ -112,17 +135,42 @@ function expectMarketReadyImageMetadata(metadata: any, image: string): void {
   });
 }
 
+function expectNoVisibleProvenanceTraits(metadata: any): void {
+  const hiddenTraits = new Set([
+    "Pack Reveal Version",
+    "Catalog Hash",
+    "Commitment",
+    "Entropy Source",
+    "Reveal Seed",
+    "Reveal Proof",
+    "Pack Asset",
+    "Reveal Slot",
+    "Randomness Account",
+    "Reveal Transaction",
+  ]);
+  for (const attribute of metadata?.attributes ?? []) {
+    expect(hiddenTraits.has(attribute.trait_type)).toBe(false);
+  }
+}
+
 beforeEach(async () => {
   restoreEnv();
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_PACK_REVEAL_SECRET = "nft-route-test-reveal-secret";
   process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
-  restoreMintBuilder = setHallPassNftMinterForTest(async (card, ownerWalletAddress) => ({
+  restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async (card, ownerWalletAddress) => ({
+    cardId: card.id,
     ownerWalletAddress,
     mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
     metadataUri: `https://ruby-high.ai/api/apps/ruby-high/nft/metadata/hall-pass/card/${encodeURIComponent(card.id)}.json`,
-    mintSignature: "5mCardMintSignature11111111111111111111111111111111111111",
+    transactionBase64: "AQID",
+    transactionEncoding: "base64",
+    chain: "solana:mainnet",
+    rpcUrl: "https://rpc.example",
   }));
+  restoreMintSubmitter = setHallPassNftMintSubmitterForTest(async () => (
+    "5mSubmittedCardMintSignature111111111111111111111111111111111"
+  ));
   restoreMintVerifier = setHallPassNftMintVerifierForTest(async (mint) => ({
     signature: mint.mintSignature,
     ownerWalletAddress: mint.ownerWalletAddress,
@@ -156,6 +204,8 @@ afterEach(async () => {
   restoreEnv();
   restoreMintBuilder?.();
   restoreMintBuilder = null;
+  restoreMintSubmitter?.();
+  restoreMintSubmitter = null;
   restoreMintVerifier?.();
   restoreMintVerifier = null;
   restoreBurnBuilder?.();
@@ -164,6 +214,8 @@ afterEach(async () => {
   restoreBurnVerifier = null;
   restorePackFetcher?.();
   restorePackFetcher = null;
+  restorePackOpenedUpdater?.();
+  restorePackOpenedUpdater = null;
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
@@ -180,14 +232,18 @@ describe("Hall Pass NFT routes", () => {
     expect(collectionHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
-      name: "Ruby High",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1",
+      name: FIRST_BELL_SET_NAME,
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1"),
     );
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Edition", value: "Student & Faculty Edition" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Edition", value: "First Bell Set" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Live Profiles", value: FIRST_BELL_SET_LIVE_PROFILE_COUNT });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Draft Profiles", value: FIRST_BELL_SET_TOTAL_PROFILES });
     expectWebsiteLink(lastResponse?.body);
 
     const handled = await handleNftRoutes(makeCtx({
@@ -200,18 +256,23 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High: Lyra #123456",
       symbol: "RUBY",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/lyra.png?v=card-crop-v1",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v2"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/lyra.png?v=card-crop-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/cards/lyra.png?v=card-v2"),
     );
     expect(lastHeaders["cache-control"]).toBe("no-cache");
     expect(lastResponse?.body.collection).toMatchObject({
-      name: "Ruby High",
+      name: FIRST_BELL_SET_NAME,
       family: "Ruby High",
     });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Collection", value: "Ruby High" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Collection", value: FIRST_BELL_SET_NAME });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Number", value: "FB-001" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Profile ID", value: "lyra-color-coded-spare" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Revealed" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Name", value: "Lyra: Color-Coded Spare" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Subject", value: "Homeroom" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Common" });
     expectWebsiteLink(lastResponse?.body);
 
@@ -223,11 +284,11 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       name: "Ruby High: Captain Null #777777",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/captain-null.png?v=card-crop-v1",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/cards/captain-null.png?v=card-v2"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/captain-null.png?v=card-crop-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/cards/captain-null.png?v=card-v2"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Role", value: "Special" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: "Ultra Rare" });
@@ -245,7 +306,11 @@ describe("Hall Pass NFT routes", () => {
   });
 
   it("serves every canonical revealed card metadata profile", async () => {
-    expect(HALL_PASS_CARD_CATALOG).toHaveLength(24);
+    expect(HALL_PASS_CARD_CATALOG).toHaveLength(FIRST_BELL_SET_LIVE_PROFILE_COUNT);
+    expect(FIRST_BELL_SET_DRAFT).toHaveLength(FIRST_BELL_SET_TOTAL_PROFILES);
+    expect(FIRST_BELL_SET_DRAFT.filter((profile) => profile.mintable)).toHaveLength(FIRST_BELL_SET_LIVE_PROFILE_COUNT);
+    expect(FIRST_BELL_ALTERNATE_ART_PROFILES).toHaveLength(FIRST_BELL_SET_EXPANSION_PROFILE_COUNT);
+    expect(new Set(FIRST_BELL_ALTERNATE_ART_PROFILES.map((profile) => profile.imageId ?? profile.profileId)).size).toBe(FIRST_BELL_SET_EXPANSION_PROFILE_COUNT);
 
     for (const entry of HALL_PASS_CARD_CATALOG) {
       const handled = await handleNftRoutes(makeCtx({
@@ -257,15 +322,21 @@ describe("Hall Pass NFT routes", () => {
       expect(lastResponse?.status).toBe(200);
       expect(lastResponse?.body).toMatchObject({
         name: `Ruby High: ${entry.characterName} #424242`,
-        image: `https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/${entry.characterId}.png?v=card-crop-v1`,
+        image: expectedNftImage(`/api/apps/ruby-high/assets/nft/cards/${entry.characterId}.png?v=card-v2`),
       });
       expectMarketReadyImageMetadata(
         lastResponse?.body,
-        `https://ruby-high.ai/api/apps/ruby-high/assets/nft/market-cards/${entry.characterId}.png?v=card-crop-v1`,
+        expectedNftImage(`/api/apps/ruby-high/assets/nft/cards/${entry.characterId}.png?v=card-v2`),
       );
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Title", value: entry.title });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Number", value: hallPassCardSetNumber(entry) });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Profile ID", value: hallPassCardProfileId(entry) });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Card Name", value: hallPassCardName(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Role", value: hallPassCardRoleLabel(entry.role) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Rarity", value: hallPassCardRarityLabel(entry.rarity) });
+      expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Subject", value: hallPassCardSubject(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Media Type", value: hallPassCardMediaType(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Aspect Class", value: hallPassCardAspectClass(entry) });
       expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Image Dimensions", value: hallPassCardImageDimensions(entry) });
@@ -284,13 +355,13 @@ describe("Hall Pass NFT routes", () => {
     expect(collectionHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
-      name: "Ruby High Packs",
+      name: `${FIRST_BELL_SET_NAME} Packs`,
       category: "image",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1"),
     );
     expectWebsiteLink(lastResponse?.body);
 
@@ -302,14 +373,17 @@ describe("Hall Pass NFT routes", () => {
     expect(packHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
-      name: "Ruby High Pack #123456",
+      name: `${FIRST_BELL_SET_NAME} Pack #123456`,
       category: "image",
-      image: "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
+      image: expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2"),
     });
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2"),
     );
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "NFT Type", value: "Pack" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
     expectWebsiteLink(lastResponse?.body);
 
@@ -320,9 +394,19 @@ describe("Hall Pass NFT routes", () => {
 
     expect(legacyUriHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.description).toContain("5 cards inside");
+    expect(lastResponse?.body.description).toContain("5 revealable cards");
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
     expectWebsiteLink(lastResponse?.body);
+
+    const openedUriHandled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5&opened=1",
+    }), deps());
+
+    expect(openedUriHandled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.image).toBe(expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"));
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Opened" });
   });
 
   it("uses stable revealed metadata URIs for future card mints", () => {
@@ -341,6 +425,14 @@ describe("Hall Pass NFT routes", () => {
 
   it("opens an active Pack NFT into deterministic face-down cards", async () => {
     const stateKey = signInUser("open-pack");
+    const openedMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5&opened=1";
+    process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    const updateOpenedPack = vi.fn(async () => ({
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      signature: "5mPackOpenedUpdateSignature11111111111111111111111111111",
+      metadataUri: openedMetadataUri,
+    }));
+    restorePackOpenedUpdater = setCorePackNftOpenedUpdaterForTest(updateOpenedPack);
     const pack = ruby.recordHallPassPackMint(stateKey, {
       productId: "card-pack-1",
       packCount: 1,
@@ -375,9 +467,24 @@ describe("Hall Pass NFT routes", () => {
           commitment: expect.any(String),
           entropySource: "ruby-high-server-commit-v1",
           revealSeed: expect.any(String),
+          metadataUri: openedMetadataUri,
+        },
+        packNftUpdate: {
+          assetAddress: pack.assetAddress,
+          signature: "5mPackOpenedUpdateSignature11111111111111111111111111111",
+          metadataUri: openedMetadataUri,
         },
       },
     });
+    expect(updateOpenedPack).toHaveBeenCalledWith(expect.objectContaining({
+      assetAddress: pack.assetAddress,
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      serial: 123456,
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      revealSeed: expect.any(String),
+    }));
     expect(lastResponse?.body.cards).toHaveLength(5);
     expect(lastResponse?.body.cards[0]).toMatchObject({
       title: "Ruby High Mystery Card",
@@ -412,15 +519,16 @@ describe("Hall Pass NFT routes", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.image).toBe("https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1");
+    expect(lastResponse?.body.image).toBe(expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1"));
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Face Down" });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Pack Reveal Version", value: "ruby-high-pack-reveal-v1.1" });
+    expectNoVisibleProvenanceTraits(lastResponse?.body);
     expect(lastResponse?.body.properties.provenance).toMatchObject({
       algorithm: "sha256(version + commitment + revealSeed + assetAddress + slotIndex)",
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
       revealSeed: expect.any(String),
       packAssetAddress: pack.assetAddress,
     });
@@ -443,15 +551,16 @@ describe("Hall Pass NFT routes", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.image).toBe("https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2");
+    expect(lastResponse?.body.image).toBe(expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"));
     expectMarketReadyImageMetadata(
       lastResponse?.body,
-      "https://ruby-high.ai/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2",
+      expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"),
     );
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Opened" });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Pack Reveal Version", value: "ruby-high-pack-reveal-v1.1" });
+    expectNoVisibleProvenanceTraits(lastResponse?.body);
     expect(lastResponse?.body.properties.provenance).toMatchObject({
       algorithm: "sha256(version + commitment + revealSeed + assetAddress + slotIndex)",
+      packRevealVersion: "ruby-high-pack-reveal-v1.1",
       revealSeed: expect.any(String),
       packAssetAddress: pack.assetAddress,
     });
@@ -524,7 +633,7 @@ describe("Hall Pass NFT routes", () => {
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks).toHaveLength(1);
   });
 
-  it("mints and reveals one card server-side for the connected wallet", async () => {
+  it("prepares one owner-paid card mint without recording the reveal", async () => {
     const stateKey = signInUser("alice");
     const grant = ruby.grantHallPassCards(stateKey, {
       cardCount: 20,
@@ -547,20 +656,168 @@ describe("Hall Pass NFT routes", () => {
       id: grant.cards![0]!.id,
       characterId: grant.cards![0]!.characterId,
       characterName: grant.cards![0]!.characterName,
-      mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-      mintSignature: "5mCardMintSignature11111111111111111111111111111111111111",
+      mintAddress: null,
+      mintSignature: null,
     });
     expect(lastResponse?.body.mint).toMatchObject({
       cardId: grant.cards![0]!.id,
       ownerWalletAddress: OWNER,
       mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-      serverMinted: true,
+      transactionBase64: "AQID",
+      chain: "solana:mainnet",
+      serverMinted: false,
     });
-    expect(lastResponse?.body.mint.rpcUrl).toBeUndefined();
-    expect(lastResponse?.body.minted).toHaveLength(1);
-    expect(lastResponse?.body.remaining).toBe(19);
+    expect(lastResponse?.body.minted).toHaveLength(0);
+    expect(lastResponse?.body.remaining).toBe(20);
     const cards = ruby.getOrCreate(stateKey).wallet.hallPassCards ?? [];
-    expect(cards.filter((card) => card.mintAddress && card.mintSignature && card.metadataUri)).toHaveLength(1);
+    expect(cards.filter((card) => card.mintAddress && card.mintSignature && card.metadataUri)).toHaveLength(0);
+    expect(cards.find((card) => card.id === grant.cards![0]!.id)).toMatchObject({
+      pendingMintOwnerWalletAddress: OWNER,
+      pendingMintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      pendingMintMetadataUri: lastResponse?.body.mint.metadataUri,
+      pendingMintPreparedAt: expect.any(Number),
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(false);
+  });
+
+  it("accepts the prepared durable metadata URI for owner-paid card mint submission", async () => {
+    const durableMetadataUri = "https://arweave.net/ruby-high-card-metadata-json";
+    restoreMintBuilder?.();
+    restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async (card, ownerWalletAddress) => ({
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress: "PreparedMint11111111111111111111111111111",
+      metadataUri: durableMetadataUri,
+      transactionBase64: "AQID",
+      transactionEncoding: "base64",
+      chain: "solana:mainnet",
+      rpcUrl: "https://rpc.example",
+    }));
+    const stateKey = signInUser("owner-paid-durable-submit");
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 1,
+      idempotencyKey: "stripe:checkout:owner_paid_durable_submit",
+      source: "stripe",
+    });
+    const card = grant.cards![0]!;
+
+    await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-prepare",
+      cookie: "rh_session=owner-paid-durable-submit",
+      body: { cardId: card.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.mint.metadataUri).toBe(durableMetadataUri);
+    const recordedCard = ruby.getOrCreate(stateKey).wallet.hallPassCards?.find((candidate) => candidate.id === card.id);
+    expect(recordedCard).toMatchObject({
+      pendingMintAddress: "PreparedMint11111111111111111111111111111",
+      pendingMintMetadataUri: durableMetadataUri,
+    });
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-submit",
+      cookie: "rh_session=owner-paid-durable-submit",
+      body: {
+        cardId: card.id,
+        ownerWalletAddress: OWNER,
+        mintAddress: "PreparedMint11111111111111111111111111111",
+        metadataUri: durableMetadataUri,
+        signedTransactionBase64: "AQID",
+      },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.card).toMatchObject({
+      id: card.id,
+      mintAddress: "PreparedMint11111111111111111111111111111",
+      metadataUri: durableMetadataUri,
+    });
+    const mintedCard = ruby.getOrCreate(stateKey).wallet.hallPassCards?.find((candidate) => candidate.id === card.id);
+    expect(mintedCard).toMatchObject({ metadataUri: durableMetadataUri });
+    expect(mintedCard).not.toHaveProperty("pendingMintAddress");
+    expect(mintedCard).not.toHaveProperty("pendingMintMetadataUri");
+  });
+
+  it("records one owner-paid card mint only after confirmation", async () => {
+    const stateKey = signInUser("owner-paid-confirm");
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 2,
+      idempotencyKey: "stripe:checkout:owner_paid_confirm",
+      source: "stripe",
+    });
+    const card = grant.cards![0]!;
+    const metadataUri = hallPassNftMetadataUri(card);
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-confirm",
+      cookie: "rh_session=owner-paid-confirm",
+      body: {
+        cardId: card.id,
+        ownerWalletAddress: OWNER,
+        mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+        mintSignature: "5mCardMintSignature11111111111111111111111111111111111111",
+        metadataUri,
+      },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.minted).toHaveLength(1);
+    expect(lastResponse?.body.card).toMatchObject({
+      id: card.id,
+      mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      mintSignature: "5mCardMintSignature11111111111111111111111111111111111111",
+      metadataUri,
+    });
+    expect(lastResponse?.body.remaining).toBe(1);
+    expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(true);
+  });
+
+  it("submits an owner-signed card mint before recording the reveal", async () => {
+    let submittedTransactionBase64 = "";
+    restoreMintSubmitter?.();
+    restoreMintSubmitter = setHallPassNftMintSubmitterForTest(async (signedTransactionBase64) => {
+      submittedTransactionBase64 = signedTransactionBase64;
+      return "5mSubmittedCardMintSignature222222222222222222222222222222222";
+    });
+    const stateKey = signInUser("owner-paid-submit");
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 2,
+      idempotencyKey: "stripe:checkout:owner_paid_submit",
+      source: "stripe",
+    });
+    const card = grant.cards![0]!;
+    const metadataUri = hallPassNftMetadataUri(card);
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-submit",
+      cookie: "rh_session=owner-paid-submit",
+      body: {
+        cardId: card.id,
+        ownerWalletAddress: OWNER,
+        mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+        metadataUri,
+        signedTransactionBase64: "AQID",
+      },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(submittedTransactionBase64).toBe("AQID");
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.minted).toHaveLength(1);
+    expect(lastResponse?.body.card).toMatchObject({
+      id: card.id,
+      mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      mintSignature: "5mSubmittedCardMintSignature222222222222222222222222222222222",
+      metadataUri,
+    });
+    expect(lastResponse?.body.remaining).toBe(1);
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(true);
   });
 
@@ -581,22 +838,22 @@ describe("Hall Pass NFT routes", () => {
 
     expect(handled).toBe(true);
     expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body.minted).toHaveLength(1);
+    expect(lastResponse?.body.minted).toHaveLength(0);
     expect(lastResponse?.body.card).toMatchObject({
       characterId: expect.any(String),
-      mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
     });
     expect(lastResponse?.body.mint).toMatchObject({
       ownerWalletAddress: OWNER,
-      serverMinted: true,
+      transactionBase64: "AQID",
+      serverMinted: false,
     });
-    expect(lastResponse?.body.remaining).toBe(7);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(1);
+    expect(lastResponse?.body.remaining).toBe(8);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
 
-  it("returns server mint authority errors without mutating the card", async () => {
+  it("returns card mint transaction build errors without mutating the card", async () => {
     restoreMintBuilder?.();
-    restoreMintBuilder = setHallPassNftMinterForTest(async () => {
+    restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async () => {
       throw new Error("insufficient funds for rent");
     });
     const stateKey = signInUser("mint-user-low-balance");
@@ -617,14 +874,14 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 502,
-      body: { error: "Ruby High mint authority needs more SOL to mint this card." },
+      body: { error: "This card mint needs more SOL for Solana rent and fees. Your card was not changed." },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
 
   it("returns server mint authority errors for insufficient lamports preflight failures", async () => {
     restoreMintBuilder?.();
-    restoreMintBuilder = setHallPassNftMinterForTest(async () => {
+    restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async () => {
       throw new Error("Transfer: insufficient lamports 1620352, need 15115600");
     });
     const stateKey = signInUser("mint-user-insufficient-lamports");
@@ -645,14 +902,14 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 502,
-      body: { error: "Ruby High mint authority needs more SOL to mint this card." },
+      body: { error: "This card mint needs more SOL for Solana rent and fees. Your card was not changed." },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((candidate) => candidate.mintAddress)).toHaveLength(0);
   });
 
   it("returns retryable Solana RPC mint errors without mutating the card", async () => {
     restoreMintBuilder?.();
-    restoreMintBuilder = setHallPassNftMinterForTest(async () => {
+    restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async () => {
       throw new Error("Solana RPC failed with 502.");
     });
     const stateKey = signInUser("mint-user-rpc-502");

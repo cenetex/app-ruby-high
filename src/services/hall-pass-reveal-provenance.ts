@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { HALL_PASS_CARD_CATALOG } from "./hall-pass-card-catalog.js";
+import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_SET_NAME,
+  HALL_PASS_CARD_CATALOG,
+  hallPassCardName,
+  hallPassCardProfileId,
+  hallPassCardSetNumber,
+  hallPassCardSubject,
+} from "./hall-pass-card-catalog.js";
 
 export const HALL_PASS_PACK_REVEAL_VERSION = "ruby-high-pack-reveal-v1.1";
 export const HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE = "ruby-high-server-commit-v1";
@@ -34,14 +42,20 @@ function stableJson(value: unknown): string {
 
 export function hallPassCatalogHash(): string {
   return sha256Hex(stableJson({
-    version: "first-bell-v1",
+    version: "first-bell-v1.2",
+    setName: FIRST_BELL_SET_NAME,
+    setCode: FIRST_BELL_SET_CODE,
     cardsPerPack: 5,
     packShape: ["teacher", "student", "student", "student", "utility-or-special"],
     catalog: HALL_PASS_CARD_CATALOG.map((entry) => ({
+      setNumber: hallPassCardSetNumber(entry),
+      profileId: hallPassCardProfileId(entry),
+      cardName: hallPassCardName(entry),
       characterId: entry.characterId,
       characterName: entry.characterName,
       role: entry.role,
       rarity: entry.rarity,
+      subject: hallPassCardSubject(entry),
       title: entry.title,
       blurb: entry.blurb,
       color: entry.color,

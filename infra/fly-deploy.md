@@ -109,8 +109,8 @@ In your OpenRouter settings, add `https://ruby-high.fly.dev/api/apps/ruby-high/a
 In the Privy dashboard, configure the Ruby High app for email login and embedded wallet creation. Add these app domains/origins:
 
 - `https://ruby-high.fly.dev`
-- `https://rubyhighai.com`
-- `https://www.rubyhighai.com`
+- `https://ruby-high.ai`
+- `https://www.ruby-high.ai`
 - `http://localhost:3000` for local development, preferably in a separate dev Privy app
 
 Then set the app credentials on Fly:

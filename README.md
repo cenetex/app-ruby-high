@@ -137,19 +137,22 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_HALL_PASS_50_CENTS` | `1499` | Price for 50 Hall Passes. |
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
-| `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for Metaplex Core pack minting. |
+| `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for NFT minting. |
 | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs and Token Metadata card NFTs. Also drives creator attribution in served JSON metadata. Set via secrets only. |
+| `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads; unset keeps app-hosted metadata JSON. |
+| `RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK` | — | Arweave RSA JWK JSON used when `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`. `RUBY_HIGH_ARWEAVE_JWK`, `RUBY_HIGH_ARWEAVE_WALLET_JWK`, and `ARWEAVE_JWK` are also accepted. |
+| `RUBY_HIGH_NFT_METADATA_GATEWAY` | `https://arweave.net` | Gateway prefix returned for uploaded metadata JSON. |
 | `RUBY_HIGH_PACK_REVEAL_SECRET` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Server-only HMAC secret for deterministic pack-to-card mapping. Set a stable production secret so the mapping remains fair and non-public. |
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |
-| `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` | — | Metaplex Token Metadata collection mint for Ruby High card NFTs. Create once with `npm run nft:create-card-collection`, then set this value so cards verify into `Ruby High`. |
+| `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` | — | Metaplex Token Metadata collection mint for Ruby High: First Bell card NFTs. Create once with `npm run nft:create-card-collection`, then set this value so cards verify into `Ruby High: First Bell`. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_MINT` | `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump` | SPL-token mint accepted for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY` | Treasury wallet owner that must receive the SPL-token transfer. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL` | `RUBY` | Display symbol for the Solana token. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS` | `6` | SPL-token decimal places used when converting quoted token amounts to base units. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS` | `100000` | `$RUBY` price for the 5 Hall Pass pack. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS` | `100000` | `$RUBY` price for the 20 Hall Pass pack. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS` | `100000` | `$RUBY` price for the 50 Hall Pass pack. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS` | `100000` | `$RUBY` price for the 100 Hall Pass pack. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS` | `1000000` | `$RUBY` price for the 1-pack / 5 Hall Pass tier. |
+| `RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS` | `2800000` | `$RUBY` price for the 3-pack / 20 Hall Pass tier (~7% volume discount vs 1-pack). |
+| `RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS` | `4500000` | `$RUBY` price for the 5-pack / 50 Hall Pass tier (~10% volume discount vs 1-pack). |
+| `RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS` | `8500000` | `$RUBY` price for the 10-pack / 100 Hall Pass tier (~15% volume discount vs 1-pack). |
 | `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Hall Pass cost to activate server-hosted text AI for one timed window. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Hosted AI Access duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Optional exact hosted AI pass duration override. |
@@ -197,10 +200,13 @@ Solana purchases are separate from Stripe and use the configured SPL token to mi
 - The default treasury wallet is `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY`.
 - Every built-in pack defaults to `100000` `$RUBY`.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
-- Create the card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` to the printed address so card NFTs verify into `Ruby High`.
-- Regenerate wallet-facing card crops with `npm run nft:crop-cards` after changing source card art. Items are square, locations are wide, and rare-teacher avatars are tall; `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <ids>` refreshes Grok source art through OpenRouter before cropping. Revealed card metadata uses plain cropped PNGs plus explicit media/aspect/source traits, `properties.files`, creator attribution, and `seller_fee_basis_points: 0` for marketplace compatibility.
-- Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Pack/card records and receipts now carry `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`, and reveal-time `revealSeed` provenance; see [`NFT_PROVABLY_FAIR_V1_1.md`](./NFT_PROVABLY_FAIR_V1_1.md) for the published algorithm.
+- Create the card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` to the printed address so card NFTs verify into `Ruby High: First Bell`.
+- The current First Bell runtime manifest has 24 mintable profiles and a 12-profile alternate-art expansion, for 36 draft profiles total in `src/services/hall-pass-card-catalog.ts`. Revealed metadata includes `Set`, `Set Code`, `Set Number`, `Card Profile ID`, `Card Name`, `Subject`, media traits, and creator attribution. Reveal proof data stays under `properties.provenance` instead of visible marketplace traits.
+- Wallet-facing card crops are plain images, not cards inside cards: students, teachers, and specials are tall avatar crops; items are square; locations are wide. Regenerate crops with `npm run nft:crop-cards` after changing source art. Use `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <ids>` to refresh Grok source art through OpenRouter before cropping.
+- Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Pack/card records and receipts carry `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`, and reveal-time `revealSeed` provenance; see [`NFT_PROVABLY_FAIR_V1_1.md`](./NFT_PROVABLY_FAIR_V1_1.md) for the published algorithm.
 - The current v1.1 entropy source is an auditable server-commit bridge, not decentralized randomness. The next hardening step is a Solana pack-opening program that commits the open request and payment/authority lock first, then settles from Switchboard randomness.
+- Marketplace submission copy, collection addresses, and Magic Eden verification steps are tracked in [`NFT_MARKETPLACE_VERIFICATION.md`](./NFT_MARKETPLACE_VERIFICATION.md).
+- To mint with durable JSON directly on Arweave, fund the Arweave wallet, set `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`, add the JWK secret, and verify a fresh pack/card mint returns an `https://arweave.net/...` metadata URI. Leave the flag unset if durable storage funding is not ready.
 - Wallet-signed pack checkout is payment-only: the prepared transaction creates the treasury ATA if needed and transfers the configured SPL token with the Ruby High payment reference. The server verifies the payment and mints the Metaplex Core pack NFT afterward.
 - Each face-down card is minted and revealed one at a time by the Ruby High mint authority to the connected wallet. The player wallet is the recipient, not the mint fee payer.
 - Owner-signed card burns are prepared one card per wallet prompt and preflighted before signing; `POST /api/apps/ruby-high/billing/card-burn` verifies the burn signature and credits 5 Hall Passes per burned card.

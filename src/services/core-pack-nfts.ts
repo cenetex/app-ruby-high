@@ -7,6 +7,7 @@ import {
   fetchCollectionV1,
   getAssetV1GpaBuilder,
   mplCore,
+  update,
 } from "@metaplex-foundation/mpl-core";
 import {
   generateSigner,
@@ -27,9 +28,15 @@ import { isPreflightUnsupportedError } from "./solana-errors.js";
 import {
   type HallPassRevealProvenance,
   HALL_PASS_PACK_REVEAL_ALGORITHM,
-  revealProvenanceAttributes,
   revealProvenanceProperties,
 } from "./hall-pass-reveal-provenance.js";
+import {
+  FIRST_BELL_SET_CODE,
+  FIRST_BELL_SET_FAMILY,
+  FIRST_BELL_SET_NAME,
+} from "./hall-pass-card-catalog.js";
+import { nftImageUri } from "./nft-arweave-assets.js";
+import { durableNftMetadataUri } from "./nft-metadata-storage.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -40,6 +47,7 @@ const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
 const CORE_PACK_CARDS_PER_PACK = 5;
 const NFT_SELLER_FEE_BASIS_POINTS = 0;
+const PACK_COLLECTION_NAME = `${FIRST_BELL_SET_NAME} Packs`;
 const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
 const PACK_OPENED_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2";
 const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1";
@@ -79,6 +87,20 @@ export interface CorePackNftMintResult {
   ownerWalletAddress: string;
   assetAddress: string;
   mintSignature: string;
+  metadataUri: string;
+}
+
+export interface CorePackNftOpenedUpdateInput extends HallPassRevealProvenance {
+  assetAddress: string;
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: number | string;
+}
+
+export interface CorePackNftOpenedUpdateResult {
+  assetAddress: string;
+  signature: string;
   metadataUri: string;
 }
 
@@ -138,6 +160,7 @@ export interface OwnedCorePackNft {
 }
 
 type CorePackNftMinter = (input: CorePackNftMintInput) => Promise<CorePackNftMintResult>;
+type CorePackNftOpenedUpdater = (input: CorePackNftOpenedUpdateInput) => Promise<CorePackNftOpenedUpdateResult>;
 type CorePackPurchaseTransactionBuilder = (
   input: CorePackPurchaseTransactionInput,
 ) => Promise<CorePackPurchaseTransactionResult>;
@@ -145,6 +168,7 @@ type CorePackNftVerifier = (input: CorePackNftVerifyInput) => Promise<CorePackNf
 type CorePackNftOwnerFetcher = (ownerWalletAddress: string) => Promise<OwnedCorePackNft[]>;
 
 let packMinterOverride: CorePackNftMinter | null = null;
+let packOpenedUpdaterOverride: CorePackNftOpenedUpdater | null = null;
 let packPurchaseTransactionBuilderOverride: CorePackPurchaseTransactionBuilder | null = null;
 let packVerifierOverride: CorePackNftVerifier | null = null;
 let packOwnerFetcherOverride: CorePackNftOwnerFetcher | null = null;
@@ -154,6 +178,14 @@ export function setCorePackNftMinterForTest(minter: CorePackNftMinter | null): (
   packMinterOverride = minter;
   return () => {
     packMinterOverride = previous;
+  };
+}
+
+export function setCorePackNftOpenedUpdaterForTest(updater: CorePackNftOpenedUpdater | null): () => void {
+  const previous = packOpenedUpdaterOverride;
+  packOpenedUpdaterOverride = updater;
+  return () => {
+    packOpenedUpdaterOverride = previous;
   };
 }
 
@@ -259,6 +291,21 @@ function metadataCreatorProperties(env: NodeJS.ProcessEnv = process.env): { crea
   return creators.length > 0 ? { creators } : {};
 }
 
+function revealProvenanceFromPack(pack: HallPassRevealProvenance): HallPassRevealProvenance {
+  return {
+    ...(pack.packRevealVersion ? { packRevealVersion: pack.packRevealVersion } : {}),
+    ...(pack.catalogHash ? { catalogHash: pack.catalogHash } : {}),
+    ...(pack.commitment ? { commitment: pack.commitment } : {}),
+    ...(pack.entropySource ? { entropySource: pack.entropySource } : {}),
+    ...(pack.revealSeed ? { revealSeed: pack.revealSeed } : {}),
+    ...(pack.revealProof ? { revealProof: pack.revealProof } : {}),
+    ...(pack.packAssetAddress ? { packAssetAddress: pack.packAssetAddress } : {}),
+    ...(typeof pack.revealSlot === "number" ? { revealSlot: pack.revealSlot } : {}),
+    ...(pack.randomnessAccount ? { randomnessAccount: pack.randomnessAccount } : {}),
+    ...(pack.revealTransaction ? { revealTransaction: pack.revealTransaction } : {}),
+  };
+}
+
 export function corePackNftMetadataUri(args: {
   productId: string;
   packCount: number;
@@ -274,8 +321,95 @@ export function corePackNftMetadataUri(args: {
   return `${base}${CORE_PACK_NFT_PREFIX}/metadata/core/pack/${productId}/${serial}.json?packs=${encodeURIComponent(String(packCount))}&cards=${encodeURIComponent(String(cardCount))}`;
 }
 
+export function corePackOpenedNftMetadataUri(args: {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: number | string;
+}, env: NodeJS.ProcessEnv = process.env): string {
+  const base = publicBaseUrlFromEnv(env);
+  const productId = encodeURIComponent(cleanProductId(args.productId));
+  const packCount = Math.max(1, Math.floor(Number(args.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = encodeURIComponent(normalizeSerial(String(args.serial || 1)));
+  return `${base}${CORE_PACK_NFT_PREFIX}/metadata/core/pack/${productId}/${serial}.json?packs=${encodeURIComponent(String(packCount))}&cards=${encodeURIComponent(String(cardCount))}&opened=1`;
+}
+
+async function corePackNftMetadataUriForMint(input: CorePackNftMintInput): Promise<string> {
+  const fallbackUri = corePackNftMetadataUri(input);
+  const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = packSerial(input.paymentSignature);
+  return durableNftMetadataUri({
+    fallbackUri,
+    metadata: corePackNftMetadataForRoute({
+      productId: input.productId,
+      serial,
+      packCount: String(packCount),
+      cardCount: String(cardCount),
+    }),
+    assetKey: `api/apps/ruby-high/nft/metadata/core/pack/${encodeURIComponent(cleanProductId(input.productId))}/${encodeURIComponent(serial)}.sealed.json`,
+  });
+}
+
+async function corePackOpenedNftMetadataUriForUpdate(input: CorePackNftOpenedUpdateInput): Promise<string> {
+  const fallbackUri = corePackOpenedNftMetadataUri(input);
+  const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = normalizeSerial(String(input.serial || 1));
+  return durableNftMetadataUri({
+    fallbackUri,
+    metadata: corePackNftMetadataForRoute({
+      productId: input.productId,
+      serial,
+      packCount: String(packCount),
+      cardCount: String(cardCount),
+      opened: true,
+      ...revealProvenanceFromPack(input),
+    }),
+    assetKey: `api/apps/ruby-high/nft/metadata/core/pack/${encodeURIComponent(cleanProductId(input.productId))}/${encodeURIComponent(serial)}.opened.json`,
+  });
+}
+
 export function coreCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
   return `${publicBaseUrlFromEnv(env)}${CORE_PACK_NFT_PREFIX}/metadata/core/collection.json`;
+}
+
+export function corePackAssetPluginsForMint(args: {
+  authorityAddress: string;
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: string;
+}) {
+  const packCount = Math.max(1, Math.floor(Number(args.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const productId = cleanProductId(args.productId);
+  const serial = normalizeSerial(args.serial);
+  return [
+    {
+      type: "VerifiedCreators" as const,
+      signatures: [{ address: publicKey(args.authorityAddress), verified: true }],
+    },
+    {
+      type: "Attributes" as const,
+      attributeList: [
+        { key: "School", value: "Ruby High" },
+        { key: "Collection", value: PACK_COLLECTION_NAME },
+        { key: "Set", value: "First Bell" },
+        { key: "Set Code", value: FIRST_BELL_SET_CODE },
+        { key: "NFT Type", value: "Pack" },
+        { key: "Product", value: productId },
+        { key: "Packs", value: String(packCount) },
+        { key: "Cards Inside", value: String(cardCount) },
+        { key: "Serial", value: serial },
+      ],
+    },
+  ];
 }
 
 export function corePackNftMetadataForRoute(args: {
@@ -292,31 +426,39 @@ export function corePackNftMetadataForRoute(args: {
   const requestedCardCount = Math.max(1, Math.floor(Number(args.cardCount ?? packCount * CORE_PACK_CARDS_PER_PACK)));
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const serial = normalizeSerial(args.serial);
-  const name = packCount === 1 ? `Ruby High Pack #${serial}` : `Ruby High ${packCount}-Pack #${serial}`;
-  const image = `${publicBaseUrl}${args.opened ? PACK_OPENED_IMAGE_ASSET_PATH : PACK_IMAGE_ASSET_PATH}`;
+  const name = packCount === 1 ? `${FIRST_BELL_SET_NAME} Pack #${serial}` : `${FIRST_BELL_SET_NAME} ${packCount}-Pack #${serial}`;
+  const image = nftImageUri(publicBaseUrl, args.opened ? PACK_OPENED_IMAGE_ASSET_PATH : PACK_IMAGE_ASSET_PATH);
+  const collection = {
+    name: PACK_COLLECTION_NAME,
+    family: FIRST_BELL_SET_FAMILY,
+  };
   return {
     name,
     symbol: nftSymbol(process.env),
-    description: `${packCount} Ruby High ${packCount === 1 ? "pack" : "packs"} with ${cardCount} cards inside.`,
+    description: `A Ruby High: First Bell pack receipt for ${cardCount} revealable cards. Open it in Ruby High to reveal the cards.`,
     image,
     category: "image",
     external_url: website,
     seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
+    collection,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
-      { trait_type: "Type", value: "Pack" },
+      { trait_type: "Collection", value: PACK_COLLECTION_NAME },
+      { trait_type: "Set", value: "First Bell" },
+      { trait_type: "Set Code", value: FIRST_BELL_SET_CODE },
+      { trait_type: "NFT Type", value: "Pack" },
       { trait_type: "Product", value: cleanProductId(args.productId) },
       { trait_type: "Packs", value: packCount },
       { trait_type: "Cards Inside", value: cardCount },
       { trait_type: "State", value: args.opened ? "Opened" : "Sealed" },
       { trait_type: "Serial", value: serial },
       { trait_type: "Website", value: website },
-      ...revealProvenanceAttributes(args),
     ],
     properties: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
+      collection,
       ...metadataCreatorProperties(),
       provenance: {
         algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
@@ -331,17 +473,20 @@ export function corePackCollectionMetadataForRoute(args: {
 }): Record<string, unknown> {
   const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
   const website = publicWebsiteUrl(publicBaseUrl);
-  const image = `${publicBaseUrl}${PACK_PROMO_IMAGE_ASSET_PATH}`;
+  const image = nftImageUri(publicBaseUrl, PACK_PROMO_IMAGE_ASSET_PATH);
   return {
-    name: "Ruby High Packs",
+    name: PACK_COLLECTION_NAME,
     symbol: nftSymbol(process.env),
-    description: "Ruby High card packs.",
+    description: "Official Ruby High: First Bell pack receipts. Open packs in Ruby High to reveal collectible cards.",
     image,
     category: "image",
     external_url: website,
     seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
     attributes: [
       { trait_type: "School", value: "Ruby High" },
+      { trait_type: "Collection", value: PACK_COLLECTION_NAME },
+      { trait_type: "Set", value: "First Bell" },
+      { trait_type: "Set Code", value: FIRST_BELL_SET_CODE },
       { trait_type: "Type", value: "Pack Collection" },
       { trait_type: "Website", value: website },
     ],
@@ -349,6 +494,10 @@ export function corePackCollectionMetadataForRoute(args: {
       category: "image",
       files: [{ uri: image, type: "image/png" }],
       website,
+      collection: {
+        name: PACK_COLLECTION_NAME,
+        family: FIRST_BELL_SET_FAMILY,
+      },
       ...metadataCreatorProperties(),
     },
   };
@@ -364,22 +513,61 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
   const collectionAddress = publicKey(config.collectionAddress);
   const collection = await fetchCollectionV1(umi, collectionAddress);
   const asset = generateSigner(umi);
-  const metadataUri = corePackNftMetadataUri(input);
+  const metadataUri = await corePackNftMetadataUriForMint(input);
   const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
+  const serial = packSerial(input.paymentSignature);
   const builder = create(umi, {
     asset,
     collection,
     authority: umi.identity,
     payer: umi.payer,
     owner,
-    name: packCount === 1 ? `Ruby High Pack #${packSerial(input.paymentSignature)}` : `Ruby High ${packCount}-Pack #${packSerial(input.paymentSignature)}`,
+    name: packCount === 1 ? `${FIRST_BELL_SET_NAME} Pack #${serial}` : `${FIRST_BELL_SET_NAME} ${packCount}-Pack #${serial}`,
     uri: metadataUri,
+    plugins: corePackAssetPluginsForMint({
+      authorityAddress: String(umi.identity.publicKey),
+      productId: input.productId,
+      packCount,
+      cardCount,
+      serial,
+    }),
   });
   const sent = await sendAndConfirmCoreTransaction(umi, builder);
   return {
     ownerWalletAddress: owner,
     assetAddress: asset.publicKey,
     mintSignature: base58Encode(sent.signature),
+    metadataUri,
+  };
+}
+
+export async function updateCorePackNftToOpened(
+  input: CorePackNftOpenedUpdateInput,
+): Promise<CorePackNftOpenedUpdateResult> {
+  if (packOpenedUpdaterOverride) return packOpenedUpdaterOverride(input);
+  const config = readCoreMintConfig();
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const assetAddress = cleanSolanaAddress(input.assetAddress, "Pack asset address");
+  const collectionAddress = publicKey(config.collectionAddress);
+  const [asset, collection] = await Promise.all([
+    fetchAssetV1(umi, publicKey(assetAddress), { commitment: "confirmed" }),
+    fetchCollectionV1(umi, collectionAddress),
+  ]);
+  const metadataUri = await corePackOpenedNftMetadataUriForUpdate(input);
+  const sent = await sendAndConfirmCoreTransaction(umi, update(umi, {
+    asset,
+    collection,
+    authority: umi.identity,
+    payer: umi.payer,
+    uri: metadataUri,
+  }));
+  return {
+    assetAddress,
+    signature: base58Encode(sent.signature),
     metadataUri,
   };
 }
@@ -535,7 +723,7 @@ async function fetchOwnedCorePackNftsViaGpa(
       ownerWalletAddress: String(owner),
       assetAddress: String(asset.publicKey),
       metadataUri,
-      name: typeof asset.name === "string" && asset.name.trim() ? asset.name.trim() : "Ruby High Pack",
+      name: typeof asset.name === "string" && asset.name.trim() ? asset.name.trim() : `${FIRST_BELL_SET_NAME} Pack`,
     }];
   });
 }
@@ -626,7 +814,7 @@ async function fetchOwnedCorePackNftsViaDas(
         metadataUri,
         name: typeof item?.content?.metadata?.name === "string" && item.content.metadata.name.trim()
           ? item.content.metadata.name.trim()
-          : "Ruby High Pack",
+          : `${FIRST_BELL_SET_NAME} Pack`,
       });
     }
     if (pageItems.length < limit) break;
@@ -655,7 +843,7 @@ export async function createCorePackCollection(): Promise<CoreCollectionCreateRe
     collection,
     updateAuthority: umi.identity.publicKey,
     payer: umi.payer,
-    name: "Ruby High Packs",
+    name: PACK_COLLECTION_NAME,
     uri: metadataUri,
     plugins: [
       { type: "ImmutableMetadata" },
