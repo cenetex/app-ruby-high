@@ -106,6 +106,12 @@ export type ChatStreamEvent =
   | { type: "done"; finishReason: string | null }
   | { type: "error"; message: string };
 
+export type ToolAccessGuard = (args: {
+  tool: string;
+  args: Record<string, unknown>;
+  agentSessionId: string;
+}) => string | null;
+
 export interface SendOpts {
   apiKey?: string | null;
   sessionToken: string;
@@ -135,6 +141,8 @@ export interface SendOpts {
   maxTokens?: number;
   /** Optional turn guard. When true, generated text is not persisted and tools are not run. */
   isStale?: () => boolean;
+  /** Optional server-side access guard for tool calls before mutation. */
+  toolAccessGuard?: ToolAccessGuard;
 }
 
 /**
@@ -402,6 +410,14 @@ export class ChatService extends Service {
         const liveFaculty = resolveFacultyIdForSession(liveState, liveState.faculty) ?? liveState.faculty;
         const turnStillOwnsRoom = liveFaculty === activeFaculty;
         const toolAllowed = activeToolNames.has(call.function.name);
+        const parsedTool = parseToolArgs(call);
+        const toolAccessError = parsedTool.error
+          ? null
+          : opts.toolAccessGuard?.({
+              tool: call.function.name,
+              args: parsedTool.args,
+              agentSessionId: opts.agentSessionId,
+            }) ?? null;
         const boardToolBlocked =
           turnStillOwnsRoom &&
           isBoardChangingTool(call.function.name) &&
@@ -421,6 +437,15 @@ export class ChatService extends Service {
                 payload: {
                   ok: false,
                   error: `Tool ${call.function.name} is not available this turn.`,
+                },
+                state: liveState,
+              }
+          : !!toolAccessError
+            ? {
+                args: parsedTool.args,
+                payload: {
+                  ok: false,
+                  error: toolAccessError,
                 },
                 state: liveState,
               }

@@ -1141,6 +1141,128 @@ describe("chat event context", () => {
     expect(JSON.parse(res.body).line).toBe("okay Vince, nice one - that answer was clean.");
   });
 
+  it("routes Chat button player lines through one room turn ledger before a student response", async () => {
+    const token = "route-room-turn-student-token";
+    const record = {
+      userId: "route-room-turn-student-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Room Turn Student",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.createCharacter(stateKey, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(stateKey, "9");
+    ruby.pickAndPose(stateKey, { faculty: "ruby" });
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const requests: any[] = [];
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [, init] = args;
+      requests.push(init?.body ? JSON.parse(init.body) : null);
+      const content = requests.length === 1
+        ? "Can someone give me the first clue without saying it outright?"
+        : "wait Vince, check the wording first - that's where the trap is.";
+      return new Response(JSON.stringify({
+        choices: [{ message: { content } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          context: { intent: "hint" },
+          clientTurnSeq: 1,
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: player-line");
+    expect(res.body).toContain("Can someone give me the first clue without saying it outright?");
+    expect(res.body).toContain("event: student");
+    expect(res.body).toContain("wait Vince, check the wording first");
+    const history = chat.history({ sessionToken: token, faculty: "ruby" });
+    expect(history.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "Can someone give me the first clue without saying it outright?",
+    ]);
+    expect(chat.events_for_test({ sessionToken: token, faculty: "ruby" }).some((event) =>
+      event.kind === "chime" && event.text.includes("wait Vince")
+    )).toBe(true);
+    expect(JSON.stringify(requests[0].messages)).toContain("You are writing the next chat bubble for the player's avatar, Vince");
+    expect(JSON.stringify(requests[1].messages)).toContain("Situation: player-asked-hint");
+  });
+
+  it("keeps room turns usable when player-line generation falls back", async () => {
+    const token = "route-room-turn-player-fallback-token";
+    const record = {
+      userId: "route-room-turn-player-fallback-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Room Turn Player Fallback",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.createCharacter(stateKey, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(stateKey, "9");
+    ruby.pickAndPose(stateKey, { faculty: "ruby" });
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let calls = 0;
+    (globalThis.fetch as any).mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) return new Response("player model down", { status: 500, statusText: "Bad Gateway" });
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "yo" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          context: { intent: "hint" },
+          clientTurnSeq: 1,
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: player-line");
+    expect(res.body).toContain("Can someone give me the first clue without saying it outright?");
+    expect(res.body).toContain("event: student");
+    expect(res.body).not.toContain("event: error");
+    const history = chat.history({ sessionToken: token, faculty: "ruby" });
+    expect(history.some((m) =>
+      m.role === "user" && m.content === "Can someone give me the first clue without saying it outright?"
+    )).toBe(true);
+  });
+
   it("shows the same completed class report board to the player avatar prompt", async () => {
     const token = "route-player-line-report-board-token";
     auth.injectSessionForTest(token, {
@@ -1869,5 +1991,102 @@ describe("chat event context", () => {
     expect(promptText).toContain("Time expired before");
     expect(promptText).not.toContain("answered A");
     expect(promptText).not.toContain("Player answer: A");
+  });
+});
+
+describe("guest access gates", () => {
+  it("blocks guest chat requests for classrooms outside homeroom + daily lesson", async () => {
+    const token = "route-guest-gate-faculty-token";
+    const record = {
+      userId: "route-guest-gate-faculty-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      provider: "guest" as const,
+      label: "Guest",
+    };
+    auth.injectSessionForTest(token, record);
+    const sessionId = auth.stateKeyForRecord(record);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(sessionId, "9");
+    const dailyFaculty = ruby.dailyStatus(sessionId).facultyId;
+    const blockedFaculty = ["sally-science", "professor-edward", "guest", "lounge"]
+      .find((id) => id !== "ruby" && id !== dailyFaculty) ?? "lounge";
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: { faculty: blockedFaculty, message: "Hello?" },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toContain("Guest mode is limited to Homeroom");
+  });
+
+  it("requires signup after a guest completes today's daily lesson", async () => {
+    const token = "route-guest-gate-signup-token";
+    const record = {
+      userId: "route-guest-gate-signup-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      provider: "guest" as const,
+      label: "Guest",
+    };
+    auth.injectSessionForTest(token, record);
+    const sessionId = auth.stateKeyForRecord(record);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(sessionId, "9");
+    const dailyFaculty = ruby.dailyStatus(sessionId).facultyId;
+    for (let i = 0; i < 3; i += 1) {
+      ruby.pose(sessionId, {
+        questionId: `guest-signup-${i + 1}`,
+        faculty: dailyFaculty,
+        prompt: `Guest daily ${i + 1}?`,
+        options: { A: "A", B: "B", C: "C", D: "D" },
+        correct: "A",
+        subject: "homeroom",
+        stat: "head",
+      });
+      ruby.submitAnswer(sessionId, "A");
+    }
+    expect(ruby.courseProgress(sessionId, dailyFaculty).today.status).toBe("complete");
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: dailyFaculty,
+          trigger: "manual",
+          context: { intent: "advance", playerLine: "What's next?" },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toContain("Sign up to continue");
   });
 });

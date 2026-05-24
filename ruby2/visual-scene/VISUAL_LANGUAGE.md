@@ -14,6 +14,7 @@ Where am I?
 Who is here?
 What object matters?
 Who is speaking?
+Why are they reacting?
 What can I do next?
 ```
 
@@ -107,6 +108,28 @@ The UI should feel like school equipment before it feels like a HUD.
 - Bottom: persistent four-button action tray.
 - Notebook strip: a margin-style line above the action tray.
 
+## Witness And Responder Rule
+
+NPC reaction bubbles should come from the engine's resolved co-presence and class
+session responder slots. A visual scene can emphasize Lyra, Ravi, Mika, Indra,
+Noor, or Sami through scale, dimming, and short reads, but it should not invent a
+witness who was not present or granted a validated remote slot.
+
+When the goal/plan runtime lands, the preferred presentation order is:
+
+```text
+teacher frames board
+-> blackboard shows problem
+-> player chooses approach
+-> selected classmate responder bubbles appear
+-> Notebook margin records the social/memory consequence
+```
+
+The player does not need to see raw NPC goal names, but the visible reaction
+should make the goal legible: Lyra verifies, Ravi tests, Mika supports, Indra
+spots a pattern, Noor punctures the fake-normal thing, Sami avoids effort until
+the contradiction is too obvious.
+
 ## Blackboard Functionality
 
 The blackboard is not decoration. It is the teacher/problem surface that makes
@@ -163,6 +186,7 @@ C UI snapshot is the source of truth for:
 
 - current room and time block
 - visible clocks and discipline traces
+- class session phase and responder slots
 - people physically present
 - objects physically present
 - latest speakable event / performance line
@@ -179,17 +203,19 @@ reaction or a procedural receipt card, but it should not invent state. If a
 person, object, clock, or action is not in the snapshot, it should not appear as
 available in the scene.
 
-## Null Treatment
+## First Bell / Theory Hype Treatment
 
-Captain Null should bend the existing school screen before it gets its own mode.
+Captain Null should first appear as First Bell media and student theory pressure
+inside the existing school screen before it gets a dedicated session.
 
 Good first symptoms:
 
-- footer text appears on the wrong object
-- clock hand stops one tick early
-- Notebook margin changes phrasing
-- room tint cools or desaturates
-- a speech bubble gets too quiet
+- a First Bell issue is half-visible on a desk, shelf, or cafeteria tray
+- a photocopied panel disagrees with a hallway object
+- Notebook margin text borrows a comic word
+- a rumor/thread card appears in the Notebook strip
+- room tint cools as mood, not proof that the world changed
+- a speech bubble turns a coincidence into a theory
 
-The scene should still look like Ruby High. Null is pressure entering the
-school, not a separate combat UI dropped on top.
+The scene should still look like Ruby High. Null is fandom and theory pressure
+entering the school, not a separate combat UI or genre rupture dropped on top.

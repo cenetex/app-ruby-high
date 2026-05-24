@@ -40,9 +40,9 @@
  *      (server returning 401 was the WORKING behavior; 200 or 5xx would
  *      have signalled the gate broke).
  *
- *   9. Guest homeroom pacing: Ruby starts with direct class/practice cards,
- *      not the retired forced Social card. Opinion grading is covered by
- *      route/service tests; the production smoke tracks the playable path.
+ *   9. Guest daily pacing + gate: today's lesson serves direct class cards
+ *      (not forced Social cards), then blocks further progress with a signup
+ *      gate once the daily class is complete.
  *
  * Usage:
  *   node scripts/smoke.mjs                                # against http://127.0.0.1:8080
@@ -465,8 +465,8 @@ async function check8AuthGate() {
   }
 }
 
-async function check9OfflineHomeroomPacing() {
-  const name = "offline homeroom pacing";
+async function check9GuestDailyGate() {
+  const name = "guest daily pacing gate";
   if (!smokeCookie) return fail(name, "no guest cookie from auth/guest");
   const sessionPath = `/api/apps/ruby-high/session/smoke-pacing-${Date.now().toString(36)}`;
   const commandPath = `${sessionPath}/command`;
@@ -485,26 +485,25 @@ async function check9OfflineHomeroomPacing() {
     });
     if (create.status !== 200) return fail(name, `create-character expected 200, got ${create.status}: ${(await create.text()).slice(0, 200)}`);
 
-    const seen = [];
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const before = await fetchWithTimeout(`${base}${sessionPath}`, { headers: { Cookie: smokeCookie } });
-      if (before.status !== 200) return fail(name, `session GET expected 200, got ${before.status}`);
-      const beforeBody = await readJson(before);
-      const faculty = beforeBody?.telemetry?.faculty || "ruby";
-      if (beforeBody?.telemetry?.current) {
-        const clear = await postJson(commandPath, { type: "clear" });
-        if (clear.status !== 200) return fail(name, `clear expected 200, got ${clear.status}: ${(await readText(clear)).slice(0, 200)}`);
-      }
+    const afterCreate = await fetchWithTimeout(`${base}${sessionPath}`, { headers: { Cookie: smokeCookie } });
+    if (afterCreate.status !== 200) return fail(name, `session GET expected 200, got ${afterCreate.status}`);
+    const afterCreateBody = await readJson(afterCreate);
+    const dailyFacultyId = afterCreateBody?.telemetry?.daily?.facultyId;
+    if (!dailyFacultyId || typeof dailyFacultyId !== "string") {
+      return fail(name, `missing telemetry.daily.facultyId: ${JSON.stringify(afterCreateBody).slice(0, 240)}`);
+    }
 
-      const pick = await postJson(commandPath, { type: "pick", faculty });
+    const seen = [];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const pick = await postJson(commandPath, { type: "pick", faculty: dailyFacultyId });
       if (pick.status !== 200) return fail(name, `pick expected 200, got ${pick.status}: ${(await readText(pick)).slice(0, 200)}`);
       const picked = await readJson(pick);
-      if (picked?.noQuestionDue) return fail(name, `no scheduled question due during homeroom pacing: ${JSON.stringify(picked).slice(0, 240)}`);
+      if (picked?.noQuestionDue) return fail(name, `no scheduled question due during guest daily pacing: ${JSON.stringify(picked).slice(0, 240)}`);
       const currentQuestion = picked?.session?.telemetry?.current;
       const cardRole = picked?.session?.telemetry?.active_round?.cardRole || "";
       if (!currentQuestion) return fail(name, `pick did not produce a question: ${JSON.stringify(picked).slice(0, 240)}`);
       if (currentQuestion.type === "opinion") {
-        return fail(name, `forced Social opinion card appeared during direct homeroom pacing: ${currentQuestion.id}`);
+        return fail(name, `forced Social opinion card appeared during guest daily pacing: ${currentQuestion.id}`);
       }
       seen.push(cardRole || currentQuestion.type || "unknown");
 
@@ -515,7 +514,16 @@ async function check9OfflineHomeroomPacing() {
         return fail(name, `answer did not resolve ${currentQuestion.id}: ${JSON.stringify(answered).slice(0, 240)}`);
       }
     }
-    ok(name, `direct cards only: ${seen.join(", ")}`);
+
+    const gated = await postJson(commandPath, { type: "pick", faculty: dailyFacultyId });
+    const gatedText = await readText(gated);
+    if (gated.status !== 403) {
+      return fail(name, `expected post-daily signup gate (403), got ${gated.status}: ${gatedText.slice(0, 200)}`);
+    }
+    if (!/guest lesson complete|sign up to continue/i.test(gatedText)) {
+      return fail(name, `unexpected gate message: ${gatedText.slice(0, 200)}`);
+    }
+    ok(name, `direct cards only before gate: ${seen.join(", ")}; signup gate active`);
   } catch (e) {
     fail(name, e?.message || String(e));
   }
@@ -537,7 +545,7 @@ await check5GuestSession();
 await check6BillingEntitlements();
 await check7OfflinePlayFlow();
 await check8AuthGate();
-await check9OfflineHomeroomPacing();
+await check9GuestDailyGate();
 
 console.log();
 if (failed > 0) {

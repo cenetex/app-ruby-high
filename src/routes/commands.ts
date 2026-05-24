@@ -1,6 +1,12 @@
 import type { IAgentRuntime } from "../runtime.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
+import { AuthService } from "../services/auth-service.js";
+import {
+  guestAccessStateForSession,
+  guestTargetFacultyForCommand,
+  guestAccessViolation,
+} from "../services/guest-access.js";
 import { TokenBucket } from "../services/rate-limit.js";
 import { log } from "../services/logger.js";
 import { noteGradedAnswer } from "../chat-routes.js";
@@ -112,8 +118,9 @@ export async function handleCommandRoute(args: {
   faculty: FacultyService | null;
   runtime: IAgentRuntime | null;
   stateKey: string;
+  auth: AuthService | null;
 }): Promise<true> {
-  const { ctx, ruby, faculty, runtime, stateKey } = args;
+  const { ctx, ruby, faculty, runtime, stateKey, auth } = args;
   const rlKey = commandRateKey(ctx.clientIp, stateKey);
   if (!COMMAND_LIMITER.take(rlKey)) {
     const retryAfter = COMMAND_LIMITER.retryAfterSeconds(rlKey);
@@ -124,6 +131,29 @@ export async function handleCommandRoute(args: {
   }
   const body = (await ctx.readJsonBody().catch(() => ({}))) as CommandBody;
   const type = body?.type;
+  const guestAccess = (() => {
+    if (!auth) return null;
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    return guestAccessStateForSession({ record, ruby, sessionId: stateKey });
+  })();
+  const commandFaculty = (commandType: string | undefined): string | null => {
+    if (!commandType) return null;
+    const state = ruby.getOrCreate(stateKey);
+    return guestTargetFacultyForCommand({
+      state,
+      commandType,
+      requestedFacultyId: typeof body?.faculty === "string" ? body.faculty : null,
+      guestAccess,
+    });
+  };
+  const rejectGuestAccess = (commandType: string | undefined): boolean => {
+    const facultyId = commandFaculty(commandType);
+    const violation = guestAccessViolation({ guestAccess, facultyId });
+    if (!violation) return false;
+    ctx.error(ctx.res, violation.message, violation.status);
+    return true;
+  };
 
   const persist = (state: QuizState, message: string, command = String(type ?? "unknown")) =>
     sendPersistedCommandState(ctx, {
@@ -280,7 +310,9 @@ export async function handleCommandRoute(args: {
   };
 
   try {
-    const handler = typeof type === "string" ? commandHandlers[type] : undefined;
+    const commandType = typeof type === "string" ? type : undefined;
+    if (rejectGuestAccess(commandType)) return true;
+    const handler = commandType ? commandHandlers[commandType] : undefined;
     if (handler) return await handler() as true;
     const state = ruby.getOrCreate(stateKey);
     ctx.json(ctx.res, {

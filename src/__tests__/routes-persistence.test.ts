@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { getActivePack, registerPack, resetActivePack, setActivePack } from "../content/registry.js";
+import { AuthService } from "../services/auth-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import type {
@@ -71,10 +72,11 @@ class MemorySessionStore implements StateStoreLike {
   describe(): string { return "memory-test-store"; }
 }
 
-function runtimeFor(ruby: RubyHighService, faculty?: FacultyService) {
+function runtimeFor(ruby: RubyHighService, faculty?: FacultyService, auth?: AuthService | null) {
   return {
     agentId: "test-agent",
     getService(type: string) {
+      if (type === AuthService.serviceType) return auth ?? null;
       if (type === RubyHighService.serviceType) return ruby;
       if (type === FacultyService.serviceType) return faculty;
       return null;
@@ -94,14 +96,16 @@ function makeCommandCtx(
   },
   faculty?: FacultyService,
   apiKeyHeader?: string | null,
+  auth?: AuthService | null,
+  cookieHeader?: string | null,
 ): { ctx: RouteContext; response: { status: number; body: any } | null } {
   let response: { status: number; body: any } | null = null;
   const ctx: RouteContext = {
     method: "POST",
     pathname: "/api/apps/ruby-high/session/test-session/command",
-    runtime: runtimeFor(ruby, faculty),
+    runtime: runtimeFor(ruby, faculty, auth),
     res: {} as never,
-    cookieHeader: null,
+    cookieHeader: cookieHeader ?? null,
     apiKeyHeader,
     error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { response = { status, body: data }; },
@@ -419,5 +423,112 @@ describe("command route persistence and scheduler misses", () => {
     expect(harness.response?.body.noQuestionDue).toBe(true);
     expect(harness.response?.body.session.telemetry.current).toBeNull();
     expect(harness.response?.body.session.telemetry.active_round).toBeNull();
+  });
+
+  it("blocks guests from switching to classrooms outside homeroom + daily lesson", async () => {
+    const faculty = await FacultyService.start({} as never);
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const token = "guest-gate-faculty-token";
+      const record = {
+        userId: "guest-gate-faculty-user",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        provider: "guest" as const,
+        label: "Guest",
+      };
+      auth.injectSessionForTest(token, record);
+      const sid = auth.stateKeyForRecord(record);
+      ruby.createCharacter(sid, {
+        name: "Ari",
+        playbookId: "overachiever",
+        stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+        arcAnswer: "I want the transcript to look impossible.",
+        personality: "intense but kind",
+      });
+      ruby.selectGrade(sid, "9");
+      const dailyFaculty = ruby.dailyStatus(sid).facultyId;
+      const blockedFaculty = ["sally-science", "professor-edward", "guest", "lounge"]
+        .find((id) => id !== "ruby" && id !== dailyFaculty) ?? "lounge";
+
+      const harness = makeCommandCtx(
+        ruby,
+        { type: "set-faculty", faculty: blockedFaculty },
+        faculty,
+        null,
+        auth,
+        `rh_session=${token}`,
+      );
+      const handled = await handleAppRoutes(harness.ctx);
+
+      expect(handled).toBe(true);
+      expect(harness.response?.status).toBe(403);
+      expect(harness.response?.body.error).toMatch(/Guest mode is limited to Homeroom/i);
+    } finally {
+      await auth.stop();
+    }
+  });
+
+  it("requires signup after a guest completes the daily lesson", async () => {
+    const faculty = await FacultyService.start({} as never);
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const token = "guest-gate-signup-token";
+      const record = {
+        userId: "guest-gate-signup-user",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        provider: "guest" as const,
+        label: "Guest",
+      };
+      auth.injectSessionForTest(token, record);
+      const sid = auth.stateKeyForRecord(record);
+      ruby.createCharacter(sid, {
+        name: "Ari",
+        playbookId: "overachiever",
+        stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+        arcAnswer: "I want the transcript to look impossible.",
+        personality: "intense but kind",
+      });
+      ruby.selectGrade(sid, "9");
+      const dailyFaculty = ruby.dailyStatus(sid).facultyId;
+      for (let i = 0; i < 3; i += 1) {
+        ruby.pose(sid, {
+          questionId: `guest-daily-${i + 1}`,
+          faculty: dailyFaculty,
+          prompt: `Guest daily ${i + 1}?`,
+          options: { A: "A", B: "B", C: "C", D: "D" },
+          correct: "A",
+          subject: "homeroom",
+          stat: "head",
+        });
+        ruby.submitAnswer(sid, "A");
+      }
+      expect(ruby.courseProgress(sid, dailyFaculty).today.status).toBe("complete");
+
+      const harness = makeCommandCtx(
+        ruby,
+        { type: "pick", faculty: dailyFaculty },
+        faculty,
+        null,
+        auth,
+        `rh_session=${token}`,
+      );
+      const handled = await handleAppRoutes(harness.ctx);
+
+      expect(handled).toBe(true);
+      expect(harness.response?.status).toBe(403);
+      expect(harness.response?.body.error).toMatch(/Sign up to continue/i);
+    } finally {
+      await auth.stop();
+    }
   });
 });

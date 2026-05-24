@@ -443,6 +443,9 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
 
     expectScriptToContain(script, '/api/apps/ruby-high/chat/opinion-submit');
+    expectScriptToContain(script, '/api/apps/ruby-high/chat/room-turn');
+    expectScriptToContain(script, 'event === "player-line"');
+    expectScriptToContain(script, 'event === "student"');
     expectScriptToContain(script, 'event === "waiting" || event === "opinion-graded"');
     expectScriptToContain(script, "refreshSessionAfterStreamEvent();");
     expectScriptToContain(script, "body: JSON.stringify({ force: true })");

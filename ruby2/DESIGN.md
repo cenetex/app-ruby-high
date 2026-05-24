@@ -52,7 +52,7 @@ Every design decision should reinforce:
 - classmates notice what happened
 - classmates are not adversaries
 - social is multiple-choice and consequential
-- Captain Null carries special pressure/minigame encounters
+- Captain Null carries special First Bell theory-session encounters
 - AI creates flavor inside rails
 - every day leaves a Notebook trace, and only the right moments become Yearbook
 
@@ -149,6 +149,45 @@ lesson -> visible result -> social meaning -> durable memory -> changed tomorrow
 
 If a feature does not strengthen that chain, it is probably secondary.
 
+### 1.5.1 Strategic Bet: Breadth To Depth
+
+Ruby High 2.0 is not only an upgrade to v1. It is a strategic narrowing.
+
+V1 is a scalable AI-breadth product: many subjects, many generated questions,
+and broad utility. V2 chooses hand-authored depth: one small school year with
+characters, memory, consequences, and identity.
+
+This is deliberate. Question volume is commoditized; any quiz app can generate
+more questions. The moat for v2 is a characterful authored year that players
+remember, share, and return to because classmates and artifacts remember them.
+
+Consequences:
+
+- keep Year One small enough to author well
+- do not promise four authored years before retention proves the loop
+- keep the content compiler, template system, and replay harness scalable even
+  while Week One is hand-made
+- measure whether depth retains before spending like depth already won
+
+### 1.5.2 Product Identity: Learning Game First
+
+Ruby High is a cozy school-life RPG that contains learning. It should still
+teach, but the player/buyer promise is not "infinite curriculum coverage." The
+promise is:
+
+```text
+learn something
+see how you handled it socially
+remember who noticed
+return to a changed school day
+```
+
+Correctness still matters. Approach choice should not become pure vibe
+selection. When progress is decoupled from answer correctness, the product must
+show what the player learned through explanations, source checks, corrections,
+Notebook wording, and later callbacks. If a slice cannot substantiate learning,
+it should be positioned as narrative play, not edtech mastery.
+
 ### 1.6 Premise
 
 Ruby High needs a premise stronger than "a school with charming characters."
@@ -167,8 +206,9 @@ Why the player is here:
   signals, evidence, interpretation, and social judgment
 - the school believes questions are never just tests; they reveal how people
   think, react, help, panic, and recover
-- Captain Null is not random cosmic garnish; Null is what happens when signals,
-  models, and myths stop staying safely inside the lesson
+- Captain Null is a cult comic/ARG obsession moving through the student body:
+  a fictional mystery that makes students argue about sources, patterns,
+  over-interpretation, restraint, and whether a coincidence deserves a theory
 
 Graduation fantasy:
 
@@ -184,7 +224,8 @@ Premise contract:
 - every subject should connect back to evidence, interpretation, coordination,
   signal, or social judgment
 - every teacher should represent a mode of thinking, not just a content category
-- Captain Null should test the school's premise under pressure
+- Captain Null should test the school's premise through fandom, theory pressure,
+  and grounded weird-fiction coincidences, not out-of-school genre stakes
 - the Yearbook should show who the player became, not merely what happened
 
 ### 1.7 RPG Affordance Contract
@@ -204,6 +245,17 @@ RPG rule:
 
 > The required school spine stays safe. The branches around it should diverge
 > hard enough that two players build meaningfully different Yearbooks.
+
+First-ten-session divergence target:
+
+- at least 30% of remembered outcomes should differ by player route, approach,
+  social response, or recovery choice
+- every session after onboarding should contain at least one choice whose
+  consequence is visible later, not only different copy in the moment
+- the required spine may stay mostly shared, but Notebook entries, classmate
+  callbacks, optional opportunities, and Yearbook candidates must diverge early
+- if the first ten sessions feel like the same year with different captions,
+  the RPG promise has failed even if later years would branch more
 
 If every player sees the same school year with different captions, Ruby High is
 still CYOA. If players spend time differently, bring different items, unlock
@@ -305,19 +357,19 @@ Year One Week One:
 
 ```text
 Day 1: First Homeroom
-  Arrival -> Homeroom class -> Cafeteria social -> Notebook memory -> background Null tease
+  Arrival -> Homeroom class -> Cafeteria social -> Notebook memory -> First Bell comic tease
 
 Day 2: Science Lab Tease
   Hallway check-in -> Science Lab intro -> Ravi/Mika beat -> Flashcards tutorial -> social acknowledgement of the tease
 
 Day 3: Library Day
-  Library unlock -> interpretation challenge -> Lyra/Indra beat -> Null Signal rise
+  Library unlock -> interpretation challenge -> Lyra/Indra beat -> First Bell theory rise
 
 Day 4: Cafeteria Pressure
   cafeteria social pressure -> practice class -> Office Pass tutorial -> recovery route
 
 Day 5: First Week Report
-  Ruby review -> first Captain Null minigame -> choose first Yearbook page candidate -> next-week hook
+  Ruby review -> first Captain Null theory session -> choose first Yearbook page candidate -> next-week hook
 ```
 
 ### 2.4 Year One Day One
@@ -341,9 +393,9 @@ Day One can use a three-question class in the product slice. Early technical wed
 
 ### 2.5 Year One Day One Script
 
-Day One should teach the normal school ritual before Captain Null interrupts it
-later. It needs no cosmic pressure. The whole point is to make normal Ruby High
-feel real first.
+Day One should teach the normal school ritual before Captain Null becomes a
+schoolwide theory object later. It needs no literal weirdness. The whole point is
+to make normal Ruby High feel real first.
 
 Opening:
 
@@ -469,23 +521,25 @@ Ruby: "Science Lab tomorrow. Bring Flashcards. Sally likes evidence."
 ```
 
 Captain Null should not appear in Day One except as a background artifact or
-hidden comic tease. The first full Null minigame belongs after the ramp has been
-taught: background tease, social acknowledgement, signal rise, then explicit
-interruption. Week One should not jump from ordinary cafeteria life straight to
-cosmic pressure without those school-side bridges.
+hidden First Bell comic tease. The first full Null encounter belongs after the
+ramp has been taught: comic glimpse, social acknowledgement, theory rise, then
+explicit ARG/deep-reading session. Week One should not jump from ordinary
+cafeteria life straight to genre rupture without those school-side bridges.
 
 ### 2.6 Year One Day Three Library Signal Rise Script
 
 Day Three should be authored with more specificity than an ordinary mid-week
-day. It is the Signal Rise stage: the player should feel that something is
-advancing under the school day before anyone names Captain Null.
+day. It is the First Bell theory-rise stage: the player should feel that the
+comic is becoming socially active before anyone treats Captain Null as more than
+a weird fandom object.
 
 Purpose:
 
 - unlock the Library as the first interpretation/source route
 - turn Indra from a quiet name into a playable presence
 - show that evidence and interpretation are different skills
-- make the Null Signal visible as symptoms, not as a combat alert
+- make the Null Signal visible as theory hype and pattern pressure, not as a
+  crisis alert
 - create at least two competing Yearbook candidates for the Week One ritual
 
 Day Three beats:
@@ -495,8 +549,8 @@ Arrival
 -> Library unlock
 -> Professor Edward interpretation class
 -> Lyra/Indra source-table beat
--> margin anomaly / stopped catalog card
--> choose how to handle the signal rise
+-> margin mismatch / stopped catalog card
+-> choose how to handle the theory rise
 -> Notebook memory and Yearbook candidates
 ```
 
@@ -516,7 +570,7 @@ Interpretation challenge:
 | `y1d3-edward-002` | Sense + Honor | separate evidence from convenient interpretation |
 | `y1d3-edward-003` | Sync + Heart | decide how to respond when Lyra overcorrects |
 
-Signal Rise scene:
+Theory-rise scene:
 
 ```text
 The same sentence appears in three places:
@@ -525,6 +579,7 @@ on a catalog card,
 and in the Notebook margin.
 
 Only the Notebook version has one extra word: DO.
+Indra says the same word appears in First Bell issue one.
 ```
 
 Choices:
@@ -540,17 +595,17 @@ Resolver:
 
 | Result | Condition | Outcome | Effects |
 |---|---|---|---|
-| `clear` | player checks source or copies exactly | the anomaly is contained as a clue | Source/Signal trace, virtue flavor, Notebook phrase, Day Five clue |
-| `mixed` | player asks Indra or comforts Lyra | the social beat stabilizes, but the signal advances | affinity +1, Null Signal +1 |
+| `clear` | player checks source or copies exactly | the coincidence is contained as a clue | Source/Signal trace, virtue flavor, Notebook phrase, Day Five clue |
+| `mixed` | player asks Indra or comforts Lyra | the social beat stabilizes, but the theory spreads | affinity +1, Null Signal +1 |
 | `failed_forward` | player ignores evidence under pressure | Library route remains open, but the clue mutates later | Stress +1 or Rumor +1, altered Day Five prompt |
 
 Rules:
 
-- do not use Captain Null's name on Day Three
-- the anomaly should be ordinary-school visible: margin, catalog card, shelf
+- do not use Captain Null's name as direct danger on Day Three
+- the apparent mismatch should be ordinary-school visible: margin, catalog card, shelf
   label, clock, hallway sign, or classmate witness line
 - Indra must either speak one precise line or take one precise action that only
-  makes sense because she noticed the anomaly
+  makes sense because she noticed the comic/source mismatch
 - Day Three should produce at least one Library/Indra candidate and one signal
   candidate, so the Week One Yearbook ritual can demonstrate curation
 
@@ -630,7 +685,7 @@ Beat types:
 | `report` | summarize class outcome and progression |
 | `memory` | write Notebook memory or create a Yearbook candidate |
 | `hook` | create a reason to return |
-| `null_minigame` | Captain Null special pressure encounter |
+| `null_minigame` | Captain Null special theory-session encounter |
 
 ## 3. Core Gameplay
 
@@ -675,7 +730,7 @@ Structured-choice translation:
 | Class | skill-challenge-inspired sequence | What did the player learn, and how did they handle pressure? |
 | Social | relationship move with authored options | Who noticed, and what changed between people? |
 | Item | support move | What advantage, recovery, or route did the player create? |
-| Captain Null | anomaly pressure encounter | What anomaly entered the school, and what did the player refuse, hold, or change? |
+| Captain Null | First Bell theory pressure encounter | What claim, clue, or over-read pattern entered the school, and what did the player refuse, hold, or change? |
 | Notebook | session log | What does tomorrow remember? |
 
 This is not PbtA-style improvisational authorship. Ruby High gets its agency
@@ -789,7 +844,7 @@ Example lunch block:
 | Cafeteria | Sami/Noor gossip and class-result social reaction | Rumor may rise; Library clue waits or expires |
 | Library | Indra hint or source panel | miss the cafeteria joke or affinity chance |
 | Greenhouse | recover Stress and reflect | Bell advances; social momentum cools |
-| Courtyard | chance event or Null Signal clue | risk anomaly pressure and altered route home |
+| Courtyard | chance event or First Bell clue | risk Theory Hype and altered route home |
 
 This is the first real open-world threshold: the player can go somewhere else,
 and "somewhere else" matters.
@@ -861,8 +916,8 @@ Social is also multiple-choice.
 Social is not open chat. It is a structured consequence beat after something meaningful happens, usually a class result.
 
 Classmates should create stakes, support, comedy, pressure, and memory. They
-should not become adversaries. If Ruby High needs a battle-shaped interruption,
-use Captain Null.
+should not become adversaries. If Ruby High needs a distinct pressure slot, use
+Captain Null.
 
 "Not adversaries" does not mean friction-free. School needs complicated peers:
 
@@ -962,20 +1017,24 @@ Template rules:
 - if two uses of a template would produce the same emotional beat in the same
   week, prefer a different beat or skip it
 
-### 3.6 Captain Null Minigames
+### 3.6 Captain Null Theory Sessions
 
 Ruby High does not need combat. It needs occasional pressure encounters.
-Captain Null is the natural hook for those encounters.
+Captain Null is the natural hook for those encounters, but Captain Null should be
+grounded as fiction inside the school: a cult comic and ARG-like theory object
+that students read, quote, over-interpret, and argue about.
 
-Captain Null minigames should mirror the First Bell comic: strange, observatory
-/ void-theory interruptions where normal school logic bends for a short,
-structured challenge. They are the RPG "battle" slot without making classmates
-hostile.
+Captain Null theory sessions should mirror the experience of reading First Bell too
+closely with classmates: strange panels, observatory lore, command words,
+schoolwide clue hunting, and moments where a coincidence starts to feel like a
+pattern. They are the RPG pressure slot without making classmates hostile or
+changing the game's grounded school genre.
 
-Use Captain Null minigames to:
+Use Captain Null theory sessions to:
 
 - punctuate the authored year at key moments
-- create mystery and stakes outside normal class/social rhythm
+- create mystery and stakes outside normal class/social rhythm while keeping the
+  stakes human-sized
 - test the four disciplines under pressure
 - unlock or reveal First Bell comic pages
 - seed longer arcs without derailing the school-day loop
@@ -984,25 +1043,25 @@ Tone bridge rule:
 
 > Captain Null should enter through the school, not replace it.
 
-The mundane and cosmic layers need a ramp:
+The school-life and comic-mystery layers need a ramp:
 
 | Stage | School-Side Presentation |
 |---|---|
-| Background tease | odd poster, stopped clock, wrong word in Notebook margin |
-| Social acknowledgement | Noor jokes, Lyra overthinks, Ruby quietly redirects |
-| Signal rise | Null Signal clock changes after contradiction, route anomaly, or restraint |
-| Minigame | Captain Null frames a short pressure encounter |
-| Aftermath | classmates react as witnesses; the normal schedule resumes with a changed memory |
+| Background tease | First Bell poster, borrowed issue, wrong word in Notebook margin |
+| Social acknowledgement | Noor jokes, Lyra overthinks, Ravi lore-dumps, Ruby quietly redirects |
+| Theory rise | Null Signal clock changes after contradiction, rumor, over-reading, or restraint |
+| Theory session | a comic/ARG close-reading session frames a short pressure encounter |
+| Aftermath | classmates react as witnesses; the normal schedule resumes with changed memory |
 
-Do not cold-open a cosmic interruption without a school-side anchor. The player
-should feel that something impossible happened at Ruby High, not that they were
-teleported into a different game.
+Do not cold-open a genre rupture. The player should feel that Ruby High's
+students made a weird comic socially important, not that they were teleported
+into a different game.
 
 Comic motifs to mirror:
 
-| Motif | Minigame Use |
+| Motif | Theory-Session Use |
 |---|---|
-| black star / shadow | looming external pressure, not a classmate enemy |
+| black star / shadow | fictional pressure and fandom iconography, not a classmate enemy |
 | impossible surface / hidden center | player must inspect beyond first appearance |
 | signal before source | future hint, delayed explanation, tomorrow hook |
 | coordinates / song | pattern puzzle or ordered choice sequence |
@@ -1011,12 +1070,12 @@ Comic motifs to mirror:
 | command words | short objective cards such as `DO`, `STAR`, `SILENCE` |
 | silence over violence | win condition can be restraint, not conquest |
 
-Minigame rhythm:
+Theory-session rhythm:
 
 ```text
-intrusion: something impossible interrupts the day
-frame: Captain Null names the problem
-read: player studies the anomaly state
+intrusion: a comic clue, rumor, or coincidence interrupts the day
+frame: a teacher, classmate, or comic panel names the problem
+read: player studies the page, clue, or school-side mismatch
 choice: player picks a discipline-labeled action with virtue flavor
 resolve: short puzzle/check/reveal/restraint
 reaction: classmates process what just happened
@@ -1033,10 +1092,10 @@ Null discipline label mapping:
 
 | Discipline Button | Null Labels | Use |
 |---|---|---|
-| Source | Observe / Verify | inspect impossible state before acting |
-| Sense | Name / Decode | identify the contradiction or command word |
-| Sync | Hold Signal / Coordinate | keep a room or rule stable under pressure |
-| Signal | Break Pattern / Stay Silent | refuse, interrupt, or let the anomaly pass |
+| Source | Observe / Verify | check source, issue, author note, catalog card, or physical clue |
+| Sense | Name / Decode | identify the metaphor, contradiction, or command word |
+| Sync | Hold Signal / Coordinate | keep the fandom/social room stable under pressure |
+| Signal | Break Pattern / Stay Silent | resist over-interpretation, interrupt a bad theory, or let a pattern pass |
 
 Restraint is the signature Null mechanic. In normal class, the player usually
 answers. In Null encounters, the strongest move may be to wait, refuse, hold,
@@ -1047,10 +1106,10 @@ round context decides whether the Signal button renders as `Break Pattern` or
 Example approaches:
 
 ```text
-Source -> verify the impossible object
+Source -> verify the page, source, or physical clue
 Sense  -> name what the contradiction means
-Sync   -> steady the room
-Signal -> hold, refuse, or break the anomaly
+Sync   -> steady the room or fandom argument
+Signal -> hold, refuse, or break the theory loop
 ```
 
 Six-page adventure arc:
@@ -1175,7 +1234,7 @@ Yearbook rituals:
 | First page | onboarding moment after Day One or Week One, auto-selected only once |
 | Weekly review | choose one candidate from the week and see who signs it |
 | Relationship page | classmate-specific memory after enough shared beats |
-| Null page | comic/anomaly artifact with school-side aftermath |
+| Null page | comic/theory artifact with school-side aftermath |
 | Year finale | capstone spread showing identity, relationships, and unresolved signals |
 
 Yearbook ritual UX rule:
@@ -1320,7 +1379,7 @@ Core disciplines:
 | Source | observe, cite, verify, test | Ruby, Sally, Science Lab, Library | source panels, experiment checks, evidence routes |
 | Sense | read ambiguity, meaning, subtext | Edward, Ruby, Library | interpretation routes, close-reading hints, contradiction framing |
 | Sync | work with people, agents, systems | Eliza, Homeroom, Cafeteria, Greenhouse | companion actions, social repair, agent coordination |
-| Signal | read anomalies, patterns, myth, Null pressure | Rati, Captain Null, Courtyard, Library | Null labels, anomaly routes, comic callbacks |
+| Signal | read patterns, claims, comic callbacks, theory pressure | Rati, Captain Null, Courtyard, Library | Theory Hype labels, route rumors, comic callbacks |
 
 Virtues:
 
@@ -1440,7 +1499,7 @@ more specific variants.
 | Source | Lab / Library evidence routes | source checks, experiments, evidence maps, Sally/Ravi proof beats |
 | Sense | Library / Homeroom interpretation routes | Edward/Indra close reads, ambiguity choices, contradiction framing |
 | Sync | Cafeteria / Greenhouse / Systems Lab routes | social repair, companion actions, Eliza coordination beats |
-| Signal | Courtyard / Library / Null routes | anomaly reads, restraint choices, comic-page callbacks |
+| Signal | Courtyard / Library / Null routes | pattern reads, restraint choices, comic-page callbacks |
 
 Branch rules:
 
@@ -1473,7 +1532,7 @@ After school:
 - Source 2 or Library Card: source-table study with Indra
 - Sense 2 or Edward note: interpretation route in Library
 - Sync 2 or Mika affinity 2: Greenhouse recovery walk
-- Signal 2 or prior restraint: Courtyard anomaly / Null silence route
+- Signal 2 or prior restraint: Courtyard coincidence / Null silence route
 ```
 
 ### 3.10 Approach Choice And Training
@@ -1526,6 +1585,18 @@ approach was strong, mixed, risky, or restrained in context. AI may perform a
 character line about that result, but it does not decide the result or the
 training delta.
 
+Learning claim contract:
+
+- approach choice decides how the player engages the problem
+- answer correctness, source checking, explanation quality, or recovery evidence
+  still decides what the player demonstrably learned
+- if a wrong answer advances, the day must still teach the correction through an
+  explanation, social response, Notebook line, or later callback
+- a player should not be able to farm mastery by always choosing the same
+  flattering discipline label
+- if a beat only measures identity expression, label it as school-life RPG
+  expression, not subject mastery
+
 Training rule:
 
 > Players level disciplines by doing them, Morrowind-style.
@@ -1544,7 +1615,7 @@ Training sources:
 | Optional free-block activities | activity discipline plus room affinity | main divergence surface |
 | Item use | item's discipline if used in a valid context | no credit for spam or invalid use |
 | Failed-forward recovery | missed or recovery discipline | lets failure become practice |
-| Captain Null encounters | Signal plus restraint-linked virtue | battle-shaped pressure slot |
+| Captain Null encounters | Signal plus restraint-linked virtue | comic/ARG pressure slot |
 | Yearbook sealing | small permanent identity mark or route unlock | reward for meaningful history, not grind |
 
 Virtues are trained differently. Head, Heart, Hustle, and Honor should emerge
@@ -1656,7 +1727,7 @@ Small bounded archetype set:
 | Connector | sustained Sync / Heart / Cafeteria / Greenhouse choices | classmates bring social problems to the player |
 | Operator | sustained Source / Hustle / Lab / Courtyard choices | Sally and Ravi open improvisation side projects |
 | Conscience | sustained Honor / Source / teacher trust / restraint choices | Ruby, Edward, and Null respond to restraint choices |
-| Signal-Reader | repeated Signal / Null / restraint choices | anomaly routes and comic callbacks appear earlier |
+| Signal-Reader | repeated Signal / Null / restraint choices | pattern routes and comic callbacks appear earlier |
 | Comeback Student | repeated failed-forward recoveries | Mika/Ruby recovery routes get stronger |
 | Wild Card | mixed disciplines, virtues, and varied routes | flexible but fewer deep branch unlocks |
 
@@ -1723,7 +1794,7 @@ available.
 | Lyra | Library, class prep, recovery after hard questions | reveals study clue; can create anxiety if Stress is high |
 | Mika | Cafeteria, Greenhouse, failed-forward routes | reduces social fallout; improves recovery beats |
 | Ravi | Science Lab, Courtyard, experiments | adds evidence option and chaos/rumor risk |
-| Indra | Library, Null aftermath, interpretation | unlocks quiet high-value hints |
+| Indra | Library, First Bell aftermath, interpretation | unlocks quiet high-value hints |
 | Sami | Cafeteria, Hallway, rumor scenes | deflects pressure and reframes social consequences |
 | Noor | Cafeteria, social witness scenes, unfair questions | reveals absurdity and lowers tension |
 
@@ -1746,6 +1817,11 @@ can also make authored consequences feel arbitrary. Prototype hidden vs
 Notebook-visible presentation before committing to a year-long hidden-state
 design.
 
+`Null Signal` is the engine-facing clock name for the First Bell/Captain Null
+pressure layer. Player-facing copy should usually read as theory hype, ARG
+pressure, fandom over-interpretation, or pattern fever unless an authored comic
+encounter is explicitly in progress.
+
 Core clocks:
 
 | Clock | Meaning | Advances From | Triggers |
@@ -1753,7 +1829,7 @@ Core clocks:
 | Bell Clock | school-day pacing | required beats completed, lingering, certain Hustle/Sync choices | forced transition, passing-period scene |
 | Stress Clock | player/social pressure | wrong answer, awkward social choice, Null intrusion | recovery prompt, Office Pass after tutorial, Greenhouse recovery, Mika support |
 | Rumor Clock | how far an event spreads | cafeteria choices, visible failure, dramatic success | altered social line, reputation tag, hallway callback |
-| Null Signal Clock | anomaly pressure | contradiction, impossible clue, Null minigame mixed outcome | Captain Null stinger, comic-page callback |
+| Null Signal Clock | theory/ARG pressure | contradiction, comic clue, over-reading, Null theory-session mixed outcome | Captain Null stinger, comic-page callback |
 | Relationship Clocks | classmate arc progress | affinity choices, repeated presence, shared memories | personal scene, hint, Yearbook memory |
 
 Conditions are short-lived tags that modify wording, hints, and available moves.
@@ -1766,7 +1842,7 @@ Useful first conditions:
 | `frazzled` | Stress Clock threshold, missed answer | recovery choice appears |
 | `backed-up` | Mika/Lyra/Sami support beat | softens social fallout |
 | `under-pressure` | Bell Clock near threshold | choices feel tighter, but no twitch timing |
-| `null-touched` | Captain Null encounter | later anomaly line, Indra/Ruby follow-up |
+| `null-touched` | Captain Null encounter | later theory line, Indra/Ruby follow-up |
 | `seen` | strong Heart/social choice | classmate remembers the player helped |
 
 Fail-forward rule:
@@ -1797,7 +1873,7 @@ Every meaningful beat should touch at least two systems:
 | Class answer | mastery plus reputation, stress, or Null Signal |
 | Social choice | affinity plus rumor, condition, or schedule hint |
 | Item use | advantage plus condition or clock reduction |
-| Captain Null outcome | comic unlock plus condition, memory, or later anomaly |
+| Captain Null outcome | comic unlock plus condition, memory, or later theory beat |
 | Notebook entry | Yearbook candidate plus tomorrow callback |
 
 ## 4. Cards As Mechanics
@@ -1837,7 +1913,7 @@ Gameplay roles:
 | `ruby` | Ruby | Homeroom teacher, host, generalist | Homeroom, general knowledge, AI literacy, agent culture, school meta |
 | `sally-science` | Sally Science | STEM teacher | Physics, chemistry, biology, earth science, lab thinking, scientific method |
 | `professor-edward` | Professor Edward | Literature teacher | Postwar literature, literary theory, mid-century history, critical thinking |
-| `captain-null` | Captain Null | Special encounter teacher | Observatory, void theory, impossible engines |
+| `captain-null` | Captain Null | Fictional comic/ARG pressure slot | First Bell pages, theory pressure, close reading, restraint |
 | `eliza` | Eliza | Guest teacher | Systems Lab, agents, networks, coordination |
 | `rati` | Rati | Guest teacher | Signal Studies, myth, tokens, strange economics |
 
@@ -1848,7 +1924,7 @@ Teacher play styles:
 | Ruby | general knowledge, onboarding, meta, AI literacy |
 | Sally Science | evidence, experiments, cause/effect |
 | Professor Edward | interpretation, ambiguity, close reading |
-| Captain Null | mystery, impossible systems, astronomy/void lore, First Bell minigames |
+| Captain Null | cult comic mystery, ARG-like clues, over-interpretation pressure, First Bell sessions |
 | Eliza | agents, networks, coordination puzzles |
 | Rati | signals, myth, tokens, strange economics |
 
@@ -1859,7 +1935,7 @@ Premise mapping:
 | Ruby | AI literacy and social judgment | can the player read the room before trusting an answer? |
 | Sally Science | evidence and experimental discipline | can the player observe, test, and revise? |
 | Professor Edward | interpretation and historical ambiguity | can the player hold more than one reading without losing the text? |
-| Captain Null | unstable signals under pressure | can the player resist false commands and preserve the signal? |
+| Captain Null | fandom signal under pressure | can the player resist false patterns and preserve the source? |
 | Eliza | coordination with agents and networks | can the player make systems legible and cooperative? |
 | Rati | signals, myth, tokens, and world-building | can the player tell signal from noise without flattening meaning? |
 
@@ -2257,9 +2333,14 @@ Class beats should be authored enough to create subject identity.
 }
 ```
 
-### 5.5 Captain Null Minigame
+### 5.5 Captain Null Theory Session
 
-Captain Null minigames are authored special beats, not generic combat.
+Captain Null theory sessions are authored special beats, not generic combat. The
+default fiction is a First Bell comic/ARG theory session that spills into the
+school day through rumors, margins, props, and classmate obsession.
+
+The engine id can remain `null_minigame` during the C wedge, but player-facing
+copy and product planning should call these theory sessions.
 
 ```json
 {
@@ -2269,9 +2350,9 @@ Captain Null minigames are authored special beats, not generic combat.
   "comicPage": "page-01",
   "motifs": ["black-star", "shadow", "command-card"],
   "captainNullLine": "There are stars that watch. Learn to look back.",
-  "stakes": "The hallway clock stops between bells.",
+  "stakes": "The fandom thread is turning a hallway clock coincidence into proof.",
   "state": {
-    "visibleContradiction": "The bell rings, but the hallway clock has no hands.",
+    "visibleContradiction": "The copied panel and hallway clock disagree about where the hands should be.",
     "commandWord": "DO",
     "silenceAvailable": true,
     "signalStability": 2,
@@ -2288,7 +2369,7 @@ Captain Null minigames are authored special beats, not generic combat.
   "rounds": [
     {
       "id": "observe-contradiction",
-      "prompt": "The clock has no hands. The bell rings anyway.",
+      "prompt": "The copied panel has no clock hands. The hallway clock does.",
       "availableButtons": ["source", "sense", "signal"],
       "buttonLabels": {
         "source": "Observe",
@@ -2298,7 +2379,7 @@ Captain Null minigames are authored special beats, not generic combat.
       "onAction": {
         "source": {
           "stateDeltas": { "signalStability": 1 },
-          "hint": { "kind": "concept", "text": "The command word is not the instruction." }
+          "hint": { "kind": "concept", "text": "The command word is from the panel, not the hallway." }
         },
         "sense": {
           "stateDeltas": { "nullPressure": 1 },
@@ -2312,7 +2393,7 @@ Captain Null minigames are authored special beats, not generic combat.
     },
     {
       "id": "hold-or-break",
-      "prompt": "The word DO writes itself above the door.",
+      "prompt": "Someone tapes DO above the door before anyone admits doing it.",
       "availableButtons": ["source", "sync", "signal"],
       "buttonLabels": {
         "source": "Verify",
@@ -2330,16 +2411,16 @@ Captain Null minigames are authored special beats, not generic combat.
         },
         "source": {
           "stateDeltas": { "signalStability": 1 },
-          "hint": { "kind": "source", "text": "The door is not the source of the command." }
+          "hint": { "kind": "source", "text": "The tape came from Ravi's photocopy, not the door." }
         }
       }
     }
   ],
   "approaches": [
-    { "id": "verify-clock", "button": 0, "label": "Source - verify what changed before touching the word.", "discipline": "source", "virtue": "honor" },
-    { "id": "name-command", "button": 1, "label": "Sense - name what the word is trying to make you do.", "discipline": "sense", "virtue": "head" },
-    { "id": "steady-room", "button": 2, "label": "Sync - hold the room steady while the bell rings.", "discipline": "sync", "virtue": "heart" },
-    { "id": "choose-silence", "button": 3, "label": "Signal - stay silent and let the pattern pass.", "discipline": "signal", "virtue": "honor" }
+    { "id": "verify-clock", "button": 0, "label": "Source - verify the panel before touching the word.", "discipline": "source", "virtue": "honor" },
+    { "id": "name-command", "button": 1, "label": "Sense - name what the command is doing to the room.", "discipline": "sense", "virtue": "head" },
+    { "id": "steady-room", "button": 2, "label": "Sync - keep the theory thread from becoming a fight.", "discipline": "sync", "virtue": "heart" },
+    { "id": "choose-silence", "button": 3, "label": "Signal - stay silent and let the bad pattern pass.", "discipline": "signal", "virtue": "honor" }
   ],
   "outcomes": {
     "clear": {
@@ -2383,17 +2464,19 @@ Captain Null minigames are authored special beats, not generic combat.
     }
   },
   "schoolEffects": {
-    "notebookPhrase": "The hallway clock skipped. Someone wrote DO where the bell should have been.",
-    "nextHook": "Indra later asks whether anyone else heard the signal."
+    "notebookPhrase": "The First Bell copy said DO. The hallway made everyone argue about it.",
+    "nextHook": "Indra later asks whether anyone checked the issue number."
   },
   "returnBeatId": "y1d2-recover"
 }
 ```
 
-Captain Null minigames should be authored as a sequence, with each comic page
-teaching one new interaction pattern:
+Captain Null theory sessions should be authored as a sequence, with each comic page
+teaching one new interaction pattern. The encounter can use stylized internal
+language, but the school-side cause remains grounded: a page, photocopy, rumor,
+club debate, prop, or campus coincidence.
 
-| Comic Page | Minigame Pattern | Discipline + Virtue Bias |
+| Comic Page | Theory-Session Pattern | Discipline + Virtue Bias |
 |---|---|---|
 | `page-01` | identify the impossible command | Signal + Honor/Head |
 | `page-02` | find the hidden center beneath a false surface | Sense + Head/Hustle |
@@ -2403,7 +2486,7 @@ teaching one new interaction pattern:
 | `page-06` | choose restraint before the black star wakes | Signal + Honor/Hustle |
 
 Comic pages are not just collectibles. Unlocking a page should change the school
-year in a small visible way: a Notebook phrase, a later hallway anomaly, a new
+year in a small visible way: a Notebook phrase, a later hallway rumor, a new
 Indra question, a Ruby warning, or a Yearbook shard. If a page unlock does not
 alter any later beat, it is only an asset reward and should wait.
 
@@ -2424,7 +2507,7 @@ Null encounter rules:
 ### 5.6 Clocks And Conditions
 
 Clocks and conditions should be normal effect payloads, usable by classes,
-social choices, items, and Captain Null minigames.
+social choices, items, and Captain Null theory sessions.
 
 Clock registry:
 
@@ -2456,6 +2539,7 @@ Clock registry:
   },
   "null_signal": {
     "label": "Null Signal",
+    "playerLabel": "Theory Hype",
     "max": 6,
     "visibility": "hidden_until_triggered",
     "thresholds": [
@@ -2583,9 +2667,9 @@ Map rules:
   and produce different consequences
 - later years can hide some agent locations until the player learns a schedule,
   rumor, or Notebook clue
-- Captain Null should bend routes through anomalies, locked doors, stopped
-  clocks, or impossible transitions instead of moving the game to a separate
-  combat arena
+- Captain Null should bend routes through First Bell clues, locked doors,
+  stopped clocks, over-read coincidences, or rumor pressure instead of moving
+  the game to a separate side mode
 
 Route UX rules:
 
@@ -2679,7 +2763,7 @@ Concrete resolvers:
 Rules:
 
 - item effects use the same effect payloads as classes, social choices, clocks,
-  and Null minigames
+  and Null theory sessions
 - item use is server-authoritative and idempotent by `commandId`
 - invalid item use returns a fallback line and no durable effects
 - item actions are contextual; do not show unusable item buttons as dead UI in
@@ -2696,7 +2780,7 @@ Rules:
 ### 5.9 Shared Effect Payload
 
 Classes, social choices, item uses, clocks, movement callbacks, and Captain Null
-minigames should all resolve through the same effect payload shape. The payload
+theory sessions should all resolve through the same effect payload shape. The payload
 describes requested state changes; only the server reducer applies them.
 
 ```json
@@ -2762,10 +2846,10 @@ Authoring units:
 | Class pack | questions, discipline/virtue tags, NPC locks, explanations, outcome resolver | reusable by subject/teacher |
 | Approach pack | one teacher problem with Source / Sense / Signal / Sync options, resolver, training deltas, and reaction slots | reusable by teacher mode and problem type |
 | Social template | trigger, cast slots, choice archetypes, effect payloads | reused with strict voice/cast variation |
-| Room event | route anomaly, bulletin, recovery beat, chance encounter | reused by time block and room role |
+| Room event | route mismatch, bulletin, recovery beat, chance encounter | reused by time block and room role |
 | Item resolver | valid targets, effects, fallback, presentation events | system-authored and reused |
 | Yearbook artifact | scarce identity page with visual/ritual/callbacks | authored for high-value outcomes |
-| Null minigame | anomaly state, discipline labels, restraint path, aftermath | bespoke by comic page |
+| Null theory session | theory state, discipline labels, restraint path, aftermath | bespoke by comic page |
 
 Pipeline:
 
@@ -2779,6 +2863,30 @@ premise / year arc
 -> playtest metrics
 -> graphical fixture
 ```
+
+The C wedge currently proves the API shape with some content embedded directly
+in C. That is acceptable for Wedge 0, but Year One requires a content compiler
+that emits validated C tables or compact binary packs.
+
+Required generated surfaces:
+
+- rooms and exits
+- object placements
+- NPC schedule overrides
+- NPC goal profiles and plan-step templates
+- class-session definitions and responder slots
+- room-pressure definitions
+- relationship memory reason tags
+- legal action templates
+- approach labels
+- effect payloads
+- agent agenda rules
+- UI string tables
+- ranker feature metadata
+
+Action IDs are transitional. The command path no longer has to remain one enum
+forever, but authored years should use stable content IDs or compiler-assigned
+stable integers rather than hand-maintained `Ruby2WorldActionId` values.
 
 AI use in authoring:
 
@@ -2830,7 +2938,7 @@ scale. The backlog should prove a small library of reusable problem types:
 |---|---|---|
 | conflicting source | Ruby, Sally, Edward | Source and Sense tutorial backbone |
 | social pressure | Ruby, Eliza, Cafeteria beats | Sync plus virtue expression |
-| anomaly trace | Rati, Captain Null, Library/Courtyard | Signal ramp and restraint |
+| theory trace | Rati, Captain Null, Library/Courtyard | Signal ramp and restraint |
 | experiment choice | Sally, Science Lab | Source / Hustle pressure |
 | system coordination | Eliza, Homeroom, Systems Lab | Sync / Source coordination |
 
@@ -2870,7 +2978,7 @@ Authoring priority budget:
 
 | Priority | Hand-Author First | Template / System Support |
 |---|---|---|
-| Core milestones | Day One, weekly wrap rituals, first Office Pass recovery, first Null minigame, term finale, year finale | none; these carry product identity |
+| Core milestones | Day One, weekly wrap rituals, first Office Pass recovery, first Null theory session, term finale, year finale | none; these carry product identity |
 | Character anchors | first meaningful beat with each core classmate, first conflict/repair, first companion activity | template only after one exemplar exists |
 | Learning anchors | first class per teacher, first failed-forward recovery, first source/evidence lesson | reusable class pack patterns after proof |
 | Mid-week connective tissue | ordinary hallway checks, lunch reactions, practice review, route anomalies | structured templates with cast/voice/effect variation |
@@ -3087,7 +3195,7 @@ Examples:
 | Lyra asks to go to Library after a failed class | approve as after-school override if affinity or class result allows |
 | Noor asks to appear in Cafeteria during Homeroom | deny or convert to lunch reaction |
 | Indra asks to appear after a Rumor Clock threshold | delay until hallway/library callback beat |
-| Captain Null asks to interrupt a route | approve only if Null Signal threshold or authored Week One stinger allows |
+| Captain Null theory session asks to interrupt a route | approve only if Null Signal threshold or authored Week One stinger allows |
 
 The AI may propose motion and encounter flavor. It may not decide durable room
 state, route availability, schedule gates, or whether a required beat advances.
@@ -3122,9 +3230,42 @@ Rules:
   placement; missing optional witnesses use fallbacks instead of failing the
   scene
 
+#### 6.4.1 NPC Goals And Plans
+
+Detailed implementation PRD: [`PRD_NPC_GOALS_AND_PLANS.md`](./PRD_NPC_GOALS_AND_PLANS.md).
+
+NPC schedules are necessary but not sufficient. Schedules explain where a
+classmate is; goals and plans explain why they act. V2 should extend deterministic
+placement with per-NPC goals, short validated plans, relationship cells, class
+session responders, room pressure, Notebook objectives, and replay coverage.
+
+Design rule:
+
+> If an NPC did something, the engine should be able to answer what they wanted,
+> what plan they were following, which world rule allowed it, what changed, and
+> whether the same seed can replay it.
+
 ### 6.5 AI Use
 
 AI should create surprise inside rails, not decide the rails.
+
+Use a Governor-Controller split:
+
+```text
+Narrative / LLM Governor
+-> structured goal weights, motive summaries, memory summaries, performance copy
+-> Deterministic Kernel / Controller
+-> legal movement, clocks, relationships, commands, memory writes, replay
+```
+
+The Governor runs slowly: authoring, transition, weekly review, overnight, or
+high-salience performance slots. It can update character motive weights,
+summarize what an NPC thinks happened, or voice a validated action.
+
+The Controller runs every world step. It owns pathing, co-presence, legal verbs,
+clock ticks, relationship math, class outcomes, Notebook writes, Yearbook
+candidates, and replay hashes. NPCs do not wait for the LLM to walk through a
+hallway or choose from already legal plan steps.
 
 Good:
 
@@ -3147,7 +3288,9 @@ Initial AI rules:
 
 - one generated social variation per player/session after first class completion
 - social player input is multiple-choice, not freeform text
-- no background LLM calls for NPC movement
+- no background LLM calls for tactical NPC movement
+- any LLM-updated goal weights must happen in a named Governor cycle with
+  schema validation, replay logging, and authored fallback
 - repeated room visits reuse cached social state until time block changes
 - output must validate before it affects affinity, hints, memory, or progress
 - failure shows authored fallback and does not block exits
@@ -3218,6 +3361,41 @@ Rules:
   scene if the beat itself is otherwise complete
 - cache accepted packets by beat/result where repetition would be noticeable
   but not valuable
+
+### 6.7 Rankers, Traces, And Replay
+
+Rankers may order legal choices, choose legal NPC agenda or goal-plan intents,
+and choose which visible LLM branches to pre-generate. They must not create
+choices, hide required choices, invent room presence, mutate state, or decide
+durable outcomes.
+
+Ranker boundaries:
+
+| Ranker | Purpose | Allowed Inputs | Forbidden |
+|---|---|---|---|
+| UI action ranker | order legal player actions for presentation | world snapshot, legal actions, clocks, room, time block, present objects and people | adding actions, removing legal actions for difficulty, mutating state |
+| LLM pregen ranker | pick which visible branch consequence to generate in the background | visible branch list, scene importance, cache history, latency budget | hidden branch generation, changed authored outcomes, blocking play on cache miss |
+| Agent goal-plan ranker | choose among legal NPC agenda or goal-plan intents | filtered agenda table, active goals, plan cursors, class phase, room pressure, relationship status, memory tags, blocked reasons, schedule, room/object state | teleporting NPCs, remote speech, overriding required beats, inventing goals, plan steps, relationship deltas, or Notebook memory |
+| Yearbook candidate ranker | order milestone-only Yearbook candidates for review | explicit candidates, score features, repetition/rarity, callback availability | creating candidates from ordinary noise, sealing without ritual or player choice |
+
+Minimum ranker trace fields:
+
+- schema and feature encoder version
+- content pack version
+- replay-stable state hash
+- task name
+- legal candidate IDs
+- feature vector or feature encoder reference
+- ranked indices and scores
+- selected candidate
+- optional target candidate
+- post-choice utility label, when available
+
+Replay is not optional tooling. A ranker trace without the exact content pack
+cannot be safely replayed after authors change action labels, room schedules, or
+effect payloads. Every test harness that drives a scripted or interactive choice
+should emit enough trace data to rebuild the legal candidate set, the selected
+action, and the school-day summary under the same seed.
 
 ## 7. API Shape
 
@@ -4049,7 +4227,7 @@ the client should present them through school objects whenever possible:
 | Inventory | school-bag tray and physical item cards | loot grid or RPG backpack spreadsheet |
 | Yearbook | page drafts, signatures, stickers, classmate ritual | generic collection-management screen |
 | Routes | doors, hallway signs, map overlay, route cards with scene art | bare destination list with raw discipline deltas |
-| Null Signal | odd object, margin glyph, stopped clock, hallway distortion | sudden combat alert with no school-side symptom |
+| Null Signal / Theory Hype | First Bell page, margin glyph, rumor thread, stopped clock, hallway poster | sudden crisis alert or genre-breaking rupture with no school-side symptom |
 
 Visible UI is allowed when clarity needs it. The product rule is that the player
 should understand what school action caused the system effect.
@@ -4225,9 +4403,9 @@ Key funnels:
 - Yearbook candidate created -> next-day return
 - Week One completed -> Yearbook ritual started
 - Yearbook ritual started -> Yearbook page sealed
-- Week One ramp completed -> first Captain Null minigame started
-- first Captain Null minigame started -> comic page unlocked
-- comic page unlocked -> later beat references the page/anomaly
+- Week One ramp completed -> first Captain Null theory session started
+- first Captain Null theory session started -> comic page unlocked
+- comic page unlocked -> later beat references the page/theory beat
 
 Progression metrics should track which discipline and virtue were expressed by
 a class question, social choice, item use, or memory write. Use this to
@@ -4250,8 +4428,8 @@ better retention or only more friction. Track threshold reach, recovery-beat
 completion, condition frequency, and whether players still complete the school
 day after mixed or failed-forward outcomes.
 
-Captain Null metrics should answer whether the pressure slot improves return,
-comic collection, and Yearbook attachment without harming class/social
+Captain Null metrics should answer whether the comic/ARG pressure slot improves
+return, comic collection, and Yearbook attachment without harming class/social
 completion.
 
 Yearbook metrics should measure emotional artifact value, not log volume. Track
@@ -4267,13 +4445,14 @@ Primary success metric:
 Arc success metric:
 
 > Returning players who seal a Week One Yearbook artifact and later reach a beat
-> that calls back to the class, social choice, or Null anomaly that created it.
+> that calls back to the class, social choice, or First Bell theory beat that
+> created it.
 
 Week One success metric:
 
-> Returning players who complete the Null ramp, reach the first Week One Captain
-> Null minigame, unlock the first comic page, and later see the school
-> acknowledge that anomaly.
+> Returning players who complete the First Bell ramp, reach the first Week One
+> Captain Null theory session, unlock the first comic page, and later see the
+> school acknowledge that theory beat.
 
 Cost metrics:
 
@@ -4286,11 +4465,25 @@ Cost metrics:
 - failed/degraded AI rate
 - native crash-free sessions
 
-## 11. Build Plan
+## 13. Build Plan
 
 Build the product in content-first wedges.
 
-### 11.1 Wedge -1: Premise, Yearbook, And Authoring Contract
+Current C wedge scaling priorities:
+
+1. Move content tables out of handwritten C into compiled content packs.
+2. Replace one-shot NPC agenda flags with the goal/plan runtime.
+3. Emit ranker and goal/plan traces from scripted and interactive choices.
+4. Merge `play-world` and `play-llm` behavior into one vertical slice.
+5. Replace enum-only action IDs with content-compiled IDs.
+6. Add replay tests that rebuild a ranker decision and a school-day summary
+   from trace input.
+7. Add a tiny trainable ranker backend behind the current linear scorer only
+   after legal-option traces are reliable.
+8. Keep the UI boundary snapshot-first until sokol or another renderer is worth
+   introducing.
+
+### 13.1 Wedge -1: Premise, Yearbook, And Authoring Contract
 
 Purpose: solve the load-bearing design joints before proving the loop.
 
@@ -4339,7 +4532,7 @@ Acceptance:
 - archetype gates have a deterministic resolution function
 - active Yearbook candidates have lifecycle and overflow behavior
 
-### 11.2 Wedge 0: Year One Text Simulation
+### 13.2 Wedge 0: Year One Text Simulation
 
 Purpose: prove the game loop before frontend work.
 
@@ -4351,6 +4544,8 @@ Scope:
 - room/action text output
 - one Ruby class, reducible to one teacher problem for smoke tests
 - one teacher problem with Source / Sense / Signal / Sync approach choices
+- one explicit class session object that owns board phase, seated NPCs, and
+  responder slots
 - Day One class outcome resolver
 - one multiple-choice social beat
 - Notebook memory write
@@ -4372,6 +4567,8 @@ Acceptance:
 - the whole day can be completed in a terminal/test harness
 - player movement resolves through the campus graph, not ad hoc room ids
 - NPC co-presence is derived from schedule or authored overrides
+- class session state, not ad hoc room flags, decides which NPCs can react to a
+  board result
 - social choices produce visible consequences
 - discipline and virtue expression affects report or memory wording
 - approach choices produce different accepted effect payloads and training credit
@@ -4384,7 +4581,7 @@ Acceptance:
 - same input sequence produces same state
 - no renderer, no AI, no mobile
 
-### 11.3 Wedge 1: Scene Contract
+### 13.3 Wedge 1: Scene Contract
 
 Purpose: prove the backend can drive a game scene without leaking business rules into the client.
 
@@ -4419,7 +4616,7 @@ Acceptance:
 - stale command versions recover cleanly
 - client can rebuild visible state from scene JSON plus asset manifest
 
-### 11.4 Wedge 2: Render Prototype
+### 13.4 Wedge 2: Render Prototype
 
 Purpose: prove the game client can present Ruby High text and choices well.
 
@@ -4444,7 +4641,7 @@ Acceptance:
 - background crops acceptably on mobile
 - web/WASM build runs the same scene
 
-### 11.5 Wedge 3: Classroom Loop
+### 13.5 Wedge 3: Classroom Loop
 
 Purpose: prove existing class mechanics feel better in the RPG surface.
 
@@ -4457,6 +4654,8 @@ Scope:
 - approach lock
 - NPC answer lock animation
 - approach reveal animation
+- class session resolution that records who was seated, who locked in, and who
+  can respond
 - class report
 - metrics
 
@@ -4469,7 +4668,7 @@ Acceptance:
 - degraded/no-animation mode still plays correctly
 - it feels materially more like attending Ruby High than using the current board
 
-### 11.6 Wedge 4: Social And Memory
+### 13.6 Wedge 4: Social And Memory
 
 Purpose: prove class results become social material.
 
@@ -4478,6 +4677,8 @@ Scope:
 - cafeteria social room
 - Lyra, Mika, and Noor present
 - one constrained multiple-choice social beat
+- one class social round after a board result, selecting 1-2 responders from
+  seated NPCs with valid goals or response slots
 - one reusable social template with concrete authored cast slots
 - 2-3 reply choices
 - authored fallback dialogue
@@ -4490,26 +4691,28 @@ Acceptance:
 - social event never blocks exits or next action
 - player response is captured as `choiceId`, not freeform text
 - durable social result is schema-valid
+- class-social responders come from resolved co-presence and class session state,
+  not random spawning
 - template substitution respects room presence, character voice, and fallback
   rules
 - Notebook memory reflects the class/social outcome
 - Noor can appear as a reaction witness without owning the primary social choice
 - metrics compare class-only vs class-plus-social completion
 
-### 11.7 Wedge 5: Captain Null Minigame
+### 13.7 Wedge 5: First Bell / Captain Null Theory Session
 
-Purpose: prove Ruby High has a battle-shaped pressure slot without making
-classmates adversarial. Build this as a Week One text/scene fixture after the
-Null ramp before mobile proof.
+Purpose: prove Ruby High has a distinct comic/ARG pressure slot without making
+classmates adversarial or implying genre-breaking stakes. Build this as a
+Week One text/scene fixture after the First Bell ramp before mobile proof.
 
 Scope:
 
-- one Captain Null authored minigame fixture
+- one Captain Null authored theory-session fixture
 - one First Bell comic-page unlock
 - at least two encounter rounds with state changes between rounds
 - a limited subset of the four discipline buttons per round
 - four discipline-flavored approaches with virtue expression
-- three normal-school foreshadow beats before the interruption
+- three normal-school foreshadow beats before the session
 - clear/mixed/failed-forward/restraint outcomes
 - Null Signal clock delta
 - one condition such as `null-touched` or `frazzled`
@@ -4520,17 +4723,17 @@ Scope:
 
 Acceptance:
 
-- minigame feels like an interruption from the comic, not a normal class
-- minigame is anchored in a school-side signal, object, route, or witness line
+- theory session feels like pressure from the comic, not a normal class
+- theory session is anchored in a school-side signal, object, route, or witness line
 - player action is captured as round id plus discipline button index
 - later-round available buttons and labels can change because of earlier actions
 - outcome can reward restraint or silence, not only action
 - comic page unlock is durable
 - Null Signal and condition effects are durable and server-authoritative
-- a later scene references the anomaly/comic page
+- a later scene references the theory beat/comic page
 - classmates react afterward as allies/witnesses, not enemies
 
-### 11.8 Wedge 6: Mobile Proof
+### 13.8 Wedge 6: Mobile Proof
 
 Only after Wedges -1 through 5 pass:
 
@@ -4546,7 +4749,7 @@ This is a platform feasibility wedge, not a production mobile app wedge.
 
 Exit criteria: one real device can play the same class-plus-social-plus-memory slice.
 
-### 11.9 Wedge 7: Semi-Open Campus Block
+### 13.9 Wedge 7: Semi-Open Campus Block
 
 Purpose: prove Ruby High can become open-world-ish without losing the school-day
 loop.
@@ -4558,9 +4761,11 @@ Scope:
 - limited action budget for the block
 - two optional social beats
 - one recovery/reflection beat
-- one hint or Null Signal clue
+- one hint or First Bell/Null Signal clue
 - one beat that can expire, delay, or mutate because the player chose elsewhere
 - NPC schedules that create absence as well as presence
+- per-NPC goals and short plans for at least three classmates during the block
+- structured blocked reasons when an NPC cannot pursue a plan
 - Notebook summary that records both chosen and missed opportunities
 
 Acceptance:
@@ -4571,10 +4776,11 @@ Acceptance:
 - at least one optional beat can be missed without blocking the day
 - required school-day progress remains recoverable
 - NPC co-presence changes based on schedule, not random spawning
+- NPC behavior can be explained by goal, plan, validator result, and memory
 - the block feels like choosing how to spend school time, not selecting a menu
   item from a hub
 
-## 12. Phasing
+## 14. Phasing
 
 Phase 0: premise, Yearbook, and authoring contract.
 
@@ -4588,7 +4794,7 @@ Phase 4: first classroom.
 
 Phase 5: first social and Notebook memory.
 
-Phase 6: first Captain Null minigame.
+Phase 6: first Captain Null theory session.
 
 Phase 7: first mobile proof.
 
@@ -4603,7 +4809,7 @@ first-class completion, memory completion, D1 visitor retention, D1 character
 retention, Yearbook callback reach, and crash-free sessions without regressing
 auth or commerce.
 
-## 13. Risks
+## 15. Risks
 
 ### Content Vagueness
 
@@ -4745,15 +4951,17 @@ Mitigation:
 
 ### Tonal Whiplash
 
-Captain Null gives Ruby High its pressure slot, but the void-theory layer can
-break the school fantasy if it arrives like a different genre.
+Captain Null gives Ruby High its pressure slot, but it can break the school
+fantasy if it plays like a literal genre threat instead of a grounded cult-comic
+and ARG-style social obsession.
 
 Mitigation:
 
-- introduce Null through ordinary school objects, rumors, route anomalies, and
-  classmate reactions
-- let the Null Signal clock build atmosphere before major interruptions
-- keep classmates as witnesses and allies after anomalies, not combat opponents
+- introduce Null through First Bell pages, ordinary school objects, rumors,
+  source mismatches, and classmate reactions
+- let the Null Signal/Theory Hype clock build atmosphere before major sessions
+- keep classmates as fandom theorists, skeptics, witnesses, and friends, not
+  combat opponents
 - return to the normal school schedule after every Null beat
 - make aftermath visible in Notebook, hallway dialogue, or a later class line
 
@@ -4819,12 +5027,12 @@ Mitigation:
   player archetype
 - use batch-generated or authored fallback lines for ordinary approach results
 - reserve runtime AI for high-salience social reactions, weekly rituals, and
-  Null aftermath
+  First Bell aftermath
 - show authored fallback on failure or budget exhaustion
 - track social and approach LLM calls per completed class and per retained
   visitor
 
-## 14. Open Decisions
+## 16. Open Decisions
 
 - What final polish should replace any remaining placeholder prose in the Year One Day One script?
 - Which exact premise wording should become player-facing canon?
@@ -4834,9 +5042,9 @@ Mitigation:
 - Should first-slice backgrounds be bundled or fetched/cached dynamically?
 - Which native shell should host the first mobile proof?
 
-## 15. Guiding Constraint
+## 17. Guiding Constraint
 
-Ruby High 2.0 should be deterministic underneath and magical on top.
+Ruby High 2.0 should be deterministic underneath and expressive on top.
 
 The year schedule, room graph, route graph, class outcomes, social choices,
 memory writes, Yearbook candidates/artifacts, rewards, progression, metrics, and

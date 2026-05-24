@@ -13,7 +13,7 @@ not the graphical client yet. It proves the deterministic engine pieces first:
 - milestone-only Yearbook candidate generation with bounded insertion and eviction
 - archetype resolution
 - single active companion selection
-- trace-based Captain Null outcome resolution through the same four discipline buttons
+- trace-based First Bell/Captain Null theory-session outcome resolution through the same four discipline buttons
 - a deterministic Week One text simulation
 - a first MUD-shaped world kernel with rooms, exits, NPC placement, object
   presence, action discovery, and an event queue
@@ -28,6 +28,11 @@ not the graphical client yet. It proves the deterministic engine pieces first:
 - a deterministic social-simulation pass where each NPC gets a local
   perception packet, authored agenda rules produce legal candidate intents, and
   the tiny ranker selects one accepted NPC move per tick
+- a v2 PRD for replacing one-shot NPC agendas with per-NPC goals, short validated
+  plans, class sessions, room pressure, relationship cells, Notebook objectives,
+  and seeded replay coverage
+- a Governor-Controller boundary where LLM/narrative configuration remains slow
+  and structured while the native world kernel owns tactical execution
 - a first bridge from world events into LLM performance requests
 - a llama.cpp-first performance layer for speech-bubble lines, with the older
   Ollama/OpenAI-compatible HTTP path kept as an explicit fallback backend
@@ -52,8 +57,8 @@ not the graphical client yet. It proves the deterministic engine pieces first:
 - native SDL action consequences can start a non-blocking AI performance job
   for the latest co-present event; authored fallback lines remain visible
   immediately and a validated generated line can replace the active bubble
-- an architecture review for scaling the current C wedge into a content-driven
-  engine
+- an integrated architecture contract for scaling the current C wedge into a
+  content-driven engine
 
 Build and run:
 
@@ -112,6 +117,15 @@ accepts only legal intents and emits rejection events for impossible actions
 such as remote speech, blocked room jumps, or inspecting absent objects. This is
 the C-side contract for later LLM-backed avatars: the model can propose a tool
 intent, but the deterministic world remains authoritative.
+
+The C wedge is the Controller in the Governor-Controller split. It performs
+path validation, co-presence checks, clock ticks, relationship math, command
+acceptance, and replayable state mutation. The LLM/Narrative Governor may later
+refresh structured goal weights, motive summaries, or daily memory summaries in
+slow cycles, but those outputs must compile into schema-valid structs before the
+world step can use them. If the Governor is missing, slow, or invalid, authored
+fallback tables keep the simulation moving.
+
 `ruby2_world_step_agents` is the simulation hook: each world turn builds a
 local `Ruby2AgentPerception` for each placed NPC, queries authored agenda rules
 for legal `Ruby2AgentCandidateIntent` records, ranks those legal candidates, and
@@ -119,6 +133,13 @@ submits only the first accepted intent through the world validator. The LLM laye
 can perform the accepted speech later, but it cannot make a remote character
 speak, move through a blocked route, inspect an absent object, or mutate durable
 state directly.
+
+The current agenda table is an interim wedge, not the target social simulation.
+The next agency layer is specified in
+[`../PRD_NPC_GOALS_AND_PLANS.md`](../PRD_NPC_GOALS_AND_PLANS.md): every NPC gets
+explicit goals, short plans, blocked reasons, relationship memory, and replayable
+intent traces. That layer should still emit `Ruby2AgentIntent` records through
+the same validator instead of granting NPCs direct state mutation.
 
 `ruby2_world_event_to_performance_request` is the first bridge between the MUD
 kernel and the local-model performance layer. It converts selected visible world
@@ -132,6 +153,22 @@ returns a reordered legal set. The ranker never creates choices, hides required
 choices, mutates state, moves NPCs, or decides durable outcomes. The trace writer
 emits JSONL with schema/version fields so later training can reuse the same
 legal-option contract.
+
+Architecture scaling contract:
+
+- `ruby2_engine` owns durable state: clocks, items, affinity, discipline counts,
+  virtues, active room, time block, Yearbook candidates, effect payload
+  application, and gate evaluation.
+- `ruby2_world` owns spatial truth: room graph, NPC placement, object presence,
+  legal action discovery, command validation, event queue, bounded micro-agent
+  intents, and future goal-plan intents.
+- `ruby2_ui` owns read-only snapshots for text, native SDL, or future graphical
+  clients; renderers should not know schedule, agent, or reducer internals.
+- Rankers can order already legal choices, agent intents, pregen branches, and
+  Yearbook candidates; they cannot create options or decide durable outcomes.
+- Content still embedded directly in C is a wedge constraint, not the target.
+  Authored years need compiled content IDs, generated tables/packs, content-pack
+  versioning, and replayable ranker/goal-plan traces.
 
 `ruby2_ui_snapshot_build` is the first renderer-facing contract. It builds a
 read-only snapshot from the world and can include ranker-ordered actions. The

@@ -408,7 +408,6 @@ export function runViewerClient(bootstrap) {
   const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.global.js?v=" + encodeURIComponent(buildId);
   const PRIVY_CLIENT_GLOBAL = "RubyHighPrivyClientModule";
   const COMMAND_TIMEOUT_MS = 15000;
-  const PLAYER_LINE_TIMEOUT_MS = 12000;
   const STREAM_CONNECT_TIMEOUT_MS = 15000;
   const SESSION_REFRESH_TIMEOUT_MS = 8000;
 
@@ -1070,32 +1069,6 @@ export function runViewerClient(bootstrap) {
   function playerChatLine(intent) {
     return intent === "lounge" ? playerLoungeLine() : playerClassLine(intent);
   }
-  function playerChatFallbackLine(intent) {
-    if (intent === "hint") return "Can someone give me the first clue without saying it outright?";
-    if (intent === "report") return "Okay, I need a second with that one. What did everyone notice?";
-    if (intent === "lounge") return "Wait, what did you mean by that?";
-    return "I'm ready. What's the room looking at next?";
-  }
-  async function generatePlayerChatLine(intent) {
-    if (!aiEnabled) return playerChatLine(intent);
-    try {
-      const r = await apiFetch("/api/apps/ruby-high/chat/player-line", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        timeoutMs: PLAYER_LINE_TIMEOUT_MS,
-        body: JSON.stringify({
-          faculty: lastTelemetry && lastTelemetry.faculty,
-          context: { intent: playerChatIntentForServer(intent) },
-        }),
-      });
-      if (!r.ok) throw new Error("player-line " + r.status);
-      const data = await r.json();
-      const line = data && data.line ? String(data.line).trim() : "";
-      return line || playerChatFallbackLine(intent);
-    } catch (err) {
-      return playerChatFallbackLine(intent);
-    }
-  }
   function playerChatIntentForServer(intent) {
     if (intent === "hint") return "hint";
     if (intent === "report") return "report";
@@ -1103,64 +1076,29 @@ export function runViewerClient(bootstrap) {
     if (intent === "lounge") return "lounge";
     return "player-chat";
   }
-  function pickChatResponder() {
-    const students = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
-    if (students.length > 0 && Math.random() < 0.5) {
-      return { kind: "student", student: pickRandom(students) };
-    }
-    return { kind: "teacher" };
-  }
-  function playerChatNote(intent, playerLine) {
-    const current = lastTelemetry && lastTelemetry.current;
-    const reveal = lastTelemetry && lastTelemetry.lastReveal;
-    const contextBits = [];
-    if (current && current.prompt) contextBits.push("board: " + clipPlayerContext(current.prompt, 140));
-    if (reveal && reveal.questionPrompt) {
-      contextBits.push("recent result: " + (reveal.wasCorrect ? "correct" : reveal.forfeit ? "timeout" : "missed") + " on " + clipPlayerContext(reveal.questionPrompt, 100));
-    }
-    const contextLine = contextBits.length ? " Context: " + contextBits.join(" | ") + "." : "";
-    if (intent === "hint" && current) {
-      return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line with a helpful hint for the current board question, but do not reveal the answer or exact choice.";
-    }
-    if (intent === "report") {
-      return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line about the class report or recent class.";
-    }
-    if (intent === "lounge") {
-      return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line as part of the lounge conversation.";
-    }
-    return "The player said: " + playerLine + contextLine + " Respond in 1 short in-character line and keep the room moving.";
-  }
   async function runPlayerChatTurn(intent, extraContext) {
     const manualTurn = turnController.beginManual();
     if (!manualTurn) return;
     try {
-      const playerLine = await generatePlayerChatLine(intent);
-      appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
-      const responder = pickChatResponder();
+      if (!teacherChatEnabled()) {
+        const playerLine = playerChatLine(intent);
+        appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
+        appendSystem(intent === "hint" ? "Answer the board to continue. Connect AI for teacher hints." : "Connect AI for teacher replies.");
+        return;
+      }
+      const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
+      const streamGuard = turnController.nextStreamGuard(targetFaculty);
       const context = Object.assign({}, extraContext || {}, {
         grade: lastTelemetry && lastTelemetry.current_grade,
         intent: playerChatIntentForServer(intent),
-        playerLine,
       });
-      if (aiEnabled && responder.kind === "student") {
-        await fireStudentChime({
-          situation: intent === "hint" ? "player-asked-hint" : "player-chat",
-          note: playerChatNote(intent, playerLine),
-          playerText: playerLine,
-          grade: lastTelemetry && lastTelemetry.current_grade,
-          faculty: lastTelemetry && lastTelemetry.faculty,
-          delayMs: 500,
-          studentId: responder.student.id,
-          bypassCooldown: true,
-          recordPlayerText: intent !== "class",
-        });
-        if (intent !== "class") return;
-      }
-      if (teacherChatEnabled()) {
-        await runAgentTurn("manual", context, { force: true });
-      } else {
-        appendSystem(intent === "hint" ? "Answer the board to continue. Connect AI for teacher hints." : "Connect AI for teacher replies.");
-      }
+      const r = await apiFetch("/api/apps/ruby-high/chat/room-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
+        body: JSON.stringify({ faculty: targetFaculty, context, clientTurnSeq: streamGuard.streamSeq }),
+      });
+      await consumeSseStream(r, streamGuard);
     } finally {
       manualTurn.finish();
     }
@@ -11385,6 +11323,23 @@ export function runViewerClient(bootstrap) {
         if (event === "speaker") {
           speaker = teacherInfo(parsed.facultyId);
           streamMsgEl = null; // force a new bubble for the new speaker
+        } else if (event === "player-line") {
+          const text = parsed && parsed.text ? String(parsed.text) : "";
+          if (text) appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
+          streamMsgEl = null;
+        } else if (event === "student") {
+          const student = parsed && parsed.student ? parsed.student : {};
+          const line = parsed && parsed.line ? String(parsed.line) : "";
+          if (line) {
+            appendMsg({
+              kind: "student",
+              name: student.name || "Student",
+              body: line,
+              color: student.color || "#52c673",
+              studentId: student.id || "",
+            });
+          }
+          streamMsgEl = null;
         } else if (event === "delta") {
           if (!streamMsgEl) {
             streamMsgEl = appendMsg({ kind: "teacher", name: speaker.name, body: "", color: speaker.accent, facultyId: speaker.facultyId });

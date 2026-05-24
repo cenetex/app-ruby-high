@@ -30,6 +30,13 @@ import {
 } from "./services/privy-auth.js";
 import { verifyHallPassCardBurn } from "./services/hall-pass-nfts.js";
 import {
+  guestAccessStateForSession,
+  guestAccessViolation,
+  guestCanAccessFaculty,
+  guestTargetFacultyForTool,
+  type GuestAccessState,
+} from "./services/guest-access.js";
+import {
   highestScoringFaculty,
   maybeUploadPortrait,
   renderCharacterPortrait,
@@ -941,6 +948,104 @@ async function generatePlayerLine(args: {
   return line;
 }
 
+function fallbackPlayerLine(intent: PlayerChatIntent): string {
+  if (intent === "hint") return "Can someone give me the first clue without saying it outright?";
+  if (intent === "report") return "Okay, I need a second with that one. What did everyone notice?";
+  if (intent === "lounge") return "Wait, what did you mean by that?";
+  return "I'm ready. What's the room looking at next?";
+}
+
+function playerChatContextNote(state: QuizState, intent: PlayerChatIntent, playerLine: string): string {
+  const current = state.current;
+  const reveal = state.lastReveal;
+  const contextBits: string[] = [];
+  if (current?.prompt) contextBits.push(`board: ${clipped(current.prompt, 140)}`);
+  if (reveal?.questionPrompt) {
+    contextBits.push(
+      `recent result: ${
+        reveal.wasCorrect ? "correct" : reveal.forfeit ? "timeout" : "missed"
+      } on ${clipped(reveal.questionPrompt, 100)}`,
+    );
+  }
+  const contextLine = contextBits.length ? ` Context: ${contextBits.join(" | ")}.` : "";
+  if (intent === "hint" && current) {
+    return `The player said: ${playerLine}${contextLine} Respond in 1 short in-character line with a helpful hint for the current board question, but do not reveal the answer or exact choice.`;
+  }
+  if (intent === "report") {
+    return `The player said: ${playerLine}${contextLine} Respond in 1 short in-character line about the class report or recent class.`;
+  }
+  if (intent === "lounge") {
+    return `The player said: ${playerLine}${contextLine} Respond in 1 short in-character line as part of the lounge conversation.`;
+  }
+  return `The player said: ${playerLine}${contextLine} Respond in 1 short in-character line and keep the room moving.`;
+}
+
+function roomStudentsForTurn(state: QuizState, faculty: string): StudentCharacter[] {
+  if (!state.currentGrade || faculty === "lounge") return [];
+  const room = roomForFacultyForSession(state, faculty);
+  if (!room?.teaches) return [];
+  const roster = state.npcRosters[state.currentGrade] ?? [];
+  return roster
+    .filter((npc) => npc.currentRoom === room.id)
+    .map((npc) => STUDENTS[npc.id])
+    .filter((student): student is StudentCharacter => !!student);
+}
+
+function pickRoomTurnResponder(state: QuizState, faculty: string): { kind: "teacher" } | { kind: "student"; student: StudentCharacter } {
+  const students = roomStudentsForTurn(state, faculty);
+  if (students.length > 0 && Math.random() < 0.5) {
+    return { kind: "student", student: students[Math.floor(Math.random() * students.length)] ?? students[0]! };
+  }
+  return { kind: "teacher" };
+}
+
+function manualClassroomTurnPlan(args: {
+  ruby: RubyHighService;
+  sessionId: string;
+  faculty: string;
+  intent?: PlayerChatIntent;
+  playerLine?: string;
+}): {
+  classReportBlocksBoard: boolean;
+  disableToolsForTurn: boolean;
+  directive: string;
+} {
+  const bank = args.ruby.questionBankStatus(args.sessionId, args.faculty);
+  const classReportControlsBoard = classReportOwnsBoard(bank);
+  const manualAdvanceIntent = args.intent === "advance";
+  const classReportBlocksBoard = classReportControlsBoard && !manualAdvanceIntent;
+  const schedulerControlsBoard = !classReportBlocksBoard && schedulerOwnsBoard(bank);
+  const state = args.ruby.getOrCreate(args.sessionId);
+  const playerName = state.character?.name ?? "The player";
+  let disableToolsForTurn = shouldDisableTools({ trigger: "manual", schedulerControlsBoard, classReportBlocksBoard });
+  let directive = "";
+  if (args.intent === "hint") {
+    disableToolsForTurn = true;
+    directive = args.playerLine
+      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.`
+      : "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
+  } else if (args.playerLine) {
+    if (args.intent === "report") disableToolsForTurn = true;
+    directive = args.intent === "report" || classReportBlocksBoard
+      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
+      : args.intent === "advance" && schedulerControlsBoard
+      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
+      : args.intent === "advance"
+      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character in ONE short sentence, then put a fresh challenge on the board. ${requiredNextBoardInstruction(bank, "Call pick_from_bank exactly once to put the next scheduled question on the board.")}`
+      : schedulerControlsBoard
+      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
+      : `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
+  } else {
+    if (args.intent === "report") disableToolsForTurn = true;
+    directive = args.intent === "report" || classReportBlocksBoard
+      ? `The player pressed Chat while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
+      : schedulerControlsBoard
+      ? `The player pressed Chat to move the room forward. Follow up on the last exchange, explain the current or recent board if useful, or keep the scene moving. ${schedulerBoundaryInstruction(bank)}`
+      : `The player pressed Chat to move the room forward. Either follow up on the last exchange, or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
+  }
+  return { classReportBlocksBoard, disableToolsForTurn, directive };
+}
+
 export interface ChatRouteContext {
   method: string;
   pathname: string;
@@ -1464,6 +1569,40 @@ function requireSession(
   return { token, apiKey: readApiKey(ctx, ruby, stateKey), record, stateKey };
 }
 
+function guestAccessForRecord(
+  ruby: RubyHighService,
+  stateKey: string,
+  record: AuthRecord | null | undefined,
+): GuestAccessState | null {
+  return guestAccessStateForSession({ record, ruby, sessionId: stateKey });
+}
+
+function rejectGuestViolation(
+  ctx: ChatRouteContext,
+  violation: ReturnType<typeof guestAccessViolation>,
+): boolean {
+  if (!violation) return false;
+  ctx.error(ctx.res, violation.message, violation.status);
+  return true;
+}
+
+function guestToolAccessGuard(
+  ruby: RubyHighService,
+  sessionId: string,
+  guestAccess: GuestAccessState | null,
+): ((args: {
+  tool: string;
+  args: Record<string, unknown>;
+  agentSessionId: string;
+}) => string | null) | undefined {
+  if (!guestAccess) return undefined;
+  return ({ tool, args, agentSessionId }) => {
+    const state = ruby.getOrCreate(agentSessionId || sessionId);
+    const facultyId = guestTargetFacultyForTool({ state, tool, toolArgs: args });
+    return guestAccessViolation({ guestAccess, facultyId })?.message ?? null;
+  };
+}
+
 function canonicalFacultyForRoute(ruby: RubyHighService, sessionId: string, requested?: string | null): string {
   const state = ruby.getOrCreate(sessionId);
   const raw = requested && requested.trim().length > 0 ? requested.trim() : state.faculty;
@@ -1839,13 +1978,20 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.json(ctx.res, { authed: false, history: [] });
       return true;
     }
-    const faculty = canonicalFacultyForRoute(ruby, auth.stateKeyForRecord(record), requestedFaculty);
+    const stateKey = auth.stateKeyForRecord(record);
+    const guestAccess = guestAccessForRecord(ruby, stateKey, record);
+    const requested = canonicalFacultyForRoute(ruby, stateKey, requestedFaculty);
+    const fallbackFaculty = guestAccess?.allowedFacultyIds.has("ruby")
+      ? "ruby"
+      : guestAccess?.dailyFacultyId ?? "ruby";
+    const faculty = guestAccess && !guestCanAccessFaculty(guestAccess, requested)
+      ? fallbackFaculty
+      : requested;
     const messages = chat.history({ sessionToken: token, faculty });
     // History is bucketed by the cookie; the X-Openrouter-Key header decides
     // whether the client is "authed" for chat actions. Both can be present
     // independently — a fresh tab might have a cookie from a prior session
     // and want history but not have a key yet (or vice versa).
-    const stateKey = auth.stateKeyForRecord(record);
     const entitlements = hostedEntitlementStatus({ ruby, sessionId: stateKey });
     ctx.json(ctx.res, {
       authed: !!readApiKey(ctx, ruby, stateKey),
@@ -1863,7 +2009,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    const { token, apiKey, record, stateKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -1875,6 +2021,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       | { faculty?: string; message?: string; model?: string }
       | null;
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const guestAccess = guestAccessForRecord(ruby, stateKey, record);
+    if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
       ctx.error(ctx.res, "Connect AI first for this teacher.", 401);
       return true;
@@ -1897,10 +2045,239 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         userMessage: message,
         model: body?.model,
         disableTools: schedulerOwnsBoard(bank),
+        toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
       })) {
         send(ev.type, ev);
       }
     } catch (err) {
+      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      end();
+    }
+    return true;
+  }
+
+  // Chat-button room turn. The server owns the full sequence: generate the
+  // player's avatar line, record it once in the room history, then let either
+  // a classmate or the teacher respond against the same turn ledger.
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/room-turn`) {
+    const cred = requireAuth(ctx, auth, ruby);
+    if (!cred) {
+      ctx.error(ctx.res, "Not authenticated. Connect AI first.", 401);
+      return true;
+    }
+    const { token, apiKey, record, stateKey } = cred;
+    const rlKey = rateLimitKey(ctx, token);
+    if (!CHAT_LIMITER.take(rlKey)) {
+      reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as
+      | { faculty?: string; context?: { intent?: unknown }; clientTurnSeq?: unknown }
+      | null;
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const guestAccess = guestAccessForRecord(ruby, stateKey, record);
+    if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
+    const state = ruby.getOrCreate(sessionId);
+    const intent = cleanPlayerChatIntent(body?.context?.intent) ?? playerIntentForPhase(state);
+    const bankStatus = faculty === "lounge" ? null : ruby.questionBankStatus(sessionId, faculty);
+    const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
+    const { send, end } = openSse(ctx.res);
+
+    try {
+      if (isStaleChatEvent()) {
+        send("done", { type: "done", finishReason: "stale-turn" });
+        return true;
+      }
+      let playerLine: string;
+      try {
+        playerLine = await generatePlayerLine({
+          apiKey,
+          state,
+          faculty,
+          intent,
+          history: chat.history({ sessionToken: token, faculty }),
+          bankStatus,
+        });
+      } catch (err) {
+        if (!state.character) throw err;
+        log.event("chat.room-turn-player-line-fallback", {
+          faculty,
+          intent,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+        playerLine = fallbackPlayerLine(intent);
+      }
+      if (isStaleChatEvent()) {
+        send("done", { type: "done", finishReason: "stale-turn" });
+        return true;
+      }
+      send("player-line", { text: playerLine, intent });
+      const historyFaculty = faculty === "lounge" ? "lounge" : faculty;
+      chat.appendPlayerMessage({ sessionToken: token, faculty: historyFaculty }, playerLine);
+
+      if (isStaleChatEvent()) {
+        send("done", { type: "done", finishReason: "stale-turn" });
+        return true;
+      }
+
+      const responder = pickRoomTurnResponder(ruby.getOrCreate(sessionId), faculty);
+      if (faculty !== "lounge" && responder.kind === "student") {
+        const freshState = ruby.getOrCreate(sessionId);
+        const classmateNames = roomStudentsForTurn(freshState, faculty)
+          .filter((s) => s.id !== responder.student.id)
+          .map((s) => s.name);
+        let teacherSaid: string | undefined;
+        const history = chat.history({ sessionToken: token, faculty });
+        for (let i = history.length - 1; i >= 0; i--) {
+          const m = history[i];
+          if (m.role === "assistant" && m.content && m.content.trim()) {
+            teacherSaid = m.content.trim();
+            break;
+          }
+        }
+        const situation = intent === "hint" ? "player-asked-hint" : "player-chat";
+        let line: string;
+        try {
+          line = await generateStudentLine({
+            apiKey,
+            student: responder.student,
+            situation,
+            note: playerChatContextNote(freshState, intent, playerLine),
+            faculty,
+            playerName: freshState.character?.name,
+            classmateNames,
+            teacherSaid,
+            playerText: playerLine,
+          });
+        } catch (err) {
+          log.event("chat.room-turn-student-line-fallback", {
+            faculty,
+            studentId: responder.student.id,
+            intent,
+            reason: err instanceof Error ? err.message : String(err),
+          });
+          line = fallbackStudentChime({
+            student: responder.student,
+            situation,
+            playerName: freshState.character?.name,
+            teacherSaid,
+          });
+        }
+        if (isStaleChatEvent()) {
+          send("done", { type: "done", finishReason: "stale-turn" });
+          return true;
+        }
+        send("student", {
+          student: { id: responder.student.id, name: responder.student.name, color: responder.student.color },
+          line,
+        });
+        if (line) {
+          chat.appendEvent(
+            { sessionToken: token, faculty },
+            { kind: "chime", text: `${responder.student.name} (classmate) chimed in: "${line}"` },
+          );
+        }
+        if (intent !== "advance") {
+          send("done", { type: "done", finishReason: "student-response" });
+          return true;
+        }
+      }
+
+      if (faculty === "lounge") {
+        const loungeState = ruby.getOrCreate(sessionId);
+        const teacherIds = loungeTeacherIdsForState(loungeState);
+        const speaker = pickNextLoungeSpeaker(chat, token, teacherIds);
+        const loungeSystem = loungeSystemContext(loungeState, teacherIds);
+        send("speaker", { facultyId: speaker });
+        for await (const ev of chat.send({
+          apiKey,
+          sessionToken: token,
+          agentSessionId: sessionId,
+          faculty: "lounge",
+          speakerFacultyId: speaker,
+          bucketKey: "lounge",
+          disableTools: true,
+          extraSystemContext: loungeSystem,
+          systemEventNote: "The student just spoke in the lounge. Reply to them directly in character in 1-2 short sentences, then keep the faculty-room scene moving.",
+          maxTokens: 220,
+          isStale: isStaleChatEvent,
+        })) {
+          send(ev.type, ev);
+        }
+        return true;
+      }
+
+      const plan = manualClassroomTurnPlan({ ruby, sessionId, faculty, intent, playerLine });
+      send("speaker", { facultyId: faculty });
+      let questionPosted = false;
+      let handoffFired = false;
+      for await (const ev of chat.send({
+        apiKey,
+        sessionToken: token,
+        agentSessionId: sessionId,
+        faculty,
+        disableTools: plan.disableToolsForTurn,
+        allowOpinionTool: intent !== "advance",
+        systemEventNote: plan.directive,
+        isStale: isStaleChatEvent,
+        toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
+      })) {
+        if (ev.type === "tool") {
+          if (toolPlacedFreshQuestion(ev)) questionPosted = true;
+          if (ev.tool === "handoff_faculty" && ev.result.ok) handoffFired = true;
+        }
+        send(ev.type, ev);
+      }
+
+      const manualAdvanceNeedsFreshQuestion = intent === "advance" && !plan.classReportBlocksBoard;
+      if (manualAdvanceNeedsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {
+        const latestBank = ruby.questionBankStatus(sessionId, faculty);
+        let fallbackPosted = false;
+        if (scheduledPickAvailable(latestBank)) {
+          try {
+            const nextState = ruby.pickAndPose(sessionId, { faculty });
+            send("tool", {
+              tool: "pick_from_bank",
+              args: { faculty },
+              result: { ok: true, message: "fallback: auto-posed next question (model narrated manual without tool)" },
+              state: nextState,
+            });
+            fallbackPosted = true;
+          } catch (err) {
+            log.event("chat.bank-exhausted", { faculty, trigger: "room-turn", reason: err instanceof Error ? err.message : String(err) });
+          }
+        } else {
+          log.event("chat.bank-exhausted", { faculty, trigger: "room-turn", reason: "active faculty bank exhausted before fallback" });
+        }
+        if (!fallbackPosted) {
+          const noQuestionNote = latestBank.mode === "srs"
+            ? `No scheduled deck card is available for ${latestBank.displayName} right now.`
+            : `No scheduled Ruby High card is available for ${latestBank.displayName} right now.`;
+          const noQuestionDirective = latestBank.mode === "srs"
+            ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. Call pose_question exactly once for a custom practice challenge."
+            : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question.";
+          chat.appendEvent(
+            { sessionToken: token, faculty },
+            { kind: "note", text: noQuestionNote },
+          );
+          for await (const ev of chat.send({
+            apiKey,
+            sessionToken: token,
+            agentSessionId: sessionId,
+            faculty,
+            systemEventNote: noQuestionDirective,
+            allowOpinionTool: false,
+            isStale: isStaleChatEvent,
+            toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
+          })) {
+            send(ev.type, ev);
+          }
+        }
+      }
+    } catch (err) {
+      log.error("chat.room-turn-failed", err, { faculty });
       send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
       end();
@@ -1914,7 +2291,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated. Connect AI first.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    const { token, apiKey, record, stateKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -1925,6 +2302,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       | null;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const guestAccess = guestAccessForRecord(ruby, stateKey, record);
+    if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     const state = ruby.getOrCreate(sessionId);
     const intent = cleanPlayerChatIntent(body?.context?.intent) ?? playerIntentForPhase(state);
     const bankStatus = faculty === "lounge" ? null : ruby.questionBankStatus(sessionId, faculty);
@@ -1954,7 +2333,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    const { token, apiKey, record, stateKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -1965,6 +2344,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       | null;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const guestAccess = guestAccessForRecord(ruby, stateKey, record);
+    if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
       ctx.error(ctx.res, "Connect AI first for this teacher.", 401);
       return true;
@@ -2145,33 +2526,15 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         ? `Nobody answered the question in time. React briefly as yourself — call on someone by name, make it a moment — then acknowledge the class report on the board. Do not call tools.`
         : `Nobody answered the question in time. This is your DM moment: call on a student by name, make it a beat, then put the next question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank for the next question.")}`;
     } else if (trigger === "manual") {
-      const intent = contextIntent;
-      const state = ruby.getOrCreate(sessionId);
-      const playerName = state.character?.name ?? "The player";
-      if (intent === "hint") {
-        disableToolsForTurn = true;
-        directive = playerLine
-          ? `${playerName} just said: "${clipped(playerLine, 260)}" Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.`
-          : "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
-      } else if (playerLine) {
-        if (intent === "report") disableToolsForTurn = true;
-        directive = intent === "report" || classReportBlocksBoard
-          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
-          : intent === "advance" && schedulerControlsBoard
-          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
-          : intent === "advance"
-          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character in ONE short sentence, then put a fresh challenge on the board. ${requiredNextBoardInstruction(bank, "Call pick_from_bank exactly once to put the next scheduled question on the board.")}`
-          : schedulerControlsBoard
-          ? `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
-          : `${playerName} just said: "${clipped(playerLine, 260)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
-      } else {
-        if (intent === "report") disableToolsForTurn = true;
-        directive = intent === "report" || classReportBlocksBoard
-          ? `The player pressed Chat while today's class report is on the blackboard. Discuss the result or the recent class in character. Do not call tools or put another question on the board.`
-          : schedulerControlsBoard
-          ? `The player pressed Chat to move the room forward. Follow up on the last exchange, explain the current or recent board if useful, or keep the scene moving. ${schedulerBoundaryInstruction(bank)}`
-          : `The player pressed Chat to move the room forward. Either follow up on the last exchange, or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
-      }
+      const manualPlan = manualClassroomTurnPlan({
+        ruby,
+        sessionId,
+        faculty,
+        intent: contextIntent,
+        playerLine,
+      });
+      disableToolsForTurn = manualPlan.disableToolsForTurn;
+      directive = manualPlan.directive;
     }
 
     try {
@@ -2182,7 +2545,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       for await (const ev of chat.send({
         apiKey,
         sessionToken: token,
-        agentSessionId: getSessionId(runtime, ctx.cookieHeader),
+        agentSessionId: sessionId,
         faculty,
         userMessage: playerLine,
         disableTools: disableToolsForTurn,
@@ -2190,6 +2553,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         extraSystemContext,
         systemEventNote: directive,
         isStale: isStaleChatEvent,
+        toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
       })) {
         if (ev.type === "tool") {
           if (toolPlacedFreshQuestion(ev)) questionPosted = true;
@@ -2243,6 +2607,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             systemEventNote: noQuestionDirective,
             allowOpinionTool: false,
             isStale: isStaleChatEvent,
+            toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
           })) {
             send(ev.type, ev);
           }
@@ -2266,7 +2631,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Not authenticated.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    const { token, apiKey, record, stateKey } = cred;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
@@ -2287,6 +2652,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const state = ruby.getOrCreate(sessionId);
     const faculty = body?.faculty ? canonicalFacultyForRoute(ruby, sessionId, body.faculty) : undefined;
+    const guestAccess = guestAccessForRecord(ruby, stateKey, record);
+    if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     const playerName = state.character?.name;
     let classmateNames: string[] = [];
     if (state.currentGrade && state.faculty) {
@@ -2379,8 +2746,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const token = sessionToken;
-    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const sessionId = auth.stateKeyForRecord(sessionRecord);
     const apiKey = readApiKey(ctx, ruby, sessionId);
+    const guestAccess = guestAccessForRecord(ruby, sessionId, sessionRecord);
+    const activeFaculty = canonicalFacultyForRoute(ruby, sessionId, ruby.getOrCreate(sessionId).faculty);
+    if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: activeFaculty }))) return true;
     const rlKey = rateLimitKey(ctx, token);
     if (!CHAT_LIMITER.take(rlKey)) {
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));

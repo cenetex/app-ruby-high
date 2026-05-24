@@ -304,6 +304,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     ctx.error(ctx.res, "RubyHighService unavailable", 503);
     return true;
   }
+  const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
   const faculty = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
   const stateKey = getSessionId(runtime, ctx.cookieHeader);
 
@@ -323,7 +324,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.method === "POST" && subroute === "command") {
-    return handleCommandRoute({ ctx, ruby, faculty, runtime, stateKey });
+    return handleCommandRoute({ ctx, ruby, faculty, runtime, stateKey, auth });
   }
 
   return false;
