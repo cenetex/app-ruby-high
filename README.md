@@ -2,7 +2,7 @@
 
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
-Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
+Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
 
 **For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
 
@@ -18,6 +18,31 @@ npm run dev:server
 ```
 
 Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys still live in localStorage; the server never holds them. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
+
+## Ruby High 2.0 C wedge
+
+The first C implementation lives in `ruby2/c`. It is a deterministic engine
+and native SDL slice, not the final sokol client yet. It proves fixed-size
+state, effect payload reduction, the Source/Sense/Sync/Signal disciplines,
+RPN branch gates, item validation, empty-start inventory slots, whole-campus
+pointcrawl navigation, ranker-curated two-button action trays with four-button
+class moments, two-option conversation branches, Yearbook candidate eviction,
+archetype resolution, companion locks, gameplay divergence tests, and the first
+Captain Null trace resolver. `play-llm` adds the local Ollama
+vertical slice: deterministic approach-choice gameplay with bounded
+speech-bubble lines from `ruby-high-local` and authored fallback copy if the
+model is unavailable or leaks analysis instead of JSON.
+
+```bash
+make -C ruby2/c test
+make -C ruby2/c gameplay-test
+make -C ruby2/c llm-test
+make -C ruby2/c run
+make -C ruby2/c play
+make -C ruby2/c play-llm
+make -C ruby2/c native-smoke
+make -C ruby2/c native-run
+```
 
 The standalone viewer is installable as a PWA from `/api/apps/ruby-high/viewer`. The service worker is scoped to `/api/apps/ruby-high/`, caches the shell and core assets, and keeps auth, chat, pack management, and session state requests network-only. Full offline gameplay still requires the Ruby High server because the authoritative school state lives there.
 
@@ -113,7 +138,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for Metaplex Core pack minting. |
-| `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs. Set via secrets only. |
+| `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs and Token Metadata card NFTs. Also drives creator attribution in served JSON metadata. Set via secrets only. |
 | `RUBY_HIGH_PACK_REVEAL_SECRET` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Server-only HMAC secret for deterministic pack-to-card mapping. Set a stable production secret so the mapping remains fair and non-public. |
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |
 | `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` | — | Metaplex Token Metadata collection mint for Ruby High card NFTs. Create once with `npm run nft:create-card-collection`, then set this value so cards verify into `Ruby High`. |
@@ -173,7 +198,9 @@ Solana purchases are separate from Stripe and use the configured SPL token to mi
 - Every built-in pack defaults to `100000` `$RUBY`.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
 - Create the card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` to the printed address so card NFTs verify into `Ruby High`.
-- Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Card identities are HMAC-selected from the server-only `RUBY_HIGH_PACK_REVEAL_SECRET` mapping.
+- Regenerate wallet-facing card crops with `npm run nft:crop-cards` after changing source card art. Items are square, locations are wide, and rare-teacher avatars are tall; `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <ids>` refreshes Grok source art through OpenRouter before cropping. Revealed card metadata uses plain cropped PNGs plus explicit media/aspect/source traits, `properties.files`, creator attribution, and `seller_fee_basis_points: 0` for marketplace compatibility.
+- Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Pack/card records and receipts now carry `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`, and reveal-time `revealSeed` provenance; see [`NFT_PROVABLY_FAIR_V1_1.md`](./NFT_PROVABLY_FAIR_V1_1.md) for the published algorithm.
+- The current v1.1 entropy source is an auditable server-commit bridge, not decentralized randomness. The next hardening step is a Solana pack-opening program that commits the open request and payment/authority lock first, then settles from Switchboard randomness.
 - Wallet-signed pack checkout is payment-only: the prepared transaction creates the treasury ATA if needed and transfers the configured SPL token with the Ruby High payment reference. The server verifies the payment and mints the Metaplex Core pack NFT afterward.
 - Each face-down card is minted and revealed one at a time by the Ruby High mint authority to the connected wallet. The player wallet is the recipient, not the mint fee payer.
 - Owner-signed card burns are prepared one card per wallet prompt and preflighted before signing; `POST /api/apps/ruby-high/billing/card-burn` verifies the burn signature and credits 5 Hall Passes per burned card.

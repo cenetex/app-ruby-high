@@ -23,7 +23,7 @@ let storePath: string;
 let activeRuby: RubyHighService | null = null;
 
 const TEACHING_FACULTY_IDS = ["ruby", "sally-science", "professor-edward"] as const;
-const REQUIRED_CLASSES_BY_GRADE: Record<Grade, number> = { "9": 3, "10": 3, "11": 3, "12": 3 };
+const REQUIRED_CLASSES_BY_GRADE: Record<Grade, number> = { "9": 1, "10": 1, "11": 2, "12": 3 };
 
 beforeEach(async () => {
   resetActivePack();
@@ -527,13 +527,13 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
 });
 
 describe("Per-class letter-grade gate — streak alone is not enough", () => {
-  it("requires the weekly guest course grade before opening the grade ceremony", async () => {
+  it("requires the weekly guest course grade before opening the Senior ceremony", async () => {
     const { ruby, faculty } = await makeServices();
     registerGuestPack();
     const sid = "test:guest-class-gate";
-    attachCharacter(ruby, sid, "9", false);
+    attachCharacter(ruby, sid, "12", false);
     const ch = ruby.getOrCreate(sid).character!;
-    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.streak = { grade: "12", count: 3, lastDate: "2026-05-06" };
 
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
@@ -542,11 +542,11 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
 
     markFacultyMastered(ruby, faculty, sid, "guest");
-    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("12");
   });
 
-  it("Freshman: a passing class ticks the streak, but all classes must reach C before advancement triggers", async () => {
-    const { ruby, faculty } = await makeServices();
+  it("Freshman: a passing Ruby class ticks the streak and opens advancement", async () => {
+    const { ruby } = await makeServices();
     const sid = "test:per-class-gate";
     attachCharacter(ruby, sid, "9", false);
     const ch0 = ruby.getOrCreate(sid).character!;
@@ -556,7 +556,7 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
     // internally for the daily-key) sees the test's time-travel.
     const realNow = Date.now;
     try {
-      completeClassOnDate(ruby, sid, "sally-science", "2026-05-04T18:00:00Z");
+      completeClassOnDate(ruby, sid, "ruby", "2026-05-04T18:00:00Z");
       expect(ruby.getOrCreate(sid).currentGrade).toBe("9");
     } finally {
       Date.now = realNow;
@@ -564,34 +564,28 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
     const final = ruby.getOrCreate(sid);
     expect(final.currentGrade).toBe("9");
     expect(final.character!.streak).toEqual({ grade: "9", count: 1, lastDate: "2026-05-04" });
-    expect(final.character!.pendingGraduation?.grade).toBeUndefined();
-
-    markFacultyMastered(ruby, faculty, sid, "ruby");
-    markFacultyMastered(ruby, faculty, sid, "professor-edward");
-    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
-    markFacultyMastered(ruby, faculty, sid, "sally-science");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("9");
     ruby.completeGraduation(sid, { kind: "advantage" });
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
   });
 
-  it("marks the ceremony ready as soon as the final class reaches C after the streak is already met", async () => {
+  it("marks the ceremony ready as soon as the Sophomore elective reaches C after the streak is already met", async () => {
     const { ruby, faculty } = await makeServices();
     const sid = "test:advance-when-class-gate-lands";
-    attachCharacter(ruby, sid, "9", false);
+    attachCharacter(ruby, sid, "10", false);
     const ch = ruby.getOrCreate(sid).character!;
-    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.streak = { grade: "10", count: 1, lastDate: "2026-05-04" };
+    ch.graduationClassrooms = { "10": ["ruby", "sally-science"] };
     markFacultyMastered(ruby, faculty, sid, "ruby");
-    markFacultyMastered(ruby, faculty, sid, "sally-science");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
-    markFacultyMastered(ruby, faculty, sid, "professor-edward");
+    markFacultyMastered(ruby, faculty, sid, "sally-science");
 
     const after = ruby.getOrCreate(sid);
-    expect(after.currentGrade).toBe("9");
-    expect(after.character!.pendingGraduation?.grade).toBe("9");
-    expect(after.character!.yearbook.some((y) => y.grade === "9")).toBe(false);
+    expect(after.currentGrade).toBe("10");
+    expect(after.character!.pendingGraduation?.grade).toBe("10");
+    expect(after.character!.yearbook.some((y) => y.grade === "10")).toBe(false);
     ruby.completeGraduation(sid, { kind: "advantage" });
-    expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
+    expect(ruby.getOrCreate(sid).currentGrade).toBe("11");
   });
 });
 
@@ -662,13 +656,12 @@ describe("Streak + grade advancement", () => {
       { grade: "11", completedAt: 3, summary: { correct: 3, total: 3 } },
     ];
 
-    // Senior's daily-class counter requires 4 dates. One passed daily class
+    // Senior's daily-class counter requires 3 dates. One passed daily class
     // per date ticks the legacy streak field.
     const days = [
       "2026-05-04T18:00:00Z", // Mon
       "2026-05-05T18:00:00Z", // Tue
       "2026-05-06T18:00:00Z", // Wed
-      "2026-05-07T18:00:00Z", // Thu
     ];
     const realNow = Date.now;
     try {
@@ -699,7 +692,7 @@ describe("Streak + grade advancement", () => {
     const state = ruby.getOrCreate(sid);
     state.completedGrades = ["9", "10", "11"];
     const ch = state.character!;
-    ch.streak = { grade: "12", count: 4, lastDate: "2026-05-07" };
+    ch.streak = { grade: "12", count: 3, lastDate: "2026-05-06" };
     ch.yearbook = [
       { grade: "9",  completedAt: 1, summary: { correct: 1, total: 1 } },
       { grade: "10", completedAt: 2, summary: { correct: 2, total: 2 } },
@@ -808,14 +801,14 @@ describe("Streak + grade advancement", () => {
       const freshmanSid = "test:first-bell-freshman-a-page";
       attachCharacter(ruby, freshmanSid, "9", false);
       Math.random = () => 0.99;
-      completeClassOnDate(ruby, freshmanSid, "sally-science", "2026-05-04T18:00:00Z");
+      completeClassOnDate(ruby, freshmanSid, "ruby", "2026-05-04T18:00:00Z");
       const freshman = ruby.getOrCreate(freshmanSid);
-      expect(freshman.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([2]);
+      expect(freshman.comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([1]);
       expect(freshman.schoolEvents.some((e) =>
         e.kind === "comic.page-unlocked" &&
-        e.pageNumber === 2 &&
+        e.pageNumber === 1 &&
         e.reason === "teacher-class-aced" &&
-        e.sourceId === "teacher:sally-science:grade:9"
+        e.sourceId === "teacher:ruby:grade:9"
       )).toBe(true);
 
       const freshmanMissSid = "test:first-bell-freshman-missed-no-page";
@@ -832,6 +825,9 @@ describe("Streak + grade advancement", () => {
 
       const juniorSid = "test:first-bell-junior-a-page";
       attachCharacter(ruby, juniorSid, "11", false);
+      ruby.getOrCreate(juniorSid).character!.graduationClassrooms = {
+        "11": ["ruby", "sally-science", "professor-edward"],
+      };
       completeClassOnDate(ruby, juniorSid, "professor-edward", "2026-05-07T18:00:00Z");
       expect(ruby.getOrCreate(juniorSid).comicCollection.unlockedPages.map((p) => p.pageNumber)).toEqual([6]);
     } finally {
@@ -954,6 +950,12 @@ describe("Streak + grade advancement", () => {
     expect(after.currentGrade).toBe("10");
     expect(after.character!.stats.head).toBe(3);
     expect(after.character!.yearbook[0]?.graduationReward).toEqual({ kind: "stat", stat: "head" });
+    expect(after.character!.yearbook[0]?.diploma).toMatchObject({
+      kind: "grade-diploma",
+      grade: "9",
+      title: "Ruby High 9th Grade Diploma",
+      imageUrl: expect.stringContaining("/assets/diplomas/ruby-high-9.png"),
+    });
     expect(() => ruby.completeGraduation(sid, { kind: "stat", stat: "head" })).toThrow(/No graduation ceremony/);
   });
 
@@ -968,6 +970,43 @@ describe("Streak + grade advancement", () => {
     ruby.completeGraduation(sid, { kind: "advantage" });
     expect(ruby.getOrCreate(sid).currentGrade).toBe("10");
     expect(ruby.advantageRollsRemaining(sid)).toEqual({ used: 0, cap: 4, remaining: 4 });
+  });
+
+  it("graduation photo reward seals the top teacher and top social student", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:graduation-photo-reward";
+    attachCharacter(ruby, sid, "9");
+    const ch = ruby.getOrCreate(sid).character!;
+    ch.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    ch.mashCard = emptyMashCard();
+    applyTick(ch.mashCard.cells.noor!, 1, "2026-05-04");
+    applyTick(ch.mashCard.cells.noor!, 1, "2026-05-05");
+    applyTick(ch.mashCard.cells.sami!, 1, "2026-05-05");
+    const rubyRecord = ch.dailyClasses?.["9:ruby:2000-01-01"];
+    if (rubyRecord) {
+      rubyRecord.scoreTotal = 210;
+      rubyRecord.correctCount = 1;
+      rubyRecord.letterGrade = "C";
+    }
+    const sallyRecord = ch.dailyClasses?.["9:sally-science:2000-01-01"];
+    if (sallyRecord) {
+      sallyRecord.scoreTotal = 300;
+      sallyRecord.correctCount = 3;
+      sallyRecord.letterGrade = "A";
+    }
+
+    ruby.getOrCreate(sid);
+    ruby.completeGraduation(sid, { kind: "photo" });
+    const entry = ruby.getOrCreate(sid).character!.yearbook[0]!;
+    expect(entry.graduationReward).toEqual({ kind: "photo" });
+    expect(entry.photo).toMatchObject({
+      kind: "graduation-photo",
+      grade: "9",
+      title: "9th Grade Graduation Photo",
+      teacher: { id: "sally-science", name: "Sally" },
+      student: { id: "noor", name: "Noor" },
+    });
+    expect(entry.diploma?.imageUrl).toContain("/assets/diplomas/ruby-high-9.png");
   });
 
   it("graduation class affinity converts the first miss in that class, once", async () => {

@@ -584,6 +584,7 @@ export async function mintHallPassCardNft(
 ): Promise<HallPassNftMintResult> {
   if (minterOverride) return minterOverride(card, ownerWalletAddress);
   const config = readMintConfig();
+  await assertHallPassMintAuthorityCapacity(1);
   const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
   const mint = await generateKeyPairSigner();

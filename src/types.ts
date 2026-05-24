@@ -90,20 +90,24 @@ export function legendariesPerDayFor(grade: Grade): number {
  *  hard-walling the player out of help on their first few questions. */
 export const ADVANTAGE_ROLLS_PER_GRADE = 3;
 
-/** Per-grade daily-class count: how many daily classes the player must pass
- *  to advance OUT of `grade`. Stored in the legacy `streak` field.
+/** Per-grade daily-class day count: how many distinct days of required
+ *  classroom progress the player must pass to advance OUT of `grade`.
+ *  Stored in the legacy `streak` field.
  *
  *    Freshman → 1 daily class
- *    Sophomore → 2 daily classes
- *    Junior → 3 daily classes
- *    Senior → 4 daily classes
+ *    Sophomore → 1 daily class
+ *    Junior → 2 daily classes
+ *    Senior → 3 daily classes
  *
- *  Combined with the per-subject grade gate, these are the two
+ *  Combined with the per-year classroom-count gate, these are the two
  *  gates a player must clear to advance years. */
 export function requiredStreakForGrade(grade: Grade): number {
-  const idx = GRADES.indexOf(grade);
-  if (idx === -1) return 1;
-  return idx + 1; // 9 → 1, 10 → 2, 11 → 3, 12 → 4
+  switch (grade) {
+    case "9": return 1;
+    case "10": return 1;
+    case "11": return 2;
+    case "12": return 3;
+  }
 }
 
 /** The daily-class counter also accelerates score payouts. A carried count of
@@ -712,7 +716,38 @@ export interface GraduationReady {
 export type GraduationReward =
   | { kind: "stat"; stat: keyof CharacterStats }
   | { kind: "advantage" }
-  | { kind: "affinity"; facultyId: string };
+  | { kind: "affinity"; facultyId: string }
+  | { kind: "photo" };
+
+export interface GradeDiplomaCollectible {
+  kind: "grade-diploma";
+  id: string;
+  grade: Grade;
+  title: string;
+  description: string;
+  imageUrl: string;
+  issuedAt: number;
+  assetVersion: string;
+}
+
+export interface GraduationPhotoCollectible {
+  kind: "graduation-photo";
+  id: string;
+  grade: Grade;
+  title: string;
+  description: string;
+  issuedAt: number;
+  teacher: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+  };
+  student: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+  };
+}
 
 export interface PendingRoll {
   stat: keyof CharacterStats;
@@ -890,6 +925,8 @@ export interface PlayerCharacter {
     arcAnswer?: string;
     subjectScores?: Record<string, { correct: number; total: number }>;
     graduationReward?: GraduationReward;
+    diploma?: GradeDiplomaCollectible;
+    photo?: GraduationPhotoCollectible;
     /** MASH superlatives stamped at the moment this year was sealed.
      *  Only the Senior entry typically carries the full set; earlier
      *  years carry just the axis they resolved. Optional for legacy
@@ -938,6 +975,9 @@ export interface PlayerCharacter {
   /** One classroom affinity per grade: the first miss in that class becomes
    *  a second-chance pass and then marks used. */
   classAffinity?: Partial<Record<Grade, { facultyId: string; used: boolean }>>;
+  /** Classrooms selected for the year progression gate. Freshman and Senior
+   *  are automatic; Sophomore/Junior fill as the player starts elective rooms. */
+  graduationClassrooms?: Partial<Record<Grade, string[]>>;
   /** One graded daily class per teacher per date. These records are the
    *  visible subject-standing source of truth; hidden card memory remains only
    *  the scheduler for which questions get asked. Keyed by

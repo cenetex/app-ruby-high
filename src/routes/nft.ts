@@ -788,7 +788,7 @@ function publicPackSyncErrorMessage(err: unknown): string {
 
 function publicNftErrorMessage(err: unknown): string {
   const raw = solanaErrorMessages(err).join(" ") || (err instanceof Error ? err.message : String(err));
-  if (/insufficient funds|Attempt to debit|0x1\b/i.test(raw)) {
+  if (/insufficient funds|insufficient lamports|Attempt to debit|0x1\b|balance is .* needs at least .* SOL/i.test(raw)) {
     return "Ruby High mint authority needs more SOL to mint this card.";
   }
   if (/Solana RPC failed with (?:429|5\d\d)|429|too many requests|rate.?limit/i.test(raw)) {

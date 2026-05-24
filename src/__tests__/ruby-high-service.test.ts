@@ -1154,6 +1154,7 @@ describe("RubyHighService Phase 1", () => {
     registerPack(pack, sid);
     ruby.setActivePackForSession(sid, pack.id);
     attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "12");
 
     for (let i = 0; i < 3; i++) {
       const state = ruby.pickAndPose(sid, { faculty: "sally-science" });
@@ -1176,10 +1177,11 @@ describe("RubyHighService Phase 1", () => {
     const { ruby } = await makeServices();
     const sid = "test:course-grade-streak";
     const state = attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "12");
     const facultyId = "sally-science";
     state.character!.dailyClasses = {
-      "9:sally-science:2026-05-01": completedClassRecord("9", facultyId, "2026-05-01", "A", 270),
-      "9:sally-science:2026-05-02": completedClassRecord("9", facultyId, "2026-05-02", "B", 240),
+      "12:sally-science:2026-05-01": completedClassRecord("12", facultyId, "2026-05-01", "A", 270),
+      "12:sally-science:2026-05-02": completedClassRecord("12", facultyId, "2026-05-02", "B", 240),
     };
 
     let bank = ruby.questionBankStatus(sid, facultyId);
@@ -1188,25 +1190,53 @@ describe("RubyHighService Phase 1", () => {
     expect(bank.completedClasses).toBe(2);
     expect(bank.requiredClasses).toBe(3);
 
-    state.character!.dailyClasses["9:sally-science:2026-05-03"] =
-      completedClassRecord("9", facultyId, "2026-05-03", "F", 0);
+    state.character!.dailyClasses["12:sally-science:2026-05-03"] =
+      completedClassRecord("12", facultyId, "2026-05-03", "F", 0);
     bank = ruby.questionBankStatus(sid, facultyId);
     expect(bank.grade).toBeUndefined();
     expect(bank.courseGrade).toBeUndefined();
     expect(bank.completedClasses).toBe(0);
 
-    state.character!.dailyClasses["9:sally-science:2026-05-04"] =
-      completedClassRecord("9", facultyId, "2026-05-04", "A", 270);
-    state.character!.dailyClasses["9:sally-science:2026-05-05"] =
-      completedClassRecord("9", facultyId, "2026-05-05", "B", 240);
-    state.character!.dailyClasses["9:sally-science:2026-05-06"] =
-      completedClassRecord("9", facultyId, "2026-05-06", "C", 210);
+    state.character!.dailyClasses["12:sally-science:2026-05-04"] =
+      completedClassRecord("12", facultyId, "2026-05-04", "A", 270);
+    state.character!.dailyClasses["12:sally-science:2026-05-05"] =
+      completedClassRecord("12", facultyId, "2026-05-05", "B", 240);
+    state.character!.dailyClasses["12:sally-science:2026-05-06"] =
+      completedClassRecord("12", facultyId, "2026-05-06", "C", 210);
     bank = ruby.questionBankStatus(sid, facultyId);
     expect(bank.grade).toBe("B");
     expect(bank.courseGrade).toBe("B");
     expect(bank.completedClasses).toBe(3);
     expect(bank.requiredClasses).toBe(3);
     expect(bank.averageScore).toBe(80);
+  });
+
+  it("lets Sophomore choose one elective room and keeps extra rooms as practice", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:sophomore-elective-choice";
+    attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "10");
+
+    expect(ruby.graduationGate(sid)).toMatchObject({
+      grade: "10",
+      requiredDays: 1,
+      requiredRooms: 2,
+      requiredFacultyIds: ["ruby"],
+      openElectiveSlots: 1,
+    });
+
+    let state = ruby.pickAndPose(sid, { faculty: "sally-science" });
+    expect(state.activeRound?.classSession?.mode).toBe("class");
+    expect(state.character?.graduationClassrooms?.["10"]).toEqual(["ruby", "sally-science"]);
+    expect(ruby.graduationGate(sid)).toMatchObject({
+      requiredFacultyIds: ["ruby", "sally-science"],
+      openElectiveSlots: 0,
+    });
+
+    ruby.submitAnswer(sid, state.current!.correct!);
+    ruby.clearBoard(sid);
+    state = ruby.pickAndPose(sid, { faculty: "professor-edward" });
+    expect(state.activeRound?.classSession?.mode).toBe("practice");
   });
 
   it("keeps successful class mastery credit normal while carrying a one-day streak", async () => {
@@ -1446,13 +1476,15 @@ describe("RubyHighService Phase 1", () => {
     registerPack(pack, sid);
     ruby.setActivePackForSession(sid, pack.id);
     attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "12");
 
     for (let i = 0; i < 3; i++) {
       const state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
-      expect(state.current?.id).toBe("level-easy");
+      const questionId = state.current?.id;
+      expect(questionId).toMatch(/^level-/);
       ruby.submitAnswer(sid, state.current!.correct!);
       const memory = ruby.getOrCreate(sid).cardMemory!;
-      memory["level-test-course::level-easy"]!.dueAt = Date.now() - 1;
+      memory[`level-test-course::${questionId}`]!.dueAt = Date.now() - 1;
     }
 
     const bank = ruby.questionBankStatus(sid, "level-test-course");
@@ -1460,7 +1492,6 @@ describe("RubyHighService Phase 1", () => {
     expect(bank.grade).toBeUndefined();
     expect(bank.completedClasses).toBe(1);
     expect(bank.requiredClasses).toBe(3);
-    expect(bank.masteredCount).toBe(1);
   });
 
   it("poses imported source cards as typed-answer questions and grades exact text", async () => {
@@ -1658,7 +1689,7 @@ describe("RubyHighService Phase 1", () => {
     expect(facultyB.bank("ruby")!.questions.some((q) => q.id === state.current?.id)).toBe(true);
   });
 
-  it("paces Ruby homeroom as a daily Social deck instead of three class cards up front", async () => {
+  it("starts Ruby homeroom with direct class cards", async () => {
     const { ruby } = await makeServices();
     const sid = "test:ruby-social-deck";
     ruby.selectGrade(sid, "10");
@@ -1686,14 +1717,14 @@ describe("RubyHighService Phase 1", () => {
       if (i < 9) ruby.clearBoard(sid);
     }
 
-    expect(roles).toEqual(["practice", "practice", "class", "social", "practice", "practice", "class", "practice", "practice", "class"]);
+    expect(roles).toEqual(["class", "class", "class", "practice", "practice", "practice", "practice", "practice", "practice", "practice"]);
     const record = ruby.getOrCreate(sid).character!.dailyClasses![`10:ruby:${dailyKey()}`]!;
     expect(record).toMatchObject({
       status: "complete",
       questionCount: 3,
-      practiceCount: 6,
-      socialCount: 1,
     });
+    expect(record.practiceCount ?? 0).toBe(0);
+    expect(record.socialCount ?? 0).toBe(0);
   });
 
   it("persists an essay report when an opinion round is graded", async () => {

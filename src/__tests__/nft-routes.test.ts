@@ -622,6 +622,34 @@ describe("Hall Pass NFT routes", () => {
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
 
+  it("returns server mint authority errors for insufficient lamports preflight failures", async () => {
+    restoreMintBuilder?.();
+    restoreMintBuilder = setHallPassNftMinterForTest(async () => {
+      throw new Error("Transfer: insufficient lamports 1620352, need 15115600");
+    });
+    const stateKey = signInUser("mint-user-insufficient-lamports");
+    ruby.grantHallPassCards(stateKey, {
+      cardCount: 5,
+      idempotencyKey: "stripe:checkout:cs_mint_user_insufficient_lamports",
+      source: "stripe",
+    });
+    const card = ruby.mintableHallPassCards(stateKey)[0]!;
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-prepare",
+      cookie: "rh_session=mint-user-insufficient-lamports",
+      body: { cardId: card.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 502,
+      body: { error: "Ruby High mint authority needs more SOL to mint this card." },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((candidate) => candidate.mintAddress)).toHaveLength(0);
+  });
+
   it("returns retryable Solana RPC mint errors without mutating the card", async () => {
     restoreMintBuilder?.();
     restoreMintBuilder = setHallPassNftMinterForTest(async () => {

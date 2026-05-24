@@ -584,6 +584,7 @@ export const VIEWER_CSS = `
   }
   .channels-rail .report-bug-link {
     appearance: none;
+    display: block;
     background: transparent;
     border: none;
     color: var(--text-mute);
@@ -1348,6 +1349,31 @@ export const VIEWER_CSS = `
     font-size: 12px;
     font-weight: 800;
   }
+  .billing-costs .get-ruby-link {
+    text-decoration: none;
+    background: rgba(255, 75, 75, 0.14);
+    border-color: rgba(255, 224, 138, 0.5);
+  }
+  .billing-get-ruby-link {
+    display: inline-block;
+    width: fit-content;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: rgba(255, 75, 75, 0.14);
+    border: 1px solid rgba(255, 224, 138, 0.5);
+    color: #ffe08a;
+  }
+  .billing-get-ruby-link:hover {
+    background: rgba(255, 75, 75, 0.22);
+    color: #fff4c8;
+  }
+  .billing-costs .get-ruby-link:hover {
+    background: rgba(255, 75, 75, 0.22);
+    color: #fff4c8;
+  }
   .billing-products {
     display: grid;
     gap: 8px;
@@ -1419,6 +1445,12 @@ export const VIEWER_CSS = `
     color: var(--text-mute);
     font-size: 12px;
     line-height: 1.35;
+  }
+  .billing-payment-note-link {
+    margin-top: 8px;
+  }
+  .billing-payment-link {
+    justify-self: start;
   }
   .billing-solana-quote {
     grid-template-columns: minmax(0, 1fr);
@@ -1640,6 +1672,16 @@ export const VIEWER_CSS = `
     text-align: center;
     color: var(--text-soft);
     font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  #blackboard-empty-text {
+    width: min(100%, 560px);
+  }
+  #blackboard-empty-text:empty {
+    display: none;
   }
   .blackboard-panel[data-mode="needs-character"] .blackboard-empty {
     flex: 1;
@@ -1650,6 +1692,88 @@ export const VIEWER_CSS = `
     justify-content: center;
     gap: 14px;
     font-size: 16px;
+  }
+  .blackboard-panel[data-mode="in-lounge"] .blackboard-empty {
+    padding: 12px calc(var(--safe-right) + 10px) 12px calc(var(--safe-left) + 10px);
+  }
+  .board-empty-header {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .board-empty-topline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    min-width: 0;
+  }
+  .board-empty-grade {
+    color: var(--text-soft);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+  .board-empty-status {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 900;
+    line-height: 1.25;
+  }
+  .board-info-button {
+    appearance: none;
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: var(--bg-elev-2);
+    color: var(--text-soft);
+    font-size: 13px;
+    font-weight: 950;
+    font-family: Georgia, serif;
+    line-height: 1;
+    cursor: help;
+  }
+  .board-info-button:hover,
+  .board-info-button:focus-visible {
+    color: var(--text);
+    border-color: rgba(255,255,255,0.32);
+    outline: none;
+  }
+  .board-info-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-2px);
+    width: min(82vw, 380px);
+    z-index: 8;
+    padding: 10px 11px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: #101420;
+    color: var(--text-soft);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.42);
+    font: 700 12px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    text-align: left;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.14s ease, transform 0.14s ease, visibility 0s linear 0.14s;
+  }
+  .board-info-button:hover .board-info-popover,
+  .board-info-button:focus .board-info-popover,
+  .board-info-button:focus-visible .board-info-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+    transition: opacity 0.14s ease, transform 0.14s ease, visibility 0s;
   }
   .blackboard-empty-action {
     appearance: none;
@@ -1674,12 +1798,16 @@ export const VIEWER_CSS = `
   /* Block under the empty-board lead text. Hosts the subject-grade chip row;
    * graduation now renders inside the chalkboard frame itself. */
   .blackboard-empty-extras {
-    margin: 14px auto 0;
+    margin: 0 auto;
     max-width: 540px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
+  }
+  .blackboard-panel[data-mode="in-lounge"] .blackboard-empty-extras {
+    width: min(100%, 720px);
+    max-width: 720px;
   }
   .blackboard-empty-extras:empty { display: none; }
   .board-subject-grades {
@@ -3205,6 +3333,7 @@ export const VIEWER_CSS = `
   }
   .account-card .sheet-actions button,
   .account-section-head button,
+  .account-section-head .account-token-link,
   .account-history-row button {
     appearance: none;
     border: none;
@@ -3216,6 +3345,18 @@ export const VIEWER_CSS = `
     font-weight: 850;
     padding: 8px 13px;
     min-height: 34px;
+  }
+  .account-section-head .account-token-link {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    background: rgba(255, 224, 138, 0.12);
+    border: 1px solid rgba(255, 224, 138, 0.38);
+    color: #ffe08a;
+  }
+  .account-section-head .account-token-link:hover {
+    background: rgba(255, 224, 138, 0.2);
+    color: #fff5cc;
   }
   .account-section-head button.secondary,
   .account-card .sheet-actions button.secondary {
@@ -3806,6 +3947,8 @@ export const VIEWER_CSS = `
     line-height: 1.4;
   }
   .account-empty {
+    grid-column: 1 / -1;
+    width: 100%;
     color: var(--text-mute);
     font-size: 13px;
     padding: 10px;
@@ -3866,6 +4009,23 @@ export const VIEWER_CSS = `
     }
     .account-trust-value {
       text-align: left;
+    }
+  }
+  @media (max-width: 620px) {
+    .account-tabs {
+      flex-wrap: wrap;
+      overflow: visible;
+      gap: 4px;
+    }
+    .account-tab {
+      min-width: 0;
+      flex: 1 1 calc(33.333% - 4px);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 11px;
+      padding: 0 8px;
     }
   }
   #privy-login-widget:disabled,
@@ -5657,6 +5817,64 @@ export const VIEWER_CSS = `
     font-size: 11px;
     line-height: 1.35;
     font-style: italic;
+  }
+  .paper-archive-diploma,
+  .paper-archive-photo {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    margin-top: 7px;
+    border: 1px solid rgba(255,235,200,0.12);
+    border-radius: 6px;
+    background: rgba(0,0,0,0.12);
+    padding: 5px;
+  }
+  .paper-archive-diploma img {
+    display: block;
+    width: 74px;
+    aspect-ratio: 724 / 543;
+    object-fit: cover;
+    border-radius: 4px;
+  }
+  .paper-archive-diploma-title,
+  .paper-archive-photo-title {
+    color: var(--text);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.2;
+  }
+  .paper-archive-diploma-meta,
+  .paper-archive-photo-meta {
+    margin-top: 2px;
+    color: var(--text-mute);
+    font-size: 9px;
+    line-height: 1.25;
+  }
+  .paper-archive-photo-faces {
+    display: flex;
+    align-items: center;
+    padding-left: 6px;
+  }
+  .paper-archive-photo-face {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    margin-left: -6px;
+    border: 2px solid rgba(12,14,25,0.92);
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .paper-archive-photo-face:first-child { margin-left: 0; }
+  .paper-archive-photo-face img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .paper-archive-actions {
     display: flex;

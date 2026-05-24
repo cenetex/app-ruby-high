@@ -13,6 +13,8 @@ test-outputs/
 tmp/
 .ruby-high/
 *.tsbuildinfo
+ruby2/models/
+*.gguf
 
 # Local-only: keep your OpenRouter key out of the repo.
 .env

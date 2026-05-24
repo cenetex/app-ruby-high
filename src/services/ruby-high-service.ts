@@ -48,6 +48,8 @@ import {
   type EssayReport,
   type FacultyMember,
   type Grade,
+  type GradeDiplomaCollectible,
+  type GraduationPhotoCollectible,
   type GraduationReward,
   type MashAxis,
   type MashCard,
@@ -98,7 +100,7 @@ import {
   resolveAxisForGrade as resolveMashAxisForGrade,
   resolveSeniorBonusAxes as resolveMashSeniorBonusAxes,
 } from "../characters/mash.js";
-import { studentById } from "../characters/students.js";
+import { listStudents, studentById } from "../characters/students.js";
 import { statForQuestion, normalizeQuestionStat } from "../question-stats.js";
 import {
   SRS_AGAIN_MS,
@@ -247,6 +249,68 @@ export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
 export const WELCOME_HALL_PASS_GRANT = 5;
 export const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
+const RUBY_HIGH_ASSET_PREFIX = "/api/apps/ruby-high/assets";
+const DIPLOMA_ASSET_VERSION = "ruby-high-grade-diplomas-v1";
+const DIPLOMA_GRADE_LABELS: Record<Grade, string> = {
+  "9": "9th Grade",
+  "10": "10th Grade",
+  "11": "11th Grade",
+  "12": "12th Grade",
+};
+const DIPLOMA_IMAGE_URL_BY_GRADE: Record<Grade, string> = {
+  "9": `${RUBY_HIGH_ASSET_PREFIX}/diplomas/ruby-high-9.png?v=${DIPLOMA_ASSET_VERSION}`,
+  "10": `${RUBY_HIGH_ASSET_PREFIX}/diplomas/ruby-high-10.png?v=${DIPLOMA_ASSET_VERSION}`,
+  "11": `${RUBY_HIGH_ASSET_PREFIX}/diplomas/ruby-high-11.png?v=${DIPLOMA_ASSET_VERSION}`,
+  "12": `${RUBY_HIGH_ASSET_PREFIX}/diplomas/ruby-high-12.png?v=${DIPLOMA_ASSET_VERSION}`,
+};
+
+function graduationCollectibleId(
+  kind: "diploma" | "photo",
+  parts: { name: string; createdAt: number; grade: Grade; completedAt: number; extra?: string },
+): string {
+  const hash = createHash("sha256")
+    .update(`${kind}:${parts.name}:${parts.createdAt}:${parts.grade}:${parts.completedAt}:${parts.extra ?? ""}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `ruby-high-${kind}-${parts.grade}-${hash}`;
+}
+
+function gradeDiplomaCollectibleFor(parts: {
+  characterName: string;
+  characterCreatedAt: number;
+  grade: Grade;
+  completedAt: number;
+}): GradeDiplomaCollectible {
+  const label = DIPLOMA_GRADE_LABELS[parts.grade] ?? `Grade ${parts.grade}`;
+  return {
+    kind: "grade-diploma",
+    id: graduationCollectibleId("diploma", {
+      name: parts.characterName,
+      createdAt: parts.characterCreatedAt,
+      grade: parts.grade,
+      completedAt: parts.completedAt,
+    }),
+    grade: parts.grade,
+    title: `Ruby High ${label} Diploma`,
+    description: `${parts.characterName} made it through ${label} at Ruby High.`,
+    imageUrl: DIPLOMA_IMAGE_URL_BY_GRADE[parts.grade],
+    issuedAt: parts.completedAt,
+    assetVersion: DIPLOMA_ASSET_VERSION,
+  };
+}
+
+function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileImageUrl?: string): string | undefined {
+  if (profileImageUrl) return profileImageUrl;
+  const assetId = assetTeacherId || facultyId;
+  if (assetId === RUBY_FACULTY.id || assetId === "sally-science" || assetId === "professor-edward") {
+    return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${assetId}-face.png`;
+  }
+  return undefined;
+}
+
+function studentPortraitUrl(studentId: string): string {
+  return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-face.png`;
+}
 
 export interface CourseProgress {
   mode: "bank" | "srs";
@@ -276,6 +340,19 @@ export interface CourseProgress {
   learning: number;
   shaky: number;
   new: number;
+}
+
+export interface GraduationGateProgress {
+  grade: Grade | null;
+  requiredDays: number;
+  dailyClasses: number;
+  requiredRooms: number;
+  completedRooms: number;
+  openElectiveSlots: number;
+  requiredFacultyIds: string[];
+  eligibleFacultyIds: string[];
+  classGrades: Record<string, string>;
+  ready: boolean;
 }
 
 interface CourseStanding {
@@ -567,6 +644,8 @@ export interface YearbookShareCard {
   arcAnswer?: string;
   subjectScores?: Record<string, { correct: number; total: number }>;
   graduationReward?: GraduationReward;
+  diploma?: GradeDiplomaCollectible;
+  photo?: GraduationPhotoCollectible;
   superlatives: string[];
   source: "current-character" | "student-pool";
 }
@@ -621,8 +700,10 @@ type MetricEventInput = Omit<StoredMetricEventRecord, "id" | "name" | "occurredA
 
 const GLOBAL_PACK_OWNER = "__ruby_high_global__";
 const CLASS_QUESTIONS_PER_DAY = 3;
-const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [2, 4, 6] as const;
-const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 1;
+const GRADUATION_ROOM_TARGETS: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
+const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward"] as const;
+const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [0, 0, 0] as const;
+const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 0;
 const FIRST_BELL_COMIC_ISSUE_ID = "first-bell";
 const FIRST_BELL_COMIC_TITLE = "Ruby High: Book One - First Bell";
 const FIRST_BELL_COMIC_PAGE_COUNT = 12;
@@ -2767,6 +2848,133 @@ export class RubyHighService extends Service {
     );
   }
 
+  private eligibleGraduationFacultyIds(state: QuizState, grade: Grade): string[] {
+    const pack = packForSession(state);
+    const available = coursesForPack(pack)
+      .map((course) => course.facultyId)
+      .filter((facultyId) => pack.faculty.some((f) =>
+        f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
+      ));
+    const availableSet = new Set(available);
+    const core = CORE_GRADUATION_FACULTY_ORDER.filter((facultyId) => availableSet.has(facultyId));
+    const custom = available.filter((facultyId) =>
+      !CORE_GRADUATION_FACULTY_ORDER.includes(facultyId as typeof CORE_GRADUATION_FACULTY_ORDER[number]) &&
+      facultyId !== GUEST_COURSE_ID
+    );
+    const guest = grade === "12" && availableSet.has(GUEST_COURSE_ID) ? [GUEST_COURSE_ID] : [];
+    return Array.from(new Set([...core, ...custom, ...guest]));
+  }
+
+  private graduationRoomTargetForState(state: QuizState, grade: Grade): number {
+    return Math.min(GRADUATION_ROOM_TARGETS[grade], this.eligibleGraduationFacultyIds(state, grade).length);
+  }
+
+  private graduationClassSelectionForState(
+    state: QuizState,
+    opts: { includeFacultyId?: string; commit?: boolean } = {},
+  ): {
+    grade: Grade | null;
+    requiredDays: number;
+    requiredRooms: number;
+    selected: string[];
+    eligible: string[];
+    openElectiveSlots: number;
+  } {
+    const ch = state.character;
+    const grade = state.currentGrade;
+    if (!ch || !grade) {
+      return { grade: grade ?? null, requiredDays: 0, requiredRooms: 0, selected: [], eligible: [], openElectiveSlots: 0 };
+    }
+    const eligible = this.eligibleGraduationFacultyIds(state, grade);
+    const requiredRooms = this.graduationRoomTargetForState(state, grade);
+    const requiredDays = requiredClassCompletionsForGrade(grade);
+    const primary = eligible.includes(RUBY_FACULTY.id) ? RUBY_FACULTY.id : eligible[0];
+    const rawSelected = Array.isArray(ch.graduationClassrooms?.[grade]) ? ch.graduationClassrooms![grade]! : [];
+    let selected = Array.from(new Set([
+      ...(primary ? [primary] : []),
+      ...rawSelected.filter((facultyId) => eligible.includes(facultyId)),
+    ])).slice(0, requiredRooms);
+
+    if (grade === "12") {
+      selected = eligible.slice(0, requiredRooms);
+    } else if (grade !== "9" && opts.includeFacultyId && eligible.includes(opts.includeFacultyId)) {
+      const alreadySelected = selected.includes(opts.includeFacultyId);
+      const isPrimary = opts.includeFacultyId === primary;
+      const isGuest = opts.includeFacultyId === GUEST_COURSE_ID;
+      if (!alreadySelected && !isPrimary && !isGuest && selected.length < requiredRooms) {
+        selected = [...selected, opts.includeFacultyId];
+      }
+    }
+
+    if (opts.commit && grade !== "9" && selected.length > 0) {
+      ch.graduationClassrooms = ch.graduationClassrooms ?? {};
+      const previous = ch.graduationClassrooms[grade] ?? [];
+      if (previous.join("\0") !== selected.join("\0")) {
+        ch.graduationClassrooms[grade] = selected;
+      }
+    }
+
+    return {
+      grade,
+      requiredDays,
+      requiredRooms,
+      selected,
+      eligible,
+      openElectiveSlots: Math.max(0, requiredRooms - selected.length),
+    };
+  }
+
+  private graduationClassPlanForState(
+    state: QuizState,
+    opts: { includeFacultyId?: string; commit?: boolean } = {},
+  ): GraduationGateProgress {
+    const selection = this.graduationClassSelectionForState(state, opts);
+    if (!selection.grade) {
+      return {
+        grade: null,
+        requiredDays: 0,
+        dailyClasses: 0,
+        requiredRooms: 0,
+        completedRooms: 0,
+        openElectiveSlots: 0,
+        requiredFacultyIds: [],
+        eligibleFacultyIds: [],
+        classGrades: {},
+        ready: false,
+      };
+    }
+
+    let completedRooms = 0;
+    const classGrades: Record<string, string> = {};
+    for (const facultyId of selection.selected) {
+      const course = this.courseStandingForState(state, facultyId);
+      classGrades[facultyId] = course.letterGrade ?? "—";
+      if (course.passed) completedRooms += 1;
+    }
+    const ch = state.character;
+    const streakCount = ch?.streak && ch.streak.grade === selection.grade ? ch.streak.count : 0;
+    const ready = selection.requiredRooms > 0 &&
+      selection.selected.length >= selection.requiredRooms &&
+      completedRooms >= selection.requiredRooms &&
+      streakCount >= selection.requiredDays;
+    return {
+      grade: selection.grade,
+      requiredDays: selection.requiredDays,
+      dailyClasses: streakCount,
+      requiredRooms: selection.requiredRooms,
+      completedRooms,
+      openElectiveSlots: selection.openElectiveSlots,
+      requiredFacultyIds: selection.selected,
+      eligibleFacultyIds: selection.eligible,
+      classGrades,
+      ready,
+    };
+  }
+
+  private isGraduationFacultyForState(state: QuizState, facultyId: string, commit = false): boolean {
+    return this.graduationClassSelectionForState(state, { includeFacultyId: facultyId, commit }).selected.includes(facultyId);
+  }
+
   private dailyClassRecord(state: QuizState, facultyId: string, date = dailyKey()): DailyClassRecord | null {
     const ch = state.character;
     const grade = state.currentGrade;
@@ -2836,6 +3044,7 @@ export class RubyHighService extends Service {
     if (requestedMode === "practice") return questionType === "opinion" ? "social" : "practice";
     if (questionType === "opinion") return "social";
     if (!state.character || !state.currentGrade || facultyId === LOUNGE_FACULTY.id) return "practice";
+    if (!this.isGraduationFacultyForState(state, facultyId)) return "practice";
     const record = this.dailyClassRecord(state, facultyId);
     if (record?.status === "complete") return "practice";
     if (this.rubyHomeroomDeckApplies(state, facultyId, requestedMode)) {
@@ -2866,7 +3075,8 @@ export class RubyHighService extends Service {
   private courseStandingForState(state: QuizState, facultyId: string): CourseStanding {
     const ch = state.character;
     const grade = state.currentGrade;
-    const required = grade ? requiredClassCompletionsForGrade(grade) : 0;
+    const selection = this.graduationClassSelectionForState(state);
+    const required = grade && selection.selected.includes(facultyId) ? selection.requiredDays : 0;
     const todayKey = dailyKey();
     const todayRecord = grade ? this.dailyClassRecord(state, facultyId, todayKey) : null;
     const today: CourseProgress["today"] = todayRecord?.status === "complete"
@@ -2970,7 +3180,13 @@ export class RubyHighService extends Service {
     if (cardRole && cardRole !== "class") {
       return { mode: "practice", facultyId, grade: grade ?? undefined, date };
     }
-    if (requestedMode === "practice" || !ch || !grade || facultyId === LOUNGE_FACULTY.id) {
+    if (
+      requestedMode === "practice" ||
+      !ch ||
+      !grade ||
+      facultyId === LOUNGE_FACULTY.id ||
+      !this.isGraduationFacultyForState(state, facultyId, true)
+    ) {
       return { mode: "practice", facultyId, grade: grade ?? undefined, date };
     }
     const record = this.dailyClassRecord(state, facultyId, date);
@@ -3696,27 +3912,14 @@ export class RubyHighService extends Service {
     const grade = state.currentGrade;
     if (!ch || !grade) return null;
 
-    const requiredStreak = requiredStreakForGrade(grade);
-    const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
-    let classesMet = 0;
-    let classCount = 0;
-    const classGrades: Record<string, string> = {};
-    const pack = packForSession(state);
-    const teacherIds = Array.from(new Set(
-      coursesForPack(pack)
-        .map((course) => course.facultyId)
-        .filter((facultyId) => pack.faculty.some((f) =>
-          f.id === facultyId && (f.questions.length > 0 || (f.sourceCards?.length ?? 0) > 0)
-        )),
-    ));
-    for (const teacherId of teacherIds) {
-      classCount++;
-      const course = this.courseStandingForState(state, teacherId);
-      classGrades[teacherId] = course.letterGrade ?? "—";
-      if (course.passed) classesMet++;
-    }
+    const plan = this.graduationClassPlanForState(state);
+    const requiredStreak = plan.requiredDays || requiredStreakForGrade(grade);
+    const streakCount = plan.dailyClasses;
+    const classesMet = plan.completedRooms;
+    const classCount = plan.requiredRooms;
+    const classGrades = plan.classGrades;
     const streakMet = streakCount >= requiredStreak;
-    const classesMetAll = classCount > 0 && classesMet >= classCount;
+    const classesMetAll = classCount > 0 && classesMet >= classCount && plan.openElectiveSlots === 0;
     return {
       grade,
       requiredStreak,
@@ -3773,6 +3976,7 @@ export class RubyHighService extends Service {
     const advance = nextGradeAfter(grade);
     const targetGrade = advance ?? grade;
     const normalizedReward = this.normalizeGraduationReward(state, ch, reward);
+    const completedAt = Date.now();
 
     // Resolve any MASH axis whose grade just completed (and the Senior
     // bonus axes at grade 12). The full superlative list snapshots onto
@@ -3780,11 +3984,20 @@ export class RubyHighService extends Service {
     // entries see fewer lines, the Senior entry sees all of them.
     const newResolutions = this.resolveMashAxesForGrade(ch, grade);
     const superlatives = this.buildMashSuperlativesFor(ch);
+    const diploma = gradeDiplomaCollectibleFor({
+      characterName: ch.name,
+      characterCreatedAt: ch.createdAt,
+      grade,
+      completedAt,
+    });
+    const photo = normalizedReward.kind === "photo"
+      ? this.graduationPhotoCollectibleFor(state, ch, grade, completedAt)
+      : null;
 
     ch.yearbook = ch.yearbook ?? [];
     ch.yearbook.push({
       grade,
-      completedAt: Date.now(),
+      completedAt,
       summary: pending.summary,
       name: ch.name,
       playbookId: ch.playbookId,
@@ -3794,10 +4007,12 @@ export class RubyHighService extends Service {
       arcAnswer: ch.arcAnswer,
       ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
       graduationReward: normalizedReward,
+      diploma,
+      ...(photo ? { photo } : {}),
       ...(superlatives.length > 0 ? { superlatives } : {}),
     });
     if (newResolutions.length > 0) {
-      const schoolEventAt = Date.now();
+      const schoolEventAt = completedAt;
       for (const r of newResolutions) {
         this.appendSchoolEvent(state, {
           id: this.schoolEventId("mash.axis-resolved"),
@@ -3832,7 +4047,7 @@ export class RubyHighService extends Service {
       completedGrade: grade,
       targetGrade: advance,
       reward: normalizedReward,
-      awardedAt: Date.now(),
+      awardedAt: completedAt,
     });
     ch.pendingGraduation = null;
 
@@ -3855,6 +4070,126 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
+  }
+
+  private graduationPhotoCollectibleFor(
+    state: QuizState,
+    ch: PlayerCharacter,
+    grade: Grade,
+    completedAt: number,
+  ): GraduationPhotoCollectible {
+    const teacher = this.topGraduationTeacherFor(state, grade);
+    const student = this.topSocialStudentFor(ch);
+    const label = DIPLOMA_GRADE_LABELS[grade] ?? `Grade ${grade}`;
+    return {
+      kind: "graduation-photo",
+      id: graduationCollectibleId("photo", {
+        name: ch.name,
+        createdAt: ch.createdAt,
+        grade,
+        completedAt,
+        extra: `${teacher.id}:${student.id}`,
+      }),
+      grade,
+      title: `${label} Graduation Photo`,
+      description: `${ch.name} with ${teacher.name} and ${student.name} at Ruby High.`,
+      issuedAt: completedAt,
+      teacher,
+      student,
+    };
+  }
+
+  private topGraduationTeacherFor(
+    state: QuizState,
+    grade: Grade,
+  ): GraduationPhotoCollectible["teacher"] {
+    const records = Object.values(state.character?.dailyClasses ?? {})
+      .filter((record) => record.grade === grade && record.status === "complete");
+    const byFaculty = new Map<string, {
+      facultyId: string;
+      scoreTotal: number;
+      questionCount: number;
+      correctCount: number;
+      completedCount: number;
+      latestCompletedAt: number;
+    }>();
+    for (const record of records) {
+      const current = byFaculty.get(record.facultyId) ?? {
+        facultyId: record.facultyId,
+        scoreTotal: 0,
+        questionCount: 0,
+        correctCount: 0,
+        completedCount: 0,
+        latestCompletedAt: 0,
+      };
+      current.scoreTotal += record.scoreTotal;
+      current.questionCount += record.questionCount;
+      current.correctCount += record.correctCount;
+      current.completedCount += 1;
+      current.latestCompletedAt = Math.max(current.latestCompletedAt, Number(record.completedAt || record.updatedAt || 0));
+      byFaculty.set(record.facultyId, current);
+    }
+    const selectedOrder = this.graduationClassSelectionForState(state).selected;
+    const orderIndex = (facultyId: string): number => {
+      const selected = selectedOrder.indexOf(facultyId);
+      if (selected >= 0) return selected;
+      const core = CORE_GRADUATION_FACULTY_ORDER.indexOf(facultyId as typeof CORE_GRADUATION_FACULTY_ORDER[number]);
+      return core >= 0 ? 20 + core : 100;
+    };
+    const ranked = [...byFaculty.values()].sort((a, b) => {
+      const aAverage = a.questionCount > 0 ? a.scoreTotal / a.questionCount : -1;
+      const bAverage = b.questionCount > 0 ? b.scoreTotal / b.questionCount : -1;
+      if (bAverage !== aAverage) return bAverage - aAverage;
+      const aCorrect = a.questionCount > 0 ? a.correctCount / a.questionCount : -1;
+      const bCorrect = b.questionCount > 0 ? b.correctCount / b.questionCount : -1;
+      if (bCorrect !== aCorrect) return bCorrect - aCorrect;
+      if (b.completedCount !== a.completedCount) return b.completedCount - a.completedCount;
+      if (b.latestCompletedAt !== a.latestCompletedAt) return b.latestCompletedAt - a.latestCompletedAt;
+      return orderIndex(a.facultyId) - orderIndex(b.facultyId);
+    });
+    const fallbackFacultyId = selectedOrder[0] ?? state.faculty ?? RUBY_FACULTY.id;
+    const facultyId = ranked[0]?.facultyId ?? fallbackFacultyId;
+    const faculty = facultyByIdForSession(state, facultyId);
+    return {
+      id: facultyId,
+      name: faculty?.shortName || faculty?.displayName || facultyId,
+      ...(teacherPortraitUrl(facultyId, faculty?.assetTeacherId, faculty?.profileImageUrl)
+        ? { imageUrl: teacherPortraitUrl(facultyId, faculty?.assetTeacherId, faculty?.profileImageUrl) }
+        : {}),
+    };
+  }
+
+  private topSocialStudentFor(ch: PlayerCharacter): GraduationPhotoCollectible["student"] {
+    const card = ensureMashCard(ch.mashCard);
+    const students = listStudents();
+    const ranked = students
+      .map((student, index) => ({ student, index, cell: card.cells[student.id] }))
+      .sort((a, b) => {
+        const aCell = a.cell;
+        const bCell = b.cell;
+        const aUsable = aCell && !aCell.scratched ? 1 : 0;
+        const bUsable = bCell && !bCell.scratched ? 1 : 0;
+        if (bUsable !== aUsable) return bUsable - aUsable;
+        const aCircled = aCell?.circled ? 1 : 0;
+        const bCircled = bCell?.circled ? 1 : 0;
+        if (bCircled !== aCircled) return bCircled - aCircled;
+        const aAffinity = aCell?.affinity ?? 0;
+        const bAffinity = bCell?.affinity ?? 0;
+        if (bAffinity !== aAffinity) return bAffinity - aAffinity;
+        const aTicks = aCell?.ticks ?? 0;
+        const bTicks = bCell?.ticks ?? 0;
+        if (bTicks !== aTicks) return bTicks - aTicks;
+        const aTouched = aCell?.lastTouchedDate ?? "";
+        const bTouched = bCell?.lastTouchedDate ?? "";
+        if (bTouched !== aTouched) return bTouched.localeCompare(aTouched);
+        return a.index - b.index;
+      });
+    const pick = ranked[0]?.student ?? students[0]!;
+    return {
+      id: pick.id,
+      name: pick.shortName || pick.name,
+      imageUrl: studentPortraitUrl(pick.id),
+    };
   }
 
   private normalizeGraduationReward(state: QuizState, ch: PlayerCharacter, reward: GraduationReward): GraduationReward {
@@ -3880,6 +4215,7 @@ export class RubyHighService extends Service {
       if (!facultyIds.has(reward.facultyId)) throw new Error("Pick a valid class affinity.");
       return { kind: "affinity", facultyId: reward.facultyId };
     }
+    if (reward.kind === "photo") return { kind: "photo" };
     throw new Error(`Unknown graduation reward: ${(reward as { kind?: string }).kind ?? "?"}`);
   }
 
@@ -3967,6 +4303,7 @@ export class RubyHighService extends Service {
       ch.advantageRollBonuses = map;
       return;
     }
+    if (reward.kind === "photo") return;
     const affinity = ch.classAffinity ?? {};
     affinity[targetGrade] = { facultyId: reward.facultyId, used: false };
     ch.classAffinity = affinity;
@@ -4596,6 +4933,10 @@ export class RubyHighService extends Service {
       shaky: status.shakyCount ?? 0,
       new: status.newCount ?? Math.max(0, status.remaining),
     };
+  }
+
+  graduationGate(sessionId: string): GraduationGateProgress {
+    return this.graduationClassPlanForState(this.getOrCreate(sessionId));
   }
 
   /** Daily-class status. This is the once-per-day graded class entry point. The
@@ -5281,6 +5622,8 @@ function yearbookShareCardsForState(state: QuizState): YearbookShareCard[] {
         ...(entry.arcAnswer ? { arcAnswer: entry.arcAnswer } : {}),
         ...(entry.subjectScores ? { subjectScores: { ...entry.subjectScores } } : {}),
         ...(entry.graduationReward ? { graduationReward: entry.graduationReward } : {}),
+        ...(entry.diploma ? { diploma: entry.diploma } : {}),
+        ...(entry.photo ? { photo: entry.photo } : {}),
         superlatives: Array.isArray(entry.superlatives) ? [...entry.superlatives] : [],
         source,
       });
@@ -6052,6 +6395,15 @@ function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
     const createdAt = typeof e.createdAt === "number" && Number.isFinite(e.createdAt)
       ? Math.floor(e.createdAt)
       : completedAt;
+    const normalizedYearbook = yearbook.map((entry) => ({
+      ...entry,
+      diploma: entry.diploma ?? gradeDiplomaCollectibleFor({
+        characterName: entry.name || name,
+        characterCreatedAt: createdAt,
+        grade: entry.grade,
+        completedAt: Number(entry.completedAt) || completedAt,
+      }),
+    }));
     const entry: StudentPoolEntry = {
       id,
       name,
@@ -6062,7 +6414,7 @@ function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
       personality: typeof e.personality === "string" ? e.personality : "",
       ...(typeof e.portraitDataUrl === "string" && e.portraitDataUrl ? { portraitDataUrl: e.portraitDataUrl } : {}),
       ...(typeof e.diplomaImageDataUrl === "string" && e.diplomaImageDataUrl ? { diplomaImageDataUrl: e.diplomaImageDataUrl } : {}),
-      yearbook,
+      yearbook: normalizedYearbook,
       ...(Array.isArray(e.levelUps) ? { levelUps: e.levelUps as StudentPoolEntry["levelUps"] } : {}),
       ...(e.inheritedFrom && typeof e.inheritedFrom === "object"
         ? { inheritedFrom: e.inheritedFrom as StudentPoolEntry["inheritedFrom"] }
@@ -6494,19 +6846,29 @@ function backfillCharacter(c: PlayerCharacter | null): PlayerCharacter | null {
   if (!Array.isArray(c.yearbook) || c.yearbook.length === 0) {
     return { ...c, mashCard };
   }
-  const yearbook = c.yearbook.map((entry) => ({
-    ...entry,
-    name: entry.name ?? c.name,
-    playbookId: entry.playbookId ?? c.playbookId,
-    stats: entry.stats ?? c.stats,
-    ...(entry.portraitDataUrl ?? c.portraitDataUrl
-      ? { portraitDataUrl: entry.portraitDataUrl ?? c.portraitDataUrl }
-      : {}),
-    ...(entry.flavorQuote ?? c.flavorQuote
-      ? { flavorQuote: entry.flavorQuote ?? c.flavorQuote }
-      : {}),
-    arcAnswer: entry.arcAnswer ?? c.arcAnswer,
-  }));
+  const yearbook = c.yearbook.map((entry) => {
+    const name = entry.name ?? c.name;
+    const completedAt = Number(entry.completedAt) || Date.now();
+    return {
+      ...entry,
+      name,
+      playbookId: entry.playbookId ?? c.playbookId,
+      stats: entry.stats ?? c.stats,
+      ...(entry.portraitDataUrl ?? c.portraitDataUrl
+        ? { portraitDataUrl: entry.portraitDataUrl ?? c.portraitDataUrl }
+        : {}),
+      ...(entry.flavorQuote ?? c.flavorQuote
+        ? { flavorQuote: entry.flavorQuote ?? c.flavorQuote }
+        : {}),
+      arcAnswer: entry.arcAnswer ?? c.arcAnswer,
+      diploma: entry.diploma ?? gradeDiplomaCollectibleFor({
+        characterName: name,
+        characterCreatedAt: c.createdAt,
+        grade: entry.grade,
+        completedAt,
+      }),
+    };
+  });
   return { ...c, yearbook, mashCard };
 }
 
