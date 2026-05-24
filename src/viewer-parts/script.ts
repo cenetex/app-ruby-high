@@ -75,15 +75,33 @@ const PURE_HELPER_NAMES = [
 ] as const;
 
 function serializePureHelpers(): string {
-  return PURE_HELPER_NAMES
-    .map((name) => {
-      const fn = (Pure as Record<string, unknown>)[name];
-      if (typeof fn !== "function") {
-        throw new Error(`viewerScript: expected client-pure export "${name}" to be a function`);
-      }
-      return `const ${name} = ${fn.toString()};`;
-    })
-    .join("\n  ");
+  // Each helper is referenced two ways inside the IIFE, so it must be declared
+  // under both. esbuild renames colliding module-scope identifiers when the
+  // same name exists in another bundled module (e.g. escapeHtml -> escapeHtml4,
+  // escape -> escape2 collide with server-side helpers). Sibling helpers in
+  // client-pure.ts call each other through those *renamed* bindings, while
+  // runViewerClient in client.ts calls them by their *source* names as free
+  // globals (it never imports them — it relies on them being IIFE siblings).
+  // Declaring only one name leaves the other unresolved, throwing a
+  // ReferenceError that crashes the viewer at boot.
+  const declared = new Set<string>();
+  const lines: string[] = [];
+  for (const name of PURE_HELPER_NAMES) {
+    const fn = (Pure as Record<string, unknown>)[name] as { name?: string } | undefined;
+    if (typeof fn !== "function") {
+      throw new Error(`viewerScript: expected client-pure export "${name}" to be a function`);
+    }
+    const bindingName = fn.name || name;
+    if (!declared.has(bindingName)) {
+      lines.push(`const ${bindingName} = ${fn.toString()};`);
+      declared.add(bindingName);
+    }
+    if (name !== bindingName && !declared.has(name)) {
+      lines.push(`const ${name} = ${bindingName};`);
+      declared.add(name);
+    }
+  }
+  return lines.join("\n  ");
 }
 
 function serializeConstants(): string {

@@ -11217,7 +11217,6 @@ export function runViewerClient(bootstrap) {
       if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
     } finally {
       agentTurn.finish();
-      syncChatComposerDisabled();
       if (!els.chatInput.disabled) els.chatInput.focus();
     }
   }

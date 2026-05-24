@@ -23,7 +23,7 @@
     "assets"
   ],
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node scripts/check-privy-client-bundle.mjs",
+    "build": "tsup --config tsup.config.ts && node scripts/check-privy-client-bundle.mjs && node scripts/check-viewer-bundle.mjs",
     "build:spa": "npm run build && node scripts/build-spa.mjs",
     "spa:dev": "node scripts/serve-spa.mjs",
     "dev": "npm run build && node scripts/dev-server.mjs",
