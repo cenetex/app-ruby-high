@@ -1157,6 +1157,7 @@ describe("chat event context", () => {
       arcAnswer: "I want the room to notice when I am actually trying.",
       personality: "Restless, social, and eager to keep the room moving.",
     });
+    ruby.selectGrade(sessionId, "10");
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });
       const wrong = posed.current!.correct === "A" ? "B" : "A";
@@ -1651,6 +1652,7 @@ describe("chat event context", () => {
       arcAnswer: "I want the room to notice when I am actually trying.",
       personality: "Restless, social, and eager to keep the room moving.",
     });
+    ruby.selectGrade(sessionId, "10");
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });

@@ -47,7 +47,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <button class="footer-action" id="footer-action" type="button" hidden></button>
       <button class="footer-action account-action" id="privy-action" type="button" hidden>Account</button>
     </div>
-    <button class="report-bug-link" id="report-bug-link" type="button" title="Something broken? Send a bug report.">Report a bug</button>
+    <a class="report-bug-link" id="report-bug-link" href="https://discord.gg/uTXaBVfY" target="_blank" rel="noopener noreferrer" data-discord-link="true" title="Bugs or questions? Join the Ruby High Discord.">Bugs / questions</a>
   </aside>
 
   <!-- workspace -->
@@ -258,6 +258,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
               <div class="account-section-sub" id="account-card-summary"></div>
             </div>
             <div class="account-section-actions">
+              <a class="account-token-link" id="account-get-ruby" href="https://jup.ag/swap/SOL-ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump" target="_blank" rel="noopener noreferrer">Get $RUBY</a>
               <button type="button" id="account-buy-card-packs">Buy Card Packs</button>
               <button type="button" class="secondary" id="account-mint-cards">Reveal Card</button>
             </div>

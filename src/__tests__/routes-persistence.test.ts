@@ -380,7 +380,7 @@ describe("command route persistence and scheduler misses", () => {
     });
   });
 
-  it("offline pick still advances generated Ruby social cards when no bank card is ready", async () => {
+  it("offline pick reports no scheduled Ruby card when the direct class bank is complete", async () => {
     setActivePack(rubyHomeroomSocialPack());
     const faculty = await FacultyService.start({} as never);
     const ruby = new RubyHighService({} as never, new MemorySessionStore());
@@ -407,8 +407,8 @@ describe("command route persistence and scheduler misses", () => {
     expect(pickedIds).toEqual(new Set(["route-test-ruby-q1", "route-test-ruby-q2", "route-test-ruby-q3"]));
     const progress = ruby.courseProgress(sid, "ruby");
     expect(progress.ready).toBe(0);
-    expect(progress.canPick).toBe(true);
-    expect(progress.nextCardRole).toBe("social");
+    expect(progress.canPick).toBe(false);
+    expect(progress.nextCardRole).toBe("practice");
 
     const harness = makeCommandCtx(ruby, { type: "pick" }, faculty);
     const handled = await handleAppRoutes(harness.ctx);
@@ -416,14 +416,8 @@ describe("command route persistence and scheduler misses", () => {
     expect(handled).toBe(true);
     expect(harness.response?.status).toBe(200);
     expect(harness.response?.body.success).toBe(true);
-    expect(harness.response?.body.noQuestionDue).toBeUndefined();
-    expect(harness.response?.body.session.telemetry.current).toMatchObject({
-      type: "opinion",
-    });
-    expect(harness.response?.body.session.telemetry.current.id).toContain("social_ruby");
-    expect(harness.response?.body.session.telemetry.active_round).toMatchObject({
-      type: "opinion",
-      cardRole: "social",
-    });
+    expect(harness.response?.body.noQuestionDue).toBe(true);
+    expect(harness.response?.body.session.telemetry.current).toBeNull();
+    expect(harness.response?.body.session.telemetry.active_round).toBeNull();
   });
 });

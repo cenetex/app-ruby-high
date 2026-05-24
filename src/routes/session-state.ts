@@ -353,6 +353,7 @@ export function buildSessionState(args: {
       : null,
     lastReveal: state.lastReveal,
     faculty_roster: buildFacultyRoster(faculty, state, ruby, sessionId),
+    graduation_gate: ruby?.graduationGate(sessionId) ?? null,
     asked_count: state.askedQuestionIds.length,
     store_path: null,
     current_grade: state.currentGrade,

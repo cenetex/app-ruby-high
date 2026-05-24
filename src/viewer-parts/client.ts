@@ -47,6 +47,8 @@ export function runViewerClient(bootstrap) {
   // helpers (statLabel, letterGradeForScore, makeVisitorId, getVisitorId,
   // attachVisitorHeader, …) are declared in the surrounding IIFE by
   // viewer-parts/script.ts → client-pure.ts. They're in scope here.
+  const DEFAULT_RUBY_TOKEN_MINT = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+  const JUPITER_SOL_TO_RUBY_SWAP_PREFIX = "https://jup.ag/swap/SOL-";
   function subjectProgressForFaculty(fid) {
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     return roster.find((f) => f.id === fid) || null;
@@ -121,11 +123,13 @@ export function runViewerClient(bootstrap) {
         : "Advance the room";
   }
   function teachingFacultyIdsForSummary() {
+    const gateIds = lastTelemetry && lastTelemetry.graduation_gate && Array.isArray(lastTelemetry.graduation_gate.requiredFacultyIds)
+      ? lastTelemetry.graduation_gate.requiredFacultyIds.filter(Boolean)
+      : [];
+    if (gateIds.length > 0) return gateIds;
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     const ids = roster
-      .filter((f) => f && f.id !== LOUNGE_ID && (
-        f.courseGrade || f.todayClass || f.completedClasses !== undefined || f.requiredClasses !== undefined
-      ))
+      .filter((f) => f && f.id !== LOUNGE_ID && Number(f.requiredClasses || 0) > 0)
       .map((f) => f.id);
     return ids.length > 0 ? ids : TEACHING_FACULTY_IDS;
   }
@@ -204,11 +208,9 @@ export function runViewerClient(bootstrap) {
   }
   // formatClassScore, todayCorrectSummary, formatWholeNumber are in client-pure.
 
-  // Build the chalkboard's subject-progress row from the active course roster.
-  // Rendered into the empty-board state so
-  // the player can see where they stand without opening the School Career
-  // sheet. subjectGateMetaFor and makeSubjectGradeChip are defined further
-  // down (function declarations are hoisted within the IIFE).
+  // Build compact empty-board status from the active course roster.
+  // subjectGateMetaFor and makeSubjectGradeChip are defined further down
+  // (function declarations are hoisted within the IIFE).
   function buildBoardSubjectGrades() {
     const t = lastTelemetry;
     if (!t || !t.character || !t.current_grade) return null;
@@ -217,8 +219,20 @@ export function runViewerClient(bootstrap) {
     wrap.className = "board-subject-grades";
     const heading = document.createElement("div");
     heading.className = "board-subject-grades-title";
-    heading.textContent = (GRADE_LABELS[t.current_grade] || ("Grade " + t.current_grade)) + " · " + summary.met + "/" + summary.total + " subjects cleared";
+    heading.textContent = boardSubjectGradesTitle(summary);
     wrap.appendChild(heading);
+    wrap.appendChild(buildBoardSubjectGradesRow(summary));
+    return wrap;
+  }
+
+  function boardSubjectGradesTitle(summary) {
+    const t = lastTelemetry;
+    const grade = t && t.current_grade ? t.current_grade : "";
+    return (GRADE_LABELS[grade] || (grade ? "Grade " + grade : "Current year"))
+      + " · " + summary.met + "/" + summary.total + " subjects cleared";
+  }
+
+  function buildBoardSubjectGradesRow(summary) {
     const row = document.createElement("div");
     row.className = "board-subject-grades-row";
     for (const g of summary.grades) {
@@ -235,7 +249,44 @@ export function runViewerClient(bootstrap) {
         pending: !met,
       }));
     }
-    wrap.appendChild(row);
+    return row;
+  }
+
+  function buildBoardInfoButton(infoText) {
+    const text = String(infoText || "").trim();
+    if (!text) return null;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "board-info-button";
+    button.setAttribute("aria-label", "Class details");
+    button.title = text;
+    button.textContent = "i";
+    const bubble = document.createElement("span");
+    bubble.className = "board-info-popover";
+    bubble.setAttribute("aria-hidden", "true");
+    bubble.textContent = text;
+    button.appendChild(bubble);
+    return button;
+  }
+
+  function buildBoardClassStartHeader(statusText, infoText) {
+    const summary = subjectClearSummary();
+    const wrap = document.createElement("div");
+    wrap.className = "board-empty-header";
+    const top = document.createElement("div");
+    top.className = "board-empty-topline";
+    const grade = document.createElement("div");
+    grade.className = "board-empty-grade";
+    grade.textContent = boardSubjectGradesTitle(summary);
+    top.appendChild(grade);
+    const info = buildBoardInfoButton(infoText);
+    if (info) top.appendChild(info);
+    wrap.appendChild(top);
+    const status = document.createElement("div");
+    status.className = "board-empty-status";
+    status.textContent = statusText || "Today's class ready";
+    wrap.appendChild(status);
+    wrap.appendChild(buildBoardSubjectGradesRow(summary));
     return wrap;
   }
 
@@ -501,6 +552,7 @@ export function runViewerClient(bootstrap) {
     accountWalletMeta: $("account-wallet-meta"),
     accountBuyPasses: $("account-buy-passes"),
     accountBuyCardPacks: $("account-buy-card-packs"),
+    accountGetRuby: $("account-get-ruby"),
     accountMintCards: $("account-mint-cards"),
     accountCardSummary: $("account-card-summary"),
     accountHallPassCards: $("account-hall-pass-cards"),
@@ -677,6 +729,7 @@ export function runViewerClient(bootstrap) {
   let billingBusy = false;
   let selectedBillingProductId = null;
   let activeAccountPane = "account";
+  let accountHallPassCardsRenderSig = "";
   let packSyncBusy = false;
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
@@ -1418,6 +1471,15 @@ export function runViewerClient(bootstrap) {
       els.boardReveal.textContent = "";
     }
   }
+  function ensureBlackboardEmptyExtras() {
+    let extras = els.blackboardEmpty.querySelector(".blackboard-empty-extras");
+    if (!extras) {
+      extras = document.createElement("div");
+      extras.className = "blackboard-empty-extras";
+      els.blackboardEmpty.appendChild(extras);
+    }
+    return extras;
+  }
   function showBlackboardLoaded(isOpinion, isTypedAnswer) {
     // Visibility of the blackboard pieces (panel, answers host, footer) is
     // governed by applyViewMode via data-mode CSS rules. This function
@@ -1781,7 +1843,7 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
-    if (/needs more SOL|insufficient funds|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
+    if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
       return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
@@ -1797,6 +1859,11 @@ export function runViewerClient(bootstrap) {
       return "Ruby High could not reach Solana reliably. " + (unchanged || "Try again in a minute.");
     }
     return message || "error";
+  }
+
+  function isRetryableSolanaMintConfirm(status, message) {
+    if ([425, 429, 500, 502, 503, 504].includes(Number(status || 0))) return true;
+    return /not found yet|not found on-chain|confirmation|rpc|temporar|timed out|timeout|failed to fetch|network|blockhash|preflight|simulation|rate.?limit/i.test(String(message || ""));
   }
 
   function withWalletActionTimeout(promise, message) {
@@ -1971,6 +2038,50 @@ export function runViewerClient(bootstrap) {
   // formatTokenDisplayAmount, cardPackTokenSymbol, cardPackDebitLabel,
   // cardPackCreditLabel, cardPackPaymentDeltaLabel, cardPackProductMeta,
   // formatMoney, formatTokenAmount are in client-pure.ts.
+  function currentRubyTokenMintFromSolana(solana) {
+    if (!solana || typeof solana !== "object") return "";
+    const mint = typeof solana.mint === "string" ? solana.mint.trim() : "";
+    return mint || "";
+  }
+
+  function cardPackCheckoutState() {
+    const solana = billingProductsCache && billingProductsCache.solana && typeof billingProductsCache.solana === "object"
+      ? billingProductsCache.solana
+      : null;
+    if (!solana) return { loaded: false, ready: true, reason: "" };
+    if (!solana.configured) return { loaded: true, ready: false, reason: "Card pack checkout is not configured on this server." };
+    const mint = currentRubyTokenMintFromSolana(solana);
+    if (!mint) return { loaded: true, ready: false, reason: "RUBY mint configuration is missing." };
+    return { loaded: true, ready: true, reason: "" };
+  }
+
+  function currentRubyTokenMint() {
+    const solana = billingProductsCache && billingProductsCache.solana && typeof billingProductsCache.solana === "object"
+      ? billingProductsCache.solana
+      : null;
+    const mint = solana && typeof solana.mint === "string" ? solana.mint.trim() : "";
+    return mint || DEFAULT_RUBY_TOKEN_MINT;
+  }
+
+  function rubyTokenSwapLink() {
+    return JUPITER_SOL_TO_RUBY_SWAP_PREFIX + encodeURIComponent(currentRubyTokenMint());
+  }
+
+  function configureGetRubyLink(link) {
+    if (!link) return;
+    link.href = rubyTokenSwapLink();
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Get $RUBY";
+    link.title = "Get $RUBY on Jupiter before buying Ruby High card packs.";
+  }
+
+  function buildGetRubyLink(className) {
+    const link = document.createElement("a");
+    link.className = className || "get-ruby-link";
+    configureGetRubyLink(link);
+    return link;
+  }
 
   function hostedAiTelemetry(t) {
     const entitlements = hostedEntitlements(t);
@@ -2255,6 +2366,39 @@ export function runViewerClient(bootstrap) {
     return Array.from(byAsset.values()).sort((a, b) => Number(a.issuedAt || 0) - Number(b.issuedAt || 0));
   }
 
+  function accountHallPassCardsRenderSignature(shownPacks, shown) {
+    return JSON.stringify({
+      authed: !!authed,
+      billingBusy: !!billingBusy,
+      billingMode,
+      ownerWallet: knownSolanaOwnerWalletAddress() || "",
+      packs: shownPacks.map((pack) => [
+        pack.id,
+        pack.assetAddress,
+        pack.mintSignature,
+        pack.status,
+        pack.packCount,
+        pack.cardCount,
+        pack.serial,
+        pack.issuedAt,
+        pack.updatedAt,
+      ]),
+      cards: shown.map((card) => [
+        card.id,
+        card.characterId,
+        card.characterName,
+        card.role,
+        card.rarity,
+        card.status,
+        card.serial,
+        card.mintAddress,
+        card.mintSignature,
+        card.issuedAt,
+        card.updatedAt,
+      ]),
+    });
+  }
+
   function renderAccountHallPassCards() {
     if (!els.accountHallPassCards) return;
     const cards = hallPassCardsForTelemetry();
@@ -2265,6 +2409,7 @@ export function runViewerClient(bootstrap) {
     const pendingMints = pendingHallPassCardMintsForTelemetry();
     const hasSolanaWallet = !!knownSolanaOwnerWalletAddress();
     const needsWalletConnection = !hasSolanaWallet && (activePacks.length > 0 || pendingMints.length > 0);
+    let summaryText = "";
     const shown = cards
       .slice()
       .sort((a, b) => {
@@ -2281,17 +2426,30 @@ export function runViewerClient(bootstrap) {
         if (minted.length > 0) pieces.push(minted.length + " on-chain Card" + (minted.length === 1 ? "" : "s"));
         if (pendingMints.length > 0) pieces.push(pendingMints.length + " face-down Card" + (pendingMints.length === 1 ? "" : "s") + " to reveal");
       }
-      els.accountCardSummary.textContent = needsWalletConnection
+      summaryText = needsWalletConnection
         ? "Connect a Solana wallet to open packs and reveal Cards."
         : pieces.length === 0
         ? "No packs or Cards in this wallet yet."
         : pieces.join(" · ");
+      els.accountCardSummary.textContent = summaryText;
     }
     if (els.accountBuyCardPacks) {
-      els.accountBuyCardPacks.disabled = !authed || billingBusy;
+      const checkout = cardPackCheckoutState();
+      const checkoutBlocked = checkout.loaded && !checkout.ready;
+      els.accountBuyCardPacks.disabled = !authed || billingBusy || checkoutBlocked;
       els.accountBuyCardPacks.textContent = billingBusy && billingMode === "card-packs" ? "Loading..." : "Buy Card Packs";
-      els.accountBuyCardPacks.title = "Buy Ruby High card packs.";
+      if (!authed) {
+        els.accountBuyCardPacks.title = "Sign in to buy Ruby High card packs.";
+      } else if (checkoutBlocked) {
+        els.accountBuyCardPacks.title = checkout.reason || "Card pack checkout is unavailable right now.";
+      } else {
+        els.accountBuyCardPacks.title = "Buy Ruby High card packs.";
+      }
+      if (els.accountCardSummary && checkoutBlocked && checkout.reason) {
+        els.accountCardSummary.textContent = summaryText + " · " + checkout.reason;
+      }
     }
+    configureGetRubyLink(els.accountGetRuby);
     if (els.accountMintCards) {
       els.accountMintCards.hidden = !needsWalletConnection && pendingMints.length === 0;
       els.accountMintCards.disabled = !authed || billingBusy;
@@ -2306,7 +2464,6 @@ export function runViewerClient(bootstrap) {
         els.accountMintCards.title = "No face-down cards are ready to reveal.";
       }
     }
-    els.accountHallPassCards.replaceChildren();
     const shownPacks = packs
       .slice()
       .sort((a, b) => {
@@ -2315,6 +2472,10 @@ export function runViewerClient(bootstrap) {
         return Number(b.updatedAt || b.issuedAt || 0) - Number(a.updatedAt || a.issuedAt || 0);
       })
       .slice(0, 12);
+    const renderSig = accountHallPassCardsRenderSignature(shownPacks, shown);
+    if (renderSig === accountHallPassCardsRenderSig && els.accountHallPassCards.childElementCount > 0) return;
+    accountHallPassCardsRenderSig = renderSig;
+    els.accountHallPassCards.replaceChildren();
     if (shownPacks.length === 0 && shown.length === 0) {
       const empty = document.createElement("div");
       empty.className = "account-empty";
@@ -3375,6 +3536,37 @@ export function runViewerClient(bootstrap) {
     await mintHallPassCardFromAccount(pending[0].id);
   }
 
+  async function confirmHallPassCardMint(input) {
+    const maxAttempts = 8;
+    let lastError = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) {
+        await waitForSolanaConfirmation(1200 + attempt * 500);
+        updatePackMintProgress("Waiting for Solana confirmation...");
+        setPrivyStatus("Waiting for card reveal confirmation...", false);
+      }
+      const confirmed = await apiFetch(apiBase + "/nft/mint-card-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 30000,
+        body: JSON.stringify(input),
+      });
+      const data = await confirmed.json().catch(() => ({}));
+      if (confirmed.ok && data && data.ok) return data;
+      const errorMessage = nftHttpErrorMessage("Card mint confirmation", confirmed, data, "Your card reveal is not recorded yet; try again in a minute.");
+      if (confirmed.status === 404 && /No face-down card matches this mint\./i.test(errorMessage)) {
+        await fetchSession();
+        const alreadyRevealed = hallPassCardById(input.cardId);
+        if (alreadyRevealed && alreadyRevealed.mintAddress && alreadyRevealed.mintSignature) {
+          return { ok: true, card: alreadyRevealed };
+        }
+      }
+      lastError = new Error(errorMessage);
+      if (!isRetryableSolanaMintConfirm(confirmed.status, errorMessage) || attempt + 1 >= maxAttempts) break;
+    }
+    throw lastError || new Error("Card mint confirmation failed.");
+  }
+
   function handleAccountAiAction() {
     if (!authed || localAiEnabled) return;
     if (getStoredApiKey() && aiEnabled) {
@@ -3426,12 +3618,13 @@ export function runViewerClient(bootstrap) {
           "Pack NFT: " + HALL_PASS_CARDS_PER_PACK + " cards",
           "Burn rate: 1 Card = " + hallPassCostLabel(hallPassesPerBurnedCard),
         ].forEach((label) => {
-          const chip = document.createElement("span");
-          chip.className = "cost-chip";
-          chip.textContent = label;
-          els.billingCosts.appendChild(chip);
-        });
-      }
+        const chip = document.createElement("span");
+        chip.className = "cost-chip";
+        chip.textContent = label;
+        els.billingCosts.appendChild(chip);
+      });
+      els.billingCosts.appendChild(buildGetRubyLink("cost-chip get-ruby-link billing-get-ruby-link"));
+    }
     }
     const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
     const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
@@ -3479,9 +3672,13 @@ export function runViewerClient(bootstrap) {
     });
     setBillingStatus(
       mode === "card-packs"
-        ? (solana && solana.configured ? "" : "Card pack checkout is not configured on this server.")
+        ? (solana && !solana.configured
+          ? "Card pack checkout is not configured on this server."
+          : currentRubyTokenMintFromSolana(solana) ? "" : "RUBY mint configuration is missing for card packs.")
         : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
-      mode === "card-packs" ? !(solana && solana.configured) : !payload.configured,
+      mode === "card-packs"
+        ? !(solana && solana.configured && currentRubyTokenMintFromSolana(solana))
+        : !payload.configured,
     );
   }
 
@@ -3566,6 +3763,7 @@ export function runViewerClient(bootstrap) {
   function buildCardPackPaymentChoice(solana, product) {
     const panel = document.createElement("div");
     panel.className = "billing-payment-choice";
+    const canPackCheckout = !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));
     const title = document.createElement("div");
     title.className = "billing-payment-title";
     title.textContent = "Buy " + (product.name || packCountLabel(product.packCount));
@@ -3579,9 +3777,11 @@ export function runViewerClient(bootstrap) {
     crypto.type = "button";
     crypto.className = "billing-buy";
     crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Buy Pack";
-    crypto.disabled = billingBusy || cryptoUnavailable || !(solana && solana.configured);
+    crypto.disabled = billingBusy || cryptoUnavailable || !canPackCheckout;
     crypto.title = cryptoUnavailable
       ? "Card pack checkout needs Privy wallet configuration."
+      : !canPackCheckout
+      ? "RUBY token setup is incomplete. Get $RUBY, then try again."
       : "Pay with " + (product.tokenSymbol || (solana && solana.symbol) || "RUBY") + " and mint a pack NFT.";
     crypto.addEventListener("click", () => startSolanaPayment(product.id));
     actions.appendChild(crypto);
@@ -3593,6 +3793,12 @@ export function runViewerClient(bootstrap) {
       note.className = "billing-payment-note";
       note.textContent = "Card pack checkout is not configured in this preview.";
       panel.appendChild(note);
+    } else if (!canPackCheckout) {
+      const note = document.createElement("div");
+      note.className = "billing-payment-note";
+      note.textContent = "RUBY token setup is incomplete. Get $RUBY, then choose a pack.";
+      panel.appendChild(note);
+      panel.appendChild(buildGetRubyLink("billing-get-ruby-link billing-payment-note-link"));
     }
     return panel;
   }
@@ -4434,10 +4640,23 @@ export function runViewerClient(bootstrap) {
     const isLounge = !!((faculty && faculty.id === LOUNGE_ID) || (!faculty && lastTelemetry && lastTelemetry.faculty === LOUNGE_ID));
     if (isLounge) {
       // Lounge mode: hide blackboard and show the faculty lounge roster.
-      // Telemetry does not put the synthetic lounge row in faculty_roster, so
-      // callers often pass faculty=null while t.faculty is still "lounge".
+      // Keep the compact guest-teacher panel and do not carry over
+      // stale classroom start/progress chrome above it.
       setLoungeMode(true);
       renderTeacherFigure(null);
+      els.blackboardPanel.dataset.faculty = LOUNGE_ID;
+      showBlackboardEmpty(true);
+      els.blackboardPanel.classList.remove("is-long-prompt", "is-essay-prompt");
+      els.blackboardEmptyText.replaceChildren();
+      if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
+      const extras = ensureBlackboardEmptyExtras();
+      extras.replaceChildren();
+      const spotlight = buildGuestSpotlight(lastTelemetry);
+      if (spotlight) {
+        extras.appendChild(spotlight);
+      } else {
+        els.blackboardEmptyText.textContent = "No guest teacher is scheduled this week.";
+      }
       activeQuestionId = null;
       return;
     }
@@ -4467,9 +4686,6 @@ export function runViewerClient(bootstrap) {
           els.blackboardEmptyAction.textContent = "Lock it in";
           els.blackboardEmptyAction.hidden = false;
         }
-      } else if (faculty && faculty.id === LOUNGE_ID) {
-        els.blackboardEmptyText.textContent = "You're in the teachers' lounge. No questions here — eavesdrop on the faculty.";
-        if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
         els.blackboardEmptyText.textContent = "Requirements complete. Pick a level-up reward to seal the year.";
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
@@ -4490,31 +4706,22 @@ export function runViewerClient(bootstrap) {
             ? "Continue today's class — tap " + advanceLabel + " to start."
             : "Start today's graded class — tap " + advanceLabel + " to start.";
         const welcome = showWelcomeBackCopy ? "Welcome back — " + teacherName + " is ready. " : "";
-        els.blackboardEmptyText.textContent = hint ? welcome + lead + " " + hint : welcome + lead;
+        const infoText = hint ? welcome + lead + " " + hint : welcome + lead;
+        const statusText = todayDone
+          ? "Class complete · practice open"
+          : todayActive
+            ? "Class in progress"
+            : "Today's class ready";
+        els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(statusText, infoText));
         if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = "Start today's class";
+          els.blackboardEmptyAction.textContent = todayActive ? "Continue today's class" : "Start today's class";
           els.blackboardEmptyAction.hidden = !!todayDone;
         }
       }
-      // Below the lead text: a sleeker on-board subject-grade chip row, so the
-      // player can read class standing without opening the sheet.
-      let extras = els.blackboardEmpty.querySelector(".blackboard-empty-extras");
-      if (!extras) {
-        extras = document.createElement("div");
-        extras.className = "blackboard-empty-extras";
-        els.blackboardEmpty.appendChild(extras);
-      }
-      extras.innerHTML = "";
-      const t = lastTelemetry;
-      const inLounge = !!(faculty && faculty.id === LOUNGE_ID);
-      if (authed && t && t.character && !inLounge) {
-        if (t.current_grade) {
-          const grades = buildBoardSubjectGrades();
-          if (grades) extras.appendChild(grades);
-        }
-        const spotlight = buildGuestSpotlight(t);
-        if (spotlight) extras.appendChild(spotlight);
-      }
+      // Drop any previous lounge/card extras; classroom status now lives in
+      // the compact header above the start button.
+      const extras = ensureBlackboardEmptyExtras();
+      extras.replaceChildren();
       return;
     }
 
@@ -6658,8 +6865,8 @@ export function runViewerClient(bootstrap) {
   // ── "What you need" hint ───────────────────────────────────────────────
   // Gates:
   //   1. Daily class — one passed graded session counts toward the year.
-  //   2. Daily-class count — later years require more passed daily classes.
-  //   3. Subject grades — each teaching room must be brought to C or better.
+  //   2. Daily-class days — later years require more passed school days.
+  //   3. Classroom count — each year opens more graduation-counting rooms.
   // The hint surfaces the most-blocking gate as one short sentence.
   function buildNextStepHint(c) {
     if (!c) return "";
@@ -6669,7 +6876,8 @@ export function runViewerClient(bootstrap) {
       return "Requirements complete — the graduation ceremony is on the blackboard.";
     }
     const grade = String(t.current_grade ?? "9");
-    const streakReq = STREAK_REQUIRED[grade] || 1;
+    const gate = t.graduation_gate || {};
+    const streakReq = Number(gate.requiredDays || STREAK_REQUIRED[grade] || 1);
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
     const streakLastDate = c.streak && c.streak.grade === grade ? c.streak.lastDate : "";
     const todayKey = (t.daily && t.daily.dailyKey) || "";
@@ -6683,6 +6891,9 @@ export function runViewerClient(bootstrap) {
       parts.push("Pass today's daily class at C or better (" + streakHere + "/" + streakReq + " daily classes)");
     } else if (streakNeeded > 0) {
       parts.push("Daily class counted — " + streakHere + "/" + streakReq + ", come back tomorrow");
+    }
+    if (Number(gate.openElectiveSlots || 0) > 0) {
+      parts.push("Pick " + gate.openElectiveSlots + " elective " + (gate.openElectiveSlots === 1 ? "room" : "rooms"));
     }
     if (subjectGaps.length > 0) {
       const segs = subjectGaps.map((cg) => subjectDisplayName(cg.facultyId, cg.progress) + " (" + subjectProgressShortLabel(cg.progress) + ")");
@@ -6707,8 +6918,9 @@ export function runViewerClient(bootstrap) {
     const completed = new Set((Array.isArray(c.yearbook) ? c.yearbook : []).map((y) => y.grade));
     const currentGrade = String(lastTelemetry?.current_grade ?? "9");
     const streakHere = c.streak && c.streak.grade === currentGrade ? c.streak.count : 0;
+    const currentGate = (lastTelemetry && lastTelemetry.graduation_gate) || {};
     const rungs = ["9", "10", "11", "12"].map((g) => {
-      const streakReq = STREAK_REQUIRED[g] || 1;
+      const streakReq = g === currentGrade && currentGate.requiredDays ? Number(currentGate.requiredDays) : (STREAK_REQUIRED[g] || 1);
       let state, streakProgress, classProgress;
       if (completed.has(g)) {
         state = "completed";
@@ -6788,7 +7000,7 @@ export function runViewerClient(bootstrap) {
 
         const note = document.createElement("div");
         note.className = "graduation-note";
-        note.textContent = "Three rewards drawn from the wider set — pick one to seal the yearbook.";
+        note.textContent = "Pick one keepsake or reward to seal the yearbook.";
         wrap.appendChild(note);
 
         wrap.appendChild(status);
@@ -6863,10 +7075,15 @@ export function runViewerClient(bootstrap) {
         });
       });
 
+      const photoChoice = {
+        label: "Photo",
+        detail: "Snap with your top teacher and classmate.",
+        reward: { kind: "photo" },
+      };
       const seed = (c.pendingGraduation && c.pendingGraduation.readyAt)
         || (ready && ready.readyAt)
         || hashCeremonySeed((c.name || "") + ":" + grade);
-      const picked = seededShuffle(pool, seed).slice(0, 3);
+      const picked = [photoChoice].concat(seededShuffle(pool, seed).slice(0, 2));
       picked.forEach(({ label, detail, reward }) => addChoice(label, detail, reward));
       return wrap;
     }
@@ -7646,10 +7863,76 @@ export function runViewerClient(bootstrap) {
       renderMarkdownInto(quoteEl, "“" + quote + "”", { inline: true });
       item.appendChild(quoteEl);
     }
+    if (entry.diploma) {
+      item.appendChild(buildDiplomaCollectible(entry.diploma));
+    }
+    if (entry.photo) {
+      item.appendChild(buildGraduationPhotoCollectible(entry.photo));
+    }
     if (share && share.url) {
       item.appendChild(buildYearbookShareActions(share));
     }
     return item;
+  }
+
+  function buildDiplomaCollectible(diploma) {
+    const wrap = document.createElement("div");
+    wrap.className = "paper-archive-diploma";
+    if (diploma.imageUrl) {
+      const img = document.createElement("img");
+      img.alt = diploma.title || "Ruby High diploma";
+      img.loading = "lazy";
+      img.src = diploma.imageUrl;
+      wrap.appendChild(img);
+    }
+    const copy = document.createElement("div");
+    copy.className = "paper-archive-diploma-copy";
+    const title = document.createElement("div");
+    title.className = "paper-archive-diploma-title";
+    title.textContent = diploma.title || "Ruby High Diploma";
+    const meta = document.createElement("div");
+    meta.className = "paper-archive-diploma-meta";
+    meta.textContent = "collectible · " + formatSealedDate(diploma.issuedAt);
+    copy.appendChild(title);
+    copy.appendChild(meta);
+    wrap.appendChild(copy);
+    return wrap;
+  }
+
+  function buildGraduationPhotoCollectible(photo) {
+    const wrap = document.createElement("div");
+    wrap.className = "paper-archive-photo";
+    const faces = document.createElement("div");
+    faces.className = "paper-archive-photo-faces";
+    [photo.teacher, photo.student].forEach((person) => {
+      const face = document.createElement("span");
+      face.className = "paper-archive-photo-face";
+      if (person && person.imageUrl) {
+        const img = document.createElement("img");
+        img.alt = person.name || "";
+        img.loading = "lazy";
+        img.src = person.imageUrl;
+        face.appendChild(img);
+      } else {
+        face.textContent = String((person && person.name) || "?").slice(0, 1).toUpperCase();
+      }
+      faces.appendChild(face);
+    });
+    wrap.appendChild(faces);
+    const copy = document.createElement("div");
+    copy.className = "paper-archive-photo-copy";
+    const title = document.createElement("div");
+    title.className = "paper-archive-photo-title";
+    title.textContent = photo.title || "Graduation Photo";
+    const meta = document.createElement("div");
+    meta.className = "paper-archive-photo-meta";
+    const teacherName = photo.teacher && photo.teacher.name ? photo.teacher.name : "top teacher";
+    const studentName = photo.student && photo.student.name ? photo.student.name : "top classmate";
+    meta.textContent = teacherName + " · " + studentName;
+    copy.appendChild(title);
+    copy.appendChild(meta);
+    wrap.appendChild(copy);
+    return wrap;
   }
 
   function yearbookShareForEntry(entry, liveChar) {
@@ -11468,7 +11751,9 @@ export function runViewerClient(bootstrap) {
     }
   }
 
-  els.reportBugLink.addEventListener("click", openBugReport);
+  if (els.reportBugLink && !els.reportBugLink.dataset.discordLink) {
+    els.reportBugLink.addEventListener("click", openBugReport);
+  }
   if (els.bugReportForm) els.bugReportForm.addEventListener("submit", submitBugReport);
   if (els.bugReportClose) els.bugReportClose.addEventListener("click", closeBugReport);
   if (els.bugReportCancel) els.bugReportCancel.addEventListener("click", closeBugReport);
@@ -11485,7 +11770,18 @@ export function runViewerClient(bootstrap) {
     });
   }
   if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }));
-  if (els.accountBuyCardPacks) els.accountBuyCardPacks.addEventListener("click", () => openBilling({ mode: "card-packs" }));
+  if (els.accountBuyCardPacks) els.accountBuyCardPacks.addEventListener("click", () => {
+    const checkout = cardPackCheckoutState();
+    if (!authed) return;
+    if (checkout.loaded && !checkout.ready) {
+      setBillingStatus("Card pack checkout is unavailable right now.", true);
+      if (els.accountCardSummary) {
+        els.accountCardSummary.textContent = "Card pack checkout is unavailable right now.";
+      }
+      return;
+    }
+    openBilling({ mode: "card-packs" });
+  });
   if (els.accountMintCards) els.accountMintCards.addEventListener("click", async () => {
     if (billingBusy) return;
     const hasWallet = !!knownSolanaOwnerWalletAddress();

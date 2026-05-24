@@ -2,7 +2,7 @@
 
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
-Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character with four stats, walk between four rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
+Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
 
 **For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
 
@@ -18,6 +18,31 @@ npm run dev:server
 ```
 
 Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys still live in localStorage; the server never holds them. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
+
+## Ruby High 2.0 C wedge
+
+The first C implementation lives in `ruby2/c`. It is a deterministic engine
+and native SDL slice, not the final sokol client yet. It proves fixed-size
+state, effect payload reduction, the Source/Sense/Sync/Signal disciplines,
+RPN branch gates, item validation, empty-start inventory slots, whole-campus
+pointcrawl navigation, ranker-curated two-button action trays with four-button
+class moments, two-option conversation branches, Yearbook candidate eviction,
+archetype resolution, companion locks, gameplay divergence tests, and the first
+Captain Null trace resolver. `play-llm` adds the local Ollama
+vertical slice: deterministic approach-choice gameplay with bounded
+speech-bubble lines from `ruby-high-local` and authored fallback copy if the
+model is unavailable or leaks analysis instead of JSON.
+
+```bash
+make -C ruby2/c test
+make -C ruby2/c gameplay-test
+make -C ruby2/c llm-test
+make -C ruby2/c run
+make -C ruby2/c play
+make -C ruby2/c play-llm
+make -C ruby2/c native-smoke
+make -C ruby2/c native-run
+```
 
 The standalone viewer is installable as a PWA from `/api/apps/ruby-high/viewer`. The service worker is scoped to `/api/apps/ruby-high/`, caches the shell and core assets, and keeps auth, chat, pack management, and session state requests network-only. Full offline gameplay still requires the Ruby High server because the authoritative school state lives there.
 
@@ -113,7 +138,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for NFT minting. |
-| `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs and Token Metadata card NFTs. Set via secrets only. |
+| `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs and Token Metadata card NFTs. Also drives creator attribution in served JSON metadata. Set via secrets only. |
 | `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads; unset keeps app-hosted metadata JSON. |
 | `RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK` | — | Arweave RSA JWK JSON used when `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`. `RUBY_HIGH_ARWEAVE_JWK`, `RUBY_HIGH_ARWEAVE_WALLET_JWK`, and `ARWEAVE_JWK` are also accepted. |
 | `RUBY_HIGH_NFT_METADATA_GATEWAY` | `https://arweave.net` | Gateway prefix returned for uploaded metadata JSON. |
@@ -177,8 +202,9 @@ Solana purchases are separate from Stripe and use the configured SPL token to mi
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
 - Create the card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` to the printed address so card NFTs verify into `Ruby High: First Bell`.
 - The current First Bell runtime manifest has 24 mintable profiles and a 12-profile alternate-art expansion, for 36 draft profiles total in `src/services/hall-pass-card-catalog.ts`. Revealed metadata includes `Set`, `Set Code`, `Set Number`, `Card Profile ID`, `Card Name`, `Subject`, media traits, and creator attribution. Reveal proof data stays under `properties.provenance` instead of visible marketplace traits.
-- Wallet-facing card crops are plain images, not cards inside cards: students, teachers, and specials are tall avatar crops; items are square; locations are wide. Regenerate crops with `npm run nft:crop-cards` after changing source art.
+- Wallet-facing card crops are plain images, not cards inside cards: students, teachers, and specials are tall avatar crops; items are square; locations are wide. Regenerate crops with `npm run nft:crop-cards` after changing source art. Use `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <ids>` to refresh Grok source art through OpenRouter before cropping.
 - Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Pack/card records and receipts carry `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`, and reveal-time `revealSeed` provenance; see [`NFT_PROVABLY_FAIR_V1_1.md`](./NFT_PROVABLY_FAIR_V1_1.md) for the published algorithm.
+- The current v1.1 entropy source is an auditable server-commit bridge, not decentralized randomness. The next hardening step is a Solana pack-opening program that commits the open request and payment/authority lock first, then settles from Switchboard randomness.
 - Marketplace submission copy, collection addresses, and Magic Eden verification steps are tracked in [`NFT_MARKETPLACE_VERIFICATION.md`](./NFT_MARKETPLACE_VERIFICATION.md).
 - To mint with durable JSON directly on Arweave, fund the Arweave wallet, set `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`, add the JWK secret, and verify a fresh pack/card mint returns an `https://arweave.net/...` metadata URI. Leave the flag unset if durable storage funding is not ready.
 - Wallet-signed pack checkout is payment-only: the prepared transaction creates the treasury ATA if needed and transfers the configured SPL token with the Ruby High payment reference. The server verifies the payment and mints the Metaplex Core pack NFT afterward.

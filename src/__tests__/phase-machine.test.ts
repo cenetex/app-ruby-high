@@ -48,11 +48,11 @@ describe("grade helpers", () => {
     expect(nextGradeAfter("12")).toBeNull();
   });
 
-  it("requiredStreakForGrade scales with year (1, 2, 3, 4)", () => {
+  it("requiredStreakForGrade ramps school days by year (1, 1, 2, 3)", () => {
     expect(requiredStreakForGrade("9")).toBe(1);
-    expect(requiredStreakForGrade("10")).toBe(2);
-    expect(requiredStreakForGrade("11")).toBe(3);
-    expect(requiredStreakForGrade("12")).toBe(4);
+    expect(requiredStreakForGrade("10")).toBe(1);
+    expect(requiredStreakForGrade("11")).toBe(2);
+    expect(requiredStreakForGrade("12")).toBe(3);
   });
 });
 

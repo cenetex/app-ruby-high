@@ -933,7 +933,7 @@ function publicPackSyncErrorMessage(err: unknown): string {
 
 function publicNftErrorMessage(err: unknown): string {
   const raw = solanaErrorMessages(err).join(" ") || (err instanceof Error ? err.message : String(err));
-  if (/insufficient funds|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(raw)) {
+  if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(raw)) {
     return "This card mint needs more SOL for Solana rent and fees. Your card was not changed.";
   }
   if (/Solana RPC failed with (?:429|5\d\d)|429|too many requests|rate.?limit/i.test(raw)) {

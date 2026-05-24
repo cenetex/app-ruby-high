@@ -155,10 +155,12 @@ export function classRecordKey(grade: Grade, facultyId: string, date: string): s
 }
 
 export function requiredClassCompletionsForGrade(grade: Grade): number {
-  void grade;
-  // Course grades are withheld until a room has three C-or-better daily
-  // classes in a row; the per-year streak gate still scales separately.
-  return 3;
+  switch (grade) {
+    case "9": return 1;
+    case "10": return 1;
+    case "11": return 2;
+    case "12": return 3;
+  }
 }
 
 export function letterGradeForClassScore(score: number | undefined): string | undefined {
