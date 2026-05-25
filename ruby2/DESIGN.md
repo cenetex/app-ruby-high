@@ -1805,7 +1805,7 @@ Companion rules:
 - bringing one companion means not bringing another
 - companion participation can create Yearbook signatures and relationship pages
 
-### 3.11 Clocks, Conditions, And Fail-Forward
+### 3.12 Clocks, Conditions, And Fail-Forward
 
 The RPG pressure layer needs consequences, but not combat HP. Use clocks and conditions.
 
@@ -2020,6 +2020,33 @@ Naming rule:
 - Scene state should keep these separate as `items.office-pass` and
   `wallet.hallPasses` or equivalent. Do not spend paid Hall Pass wallet credits
   just because the player used the in-world Office Pass item in a story beat.
+
+### 4.5 CCG And Ownership Contract
+
+Ruby High already has a Hall Pass card/NFT model. V2 card mechanics must
+reconcile with it instead of letting ownership accidentally become progression.
+
+Ownership rule:
+
+> Owned cards, NFT cards, and token-linked artifacts are additive: identity,
+> collection, cosmetics, premium convenience, community status, and shareable
+> proof. They must not gate or mechanically advantage the core class/social/
+> memory retention loop.
+
+Design implications:
+
+- Student, teacher, location, and item cards are interaction models first.
+- NFT/CCG ownership can skin, frame, stamp, display, share, or collect a card.
+- Owned cards should not improve answer correctness, discipline gain, class
+  outcomes, relationship deltas, or required route access by default.
+- If an owned card ever grants gameplay advantage, it must be segmented,
+  explicitly measured, and treated as a pay-to-win risk rather than a default
+  design path.
+- The Yearbook is the natural ownership surface: sealed pages, signatures,
+  report cards, and identity artifacts can become owned/shareable without
+  bribing the lesson loop.
+- Wallet-connected, NFT-holder, and token-community users must be cohort-tagged
+  so monetization behavior does not pollute organic retention reads.
 
 ## 5. Content Schemas
 
@@ -2887,6 +2914,24 @@ Required generated surfaces:
 Action IDs are transitional. The command path no longer has to remain one enum
 forever, but authored years should use stable content IDs or compiler-assigned
 stable integers rather than hand-maintained `Ruby2WorldActionId` values.
+
+Pre-traction scaling rule:
+
+> Do not pay for full authored depth before retention proves the loop, and do
+> not destroy the scalable pipeline while proving it.
+
+Year One should be small and hand-made. The engine, schema, replay harness, and
+content compiler should stay cheap to scale. The team does not commit to four
+authored years until a retention read shows that the loop retains and the
+pipeline can produce Year Two at a fraction of Year One's human cost while
+keeping authored peaks hand-made.
+
+Two traps to avoid:
+
+- over-scale Year One into generic mush that disproves the authored-depth thesis
+  before it is actually tested
+- under-scale the pipeline into a beautiful Week One that cannot become Year Two
+  without a writing room
 
 AI use in authoring:
 
@@ -4194,7 +4239,15 @@ C rules:
 
 ### 9.1 Recommended Client Shape
 
-Use a C/sokol game client for the play surface if the hard rendering spike passes:
+Default stance: web-first until retention says otherwise.
+
+`ruby2/c` is a deterministic-core proving ground first. It should prove world
+state, reducers, replay, rankers, and fixed-layout scene playback. It is not
+automatically the production client. A custom C/sokol client becomes justified
+only after the web retention loop clears the learn-first gate and the hard
+rendering spike proves text, touch, and layout quality.
+
+If justified, use a C/sokol game client for the play surface:
 
 - sokol_app for lifecycle/input/window
 - sokol_gfx for rendering
@@ -4211,7 +4264,10 @@ Keep platform shells thin:
 - iOS shell: lifecycle, store billing, secure storage, push/deep links later
 - Android shell: lifecycle, Play Billing, secure storage, push/deep links later
 
-Long-form editing, admin dashboards, metrics charts, account management, and billing management remain better as web/native shell UI.
+Long-form editing, admin dashboards, metrics charts, account management, and
+billing management remain better as web/native shell UI. The v1/PWA surface
+remains the right retention-truth build until users prove the v2 loop deserves
+native platform investment.
 
 In-world UX rule:
 
@@ -4323,6 +4379,21 @@ Reduced-motion and low-power modes map events to simpler transitions. They do no
 ## 10. Metrics
 
 Ruby High 2.0 should be measured by retention truth, not spectacle.
+
+V1 already measures most of the validation path in
+`src/services/ruby-high-service.ts` and `src/routes/metrics-events.ts`:
+
+- activation funnel: `first_character_created`, `first_question_answered`,
+  `first_daily_class_passed`, `first_essay_submitted`,
+  `first_grade_completed`
+- first-10-minute activation windows for the same funnel
+- return signal: `visitor_seen`, `app_open`, `session_resume`
+- Yearbook engagement: `yearbook_open`, `yearbook_copy`
+- arbitrary event `metadata`, which makes cohort tagging feasible
+
+The missing cheap instrumentation is the daily memory loop: Notebook memory
+recorded, next-day memory callback seen, and whether that callback changes D1
+return against the current quiz experience.
 
 Events:
 
@@ -4465,9 +4536,108 @@ Cost metrics:
 - failed/degraded AI rate
 - native crash-free sessions
 
+## 11. Distribution And Go-To-Market
+
+Distribution is a product constraint, not a postscript. Ruby High needs a clean
+retention cohort before it needs scale.
+
+Two distribution goals:
+
+| Goal | Meaning | Priority |
+|---|---|---|
+| Clean retention cohort | a few hundred organic, non-incentivized users who can validate the loop | first |
+| Raw growth, buzz, liquidity | token-community reach, launch spikes, and social noise | second |
+
+Channel priority:
+
+1. Yearbook/character share loop. Shareable character, report card, sealed page,
+   and memory artifacts are the most on-thesis viral mechanic: memory becomes
+   identity, identity becomes a share, and a friend asks what it is.
+2. Cast-forward short-form video. Lead with Ruby, Lyra, Mika, Noor, Ravi, Indra,
+   Sami, and the First Bell mystery, not "AI tutor."
+3. Creator and niche seeding. Favor cozy games, AI-character experiments,
+   study-with-me niches, and weird-school fiction over broad paid acquisition.
+4. One-time launch spikes such as Show HN, Product Hunt, and fitting subreddits.
+   Treat these as measurement events for activation, not a durable channel.
+
+Distribution discipline:
+
+- do not buy paid traffic until D1 retention clears a bar
+- tag crypto-community, wallet-connected, NFT-holder, paid, and incentivized
+  cohorts separately
+- never let incentivized/token users pollute the organic retention read
+- use v1's existing `yearbook_copy` path as the first share-loop test bed
+
+## 12. Monetization And Token / CCG Model
+
+The monetization model must be explicit because it can damage the retention
+signal if it touches the core loop incorrectly.
+
+Current model:
+
+- NFTs are CCG cards.
+- CCG/NFT cards are sold for memecoins.
+- NFT cards are burnable for Hall Passes, the existing premium currency.
+- `$RUBY -> RUBY` burn-to-mint migration is a treasury/token redenomination
+  action, separate from gameplay.
+- Ruby High does not pay earn-to-play token rewards.
+
+Hard design line:
+
+> Token, NFT, and CCG systems are additive. They may support ownership,
+> collection, identity, cosmetics, premium convenience, community status, and
+> shareability. They must not gate or mechanically advantage the class/social/
+> memory loop that retention depends on.
+
+Allowed surfaces:
+
+- Yearbook pages as owned/shareable artifacts
+- character cards as collection and identity objects
+- cosmetic frames, stamps, signatures, rarity marks, and profile display
+- premium generation, hosted art, or convenience where it does not change class
+  correctness, social outcomes, memory creation, or required progress
+
+Forbidden by default:
+
+- pay-to-win class answers
+- paid discipline gain
+- paid relationship deltas
+- paid required route unlocks
+- token rewards for playing, studying, returning, or sharing
+
+Cohort requirement:
+
+- every wallet-connected, NFT-holder, card-burn, Hall Pass spender,
+  token-community, and organic non-wallet user must be segmentable in metrics
+- retention decisions should default to organic non-incentivized cohorts unless
+  the team is deliberately measuring monetized behavior
+
 ## 13. Build Plan
 
 Build the product in content-first wedges.
+
+Learn-first rule:
+
+> Pull the retention read forward before building the expensive machine.
+
+Before mobile, broad native client work, Captain Null arcs, companion systems,
+or four authored years, ship the thinnest retention-valid slice to early users:
+Week One, text/web, no custom C client, no companions, and no Captain Null
+requirement. The slice must include the actual differentiator:
+
+```text
+class result
+-> social beat
+-> Notebook memory
+-> changed tomorrow opening
+```
+
+A slice missing that loop is not a valid test of v2. Compare it head-to-head
+against the current v1 quiz experience using first-class completion,
+memory-recorded rate, D1 visitor retention, and next-day callback reach.
+
+Only after this read is positive should the team spend heavily on native client
+work, wider authored years, and deeper First Bell/Captain Null arcs.
 
 Current C wedge scaling priorities:
 
@@ -4735,10 +4905,12 @@ Acceptance:
 
 ### 13.8 Wedge 6: Mobile Proof
 
-Only after Wedges -1 through 5 pass:
+Only after Wedges -1 through 5 pass and the web/text retention read is positive:
 
 This is a platform feasibility wedge, not a production mobile app wedge.
 
+- keep the C engine headless/snapshot-first unless retention justifies a custom
+  native client
 - build one minimal iOS shell or one minimal Android shell
 - wire session/auth handoff
 - confirm asset loading
@@ -4782,32 +4954,52 @@ Acceptance:
 
 ## 14. Phasing
 
-Phase 0: premise, Yearbook, and authoring contract.
+Phase 0: premise, Yearbook, authoring contract, distribution plan, monetization
+guardrails, and v1 measurement patch.
 
-Phase 1: Year One content simulation.
+Phase 1: v1 retention read for the v2 thesis. Add the missing memory/callback
+instrumentation to the current web surface and tag wallet/NFT/crypto cohorts.
 
-Phase 2: scene and command APIs.
+Phase 2: thinnest v2 loop on web/text: class result -> social beat -> Notebook
+memory -> changed tomorrow opening. No mobile, no custom native client, no
+Captain Null dependency.
 
-Phase 3: render/text/touch prototype.
+Phase 3: Year One content simulation and replay coverage.
 
-Phase 4: first classroom.
+Phase 4: scene and command APIs.
 
-Phase 5: first social and Notebook memory.
+Phase 5: render/text/touch prototype for web, with C used as deterministic core
+unless retention justifies a native client.
 
-Phase 6: first Captain Null theory session.
+Phase 6: first classroom.
 
-Phase 7: first mobile proof.
+Phase 7: first social and Notebook memory.
 
-Phase 8: first semi-open campus block.
+Phase 8: first Captain Null theory session.
 
-Phase 9: campus expansion after retention signal.
+Phase 9: first mobile proof.
 
-Phase 10: production migration behind a feature flag.
+Phase 10: first semi-open campus block.
+
+Phase 11: campus expansion after retention signal.
+
+Phase 12: production migration behind a feature flag.
 
 Move default traffic only if Ruby High 2.0 beats the current viewer on
 first-class completion, memory completion, D1 visitor retention, D1 character
 retention, Yearbook callback reach, and crash-free sessions without regressing
 auth or commerce.
+
+Migration policy:
+
+- v1 remains the retention-truth surface until v2 beats it on the metrics above
+- existing Hall Pass balances, cards, wallet state, and NFT ownership migrate or
+  remain honored; no in-flight value is stranded
+- v1 content packs may coexist as legacy/classic mode if they retain or monetize
+  better than the v2 loop
+- default traffic moves behind a feature flag, with cohort rollback available
+- token/CCG migration is handled as wallet/economy infrastructure, not as a
+  gameplay progression reset
 
 ## 15. Risks
 
@@ -4820,6 +5012,34 @@ Mitigation:
 - Year One Day One text simulation first
 - every beat has choices, consequences, memory, and hook
 - do not start broad frontend work until the text loop works
+
+### Distribution Silence
+
+The product can fail even if the design is strong if no clean retention cohort
+ever arrives.
+
+Mitigation:
+
+- build the Yearbook/character share loop early
+- use cast-forward short-form clips and niche seeding before paid acquisition
+- treat launch spikes as measurement events, not durable strategy
+- do not buy traffic until D1 retention clears a bar
+- separate organic users from wallet/NFT/token-community users in every read
+
+### Monetization Coupling
+
+The token/CCG layer can corrupt the core loop if ownership becomes progression
+or if incentivized users contaminate the retention signal.
+
+Mitigation:
+
+- keep NFT/card ownership additive and identity/cosmetic by default
+- never gate required class, social, memory, or Yearbook callback progress behind
+  ownership
+- prohibit earn-to-play rewards
+- cohort-tag wallet-connected, NFT-holder, card-burn, Hall Pass spender, token
+  community, and organic users
+- use Yearbook ownership/share artifacts as the primary on-thesis token surface
 
 ### Content Treadmill
 
@@ -5037,10 +5257,12 @@ Mitigation:
 - What final polish should replace any remaining placeholder prose in the Year One Day One script?
 - Which exact premise wording should become player-facing canon?
 - Which 15-25 Year One moments deserve scarce Yearbook artifact treatment?
+- What D1 retention threshold graduates v2 from web/text validation to broader
+  authored-depth investment?
 - What retention or UX signal would justify direct character walking over graph-based routes?
 - Which text renderer gives acceptable mobile quality with the least custom work?
 - Should first-slice backgrounds be bundled or fetched/cached dynamically?
-- Which native shell should host the first mobile proof?
+- Which native shell should host the first mobile proof if web retention justifies it?
 
 ## 17. Guiding Constraint
 
