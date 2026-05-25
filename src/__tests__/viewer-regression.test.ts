@@ -318,7 +318,7 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
     expect(PRIVY_CLIENT_SOURCE).toContain("getIdentityToken");
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];');
-    expect(PRIVY_CLIENT_SOURCE).toContain('const DEFAULT_RUBY_HIGH_PRIVY_LOGIN_METHODS: RubyHighPrivyLoginMethod[] = ["wallet"];');
+    expect(PRIVY_CLIENT_SOURCE).toContain('const DEFAULT_RUBY_HIGH_PRIVY_LOGIN_METHODS: RubyHighPrivyLoginMethod[] = ["email", "wallet"];');
     expect(PRIVY_CLIENT_SOURCE).toContain("const RUBY_HIGH_PRIVY_LOGIN_METHODS");
     expect(PRIVY_CLIENT_SOURCE).toContain("const loginMethods = loginMethodsForConfig(config);");
     expect(PRIVY_CLIENT_SOURCE).toContain("loginMethods,");
@@ -326,7 +326,7 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain('walletChainType: "solana-only",');
     expect(PRIVY_CLIENT_SOURCE).toContain('walletChainType: "solana-only"');
     expect(PRIVY_CLIENT_SOURCE).toContain("walletList: RUBY_HIGH_SOLANA_WALLET_LIST");
-    expect(PRIVY_CLIENT_SOURCE).toContain('showWalletLoginFirst: loginMethods.includes("wallet")');
+    expect(PRIVY_CLIENT_SOURCE).toContain('showWalletLoginFirst: loginMethods[0] === "wallet"');
     expect(PRIVY_CLIENT_SOURCE).toContain('ethereum: { createOnLogin: "off" }');
     expect(PRIVY_CLIENT_SOURCE).toContain("const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;");
     expect(PRIVY_CLIENT_SOURCE).toContain("const solanaWalletsRef = useRef<ConnectedStandardSolanaWallet[]>([]);");

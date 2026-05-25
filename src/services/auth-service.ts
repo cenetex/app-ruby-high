@@ -63,11 +63,13 @@ export interface AuthAnalyticsDay {
 
 interface PendingPkce {
   verifier: string;
+  nonce: string;
   createdAt: number;
   callbackUrl: string;
 }
 
 const SESSION_COOKIE = "rh_session";
+const PENDING_AUTH_COOKIE = "rh_auth_pending";
 const PENDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const ACTIVITY_TOUCH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -322,32 +324,42 @@ export class AuthService extends Service {
     return { token, record };
   }
 
-  startPkce(callbackUrl: string): { state: string; redirectUrl: string } {
+  startPkce(callbackUrl: string): { state: string; pendingToken: string; redirectUrl: string } {
     this.gcPending();
     const state = base64url(randomBytes(24));
+    const pendingToken = base64url(randomBytes(24));
     const verifier = base64url(randomBytes(32));
     const challenge = base64url(createHash("sha256").update(verifier).digest());
-    this.pending.set(state, { verifier, callbackUrl, createdAt: Date.now() });
+    this.pending.set(state, { verifier, nonce: pendingToken, callbackUrl, createdAt: Date.now() });
 
     const u = new URL("https://openrouter.ai/auth");
     u.searchParams.set("callback_url", callbackUrl);
     u.searchParams.set("code_challenge", challenge);
     u.searchParams.set("code_challenge_method", "S256");
     u.searchParams.set("state", state);
-    return { state, redirectUrl: u.toString() };
+    return { state, pendingToken, redirectUrl: u.toString() };
   }
 
   /** Complete the PKCE handshake. Returns the fresh API key (to hand back
    *  to the browser) along with a session token (for the cookie). The key
    *  is NOT retained server-side — once this method returns, AuthService
    *  has forgotten it. */
-  async completePkce(state: string, code: string, existingToken?: string | null): Promise<{ token: string; record: AuthRecord; apiKey: string }> {
+  async completePkce(
+    state: string,
+    code: string,
+    existingToken?: string | null,
+    pendingToken?: string | null,
+  ): Promise<{ token: string; record: AuthRecord; apiKey: string }> {
     const pending = this.pending.get(state);
     if (!pending) throw new Error("Unknown or expired auth state");
-    this.pending.delete(state);
     if (Date.now() - pending.createdAt > PENDING_TTL_MS) {
+      this.pending.delete(state);
       throw new Error("Auth state expired");
     }
+    if (!pendingToken || pendingToken !== pending.nonce) {
+      throw new Error("Auth state cookie mismatch");
+    }
+    this.pending.delete(state);
     const exchanged = await exchangeCodeForKey(code, pending.verifier);
     const apiKey = exchanged.key;
     const now = Date.now();
@@ -446,12 +458,20 @@ export class AuthService extends Service {
 
   /** Read cookie value from a raw Cookie header. */
   parseSessionToken(cookieHeader: string | undefined | null): string | null {
+    return this.parseCookie(cookieHeader, SESSION_COOKIE);
+  }
+
+  parsePendingAuthToken(cookieHeader: string | undefined | null): string | null {
+    return this.parseCookie(cookieHeader, PENDING_AUTH_COOKIE);
+  }
+
+  private parseCookie(cookieHeader: string | undefined | null, name: string): string | null {
     if (!cookieHeader) return null;
     const parts = cookieHeader.split(/;\s*/);
     for (const p of parts) {
       const i = p.indexOf("=");
       if (i < 0) continue;
-      if (p.slice(0, i) === SESSION_COOKIE) {
+      if (p.slice(0, i) === name) {
         try {
           return decodeURIComponent(p.slice(i + 1));
         } catch {
@@ -512,6 +532,30 @@ export class AuthService extends Service {
       "HttpOnly",
       "SameSite=Lax",
       `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+    ];
+    if (opts.secure) parts.push("Secure");
+    return parts.join("; ");
+  }
+
+  buildPendingAuthCookie(token: string, opts: { secure: boolean }): string {
+    const parts = [
+      `${PENDING_AUTH_COOKIE}=${encodeURIComponent(token)}`,
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Lax",
+      `Max-Age=${Math.floor(PENDING_TTL_MS / 1000)}`,
+    ];
+    if (opts.secure) parts.push("Secure");
+    return parts.join("; ");
+  }
+
+  buildClearPendingAuthCookie(opts: { secure: boolean }): string {
+    const parts = [
+      `${PENDING_AUTH_COOKIE}=`,
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Lax",
+      "Max-Age=0",
     ];
     if (opts.secure) parts.push("Secure");
     return parts.join("; ");

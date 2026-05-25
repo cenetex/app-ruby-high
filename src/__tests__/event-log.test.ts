@@ -68,9 +68,9 @@ describe("Canonical event log emissions", () => {
       const auth = await AuthService.start({} as never, new StateStore(join(dir, "state.json")));
       try {
         const first = auth.startPkce("http://localhost/callback");
-        await auth.completePkce(first.state, "code-1");
+        await auth.completePkce(first.state, "code-1", null, first.pendingToken);
         const second = auth.startPkce("http://localhost/callback");
-        await auth.completePkce(second.state, "code-2");
+        await auth.completePkce(second.state, "code-2", null, second.pendingToken);
       } finally {
         await auth.stop();
       }

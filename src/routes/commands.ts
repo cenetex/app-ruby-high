@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "../runtime.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
-import { AuthService } from "../services/auth-service.js";
+import { AuthService, type AuthRecord } from "../services/auth-service.js";
 import {
   guestAccessStateForSession,
   guestTargetFacultyForCommand,
@@ -119,9 +119,13 @@ export async function handleCommandRoute(args: {
   runtime: IAgentRuntime | null;
   stateKey: string;
   auth: AuthService | null;
+  authRecord?: AuthRecord | null;
+  cookieHeader?: string | null;
+  rateLimitStateKey?: string;
 }): Promise<true> {
   const { ctx, ruby, faculty, runtime, stateKey, auth } = args;
-  const rlKey = commandRateKey(ctx.clientIp, stateKey);
+  const cookieHeader = args.cookieHeader ?? ctx.cookieHeader;
+  const rlKey = commandRateKey(ctx.clientIp, args.rateLimitStateKey ?? stateKey);
   if (!COMMAND_LIMITER.take(rlKey)) {
     const retryAfter = COMMAND_LIMITER.retryAfterSeconds(rlKey);
     const res = ctx.res as { setHeader?: (name: string, value: string) => void };
@@ -133,8 +137,7 @@ export async function handleCommandRoute(args: {
   const type = body?.type;
   const guestAccess = (() => {
     if (!auth) return null;
-    const token = auth.parseSessionToken(ctx.cookieHeader);
-    const record = auth.resolve(token);
+    const record = args.authRecord ?? auth.resolve(auth.parseSessionToken(cookieHeader));
     return guestAccessStateForSession({ record, ruby, sessionId: stateKey });
   })();
   const commandFaculty = (commandType: string | undefined): string | null => {
@@ -162,7 +165,7 @@ export async function handleCommandRoute(args: {
       state,
       runtime,
       faculty,
-      cookieHeader: ctx.cookieHeader,
+      cookieHeader,
       command,
       message,
     });
@@ -170,7 +173,7 @@ export async function handleCommandRoute(args: {
     if (!state.lastReveal) return;
     noteGradedAnswer({
       runtime,
-      cookieHeader: ctx.cookieHeader,
+      cookieHeader,
       faculty: state.faculty,
       picked: state.lastReveal.picked,
       correct: state.lastReveal.correct,

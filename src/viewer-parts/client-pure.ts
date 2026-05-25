@@ -402,10 +402,7 @@ export function markdownInlineHtml(value) {
     .replace(/(^|[^\w])\*([^*\n]+)\*(?=$|[^\w])/g, "$1<em>$2</em>")
     .replace(/(^|[^\w])_([^_\n]+)_(?=$|[^\w])/g, "$1<em>$2</em>")
     .replace(/\n/g, "<br>");
-  // NOTE: preserved verbatim from the pre-split client.ts — the bare \d is a
-  // pre-existing latent bug (TS parses "\d" as "d"); fixing it is a separate
-  // behavioral change that should land in its own PR.
-  const placeholderPattern = new RegExp(start + "(\d+)" + end, "g");
+  const placeholderPattern = new RegExp(start + "(\\d+)" + end, "g");
   return html.replace(placeholderPattern, (_match, index) => placeholders[Number(index)] || "");
 }
 export function appendMarkdownInline(parent, text) {

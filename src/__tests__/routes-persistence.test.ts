@@ -98,20 +98,33 @@ function makeCommandCtx(
   apiKeyHeader?: string | null,
   auth?: AuthService | null,
   cookieHeader?: string | null,
-): { ctx: RouteContext; response: { status: number; body: any } | null } {
+): {
+  ctx: RouteContext;
+  response: { status: number; body: any } | null;
+  getHeader: (name: string) => string | string[] | undefined;
+} {
   let response: { status: number; body: any } | null = null;
+  const headers = new Map<string, string | string[]>();
+  const res = {
+    setHeader(name: string, value: string | string[]): void {
+      headers.set(name.toLowerCase(), value);
+    },
+    getHeader(name: string): string | string[] | undefined {
+      return headers.get(name.toLowerCase());
+    },
+  };
   const ctx: RouteContext = {
     method: "POST",
     pathname: "/api/apps/ruby-high/session/test-session/command",
     runtime: runtimeFor(ruby, faculty, auth),
-    res: {} as never,
+    res,
     cookieHeader: cookieHeader ?? null,
     apiKeyHeader,
     error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { response = { status, body: data }; },
     readJsonBody: async () => body,
   };
-  return { ctx, get response() { return response; } };
+  return { ctx, get response() { return response; }, getHeader: (name) => headers.get(name.toLowerCase()) };
 }
 
 function singleQuestionPack(): ContentPack {
@@ -235,6 +248,43 @@ describe("command route persistence and scheduler misses", () => {
     expect(handled).toBe(true);
     expect(harness.response?.status).toBe(503);
     expect(harness.response?.body.error).toMatch(/could not be persisted/i);
+  });
+
+  it("mints a guest session before no-cookie command mutations", async () => {
+    await getActivePack();
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const harness = makeCommandCtx(
+        ruby,
+        {
+          type: "create-character",
+          name: "Ari",
+          playbookId: "overachiever",
+          stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+          arcAnswer: "I want the transcript to look impossible.",
+          personality: "intense but kind",
+        },
+        undefined,
+        null,
+        auth,
+        null,
+      );
+      const handled = await handleAppRoutes(harness.ctx);
+
+      expect(handled).toBe(true);
+      expect(harness.response?.status).toBe(200);
+      expect(ruby.getOrCreate("rh:anonymous").character).toBeNull();
+      const cookie = String(harness.getHeader("set-cookie"));
+      const token = cookie.match(/rh_session=([^;]+)/)?.[1];
+      expect(token).toBeTruthy();
+      const record = auth.resolve(decodeURIComponent(token!));
+      expect(record).not.toBeNull();
+      expect(ruby.getOrCreate(auth.stateKeyForRecord(record!)).character?.name).toBe("Ari");
+    } finally {
+      await auth.stop();
+    }
   });
 
   it("returns a no-op success when offline pick has no scheduled card due", async () => {

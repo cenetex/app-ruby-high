@@ -142,13 +142,13 @@ describe("AuthService.gcSessions", () => {
     const authA = await AuthService.start({} as never, store);
     auths.push(authA);
     const firstPkce = authA.startPkce("http://localhost/callback");
-    const first = await authA.completePkce(firstPkce.state, "code-1");
+    const first = await authA.completePkce(firstPkce.state, "code-1", null, firstPkce.pendingToken);
     await authA.stop();
 
     const authB = await AuthService.start({} as never, new StateStore(join(dir, "state.json")));
     auths.push(authB);
     const secondPkce = authB.startPkce("http://localhost/callback");
-    const second = await authB.completePkce(secondPkce.state, "code-2");
+    const second = await authB.completePkce(secondPkce.state, "code-2", null, secondPkce.pendingToken);
 
     expect(second.token).not.toBe(first.token);
     expect(second.record.userId).toBe(first.record.userId);
@@ -234,6 +234,22 @@ describe("AuthService.gcSessions", () => {
     expect(auth.stateKeyForCookie("rh_session=%")).toBe("rh:anonymous");
   });
 
+  it("requires the browser-bound pending auth token to complete PKCE", async () => {
+    const auth = await freshAuth();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(JSON.stringify({ key: "sk-test", user_id: "openrouter-pending-cookie" }), { status: 200 });
+    });
+    const pkce = auth.startPkce("http://localhost/callback");
+
+    await expect(auth.completePkce(pkce.state, "code-1", null, null)).rejects.toThrow(/cookie mismatch/i);
+    await expect(auth.completePkce(pkce.state, "code-1", null, "wrong-token")).rejects.toThrow(/cookie mismatch/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const completed = await auth.completePkce(pkce.state, "code-1", null, pkce.pendingToken);
+    expect(completed.record.provider).toBe("openrouter");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("upgrades a guest session to OpenRouter without moving the character bucket", async () => {
     const auth = await freshAuth();
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
@@ -242,7 +258,7 @@ describe("AuthService.gcSessions", () => {
 
     const guest = await auth.createGuestSession();
     const pkce = auth.startPkce("http://localhost/callback");
-    const upgraded = await auth.completePkce(pkce.state, "code-1", guest.token);
+    const upgraded = await auth.completePkce(pkce.state, "code-1", guest.token, pkce.pendingToken);
 
     expect(upgraded.token).not.toBe(guest.token);
     expect(upgraded.record.userId).toBe(guest.record.userId);
@@ -349,7 +365,7 @@ describe("AuthService.gcSessions", () => {
       walletChainType: "ethereum",
     }, guest.token);
     const pkce = auth.startPkce("http://localhost/callback");
-    const openrouter = await auth.completePkce(pkce.state, "code-1", privy.token);
+    const openrouter = await auth.completePkce(pkce.state, "code-1", privy.token, pkce.pendingToken);
 
     expect(openrouter.record).toMatchObject({
       userId: guest.record.userId,
@@ -369,7 +385,7 @@ describe("AuthService.gcSessions", () => {
 
     const guest = await auth.createGuestSession();
     const firstPkce = auth.startPkce("http://localhost/callback");
-    const firstOpenrouter = await auth.completePkce(firstPkce.state, "code-1", guest.token);
+    const firstOpenrouter = await auth.completePkce(firstPkce.state, "code-1", guest.token, firstPkce.pendingToken);
     const privy = await auth.completePrivyLogin({
       privyUserId: "did:privy:returning-link",
       label: "returning-link@example.test",
@@ -377,7 +393,7 @@ describe("AuthService.gcSessions", () => {
       walletChainType: "ethereum",
     }, firstOpenrouter.token);
     const secondPkce = auth.startPkce("http://localhost/callback");
-    const secondOpenrouter = await auth.completePkce(secondPkce.state, "code-2", privy.token);
+    const secondOpenrouter = await auth.completePkce(secondPkce.state, "code-2", privy.token, secondPkce.pendingToken);
 
     expect(secondOpenrouter.record).toMatchObject({
       userId: guest.record.userId,

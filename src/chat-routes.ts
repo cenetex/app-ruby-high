@@ -1832,7 +1832,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // ── auth ──────────────────────────────────────────────────────────────────
   if (ctx.method === "GET" && ctx.pathname === `${AUTH_PREFIX}/start`) {
     const callbackUrl = buildCallback(`${AUTH_PREFIX}/callback`);
-    const { redirectUrl } = auth.startPkce(callbackUrl);
+    const { redirectUrl, pendingToken } = auth.startPkce(callbackUrl);
+    setCookieHeader(ctx.res, auth.buildPendingAuthCookie(pendingToken, { secure }));
     redirect(ctx.res, redirectUrl);
     return true;
   }
@@ -1908,12 +1909,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // User declined the OAuth flow (or arrived without valid params).
       // Redirect back to the app rather than surfacing a raw JSON error.
       const back = safeAuthRedirect(ctx.url?.searchParams.get("redirect"));
+      setCookieHeader(ctx.res, auth.buildClearPendingAuthCookie({ secure }));
       writeAuthDeclinedHtml(ctx.res, back);
       return true;
     }
     try {
-      const { token, apiKey, record } = await auth.completePkce(state, code, auth.parseSessionToken(ctx.cookieHeader));
+      const { token, apiKey, record } = await auth.completePkce(
+        state,
+        code,
+        auth.parseSessionToken(ctx.cookieHeader),
+        auth.parsePendingAuthToken(ctx.cookieHeader),
+      );
       setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
+      setCookieHeader(ctx.res, auth.buildClearPendingAuthCookie({ secure }));
       const back = safeAuthRedirect(ctx.url?.searchParams.get("redirect"));
       // Hand the API key back to the browser via a tiny HTML shim. We write
       // it to localStorage (not a cookie, not a URL fragment) so it never

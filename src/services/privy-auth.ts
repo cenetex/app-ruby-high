@@ -55,7 +55,7 @@ let verifierOverride: PrivyVerifier | null = null;
 let cachedClientKey = "";
 let cachedClient: PrivyClient | null = null;
 
-const DEFAULT_PRIVY_LOGIN_METHODS: PrivyPublicLoginMethod[] = ["wallet"];
+const DEFAULT_PRIVY_LOGIN_METHODS: PrivyPublicLoginMethod[] = ["email", "wallet"];
 const PRIVY_LOGIN_METHODS = new Set<PrivyPublicLoginMethod>([
   "wallet",
   "email",

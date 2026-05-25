@@ -59,6 +59,29 @@ function parseSessionSubroute(pathname: string): "command" | "control" | null {
   return null;
 }
 
+type NodeLikeResponse = {
+  getHeader?: (name: string) => string | string[] | number | undefined;
+  setHeader?: (name: string, value: string | string[]) => void;
+};
+
+function setCookieHeader(res: unknown, value: string): void {
+  const r = res as NodeLikeResponse;
+  const existing = r.getHeader?.("Set-Cookie");
+  if (Array.isArray(existing)) r.setHeader?.("Set-Cookie", [...existing, value]);
+  else if (typeof existing === "string") r.setHeader?.("Set-Cookie", [existing, value]);
+  else r.setHeader?.("Set-Cookie", value);
+}
+
+function cookieHeaderWithSessionToken(cookieHeader: string | null | undefined, token: string): string {
+  const parts = (cookieHeader ?? "")
+    .split(/;\s*/)
+    .filter((part) => {
+      const index = part.indexOf("=");
+      return index > 0 && part.slice(0, index) !== "rh_session";
+    });
+  return [`rh_session=${encodeURIComponent(token)}`, ...parts].join("; ");
+}
+
 export async function resolveLaunchSession(
   ctx: AppBridgeLaunchContext,
 ): Promise<AppSessionState | null> {
@@ -324,7 +347,33 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.method === "POST" && subroute === "command") {
-    return handleCommandRoute({ ctx, ruby, faculty, runtime, stateKey, auth });
+    let commandStateKey = stateKey;
+    let commandCookieHeader = ctx.cookieHeader;
+    let commandAuthRecord = null;
+    if (auth) {
+      const existingToken = auth.parseSessionToken(ctx.cookieHeader);
+      const existingRecord = auth.resolve(existingToken);
+      const session = existingRecord && existingToken
+        ? { token: existingToken, record: existingRecord, isNew: false }
+        : { ...(await auth.createGuestSession(existingToken, ctx.visitorHeader)), isNew: true };
+      if (session.isNew || session.token !== existingToken) {
+        setCookieHeader(ctx.res, auth.buildSessionCookie(session.token, { secure: ctx.isSecure ?? false }));
+      }
+      commandStateKey = auth.stateKeyForRecord(session.record);
+      commandCookieHeader = cookieHeaderWithSessionToken(ctx.cookieHeader, session.token);
+      commandAuthRecord = session.record;
+    }
+    return handleCommandRoute({
+      ctx,
+      ruby,
+      faculty,
+      runtime,
+      stateKey: commandStateKey,
+      auth,
+      authRecord: commandAuthRecord,
+      cookieHeader: commandCookieHeader,
+      rateLimitStateKey: stateKey,
+    });
   }
 
   return false;

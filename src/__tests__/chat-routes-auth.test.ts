@@ -168,13 +168,16 @@ function hostedImageFingerprint(route: string, payload: Record<string, unknown>)
     .slice(0, 32);
 }
 
-async function callbackUrl(redirect: string): Promise<URL> {
-  const { state } = auth.startPkce("http://localhost:3000/api/apps/ruby-high/auth/callback");
+async function callbackRequest(redirect: string): Promise<{ url: URL; cookieHeader: string }> {
+  const { state, pendingToken } = auth.startPkce("http://localhost:3000/api/apps/ruby-high/auth/callback");
   const url = new URL("http://localhost:3000/api/apps/ruby-high/auth/callback");
   url.searchParams.set("code", "code-1");
   url.searchParams.set("state", state);
   url.searchParams.set("redirect", redirect);
-  return url;
+  return {
+    url,
+    cookieHeader: auth.buildPendingAuthCookie(pendingToken, { secure: false }).split(";")[0]!,
+  };
 }
 
 beforeEach(async () => {
@@ -230,7 +233,8 @@ function restoreEnv(key: string, value: string | undefined): void {
 describe("auth callback redirect sanitization", () => {
   it("falls back to the viewer when redirect points off-origin", async () => {
     const res = new TestResponse();
-    const handled = await handleChatRoutes(makeCtx(await callbackUrl("https://evil.example/pwn"), res));
+    const callback = await callbackRequest("https://evil.example/pwn");
+    const handled = await handleChatRoutes(makeCtx(callback.url, res, { cookieHeader: callback.cookieHeader }));
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
@@ -240,11 +244,33 @@ describe("auth callback redirect sanitization", () => {
 
   it("allows root-relative same-origin callback redirects", async () => {
     const res = new TestResponse();
-    const handled = await handleChatRoutes(makeCtx(await callbackUrl("/api/apps/ruby-high/viewer?tab=packs#store"), res));
+    const callback = await callbackRequest("/api/apps/ruby-high/viewer?tab=packs#store");
+    const handled = await handleChatRoutes(makeCtx(callback.url, res, { cookieHeader: callback.cookieHeader }));
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('window.location.replace("/api/apps/ruby-high/viewer?tab=packs#store")');
+  });
+
+  it("sets and requires the pending auth cookie for OpenRouter callbacks", async () => {
+    const startRes = new TestResponse();
+    const startHandled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/start"),
+      startRes,
+    ));
+
+    expect(startHandled).toBe(true);
+    expect(startRes.statusCode).toBe(302);
+    expect(startRes.getHeader("set-cookie")).toEqual(expect.stringContaining("rh_auth_pending="));
+    expect(startRes.getHeader("location")).toEqual(expect.stringContaining("https://openrouter.ai/auth"));
+
+    const callback = await callbackRequest("/api/apps/ruby-high/viewer");
+    const callbackRes = new TestResponse();
+    const callbackHandled = await handleChatRoutes(makeCtx(callback.url, callbackRes));
+
+    expect(callbackHandled).toBe(true);
+    expect(callbackRes.statusCode).toBe(400);
+    expect(callbackRes.body).toContain("Auth state cookie mismatch");
   });
 });
 
@@ -300,14 +326,14 @@ describe("auth origin guard", () => {
 });
 
 describe("Privy auth", () => {
-  it("publishes wallet-only Privy login by default", () => {
+  it("publishes email and wallet Privy login by default", () => {
     expect(getPrivyPublicConfigFromEnv({
       RUBY_HIGH_PRIVY_APP_ID: "privy-app-test",
       RUBY_HIGH_PRIVY_CLIENT_ID: "privy-client-test",
     } as NodeJS.ProcessEnv)).toEqual({
       appId: "privy-app-test",
       clientId: "privy-client-test",
-      loginMethods: ["wallet"],
+      loginMethods: ["email", "wallet"],
     });
   });
 
