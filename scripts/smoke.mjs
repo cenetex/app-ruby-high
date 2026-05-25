@@ -522,7 +522,11 @@ async function check9GuestDailyGate() {
       seen.push(cardRole || currentQuestion.type || "unknown");
 
       const answer = await postJson(commandPath, { type: "answer", picked: "A" }, gateCookie);
-      if (answer.status !== 200) return fail(name, `answer expected 200, got ${answer.status}: ${(await readText(answer)).slice(0, 200)}`);
+      if (answer.status === 403) {
+        gatedText = await readText(answer);
+        break;
+      }
+      if (answer.status !== 200) return fail(name, `answer expected 200/403, got ${answer.status}: ${(await readText(answer)).slice(0, 200)}`);
       const answered = await readJson(answer);
       if (!answered?.session?.telemetry?.active_round?.resolved) {
         return fail(name, `answer did not resolve ${currentQuestion.id}: ${JSON.stringify(answered).slice(0, 240)}`);
