@@ -500,19 +500,14 @@ describe("command route persistence and scheduler misses", () => {
       });
       ruby.selectGrade(sid, "9");
       const dailyFaculty = ruby.dailyStatus(sid).facultyId;
-      for (let i = 0; i < 3; i += 1) {
-        ruby.pose(sid, {
-          questionId: `guest-daily-${i + 1}`,
-          faculty: dailyFaculty,
-          prompt: `Guest daily ${i + 1}?`,
-          options: { A: "A", B: "B", C: "C", D: "D" },
-          correct: "A",
-          subject: "homeroom",
-          stat: "head",
-        });
+      for (let i = 0; i < 8; i += 1) {
+        const status = ruby.dailyStatus(sid);
+        if (!status.available) break;
+        ruby.playBonus(sid);
         ruby.submitAnswer(sid, "A");
       }
-      expect(ruby.courseProgress(sid, dailyFaculty).today.status).toBe("complete");
+      expect(ruby.dailyStatus(sid).available).toBe(false);
+      expect(ruby.dailyStatus(sid).reason).toBe("completed");
 
       const harness = makeCommandCtx(
         ruby,

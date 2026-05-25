@@ -55,11 +55,12 @@ export function guestAccessStateForSession(args: {
   const dailyFacultyId = dailyStatus.facultyId || HOMEROOM_FACULTY_ID;
 
   let dailyFacultyName = dailyFacultyId;
-  let requiresSignup = false;
+  let requiresSignup = dailyStatus.available === false && dailyStatus.reason === "completed";
   try {
     const progress = args.ruby.courseProgress(args.sessionId, dailyFacultyId);
     dailyFacultyName = progress.displayName || dailyFacultyId;
-    requiresSignup = progress.today?.status === "complete";
+    const todayStatus = String(progress.today?.status ?? "");
+    requiresSignup = requiresSignup || todayStatus === "complete" || todayStatus === "completed";
   } catch {
     // Keep a safe default if pack/session state is mid-migration.
   }

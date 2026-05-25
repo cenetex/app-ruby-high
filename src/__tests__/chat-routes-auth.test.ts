@@ -2055,19 +2055,14 @@ describe("guest access gates", () => {
     });
     ruby.selectGrade(sessionId, "9");
     const dailyFaculty = ruby.dailyStatus(sessionId).facultyId;
-    for (let i = 0; i < 3; i += 1) {
-      ruby.pose(sessionId, {
-        questionId: `guest-signup-${i + 1}`,
-        faculty: dailyFaculty,
-        prompt: `Guest daily ${i + 1}?`,
-        options: { A: "A", B: "B", C: "C", D: "D" },
-        correct: "A",
-        subject: "homeroom",
-        stat: "head",
-      });
+    for (let i = 0; i < 8; i += 1) {
+      const status = ruby.dailyStatus(sessionId);
+      if (!status.available) break;
+      ruby.playBonus(sessionId);
       ruby.submitAnswer(sessionId, "A");
     }
-    expect(ruby.courseProgress(sessionId, dailyFaculty).today.status).toBe("complete");
+    expect(ruby.dailyStatus(sessionId).available).toBe(false);
+    expect(ruby.dailyStatus(sessionId).reason).toBe("completed");
 
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(

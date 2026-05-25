@@ -467,11 +467,16 @@ async function check8AuthGate() {
 
 async function check9GuestDailyGate() {
   const name = "guest daily pacing gate";
-  if (!smokeCookie) return fail(name, "no guest cookie from auth/guest");
+  const guest = await postJson("/api/apps/ruby-high/auth/guest", {}, "");
+  if (guest.status !== 200) {
+    return fail(name, `fresh guest session expected 200, got ${guest.status}: ${(await readText(guest)).slice(0, 200)}`);
+  }
+  const gateCookie = firstSetCookie(guest.headers).split(";")[0] || "";
+  if (!gateCookie) return fail(name, "fresh guest session did not set cookie");
   const sessionPath = `/api/apps/ruby-high/session/smoke-pacing-${Date.now().toString(36)}`;
   const commandPath = `${sessionPath}/command`;
   try {
-    const reset = await postJson(commandPath, { type: "reset" });
+    const reset = await postJson(commandPath, { type: "reset" }, gateCookie);
     if (reset.status !== 200) return fail(name, `reset expected 200, got ${reset.status}: ${(await reset.text()).slice(0, 200)}`);
 
     const create = await postJson(commandPath, {
@@ -482,10 +487,10 @@ async function check9GuestDailyGate() {
       arcAnswer: "Smoke pacing arc",
       flavorQuote: "pacing smoke",
       personality: "Synthetic pacing smoke-test student.",
-    });
+    }, gateCookie);
     if (create.status !== 200) return fail(name, `create-character expected 200, got ${create.status}: ${(await create.text()).slice(0, 200)}`);
 
-    const afterCreate = await fetchWithTimeout(`${base}${sessionPath}`, { headers: { Cookie: smokeCookie } });
+    const afterCreate = await fetchWithTimeout(`${base}${sessionPath}`, { headers: { Cookie: gateCookie } });
     if (afterCreate.status !== 200) return fail(name, `session GET expected 200, got ${afterCreate.status}`);
     const afterCreateBody = await readJson(afterCreate);
     const dailyFacultyId = afterCreateBody?.telemetry?.daily?.facultyId;
@@ -494,10 +499,19 @@ async function check9GuestDailyGate() {
     }
 
     const seen = [];
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const pick = await postJson(commandPath, { type: "pick", faculty: dailyFacultyId });
-      if (pick.status !== 200) return fail(name, `pick expected 200, got ${pick.status}: ${(await readText(pick)).slice(0, 200)}`);
-      const picked = await readJson(pick);
+    const maxAttemptsBeforeGate = 8;
+    let gatedText = "";
+    for (let attempt = 0; attempt < maxAttemptsBeforeGate; attempt++) {
+      const daily = await postJson(commandPath, { type: "play-bonus" }, gateCookie);
+      const dailyText = await readText(daily);
+      if (daily.status === 403) {
+        gatedText = dailyText;
+        break;
+      }
+      if (daily.status !== 200) {
+        return fail(name, `play-bonus expected 200/403, got ${daily.status}: ${dailyText.slice(0, 200)}`);
+      }
+      const picked = JSON.parse(dailyText);
       if (picked?.noQuestionDue) return fail(name, `no scheduled question due during guest daily pacing: ${JSON.stringify(picked).slice(0, 240)}`);
       const currentQuestion = picked?.session?.telemetry?.current;
       const cardRole = picked?.session?.telemetry?.active_round?.cardRole || "";
@@ -507,18 +521,15 @@ async function check9GuestDailyGate() {
       }
       seen.push(cardRole || currentQuestion.type || "unknown");
 
-      const answer = await postJson(commandPath, { type: "answer", picked: "A" });
+      const answer = await postJson(commandPath, { type: "answer", picked: "A" }, gateCookie);
       if (answer.status !== 200) return fail(name, `answer expected 200, got ${answer.status}: ${(await readText(answer)).slice(0, 200)}`);
       const answered = await readJson(answer);
       if (!answered?.session?.telemetry?.active_round?.resolved) {
         return fail(name, `answer did not resolve ${currentQuestion.id}: ${JSON.stringify(answered).slice(0, 240)}`);
       }
     }
-
-    const gated = await postJson(commandPath, { type: "pick", faculty: dailyFacultyId });
-    const gatedText = await readText(gated);
-    if (gated.status !== 403) {
-      return fail(name, `expected post-daily signup gate (403), got ${gated.status}: ${gatedText.slice(0, 200)}`);
+    if (!gatedText) {
+      return fail(name, `expected signup gate within ${maxAttemptsBeforeGate} completed cards; seen=${seen.join(", ") || "none"}`);
     }
     if (!/guest lesson complete|sign up to continue/i.test(gatedText)) {
       return fail(name, `unexpected gate message: ${gatedText.slice(0, 200)}`);
