@@ -25,12 +25,12 @@ static void ruby2_ranker_set_kind_feature(Ruby2RankerCandidate* candidate, Ruby2
     case RUBY2_WORLD_ACTION_PROFILE:
       candidate->features[RUBY2_RANKER_F_KIND_APPROACH] = 1.0f;
       break;
-    case RUBY2_WORLD_ACTION_INSPECT:
-      candidate->features[RUBY2_RANKER_F_KIND_INSPECT] = 1.0f;
+    case RUBY2_WORLD_ACTION_USE_ITEM:
+      candidate->features[RUBY2_RANKER_F_KIND_USE_ITEM] = 1.0f;
       break;
     case RUBY2_WORLD_ACTION_COLLECT:
       candidate->features[RUBY2_RANKER_F_KIND_COLLECT] = 1.0f;
-      candidate->features[RUBY2_RANKER_F_OBJECT_PRESENT] = 1.0f;
+      candidate->features[RUBY2_RANKER_F_ITEM_PRESENT] = 1.0f;
       break;
     case RUBY2_WORLD_ACTION_CHECK_NOTES:
       candidate->features[RUBY2_RANKER_F_KIND_CHECK_NOTES] = 1.0f;
@@ -174,7 +174,7 @@ void ruby2_ranker_model_init(Ruby2RankerModel* model) {
   model->weights[RUBY2_RANKER_F_KIND_TALK] = 0.32f;
   model->weights[RUBY2_RANKER_F_KIND_ATTEND] = 0.55f;
   model->weights[RUBY2_RANKER_F_KIND_APPROACH] = 0.48f;
-  model->weights[RUBY2_RANKER_F_KIND_INSPECT] = 0.50f;
+  model->weights[RUBY2_RANKER_F_KIND_USE_ITEM] = 0.50f;
   model->weights[RUBY2_RANKER_F_KIND_COLLECT] = 0.70f;
   model->weights[RUBY2_RANKER_F_KIND_CHECK_NOTES] = 0.04f;
   model->weights[RUBY2_RANKER_F_KIND_WAIT] = -0.18f;
@@ -185,7 +185,7 @@ void ruby2_ranker_model_init(Ruby2RankerModel* model) {
   model->weights[RUBY2_RANKER_F_DISC_SIGNAL] = 0.08f;
 
   model->weights[RUBY2_RANKER_F_TARGET_PRESENT] = 0.20f;
-  model->weights[RUBY2_RANKER_F_OBJECT_PRESENT] = 0.20f;
+  model->weights[RUBY2_RANKER_F_ITEM_PRESENT] = 0.20f;
   model->weights[RUBY2_RANKER_F_TIME_ARRIVAL] = 0.04f;
   model->weights[RUBY2_RANKER_F_TIME_LUNCH] = 0.06f;
   model->weights[RUBY2_RANKER_F_BELL] = -0.10f;
@@ -197,7 +197,7 @@ void ruby2_ranker_model_init(Ruby2RankerModel* model) {
   model->weights[RUBY2_RANKER_F_HOMEROOM_NOT_STARTED] = 0.25f;
   model->weights[RUBY2_RANKER_F_HOMEROOM_STARTED] = 0.18f;
   model->weights[RUBY2_RANKER_F_LUNCH_STARTED] = 0.12f;
-  model->weights[RUBY2_RANKER_F_RECEIPT_INSPECTED] = -0.15f;
+  model->weights[RUBY2_RANKER_F_LUNCH_TRAY_USED] = -0.15f;
   model->weights[RUBY2_RANKER_F_HAS_YEARBOOK_CANDIDATE] = -0.05f;
 }
 
@@ -280,9 +280,9 @@ void ruby2_ranker_fill_world_action_candidate(
       ruby2_world_character_present(world, action->target_character, world->game.current_room_id)) {
     out->features[RUBY2_RANKER_F_TARGET_PRESENT] = 1.0f;
   }
-  if (action->target_object < RUBY2_WORLD_OBJECT_COUNT &&
-      ruby2_world_object_present(world, action->target_object, world->game.current_room_id)) {
-    out->features[RUBY2_RANKER_F_OBJECT_PRESENT] = 1.0f;
+  if (action->target_item < RUBY2_WORLD_ITEM_COUNT &&
+      ruby2_world_item_present(world, action->target_item, world->game.current_room_id)) {
+    out->features[RUBY2_RANKER_F_ITEM_PRESENT] = 1.0f;
   }
 
   out->features[RUBY2_RANKER_F_BELL] = ruby2_ranker_norm_clock(world, RUBY2_CLOCK_BELL);
@@ -293,7 +293,7 @@ void ruby2_ranker_fill_world_action_candidate(
   out->features[RUBY2_RANKER_F_HOMEROOM_STARTED] = world->homeroom_started ? 1.0f : 0.0f;
   out->features[RUBY2_RANKER_F_HOMEROOM_RESOLVED] = world->homeroom_resolved ? 1.0f : 0.0f;
   out->features[RUBY2_RANKER_F_LUNCH_STARTED] = world->lunch_started ? 1.0f : 0.0f;
-  out->features[RUBY2_RANKER_F_RECEIPT_INSPECTED] = world->receipt_inspected ? 1.0f : 0.0f;
+  out->features[RUBY2_RANKER_F_LUNCH_TRAY_USED] = world->lunch_tray_used ? 1.0f : 0.0f;
   out->features[RUBY2_RANKER_F_HAS_YEARBOOK_CANDIDATE] =
     world->game.yearbook_candidate_count > 0 ? 1.0f : 0.0f;
 }
@@ -343,8 +343,8 @@ static Ruby2WorldActionKind ruby2_ranker_kind_from_agent_intent(Ruby2AgentIntent
       return RUBY2_WORLD_ACTION_GO;
     case RUBY2_AGENT_REQUEST_SPEAK:
       return RUBY2_WORLD_ACTION_TALK;
-    case RUBY2_AGENT_INSPECT_OBJECT:
-      return RUBY2_WORLD_ACTION_INSPECT;
+    case RUBY2_AGENT_USE_ITEM:
+      return RUBY2_WORLD_ACTION_USE_ITEM;
     case RUBY2_AGENT_REMEMBER_EVENT:
       return RUBY2_WORLD_ACTION_CHECK_NOTES;
     default:
@@ -390,9 +390,9 @@ void ruby2_ranker_fill_agent_candidate(
     out->features[RUBY2_RANKER_F_TARGET_PRESENT] = 1.0f;
   }
   if (intent->intent.character < RUBY2_CHARACTER_COUNT &&
-      intent->intent.target_object < RUBY2_WORLD_OBJECT_COUNT &&
-      ruby2_world_object_present(world, intent->intent.target_object, world->npc_rooms[intent->intent.character])) {
-    out->features[RUBY2_RANKER_F_OBJECT_PRESENT] = 1.0f;
+      intent->intent.target_item < RUBY2_WORLD_ITEM_COUNT &&
+      ruby2_world_item_present(world, intent->intent.target_item, world->npc_rooms[intent->intent.character])) {
+    out->features[RUBY2_RANKER_F_ITEM_PRESENT] = 1.0f;
   }
 
   out->features[RUBY2_RANKER_F_BELL] = ruby2_ranker_norm_clock(world, RUBY2_CLOCK_BELL);
@@ -403,7 +403,7 @@ void ruby2_ranker_fill_agent_candidate(
   out->features[RUBY2_RANKER_F_HOMEROOM_STARTED] = world->homeroom_started ? 1.0f : 0.0f;
   out->features[RUBY2_RANKER_F_HOMEROOM_RESOLVED] = world->homeroom_resolved ? 1.0f : 0.0f;
   out->features[RUBY2_RANKER_F_LUNCH_STARTED] = world->lunch_started ? 1.0f : 0.0f;
-  out->features[RUBY2_RANKER_F_RECEIPT_INSPECTED] = world->receipt_inspected ? 1.0f : 0.0f;
+  out->features[RUBY2_RANKER_F_LUNCH_TRAY_USED] = world->lunch_tray_used ? 1.0f : 0.0f;
   out->features[RUBY2_RANKER_F_HAS_YEARBOOK_CANDIDATE] =
     world->game.yearbook_candidate_count > 0 ? 1.0f : 0.0f;
 }
@@ -538,15 +538,15 @@ uint64_t ruby2_ranker_world_state_hash(const Ruby2World* world) {
   for (uint8_t i = 0; i < RUBY2_CHARACTER_COUNT; ++i) {
     ruby2_ranker_hash_u8(&hash, (uint8_t)world->npc_rooms[i]);
   }
-  for (uint8_t i = 0; i < RUBY2_WORLD_OBJECT_COUNT; ++i) {
-    ruby2_ranker_hash_bool(&hash, world->objects[i].present);
-    ruby2_ranker_hash_u8(&hash, (uint8_t)world->objects[i].room);
+  for (uint8_t i = 0; i < RUBY2_WORLD_ITEM_COUNT; ++i) {
+    ruby2_ranker_hash_bool(&hash, world->world_items[i].present);
+    ruby2_ranker_hash_u8(&hash, (uint8_t)world->world_items[i].room);
   }
   ruby2_ranker_hash_bool(&hash, world->homeroom_started);
   ruby2_ranker_hash_bool(&hash, world->homeroom_resolved);
   ruby2_ranker_hash_bool(&hash, world->lunch_started);
-  ruby2_ranker_hash_bool(&hash, world->cafeteria_social_triggered);
-  ruby2_ranker_hash_bool(&hash, world->receipt_inspected);
+  ruby2_ranker_hash_bool(&hash, world->lunch_social_triggered);
+  ruby2_ranker_hash_bool(&hash, world->lunch_tray_used);
   ruby2_ranker_hash_bool(&hash, world->player_profile_ready);
   ruby2_ranker_hash_u8(&hash, (uint8_t)world->player_avatar);
   ruby2_ranker_hash_bool(&hash, world->chat_active);

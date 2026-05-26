@@ -287,6 +287,22 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
+  it("rejects unknown command types without mutating state", async () => {
+    await getActivePack();
+    const ruby = new RubyHighService({} as never, new MemorySessionStore());
+    const harness = makeCommandCtx(ruby, {
+      type: "typo-command",
+      prompt: "this used to be accepted as a suggestion",
+    });
+
+    const handled = await handleAppRoutes(harness.ctx);
+
+    expect(handled).toBe(true);
+    expect(harness.response?.status).toBe(400);
+    expect(harness.response?.body.error).toBe("Unknown command type: typo-command");
+    expect(ruby.getOrCreate("rh:anonymous").character).toBeNull();
+  });
+
   it("returns a no-op success when offline pick has no scheduled card due", async () => {
     setActivePack(singleQuestionPack());
     const faculty = await FacultyService.start({} as never);
@@ -572,6 +588,63 @@ describe("command route persistence and scheduler misses", () => {
       expect(handled).toBe(true);
       expect(harness.response?.status).toBe(403);
       expect(harness.response?.body.error).toMatch(/Sign up to continue/i);
+    } finally {
+      await auth.stop();
+    }
+  });
+
+  it("surfaces signup-required guest state in session telemetry", async () => {
+    const faculty = await FacultyService.start({} as never);
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const token = "guest-gate-telemetry-token";
+      const record = {
+        userId: "guest-gate-telemetry-user",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        provider: "guest" as const,
+        label: "Guest",
+      };
+      auth.injectSessionForTest(token, record);
+      const sid = auth.stateKeyForRecord(record);
+      ruby.createCharacter(sid, {
+        name: "Ari",
+        playbookId: "overachiever",
+        stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+        arcAnswer: "I want the transcript to look impossible.",
+        personality: "intense but kind",
+      });
+      ruby.selectGrade(sid, "9");
+      for (let i = 0; i < 8; i += 1) {
+        const status = ruby.dailyStatus(sid);
+        if (!status.available) break;
+        ruby.playBonus(sid);
+        ruby.submitAnswer(sid, "A");
+      }
+      expect(ruby.dailyStatus(sid).reason).toBe("completed");
+
+      let response: any = null;
+      const handled = await handleAppRoutes({
+        method: "GET",
+        pathname: "/api/apps/ruby-high/session/test-session",
+        runtime: runtimeFor(ruby, faculty, auth),
+        res: {},
+        cookieHeader: `rh_session=${token}`,
+        error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
+        json: (_res, data, status = 200) => { response = { status, body: data }; },
+        readJsonBody: async () => ({}),
+      });
+
+      expect(handled).toBe(true);
+      expect(response?.status).toBe(200);
+      expect(response?.body.telemetry.guest_access).toMatchObject({
+        requiresSignup: true,
+        message: "Guest lesson complete. Sign up to continue past today's class.",
+      });
     } finally {
       await auth.stop();
     }

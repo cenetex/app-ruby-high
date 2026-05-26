@@ -209,7 +209,7 @@ static void day_two(Ruby2State* state, Ruby2WeekTrace* trace) {
   ruby2_effect_payload_init(&payload);
   if (choice == 1) {
     puts("The Notebook has yesterday's version in the margin. The poster has today's.");
-    puts("Ravi lowers his voice for once. \"That is an evidence problem, not a vibes problem.\"");
+    puts("Ravi lowers his voice for once. \"That is an source problem, not a vibes problem.\"");
     payload.virtue_deltas[RUBY2_VIRTUE_HEAD] = 1;
     payload.virtue_deltas[RUBY2_VIRTUE_HONOR] = 1;
     payload.discipline_deltas[RUBY2_DISCIPLINE_SOURCE] = 1;
@@ -412,7 +412,7 @@ static void day_five(Ruby2State* state, Ruby2WeekTrace* week) {
   } else {
     puts("The signal passes through the room and leaves a shadow in the Notebook.");
   }
-  notebook_update(state, "The first comic page is not a reward. It is evidence.");
+  notebook_update(state, "The first comic page is not a reward. It is item.");
   puts("");
 }
 

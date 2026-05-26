@@ -17,7 +17,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys still live in localStorage; the server never holds them. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys default to sessionStorage, can opt into localStorage persistence with `rh_openrouter_persist=1`, and are never held by the server. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
 
 ## Ruby High 2.0 C wedge
 
@@ -168,6 +168,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY` | `5` | Per-teacher daily cap for draft question/course generation. |
 | `RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT` | `18` | Default number of questions requested by AI course generation, clamped to 4–24. |
 | `RUBY_HIGH_ALLOW_HTTP_MATERIAL_URLS` | — | Set to `true` only in trusted local/dev environments. Remote course-material imports require HTTPS by default and reject localhost/private/reserved hosts. |
+| `RUBY_HIGH_ALLOWED_MATERIAL_HOSTS` | `raw.githubusercontent.com,gist.githubusercontent.com` | Comma-separated list of additional trusted hosts for remote course-material imports. GitHub blob URLs are normalized to `raw.githubusercontent.com`. |
 | `RUBY_HIGH_EVAL_MODEL` | `openai/gpt-4.1-mini` | LLM-judge model for `npm run eval:voice` when an OpenRouter key is available. |
 | `RUBY_HIGH_EVAL_REQUIRE_API` | — | Set to `1` to make `npm run eval:voice` fail when no `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
@@ -227,10 +228,11 @@ RevenueCat setup:
 ```bash
 npm test
 npm run check:full
+npm run test:browser
 npm run eval:voice
 ```
 
-`check:full` runs typecheck, the Vitest suite, and the offline SPA build. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
+`check:full` runs typecheck, the Vitest suite, and the offline SPA build. `test:browser` is the opt-in Playwright smoke target; it builds and launches the dev server, boots the viewer in Chromium, exercises guest play, account tabs, responsive framing, and the Privy bundle load path. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
 
 The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, yearbook/admin routes, and the content-pack registry.
 

@@ -5,108 +5,188 @@
 static const char* ruby2_world_talk_memory(Ruby2CharacterId character) {
   switch (character) {
     case RUBY2_CHARACTER_RUBY:
-      return "the student checked in instead of treating the schedule like a menu";
+      return "state=player initiated a teacher check-in; purpose=schedule orientation";
     case RUBY2_CHARACTER_LYRA:
-      return "the student stopped near the notes before the wording could get away";
+      return "state=player initiated a wording check; purpose=verify written item";
     case RUBY2_CHARACTER_RAVI:
-      return "the student asked for the fact before the room got louder";
+      return "state=player initiated an item check; purpose=separate claim from proof";
     case RUBY2_CHARACTER_MIKA:
-      return "the student asked for courage before turning it into a move";
+      return "state=player initiated a confidence check; purpose=turn uncertainty into action";
     case RUBY2_CHARACTER_INDRA:
-      return "the student let the quiet have enough room to answer";
+      return "state=player initiated a quiet check; purpose=notice what changed";
     case RUBY2_CHARACTER_NOOR:
-      return "the student noticed the social part of the evidence";
+      return "state=player initiated a social-pattern check; purpose=read peer reaction";
     case RUBY2_CHARACTER_SAMI:
-      return "the student checked the hallway's temperature before committing";
+      return "state=player initiated a hallway-mood check; purpose=reduce awkwardness";
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return "state=player initiated a science teacher check-in; purpose=ground the experiment";
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return "state=player initiated a literature teacher check-in; purpose=ground the source";
     default:
-      return "the student chose to talk instead of drift through the room";
+      return "state=player initiated conversation; purpose=ground the current scene";
   }
 }
 
 static const char* ruby2_world_talk_avatar(Ruby2CharacterId character) {
   switch (character) {
     case RUBY2_CHARACTER_RUBY:
-      return "Ruby close enough to make the next move feel possible";
+      return "speaker=Ruby; role=homeroom teacher; stance=orients player to the next legal move";
     case RUBY2_CHARACTER_LYRA:
-      return "Lyra with the Notebook margin open and one worry already circled";
+      return "speaker=Lyra; role=classmate; stance=checks wording and written records";
     case RUBY2_CHARACTER_RAVI:
-      return "Ravi with one fact ready and three more trying to escape";
+      return "speaker=Ravi; role=classmate; stance=asks for item before conclusion";
     case RUBY2_CHARACTER_MIKA:
-      return "Mika grinning like confidence is something you can hand across the room";
+      return "speaker=Mika; role=classmate; stance=encourages action and practice";
     case RUBY2_CHARACTER_INDRA:
-      return "Indra close to the quietest object in the room";
+      return "speaker=Indra; role=classmate; stance=notices small changes";
     case RUBY2_CHARACTER_NOOR:
-      return "Noor watching the object everyone else is trying to normalize";
+      return "speaker=Noor; role=classmate; stance=challenges group assumptions";
     case RUBY2_CHARACTER_SAMI:
-      return "Sami leaning on the edge of the moment like it owes him rent";
+      return "speaker=Sami; role=classmate; stance=softens social pressure";
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return "speaker=Sally Science; role=science teacher; stance=tests variables before claims";
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return "speaker=Professor Edward; role=literature teacher; stance=keeps claims tied to sources";
     default:
-      return "a classmate in the same room with a real line to spend";
-  }
-}
-
-static const char* ruby2_world_talk_fallback(Ruby2CharacterId character, Ruby2RoomId room) {
-  switch (character) {
-    case RUBY2_CHARACTER_RUBY:
-      return room == RUBY2_ROOM_HALLWAY
-        ? "The bell is not angry. It is just done waiting."
-        : "The Notebook is not a gradebook. It is a trail.";
-    case RUBY2_CHARACTER_LYRA:
-      return "If the wording moved, I want it in ink.";
-    case RUBY2_CHARACTER_MIKA:
-      return "You are not lost. You are just pre-routing.";
-    case RUBY2_CHARACTER_RAVI:
-      return "The stamp is doing more work than the card.";
-    case RUBY2_CHARACTER_INDRA:
-      return "The quiet changed first.";
-    case RUBY2_CHARACTER_NOOR:
-      return room == RUBY2_ROOM_CAFETERIA
-        ? "The receipt is trying too hard to be normal."
-        : "The hallway is pretending this is normal.";
-    case RUBY2_CHARACTER_SAMI:
-      return "Respectfully, everyone needs to lower their shoulders.";
-    default:
-      return "That answer changed the room more than the score.";
+      return "speaker=classmate; role=peer; stance=responds to current world state";
   }
 }
 
 static const char* ruby2_world_player_avatar_context(const Ruby2World* world) {
   if (!world || !world->player_profile_ready) {
-    return "the player has not chosen a student identity yet";
+    return "player_profile=unset";
   }
   switch (world->player_avatar) {
     case RUBY2_PLAYER_AVATAR_SOURCE:
-      return "the player is a Source student: they test, cite, compare, and make objects prove claims";
+      return "player_profile=Source; preference=test, cite, compare, make items prove claims";
     case RUBY2_PLAYER_AVATAR_SENSE:
-      return "the player is a Sense student: they read wording, subtext, ambiguity, and meaning";
+      return "player_profile=Sense; preference=read wording, subtext, ambiguity, and meaning";
     case RUBY2_PLAYER_AVATAR_SYNC:
-      return "the player is a Sync student: they coordinate people, witnesses, and systems";
+      return "player_profile=Sync; preference=coordinate people, witnesses, and systems";
     case RUBY2_PLAYER_AVATAR_SIGNAL:
-      return "the player is a Signal student: they notice repeated patterns, anomalies, and things that answer back";
+      return "player_profile=Signal; preference=notice repeated patterns and structural mismatch";
     case RUBY2_PLAYER_AVATAR_UNSET:
     default:
-      return "the player is still deciding what kind of student they are";
+      return "player_profile=unset";
   }
 }
 
-static const char* ruby2_world_room_chat_fallback(Ruby2CharacterId speaker) {
-  switch (speaker) {
-    case RUBY2_CHARACTER_RUBY:
-      return "Good. Make the room answer together, then let the Notebook decide what held.";
-    case RUBY2_CHARACTER_LYRA:
-      return "I can verify what is written down. I cannot verify my pulse, unfortunately.";
-    case RUBY2_CHARACTER_MIKA:
-      return "Next move is small and real. We pick one thing and make it less scary.";
-    case RUBY2_CHARACTER_RAVI:
-      return "OK. Everyone says what they personally checked. No vibes disguised as data.";
-    case RUBY2_CHARACTER_INDRA:
-      return "Start with the thing that changed.";
-    case RUBY2_CHARACTER_NOOR:
-      return "I vote we stop letting the weird paper set the agenda.";
-    case RUBY2_CHARACTER_SAMI:
-      return "Room consensus: the vibes are guilty, but we still need evidence.";
-    default:
-      return "The room answers because you made the question specific.";
+static const char* ruby2_world_approach_fallback(Ruby2RoomId room, Ruby2WorldActionId action) {
+  if (room == RUBY2_ROOM_SCIENCE_LAB) {
+    switch (action) {
+      case RUBY2_ACTION_APPROACH_SOURCE:
+        return "Good. Name the variable before you trust the result.";
+      case RUBY2_ACTION_APPROACH_SENSE:
+        return "Careful wording counts, but the flask still has to prove it.";
+      case RUBY2_ACTION_APPROACH_SYNC:
+        return "Pair the notes, then make the evidence survive both of you.";
+      case RUBY2_ACTION_APPROACH_SIGNAL:
+        return "A pattern is useful only after the control stops arguing.";
+      default:
+        return "Keep the claim small enough for the bench to test.";
+    }
   }
+
+  if (room == RUBY2_ROOM_LIBRARY) {
+    switch (action) {
+      case RUBY2_ACTION_APPROACH_SOURCE:
+        return "Start with the source. The claim can wait its turn.";
+      case RUBY2_ACTION_APPROACH_SENSE:
+        return "The exact sentence is doing more work than it admits.";
+      case RUBY2_ACTION_APPROACH_SYNC:
+        return "Compare notes, then keep only what the text can carry.";
+      case RUBY2_ACTION_APPROACH_SIGNAL:
+        return "If the pattern is real, the page will survive rereading.";
+      default:
+        return "Tie the answer to the page, not the mood.";
+    }
+  }
+
+  switch (action) {
+    case RUBY2_ACTION_APPROACH_SOURCE:
+      return "Good. Make the board item prove it before the room repeats it.";
+    case RUBY2_ACTION_APPROACH_SENSE:
+      return "Good. The word on the board is where the answer starts.";
+    case RUBY2_ACTION_APPROACH_SYNC:
+      return "Good. Let the room agree on the same item first.";
+    case RUBY2_ACTION_APPROACH_SIGNAL:
+      return "Good. Circle the mismatch before it becomes a rumor.";
+    default:
+      return "Good. Keep the answer tied to what is actually here.";
+  }
+}
+
+static const char* ruby2_world_chat_open_fallback(Ruby2CharacterId character, bool room_mode) {
+  if (room_mode) {
+    return "Say what you noticed, then point to the item everyone can check.";
+  }
+
+  switch (character) {
+    case RUBY2_CHARACTER_RUBY:
+      return "Ask the next school question, not the biggest one.";
+    case RUBY2_CHARACTER_LYRA:
+      return "Show me the exact wording before we trust the feeling.";
+    case RUBY2_CHARACTER_RAVI:
+      return "If there is an item, I want to see it before I guess.";
+    case RUBY2_CHARACTER_MIKA:
+      return "Pick the move you can actually do before the bell gets loud.";
+    case RUBY2_CHARACTER_INDRA:
+      return "Say the small true thing first.";
+    case RUBY2_CHARACTER_NOOR:
+      return "If this gets weird, at least make it specific.";
+    case RUBY2_CHARACTER_SAMI:
+      return "Keep it casual, but do not make it vague.";
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return "Bring me the testable part.";
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return "Bring me the sentence doing the work.";
+    default:
+      return "Ask from the room, not from nowhere.";
+  }
+}
+
+static const char* ruby2_world_chat_choice_fallback(Ruby2CharacterId character, Ruby2WorldActionId action) {
+  bool first_option = action == RUBY2_ACTION_CHAT_OPTION_A;
+  switch (character) {
+    case RUBY2_CHARACTER_RUBY:
+      return first_option ? "Good. That keeps the school rule visible." : "Good. That keeps the room with you.";
+    case RUBY2_CHARACTER_LYRA:
+      return first_option ? "Yes. Check the wording before it checks us." : "Yes. Ask together before panic edits it.";
+    case RUBY2_CHARACTER_RAVI:
+      return first_option ? "Thank you. Evidence first, volume second." : "Okay, group check. I can do group check.";
+    case RUBY2_CHARACTER_MIKA:
+      return first_option ? "That is a clean first move." : "That keeps everybody moving.";
+    case RUBY2_CHARACTER_INDRA:
+      return first_option ? "That is the useful edge." : "That leaves room for people.";
+    case RUBY2_CHARACTER_NOOR:
+      return first_option ? "Fine. Specific is less annoying." : "Fine. Socially survivable and not fake.";
+    case RUBY2_CHARACTER_SAMI:
+      return first_option ? "That keeps the actual item in view." : "That keeps the table from getting weird.";
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return first_option ? "Good. Measure before you decorate." : "Good. Share the method before the result.";
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return first_option ? "Good. Cite before you claim." : "Good. Let the room test the reading.";
+    default:
+      return first_option ? "That keeps it concrete." : "That keeps the room steady.";
+  }
+}
+
+static const char* ruby2_world_agent_spoke_fallback(Ruby2CharacterId character, Ruby2WorldItemId item) {
+  if (item == RUBY2_WORLD_ITEM_LUNCH_TRAY) {
+    switch (character) {
+      case RUBY2_CHARACTER_NOOR:
+        return "The Lunch Tray is evidence now. Somehow lunch made itself worse.";
+      case RUBY2_CHARACTER_LYRA:
+        return "I can compare trays, but I am not emotionally ready for matching trays.";
+      case RUBY2_CHARACTER_RAVI:
+        return "Wait, if the trays match, that is actually useful.";
+      case RUBY2_CHARACTER_MIKA:
+        return "Tray first, theory second. We can handle that.";
+      default:
+        return "The Lunch Tray is the item everyone can check.";
+    }
+  }
+  return ruby2_world_chat_open_fallback(character, false);
 }
 
 static bool ruby2_world_event_is_talk_action(Ruby2WorldActionId action) {
@@ -118,53 +198,6 @@ static bool ruby2_world_event_is_talk_action(Ruby2WorldActionId action) {
          action == RUBY2_ACTION_TALK_INDRA ||
          action == RUBY2_ACTION_TALK_NOOR ||
          action == RUBY2_ACTION_TALK_SAMI;
-}
-
-static const char* ruby2_world_approach_fallback(
-  Ruby2WorldActionId action,
-  Ruby2RoomId room
-) {
-  if (room == RUBY2_ROOM_SCIENCE_LAB) {
-    switch (action) {
-      case RUBY2_ACTION_APPROACH_SOURCE:
-        return "Control first. Reaction second.";
-      case RUBY2_ACTION_APPROACH_SENSE:
-        return "Name the hidden variable before the flask lies for it.";
-      case RUBY2_ACTION_APPROACH_SYNC:
-        return "Good. Give each witness one job and keep the clock honest.";
-      case RUBY2_ACTION_APPROACH_SIGNAL:
-        return "That timestamp should not repeat. Keep that.";
-      default:
-        return "The lab only trusts what can be replayed.";
-    }
-  }
-  if (room == RUBY2_ROOM_LIBRARY) {
-    switch (action) {
-      case RUBY2_ACTION_APPROACH_SOURCE:
-        return "First copy beats loudest copy.";
-      case RUBY2_ACTION_APPROACH_SENSE:
-        return "One scope word can rewrite a room.";
-      case RUBY2_ACTION_APPROACH_SYNC:
-        return "Split the checks and make the margin earn consensus.";
-      case RUBY2_ACTION_APPROACH_SIGNAL:
-        return "Track the repeating mark before it learns a new mask.";
-      default:
-        return "Library truth starts where versions disagree.";
-    }
-  }
-
-  switch (action) {
-    case RUBY2_ACTION_APPROACH_SOURCE:
-      return "Wet ink beats confident ink.";
-    case RUBY2_ACTION_APPROACH_SENSE:
-      return "Original is a claim, not a hall pass.";
-    case RUBY2_ACTION_APPROACH_SYNC:
-      return "Good. Make the witnesses carry the proof.";
-    case RUBY2_ACTION_APPROACH_SIGNAL:
-      return "Circle the impossible part before it learns confidence.";
-    default:
-      return "Good. Now the answer has to survive the room.";
-  }
 }
 
 static void ruby2_world_request_defaults(
@@ -180,11 +213,11 @@ static void ruby2_world_request_defaults(
   out->archetype = world->game.secondary_archetype;
   out->beat_id = ruby2_world_event_name(event->kind);
   out->location_context = ruby2_room_name(out->room);
-  out->items_context = ruby2_world_object_name(event->object);
+  out->items_context = ruby2_world_item_name(event->item);
   out->avatar_context = ruby2_world_character_name(out->speaker);
   out->situation = event->text;
   out->outcome = event->text;
-  out->fallback = event->text;
+  out->fallback = NULL;
   out->smooth_wake = false;
 }
 
@@ -213,34 +246,34 @@ bool ruby2_world_event_to_performance_request(
       out->room = event->room < RUBY2_ROOM_COUNT ? event->room : world->game.current_room_id;
       out->speaker = event->character < RUBY2_CHARACTER_COUNT
         ? event->character
-        : (out->room == RUBY2_ROOM_LIBRARY ? RUBY2_CHARACTER_INDRA
-          : out->room == RUBY2_ROOM_SCIENCE_LAB ? RUBY2_CHARACTER_MIKA
+        : (out->room == RUBY2_ROOM_LIBRARY ? RUBY2_CHARACTER_PROFESSOR_EDWARD
+          : out->room == RUBY2_ROOM_SCIENCE_LAB ? RUBY2_CHARACTER_SALLY_SCIENCE
           : RUBY2_CHARACTER_RUBY);
       (void)ruby2_world_action_discipline(event->action, &out->discipline, &out->virtue);
       out->items_context = ruby2_world_action_label(event->action);
       if (out->room == RUBY2_ROOM_HOMEROOM) {
-        out->memory_context = "the student chose an approach before choosing an answer";
-        out->location_context = "Homeroom board, answer card, wet work order";
-        out->avatar_context = "Ruby at the board; classmates watching the same evidence";
-        out->situation = "Ruby is responding after the player's approach changes the room.";
+        out->memory_context = "state=player chose an approach before choosing an answer";
+        out->location_context = "scene=Homeroom; items=answer card, wet work order, blackboard";
+        out->avatar_context = "cast=Ruby,Ravi,Lyra; Ruby role=teacher; classmates share item";
+        out->situation = "beat=class_approach_resolved; purpose=teacher reacts to validated player method";
       } else if (out->room == RUBY2_ROOM_SCIENCE_LAB) {
-        out->memory_context = "the student chose a lab method before claiming a result";
-        out->location_context = "Science Lab bench, flask, logbook";
-        out->avatar_context = "Mika at the bench, room waiting for a replayable method";
-        out->situation = "Mika is responding to the selected lab quiz approach.";
+        out->memory_context = "state=player chose a lab method before claiming a result";
+        out->location_context = "scene=Science Lab; items=bench, flask, logbook, blackboard";
+        out->avatar_context = "cast=Sally Science,Mika; Sally role=teacher; Mika role=classmate";
+        out->situation = "beat=lab_quiz_resolved; purpose=teacher reacts to validated lab answer";
       } else if (out->room == RUBY2_ROOM_LIBRARY) {
-        out->memory_context = "the student chose a citation-check method before trusting the claim";
-        out->location_context = "Library table, catalog card, notebook margin";
-        out->avatar_context = "Indra by the stack, room waiting for a verifiable source chain";
-        out->situation = "Indra is responding to the selected library quiz approach.";
+        out->memory_context = "state=player chose a citation-check method before trusting the claim";
+        out->location_context = "scene=Library; items=table, catalog card, notebook margin, blackboard";
+        out->avatar_context = "cast=Professor Edward,Indra; Edward role=teacher; Indra role=classmate";
+        out->situation = "beat=library_quiz_resolved; purpose=teacher reacts to validated source answer";
       } else {
-        out->memory_context = "the student chose an approach before committing the next move";
+        out->memory_context = "state=player chose an approach before committing the next move";
         out->location_context = ruby2_room_name(out->room);
         out->avatar_context = ruby2_world_character_name(out->speaker);
-        out->situation = "A room-specific approach beat has just resolved.";
+        out->situation = "beat=approach_resolved; purpose=respond to validated method";
       }
       out->outcome = event->text;
-      out->fallback = ruby2_world_approach_fallback(event->action, out->room);
+      out->fallback = ruby2_world_approach_fallback(out->room, event->action);
       return true;
 
     case RUBY2_EVENT_SOCIAL_TRIGGERED:
@@ -249,13 +282,13 @@ bool ruby2_world_event_to_performance_request(
         out->speaker = event->character < RUBY2_CHARACTER_COUNT ? event->character : RUBY2_CHARACTER_RUBY;
         out->room = event->room < RUBY2_ROOM_COUNT ? event->room : world->game.current_room_id;
         (void)ruby2_world_action_discipline(event->action, &out->discipline, &out->virtue);
-        out->memory_context = "the player spoke one of two selected room-chat lines";
+        out->memory_context = "state=player selected one of two conversation intents";
         out->location_context = ruby2_room_name(out->room);
-        out->items_context = ruby2_world_object_name(event->object);
+        out->items_context = ruby2_world_item_name(event->item);
         out->avatar_context = ruby2_world_player_avatar_context(world);
-        out->situation = "The selected player line asks the room to answer naturally; the speaker only gets one line out loud.";
+        out->situation = "beat=conversation_choice_resolved; purpose=speaker responds to player intent; line_limit=one";
         out->outcome = event->text;
-        out->fallback = ruby2_world_room_chat_fallback(out->speaker);
+        out->fallback = ruby2_world_chat_choice_fallback(out->speaker, event->action);
         out->smooth_wake = true;
         return true;
       }
@@ -264,33 +297,31 @@ bool ruby2_world_event_to_performance_request(
         out->room = event->room < RUBY2_ROOM_COUNT ? event->room : world->game.current_room_id;
         (void)ruby2_world_action_discipline(event->action, &out->discipline, &out->virtue);
         out->memory_context = event->action == RUBY2_ACTION_CHAT_ROOM
-          ? "the player opened the room chat instead of talking to only one person"
+          ? "state=player opened a room-level conversation"
           : ruby2_world_talk_memory(out->speaker);
         out->location_context = ruby2_room_name(out->room);
-        out->items_context = ruby2_world_object_name(event->object);
+        out->items_context = ruby2_world_item_name(event->item);
         out->avatar_context = event->action == RUBY2_ACTION_CHAT_ROOM
           ? ruby2_world_player_avatar_context(world)
           : ruby2_world_talk_avatar(out->speaker);
         out->situation = event->action == RUBY2_ACTION_CHAT_ROOM
-          ? "The player has just opened a room-level conversation; the speaker should invite the group into the beat."
-          : "The player chose a small conversation beat instead of only chasing the next objective.";
+          ? "beat=room_conversation_opened; purpose=invite group into current world state; line_limit=one"
+          : "beat=character_conversation_opened; purpose=respond to player check-in; line_limit=one";
         out->outcome = event->text;
-        out->fallback = event->action == RUBY2_ACTION_CHAT_ROOM
-          ? ruby2_world_room_chat_fallback(out->speaker)
-          : ruby2_world_talk_fallback(out->speaker, out->room);
+        out->fallback = ruby2_world_chat_open_fallback(out->speaker, event->action == RUBY2_ACTION_CHAT_ROOM);
         out->smooth_wake = true;
         return true;
       }
       out->speaker = event->character < RUBY2_CHARACTER_COUNT ? event->character : RUBY2_CHARACTER_NOOR;
       out->discipline = RUBY2_DISCIPLINE_SIGNAL;
       out->virtue = RUBY2_VIRTUE_HEAD;
-      out->memory_context = "the strange classroom footer followed the day into lunch";
-      out->location_context = "Cafeteria tray rail, zero-dollar receipt, lunch noise";
-      out->items_context = ruby2_world_object_name(event->object);
-      out->avatar_context = "Noor near the receipt; Lyra close enough to check trays";
-      out->situation = "The social beat starts because the player and the receipt are in the same room.";
+      out->memory_context = "state=player reached lunch after first class";
+      out->location_context = "location=Cafeteria; item=Lunch Tray; rule=only mention existing items";
+      out->items_context = ruby2_world_item_name(event->item);
+      out->avatar_context = "cast=Noor,Lyra; Noor role=skeptic; Lyra role=verifier";
+      out->situation = "beat=lunch_social_triggered; purpose=peer notices local items";
       out->outcome = event->text;
-      out->fallback = "The receipt is trying too hard to be normal.";
+      out->fallback = "The Lunch Tray is real, local, and somehow trying to become a social problem.";
       out->smooth_wake = true;
       return true;
 
@@ -298,30 +329,30 @@ bool ruby2_world_event_to_performance_request(
       ruby2_world_request_defaults(world, event, out);
       out->speaker = event->character < RUBY2_CHARACTER_COUNT ? event->character : RUBY2_CHARACTER_NOOR;
       out->room = event->room < RUBY2_ROOM_COUNT ? event->room : world->game.current_room_id;
-      out->discipline = event->object == RUBY2_WORLD_OBJECT_RECEIPT ? RUBY2_DISCIPLINE_SIGNAL : RUBY2_DISCIPLINE_SYNC;
+      out->discipline = event->item == RUBY2_WORLD_ITEM_LUNCH_TRAY ? RUBY2_DISCIPLINE_SIGNAL : RUBY2_DISCIPLINE_SYNC;
       out->virtue = RUBY2_VIRTUE_HEAD;
-      out->memory_context = "the classmate chose the object over the room noise";
+      out->memory_context = "state=classmate requested a line about the current item";
       out->location_context = ruby2_room_name(out->room);
-      out->items_context = ruby2_world_object_name(event->object);
+      out->items_context = ruby2_world_item_name(event->item);
       out->avatar_context = ruby2_world_talk_avatar(out->speaker);
-      out->situation = "A micro-agent is allowed one grounded line because they are co-present.";
+      out->situation = "beat=agent_line_requested; purpose=co-present avatar reacts to validated local state; line_limit=one";
       out->outcome = event->text;
-      out->fallback = event->text;
+      out->fallback = ruby2_world_agent_spoke_fallback(out->speaker, event->item);
       out->smooth_wake = true;
       return true;
 
-    case RUBY2_EVENT_OBJECT_INSPECTED:
+    case RUBY2_EVENT_ITEM_USED:
       ruby2_world_request_defaults(world, event, out);
       out->speaker = event->character < RUBY2_CHARACTER_COUNT ? event->character : RUBY2_CHARACTER_NOOR;
       out->discipline = RUBY2_DISCIPLINE_SIGNAL;
       out->virtue = RUBY2_VIRTUE_HEAD;
-      out->memory_context = "the player inspected an object that repeated Homeroom";
-      out->location_context = "Cafeteria table, zero-dollar receipt, Notebook open";
-      out->items_context = ruby2_world_object_name(event->object);
-      out->avatar_context = "Noor watching the receipt instead of the room";
-      out->situation = "The inspected object became evidence instead of ambient weirdness.";
+      out->memory_context = "state=player used the Lunch Tray to join a lunch table";
+      out->location_context = "location=Cafeteria; item=Lunch Tray; notebook=open";
+      out->items_context = ruby2_world_item_name(event->item);
+      out->avatar_context = "cast=Noor; Noor role=skeptic; focus=lunch seating";
+      out->situation = "beat=item_used; purpose=peer reacts after player uses lunch item";
       out->outcome = event->text;
-      out->fallback = "That footer has follow-through. Horrible quality in paper.";
+      out->fallback = "Fine. The Lunch Tray gets you a seat, not a theory.";
       return true;
 
     case RUBY2_EVENT_DIRECTOR_TRIGGERED:
@@ -329,13 +360,13 @@ bool ruby2_world_event_to_performance_request(
       out->speaker = RUBY2_CHARACTER_RUBY;
       out->discipline = RUBY2_DISCIPLINE_SYNC;
       out->virtue = RUBY2_VIRTUE_HONOR;
-      out->memory_context = "the bell pulled the player back toward class";
+      out->memory_context = "state=bell pressure changed legal schedule state";
       out->location_context = ruby2_room_name(event->room);
-      out->items_context = "Notebook margin, bell clock";
-      out->avatar_context = "Ruby close enough to make the schedule real";
-      out->situation = "Ruby is redirecting the player without treating exploration as failure.";
+      out->items_context = "Notebook, bell clock";
+      out->avatar_context = "speaker=Ruby; role=homeroom teacher; purpose=schedule guidance";
+      out->situation = "beat=schedule_redirect; purpose=explain legal movement pressure without punishment";
       out->outcome = event->text;
-      out->fallback = "The bell is not angry. It is just done waiting.";
+      out->fallback = "The bell is pressure, not punishment. Homeroom is still the next clean move.";
       return true;
 
     default:

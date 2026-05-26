@@ -105,13 +105,13 @@ static void test_render_prompt_hides_mechanical_labels(void) {
     .virtue = RUBY2_VIRTUE_HONOR,
     .archetype = RUBY2_ARCHETYPE_SIGNAL_READER,
     .beat_id = "vertical-approach-resolve",
-    .memory_context = "i remember the pencil circle around the footer i did not print.",
+    .memory_context = "i remember the pencil circle around the lunch note i did not print.",
     .location_context = "Homeroom, front board.",
     .items_context = "Answer card, wet work order, your Notebook.",
     .avatar_context = "Ruby stands at the board.",
     .situation = "A repeated phrase on the poster moved after the class answered.",
-    .outcome = "The student noticed the impossible repetition and held it as evidence.",
-    .fallback = "Do not rush the weird part."
+    .outcome = "The student noticed the impossible repetition and held it as item.",
+    .fallback = NULL
   };
   Ruby2RenderedPrompt prompt;
   EXPECT_TRUE(ruby2_llm_render_prompt(&request, &prompt));
@@ -129,13 +129,13 @@ static void test_render_prompt_wakes_in_order(void) {
     .virtue = RUBY2_VIRTUE_HEAD,
     .archetype = RUBY2_ARCHETYPE_SIGNAL_READER,
     .beat_id = "vertical-cafeteria-witness",
-    .memory_context = "i remember the new kid circling the footer before lunch.",
+    .memory_context = "i remember the new kid circling the lunch note before lunch.",
     .location_context = "Cafeteria, mural table.",
-    .items_context = "Lunch tray, zero-dollar receipt, your Notebook.",
-    .avatar_context = "my fingers pinch the receipt corner; Lyra checks nearby trays.",
-    .situation = "The receipt has the same footer as the Homeroom papers.",
-    .outcome = "The receipt repeats the impossible footer.",
-    .fallback = "Cool, the printer has unfinished business."
+    .items_context = "items=lunch_tray,lunch_tray,Notebook",
+    .avatar_context = "cast=Noor,Lyra; Noor focus=lunch_tray; Lyra focus=nearby trays",
+    .situation = "event=item_used; item=lunch_tray; state=lunch_table_joined",
+    .outcome = "event=social_triggered; item=lunch_tray",
+    .fallback = NULL
   };
   Ruby2RenderedPrompt prompt;
   EXPECT_TRUE(ruby2_llm_render_wake_prompt(&request, &prompt));
@@ -168,14 +168,16 @@ static void test_render_prompt_uses_line_contract(void) {
     .location_context = "Homeroom, front board.",
     .items_context = "Answer card, wet work order, your Notebook.",
     .avatar_context = "Ravi is front row with one hand up.",
-    .situation = "Ruby is looking at the footer, stamp, and pencil mark.",
+    .situation = "Ruby is looking at the lunch note, stamp, and pencil mark.",
     .outcome = "The student checked the stamped work order before trusting the card.",
-    .fallback = "Wet ink beats confident ink."
+    .fallback = NULL
   };
   Ruby2RenderedPrompt prompt;
   EXPECT_TRUE(ruby2_llm_render_prompt(&request, &prompt));
   EXPECT_TRUE(prompt.kind == RUBY2_PROMPT_SPOKEN_LINE);
   EXPECT_STREQ(ruby2_llm_response_key(&prompt), "line");
+  EXPECT_TRUE(strstr(prompt.system, "deterministic game kernel") != NULL);
+  EXPECT_TRUE(strstr(prompt.system, "only dialogue layer") != NULL);
 }
 
 static void test_extracts_smooth_mind(void) {
@@ -186,11 +188,11 @@ static void test_extracts_smooth_mind(void) {
 
   EXPECT_TRUE(ruby2_llm_extract_rendered_response(
     &prompt,
-    "{\"mind\":\"I am Noor, receipt corner between my fingers, watching the footer repeat where lunch should be ordinary.\"}",
+    "{\"mind\":\"I am Noor, Lunch Tray in view, watching the lunch table open.\"}",
     mind,
     sizeof(mind)
   ));
-  EXPECT_STREQ(mind, "I am Noor, receipt corner between my fingers, watching the footer repeat where lunch should be ordinary.");
+  EXPECT_STREQ(mind, "I am Noor, Lunch Tray in view, watching the lunch table open.");
 }
 
 static void test_rejects_labeled_smooth_mind(void) {
@@ -201,7 +203,7 @@ static void test_rejects_labeled_smooth_mind(void) {
 
   EXPECT_FALSE(ruby2_llm_extract_rendered_response(
     &prompt,
-    "{\"mind\":\"who i am: i am Noor. what i remember: the receipt repeated.\"}",
+    "{\"mind\":\"who i am: i am Noor. what i remember: the Lunch Tray joined.\"}",
     mind,
     sizeof(mind)
   ));

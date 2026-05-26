@@ -45,7 +45,7 @@ static bool has_candidate(const Ruby2State* state, uint16_t id) {
   return false;
 }
 
-static void play_evidence_week(Ruby2State* state) {
+static void play_item_week(Ruby2State* state) {
   ruby2_state_init(state);
 
   Ruby2EffectPayload payload;
@@ -129,26 +129,26 @@ static void play_social_pressure_week(Ruby2State* state) {
 }
 
 int main(void) {
-  Ruby2State evidence;
+  Ruby2State item;
   Ruby2State social;
-  play_evidence_week(&evidence);
+  play_item_week(&item);
   play_social_pressure_week(&social);
 
-  EXPECT_TRUE(has_candidate(&evidence, 2001));
-  EXPECT_TRUE(has_candidate(&evidence, 3001));
-  EXPECT_TRUE(has_candidate(&evidence, 5002));
-  EXPECT_TRUE(!has_candidate(&evidence, 2002));
+  EXPECT_TRUE(has_candidate(&item, 2001));
+  EXPECT_TRUE(has_candidate(&item, 3001));
+  EXPECT_TRUE(has_candidate(&item, 5002));
+  EXPECT_TRUE(!has_candidate(&item, 2002));
 
   EXPECT_TRUE(has_candidate(&social, 2002));
   EXPECT_TRUE(has_candidate(&social, 3003));
   EXPECT_TRUE(!has_candidate(&social, 5002));
 
-  EXPECT_TRUE(evidence.discipline_counts[RUBY2_DISCIPLINE_SOURCE] >
+  EXPECT_TRUE(item.discipline_counts[RUBY2_DISCIPLINE_SOURCE] >
               social.discipline_counts[RUBY2_DISCIPLINE_SOURCE]);
   EXPECT_TRUE(social.discipline_counts[RUBY2_DISCIPLINE_SYNC] >= 1);
-  EXPECT_EQ_INT(evidence.dominant_archetype, RUBY2_ARCHETYPE_WILD_CARD);
+  EXPECT_EQ_INT(item.dominant_archetype, RUBY2_ARCHETYPE_WILD_CARD);
   EXPECT_EQ_INT(social.dominant_archetype, RUBY2_ARCHETYPE_WILD_CARD);
-  EXPECT_TRUE(evidence.secondary_archetype != social.secondary_archetype);
+  EXPECT_TRUE(item.secondary_archetype != social.secondary_archetype);
 
   if (failures != 0) {
     fprintf(stderr, "%d gameplay test failure(s)\n", failures);

@@ -57,71 +57,62 @@ typedef struct {
 static const char* result_line_for_action(Ruby2WorldActionId action) {
   switch (action) {
     case RUBY2_ACTION_GO_HALLWAY:
-      return "Moved: Hallway. The bell can still find you here.";
+      return "Moved: Hallway.";
     case RUBY2_ACTION_GO_HOMEROOM:
-      return "Moved: Homeroom. Ruby has the room.";
+      return "Moved: Homeroom.";
     case RUBY2_ACTION_GO_SCIENCE_LAB:
-      return "Moved: Science Lab. Evidence gets louder in here.";
+      return "Moved: Science Lab.";
     case RUBY2_ACTION_GO_LIBRARY:
-      return "Moved: Library. The quiet has a point of view.";
+      return "Moved: Library.";
     case RUBY2_ACTION_GO_CAFETERIA:
-      return "Moved: Cafeteria. The receipt is waiting on the tray rail.";
+      return "Moved: Cafeteria.";
     case RUBY2_ACTION_GO_GREENHOUSE:
-      return "Moved: Greenhouse. Stress has somewhere to go.";
+      return "Moved: Greenhouse.";
     case RUBY2_ACTION_GO_COURTYARD:
-      return "Moved: Courtyard. The school opens into choices.";
+      return "Moved: Courtyard.";
     case RUBY2_ACTION_GO_TEACHER_OFFICE:
-      return "Moved: Teacher Office. Recovery has paperwork.";
+      return "Moved: Teacher Office.";
     case RUBY2_ACTION_SELECT_AVATAR_SOURCE:
-      return "Profile opened: you start as a Source student.";
+      return "Profile selected: Source.";
     case RUBY2_ACTION_SELECT_AVATAR_SENSE:
-      return "Profile opened: you start as a Sense student.";
+      return "Profile selected: Sense.";
     case RUBY2_ACTION_SELECT_AVATAR_SYNC:
-      return "Profile opened: you start as a Sync student.";
+      return "Profile selected: Sync.";
     case RUBY2_ACTION_SELECT_AVATAR_SIGNAL:
-      return "Profile opened: you start as a Signal student.";
+      return "Profile selected: Signal.";
     case RUBY2_ACTION_CHAT_ROOM:
-      return "Chat opened: the room gets two ways to answer you.";
+      return "Conversation opened: room intent choices available.";
     case RUBY2_ACTION_TALK_RUBY:
-      return "Social beat opened: Ruby keeps the question grounded.";
     case RUBY2_ACTION_TALK_LYRA:
-      return "Social beat opened: Lyra checks what can survive the margin.";
     case RUBY2_ACTION_TALK_MIKA:
-      return "Social beat opened: Mika turns uncertainty into motion.";
     case RUBY2_ACTION_TALK_RAVI:
-      return "Social beat opened: Ravi has evidence and volume.";
     case RUBY2_ACTION_TALK_INDRA:
-      return "Social beat opened: Indra spends one line carefully.";
     case RUBY2_ACTION_TALK_NOOR:
-      return "Social beat opened: the receipt is not getting away with normal.";
     case RUBY2_ACTION_TALK_SAMI:
-      return "Social beat opened: Sami checks the hallway mood.";
+      return "Conversation opened: character intent choices available.";
     case RUBY2_ACTION_ATTEND_HOMEROOM:
-      return "Class started: Ruby pins the evidence problem to the board.";
+      return "Class started: Homeroom blackboard active.";
     case RUBY2_ACTION_APPROACH_SOURCE:
-      return "Notebook margin: wet ink outranks printed confidence.";
     case RUBY2_ACTION_APPROACH_SENSE:
-      return "Notebook margin: original is now a word under suspicion.";
     case RUBY2_ACTION_APPROACH_SYNC:
-      return "Notebook margin: Ravi and Lyra split the proof.";
     case RUBY2_ACTION_APPROACH_SIGNAL:
-      return "Notebook margin: the unprinted footer has a circle around it.";
-    case RUBY2_ACTION_INSPECT_RECEIPT:
-      return "Notebook margin: the receipt copied Homeroom too neatly.";
+      return "Board answer recorded.";
+    case RUBY2_ACTION_USE_LUNCH_TRAY:
+      return "Lunch Tray used: table joined.";
     case RUBY2_ACTION_COLLECT_NOTEBOOK:
     case RUBY2_ACTION_COLLECT_FLASHCARDS:
     case RUBY2_ACTION_COLLECT_LUNCH_TRAY:
     case RUBY2_ACTION_COLLECT_OFFICE_PASS:
     case RUBY2_ACTION_COLLECT_LIBRARY_CARD:
     case RUBY2_ACTION_COLLECT_LAB_FLASK:
-      return "Bag updated: one empty slot became useful.";
+      return "Bag updated: item collected.";
     case RUBY2_ACTION_CHAT_OPTION_A:
     case RUBY2_ACTION_CHAT_OPTION_B:
-      return "Conversation branch resolved: the line changes the room.";
+      return "Conversation intent recorded.";
     case RUBY2_ACTION_CHECK_NOTEBOOK:
-      return "Notebook updated: the room, evidence, and witnesses settle.";
+      return "Notebook checked.";
     case RUBY2_ACTION_WAIT_BELL:
-      return "Time moved: the school rearranges around the bell.";
+      return "Bell action applied.";
     case RUBY2_ACTION_NONE:
     default:
       return "";
@@ -303,6 +294,12 @@ static bool native_poll_ai_job(Ruby2NativeGame* game, uint32_t now_ms) {
   return false;
 }
 
+static bool native_snapshot_wants_blackboard(const Ruby2UiSnapshot* snapshot) {
+  return snapshot &&
+         snapshot->presentation.focus.has_blackboard &&
+         snapshot->presentation.focus.initial == RUBY2_UI_FOCUS_INITIAL_BLACKBOARD;
+}
+
 static void show_result(Ruby2NativeGame* game, Ruby2WorldActionId action, uint32_t now_ms) {
   const char* line = result_line_for_action(action);
   if (!game || !line || line[0] == '\0') return;
@@ -314,10 +311,12 @@ static void show_result(Ruby2NativeGame* game, Ruby2WorldActionId action, uint32
 static bool apply_action(Ruby2NativeGame* game, Ruby2WorldActionId action, uint32_t now_ms) {
   if (!game || action == RUBY2_ACTION_NONE) return false;
   if (!ruby2_world_apply_action(&game->world, action)) return false;
-  ruby2_world_step_agents(&game->world);
+  if (action == RUBY2_ACTION_WAIT_BELL) {
+    ruby2_world_step_agents(&game->world);
+  }
   game->has_ai_line = false;
   ruby2_ui_snapshot_build(&game->world, true, &game->snapshot);
-  game->show_blackboard = false;
+  game->show_blackboard = native_snapshot_wants_blackboard(&game->snapshot);
   game->focus_changed_at_ms = now_ms;
   show_result(game, action, now_ms);
   (void)native_start_ai_for_latest_event(game);
@@ -333,6 +332,44 @@ static bool schedule_action(Ruby2NativeGame* game, Ruby2WorldActionId action, ui
   return true;
 }
 
+static bool native_key_matches_navigation_label(const char* key_label, SDL_Keycode key) {
+  if (!key_label || key_label[0] == '\0') return false;
+  switch (key_label[0]) {
+    case 'W':
+      return key == SDLK_w || key == SDLK_UP;
+    case 'A':
+      return key == SDLK_a || key == SDLK_LEFT;
+    case 'S':
+      return key == SDLK_s || key == SDLK_DOWN;
+    case 'D':
+      return key == SDLK_d || key == SDLK_RIGHT;
+    case 'Q':
+      return key == SDLK_q;
+    case 'E':
+      return key == SDLK_e;
+    case 'C':
+      return key == SDLK_c;
+    default:
+      return false;
+  }
+}
+
+static Ruby2WorldActionId native_navigation_action_for_key(
+  const Ruby2UiSnapshot* snapshot,
+  SDL_Keycode key
+) {
+  if (!snapshot) return RUBY2_ACTION_NONE;
+
+  for (uint8_t i = 0; i < snapshot->presentation.navigation.slot_count; ++i) {
+    const Ruby2UiNavigationSlot* slot = &snapshot->presentation.navigation.slots[i];
+    if (native_key_matches_navigation_label(slot->key_label, key)) {
+      return slot->action;
+    }
+  }
+
+  return RUBY2_ACTION_NONE;
+}
+
 static void apply_pending_action_if_ready(Ruby2NativeGame* game, uint32_t now_ms) {
   Ruby2WorldActionId pending;
   if (!game || game->pending_action == RUBY2_ACTION_NONE || now_ms < game->pending_apply_at_ms) return;
@@ -345,57 +382,58 @@ static void apply_pending_action_if_ready(Ruby2NativeGame* game, uint32_t now_ms
 static bool apply_demo(Ruby2NativeGame* game, const char* demo) {
   if (!demo || strcmp(demo, "initial") == 0) return true;
   if (strcmp(demo, "homeroom_problem") == 0) {
-    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_SELECT_AVATAR_SOURCE) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
+    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_ATTEND_HOMEROOM);
   }
   if (strcmp(demo, "inventory_sample") == 0) {
-    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_SELECT_AVATAR_SOURCE) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_COLLECT_NOTEBOOK) &&
+    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_COLLECT_NOTEBOOK) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_COLLECT_FLASHCARDS) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_ATTEND_HOMEROOM) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_APPROACH_SOURCE) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_WAIT_BELL) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HALLWAY) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_SCIENCE_LAB) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_COLLECT_LAB_FLASK);
   }
   if (strcmp(demo, "after_source") == 0) {
-    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_SELECT_AVATAR_SOURCE) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
+    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_ATTEND_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_APPROACH_SOURCE);
   }
   if (strcmp(demo, "science_quiz") == 0) {
-    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_SELECT_AVATAR_SOURCE) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
+    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_ATTEND_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_APPROACH_SOURCE) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_WAIT_BELL) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HALLWAY) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_SCIENCE_LAB);
   }
   if (strcmp(demo, "library_quiz") == 0) {
-    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_SELECT_AVATAR_SOURCE) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
+    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_ATTEND_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_APPROACH_SOURCE) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_WAIT_BELL) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HALLWAY) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_LIBRARY);
   }
-  if (strcmp(demo, "cafeteria_receipt") == 0) {
-    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_SELECT_AVATAR_SOURCE) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
+  if (strcmp(demo, "lunch_tray") == 0) {
+    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_ATTEND_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_APPROACH_SOURCE) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_WAIT_BELL) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HALLWAY) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_CAFETERIA);
   }
-  if (strcmp(demo, "receipt_inspected") == 0) {
-    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_SELECT_AVATAR_SOURCE) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
+  if (strcmp(demo, "lunch_tray_used") == 0) {
+    return ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_ATTEND_HOMEROOM) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_APPROACH_SOURCE) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_WAIT_BELL) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_HALLWAY) &&
            ruby2_world_apply_action(&game->world, RUBY2_ACTION_GO_CAFETERIA) &&
-           ruby2_world_apply_action(&game->world, RUBY2_ACTION_INSPECT_RECEIPT);
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_COLLECT_LUNCH_TRAY) &&
+           ruby2_world_apply_action(&game->world, RUBY2_ACTION_USE_LUNCH_TRAY);
   }
   return false;
 }
@@ -407,7 +445,9 @@ static bool init_game(Ruby2NativeGame* game, const Ruby2NativeArgs* args) {
   ruby2_world_init(&game->world);
   if (!apply_demo(game, args->demo)) return false;
   ruby2_ui_snapshot_build(&game->world, true, &game->snapshot);
-  game->show_blackboard = args->show_board && game->snapshot.presentation.focus.has_blackboard;
+  game->show_blackboard = args->show_board
+    ? game->snapshot.presentation.focus.has_blackboard
+    : native_snapshot_wants_blackboard(&game->snapshot);
   return true;
 }
 
@@ -556,7 +596,7 @@ int main(int argc, char** argv) {
         running = false;
       } else if (event.type == SDL_KEYDOWN) {
         SDL_Keycode key = event.key.keysym.sym;
-        if (key == SDLK_ESCAPE || key == SDLK_q) {
+        if (key == SDLK_ESCAPE) {
           running = false;
         } else if (key == SDLK_SPACE || key == SDLK_RETURN) {
           if (game.snapshot.presentation.focus.has_blackboard) {
@@ -568,6 +608,11 @@ int main(int argc, char** argv) {
           if (button < game.snapshot.presentation.action_tray.slot_count) {
             (void)schedule_action(&game, game.snapshot.presentation.action_tray.slots[button].action, now_ms);
           }
+        } else {
+          Ruby2WorldActionId nav_action = native_navigation_action_for_key(&game.snapshot, key);
+          if (nav_action != RUBY2_ACTION_NONE) {
+            (void)schedule_action(&game, nav_action, now_ms);
+          }
         }
       } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
         float lx = 0.0f;
@@ -578,7 +623,7 @@ int main(int argc, char** argv) {
         if (hit.kind == RUBY2_NATIVE_HIT_FOCUS_TOGGLE) {
           game.show_blackboard = !game.show_blackboard;
           game.focus_changed_at_ms = now_ms;
-        } else if (hit.kind == RUBY2_NATIVE_HIT_ACTION) {
+        } else if (hit.kind == RUBY2_NATIVE_HIT_ACTION || hit.kind == RUBY2_NATIVE_HIT_NAVIGATION) {
           (void)schedule_action(&game, hit.action, now_ms);
         }
       }

@@ -600,7 +600,7 @@ const char* ruby2_candidate_title(uint16_t candidate_id) {
     case 6002: return "The Word Original";
     case 6003: return "The Borrowed Line";
     case 6004: return "The Shared Stamp";
-    case 7001: return "The Receipt Answered";
+    case 7001: return "The Cafeteria Slip";
     default: return "Untitled Page Draft";
   }
 }
@@ -610,7 +610,7 @@ const char* ruby2_candidate_blurb(uint16_t candidate_id) {
     case 1001: return "Lyra remembers that the hard question got survivable.";
     case 1002: return "Mika turns a miss into a promise you have to live up to.";
     case 1003: return "Indra's first line becomes the kind of rumor that follows you.";
-    case 2001: return "The hallway poster changed, and you checked the receipt.";
+    case 2001: return "The hallway poster changed, and you checked the Lunch Tray.";
     case 2002: return "Noor made the impossible social before anyone made it official.";
     case 3001: return "The source was older than the ink, and you checked anyway.";
     case 3002: return "Indra handed you the impossible clue without touching it.";
@@ -621,9 +621,9 @@ const char* ruby2_candidate_blurb(uint16_t candidate_id) {
     case 5003: return "The hallway got your name wrong, and the Notebook kept proof.";
     case 6001: return "You held the wet work-order stamp up before the answer card could own the room.";
     case 6002: return "You caught the word original hiding a second question.";
-    case 6003: return "You circled the footer Ruby did not print, then found it again at lunch.";
+    case 6003: return "You circled the lunch note Ruby did not print, then found it again at lunch.";
     case 6004: return "You got Ravi and Lyra checking the same stamp before choosing a side.";
-    case 7001: return "The lunch receipt repeated Homeroom's footer, and you made it evidence.";
+    case 7001: return "You used the Lunch Tray to join Noor's table at lunch.";
     default: return "A page draft waits for the right memory.";
   }
 }
@@ -667,9 +667,9 @@ const char* ruby2_candidate_tomorrow_hook(uint16_t candidate_id) {
     case 5003: return "Tomorrow, Noor says your name correctly before anyone else does.";
     case 6001: return "Tomorrow, Sally brings two sources and asks which one deserves the room.";
     case 6002: return "Tomorrow, Edward circles the word obvious and waits.";
-    case 6003: return "Tomorrow, your locker checkout slip has the same footer.";
+    case 6003: return "Tomorrow, your locker checkout slip has the same lunch note.";
     case 6004: return "Tomorrow, Eliza asks what a room knows when everyone checks the same stamp.";
-    case 7001: return "Tomorrow, Noor saves the tray receipt without explaining why.";
+    case 7001: return "Tomorrow, Noor leaves a seat open at her table.";
     default: return "Tomorrow, Ruby has another question.";
   }
 }

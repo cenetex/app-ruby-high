@@ -317,12 +317,11 @@ export async function handleCommandRoute(args: {
     if (rejectGuestAccess(commandType)) return true;
     const handler = commandType ? commandHandlers[commandType] : undefined;
     if (handler) return await handler() as true;
-    const state = ruby.getOrCreate(stateKey);
-    ctx.json(ctx.res, {
-      success: true,
-      message: `Suggestion noted: ${body?.prompt ?? body?.type ?? "unknown"}`,
-      session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
-    });
+    ctx.error(
+      ctx.res,
+      commandType ? `Unknown command type: ${commandType}` : "Command type is required.",
+      400,
+    );
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

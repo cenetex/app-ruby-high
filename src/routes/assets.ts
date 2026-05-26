@@ -19,12 +19,13 @@ const VIEWER_SECURITY_CSP_DIRECTIVES = [
   "form-action 'self'",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'unsafe-inline'",
+  "script-src-attr 'none'",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "font-src 'self' data:",
   "img-src 'self' data: blob: https:",
-  "connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:* ws://localhost:* ws://127.0.0.1:* ws://[::1]:* wss:",
-  "frame-src 'self' https: http://localhost:* http://127.0.0.1:* http://[::1]:*",
+  "connect-src 'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:",
+  "frame-src 'self' https: http://localhost:* http://127.0.0.1:*",
   VIEWER_FRAME_ANCESTORS_DIRECTIVE,
 ] as const;
 
@@ -94,9 +95,12 @@ const NFT_MARKET_CARD_IMAGE_FILES = Object.fromEntries(
   ]),
 ) as Record<string, { file: string; mime: string }>;
 
-const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string }> = {
-  "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-store" },
-  "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-store" },
+const DEFAULT_ASSET_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800";
+const VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string; versionedCacheControl?: string }> = {
+  "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
+  "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby-high-logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "nft/ruby-high-pack.png": { file: "nft/ruby-high-pack.png", mime: "image/png" },
@@ -267,6 +271,7 @@ export async function sendAsset(
   name: string,
   ifNoneMatch?: string | null,
   includeBody = true,
+  versioned = false,
 ): Promise<boolean> {
   if (!(name in ASSET_FILES)) return false;
   const asset = await loadAsset(name);
@@ -278,7 +283,7 @@ export async function sendAsset(
   };
   response.setHeader("Content-Type", asset.mime);
   response.setHeader("ETag", asset.etag);
-  response.setHeader("Cache-Control", ASSET_FILES[name]?.cacheControl ?? "public, max-age=86400, stale-while-revalidate=604800");
+  response.setHeader("Cache-Control", assetCacheControlFor(name, versioned) ?? DEFAULT_ASSET_CACHE_CONTROL);
   if (ifNoneMatch && ifNoneMatch === asset.etag) {
     response.statusCode = 304;
     response.end();
@@ -287,6 +292,13 @@ export async function sendAsset(
   response.statusCode = 200;
   response.end(includeBody ? asset.body : undefined);
   return true;
+}
+
+export function assetCacheControlFor(name: string, versioned = false): string | null {
+  const entry = ASSET_FILES[name];
+  if (!entry) return null;
+  if (versioned && entry.versionedCacheControl) return entry.versionedCacheControl;
+  return entry.cacheControl ?? DEFAULT_ASSET_CACHE_CONTROL;
 }
 
 function renderPwaManifest(): Record<string, unknown> {

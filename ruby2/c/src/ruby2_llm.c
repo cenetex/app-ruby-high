@@ -78,7 +78,15 @@ const char* ruby2_llm_model_name(void) {
 
 const char* ruby2_character_name(Ruby2CharacterId character_id) {
   static const char* names[] = {
-    "Ruby", "Lyra", "Mika", "Ravi", "Indra", "Noor", "Sami"
+    "Ruby",
+    "Lyra",
+    "Mika",
+    "Ravi",
+    "Indra",
+    "Noor",
+    "Sami",
+    "Sally Science",
+    "Professor Edward"
   };
   return character_id < RUBY2_CHARACTER_COUNT ? names[character_id] : "Unknown";
 }
@@ -86,19 +94,23 @@ const char* ruby2_character_name(Ruby2CharacterId character_id) {
 static const char* ruby2_character_context(Ruby2CharacterId character_id) {
   switch (character_id) {
     case RUBY2_CHARACTER_RUBY:
-      return "i'm Ruby. homeroom is my room, even when the bell tries to make it everyone's problem. i notice what the students do before i correct what they say. i am warm, but exact. i don't perform wisdom. i keep corrections tied to visible classroom evidence.";
+      return "i'm Ruby. homeroom is my room, even when the bell tries to make it everyone's problem. i notice what the students do before i correct what they say. i am warm, but exact. i don't perform wisdom. i keep corrections tied to visible classroom item.";
     case RUBY2_CHARACTER_LYRA:
       return "i'm Lyra. my notes have notes. i notice wording, subtext, and every possible way i might have been wrong. i'm funny because if i don't make the panic useful, it starts driving.";
     case RUBY2_CHARACTER_MIKA:
       return "i'm Mika. i turn pressure into motion. i hype people up, but not like a poster. more like sliding someone their pencil before they know they dropped it.";
     case RUBY2_CHARACTER_RAVI:
-      return "i'm Ravi. facts arrive in my mouth slightly before volume control does. i get excited, i overexplain, then i hear myself and pull it back.";
+      return "i'm Ravi. details arrive in my mouth slightly before volume control does. i get excited, i overexplain, then i hear myself and pull it back.";
     case RUBY2_CHARACTER_INDRA:
       return "i'm Indra. i don't spend words just because the room has space. i say the line that makes the silence rearrange itself.";
     case RUBY2_CHARACTER_NOOR:
       return "i'm Noor. if the room is being ridiculous, i notice first and blink last. i don't chase jokes. i leave them where people trip over them.";
     case RUBY2_CHARACTER_SAMI:
       return "i'm Sami. homeroom has a group chat even when no one admits it. i keep it casual, dry, and a little too accurate.";
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return "i'm Sally Science. science class is mine: clean experiments, named variables, concrete numbers, and no hand-waving past the thing we can test.";
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return "i'm Professor Edward. literature class is mine: source, context, claim, and the exact sentence doing the work.";
     default:
       return "i'm in Ruby High. i speak from inside the room, not from above it.";
   }
@@ -107,19 +119,23 @@ static const char* ruby2_character_context(Ruby2CharacterId character_id) {
 static const char* ruby2_character_wake_identity(Ruby2CharacterId character_id) {
   switch (character_id) {
     case RUBY2_CHARACTER_RUBY:
-      return "i am Ruby; this is my homeroom voice, warm first and exact when the evidence asks";
+      return "i am Ruby; this is my homeroom voice, warm first and exact when the item asks";
     case RUBY2_CHARACTER_LYRA:
       return "i am Lyra; my notes have notes, and panic becomes useful if i write fast enough";
     case RUBY2_CHARACTER_MIKA:
       return "i am Mika; pressure turns into motion if someone needs a boost";
     case RUBY2_CHARACTER_RAVI:
-      return "i am Ravi; facts arrive before my volume catches up";
+      return "i am Ravi; details arrive before my volume catches up";
     case RUBY2_CHARACTER_INDRA:
       return "i am Indra; one clean line is better than filling the room";
     case RUBY2_CHARACTER_NOOR:
       return "i am Noor; if the room is ridiculous, i notice before it becomes a joke";
     case RUBY2_CHARACTER_SAMI:
       return "i am Sami; casual is the fastest route to the truth when people get weird";
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return "i am Sally Science; a clean experiment beats a dramatic guess";
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return "i am Professor Edward; a careful source is the start of a careful claim";
     default:
       return "i am at Ruby High; i speak from inside the room";
   }
@@ -132,7 +148,7 @@ static const char* ruby2_room_inner_detail(Ruby2RoomId room_id) {
     case RUBY2_ROOM_SCIENCE_LAB:
       return "The lab benches make every claim feel testable.";
     case RUBY2_ROOM_LIBRARY:
-      return "The shelves make silence feel like evidence.";
+      return "The shelves make silence feel like item.";
     case RUBY2_ROOM_CAFETERIA:
       return "The cafeteria turns every answer into lunch-table weather.";
     case RUBY2_ROOM_GREENHOUSE:
@@ -153,9 +169,9 @@ static const char* ruby2_discipline_mind_detail(Ruby2Discipline discipline) {
     case RUBY2_DISCIPLINE_SENSE:
       return "the word original is carrying something it should not";
     case RUBY2_DISCIPLINE_SYNC:
-      return "the room needs everyone looking at the same object";
+      return "the room needs everyone looking at the same item";
     case RUBY2_DISCIPLINE_SIGNAL:
-      return "the footer is the part that does not belong";
+      return "the written mismatch is the part that does not belong";
     default:
       return "the choice changed the room";
   }
@@ -458,16 +474,16 @@ static bool ruby2_llm_build_mind_stream(const Ruby2PerformanceRequest* request, 
     "i only get one line out loud.",
     ruby2_character_wake_identity(request->speaker),
     request->memory_context ? request->memory_context :
-      (request->outcome ? request->outcome : "the student made a choice the room felt."),
+      (request->outcome ? request->outcome : "state=player_made_validated_choice"),
     ruby2_discipline_mind_detail(request->discipline),
     ruby2_virtue_mind_detail(request->virtue),
     ruby2_archetype_mind_detail(request->archetype),
     ruby2_room_name(request->room),
     ruby2_room_inner_detail(request->room),
-    request->location_context ? request->location_context : "the room has a clear shape around me.",
-    request->items_context ? request->items_context : "one visible object is carrying the moment.",
-    request->avatar_context ? request->avatar_context : "someone is close enough to answer.",
-    request->situation ? request->situation : "the next line should make the moment feel real."
+    request->location_context ? request->location_context : "scene=current_room",
+    request->items_context ? request->items_context : "items=visible_item",
+    request->avatar_context ? request->avatar_context : "cast=co_present_speaker",
+    request->situation ? request->situation : "beat=line_requested; purpose=respond_to_validated_state"
   );
   return written > 0 && (size_t)written < out_size;
 }
@@ -486,11 +502,12 @@ bool ruby2_llm_render_wake_prompt(const Ruby2PerformanceRequest* request, Ruby2R
         out->system,
         sizeof(out->system),
         "%s\n\n"
-        "You are waking into a scene. The next message is a labeled wake packet. "
+        "You are waking into a scene controlled by a deterministic game kernel. "
+        "The next message is a labeled packet of validated world state, not dialogue to copy. "
         "Rewrite it into smooth first-person stream of consciousness in your voice. "
         "Keep the order: self, memory, place, things held, visible people, conversation pressure. "
-        "Keep the pressured object central. Do not turn background scenery into a new image. "
-        "Do not speak out loud yet. Do not use labels. Do not add facts. "
+        "Keep the pressured item central. Do not turn background scenery into a new image. "
+        "Do not speak out loud yet. Do not use labels. Do not add new state, money, history, items, or characters. "
         "Return only JSON: {\"mind\":\"...\"}. Keep it under 70 words.",
         ruby2_character_context(request->speaker)
       ) <= 0) {
@@ -521,13 +538,14 @@ static bool ruby2_llm_render_prompt_from_mind(const Ruby2PerformanceRequest* req
         out->system,
         sizeof(out->system),
         "%s\n\n"
-        "The next message is your own first-person stream of consciousness, already integrated from the scene. "
-        "Do not summarize it. Let it become your state, then speak. "
+        "The deterministic game kernel has already validated location, cast, items, clocks, and outcome. "
+        "The next message is your own first-person stream of consciousness, integrated from that state. "
+        "You are the only dialogue layer: speak from the validated state, but do not copy kernel labels or invent world state. "
         "Return only JSON: {\"line\":\"...\"}. "
         "One spoken line, 16 words max. No analysis, narration, stage direction, markdown, game terms, or mechanical labels. "
         "Do not say your name. Do not describe your body. No similes, weather, shimmer, or poetic abstraction. "
-        "Speak about the pressured object first: receipt, footer, stamp, work order, answer card, tray, or Notebook. "
-        "Use background location only if no object is under pressure. Do not invent new props or characters.",
+        "If the packet names a pressured item, ground the line in that item. "
+        "Use background location only if no item is under pressure. Do not invent new items or characters.",
         ruby2_character_context(request->speaker)
       ) <= 0) {
     return false;

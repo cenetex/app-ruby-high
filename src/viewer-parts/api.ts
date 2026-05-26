@@ -66,7 +66,7 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
     const timeoutMs = Number(opts.timeoutMs || 0);
     delete opts.timeoutMs;
     const key = deps.getApiKey();
-    if (key) headers.set("X-Openrouter-Key", key);
+    if (key && shouldAttachApiKey(url)) headers.set("X-Openrouter-Key", key);
     const visitorId = deps.getVisitorId?.();
     if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);
     opts.headers = headers;
@@ -79,6 +79,16 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
       }
       return response;
     }).finally(clearFetchTimeout);
+  }
+
+  function shouldAttachApiKey(url: string): boolean {
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) return true;
+    if (typeof window === "undefined" || !window.location) return false;
+    try {
+      return new URL(url, window.location.href).origin === window.location.origin;
+    } catch {
+      return false;
+    }
   }
 
   async function command(payload: unknown): Promise<unknown | null> {

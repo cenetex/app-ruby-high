@@ -77,6 +77,16 @@ export function runViewerClient(bootstrap) {
       practiceReady: report && nextRole !== "social" && (canPick || hasBank),
     };
   }
+  function guestSignupRequired(t) {
+    const access = t && t.guest_access;
+    return !!(access && access.requiresSignup);
+  }
+  function guestSignupMessage(t) {
+    const access = t && t.guest_access;
+    return access && access.message
+      ? access.message
+      : "Guest lesson complete. Sign up to continue past today's class.";
+  }
   function nextQuestionButtonLabel(t) {
     t = t || lastTelemetry;
     if (t && t.graduation_ready && !t.current) return "Ceremony";
@@ -86,6 +96,7 @@ export function runViewerClient(bootstrap) {
     if (round && !round.resolved && cur) return offlineClassroom ? "Continue" : "Chat";
     if (cur && (currentRevealMatches(t) || t.status === "revealed")) return "Continue";
     const postClass = postClassState(t);
+    if (postClass.report && guestSignupRequired(t)) return "Sign up";
     if (postClass.socialReady) return "Start Social Card";
     if (postClass.report) return "Practice";
     return offlineClassroom ? "Continue" : "Chat";
@@ -110,6 +121,8 @@ export function runViewerClient(bootstrap) {
     const postClass = postClassState(t);
     els.nextBtn.title = live
       ? (teacherChatEnabled() ? "Ask for a hint" : "Answer the board to continue")
+      : postClass.report && guestSignupRequired(t)
+        ? "Sign up to continue past today's class"
       : cur && currentRevealCompletedClass(t)
         ? "Show the class report"
         : cur
@@ -346,12 +359,15 @@ export function runViewerClient(bootstrap) {
   }
 
   // ── auth credential (client-owned) ───────────────────────────────────────
-  // The browser-owned AI key lives ONLY in localStorage. The OAuth callback
-  // tab writes it; same-origin storage events fan it out to other tabs;
-  // every API call attaches it via the X-Openrouter-Key header. The server
-  // never persists it; server-side auth stores only an opaque app session.
+  // The browser-owned AI key defaults to sessionStorage so a future script
+  // injection bug has a smaller time window. localStorage is only honored
+  // when the user has explicitly opted into persistent BYOK storage. The
+  // server never persists it; server-side auth stores only an opaque app
+  // session.
   const AUTH_KEY = "rh_openrouter_key";
   const AUTH_LABEL = "rh_openrouter_label";
+  const AUTH_AT = "rh_openrouter_at";
+  const AUTH_PERSIST = "rh_openrouter_persist";
   const LAST_SEEN_KEY = "ruby-high:last-seen";
   const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
   const WELCOME_HALL_PASS_POPUP_KEY_PREFIX = "rh_welcome_hall_passes_seen:";
@@ -384,16 +400,60 @@ export function runViewerClient(bootstrap) {
     "Submitting the signed mint...",
     "Revealing the card...",
   ];
+  function authStorage(kind) {
+    try { return kind === "local" ? window.localStorage : window.sessionStorage; } catch (e) { return null; }
+  }
+  function storageGet(kind, key) {
+    try {
+      const store = authStorage(kind);
+      return store ? store.getItem(key) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function storageSet(kind, key, value) {
+    try {
+      const store = authStorage(kind);
+      if (store) store.setItem(key, value);
+    } catch (e) {}
+  }
+  function storageRemove(kind, key) {
+    try {
+      const store = authStorage(kind);
+      if (store) store.removeItem(key);
+    } catch (e) {}
+  }
+  function persistentApiKeyStorageEnabled() {
+    return storageGet("local", AUTH_PERSIST) === "1";
+  }
+  function migrateLegacyLocalAuthToSession() {
+    if (persistentApiKeyStorageEnabled()) return;
+    const key = storageGet("local", AUTH_KEY);
+    if (!key) return;
+    storageSet("session", AUTH_KEY, key);
+    const label = storageGet("local", AUTH_LABEL);
+    if (label) storageSet("session", AUTH_LABEL, label);
+    const seenAt = storageGet("local", AUTH_AT);
+    if (seenAt) storageSet("session", AUTH_AT, seenAt);
+    storageRemove("local", AUTH_KEY);
+    storageRemove("local", AUTH_LABEL);
+    storageRemove("local", AUTH_AT);
+  }
   function getStoredApiKey() {
-    try { return localStorage.getItem(AUTH_KEY) || null; } catch (e) { return null; }
+    migrateLegacyLocalAuthToSession();
+    return storageGet("session", AUTH_KEY) || (persistentApiKeyStorageEnabled() ? storageGet("local", AUTH_KEY) : null);
   }
   function getStoredAuthLabel() {
-    try { return localStorage.getItem(AUTH_LABEL) || null; } catch (e) { return null; }
+    migrateLegacyLocalAuthToSession();
+    return storageGet("session", AUTH_LABEL) || (persistentApiKeyStorageEnabled() ? storageGet("local", AUTH_LABEL) : null);
   }
   function clearStoredAuth() {
-    try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
-    try { localStorage.removeItem(AUTH_LABEL); } catch (e) {}
-    try { localStorage.removeItem("rh_openrouter_at"); } catch (e) {}
+    storageRemove("session", AUTH_KEY);
+    storageRemove("session", AUTH_LABEL);
+    storageRemove("session", AUTH_AT);
+    storageRemove("local", AUTH_KEY);
+    storageRemove("local", AUTH_LABEL);
+    storageRemove("local", AUTH_AT);
   }
   function markLocalAppOpen() {
     try {
@@ -1161,6 +1221,11 @@ export function runViewerClient(bootstrap) {
   function isActiveBoardCommandError(msg) {
     return /Question already (on|posted by).*board|wait for the student answer|Cannot (post another question|clear the board) while a question is live/i.test(String(msg || ""));
   }
+  async function promptGuestSignup(message) {
+    setAccountPane("account");
+    await openPrivyAccount();
+    setPrivyStatus(message || guestSignupMessage(lastTelemetry), false);
+  }
 
   // ── API helper ────────────────────────────────────────────────────────────
   const apiClient = createViewerApiClient({
@@ -1178,6 +1243,10 @@ export function runViewerClient(bootstrap) {
       render(session);
     },
     onCommandError(message) {
+      if (guestSignupRequired(lastTelemetry) || /guest lesson complete|sign up to continue/i.test(String(message || ""))) {
+        void promptGuestSignup(message);
+        return;
+      }
       appendSystem("error · " + message);
     },
     onCommandFailed(message) {
@@ -1553,8 +1622,9 @@ export function runViewerClient(bootstrap) {
   }
   function buildClassReportNextStep() {
     const state = postClassState(lastTelemetry);
+    const signupRequired = guestSignupRequired(lastTelemetry);
     const wrap = document.createElement("div");
-    wrap.className = "class-report-next" + (state.socialReady ? " is-social" : state.practiceReady ? " is-practice" : "");
+    wrap.className = "class-report-next" + (signupRequired ? " is-signup" : state.socialReady ? " is-social" : state.practiceReady ? " is-practice" : "");
     const mark = document.createElement("span");
     mark.className = "class-report-next-mark";
     wrap.appendChild(mark);
@@ -1564,7 +1634,10 @@ export function runViewerClient(bootstrap) {
     title.className = "class-report-next-title";
     const body = document.createElement("div");
     body.className = "class-report-next-body";
-    if (state.socialReady) {
+    if (signupRequired) {
+      title.textContent = "Sign up to continue";
+      body.textContent = "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.";
+    } else if (state.socialReady) {
       title.textContent = "Social card ready";
       body.textContent = "One homeroom question before the next class.";
     } else if (state.practiceReady) {
@@ -3037,6 +3110,11 @@ export function runViewerClient(bootstrap) {
     openSheet({ returnToAccount: true });
   }
 
+  function openCharacterCreation() {
+    closePrivyAccount();
+    openSheet();
+  }
+
   function openCharacterCreationFromAccount() {
     openCharacterSheetFromAccount();
   }
@@ -3253,7 +3331,7 @@ export function runViewerClient(bootstrap) {
       if (lastTelemetry && lastTelemetry.character) {
         void openPrivyAccount();
       } else {
-        openCharacterCreationFromAccount();
+        openCharacterCreation();
       }
     });
     overlay.addEventListener("click", (event) => {
@@ -4627,6 +4705,12 @@ export function runViewerClient(bootstrap) {
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
         els.blackboardEmptyText.textContent = "Requirements complete. Pick a level-up reward to seal the year.";
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
+      } else if (guestSignupRequired(lastTelemetry)) {
+        els.blackboardEmptyText.textContent = guestSignupMessage(lastTelemetry);
+        if (els.blackboardEmptyAction) {
+          els.blackboardEmptyAction.textContent = "Sign up";
+          els.blackboardEmptyAction.hidden = false;
+        }
       } else {
         // Surface the "what you need" hint here too so the empty board
         // is informative instead of "the teacher will be with you in a
@@ -5572,6 +5656,10 @@ export function runViewerClient(bootstrap) {
   }
   async function startPostClassPractice(postClass) {
     if (!postClass || !postClass.report) return false;
+    if (guestSignupRequired(lastTelemetry)) {
+      await promptGuestSignup();
+      return true;
+    }
     const manualTurn = turnController.beginManual();
     if (!manualTurn) return true;
     const reportKey = classReportKey(lastTelemetry);
@@ -5712,7 +5800,11 @@ export function runViewerClient(bootstrap) {
 
   function handleBlackboardEmptyAction() {
     if (!lastTelemetry || !lastTelemetry.character) {
-      openCharacterCreationFromAccount();
+      openCharacterCreation();
+      return;
+    }
+    if (guestSignupRequired(lastTelemetry)) {
+      void promptGuestSignup();
       return;
     }
     void pickNext();
@@ -5912,7 +6004,7 @@ export function runViewerClient(bootstrap) {
     applyViewMode(deriveViewMode(t));
     if (authed && !t.character && !firstRunCreationOpened) {
       firstRunCreationOpened = true;
-      setTimeout(() => openCharacterCreationFromAccount(), 0);
+      setTimeout(() => openCharacterCreation(), 0);
     }
     if (els.packBtn) els.packBtn.hidden = !packStoreUnlocked(t);
     if (els.hallPassBtn) els.hallPassBtn.hidden = !secondarySurfacesUnlocked(t);
@@ -11107,7 +11199,7 @@ export function runViewerClient(bootstrap) {
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
     if (sheetOverlayOpen) renderSheet();
   }
-  // Auth is split: the browser-owned AI key stays in localStorage, while the
+  // Auth is split: the browser-owned AI key stays in web storage, while the
   // server owns an opaque Ruby High session cookie that maps to the
   // persistent character. Verify both on boot and whenever OAuth state may
   // have changed.
@@ -11800,9 +11892,9 @@ export function runViewerClient(bootstrap) {
   // default). The player progresses Freshman → Sophomore → Junior → Senior
   // → graduate as they clear per-grade daily-class and subject-grade gates. There is no year
   // picker — they walk in, get started, and advance by playing.
-  // Auth is checked once on boot and again whenever the OAuth tab writes
-  // the key (storage event fires in every other tab) or the user returns
-  // to this tab from elsewhere (focus). No periodic polling: the only
+  // Auth is checked once on boot and again whenever a persistent OAuth
+  // key changes in another tab or the user returns to this tab from
+  // elsewhere (focus). No periodic polling: the only
   // server state we need here is the session cookie's current validity.
   async function bootInitialSession() {
     showWelcomeBackCopy = markLocalAppOpen();
@@ -11816,7 +11908,7 @@ export function runViewerClient(bootstrap) {
   void bootInitialSession();
   initializePrivyFromStoredSession();
   window.addEventListener("storage", (e) => {
-    if (e.key === AUTH_KEY || e.key === null) deriveAuth();
+    if (e.key === AUTH_KEY || e.key === AUTH_LABEL || e.key === AUTH_PERSIST || e.key === null) deriveAuth();
   });
   // Belt-and-braces wake-up triggers. The OAuth flow is now same-tab so
   // none of these are load-bearing on the happy path, but they cover any

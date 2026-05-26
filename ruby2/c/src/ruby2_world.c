@@ -4,6 +4,7 @@
 #include <string.h>
 
 static void ruby2_world_run_director(Ruby2World* world);
+static Ruby2WorldItemId ruby2_world_default_item_for_character(Ruby2CharacterId character_id);
 
 static const Ruby2WorldRoom ruby2_world_rooms[] = {
   {
@@ -13,19 +14,199 @@ static const Ruby2WorldRoom ruby2_world_rooms[] = {
       RUBY2_ROOM_SCIENCE_LAB,
       RUBY2_ROOM_LIBRARY,
       RUBY2_ROOM_CAFETERIA,
-      RUBY2_ROOM_GREENHOUSE,
       RUBY2_ROOM_COURTYARD,
       RUBY2_ROOM_TEACHER_OFFICE
     },
-    7
+    6
   },
   { RUBY2_ROOM_HOMEROOM, { RUBY2_ROOM_HALLWAY }, 1 },
   { RUBY2_ROOM_SCIENCE_LAB, { RUBY2_ROOM_HALLWAY }, 1 },
   { RUBY2_ROOM_LIBRARY, { RUBY2_ROOM_HALLWAY }, 1 },
-  { RUBY2_ROOM_CAFETERIA, { RUBY2_ROOM_HALLWAY }, 1 },
-  { RUBY2_ROOM_GREENHOUSE, { RUBY2_ROOM_HALLWAY }, 1 },
-  { RUBY2_ROOM_COURTYARD, { RUBY2_ROOM_HALLWAY }, 1 },
+  { RUBY2_ROOM_CAFETERIA, { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_COURTYARD }, 2 },
+  { RUBY2_ROOM_GREENHOUSE, { RUBY2_ROOM_COURTYARD }, 1 },
+  { RUBY2_ROOM_COURTYARD, { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_CAFETERIA, RUBY2_ROOM_GREENHOUSE }, 3 },
   { RUBY2_ROOM_TEACHER_OFFICE, { RUBY2_ROOM_HALLWAY }, 1 }
+};
+
+typedef struct {
+  uint16_t id;
+  Ruby2RoomId room;
+  Ruby2CharacterId teacher;
+  Ruby2WorldItemId item;
+  uint8_t grade;
+  bool prior_grade_review;
+  const char* lines[RUBY2_WORLD_MAX_QUESTION_LINES];
+  uint8_t line_count;
+  const char* answer_labels[4];
+  Ruby2WorldActionId correct_action;
+  const char* correct_packet;
+  const char* incorrect_packet;
+  const char* notebook_packet;
+} Ruby2TeacherQuestion;
+
+static const Ruby2TeacherQuestion ruby2_teacher_questions[] = {
+  {
+    6000,
+    RUBY2_ROOM_HOMEROOM,
+    RUBY2_CHARACTER_RUBY,
+    RUBY2_WORLD_ITEM_WORK_ORDER,
+    9,
+    false,
+    {
+      "GRADE 9 - RUBY",
+      "Answer card: \"original\"; wet work order: \"revised\".",
+      "Which item proves the answer changed?",
+      "A answer card",
+      "B wet work order",
+      "C Notebook   D Flashcards"
+    },
+    6,
+    {
+      "A. answer card",
+      "B. wet work order",
+      "C. Notebook",
+      "D. Flashcards"
+    },
+    RUBY2_ACTION_APPROACH_SENSE,
+    "event=class_board_resolved; room=Homeroom; teacher=Ruby; grade=9; answer=B; result=correct; item=wet_work_order",
+    "event=class_board_resolved; room=Homeroom; teacher=Ruby; grade=9; result=wrong_but_recovered; correct=B",
+    "notebook=class_board_resolved; room=Homeroom; teacher=Ruby; grade=9; correct=B"
+  },
+  {
+    6008,
+    RUBY2_ROOM_HOMEROOM,
+    RUBY2_CHARACTER_RUBY,
+    RUBY2_WORLD_ITEM_FLASHCARDS,
+    8,
+    true,
+    {
+      "GRADE 8 REVIEW - RUBY",
+      "Flashcards say evidence must be checkable.",
+      "Which line is evidence, not opinion?",
+      "A everyone knows it",
+      "B work order was stamped revised",
+      "C it feels wrong   D Ruby seems worried"
+    },
+    6,
+    {
+      "A. everyone knows it",
+      "B. work order was stamped revised",
+      "C. it feels wrong",
+      "D. Ruby seems worried"
+    },
+    RUBY2_ACTION_APPROACH_SENSE,
+    "event=class_board_resolved; room=Homeroom; teacher=Ruby; grade=8_review; answer=B; result=correct; item=flashcards",
+    "event=class_board_resolved; room=Homeroom; teacher=Ruby; grade=8_review; result=wrong_but_recovered; correct=B",
+    "notebook=class_board_resolved; room=Homeroom; teacher=Ruby; grade=8_review; correct=B"
+  },
+  {
+    7100,
+    RUBY2_ROOM_SCIENCE_LAB,
+    RUBY2_CHARACTER_SALLY_SCIENCE,
+    RUBY2_WORLD_ITEM_LAB_FLASK,
+    9,
+    false,
+    {
+      "GRADE 9 - SALLY SCIENCE",
+      "A catalyst test is about to start.",
+      "What must happen before changing the catalyst?",
+      "A add a second catalyst",
+      "B run a control sample",
+      "C change heat and acid   D skip the log"
+    },
+    6,
+    {
+      "A. add a second catalyst",
+      "B. run a control sample",
+      "C. change heat and acid",
+      "D. skip the log"
+    },
+    RUBY2_ACTION_APPROACH_SENSE,
+    "event=class_board_resolved; room=Science Lab; teacher=Sally Science; grade=9; answer=B; result=correct; item=lab_flask",
+    "event=class_board_resolved; room=Science Lab; teacher=Sally Science; grade=9; result=wrong_but_recovered; correct=B",
+    "notebook=class_board_resolved; room=Science Lab; teacher=Sally Science; grade=9; correct=B"
+  },
+  {
+    7108,
+    RUBY2_ROOM_SCIENCE_LAB,
+    RUBY2_CHARACTER_SALLY_SCIENCE,
+    RUBY2_WORLD_ITEM_LAB_FLASK,
+    8,
+    true,
+    {
+      "GRADE 8 REVIEW - SALLY SCIENCE",
+      "The lab needs 50 ml of water.",
+      "Which tool measures volume most precisely?",
+      "A beaker",
+      "B graduated cylinder",
+      "C stopwatch   D magnet"
+    },
+    6,
+    {
+      "A. beaker",
+      "B. graduated cylinder",
+      "C. stopwatch",
+      "D. magnet"
+    },
+    RUBY2_ACTION_APPROACH_SENSE,
+    "event=class_board_resolved; room=Science Lab; teacher=Sally Science; grade=8_review; answer=B; result=correct; item=lab_flask",
+    "event=class_board_resolved; room=Science Lab; teacher=Sally Science; grade=8_review; result=wrong_but_recovered; correct=B",
+    "notebook=class_board_resolved; room=Science Lab; teacher=Sally Science; grade=8_review; correct=B"
+  },
+  {
+    7200,
+    RUBY2_ROOM_LIBRARY,
+    RUBY2_CHARACTER_PROFESSOR_EDWARD,
+    RUBY2_WORLD_ITEM_LIBRARY_CARD,
+    9,
+    false,
+    {
+      "GRADE 9 - PROFESSOR EDWARD",
+      "You need support for a school-history claim.",
+      "Which source can be cited?",
+      "A hallway rumor",
+      "B first printed copy",
+      "C margin doodle   D your memory"
+    },
+    6,
+    {
+      "A. hallway rumor",
+      "B. first printed copy",
+      "C. margin doodle",
+      "D. your memory"
+    },
+    RUBY2_ACTION_APPROACH_SENSE,
+    "event=class_board_resolved; room=Library; teacher=Professor Edward; grade=9; answer=B; result=correct; item=library_card",
+    "event=class_board_resolved; room=Library; teacher=Professor Edward; grade=9; result=wrong_but_recovered; correct=B",
+    "notebook=class_board_resolved; room=Library; teacher=Professor Edward; grade=9; correct=B"
+  },
+  {
+    7208,
+    RUBY2_ROOM_LIBRARY,
+    RUBY2_CHARACTER_PROFESSOR_EDWARD,
+    RUBY2_WORLD_ITEM_LIBRARY_CARD,
+    8,
+    true,
+    {
+      "GRADE 8 REVIEW - PROFESSOR EDWARD",
+      "A citation must let someone find the source.",
+      "Which detail belongs in the citation?",
+      "A shelf color",
+      "B author, title, and date",
+      "C friend's guess   D page smell"
+    },
+    6,
+    {
+      "A. shelf color",
+      "B. author, title, and date",
+      "C. friend's guess",
+      "D. page smell"
+    },
+    RUBY2_ACTION_APPROACH_SENSE,
+    "event=class_board_resolved; room=Library; teacher=Professor Edward; grade=8_review; answer=B; result=correct; item=library_card",
+    "event=class_board_resolved; room=Library; teacher=Professor Edward; grade=8_review; result=wrong_but_recovered; correct=B",
+    "notebook=class_board_resolved; room=Library; teacher=Professor Edward; grade=8_review; correct=B"
+  }
 };
 
 static void ruby2_world_push_event_with_visibility(
@@ -33,7 +214,7 @@ static void ruby2_world_push_event_with_visibility(
   Ruby2WorldEventKind kind,
   Ruby2RoomId room,
   Ruby2CharacterId character,
-  Ruby2WorldObjectId object,
+  Ruby2WorldItemId item,
   Ruby2WorldActionId action,
   Ruby2WorldEventVisibility visibility,
   const char* text
@@ -49,7 +230,7 @@ static void ruby2_world_push_event_with_visibility(
   event->tick = world->tick;
   event->room = room;
   event->character = character;
-  event->object = object;
+  event->item = item;
   event->action = action;
   event->visibility = visibility;
   event->text = text;
@@ -60,7 +241,7 @@ static void ruby2_world_push_event(
   Ruby2WorldEventKind kind,
   Ruby2RoomId room,
   Ruby2CharacterId character,
-  Ruby2WorldObjectId object,
+  Ruby2WorldItemId item,
   Ruby2WorldActionId action,
   const char* text
 ) {
@@ -69,7 +250,7 @@ static void ruby2_world_push_event(
     kind,
     room,
     character,
-    object,
+    item,
     action,
     RUBY2_EVENT_VISIBLE_TO_PLAYER,
     text
@@ -83,9 +264,9 @@ static Ruby2AgentIntentResult ruby2_world_reject_agent_intent(
 ) {
   Ruby2CharacterId character = intent ? intent->character : RUBY2_CHARACTER_NONE;
   Ruby2RoomId room = RUBY2_ROOM_COUNT;
-  Ruby2WorldObjectId object = RUBY2_WORLD_OBJECT_NOTEBOOK;
-  if (intent && intent->target_object < RUBY2_WORLD_OBJECT_COUNT) {
-    object = intent->target_object;
+  Ruby2WorldItemId item = RUBY2_WORLD_ITEM_NOTEBOOK;
+  if (intent && intent->target_item < RUBY2_WORLD_ITEM_COUNT) {
+    item = intent->target_item;
   }
   if (world && character < RUBY2_CHARACTER_COUNT) {
     room = world->npc_rooms[character];
@@ -95,7 +276,7 @@ static Ruby2AgentIntentResult ruby2_world_reject_agent_intent(
     RUBY2_EVENT_AGENT_INTENT_REJECTED,
     room,
     character,
-    object,
+    item,
     RUBY2_ACTION_NONE,
     RUBY2_EVENT_INTERNAL,
     ruby2_agent_intent_result_name(result)
@@ -109,7 +290,7 @@ static void ruby2_world_add_action(
   Ruby2WorldActionKind kind,
   Ruby2RoomId target_room,
   Ruby2CharacterId target_character,
-  Ruby2WorldObjectId target_object,
+  Ruby2WorldItemId target_item,
   Ruby2Discipline discipline,
   Ruby2Virtue virtue,
   const char* label
@@ -121,7 +302,7 @@ static void ruby2_world_add_action(
   action->kind = kind;
   action->target_room = target_room;
   action->target_character = target_character;
-  action->target_object = target_object;
+  action->target_item = target_item;
   action->discipline = discipline;
   action->virtue = virtue;
   action->label = label;
@@ -136,25 +317,52 @@ static bool ruby2_room_has_exit(Ruby2RoomId from, Ruby2RoomId to) {
   return false;
 }
 
-static bool ruby2_world_object_item(Ruby2WorldObjectId object_id, Ruby2ItemId* out) {
+static bool ruby2_world_schedule_allows_room(const Ruby2World* world, Ruby2RoomId room_id) {
+  if (!world || room_id >= RUBY2_ROOM_COUNT) return false;
+
+  if (!world->homeroom_resolved) {
+    return room_id == RUBY2_ROOM_HALLWAY || room_id == RUBY2_ROOM_HOMEROOM;
+  }
+
+  if (!world->lunch_started) {
+    return room_id == world->game.current_room_id;
+  }
+
+  return true;
+}
+
+static bool ruby2_world_player_movement_locked(const Ruby2World* world) {
+  if (!world) return true;
+  if (world->chat_active) return true;
+  if (world->homeroom_started && !world->homeroom_resolved) return true;
+  if (world->homeroom_resolved && !world->lunch_started) return true;
+  if (world->lunch_started &&
+      ((world->game.current_room_id == RUBY2_ROOM_SCIENCE_LAB && !world->science_lab_quiz_resolved) ||
+       (world->game.current_room_id == RUBY2_ROOM_LIBRARY && !world->library_quiz_resolved))) {
+    return true;
+  }
+  return false;
+}
+
+static bool ruby2_world_inventory_item_for_world_item(Ruby2WorldItemId world_item_id, Ruby2ItemId* out) {
   Ruby2ItemId item_id;
-  switch (object_id) {
-    case RUBY2_WORLD_OBJECT_NOTEBOOK:
+  switch (world_item_id) {
+    case RUBY2_WORLD_ITEM_NOTEBOOK:
       item_id = RUBY2_ITEM_NOTEBOOK;
       break;
-    case RUBY2_WORLD_OBJECT_FLASHCARDS:
+    case RUBY2_WORLD_ITEM_FLASHCARDS:
       item_id = RUBY2_ITEM_FLASHCARDS;
       break;
-    case RUBY2_WORLD_OBJECT_LUNCH_TRAY:
+    case RUBY2_WORLD_ITEM_LUNCH_TRAY:
       item_id = RUBY2_ITEM_LUNCH_TRAY;
       break;
-    case RUBY2_WORLD_OBJECT_OFFICE_PASS:
+    case RUBY2_WORLD_ITEM_OFFICE_PASS:
       item_id = RUBY2_ITEM_OFFICE_PASS;
       break;
-    case RUBY2_WORLD_OBJECT_LIBRARY_CARD:
+    case RUBY2_WORLD_ITEM_LIBRARY_CARD:
       item_id = RUBY2_ITEM_LIBRARY_CARD;
       break;
-    case RUBY2_WORLD_OBJECT_LAB_FLASK:
+    case RUBY2_WORLD_ITEM_LAB_FLASK:
       item_id = RUBY2_ITEM_LAB_FLASK;
       break;
     default:
@@ -164,28 +372,28 @@ static bool ruby2_world_object_item(Ruby2WorldObjectId object_id, Ruby2ItemId* o
   return true;
 }
 
-static bool ruby2_world_collect_action_for_object(
-  Ruby2WorldObjectId object_id,
+static bool ruby2_world_collect_action_for_item(
+  Ruby2WorldItemId world_item_id,
   Ruby2WorldActionId* out
 ) {
   Ruby2WorldActionId action_id;
-  switch (object_id) {
-    case RUBY2_WORLD_OBJECT_NOTEBOOK:
+  switch (world_item_id) {
+    case RUBY2_WORLD_ITEM_NOTEBOOK:
       action_id = RUBY2_ACTION_COLLECT_NOTEBOOK;
       break;
-    case RUBY2_WORLD_OBJECT_FLASHCARDS:
+    case RUBY2_WORLD_ITEM_FLASHCARDS:
       action_id = RUBY2_ACTION_COLLECT_FLASHCARDS;
       break;
-    case RUBY2_WORLD_OBJECT_LUNCH_TRAY:
+    case RUBY2_WORLD_ITEM_LUNCH_TRAY:
       action_id = RUBY2_ACTION_COLLECT_LUNCH_TRAY;
       break;
-    case RUBY2_WORLD_OBJECT_OFFICE_PASS:
+    case RUBY2_WORLD_ITEM_OFFICE_PASS:
       action_id = RUBY2_ACTION_COLLECT_OFFICE_PASS;
       break;
-    case RUBY2_WORLD_OBJECT_LIBRARY_CARD:
+    case RUBY2_WORLD_ITEM_LIBRARY_CARD:
       action_id = RUBY2_ACTION_COLLECT_LIBRARY_CARD;
       break;
-    case RUBY2_WORLD_OBJECT_LAB_FLASK:
+    case RUBY2_WORLD_ITEM_LAB_FLASK:
       action_id = RUBY2_ACTION_COLLECT_LAB_FLASK;
       break;
     default:
@@ -195,34 +403,34 @@ static bool ruby2_world_collect_action_for_object(
   return true;
 }
 
-static bool ruby2_world_action_collect_object(
+static bool ruby2_world_action_collect_item(
   Ruby2WorldActionId action_id,
-  Ruby2WorldObjectId* out
+  Ruby2WorldItemId* out
 ) {
-  Ruby2WorldObjectId object_id;
+  Ruby2WorldItemId world_item_id;
   switch (action_id) {
     case RUBY2_ACTION_COLLECT_NOTEBOOK:
-      object_id = RUBY2_WORLD_OBJECT_NOTEBOOK;
+      world_item_id = RUBY2_WORLD_ITEM_NOTEBOOK;
       break;
     case RUBY2_ACTION_COLLECT_FLASHCARDS:
-      object_id = RUBY2_WORLD_OBJECT_FLASHCARDS;
+      world_item_id = RUBY2_WORLD_ITEM_FLASHCARDS;
       break;
     case RUBY2_ACTION_COLLECT_LUNCH_TRAY:
-      object_id = RUBY2_WORLD_OBJECT_LUNCH_TRAY;
+      world_item_id = RUBY2_WORLD_ITEM_LUNCH_TRAY;
       break;
     case RUBY2_ACTION_COLLECT_OFFICE_PASS:
-      object_id = RUBY2_WORLD_OBJECT_OFFICE_PASS;
+      world_item_id = RUBY2_WORLD_ITEM_OFFICE_PASS;
       break;
     case RUBY2_ACTION_COLLECT_LIBRARY_CARD:
-      object_id = RUBY2_WORLD_OBJECT_LIBRARY_CARD;
+      world_item_id = RUBY2_WORLD_ITEM_LIBRARY_CARD;
       break;
     case RUBY2_ACTION_COLLECT_LAB_FLASK:
-      object_id = RUBY2_WORLD_OBJECT_LAB_FLASK;
+      world_item_id = RUBY2_WORLD_ITEM_LAB_FLASK;
       break;
     default:
       return false;
   }
-  if (out) *out = object_id;
+  if (out) *out = world_item_id;
   return true;
 }
 
@@ -347,6 +555,147 @@ static void ruby2_world_dismiss_last_action(Ruby2WorldActionList* out, const Rub
   }
 }
 
+static int ruby2_world_question_answer_index(Ruby2WorldActionId action_id) {
+  switch (action_id) {
+    case RUBY2_ACTION_APPROACH_SOURCE:
+      return 0;
+    case RUBY2_ACTION_APPROACH_SENSE:
+      return 1;
+    case RUBY2_ACTION_APPROACH_SYNC:
+      return 2;
+    case RUBY2_ACTION_APPROACH_SIGNAL:
+      return 3;
+    default:
+      return -1;
+  }
+}
+
+static const Ruby2TeacherQuestion* ruby2_world_find_teacher_question(
+  Ruby2RoomId room_id,
+  uint8_t grade,
+  bool prior_grade_review
+) {
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(ruby2_teacher_questions) / sizeof(ruby2_teacher_questions[0])); ++i) {
+    const Ruby2TeacherQuestion* question = &ruby2_teacher_questions[i];
+    if (question->room == room_id &&
+        question->grade == grade &&
+        question->prior_grade_review == prior_grade_review) {
+      return question;
+    }
+  }
+  return NULL;
+}
+
+static bool ruby2_world_should_mix_prior_grade_question(const Ruby2World* world, Ruby2RoomId room_id) {
+  if (!world || world->current_grade <= 8u) return false;
+  return ((uint16_t)world->current_grade + world->class_day + (uint16_t)room_id) % 3u == 0u;
+}
+
+static const Ruby2TeacherQuestion* ruby2_world_select_teacher_question(
+  const Ruby2World* world,
+  Ruby2RoomId room_id
+) {
+  uint8_t grade = world && world->current_grade ? world->current_grade : 9u;
+  const Ruby2TeacherQuestion* question = NULL;
+
+  if (ruby2_world_should_mix_prior_grade_question(world, room_id)) {
+    question = ruby2_world_find_teacher_question(room_id, (uint8_t)(grade - 1u), true);
+    if (question) return question;
+  }
+
+  question = ruby2_world_find_teacher_question(room_id, grade, false);
+  if (question) return question;
+
+  if (grade > 8u) {
+    question = ruby2_world_find_teacher_question(room_id, (uint8_t)(grade - 1u), true);
+    if (question) return question;
+  }
+
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(ruby2_teacher_questions) / sizeof(ruby2_teacher_questions[0])); ++i) {
+    if (ruby2_teacher_questions[i].room == room_id) return &ruby2_teacher_questions[i];
+  }
+  return NULL;
+}
+
+static const char* ruby2_world_teacher_question_action_label(
+  const Ruby2TeacherQuestion* question,
+  Ruby2WorldActionId action_id
+) {
+  int answer_index = ruby2_world_question_answer_index(action_id);
+  if (!question || answer_index < 0) return ruby2_world_action_label(action_id);
+  return question->answer_labels[answer_index]
+    ? question->answer_labels[answer_index]
+    : ruby2_world_action_label(action_id);
+}
+
+static bool ruby2_world_teacher_question_answer_correct(
+  const Ruby2TeacherQuestion* question,
+  Ruby2WorldActionId action_id
+) {
+  return question && question->correct_action == action_id;
+}
+
+static void ruby2_world_ensure_action_floor(
+  const Ruby2World* world,
+  Ruby2WorldActionList* out,
+  Ruby2RoomId room_id
+) {
+  if (!world || !out || out->count > 0) return;
+
+  if (world->chat_active &&
+      world->chat_room == room_id &&
+      world->chat_character < RUBY2_CHARACTER_COUNT) {
+    ruby2_world_add_action(
+      out,
+      RUBY2_ACTION_CHAT_OPTION_A,
+      RUBY2_WORLD_ACTION_CHAT_CHOICE,
+      room_id,
+      world->chat_character,
+      ruby2_world_default_item_for_character(world->chat_character),
+      RUBY2_DISCIPLINE_SOURCE,
+      RUBY2_VIRTUE_HEAD,
+      world->chat_options[0] ? world->chat_options[0] : ruby2_world_action_label(RUBY2_ACTION_CHAT_OPTION_A)
+    );
+    return;
+  }
+
+  if (ruby2_world_notebook_owned(world)) {
+    ruby2_world_add_action(
+      out,
+      RUBY2_ACTION_CHECK_NOTEBOOK,
+      RUBY2_WORLD_ACTION_CHECK_NOTES,
+      room_id,
+      RUBY2_CHARACTER_NONE,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
+      RUBY2_DISCIPLINE_SENSE,
+      RUBY2_VIRTUE_HEAD,
+      ruby2_world_action_label(RUBY2_ACTION_CHECK_NOTEBOOK)
+    );
+    return;
+  }
+
+  ruby2_world_add_action(
+    out,
+    RUBY2_ACTION_WAIT_BELL,
+    RUBY2_WORLD_ACTION_WAIT,
+    room_id,
+    RUBY2_CHARACTER_NONE,
+    RUBY2_WORLD_ITEM_NOTEBOOK,
+    RUBY2_DISCIPLINE_SYNC,
+    RUBY2_VIRTUE_HUSTLE,
+    ruby2_world_action_label(RUBY2_ACTION_WAIT_BELL)
+  );
+}
+
+static void ruby2_world_finalize_actions(
+  const Ruby2World* world,
+  Ruby2WorldActionList* out,
+  Ruby2RoomId room_id
+) {
+  ruby2_world_dismiss_last_action(out, world);
+  ruby2_world_ensure_action_floor(world, out, room_id);
+}
+
 static Ruby2PlayerAvatarId ruby2_world_avatar_for_action(Ruby2WorldActionId action_id) {
   switch (action_id) {
     case RUBY2_ACTION_SELECT_AVATAR_SOURCE:
@@ -360,6 +709,54 @@ static Ruby2PlayerAvatarId ruby2_world_avatar_for_action(Ruby2WorldActionId acti
     default:
       return RUBY2_PLAYER_AVATAR_UNSET;
   }
+}
+
+static const char* ruby2_world_profile_selected_packet(Ruby2PlayerAvatarId avatar_id) {
+  switch (avatar_id) {
+    case RUBY2_PLAYER_AVATAR_SOURCE:
+      return "event=profile_selected; avatar=Source";
+    case RUBY2_PLAYER_AVATAR_SENSE:
+      return "event=profile_selected; avatar=Sense";
+    case RUBY2_PLAYER_AVATAR_SYNC:
+      return "event=profile_selected; avatar=Sync";
+    case RUBY2_PLAYER_AVATAR_SIGNAL:
+      return "event=profile_selected; avatar=Signal";
+    case RUBY2_PLAYER_AVATAR_UNSET:
+    default:
+      return "event=profile_selected; avatar=Unset";
+  }
+}
+
+static const char* ruby2_world_room_entered_packet(Ruby2RoomId room_id) {
+  switch (room_id) {
+    case RUBY2_ROOM_HALLWAY:
+      return "event=room_entered; room=Hallway";
+    case RUBY2_ROOM_HOMEROOM:
+      return "event=room_entered; room=Homeroom";
+    case RUBY2_ROOM_SCIENCE_LAB:
+      return "event=room_entered; room=Science Lab";
+    case RUBY2_ROOM_LIBRARY:
+      return "event=room_entered; room=Library";
+    case RUBY2_ROOM_CAFETERIA:
+      return "event=room_entered; room=Cafeteria";
+    case RUBY2_ROOM_GREENHOUSE:
+      return "event=room_entered; room=Greenhouse";
+    case RUBY2_ROOM_COURTYARD:
+      return "event=room_entered; room=Courtyard";
+    case RUBY2_ROOM_TEACHER_OFFICE:
+      return "event=room_entered; room=Teacher Office";
+    default:
+      return "event=room_entered; room=Unknown";
+  }
+}
+
+static uint16_t ruby2_world_teacher_question_candidate_id(
+  const Ruby2TeacherQuestion* question,
+  Ruby2WorldActionId action_id
+) {
+  int answer_index = ruby2_world_question_answer_index(action_id);
+  if (!question) return 0u;
+  return (uint16_t)(question->id + (answer_index >= 0 ? (uint16_t)(answer_index + 1) : 0u));
 }
 
 static Ruby2Discipline ruby2_world_avatar_discipline(Ruby2PlayerAvatarId avatar_id) {
@@ -415,28 +812,34 @@ static Ruby2WorldActionId ruby2_world_go_action_for_room(Ruby2RoomId room_id) {
   }
 }
 
-static Ruby2WorldObjectId ruby2_world_default_object_for_character(Ruby2CharacterId character_id) {
+static Ruby2WorldItemId ruby2_world_default_item_for_character(Ruby2CharacterId character_id) {
   switch (character_id) {
     case RUBY2_CHARACTER_RAVI:
-      return RUBY2_WORLD_OBJECT_WORK_ORDER;
+      return RUBY2_WORLD_ITEM_WORK_ORDER;
     case RUBY2_CHARACTER_NOOR:
-      return RUBY2_WORLD_OBJECT_RECEIPT;
+      return RUBY2_WORLD_ITEM_LUNCH_TRAY;
     case RUBY2_CHARACTER_MIKA:
-      return RUBY2_WORLD_OBJECT_LAB_FLASK;
+      return RUBY2_WORLD_ITEM_LAB_FLASK;
     case RUBY2_CHARACTER_INDRA:
-      return RUBY2_WORLD_OBJECT_LIBRARY_CARD;
+      return RUBY2_WORLD_ITEM_LIBRARY_CARD;
     case RUBY2_CHARACTER_SAMI:
-      return RUBY2_WORLD_OBJECT_LUNCH_TRAY;
+      return RUBY2_WORLD_ITEM_LUNCH_TRAY;
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return RUBY2_WORLD_ITEM_LAB_FLASK;
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return RUBY2_WORLD_ITEM_LIBRARY_CARD;
     case RUBY2_CHARACTER_RUBY:
     case RUBY2_CHARACTER_LYRA:
     default:
-      return RUBY2_WORLD_OBJECT_NOTEBOOK;
+      return RUBY2_WORLD_ITEM_NOTEBOOK;
   }
 }
 
 static Ruby2CharacterId ruby2_world_first_room_speaker(const Ruby2World* world, Ruby2RoomId room_id) {
   static const Ruby2CharacterId order[] = {
     RUBY2_CHARACTER_RUBY,
+    RUBY2_CHARACTER_SALLY_SCIENCE,
+    RUBY2_CHARACTER_PROFESSOR_EDWARD,
     RUBY2_CHARACTER_LYRA,
     RUBY2_CHARACTER_MIKA,
     RUBY2_CHARACTER_RAVI,
@@ -455,8 +858,10 @@ static Ruby2Discipline ruby2_world_default_discipline_for_character(Ruby2Charact
   switch (character_id) {
     case RUBY2_CHARACTER_RAVI:
     case RUBY2_CHARACTER_MIKA:
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
       return RUBY2_DISCIPLINE_SOURCE;
     case RUBY2_CHARACTER_INDRA:
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
       return RUBY2_DISCIPLINE_SENSE;
     case RUBY2_CHARACTER_NOOR:
       return RUBY2_DISCIPLINE_SIGNAL;
@@ -469,85 +874,27 @@ static Ruby2Discipline ruby2_world_default_discipline_for_character(Ruby2Charact
 }
 
 static const char* ruby2_world_chat_option_label(Ruby2CharacterId character, uint8_t option) {
-  switch (character) {
-    case RUBY2_CHARACTER_RUBY:
-      return option == 0
-        ? "Ask Ruby what to do next."
-        : "Tell Ruby you want to look around.";
-    case RUBY2_CHARACTER_LYRA:
-      return option == 0
-        ? "Ask Lyra what she can verify."
-        : "Tell Lyra the wording is weird.";
-    case RUBY2_CHARACTER_MIKA:
-      return option == 0
-        ? "Ask Mika for a boost."
-        : "Ask Mika what to practice.";
-    case RUBY2_CHARACTER_RAVI:
-      return option == 0
-        ? "Ask Ravi for the evidence version."
-        : "Ask Ravi what he is not sure about.";
-    case RUBY2_CHARACTER_INDRA:
-      return option == 0
-        ? "Ask Indra what changed."
-        : "Wait for Indra to choose the line.";
-    case RUBY2_CHARACTER_NOOR:
-      return option == 0
-        ? "Ask Noor why the receipt feels fake."
-        : "Ask Noor what everyone is ignoring.";
-    case RUBY2_CHARACTER_SAMI:
-      return option == 0
-        ? "Ask Sami what the hallway thinks."
-        : "Ask Sami to make it less awkward.";
-    default:
-      return option == 0 ? "Ask a grounded question." : "Ask what changed.";
-  }
-}
-
-static const char* ruby2_world_chat_resolution_line(Ruby2CharacterId character, uint8_t option) {
-  switch (character) {
-    case RUBY2_CHARACTER_RUBY:
-      return option == 0
-        ? "Next move: pick a room, pick a witness, then make the Notebook prove you were there."
-        : "Good. Looking around counts, as long as you come back with evidence.";
-    case RUBY2_CHARACTER_LYRA:
-      return option == 0
-        ? "I can verify ink, wording, and panic. The panic is not admissible, apparently."
-        : "It is absolutely weird. I am only calm because I scheduled the panic for later.";
-    case RUBY2_CHARACTER_MIKA:
-      return option == 0
-        ? "You are not lost. You are just pre-routing. Huge difference."
-        : "Practice the move you keep avoiding. That is usually where the level-up is hiding.";
-    case RUBY2_CHARACTER_RAVI:
-      return option == 0
-        ? "Evidence version: if two objects disagree, trust the one with a physical trace."
-        : "I am not sure the footer belongs to the paper. Which is, technically, alarming.";
-    case RUBY2_CHARACTER_INDRA:
-      return option == 0
-        ? "The quiet changed first."
-        : "Good.";
-    case RUBY2_CHARACTER_NOOR:
-      return option == 0
-        ? "Because it wants you to stop reading before the useful part."
-        : "Everyone is ignoring that the room reacted before the people did.";
-    case RUBY2_CHARACTER_SAMI:
-      return option == 0
-        ? "The hallway thinks everyone needs to lower their shoulders."
-        : "Too late, but I respect the ambition.";
-    default:
-      return "The conversation leaves a real mark.";
-  }
+  (void)character;
+  return option == 0
+    ? "Ground the conversation in local items."
+    : "Ask for the next concrete move.";
 }
 
 static const char* ruby2_world_room_chat_option_label(uint8_t option) {
   return option == 0
-    ? "Ask: what can everyone actually verify?"
-    : "Ask: what move should we make next?";
+    ? "Ground the room in local items."
+    : "Ask the room for the next concrete move.";
 }
 
-static const char* ruby2_world_room_chat_resolution_line(uint8_t option) {
+static const char* ruby2_world_chat_choice_packet(bool room_mode, uint8_t option) {
+  if (room_mode) {
+    return option == 0
+      ? "event=room_conversation_choice; player_intent=ground_visible_item; scope=room"
+      : "event=room_conversation_choice; player_intent=request_next_concrete_move; scope=room";
+  }
   return option == 0
-    ? "You ask the room to separate what people know from what they feel."
-    : "You ask the room to choose the next real move instead of chasing noise.";
+    ? "event=character_conversation_choice; player_intent=ground_visible_item; scope=one_character"
+    : "event=character_conversation_choice; player_intent=request_next_concrete_move; scope=one_character";
 }
 
 static bool ruby2_world_room_quiz_available(const Ruby2World* world, Ruby2RoomId room_id) {
@@ -562,137 +909,28 @@ static bool ruby2_world_room_quiz_available(const Ruby2World* world, Ruby2RoomId
   }
 }
 
-static Ruby2CharacterId ruby2_world_room_quiz_speaker(Ruby2RoomId room_id) {
-  switch (room_id) {
-    case RUBY2_ROOM_SCIENCE_LAB:
-      return RUBY2_CHARACTER_MIKA;
-    case RUBY2_ROOM_LIBRARY:
-      return RUBY2_CHARACTER_INDRA;
-    default:
-      return RUBY2_CHARACTER_RUBY;
-  }
-}
-
-static Ruby2WorldObjectId ruby2_world_room_quiz_object(Ruby2RoomId room_id) {
-  switch (room_id) {
-    case RUBY2_ROOM_SCIENCE_LAB:
-      return RUBY2_WORLD_OBJECT_LAB_FLASK;
-    case RUBY2_ROOM_LIBRARY:
-      return RUBY2_WORLD_OBJECT_LIBRARY_CARD;
-    default:
-      return RUBY2_WORLD_OBJECT_NOTEBOOK;
-  }
-}
-
-static const char* ruby2_world_room_quiz_action_label(
-  Ruby2RoomId room_id,
-  Ruby2WorldActionId action_id
-) {
-  if (room_id == RUBY2_ROOM_SCIENCE_LAB) {
-    switch (action_id) {
-      case RUBY2_ACTION_APPROACH_SOURCE:
-        return "Run the control sample before touching the catalyst.";
-      case RUBY2_ACTION_APPROACH_SENSE:
-        return "Name the hidden variable before anyone touches glass.";
-      case RUBY2_ACTION_APPROACH_SYNC:
-        return "Split the room into witness, timer, and recorder.";
-      case RUBY2_ACTION_APPROACH_SIGNAL:
-        return "Check the timestamp mismatch in the lab log.";
-      default:
-        break;
-    }
-  }
-  if (room_id == RUBY2_ROOM_LIBRARY) {
-    switch (action_id) {
-      case RUBY2_ACTION_APPROACH_SOURCE:
-        return "Trace the citation chain back to the first printed copy.";
-      case RUBY2_ACTION_APPROACH_SENSE:
-        return "Find the one word that changes the claim boundary.";
-      case RUBY2_ACTION_APPROACH_SYNC:
-        return "Pair Lyra and Indra on opposing checks.";
-      case RUBY2_ACTION_APPROACH_SIGNAL:
-        return "Mark the margin symbol that repeats across rooms.";
-      default:
-        break;
-    }
-  }
-  return ruby2_world_action_label(action_id);
-}
-
-static const char* ruby2_world_room_quiz_resolution_line(
-  Ruby2RoomId room_id,
-  Ruby2WorldActionId action_id
-) {
-  if (room_id == RUBY2_ROOM_SCIENCE_LAB) {
-    switch (action_id) {
-      case RUBY2_ACTION_APPROACH_SOURCE:
-        return "You run the control first; the catalyst only matters after the baseline survives.";
-      case RUBY2_ACTION_APPROACH_SENSE:
-        return "You flag the hidden variable before the test can pretend certainty.";
-      case RUBY2_ACTION_APPROACH_SYNC:
-        return "You assign witness roles and the room stops guessing long enough to measure.";
-      case RUBY2_ACTION_APPROACH_SIGNAL:
-        return "You catch the copied timestamp. Someone duplicated a result that should be unique.";
-      default:
-        break;
-    }
-  }
-  if (room_id == RUBY2_ROOM_LIBRARY) {
-    switch (action_id) {
-      case RUBY2_ACTION_APPROACH_SOURCE:
-        return "You trace the claim to the first copy and keep every reprint honest.";
-      case RUBY2_ACTION_APPROACH_SENSE:
-        return "You isolate one scope word and the whole paragraph stops lying by omission.";
-      case RUBY2_ACTION_APPROACH_SYNC:
-        return "You split checks across two witnesses and the margin finally agrees with itself.";
-      case RUBY2_ACTION_APPROACH_SIGNAL:
-        return "You tag the repeating symbol; the same mark is now evidence across rooms.";
-      default:
-        break;
-    }
-  }
-  return ruby2_world_action_label(action_id);
-}
-
-static uint16_t ruby2_world_room_quiz_candidate_id(
-  Ruby2RoomId room_id,
-  Ruby2WorldActionId action_id
-) {
-  uint16_t base = room_id == RUBY2_ROOM_LIBRARY ? 7200u : 7100u;
-  switch (action_id) {
-    case RUBY2_ACTION_APPROACH_SOURCE:
-      return (uint16_t)(base + 1u);
-    case RUBY2_ACTION_APPROACH_SENSE:
-      return (uint16_t)(base + 2u);
-    case RUBY2_ACTION_APPROACH_SYNC:
-      return (uint16_t)(base + 3u);
-    case RUBY2_ACTION_APPROACH_SIGNAL:
-      return (uint16_t)(base + 4u);
-    default:
-      return base;
-  }
-}
-
 static bool ruby2_world_apply_room_quiz_approach(
   Ruby2World* world,
   Ruby2WorldActionId action_id
 ) {
   Ruby2EffectPayload payload;
   Ruby2RoomId room_id;
-  Ruby2CharacterId speaker;
-  Ruby2WorldObjectId object_id;
-  const char* resolution;
+  const Ruby2TeacherQuestion* question;
+  bool correct;
   if (!world) return false;
 
   room_id = world->game.current_room_id;
   if (!ruby2_world_room_quiz_available(world, room_id)) return false;
+  question = ruby2_world_select_teacher_question(world, room_id);
+  if (!question) return false;
+  correct = ruby2_world_teacher_question_answer_correct(question, action_id);
 
   world->tick++;
   ruby2_effect_payload_init(&payload);
   payload.create_yearbook_candidate = true;
   payload.milestone_kind = RUBY2_MILESTONE_CLASS_REPORT;
-  payload.candidate_score = 8;
-  payload.candidate_id = ruby2_world_room_quiz_candidate_id(room_id, action_id);
+  payload.candidate_score = correct ? 9 : 5;
+  payload.candidate_id = ruby2_world_teacher_question_candidate_id(question, action_id);
 
   switch (action_id) {
     case RUBY2_ACTION_APPROACH_SOURCE:
@@ -721,6 +959,7 @@ static bool ruby2_world_apply_room_quiz_approach(
   }
 
   ruby2_apply_effect_payload(&world->game, &payload);
+  world->game.failed_forward_recently = !correct;
   if (room_id == RUBY2_ROOM_SCIENCE_LAB) {
     world->science_lab_quiz_resolved = true;
   } else if (room_id == RUBY2_ROOM_LIBRARY) {
@@ -729,28 +968,23 @@ static bool ruby2_world_apply_room_quiz_approach(
     return false;
   }
 
-  speaker = ruby2_world_room_quiz_speaker(room_id);
-  object_id = ruby2_world_room_quiz_object(room_id);
-  resolution = ruby2_world_room_quiz_resolution_line(room_id, action_id);
   ruby2_world_push_event(
     world,
     RUBY2_EVENT_APPROACH_RESOLVED,
     room_id,
-    speaker,
-    object_id,
+    question->teacher,
+    question->item,
     action_id,
-    resolution
+    correct ? question->correct_packet : question->incorrect_packet
   );
   ruby2_world_push_event(
     world,
     RUBY2_EVENT_NOTEBOOK_UPDATED,
     room_id,
     RUBY2_CHARACTER_NONE,
-    RUBY2_WORLD_OBJECT_NOTEBOOK,
+    RUBY2_WORLD_ITEM_NOTEBOOK,
     action_id,
-    room_id == RUBY2_ROOM_SCIENCE_LAB
-      ? "Notebook margin: lab quiz sealed. The result stands because the room can replay it."
-      : "Notebook margin: library quiz sealed. The citation chain now has witnesses."
+    question->notebook_packet
   );
   ruby2_world_run_director(world);
   return true;
@@ -762,7 +996,7 @@ static void ruby2_world_open_chat(Ruby2World* world, Ruby2CharacterId character_
   world->chat_room_mode = false;
   world->chat_character = character_id;
   world->chat_room = world->game.current_room_id;
-  world->chat_prompt = "Choose how to continue the conversation.";
+  world->chat_prompt = "Choose the player intent for this conversation beat.";
   world->chat_options[0] = ruby2_world_chat_option_label(character_id, 0);
   world->chat_options[1] = ruby2_world_chat_option_label(character_id, 1);
 }
@@ -773,27 +1007,27 @@ static void ruby2_world_open_room_chat(Ruby2World* world, Ruby2CharacterId speak
   world->chat_room_mode = true;
   world->chat_character = speaker_id;
   world->chat_room = world->game.current_room_id;
-  world->chat_prompt = "Choose what your student says to the room.";
+  world->chat_prompt = "Choose the player intent for this room conversation beat.";
   world->chat_options[0] = ruby2_world_room_chat_option_label(0);
   world->chat_options[1] = ruby2_world_room_chat_option_label(1);
 }
 
-static const char* ruby2_world_collect_line(Ruby2WorldObjectId object_id) {
-  switch (object_id) {
-    case RUBY2_WORLD_OBJECT_NOTEBOOK:
-      return "The Notebook slides into the first empty slot.";
-    case RUBY2_WORLD_OBJECT_FLASHCARDS:
-      return "The Flashcards snap into your bag, two clean reviews left.";
-    case RUBY2_WORLD_OBJECT_LUNCH_TRAY:
-      return "The Lunch Tray joins your bag. Cafeteria diplomacy is now portable.";
-    case RUBY2_WORLD_OBJECT_OFFICE_PASS:
-      return "The Office Pass folds into your bag. Recovery is now a verb.";
-    case RUBY2_WORLD_OBJECT_LIBRARY_CARD:
-      return "The Library Card clicks into place. Quiet doors know your name now.";
-    case RUBY2_WORLD_OBJECT_LAB_FLASK:
-      return "The Lab Flask settles into your bag. Evidence can travel.";
+static const char* ruby2_world_collect_line(Ruby2WorldItemId world_item_id) {
+  switch (world_item_id) {
+    case RUBY2_WORLD_ITEM_NOTEBOOK:
+      return "event=item_collected; item=Notebook; affordance=records_day_state";
+    case RUBY2_WORLD_ITEM_FLASHCARDS:
+      return "event=item_collected; item=Flashcards; charges=2";
+    case RUBY2_WORLD_ITEM_LUNCH_TRAY:
+      return "event=item_collected; item=Lunch Tray; affordance=cafeteria_social";
+    case RUBY2_WORLD_ITEM_OFFICE_PASS:
+      return "event=item_collected; item=Office Pass; charges=1; affordance=recovery";
+    case RUBY2_WORLD_ITEM_LIBRARY_CARD:
+      return "event=item_collected; item=Library Card; affordance=library_access";
+    case RUBY2_WORLD_ITEM_LAB_FLASK:
+      return "event=item_collected; item=Lab Flask; affordance=lab_practice";
     default:
-      return "The item joins your bag.";
+      return "event=item_collected; item=unknown";
   }
 }
 
@@ -810,6 +1044,8 @@ static void ruby2_world_start_lunch_if_ready(Ruby2World* world) {
   world->npc_rooms[RUBY2_CHARACTER_INDRA] = RUBY2_ROOM_LIBRARY;
   world->npc_rooms[RUBY2_CHARACTER_MIKA] = RUBY2_ROOM_SCIENCE_LAB;
   world->npc_rooms[RUBY2_CHARACTER_SAMI] = RUBY2_ROOM_COURTYARD;
+  world->npc_rooms[RUBY2_CHARACTER_SALLY_SCIENCE] = RUBY2_ROOM_SCIENCE_LAB;
+  world->npc_rooms[RUBY2_CHARACTER_PROFESSOR_EDWARD] = RUBY2_ROOM_LIBRARY;
 
   switch (world->homeroom_approach_action) {
     case RUBY2_ACTION_APPROACH_SOURCE:
@@ -830,11 +1066,11 @@ static void ruby2_world_start_lunch_if_ready(Ruby2World* world) {
       break;
   }
 
-  world->objects[RUBY2_WORLD_OBJECT_RECEIPT].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_RECEIPT].room = RUBY2_ROOM_CAFETERIA;
   if (!world->game.items[RUBY2_ITEM_LUNCH_TRAY].owned) {
-    world->objects[RUBY2_WORLD_OBJECT_LUNCH_TRAY].present = true;
-    world->objects[RUBY2_WORLD_OBJECT_LUNCH_TRAY].room = RUBY2_ROOM_CAFETERIA;
+    world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].present = true;
+    world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].room = RUBY2_ROOM_CAFETERIA;
+  } else {
+    world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].present = false;
   }
 
   ruby2_world_push_event(
@@ -842,18 +1078,18 @@ static void ruby2_world_start_lunch_if_ready(Ruby2World* world) {
     RUBY2_EVENT_TIME_ADVANCED,
     world->game.current_room_id,
     RUBY2_CHARACTER_NONE,
-    RUBY2_WORLD_OBJECT_NOTEBOOK,
+    RUBY2_WORLD_ITEM_NOTEBOOK,
     RUBY2_ACTION_WAIT_BELL,
-    "The bell moves the school into lunch."
+    "event=time_advanced; period=Lunch; reason=bell_after_homeroom"
   );
   ruby2_world_push_event(
     world,
     RUBY2_EVENT_NPC_MOVED,
     RUBY2_ROOM_CAFETERIA,
     RUBY2_CHARACTER_NOOR,
-    RUBY2_WORLD_OBJECT_NOTEBOOK,
+    RUBY2_WORLD_ITEM_NOTEBOOK,
     RUBY2_ACTION_WAIT_BELL,
-    "Noor drifts to the Cafeteria before the receipt does anything interesting."
+    "event=npc_moved; character=Noor; room=Cafeteria; reason=lunch_schedule"
   );
   if (world->homeroom_approach_action == RUBY2_ACTION_APPROACH_SOURCE) {
     ruby2_world_push_event(
@@ -861,9 +1097,9 @@ static void ruby2_world_start_lunch_if_ready(Ruby2World* world) {
       RUBY2_EVENT_NPC_MOVED,
       RUBY2_ROOM_CAFETERIA,
       RUBY2_CHARACTER_RAVI,
-      RUBY2_WORLD_OBJECT_WORK_ORDER,
+      RUBY2_WORLD_ITEM_WORK_ORDER,
       RUBY2_ACTION_WAIT_BELL,
-      "Ravi follows the work order to lunch because evidence should not eat alone."
+      "event=npc_moved; character=Ravi; room=Cafeteria; reason=source_approach_callback"
     );
   } else if (world->homeroom_approach_action == RUBY2_ACTION_APPROACH_SENSE) {
     ruby2_world_push_event(
@@ -871,9 +1107,9 @@ static void ruby2_world_start_lunch_if_ready(Ruby2World* world) {
       RUBY2_EVENT_NPC_MOVED,
       RUBY2_ROOM_CAFETERIA,
       RUBY2_CHARACTER_INDRA,
-      RUBY2_WORLD_OBJECT_RECEIPT,
+      RUBY2_WORLD_ITEM_LUNCH_TRAY,
       RUBY2_ACTION_WAIT_BELL,
-      "Indra is already near the tray rail, watching the word original do too much work."
+      "event=npc_moved; character=Indra; room=Cafeteria; reason=sense_approach_callback"
     );
   } else if (world->homeroom_approach_action == RUBY2_ACTION_APPROACH_SYNC) {
     ruby2_world_push_event(
@@ -881,19 +1117,19 @@ static void ruby2_world_start_lunch_if_ready(Ruby2World* world) {
       RUBY2_EVENT_NPC_MOVED,
       RUBY2_ROOM_CAFETERIA,
       RUBY2_CHARACTER_MIKA,
-      RUBY2_WORLD_OBJECT_LUNCH_TRAY,
+      RUBY2_WORLD_ITEM_LUNCH_TRAY,
       RUBY2_ACTION_WAIT_BELL,
-      "Mika saves two seats so the shared-stamp plan has somewhere to land."
+      "event=npc_moved; character=Mika; room=Cafeteria; reason=sync_approach_callback"
     );
   }
   ruby2_world_push_event(
     world,
-    RUBY2_EVENT_OBJECT_APPEARED,
+    RUBY2_EVENT_ITEM_APPEARED,
     RUBY2_ROOM_CAFETERIA,
     RUBY2_CHARACTER_NONE,
-    RUBY2_WORLD_OBJECT_RECEIPT,
+    RUBY2_WORLD_ITEM_LUNCH_TRAY,
     RUBY2_ACTION_WAIT_BELL,
-    "A zero-dollar receipt waits on the Cafeteria tray rail."
+    "event=item_appeared; item=lunch_tray; room=Cafeteria; source=lunch_tray_rail"
   );
 }
 
@@ -901,17 +1137,17 @@ static void ruby2_world_trigger_room_events(Ruby2World* world) {
   if (!world) return;
   if (world->game.current_room_id == RUBY2_ROOM_CAFETERIA &&
       world->lunch_started &&
-      world->objects[RUBY2_WORLD_OBJECT_RECEIPT].present &&
-      !world->cafeteria_social_triggered) {
-    world->cafeteria_social_triggered = true;
+      world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].present &&
+      !world->lunch_social_triggered) {
+    world->lunch_social_triggered = true;
     ruby2_world_push_event(
       world,
       RUBY2_EVENT_SOCIAL_TRIGGERED,
       RUBY2_ROOM_CAFETERIA,
       RUBY2_CHARACTER_NOOR,
-      RUBY2_WORLD_OBJECT_RECEIPT,
+      RUBY2_WORLD_ITEM_LUNCH_TRAY,
       RUBY2_ACTION_GO_CAFETERIA,
-      "Noor notices the zero-dollar receipt before anyone can turn it into a normal lunch."
+      "event=social_triggered; speaker=Noor; item=lunch_tray; reason=player_entered_room_with_visible_item"
     );
   }
 }
@@ -940,25 +1176,25 @@ static void ruby2_world_apply_bell_pressure(Ruby2World* world) {
     }
     world->game.current_room_id = RUBY2_ROOM_HOMEROOM;
     if (ruby2_world_notebook_owned(world)) {
-      world->objects[RUBY2_WORLD_OBJECT_NOTEBOOK].room = RUBY2_ROOM_HOMEROOM;
+      world->world_items[RUBY2_WORLD_ITEM_NOTEBOOK].room = RUBY2_ROOM_HOMEROOM;
     }
     ruby2_world_push_event(
       world,
       RUBY2_EVENT_DIRECTOR_TRIGGERED,
       RUBY2_ROOM_HOMEROOM,
       RUBY2_CHARACTER_RUBY,
-      RUBY2_WORLD_OBJECT_NOTEBOOK,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
       RUBY2_ACTION_WAIT_BELL,
-      "The final bell catches you. Ruby redirects the day back to Homeroom."
+      "event=schedule_redirect; speaker=Ruby; destination=Homeroom; reason=arrival_bell_threshold"
     );
     ruby2_world_push_event(
       world,
       RUBY2_EVENT_ROOM_ENTERED,
       RUBY2_ROOM_HOMEROOM,
       RUBY2_CHARACTER_NONE,
-      RUBY2_WORLD_OBJECT_NOTEBOOK,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
       RUBY2_ACTION_GO_HOMEROOM,
-      "You arrive in Homeroom with the bell already keeping score."
+      "event=room_entered; room=Homeroom; reason=arrival_bell_threshold"
     );
   } else {
     ruby2_world_push_event(
@@ -966,29 +1202,98 @@ static void ruby2_world_apply_bell_pressure(Ruby2World* world) {
       RUBY2_EVENT_DIRECTOR_TRIGGERED,
       world->game.current_room_id,
       RUBY2_CHARACTER_RUBY,
-      RUBY2_WORLD_OBJECT_NOTEBOOK,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
       RUBY2_ACTION_WAIT_BELL,
-      "The first bell makes Homeroom feel less optional."
+      "event=schedule_pressure; room=Hallway; destination=Homeroom; reason=arrival_bell"
     );
   }
 
   ruby2_sync_state_variables(&world->game);
 }
 
+static void ruby2_world_advance_bell(Ruby2World* world) {
+  if (!world) return;
+
+  world->bell_step_pending = true;
+
+  if (world->game.current_time_block == RUBY2_TIME_ARRIVAL && !world->homeroom_started) {
+    ruby2_world_apply_bell_pressure(world);
+    return;
+  }
+
+  if (world->homeroom_started && !world->homeroom_resolved) {
+    ruby2_world_push_event(
+      world,
+      RUBY2_EVENT_DIRECTOR_TRIGGERED,
+      world->game.current_room_id,
+      RUBY2_CHARACTER_RUBY,
+      RUBY2_WORLD_ITEM_ANSWER_CARD,
+      RUBY2_ACTION_WAIT_BELL,
+      "event=schedule_blocked; reason=class_board_unanswered; required_action=answer_blackboard"
+    );
+    ruby2_sync_state_variables(&world->game);
+    return;
+  }
+
+  if (world->homeroom_resolved && !world->lunch_started) {
+    ruby2_world_start_lunch_if_ready(world);
+    return;
+  }
+
+  if (world->lunch_started &&
+      (!world->science_lab_quiz_resolved || !world->library_quiz_resolved)) {
+    ruby2_world_push_event(
+      world,
+      RUBY2_EVENT_DIRECTOR_TRIGGERED,
+      world->game.current_room_id,
+      RUBY2_CHARACTER_RUBY,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
+      RUBY2_ACTION_WAIT_BELL,
+      "event=schedule_blocked; reason=required_boards_unanswered; required_rooms=Science Lab,Library"
+    );
+    ruby2_sync_state_variables(&world->game);
+    return;
+  }
+
+  if (world->game.current_time_block != RUBY2_TIME_AFTER_SCHOOL) {
+    world->game.current_time_block = RUBY2_TIME_AFTER_SCHOOL;
+    ruby2_world_push_event(
+      world,
+      RUBY2_EVENT_TIME_ADVANCED,
+      world->game.current_room_id,
+      RUBY2_CHARACTER_NONE,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
+      RUBY2_ACTION_WAIT_BELL,
+      "event=time_advanced; period=After School; reason=required_boards_resolved"
+    );
+  } else {
+    ruby2_world_push_event(
+      world,
+      RUBY2_EVENT_IDLE,
+      world->game.current_room_id,
+      RUBY2_CHARACTER_NONE,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
+      RUBY2_ACTION_WAIT_BELL,
+      "event=idle; period=After School; reason=day_already_released"
+    );
+  }
+  ruby2_sync_state_variables(&world->game);
+}
+
 static void ruby2_world_run_director(Ruby2World* world) {
   if (!world) return;
-  ruby2_world_apply_bell_pressure(world);
-  ruby2_world_start_lunch_if_ready(world);
   ruby2_world_trigger_room_events(world);
   ruby2_sync_state_variables(&world->game);
 }
 
 static void ruby2_world_apply_approach(Ruby2World* world, Ruby2WorldActionId action_id) {
   Ruby2EffectPayload payload;
+  const Ruby2TeacherQuestion* question = ruby2_world_select_teacher_question(world, RUBY2_ROOM_HOMEROOM);
+  bool correct = ruby2_world_teacher_question_answer_correct(question, action_id);
   ruby2_effect_payload_init(&payload);
   payload.create_yearbook_candidate = true;
   payload.milestone_kind = RUBY2_MILESTONE_CLASS_REPORT;
-  payload.candidate_score = 9;
+  payload.candidate_score = correct ? 9 : 5;
 
   switch (action_id) {
     case RUBY2_ACTION_APPROACH_SOURCE:
@@ -996,21 +1301,21 @@ static void ruby2_world_apply_approach(Ruby2World* world, Ruby2WorldActionId act
       payload.virtue_deltas[RUBY2_VIRTUE_HONOR] = 1;
       payload.affinity_deltas[RUBY2_CHARACTER_RAVI] = 1;
       payload.reputation_tag = RUBY2_ARCHETYPE_CONSCIENCE;
-      payload.candidate_id = 6001;
+      payload.candidate_id = ruby2_world_teacher_question_candidate_id(question, action_id);
       break;
     case RUBY2_ACTION_APPROACH_SENSE:
       payload.discipline_deltas[RUBY2_DISCIPLINE_SENSE] = 1;
       payload.virtue_deltas[RUBY2_VIRTUE_HEAD] = 1;
       payload.affinity_deltas[RUBY2_CHARACTER_LYRA] = 1;
       payload.reputation_tag = RUBY2_ARCHETYPE_SCHOLAR;
-      payload.candidate_id = 6002;
+      payload.candidate_id = ruby2_world_teacher_question_candidate_id(question, action_id);
       break;
     case RUBY2_ACTION_APPROACH_SYNC:
       payload.discipline_deltas[RUBY2_DISCIPLINE_SYNC] = 1;
       payload.virtue_deltas[RUBY2_VIRTUE_HEART] = 1;
       payload.affinity_deltas[RUBY2_CHARACTER_LYRA] = 1;
       payload.reputation_tag = RUBY2_ARCHETYPE_CONNECTOR;
-      payload.candidate_id = 6004;
+      payload.candidate_id = ruby2_world_teacher_question_candidate_id(question, action_id);
       break;
     case RUBY2_ACTION_APPROACH_SIGNAL:
       payload.discipline_deltas[RUBY2_DISCIPLINE_SIGNAL] = 1;
@@ -1018,13 +1323,14 @@ static void ruby2_world_apply_approach(Ruby2World* world, Ruby2WorldActionId act
       payload.affinity_deltas[RUBY2_CHARACTER_NOOR] = 1;
       payload.clock_deltas[RUBY2_CLOCK_NULL_SIGNAL] = 1;
       payload.reputation_tag = RUBY2_ARCHETYPE_SIGNAL_READER;
-      payload.candidate_id = 6003;
+      payload.candidate_id = ruby2_world_teacher_question_candidate_id(question, action_id);
       break;
     default:
       return;
   }
 
   ruby2_apply_effect_payload(&world->game, &payload);
+  world->game.failed_forward_recently = !correct;
   world->homeroom_approach_action = action_id;
   world->homeroom_resolved = true;
   (void)ruby2_resolve_archetypes(&world->game);
@@ -1037,12 +1343,14 @@ void ruby2_world_init(Ruby2World* world) {
 
   world->game.current_room_id = RUBY2_ROOM_HALLWAY;
   world->game.current_time_block = RUBY2_TIME_ARRIVAL;
+  world->current_grade = 9;
+  world->class_day = 1;
   world->has_last_action = false;
   world->last_action_id = RUBY2_ACTION_NONE;
   world->last_action_room = RUBY2_ROOM_COUNT;
   world->recent_action_count = 0;
-  world->player_profile_ready = false;
-  world->player_avatar = RUBY2_PLAYER_AVATAR_UNSET;
+  world->player_profile_ready = true;
+  world->player_avatar = RUBY2_PLAYER_AVATAR_SOURCE;
   world->chat_character = RUBY2_CHARACTER_NONE;
   world->chat_room = RUBY2_ROOM_COUNT;
   world->homeroom_approach_action = RUBY2_ACTION_NONE;
@@ -1057,25 +1365,27 @@ void ruby2_world_init(Ruby2World* world) {
   world->npc_rooms[RUBY2_CHARACTER_INDRA] = RUBY2_ROOM_LIBRARY;
   world->npc_rooms[RUBY2_CHARACTER_NOOR] = RUBY2_ROOM_CAFETERIA;
   world->npc_rooms[RUBY2_CHARACTER_SAMI] = RUBY2_ROOM_COURTYARD;
+  world->npc_rooms[RUBY2_CHARACTER_SALLY_SCIENCE] = RUBY2_ROOM_SCIENCE_LAB;
+  world->npc_rooms[RUBY2_CHARACTER_PROFESSOR_EDWARD] = RUBY2_ROOM_LIBRARY;
 
-  world->objects[RUBY2_WORLD_OBJECT_ANSWER_CARD].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_ANSWER_CARD].room = RUBY2_ROOM_HOMEROOM;
-  world->objects[RUBY2_WORLD_OBJECT_WORK_ORDER].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_WORK_ORDER].room = RUBY2_ROOM_HOMEROOM;
-  world->objects[RUBY2_WORLD_OBJECT_RECEIPT].present = false;
-  world->objects[RUBY2_WORLD_OBJECT_RECEIPT].room = RUBY2_ROOM_CAFETERIA;
-  world->objects[RUBY2_WORLD_OBJECT_NOTEBOOK].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_NOTEBOOK].room = RUBY2_ROOM_HALLWAY;
-  world->objects[RUBY2_WORLD_OBJECT_FLASHCARDS].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_FLASHCARDS].room = RUBY2_ROOM_HOMEROOM;
-  world->objects[RUBY2_WORLD_OBJECT_LUNCH_TRAY].present = false;
-  world->objects[RUBY2_WORLD_OBJECT_LUNCH_TRAY].room = RUBY2_ROOM_CAFETERIA;
-  world->objects[RUBY2_WORLD_OBJECT_OFFICE_PASS].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_OFFICE_PASS].room = RUBY2_ROOM_TEACHER_OFFICE;
-  world->objects[RUBY2_WORLD_OBJECT_LIBRARY_CARD].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_LIBRARY_CARD].room = RUBY2_ROOM_LIBRARY;
-  world->objects[RUBY2_WORLD_OBJECT_LAB_FLASK].present = true;
-  world->objects[RUBY2_WORLD_OBJECT_LAB_FLASK].room = RUBY2_ROOM_SCIENCE_LAB;
+  world->world_items[RUBY2_WORLD_ITEM_ANSWER_CARD].present = true;
+  world->world_items[RUBY2_WORLD_ITEM_ANSWER_CARD].room = RUBY2_ROOM_HOMEROOM;
+  world->world_items[RUBY2_WORLD_ITEM_WORK_ORDER].present = true;
+  world->world_items[RUBY2_WORLD_ITEM_WORK_ORDER].room = RUBY2_ROOM_HOMEROOM;
+  world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].present = false;
+  world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].room = RUBY2_ROOM_CAFETERIA;
+  world->world_items[RUBY2_WORLD_ITEM_NOTEBOOK].present = true;
+  world->world_items[RUBY2_WORLD_ITEM_NOTEBOOK].room = RUBY2_ROOM_HALLWAY;
+  world->world_items[RUBY2_WORLD_ITEM_FLASHCARDS].present = true;
+  world->world_items[RUBY2_WORLD_ITEM_FLASHCARDS].room = RUBY2_ROOM_HOMEROOM;
+  world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].present = false;
+  world->world_items[RUBY2_WORLD_ITEM_LUNCH_TRAY].room = RUBY2_ROOM_CAFETERIA;
+  world->world_items[RUBY2_WORLD_ITEM_OFFICE_PASS].present = true;
+  world->world_items[RUBY2_WORLD_ITEM_OFFICE_PASS].room = RUBY2_ROOM_TEACHER_OFFICE;
+  world->world_items[RUBY2_WORLD_ITEM_LIBRARY_CARD].present = true;
+  world->world_items[RUBY2_WORLD_ITEM_LIBRARY_CARD].room = RUBY2_ROOM_LIBRARY;
+  world->world_items[RUBY2_WORLD_ITEM_LAB_FLASK].present = true;
+  world->world_items[RUBY2_WORLD_ITEM_LAB_FLASK].room = RUBY2_ROOM_SCIENCE_LAB;
 
   ruby2_sync_state_variables(&world->game);
   ruby2_world_push_event(
@@ -1083,9 +1393,9 @@ void ruby2_world_init(Ruby2World* world) {
     RUBY2_EVENT_ROOM_ENTERED,
     RUBY2_ROOM_HALLWAY,
     RUBY2_CHARACTER_NONE,
-    RUBY2_WORLD_OBJECT_NOTEBOOK,
+    RUBY2_WORLD_ITEM_NOTEBOOK,
     RUBY2_ACTION_GO_HALLWAY,
-    "You are in the Hallway. Homeroom is reachable before the bell makes it non-optional."
+    "event=room_entered; room=Hallway; player_role=new freshman; goal=reach Homeroom before bell pressure"
   );
 }
 
@@ -1096,16 +1406,23 @@ const Ruby2WorldRoom* ruby2_world_room(Ruby2RoomId room_id) {
 
 const char* ruby2_world_character_name(Ruby2CharacterId character_id) {
   static const char* names[] = {
-    "Ruby", "Lyra", "Mika", "Ravi", "Indra", "Noor", "Sami"
+    "Ruby",
+    "Lyra",
+    "Mika",
+    "Ravi",
+    "Indra",
+    "Noor",
+    "Sami",
+    "Sally Science",
+    "Professor Edward"
   };
   return character_id < RUBY2_CHARACTER_COUNT ? names[character_id] : "Unknown";
 }
 
-const char* ruby2_world_object_name(Ruby2WorldObjectId object_id) {
+const char* ruby2_world_item_name(Ruby2WorldItemId world_item_id) {
   static const char* names[] = {
     "answer card",
     "wet work order",
-    "zero-dollar receipt",
     "Notebook",
     "Flashcards",
     "Lunch Tray",
@@ -1113,7 +1430,7 @@ const char* ruby2_world_object_name(Ruby2WorldObjectId object_id) {
     "Library Card",
     "Lab Flask"
   };
-  return object_id < RUBY2_WORLD_OBJECT_COUNT ? names[object_id] : "unknown object";
+  return world_item_id < RUBY2_WORLD_ITEM_COUNT ? names[world_item_id] : "unknown item";
 }
 
 const char* ruby2_world_action_label(Ruby2WorldActionId action_id) {
@@ -1126,10 +1443,10 @@ const char* ruby2_world_action_label(Ruby2WorldActionId action_id) {
     case RUBY2_ACTION_GO_GREENHOUSE: return "Go to Greenhouse";
     case RUBY2_ACTION_GO_COURTYARD: return "Go to Courtyard";
     case RUBY2_ACTION_GO_TEACHER_OFFICE: return "Go to Teacher Office";
-    case RUBY2_ACTION_SELECT_AVATAR_SOURCE: return "Source: prove what changed.";
-    case RUBY2_ACTION_SELECT_AVATAR_SENSE: return "Sense: read what it means.";
-    case RUBY2_ACTION_SELECT_AVATAR_SYNC: return "Sync: bring people together.";
-    case RUBY2_ACTION_SELECT_AVATAR_SIGNAL: return "Signal: notice what answers back.";
+    case RUBY2_ACTION_SELECT_AVATAR_SOURCE: return "Student style: Source";
+    case RUBY2_ACTION_SELECT_AVATAR_SENSE: return "Student style: Sense";
+    case RUBY2_ACTION_SELECT_AVATAR_SYNC: return "Student style: Sync";
+    case RUBY2_ACTION_SELECT_AVATAR_SIGNAL: return "Student style: Signal";
     case RUBY2_ACTION_CHAT_ROOM: return "Chat";
     case RUBY2_ACTION_TALK_RUBY: return "Talk to Ruby";
     case RUBY2_ACTION_TALK_LYRA: return "Talk to Lyra";
@@ -1139,11 +1456,11 @@ const char* ruby2_world_action_label(Ruby2WorldActionId action_id) {
     case RUBY2_ACTION_TALK_NOOR: return "Talk to Noor";
     case RUBY2_ACTION_TALK_SAMI: return "Talk to Sami";
     case RUBY2_ACTION_ATTEND_HOMEROOM: return "Attend Homeroom";
-    case RUBY2_ACTION_APPROACH_SOURCE: return "Compare the answer card with the wet work-order stamp.";
-    case RUBY2_ACTION_APPROACH_SENSE: return "Ask what original is supposed to mean.";
-    case RUBY2_ACTION_APPROACH_SYNC: return "Ask Ravi and Lyra what each of them can verify.";
-    case RUBY2_ACTION_APPROACH_SIGNAL: return "Circle the footer Ruby says she did not print.";
-    case RUBY2_ACTION_INSPECT_RECEIPT: return "Inspect the zero-dollar receipt.";
+    case RUBY2_ACTION_APPROACH_SOURCE: return "A.";
+    case RUBY2_ACTION_APPROACH_SENSE: return "B.";
+    case RUBY2_ACTION_APPROACH_SYNC: return "C.";
+    case RUBY2_ACTION_APPROACH_SIGNAL: return "D.";
+    case RUBY2_ACTION_USE_LUNCH_TRAY: return "Sit down with the Lunch Tray.";
     case RUBY2_ACTION_COLLECT_NOTEBOOK: return "Pick up the Notebook.";
     case RUBY2_ACTION_COLLECT_FLASHCARDS: return "Pick up the Flashcards.";
     case RUBY2_ACTION_COLLECT_LUNCH_TRAY: return "Take the Lunch Tray.";
@@ -1163,12 +1480,12 @@ const char* ruby2_world_event_name(Ruby2WorldEventKind event_kind) {
   static const char* names[] = {
     "room_entered",
     "npc_moved",
-    "object_appeared",
+    "item_appeared",
     "time_advanced",
     "class_started",
     "approach_resolved",
     "social_triggered",
-    "object_inspected",
+    "item_used",
     "item_collected",
     "notebook_updated",
     "agent_spoke",
@@ -1187,10 +1504,11 @@ const char* ruby2_agent_intent_result_name(Ruby2AgentIntentResult result) {
     "rejected_invalid_target",
     "rejected_not_copresent",
     "rejected_blocked_route",
-    "rejected_object_absent",
-    "rejected_empty_text"
+    "rejected_item_absent",
+    "rejected_empty_text",
+    "rejected_not_bell"
   };
-  return result <= RUBY2_AGENT_INTENT_REJECTED_EMPTY_TEXT ? names[result] : "rejected_unknown";
+  return result <= RUBY2_AGENT_INTENT_REJECTED_NOT_BELL ? names[result] : "rejected_unknown";
 }
 
 bool ruby2_world_event_visible_to_player(const Ruby2WorldEvent* event) {
@@ -1201,10 +1519,76 @@ bool ruby2_world_character_present(const Ruby2World* world, Ruby2CharacterId cha
   return world && character_id < RUBY2_CHARACTER_COUNT && world->npc_rooms[character_id] == room_id;
 }
 
-bool ruby2_world_object_present(const Ruby2World* world, Ruby2WorldObjectId object_id, Ruby2RoomId room_id) {
-  return world && object_id < RUBY2_WORLD_OBJECT_COUNT &&
-         world->objects[object_id].present &&
-         world->objects[object_id].room == room_id;
+bool ruby2_world_item_present(const Ruby2World* world, Ruby2WorldItemId world_item_id, Ruby2RoomId room_id) {
+  return world && world_item_id < RUBY2_WORLD_ITEM_COUNT &&
+         world->world_items[world_item_id].present &&
+         world->world_items[world_item_id].room == room_id;
+}
+
+bool ruby2_world_active_teacher_question(
+  const Ruby2World* world,
+  Ruby2RoomId room_id,
+  Ruby2TeacherQuestionView* out
+) {
+  const Ruby2TeacherQuestion* question;
+  if (!out) return false;
+  memset(out, 0, sizeof(*out));
+  question = ruby2_world_select_teacher_question(world, room_id);
+  if (!question) return false;
+
+  out->present = true;
+  out->id = question->id;
+  out->room = question->room;
+  out->teacher = question->teacher;
+  out->item = question->item;
+  out->grade = question->grade;
+  out->prior_grade_review = question->prior_grade_review;
+  out->line_count = question->line_count;
+  out->correct_action = question->correct_action;
+  for (uint8_t i = 0; i < question->line_count && i < RUBY2_WORLD_MAX_QUESTION_LINES; ++i) {
+    out->lines[i] = question->lines[i];
+  }
+  return true;
+}
+
+static void ruby2_world_add_teacher_question_actions(
+  Ruby2WorldActionList* out,
+  Ruby2RoomId room_id,
+  const Ruby2TeacherQuestion* question
+) {
+  static const Ruby2WorldActionId ids[] = {
+    RUBY2_ACTION_APPROACH_SOURCE,
+    RUBY2_ACTION_APPROACH_SENSE,
+    RUBY2_ACTION_APPROACH_SYNC,
+    RUBY2_ACTION_APPROACH_SIGNAL
+  };
+  static const Ruby2Discipline disciplines[] = {
+    RUBY2_DISCIPLINE_SOURCE,
+    RUBY2_DISCIPLINE_SENSE,
+    RUBY2_DISCIPLINE_SYNC,
+    RUBY2_DISCIPLINE_SIGNAL
+  };
+  static const Ruby2Virtue virtues[] = {
+    RUBY2_VIRTUE_HEAD,
+    RUBY2_VIRTUE_HEAD,
+    RUBY2_VIRTUE_HEART,
+    RUBY2_VIRTUE_HONOR
+  };
+
+  if (!out || !question) return;
+  for (uint8_t i = 0; i < 4u; ++i) {
+    ruby2_world_add_action(
+      out,
+      ids[i],
+      RUBY2_WORLD_ACTION_APPROACH,
+      room_id,
+      question->teacher,
+      question->item,
+      disciplines[i],
+      virtues[i],
+      ruby2_world_teacher_question_action_label(question, ids[i])
+    );
+  }
 }
 
 void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* out) {
@@ -1212,15 +1596,6 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
   memset(out, 0, sizeof(*out));
 
   Ruby2RoomId room_id = world->game.current_room_id;
-  if (!world->player_profile_ready) {
-    ruby2_world_add_action(out, RUBY2_ACTION_SELECT_AVATAR_SOURCE, RUBY2_WORLD_ACTION_PROFILE, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, RUBY2_DISCIPLINE_SOURCE, RUBY2_VIRTUE_HONOR, ruby2_world_action_label(RUBY2_ACTION_SELECT_AVATAR_SOURCE));
-    ruby2_world_add_action(out, RUBY2_ACTION_SELECT_AVATAR_SENSE, RUBY2_WORLD_ACTION_PROFILE, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, RUBY2_DISCIPLINE_SENSE, RUBY2_VIRTUE_HEAD, ruby2_world_action_label(RUBY2_ACTION_SELECT_AVATAR_SENSE));
-    ruby2_world_add_action(out, RUBY2_ACTION_SELECT_AVATAR_SIGNAL, RUBY2_WORLD_ACTION_PROFILE, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, RUBY2_DISCIPLINE_SIGNAL, RUBY2_VIRTUE_HONOR, ruby2_world_action_label(RUBY2_ACTION_SELECT_AVATAR_SIGNAL));
-    ruby2_world_add_action(out, RUBY2_ACTION_SELECT_AVATAR_SYNC, RUBY2_WORLD_ACTION_PROFILE, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, RUBY2_DISCIPLINE_SYNC, RUBY2_VIRTUE_HEART, ruby2_world_action_label(RUBY2_ACTION_SELECT_AVATAR_SYNC));
-    // Profile actions are only available before character selection and should not require anti-repeat handling.
-    return;
-  }
-
   if (world->chat_active &&
       world->chat_room == room_id &&
       world->chat_character < RUBY2_CHARACTER_COUNT &&
@@ -1231,7 +1606,7 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
       RUBY2_WORLD_ACTION_CHAT_CHOICE,
       room_id,
       world->chat_character,
-      ruby2_world_default_object_for_character(world->chat_character),
+      ruby2_world_default_item_for_character(world->chat_character),
       RUBY2_DISCIPLINE_SOURCE,
       RUBY2_VIRTUE_HEAD,
       world->chat_options[0] ? world->chat_options[0] : ruby2_world_action_label(RUBY2_ACTION_CHAT_OPTION_A)
@@ -1242,20 +1617,30 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
       RUBY2_WORLD_ACTION_CHAT_CHOICE,
       room_id,
       world->chat_character,
-      ruby2_world_default_object_for_character(world->chat_character),
+      ruby2_world_default_item_for_character(world->chat_character),
       RUBY2_DISCIPLINE_SYNC,
       RUBY2_VIRTUE_HEART,
       world->chat_options[1] ? world->chat_options[1] : ruby2_world_action_label(RUBY2_ACTION_CHAT_OPTION_B)
     );
-    ruby2_world_dismiss_last_action(out, world);
+    ruby2_world_finalize_actions(world, out, room_id);
+    return;
+  }
+
+  if (world->homeroom_resolved && !world->lunch_started) {
+    ruby2_world_add_action(out, RUBY2_ACTION_WAIT_BELL, RUBY2_WORLD_ACTION_WAIT, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, RUBY2_DISCIPLINE_SYNC, RUBY2_VIRTUE_HUSTLE, ruby2_world_action_label(RUBY2_ACTION_WAIT_BELL));
+    if (ruby2_world_notebook_owned(world)) {
+      ruby2_world_add_action(out, RUBY2_ACTION_CHECK_NOTEBOOK, RUBY2_WORLD_ACTION_CHECK_NOTES, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, RUBY2_DISCIPLINE_SENSE, RUBY2_VIRTUE_HEAD, ruby2_world_action_label(RUBY2_ACTION_CHECK_NOTEBOOK));
+    }
+    ruby2_world_finalize_actions(world, out, room_id);
     return;
   }
 
   const Ruby2WorldRoom* room = ruby2_world_room(room_id);
-  if (room) {
+  if (room && !ruby2_world_player_movement_locked(world)) {
     for (uint8_t i = 0; i < room->exit_count; ++i) {
       Ruby2RoomId target = room->exits[i];
       if (!world->game.room_unlocked[target]) continue;
+      if (!ruby2_world_schedule_allows_room(world, target)) continue;
       Ruby2WorldActionId action_id = ruby2_world_go_action_for_room(target);
       if (action_id == RUBY2_ACTION_NONE) continue;
       ruby2_world_add_action(
@@ -1264,7 +1649,7 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
         RUBY2_WORLD_ACTION_GO,
         target,
         RUBY2_CHARACTER_NONE,
-        RUBY2_WORLD_OBJECT_NOTEBOOK,
+        RUBY2_WORLD_ITEM_NOTEBOOK,
         RUBY2_DISCIPLINE_SYNC,
         RUBY2_VIRTUE_HUSTLE,
         ruby2_world_action_label(action_id)
@@ -1279,7 +1664,7 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
       RUBY2_WORLD_ACTION_ATTEND,
       RUBY2_ROOM_HOMEROOM,
       RUBY2_CHARACTER_RUBY,
-      RUBY2_WORLD_OBJECT_ANSWER_CARD,
+      RUBY2_WORLD_ITEM_ANSWER_CARD,
       RUBY2_DISCIPLINE_SENSE,
       RUBY2_VIRTUE_HEAD,
       ruby2_world_action_label(RUBY2_ACTION_ATTEND_HOMEROOM)
@@ -1287,71 +1672,37 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
   }
 
   if (room_id == RUBY2_ROOM_HOMEROOM && world->homeroom_started && !world->homeroom_resolved) {
-    ruby2_world_add_action(out, RUBY2_ACTION_APPROACH_SOURCE, RUBY2_WORLD_ACTION_APPROACH, room_id, RUBY2_CHARACTER_RUBY, RUBY2_WORLD_OBJECT_WORK_ORDER, RUBY2_DISCIPLINE_SOURCE, RUBY2_VIRTUE_HONOR, ruby2_world_action_label(RUBY2_ACTION_APPROACH_SOURCE));
-    ruby2_world_add_action(out, RUBY2_ACTION_APPROACH_SENSE, RUBY2_WORLD_ACTION_APPROACH, room_id, RUBY2_CHARACTER_RUBY, RUBY2_WORLD_OBJECT_ANSWER_CARD, RUBY2_DISCIPLINE_SENSE, RUBY2_VIRTUE_HEAD, ruby2_world_action_label(RUBY2_ACTION_APPROACH_SENSE));
-    ruby2_world_add_action(out, RUBY2_ACTION_APPROACH_SYNC, RUBY2_WORLD_ACTION_APPROACH, room_id, RUBY2_CHARACTER_LYRA, RUBY2_WORLD_OBJECT_WORK_ORDER, RUBY2_DISCIPLINE_SYNC, RUBY2_VIRTUE_HEART, ruby2_world_action_label(RUBY2_ACTION_APPROACH_SYNC));
-    ruby2_world_add_action(out, RUBY2_ACTION_APPROACH_SIGNAL, RUBY2_WORLD_ACTION_APPROACH, room_id, RUBY2_CHARACTER_NOOR, RUBY2_WORLD_OBJECT_ANSWER_CARD, RUBY2_DISCIPLINE_SIGNAL, RUBY2_VIRTUE_HONOR, ruby2_world_action_label(RUBY2_ACTION_APPROACH_SIGNAL));
+    ruby2_world_add_teacher_question_actions(
+      out,
+      room_id,
+      ruby2_world_select_teacher_question(world, room_id)
+    );
+    ruby2_world_finalize_actions(world, out, room_id);
+    return;
   }
 
   if (ruby2_world_room_quiz_available(world, room_id)) {
-    Ruby2CharacterId speaker = ruby2_world_room_quiz_speaker(room_id);
-    Ruby2WorldObjectId object_id = ruby2_world_room_quiz_object(room_id);
-    ruby2_world_add_action(
+    ruby2_world_add_teacher_question_actions(
       out,
-      RUBY2_ACTION_APPROACH_SOURCE,
-      RUBY2_WORLD_ACTION_APPROACH,
       room_id,
-      speaker,
-      object_id,
-      RUBY2_DISCIPLINE_SOURCE,
-      RUBY2_VIRTUE_HEAD,
-      ruby2_world_room_quiz_action_label(room_id, RUBY2_ACTION_APPROACH_SOURCE)
+      ruby2_world_select_teacher_question(world, room_id)
     );
-    ruby2_world_add_action(
-      out,
-      RUBY2_ACTION_APPROACH_SENSE,
-      RUBY2_WORLD_ACTION_APPROACH,
-      room_id,
-      speaker,
-      object_id,
-      RUBY2_DISCIPLINE_SENSE,
-      RUBY2_VIRTUE_HONOR,
-      ruby2_world_room_quiz_action_label(room_id, RUBY2_ACTION_APPROACH_SENSE)
-    );
-    ruby2_world_add_action(
-      out,
-      RUBY2_ACTION_APPROACH_SYNC,
-      RUBY2_WORLD_ACTION_APPROACH,
-      room_id,
-      speaker,
-      object_id,
-      RUBY2_DISCIPLINE_SYNC,
-      RUBY2_VIRTUE_HEART,
-      ruby2_world_room_quiz_action_label(room_id, RUBY2_ACTION_APPROACH_SYNC)
-    );
-    ruby2_world_add_action(
-      out,
-      RUBY2_ACTION_APPROACH_SIGNAL,
-      RUBY2_WORLD_ACTION_APPROACH,
-      room_id,
-      speaker,
-      object_id,
-      RUBY2_DISCIPLINE_SIGNAL,
-      RUBY2_VIRTUE_HEAD,
-      ruby2_world_room_quiz_action_label(room_id, RUBY2_ACTION_APPROACH_SIGNAL)
-    );
+    ruby2_world_finalize_actions(world, out, room_id);
+    return;
   }
 
-  if (ruby2_world_object_present(world, RUBY2_WORLD_OBJECT_RECEIPT, room_id) && !world->receipt_inspected) {
-    ruby2_world_add_action(out, RUBY2_ACTION_INSPECT_RECEIPT, RUBY2_WORLD_ACTION_INSPECT, room_id, RUBY2_CHARACTER_NOOR, RUBY2_WORLD_OBJECT_RECEIPT, RUBY2_DISCIPLINE_SIGNAL, RUBY2_VIRTUE_HEAD, ruby2_world_action_label(RUBY2_ACTION_INSPECT_RECEIPT));
+  if (room_id == RUBY2_ROOM_CAFETERIA &&
+      ruby2_world_item_owned(world, RUBY2_ITEM_LUNCH_TRAY) &&
+      !world->lunch_tray_used) {
+    ruby2_world_add_action(out, RUBY2_ACTION_USE_LUNCH_TRAY, RUBY2_WORLD_ACTION_USE_ITEM, room_id, RUBY2_CHARACTER_NOOR, RUBY2_WORLD_ITEM_LUNCH_TRAY, RUBY2_DISCIPLINE_SYNC, RUBY2_VIRTUE_HEART, ruby2_world_action_label(RUBY2_ACTION_USE_LUNCH_TRAY));
   }
 
-  for (uint8_t i = 0; i < RUBY2_WORLD_OBJECT_COUNT; ++i) {
+  for (uint8_t i = 0; i < RUBY2_WORLD_ITEM_COUNT; ++i) {
     Ruby2ItemId item_id;
     Ruby2WorldActionId action_id;
-    if (!ruby2_world_object_item((Ruby2WorldObjectId)i, &item_id)) continue;
-    if (!ruby2_world_collect_action_for_object((Ruby2WorldObjectId)i, &action_id)) continue;
-    if (ruby2_world_object_present(world, (Ruby2WorldObjectId)i, room_id) &&
+    if (!ruby2_world_inventory_item_for_world_item((Ruby2WorldItemId)i, &item_id)) continue;
+    if (!ruby2_world_collect_action_for_item((Ruby2WorldItemId)i, &action_id)) continue;
+    if (ruby2_world_item_present(world, (Ruby2WorldItemId)i, room_id) &&
         !ruby2_world_item_owned(world, item_id)) {
       ruby2_world_add_action(
         out,
@@ -1359,7 +1710,7 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
         RUBY2_WORLD_ACTION_COLLECT,
         room_id,
         RUBY2_CHARACTER_NONE,
-        (Ruby2WorldObjectId)i,
+        (Ruby2WorldItemId)i,
         RUBY2_DISCIPLINE_SOURCE,
         RUBY2_VIRTUE_HUSTLE,
         ruby2_world_action_label(action_id)
@@ -1377,7 +1728,7 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
       RUBY2_WORLD_ACTION_TALK,
       room_id,
       room_speaker,
-      ruby2_world_default_object_for_character(room_speaker),
+      ruby2_world_default_item_for_character(room_speaker),
       RUBY2_DISCIPLINE_SYNC,
       RUBY2_VIRTUE_HEART,
       ruby2_world_action_label(RUBY2_ACTION_CHAT_ROOM)
@@ -1385,11 +1736,11 @@ void ruby2_world_query_actions(const Ruby2World* world, Ruby2WorldActionList* ou
   }
 
   if (ruby2_world_notebook_owned(world)) {
-    ruby2_world_add_action(out, RUBY2_ACTION_CHECK_NOTEBOOK, RUBY2_WORLD_ACTION_CHECK_NOTES, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, RUBY2_DISCIPLINE_SENSE, RUBY2_VIRTUE_HEAD, ruby2_world_action_label(RUBY2_ACTION_CHECK_NOTEBOOK));
+    ruby2_world_add_action(out, RUBY2_ACTION_CHECK_NOTEBOOK, RUBY2_WORLD_ACTION_CHECK_NOTES, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, RUBY2_DISCIPLINE_SENSE, RUBY2_VIRTUE_HEAD, ruby2_world_action_label(RUBY2_ACTION_CHECK_NOTEBOOK));
   }
-  ruby2_world_add_action(out, RUBY2_ACTION_WAIT_BELL, RUBY2_WORLD_ACTION_WAIT, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, RUBY2_DISCIPLINE_SYNC, RUBY2_VIRTUE_HUSTLE, ruby2_world_action_label(RUBY2_ACTION_WAIT_BELL));
+  ruby2_world_add_action(out, RUBY2_ACTION_WAIT_BELL, RUBY2_WORLD_ACTION_WAIT, room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, RUBY2_DISCIPLINE_SYNC, RUBY2_VIRTUE_HUSTLE, ruby2_world_action_label(RUBY2_ACTION_WAIT_BELL));
 
-  ruby2_world_dismiss_last_action(out, world);
+  ruby2_world_finalize_actions(world, out, room_id);
 }
 
 bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCommand* out) {
@@ -1398,7 +1749,7 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
   out->action_id = action_id;
   out->target_room = RUBY2_ROOM_COUNT;
   out->target_character = RUBY2_CHARACTER_NONE;
-  out->target_object = RUBY2_WORLD_OBJECT_NOTEBOOK;
+  out->target_item = RUBY2_WORLD_ITEM_NOTEBOOK;
   out->discipline = RUBY2_DISCIPLINE_SYNC;
   out->virtue = RUBY2_VIRTUE_HUSTLE;
 
@@ -1448,7 +1799,7 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
     case RUBY2_ACTION_CHAT_ROOM:
       out->kind = RUBY2_WORLD_ACTION_TALK;
       out->target_character = RUBY2_CHARACTER_NONE;
-      out->target_object = RUBY2_WORLD_OBJECT_NOTEBOOK;
+      out->target_item = RUBY2_WORLD_ITEM_NOTEBOOK;
       out->discipline = RUBY2_DISCIPLINE_SYNC;
       out->virtue = RUBY2_VIRTUE_HEART;
       return true;
@@ -1465,34 +1816,34 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
     case RUBY2_ACTION_TALK_MIKA:
       out->kind = RUBY2_WORLD_ACTION_TALK;
       out->target_character = RUBY2_CHARACTER_MIKA;
-      out->target_object = RUBY2_WORLD_OBJECT_LAB_FLASK;
+      out->target_item = RUBY2_WORLD_ITEM_LAB_FLASK;
       out->discipline = RUBY2_DISCIPLINE_SOURCE;
       out->virtue = RUBY2_VIRTUE_HEART;
       return true;
     case RUBY2_ACTION_TALK_RAVI:
       out->kind = RUBY2_WORLD_ACTION_TALK;
       out->target_character = RUBY2_CHARACTER_RAVI;
-      out->target_object = RUBY2_WORLD_OBJECT_WORK_ORDER;
+      out->target_item = RUBY2_WORLD_ITEM_WORK_ORDER;
       out->discipline = RUBY2_DISCIPLINE_SOURCE;
       return true;
     case RUBY2_ACTION_TALK_INDRA:
       out->kind = RUBY2_WORLD_ACTION_TALK;
       out->target_character = RUBY2_CHARACTER_INDRA;
-      out->target_object = RUBY2_WORLD_OBJECT_LIBRARY_CARD;
+      out->target_item = RUBY2_WORLD_ITEM_LIBRARY_CARD;
       out->discipline = RUBY2_DISCIPLINE_SENSE;
       out->virtue = RUBY2_VIRTUE_HONOR;
       return true;
     case RUBY2_ACTION_TALK_NOOR:
       out->kind = RUBY2_WORLD_ACTION_TALK;
       out->target_character = RUBY2_CHARACTER_NOOR;
-      out->target_object = RUBY2_WORLD_OBJECT_RECEIPT;
+      out->target_item = RUBY2_WORLD_ITEM_LUNCH_TRAY;
       out->discipline = RUBY2_DISCIPLINE_SIGNAL;
       out->virtue = RUBY2_VIRTUE_HEAD;
       return true;
     case RUBY2_ACTION_TALK_SAMI:
       out->kind = RUBY2_WORLD_ACTION_TALK;
       out->target_character = RUBY2_CHARACTER_SAMI;
-      out->target_object = RUBY2_WORLD_OBJECT_LUNCH_TRAY;
+      out->target_item = RUBY2_WORLD_ITEM_LUNCH_TRAY;
       out->discipline = RUBY2_DISCIPLINE_SYNC;
       out->virtue = RUBY2_VIRTUE_HEART;
       return true;
@@ -1500,7 +1851,7 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
       out->kind = RUBY2_WORLD_ACTION_ATTEND;
       out->target_room = RUBY2_ROOM_HOMEROOM;
       out->target_character = RUBY2_CHARACTER_RUBY;
-      out->target_object = RUBY2_WORLD_OBJECT_ANSWER_CARD;
+      out->target_item = RUBY2_WORLD_ITEM_ANSWER_CARD;
       out->discipline = RUBY2_DISCIPLINE_SENSE;
       out->virtue = RUBY2_VIRTUE_HEAD;
       return true;
@@ -1508,7 +1859,7 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
       out->kind = RUBY2_WORLD_ACTION_APPROACH;
       out->target_room = RUBY2_ROOM_HOMEROOM;
       out->target_character = RUBY2_CHARACTER_RUBY;
-      out->target_object = RUBY2_WORLD_OBJECT_WORK_ORDER;
+      out->target_item = RUBY2_WORLD_ITEM_WORK_ORDER;
       out->discipline = RUBY2_DISCIPLINE_SOURCE;
       out->virtue = RUBY2_VIRTUE_HONOR;
       return true;
@@ -1516,7 +1867,7 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
       out->kind = RUBY2_WORLD_ACTION_APPROACH;
       out->target_room = RUBY2_ROOM_HOMEROOM;
       out->target_character = RUBY2_CHARACTER_RUBY;
-      out->target_object = RUBY2_WORLD_OBJECT_ANSWER_CARD;
+      out->target_item = RUBY2_WORLD_ITEM_ANSWER_CARD;
       out->discipline = RUBY2_DISCIPLINE_SENSE;
       out->virtue = RUBY2_VIRTUE_HEAD;
       return true;
@@ -1524,7 +1875,7 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
       out->kind = RUBY2_WORLD_ACTION_APPROACH;
       out->target_room = RUBY2_ROOM_HOMEROOM;
       out->target_character = RUBY2_CHARACTER_LYRA;
-      out->target_object = RUBY2_WORLD_OBJECT_WORK_ORDER;
+      out->target_item = RUBY2_WORLD_ITEM_WORK_ORDER;
       out->discipline = RUBY2_DISCIPLINE_SYNC;
       out->virtue = RUBY2_VIRTUE_HEART;
       return true;
@@ -1532,15 +1883,15 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
       out->kind = RUBY2_WORLD_ACTION_APPROACH;
       out->target_room = RUBY2_ROOM_HOMEROOM;
       out->target_character = RUBY2_CHARACTER_NOOR;
-      out->target_object = RUBY2_WORLD_OBJECT_ANSWER_CARD;
+      out->target_item = RUBY2_WORLD_ITEM_ANSWER_CARD;
       out->discipline = RUBY2_DISCIPLINE_SIGNAL;
       out->virtue = RUBY2_VIRTUE_HONOR;
       return true;
-    case RUBY2_ACTION_INSPECT_RECEIPT:
-      out->kind = RUBY2_WORLD_ACTION_INSPECT;
+    case RUBY2_ACTION_USE_LUNCH_TRAY:
+      out->kind = RUBY2_WORLD_ACTION_USE_ITEM;
       out->target_room = RUBY2_ROOM_CAFETERIA;
       out->target_character = RUBY2_CHARACTER_NOOR;
-      out->target_object = RUBY2_WORLD_OBJECT_RECEIPT;
+      out->target_item = RUBY2_WORLD_ITEM_LUNCH_TRAY;
       out->discipline = RUBY2_DISCIPLINE_SIGNAL;
       out->virtue = RUBY2_VIRTUE_HEAD;
       return true;
@@ -1550,10 +1901,10 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
     case RUBY2_ACTION_COLLECT_OFFICE_PASS:
     case RUBY2_ACTION_COLLECT_LIBRARY_CARD:
     case RUBY2_ACTION_COLLECT_LAB_FLASK: {
-      Ruby2WorldObjectId object_id;
-      if (!ruby2_world_action_collect_object(action_id, &object_id)) return false;
+      Ruby2WorldItemId world_item_id;
+      if (!ruby2_world_action_collect_item(action_id, &world_item_id)) return false;
       out->kind = RUBY2_WORLD_ACTION_COLLECT;
-      out->target_object = object_id;
+      out->target_item = world_item_id;
       out->target_room = RUBY2_ROOM_COUNT;
       out->discipline = RUBY2_DISCIPLINE_SOURCE;
       out->virtue = RUBY2_VIRTUE_HUSTLE;
@@ -1561,13 +1912,13 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
     }
     case RUBY2_ACTION_CHAT_OPTION_A:
       out->kind = RUBY2_WORLD_ACTION_CHAT_CHOICE;
-      out->target_object = RUBY2_WORLD_OBJECT_NOTEBOOK;
+      out->target_item = RUBY2_WORLD_ITEM_NOTEBOOK;
       out->discipline = RUBY2_DISCIPLINE_SOURCE;
       out->virtue = RUBY2_VIRTUE_HEAD;
       return true;
     case RUBY2_ACTION_CHAT_OPTION_B:
       out->kind = RUBY2_WORLD_ACTION_CHAT_CHOICE;
-      out->target_object = RUBY2_WORLD_OBJECT_NOTEBOOK;
+      out->target_item = RUBY2_WORLD_ITEM_NOTEBOOK;
       out->discipline = RUBY2_DISCIPLINE_SYNC;
       out->virtue = RUBY2_VIRTUE_HEART;
       return true;
@@ -1586,7 +1937,6 @@ bool ruby2_world_command_from_action(Ruby2WorldActionId action_id, Ruby2WorldCom
 
 bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* command) {
   if (!world || !command) return false;
-  if (!world->player_profile_ready && command->kind != RUBY2_WORLD_ACTION_PROFILE) return false;
 
   bool applied = false;
   const Ruby2RoomId action_room = world->game.current_room_id;
@@ -1603,9 +1953,9 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
         RUBY2_EVENT_NOTEBOOK_UPDATED,
         world->game.current_room_id,
         RUBY2_CHARACTER_NONE,
-        RUBY2_WORLD_OBJECT_NOTEBOOK,
+        RUBY2_WORLD_ITEM_NOTEBOOK,
         command->action_id,
-        ruby2_world_action_label(command->action_id)
+        ruby2_world_profile_selected_packet(avatar_id)
       );
       applied = true;
       break;
@@ -1614,7 +1964,9 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
     case RUBY2_WORLD_ACTION_GO:
       if (command->target_room >= RUBY2_ROOM_COUNT ||
           !world->game.room_unlocked[command->target_room] ||
-          !ruby2_room_has_exit(world->game.current_room_id, command->target_room)) {
+          !ruby2_room_has_exit(world->game.current_room_id, command->target_room) ||
+          ruby2_world_player_movement_locked(world) ||
+          !ruby2_world_schedule_allows_room(world, command->target_room)) {
         return false;
       }
       if (command->target_room != world->game.current_room_id) {
@@ -1624,9 +1976,9 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
       ruby2_world_clear_chat(world);
       world->game.current_room_id = command->target_room;
       if (ruby2_world_notebook_owned(world)) {
-        world->objects[RUBY2_WORLD_OBJECT_NOTEBOOK].room = command->target_room;
+        world->world_items[RUBY2_WORLD_ITEM_NOTEBOOK].room = command->target_room;
       }
-      ruby2_world_push_event(world, RUBY2_EVENT_ROOM_ENTERED, command->target_room, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, command->action_id, ruby2_world_action_label(command->action_id));
+      ruby2_world_push_event(world, RUBY2_EVENT_ROOM_ENTERED, command->target_room, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, command->action_id, ruby2_world_room_entered_packet(command->target_room));
       ruby2_world_run_director(world);
       applied = true;
       break;
@@ -1635,17 +1987,48 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
       if (world->game.current_room_id != RUBY2_ROOM_HOMEROOM || world->homeroom_started) return false;
       world->tick++;
       world->homeroom_started = true;
-      ruby2_world_push_event(world, RUBY2_EVENT_CLASS_STARTED, RUBY2_ROOM_HOMEROOM, RUBY2_CHARACTER_RUBY, RUBY2_WORLD_OBJECT_ANSWER_CARD, command->action_id, "Ruby starts the work-order problem.");
+      world->game.current_time_block = RUBY2_TIME_PERIOD_1;
+      ruby2_world_push_event(
+        world,
+        RUBY2_EVENT_CLASS_STARTED,
+        RUBY2_ROOM_HOMEROOM,
+        RUBY2_CHARACTER_RUBY,
+        RUBY2_WORLD_ITEM_ANSWER_CARD,
+        command->action_id,
+        "event=class_started; room=Homeroom; teacher=Ruby; goal=answer_blackboard"
+      );
       ruby2_world_run_director(world);
       applied = true;
       break;
 
     case RUBY2_WORLD_ACTION_APPROACH:
       if (world->game.current_room_id == RUBY2_ROOM_HOMEROOM) {
+        const Ruby2TeacherQuestion* question;
+        bool correct;
         if (!world->homeroom_started || world->homeroom_resolved) return false;
+        question = ruby2_world_select_teacher_question(world, RUBY2_ROOM_HOMEROOM);
+        if (!question) return false;
+        correct = ruby2_world_teacher_question_answer_correct(question, command->action_id);
         world->tick++;
         ruby2_world_apply_approach(world, command->action_id);
-        ruby2_world_push_event(world, RUBY2_EVENT_APPROACH_RESOLVED, RUBY2_ROOM_HOMEROOM, RUBY2_CHARACTER_RUBY, RUBY2_WORLD_OBJECT_WORK_ORDER, command->action_id, ruby2_world_action_label(command->action_id));
+        ruby2_world_push_event(
+          world,
+          RUBY2_EVENT_APPROACH_RESOLVED,
+          RUBY2_ROOM_HOMEROOM,
+          question->teacher,
+          question->item,
+          command->action_id,
+          correct ? question->correct_packet : question->incorrect_packet
+        );
+        ruby2_world_push_event(
+          world,
+          RUBY2_EVENT_NOTEBOOK_UPDATED,
+          RUBY2_ROOM_HOMEROOM,
+          RUBY2_CHARACTER_NONE,
+          RUBY2_WORLD_ITEM_NOTEBOOK,
+          command->action_id,
+          question->notebook_packet
+        );
         ruby2_world_run_director(world);
         applied = true;
         break;
@@ -1654,28 +2037,29 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
       applied = true;
       break;
 
-    case RUBY2_WORLD_ACTION_INSPECT: {
-      if (command->target_object != RUBY2_WORLD_OBJECT_RECEIPT ||
-          !ruby2_world_object_present(world, command->target_object, world->game.current_room_id) ||
-          world->receipt_inspected) {
+    case RUBY2_WORLD_ACTION_USE_ITEM: {
+      if (command->target_item != RUBY2_WORLD_ITEM_LUNCH_TRAY ||
+          world->game.current_room_id != RUBY2_ROOM_CAFETERIA ||
+          !world->game.items[RUBY2_ITEM_LUNCH_TRAY].owned ||
+          world->lunch_tray_used) {
         return false;
       }
+      if (ruby2_use_item(&world->game, RUBY2_ITEM_LUNCH_TRAY) != RUBY2_ITEM_USE_ACCEPTED) return false;
       world->tick++;
       Ruby2EffectPayload payload;
       ruby2_effect_payload_init(&payload);
-      payload.discipline_deltas[RUBY2_DISCIPLINE_SIGNAL] = 1;
-      payload.virtue_deltas[RUBY2_VIRTUE_HEAD] = 1;
-      payload.clock_deltas[RUBY2_CLOCK_NULL_SIGNAL] = 1;
+      payload.discipline_deltas[RUBY2_DISCIPLINE_SYNC] = 1;
+      payload.virtue_deltas[RUBY2_VIRTUE_HEART] = 1;
       payload.affinity_deltas[RUBY2_CHARACTER_NOOR] = 1;
       payload.create_yearbook_candidate = true;
       payload.milestone_kind = RUBY2_MILESTONE_SOCIAL_CLIMAX;
       payload.candidate_id = 7001;
       payload.candidate_score = 10;
-      payload.reputation_tag = RUBY2_ARCHETYPE_SIGNAL_READER;
+      payload.reputation_tag = RUBY2_ARCHETYPE_CONNECTOR;
       ruby2_apply_effect_payload(&world->game, &payload);
-      world->receipt_inspected = true;
-      ruby2_world_push_event(world, RUBY2_EVENT_OBJECT_INSPECTED, RUBY2_ROOM_CAFETERIA, RUBY2_CHARACTER_NOOR, RUBY2_WORLD_OBJECT_RECEIPT, command->action_id, "The receipt repeats the footer from Homeroom.");
-      ruby2_world_push_event(world, RUBY2_EVENT_NOTEBOOK_UPDATED, RUBY2_ROOM_CAFETERIA, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, command->action_id, "Notebook margin: receipt copied exactly; signal now has a place to sit.");
+      world->lunch_tray_used = true;
+      ruby2_world_push_event(world, RUBY2_EVENT_ITEM_USED, RUBY2_ROOM_CAFETERIA, RUBY2_CHARACTER_NOOR, RUBY2_WORLD_ITEM_LUNCH_TRAY, command->action_id, "event=item_used; item=lunch_tray; result=lunch_table_joined");
+      ruby2_world_push_event(world, RUBY2_EVENT_NOTEBOOK_UPDATED, RUBY2_ROOM_CAFETERIA, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, command->action_id, "notebook=lunch_table_joined; item=lunch_tray; avatar=Noor");
       ruby2_world_open_chat(world, RUBY2_CHARACTER_NOOR);
       ruby2_world_run_director(world);
       applied = true;
@@ -1684,9 +2068,9 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
 
     case RUBY2_WORLD_ACTION_COLLECT: {
       Ruby2ItemId item_id;
-      if (command->target_object >= RUBY2_WORLD_OBJECT_COUNT ||
-          !ruby2_world_object_item(command->target_object, &item_id) ||
-          !ruby2_world_object_present(world, command->target_object, world->game.current_room_id) ||
+      if (command->target_item >= RUBY2_WORLD_ITEM_COUNT ||
+          !ruby2_world_inventory_item_for_world_item(command->target_item, &item_id) ||
+          !ruby2_world_item_present(world, command->target_item, world->game.current_room_id) ||
           world->game.items[item_id].owned) {
         return false;
       }
@@ -1694,16 +2078,16 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
       world->game.items[item_id].owned = true;
       world->game.items[item_id].carried = true;
       world->game.items[item_id].charges = ruby2_world_item_starting_charges(item_id);
-      world->objects[command->target_object].present = false;
+      world->world_items[command->target_item].present = false;
       ruby2_sync_state_variables(&world->game);
       ruby2_world_push_event(
         world,
         RUBY2_EVENT_ITEM_COLLECTED,
         world->game.current_room_id,
         RUBY2_CHARACTER_NONE,
-        command->target_object,
+        command->target_item,
         command->action_id,
-        ruby2_world_collect_line(command->target_object)
+        ruby2_world_collect_line(command->target_item)
       );
       applied = true;
       break;
@@ -1718,10 +2102,10 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
       world->tick++;
       if (command->action_id == RUBY2_ACTION_CHAT_ROOM) {
         ruby2_world_open_room_chat(world, speaker);
-        ruby2_world_push_event(world, RUBY2_EVENT_SOCIAL_TRIGGERED, world->game.current_room_id, speaker, ruby2_world_default_object_for_character(speaker), command->action_id, "You open the room to a real conversation.");
+        ruby2_world_push_event(world, RUBY2_EVENT_SOCIAL_TRIGGERED, world->game.current_room_id, speaker, ruby2_world_default_item_for_character(speaker), command->action_id, "event=room_conversation_opened; scope=room; player_intent=invite_group_response");
       } else {
         ruby2_world_open_chat(world, speaker);
-        ruby2_world_push_event(world, RUBY2_EVENT_SOCIAL_TRIGGERED, world->game.current_room_id, speaker, command->target_object, command->action_id, "A classmate gives you two ways into the conversation.");
+        ruby2_world_push_event(world, RUBY2_EVENT_SOCIAL_TRIGGERED, world->game.current_room_id, speaker, command->target_item, command->action_id, "event=character_conversation_opened; scope=one_character; player_intent=request_response_options");
       }
       applied = true;
       break;
@@ -1762,11 +2146,9 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
         RUBY2_EVENT_SOCIAL_TRIGGERED,
         world->game.current_room_id,
         character,
-        ruby2_world_default_object_for_character(character),
+        ruby2_world_default_item_for_character(character),
         command->action_id,
-        world->chat_room_mode
-          ? ruby2_world_room_chat_resolution_line(option_index)
-          : ruby2_world_chat_resolution_line(character, option_index)
+        ruby2_world_chat_choice_packet(world->chat_room_mode, option_index)
       );
       world->chat_resolved_rooms[world->game.current_room_id] = true;
       ruby2_world_clear_chat(world);
@@ -1777,14 +2159,15 @@ bool ruby2_world_apply_command(Ruby2World* world, const Ruby2WorldCommand* comma
     case RUBY2_WORLD_ACTION_CHECK_NOTES:
       if (ruby2_use_item(&world->game, RUBY2_ITEM_NOTEBOOK) != RUBY2_ITEM_USE_ACCEPTED) return false;
       world->tick++;
-      ruby2_world_push_event(world, RUBY2_EVENT_NOTEBOOK_UPDATED, world->game.current_room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, command->action_id, "The Notebook records where you are, who is present, and what the school is waiting on.");
+      ruby2_world_push_event(world, RUBY2_EVENT_NOTEBOOK_UPDATED, world->game.current_room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, command->action_id, "notebook=current_room_state; fields=room,avatars,items,schedule_pressure");
       ruby2_world_run_director(world);
       applied = true;
       break;
 
     case RUBY2_WORLD_ACTION_WAIT:
       world->tick++;
-      ruby2_world_push_event(world, RUBY2_EVENT_IDLE, world->game.current_room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_OBJECT_NOTEBOOK, command->action_id, "You wait long enough for the school to move around you.");
+      ruby2_world_push_event(world, RUBY2_EVENT_IDLE, world->game.current_room_id, RUBY2_CHARACTER_NONE, RUBY2_WORLD_ITEM_NOTEBOOK, command->action_id, "event=wait; reason=player_requested_bell_or_idle");
+      ruby2_world_advance_bell(world);
       ruby2_world_run_director(world);
       applied = true;
       break;
@@ -1816,6 +2199,9 @@ Ruby2AgentIntentResult ruby2_world_submit_agent_intent(Ruby2World* world, const 
 
   switch (intent->kind) {
     case RUBY2_AGENT_REQUEST_MOVE:
+      if (!world->bell_step_pending) {
+        return ruby2_world_reject_agent_intent(world, intent, RUBY2_AGENT_INTENT_REJECTED_NOT_BELL);
+      }
       if (intent->target_room >= RUBY2_ROOM_COUNT || !world->game.room_unlocked[intent->target_room]) {
         return ruby2_world_reject_agent_intent(world, intent, RUBY2_AGENT_INTENT_REJECTED_INVALID_TARGET);
       }
@@ -1828,9 +2214,9 @@ Ruby2AgentIntentResult ruby2_world_submit_agent_intent(Ruby2World* world, const 
         RUBY2_EVENT_NPC_MOVED,
         intent->target_room,
         intent->character,
-        RUBY2_WORLD_OBJECT_NOTEBOOK,
+        RUBY2_WORLD_ITEM_NOTEBOOK,
         RUBY2_ACTION_NONE,
-        intent->text && intent->text[0] != '\0' ? intent->text : "An NPC moved through the school."
+        intent->text && intent->text[0] != '\0' ? intent->text : "event=npc_moved; source=agent_intent"
       );
       ruby2_world_trigger_room_events(world);
       return RUBY2_AGENT_INTENT_ACCEPTED;
@@ -1847,27 +2233,27 @@ Ruby2AgentIntentResult ruby2_world_submit_agent_intent(Ruby2World* world, const 
         RUBY2_EVENT_AGENT_SPOKE,
         actor_room,
         intent->character,
-        RUBY2_WORLD_OBJECT_NOTEBOOK,
+        intent->target_item < RUBY2_WORLD_ITEM_COUNT ? intent->target_item : RUBY2_WORLD_ITEM_NOTEBOOK,
         RUBY2_ACTION_NONE,
         intent->text
       );
       return RUBY2_AGENT_INTENT_ACCEPTED;
 
-    case RUBY2_AGENT_INSPECT_OBJECT:
-      if (intent->target_object >= RUBY2_WORLD_OBJECT_COUNT) {
+    case RUBY2_AGENT_USE_ITEM:
+      if (intent->target_item >= RUBY2_WORLD_ITEM_COUNT) {
         return ruby2_world_reject_agent_intent(world, intent, RUBY2_AGENT_INTENT_REJECTED_INVALID_TARGET);
       }
-      if (!ruby2_world_object_present(world, intent->target_object, actor_room)) {
-        return ruby2_world_reject_agent_intent(world, intent, RUBY2_AGENT_INTENT_REJECTED_OBJECT_ABSENT);
+      if (!ruby2_world_item_present(world, intent->target_item, actor_room)) {
+        return ruby2_world_reject_agent_intent(world, intent, RUBY2_AGENT_INTENT_REJECTED_ITEM_ABSENT);
       }
       ruby2_world_push_event(
         world,
-        RUBY2_EVENT_OBJECT_INSPECTED,
+        RUBY2_EVENT_ITEM_USED,
         actor_room,
         intent->character,
-        intent->target_object,
+        intent->target_item,
         RUBY2_ACTION_NONE,
-        intent->text && intent->text[0] != '\0' ? intent->text : "An NPC inspected an object."
+        intent->text && intent->text[0] != '\0' ? intent->text : "event=item_used; source=agent_intent"
       );
       return RUBY2_AGENT_INTENT_ACCEPTED;
 
@@ -1880,7 +2266,7 @@ Ruby2AgentIntentResult ruby2_world_submit_agent_intent(Ruby2World* world, const 
         RUBY2_EVENT_AGENT_REMEMBERED,
         actor_room,
         intent->character,
-        RUBY2_WORLD_OBJECT_NOTEBOOK,
+        RUBY2_WORLD_ITEM_NOTEBOOK,
         RUBY2_ACTION_NONE,
         RUBY2_EVENT_INTERNAL,
         intent->text
@@ -1925,34 +2311,34 @@ bool ruby2_world_build_agent_perception(
   out->homeroom_started = world->homeroom_started;
   out->homeroom_resolved = world->homeroom_resolved;
   out->lunch_started = world->lunch_started;
-  out->cafeteria_social_triggered = world->cafeteria_social_triggered;
-  out->receipt_inspected = world->receipt_inspected;
+  out->lunch_social_triggered = world->lunch_social_triggered;
+  out->lunch_tray_used = world->lunch_tray_used;
 
   for (uint8_t i = 0; i < RUBY2_CLOCK_COUNT; ++i) {
     out->clocks[i] = world->game.clocks[i].value;
   }
   for (uint8_t i = 0; i < RUBY2_CHARACTER_COUNT; ++i) {
-    if (i != character_id && world->npc_rooms[i] == out->actor_room && out->visible_people_count < RUBY2_CHARACTER_COUNT) {
-      out->visible_people[out->visible_people_count++] = (Ruby2CharacterId)i;
+    if (i != character_id && world->npc_rooms[i] == out->actor_room && out->visible_avatar_count < RUBY2_CHARACTER_COUNT) {
+      out->visible_avatars[out->visible_avatar_count++] = (Ruby2CharacterId)i;
     }
   }
-  for (uint8_t i = 0; i < RUBY2_WORLD_OBJECT_COUNT; ++i) {
-    if (world->objects[i].present && world->objects[i].room == out->actor_room &&
-        out->visible_object_count < RUBY2_WORLD_OBJECT_COUNT) {
-      out->visible_objects[out->visible_object_count++] = (Ruby2WorldObjectId)i;
+  for (uint8_t i = 0; i < RUBY2_WORLD_ITEM_COUNT; ++i) {
+    if (world->world_items[i].present && world->world_items[i].room == out->actor_room &&
+        out->visible_item_count < RUBY2_WORLD_ITEM_COUNT) {
+      out->visible_items[out->visible_item_count++] = (Ruby2WorldItemId)i;
     }
   }
   out->has_last_visible_event = ruby2_world_recent_visible_event_for_room(world, out->actor_room, &out->last_visible_event);
   return true;
 }
 
-static bool ruby2_perception_has_object(
+static bool ruby2_perception_has_item(
   const Ruby2AgentPerception* perception,
-  Ruby2WorldObjectId object_id
+  Ruby2WorldItemId world_item_id
 ) {
-  if (!perception || object_id >= RUBY2_WORLD_OBJECT_COUNT) return false;
-  for (uint8_t i = 0; i < perception->visible_object_count; ++i) {
-    if (perception->visible_objects[i] == object_id) return true;
+  if (!perception || world_item_id >= RUBY2_WORLD_ITEM_COUNT) return false;
+  for (uint8_t i = 0; i < perception->visible_item_count; ++i) {
+    if (perception->visible_items[i] == world_item_id) return true;
   }
   return false;
 }
@@ -1963,7 +2349,7 @@ static bool ruby2_world_add_agent_candidate(
   Ruby2AgentIntentKind kind,
   Ruby2CharacterId character,
   Ruby2RoomId target_room,
-  Ruby2WorldObjectId target_object,
+  Ruby2WorldItemId target_item,
   Ruby2Discipline discipline,
   Ruby2Virtue virtue,
   float authored_priority,
@@ -1987,7 +2373,7 @@ static bool ruby2_world_add_agent_candidate(
   candidate->intent.kind = kind;
   candidate->intent.character = character;
   candidate->intent.target_room = target_room;
-  candidate->intent.target_object = target_object;
+  candidate->intent.target_item = target_item;
   candidate->intent.text = text;
   return true;
 }
@@ -2011,12 +2397,12 @@ static void ruby2_world_query_ruby_intents(
       RUBY2_AGENT_REQUEST_MOVE,
       RUBY2_CHARACTER_RUBY,
       RUBY2_ROOM_HALLWAY,
-      RUBY2_WORLD_OBJECT_NOTEBOOK,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
       RUBY2_DISCIPLINE_SYNC,
       RUBY2_VIRTUE_HUSTLE,
       0.95f,
-      "Ruby steps into the Hallway before the bell has to raise its voice.",
-      "Ruby guides late arrival without forbidding exploration."
+      "event=npc_moved; character=Ruby; from=Homeroom; to=Hallway; reason=bell_pressure",
+      "agent_reason=schedule_guidance; avoids_forbidding_exploration"
     );
   }
 
@@ -2031,12 +2417,12 @@ static void ruby2_world_query_ruby_intents(
       RUBY2_AGENT_REQUEST_SPEAK,
       RUBY2_CHARACTER_RUBY,
       RUBY2_ROOM_HALLWAY,
-      RUBY2_WORLD_OBJECT_NOTEBOOK,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
       RUBY2_DISCIPLINE_SYNC,
       RUBY2_VIRTUE_HEART,
       0.90f,
-      "Homeroom is still a choice. I am making it an easy one.",
-      "Ruby turns schedule pressure into an in-world prompt."
+      "agent_line_request; speaker=Ruby; beat=late_arrival_prompt; goal=guide_player_to_homeroom; constraint=no_new_items",
+      "agent_reason=schedule_pressure_prompt"
     );
   }
 }
@@ -2048,23 +2434,23 @@ static void ruby2_world_query_ravi_intents(
 ) {
   if (!world || !perception || !out || perception->character != RUBY2_CHARACTER_RAVI) return;
 
-  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_RAVI_HALLWAY_FACT] &&
+  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_RAVI_HALLWAY_ITEM] &&
       perception->lunch_started &&
       perception->homeroom_resolved &&
       perception->actor_room == RUBY2_ROOM_HALLWAY &&
       perception->co_present_with_player) {
     (void)ruby2_world_add_agent_candidate(
       out,
-      RUBY2_AGENT_AGENDA_RAVI_HALLWAY_FACT,
+      RUBY2_AGENT_AGENDA_RAVI_HALLWAY_ITEM,
       RUBY2_AGENT_REQUEST_SPEAK,
       RUBY2_CHARACTER_RAVI,
       RUBY2_ROOM_HALLWAY,
-      RUBY2_WORLD_OBJECT_WORK_ORDER,
+      RUBY2_WORLD_ITEM_WORK_ORDER,
       RUBY2_DISCIPLINE_SOURCE,
       RUBY2_VIRTUE_HUSTLE,
       0.70f,
-      "The stamp is doing more work than the card.",
-      "Ravi carries the class evidence into the hallway."
+      "agent_line_request; speaker=Ravi; beat=hallway_item_callback; item=wet_work_order; goal=point_to_item; constraint=no_new_items",
+      "agent_reason=class_item_callback"
     );
   }
 }
@@ -2076,24 +2462,24 @@ static void ruby2_world_query_lyra_intents(
 ) {
   if (!world || !perception || !out || perception->character != RUBY2_CHARACTER_LYRA) return;
 
-  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_LYRA_RECEIPT_CHECK] &&
+  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_LYRA_LUNCH_TRAY_CHECK] &&
       perception->lunch_started &&
       perception->actor_room == RUBY2_ROOM_CAFETERIA &&
       perception->co_present_with_player &&
-      !perception->receipt_inspected &&
-      ruby2_perception_has_object(perception, RUBY2_WORLD_OBJECT_RECEIPT)) {
+      !perception->lunch_tray_used &&
+      ruby2_perception_has_item(perception, RUBY2_WORLD_ITEM_LUNCH_TRAY)) {
     (void)ruby2_world_add_agent_candidate(
       out,
-      RUBY2_AGENT_AGENDA_LYRA_RECEIPT_CHECK,
+      RUBY2_AGENT_AGENDA_LYRA_LUNCH_TRAY_CHECK,
       RUBY2_AGENT_REQUEST_SPEAK,
       RUBY2_CHARACTER_LYRA,
       RUBY2_ROOM_CAFETERIA,
-      RUBY2_WORLD_OBJECT_RECEIPT,
+      RUBY2_WORLD_ITEM_LUNCH_TRAY,
       RUBY2_DISCIPLINE_SENSE,
       RUBY2_VIRTUE_HEAD,
       0.55f,
-      "I checked three trays. None of them owe the school zero dollars.",
-      "Lyra verifies the cafeteria anomaly from her own local evidence."
+      "agent_line_request; speaker=Lyra; beat=lunch_tray_check; item=lunch_tray; goal=use_local_item; constraint=no_money_joke",
+      "agent_reason=lunch_tray_verification"
     );
   }
 }
@@ -2105,40 +2491,40 @@ static void ruby2_world_query_noor_intents(
 ) {
   if (!world || !perception || !out || perception->character != RUBY2_CHARACTER_NOOR) return;
 
-  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_NOOR_RECEIPT_LINE] &&
-      perception->cafeteria_social_triggered &&
+  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_NOOR_LUNCH_LINE] &&
+      perception->lunch_social_triggered &&
       perception->actor_room == RUBY2_ROOM_CAFETERIA &&
       perception->co_present_with_player &&
-      ruby2_perception_has_object(perception, RUBY2_WORLD_OBJECT_RECEIPT)) {
+      ruby2_perception_has_item(perception, RUBY2_WORLD_ITEM_LUNCH_TRAY)) {
     (void)ruby2_world_add_agent_candidate(
       out,
-      RUBY2_AGENT_AGENDA_NOOR_RECEIPT_LINE,
+      RUBY2_AGENT_AGENDA_NOOR_LUNCH_LINE,
       RUBY2_AGENT_REQUEST_SPEAK,
       RUBY2_CHARACTER_NOOR,
       RUBY2_ROOM_CAFETERIA,
-      RUBY2_WORLD_OBJECT_RECEIPT,
+      RUBY2_WORLD_ITEM_LUNCH_TRAY,
       RUBY2_DISCIPLINE_SIGNAL,
       RUBY2_VIRTUE_HEAD,
       0.85f,
-      "The receipt is trying too hard to be normal.",
-      "Noor gets first crack at the cafeteria anomaly."
+      "agent_line_request; speaker=Noor; beat=lunch_tray_social_trigger; item=lunch_tray; goal=challenge_group_assumption; constraint=no_new_items",
+      "agent_reason=cafeteria_social_trigger"
     );
   }
 
-  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_NOOR_RECEIPT_MEMORY] &&
-      perception->receipt_inspected) {
+  if (!world->agent_agenda_done[RUBY2_AGENT_AGENDA_NOOR_LUNCH_MEMORY] &&
+      perception->lunch_tray_used) {
     (void)ruby2_world_add_agent_candidate(
       out,
-      RUBY2_AGENT_AGENDA_NOOR_RECEIPT_MEMORY,
+      RUBY2_AGENT_AGENDA_NOOR_LUNCH_MEMORY,
       RUBY2_AGENT_REMEMBER_EVENT,
       RUBY2_CHARACTER_NOOR,
       perception->actor_room,
-      RUBY2_WORLD_OBJECT_NOTEBOOK,
-      RUBY2_DISCIPLINE_SIGNAL,
-      RUBY2_VIRTUE_HEAD,
+      RUBY2_WORLD_ITEM_NOTEBOOK,
+      RUBY2_DISCIPLINE_SYNC,
+      RUBY2_VIRTUE_HEART,
       0.80f,
-      "Noor remembers that the receipt copied Homeroom's footer.",
-      "Noor keeps durable memory after the player proves the pattern."
+      "memory; character=Noor; item=lunch_tray; state=lunch_table_joined",
+      "agent_reason=durable_memory_after_item_use"
     );
   }
 }
@@ -2163,8 +2549,12 @@ void ruby2_world_step_agents(Ruby2World* world) {
   Ruby2RankerResult result;
 
   if (!world) return;
+  if (!world->bell_step_pending) return;
   ruby2_world_query_agent_intents(world, &legal);
-  if (legal.count == 0) return;
+  if (legal.count == 0) {
+    world->bell_step_pending = false;
+    return;
+  }
 
   if (!ruby2_ranker_rank_agent_intents(world, &legal, &ranked, &result)) {
     ranked = legal;
@@ -2178,9 +2568,11 @@ void ruby2_world_step_agents(Ruby2World* world) {
     }
     if (ruby2_world_submit_agent_intent(world, &candidate->intent) == RUBY2_AGENT_INTENT_ACCEPTED) {
       world->agent_agenda_done[candidate->agenda_id] = true;
+      world->bell_step_pending = false;
       return;
     }
   }
+  world->bell_step_pending = false;
 }
 
 bool ruby2_world_pop_event(Ruby2World* world, Ruby2WorldEvent* out) {

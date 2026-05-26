@@ -12,6 +12,12 @@ export default defineConfig({
         "src/__tests__/**",
         "src/**/*.d.ts"
       ]
-    }
+    },
+    exclude: [
+      "node_modules/**",
+      "dist/**",
+      "dist-spa/**",
+      "tests/browser/**",
+    ],
   }
 });

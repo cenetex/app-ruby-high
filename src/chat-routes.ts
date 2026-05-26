@@ -1055,7 +1055,7 @@ export interface ChatRouteContext {
   /** Raw incoming Cookie header. Optional — if the host doesn't expose it, auth degrades to "logged out". */
   cookieHeader?: string | null;
   /** Raw value of the `X-Openrouter-Key` header. Clients store the key in
-   *  localStorage and attach it on every LLM-touching request; the server
+   *  browser-owned web storage and attach it on LLM-touching requests; the server
    *  reads it here without persisting. Empty / missing → 401 at LLM endpoints. */
   apiKeyHeader?: string | null;
   /** Browser-local visitor id header. AuthService hashes it before persistence. */
@@ -1647,12 +1647,12 @@ function safeAuthRedirect(raw: string | null | undefined): string {
   }
 }
 
-/** Render the OAuth-callback HTML shim that lands the API key in the
- *  browser's localStorage and gets the OAuth tab out of the way. The key
- *  is the only piece that actually has to travel back to the client; we
- *  embed it as JSON inside an inline script. localStorage is per-origin
- *  shared, so the original SPA tab notices via the `storage` event and
- *  can flip to authed without polling. */
+/** Render the OAuth-callback HTML shim that lands the API key in browser
+ *  storage and gets the OAuth tab out of the way. The key is the only piece
+ *  that actually has to travel back to the client; we embed it as JSON inside
+ *  an inline script. sessionStorage is the default so the browser-owned key
+ *  goes away when the tab closes. localStorage is used only when the viewer
+ *  has an explicit `rh_openrouter_persist=1` preference. */
 function writeAuthCallbackHtml(
   res: unknown,
   args: { apiKey: string; label: string | null; redirectTo: string },
@@ -1686,16 +1686,24 @@ function writeAuthCallbackHtml(
   try {
     var data = JSON.parse(${JSON.stringify(safePayload)});
     if (data && data.apiKey) {
-      try { localStorage.setItem("rh_openrouter_key", data.apiKey); } catch (e) {}
-      try { if (data.label) localStorage.setItem("rh_openrouter_label", data.label); } catch (e) {}
-      try { localStorage.setItem("rh_openrouter_at", String(Date.now())); } catch (e) {}
+      var persist = false;
+      try { persist = localStorage.getItem("rh_openrouter_persist") === "1"; } catch (e) {}
+      var store = persist ? localStorage : sessionStorage;
+      try { store.setItem("rh_openrouter_key", data.apiKey); } catch (e) {}
+      try { if (data.label) store.setItem("rh_openrouter_label", data.label); } catch (e) {}
+      try { store.setItem("rh_openrouter_at", String(Date.now())); } catch (e) {}
+      if (!persist) {
+        try { localStorage.removeItem("rh_openrouter_key"); } catch (e) {}
+        try { localStorage.removeItem("rh_openrouter_label"); } catch (e) {}
+        try { localStorage.removeItem("rh_openrouter_at"); } catch (e) {}
+      }
     }
   } catch (e) {}
   // Redirect back to the viewer. Always — no opener-close branch. Safari
   // preserves window.opener across same-origin navigations in some cases,
   // and the previous "if (window.opener) window.close(); return;" hit
   // that path and swallowed the redirect, leaving the player stuck on
-  // this stub page after a successful sign-in. localStorage writes above
+  // this stub page after a successful sign-in. storage writes above
   // are synchronous so the next line sees the key already persisted.
   try { window.location.replace(${safeRedirect}); } catch (e) {}
 })();
@@ -1924,11 +1932,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       setCookieHeader(ctx.res, auth.buildClearPendingAuthCookie({ secure }));
       const back = safeAuthRedirect(ctx.url?.searchParams.get("redirect"));
       // Hand the API key back to the browser via a tiny HTML shim. We write
-      // it to localStorage (not a cookie, not a URL fragment) so it never
-      // leaves the client and survives reloads. localStorage events fan out
-      // across same-origin tabs, so the original SPA tab notices and flips
-      // to authed without a poll. Redirect targets are sanitized to
-      // root-relative same-origin paths before they hit the inline shim.
+      // it to sessionStorage by default (not a cookie, not a URL fragment)
+      // so it never leaves the client and clears when the tab closes. A
+      // localStorage preference can opt into persistence. Redirect targets
+      // are sanitized to root-relative same-origin paths before they hit
+      // the inline shim.
       writeAuthCallbackHtml(ctx.res, { apiKey, label: record.label ?? null, redirectTo: back });
     } catch (err) {
       ctx.error(ctx.res, `Auth failed: ${err instanceof Error ? err.message : String(err)}`, 400);

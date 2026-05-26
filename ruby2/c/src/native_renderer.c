@@ -51,6 +51,7 @@ struct Ruby2NativeRenderer {
 
 typedef struct {
   SDL_Rect title;
+  SDL_Rect exploration_prompt;
   SDL_Rect speaker;
   SDL_Rect witnesses[2];
   SDL_Rect focus_speech;
@@ -61,6 +62,8 @@ typedef struct {
   SDL_Rect inventory_slots[RUBY2_UI_MAX_ITEM_SLOTS];
   SDL_Rect reaction_bubbles[RUBY2_UI_MAX_REACTION_BUBBLES];
   SDL_Rect notebook;
+  SDL_Rect navigation;
+  SDL_Rect navigation_slots[RUBY2_UI_MAX_NAVIGATION_SLOTS];
   SDL_Rect action_slots[RUBY2_UI_MAX_ACTION_SLOTS];
   SDL_Rect result_toast;
 } Ruby2NativeLayout;
@@ -198,6 +201,37 @@ static void stroke_rect(SDL_Renderer* renderer, int x, int y, int w, int h, SDL_
   SDL_Rect rect = rect_xywh(x, y, w, h);
   set_color(renderer, color);
   SDL_RenderDrawRect(renderer, &rect);
+}
+
+static void fill_circle(SDL_Renderer* renderer, int cx, int cy, int radius, SDL_Color color) {
+  if (radius <= 0) return;
+  set_color(renderer, color);
+  for (int y = -radius; y <= radius; ++y) {
+    for (int x = -radius; x <= radius; ++x) {
+      if (x * x + y * y <= radius * radius) {
+        SDL_RenderDrawPoint(renderer, cx + x, cy + y);
+      }
+    }
+  }
+}
+
+static void stroke_circle(SDL_Renderer* renderer, int cx, int cy, int radius, SDL_Color color) {
+  if (radius <= 0) return;
+  set_color(renderer, color);
+  for (int y = -radius; y <= radius; ++y) {
+    for (int x = -radius; x <= radius; ++x) {
+      int d = x * x + y * y;
+      if (d <= radius * radius && d >= (radius - 1) * (radius - 1)) {
+        SDL_RenderDrawPoint(renderer, cx + x, cy + y);
+      }
+    }
+  }
+}
+
+static void stroke_circle_thick(SDL_Renderer* renderer, int cx, int cy, int radius, int thickness, SDL_Color color) {
+  for (int i = 0; i < thickness; ++i) {
+    stroke_circle(renderer, cx, cy, radius + i, color);
+  }
 }
 
 static void stroke_round_rect(SDL_Renderer* renderer, int x, int y, int w, int h, int radius, SDL_Color color) {
@@ -445,6 +479,8 @@ static void load_assets(SDL_Renderer* renderer, Ruby2NativeAssets* assets) {
   assets->characters[RUBY2_CHARACTER_INDRA] = load_bmp_texture(renderer, "indra.bmp", true);
   assets->characters[RUBY2_CHARACTER_NOOR] = load_bmp_texture(renderer, "noor.bmp", true);
   assets->characters[RUBY2_CHARACTER_SAMI] = load_bmp_texture(renderer, "sami.bmp", true);
+  assets->characters[RUBY2_CHARACTER_SALLY_SCIENCE] = load_bmp_texture(renderer, "sally-science.bmp", true);
+  assets->characters[RUBY2_CHARACTER_PROFESSOR_EDWARD] = load_bmp_texture(renderer, "professor-edward.bmp", true);
   assets->items[RUBY2_ITEM_NOTEBOOK] = load_bmp_texture(renderer, "item-notebook.bmp", false);
   assets->items[RUBY2_ITEM_FLASHCARDS] = load_bmp_texture(renderer, "item-flashcards.bmp", false);
   assets->items[RUBY2_ITEM_OFFICE_PASS] = load_bmp_texture(renderer, "item-office-pass.bmp", false);
@@ -532,7 +568,9 @@ static void draw_character(
     {214, 126, 37, 255},
     {81, 101, 176, 255},
     {118, 91, 175, 255},
-    {224, 117, 75, 255}
+    {224, 117, 75, 255},
+    {65, 145, 104, 255},
+    {73, 106, 162, 255}
   };
   SDL_Texture* texture = character < RUBY2_CHARACTER_COUNT ? assets->characters[character] : NULL;
   SDL_Color fallback = character < RUBY2_CHARACTER_COUNT ? fallback_colors[character] : rgb(120, 120, 120);
@@ -557,11 +595,14 @@ static SDL_Color action_color(uint8_t slot) {
 static Ruby2NativeLayout layout_for_snapshot(const Ruby2UiSnapshot* snapshot) {
   Ruby2NativeLayout layout;
   int gap = 18;
-  int action_w = (RUBY2_NATIVE_W - 68 - gap) / 2;
   uint8_t action_count = snapshot ? snapshot->presentation.action_tray.slot_count : 2;
+  uint8_t nav_count = snapshot ? snapshot->presentation.navigation.slot_count : 0;
+  int action_x = nav_count > 0 ? 540 : 34;
+  int action_w = (RUBY2_NATIVE_W - action_x - 34 - gap) / 2;
   memset(&layout, 0, sizeof(layout));
 
   layout.title = rect_xywh(34, 30, 386, 92);
+  layout.exploration_prompt = rect_xywh(430, 54, 865, 74);
   layout.speaker = rect_xywh(58, 148, 340, 650);
   layout.focus_speech = rect_xywh(430, 132, 865, 198);
   layout.focus_black_frame = rect_xywh(430, 132, 865, 248);
@@ -576,14 +617,24 @@ static Ruby2NativeLayout layout_for_snapshot(const Ruby2UiSnapshot* snapshot) {
   layout.reaction_bubbles[3] = rect_xywh(930, 318, 360, 74);
   layout.notebook = rect_xywh(34, 650, 1532, 58);
   layout.result_toast = rect_xywh(520, 598, 560, 38);
+  layout.navigation = rect_xywh(34, 724, 486, 132);
 
   for (uint8_t i = 0; i < RUBY2_UI_MAX_ACTION_SLOTS; ++i) {
     uint8_t row = (uint8_t)(i / 2u);
     uint8_t col = (uint8_t)(i % 2u);
-    if (action_count <= 2) {
-      layout.action_slots[i] = rect_xywh(34 + (int)col * (action_w + gap), 724, action_w, 132);
+    if (action_count <= 2 && nav_count == 0) {
+      layout.action_slots[i] = rect_xywh(action_x + (int)col * (action_w + gap), 724, action_w, 132);
     } else {
-      layout.action_slots[i] = rect_xywh(34 + (int)col * (action_w + gap), 724 + (int)row * 70, action_w, 62);
+      layout.action_slots[i] = rect_xywh(action_x + (int)col * (action_w + gap), 724 + (int)row * 70, action_w, 62);
+    }
+  }
+  for (uint8_t i = 0; i < RUBY2_UI_MAX_NAVIGATION_SLOTS; ++i) {
+    if (nav_count <= 3) {
+      layout.navigation_slots[i] = rect_xywh(226, 758 + (int)i * 32, 276, 28);
+    } else {
+      uint8_t row = (uint8_t)(i / 2u);
+      uint8_t col = (uint8_t)(i % 2u);
+      layout.navigation_slots[i] = rect_xywh(226 + (int)col * 140, 758 + (int)row * 26, 136, 23);
     }
   }
   for (uint8_t i = 0; i < RUBY2_UI_MAX_ITEM_SLOTS; ++i) {
@@ -592,6 +643,7 @@ static Ruby2NativeLayout layout_for_snapshot(const Ruby2UiSnapshot* snapshot) {
 
   if (snapshot && snapshot->room == RUBY2_ROOM_CAFETERIA) {
     layout.speaker = rect_xywh(62, 164, 320, 610);
+    layout.exploration_prompt = rect_xywh(402, 54, 840, 74);
     layout.focus_speech = rect_xywh(402, 118, 840, 188);
     layout.focus_black_frame = rect_xywh(402, 118, 840, 242);
     layout.focus_black_surface = rect_xywh(422, 138, 800, 202);
@@ -703,6 +755,48 @@ static void draw_speech_focus(
   }
 }
 
+static bool snapshot_has_chat_choices(const Ruby2UiSnapshot* snapshot) {
+  if (!snapshot) return false;
+  for (uint8_t i = 0; i < snapshot->presentation.action_tray.slot_count; ++i) {
+    const Ruby2UiActionSlot* slot = &snapshot->presentation.action_tray.slots[i];
+    const Ruby2UiAction* action = action_for_slot(snapshot, slot);
+    if (action && action->kind == RUBY2_WORLD_ACTION_CHAT_CHOICE) return true;
+  }
+  return false;
+}
+
+static bool snapshot_has_performance_line(const Ruby2UiSnapshot* snapshot) {
+  if (!snapshot) return false;
+  for (uint8_t i = snapshot->event_count; i > 0; --i) {
+    const Ruby2UiEvent* event = &snapshot->events[i - 1u];
+    if (event->room < RUBY2_ROOM_COUNT && event->room != snapshot->room) continue;
+    return event->has_performance && event->performance_line && event->performance_line[0] != '\0';
+  }
+  return false;
+}
+
+static bool snapshot_is_scene_focused(const Ruby2UiSnapshot* snapshot) {
+  if (!snapshot) return false;
+  return snapshot->presentation.focus.has_blackboard ||
+         snapshot_has_performance_line(snapshot) ||
+         snapshot->presentation.reaction_bubble_count > 0 ||
+         snapshot_has_chat_choices(snapshot);
+}
+
+static void draw_exploration_prompt(
+  Ruby2NativeRenderer* renderer_state,
+  SDL_Renderer* renderer,
+  const Ruby2UiSnapshot* snapshot,
+  const Ruby2NativeLayout* layout
+) {
+  SDL_Rect rect = layout->exploration_prompt;
+  const char* line = snapshot->presentation.focus.speech_line;
+  if (!line || line[0] == '\0') return;
+  panel(renderer, rect, 10, rgba(255, 250, 240, 212), rgba(35, 31, 32, 72));
+  draw_text(renderer_state, renderer, rect.x + 22, rect.y + 12, "Current goal", rgb(210, 42, 42), 1);
+  draw_wrapped(renderer_state, renderer, rect.x + 22, rect.y + 34, rect.w - 44, line, rgb(35, 31, 32), 2, 1);
+}
+
 static void draw_blackboard_focus(
   Ruby2NativeRenderer* renderer_state,
   SDL_Renderer* renderer,
@@ -730,7 +824,9 @@ static void draw_focus(
   const Ruby2NativeLayout* layout,
   bool show_blackboard
 ) {
-  if (show_blackboard && snapshot->presentation.focus.has_blackboard) {
+  if (!snapshot_is_scene_focused(snapshot)) {
+    draw_exploration_prompt(renderer_state, renderer, snapshot, layout);
+  } else if (show_blackboard && snapshot->presentation.focus.has_blackboard) {
     draw_blackboard_focus(renderer_state, renderer, snapshot, layout);
   } else {
     draw_speech_focus(renderer_state, renderer, snapshot, layout);
@@ -767,6 +863,18 @@ static void draw_people(
 ) {
   Ruby2CharacterId speaker = snapshot->presentation.focus.speaker;
   uint8_t witness_count = 0;
+
+  if (!snapshot_is_scene_focused(snapshot)) {
+    for (uint8_t i = 0; i < snapshot->people_count; ++i) {
+      Ruby2CharacterId character = (Ruby2CharacterId)snapshot->people[i];
+      SDL_Rect box = witness_count == 0 ? layout->speaker : layout->witnesses[witness_count - 1u];
+      draw_character(renderer, assets, character, box);
+      witness_count++;
+      if (witness_count >= 3) break;
+    }
+    return;
+  }
+
   draw_character(renderer, assets, speaker, layout->speaker);
 
   for (uint8_t i = 0; i < snapshot->people_count; ++i) {
@@ -827,6 +935,201 @@ static void draw_notebook(
   panel(renderer, notebook, 10, rgba(255, 250, 240, 238), rgba(35, 31, 32, 75));
   draw_text(renderer_state, renderer, notebook.x + 26, notebook.y + 20, "Notebook", rgb(62, 109, 168), 2);
   draw_wrapped(renderer_state, renderer, notebook.x + 184, notebook.y + 20, notebook.w - 240, snapshot->presentation.notebook_line, rgb(35, 31, 32), 2, 1);
+}
+
+static SDL_Rect navigation_slot_rect(const Ruby2NativeLayout* layout, uint8_t slot_index) {
+  return slot_index < RUBY2_UI_MAX_NAVIGATION_SLOTS ? layout->navigation_slots[slot_index] : rect_xywh(0, 0, 0, 0);
+}
+
+typedef struct {
+  Ruby2RoomId room;
+  int x_pct;
+  int y_pct;
+} Ruby2NativeMapRoom;
+
+typedef struct {
+  Ruby2RoomId a;
+  Ruby2RoomId b;
+} Ruby2NativeMapEdge;
+
+static const Ruby2NativeMapRoom ruby2_native_map_rooms[] = {
+  { RUBY2_ROOM_HOMEROOM, 50, 14 },
+  { RUBY2_ROOM_LIBRARY, 20, 34 },
+  { RUBY2_ROOM_SCIENCE_LAB, 80, 34 },
+  { RUBY2_ROOM_HALLWAY, 50, 46 },
+  { RUBY2_ROOM_TEACHER_OFFICE, 19, 70 },
+  { RUBY2_ROOM_CAFETERIA, 50, 74 },
+  { RUBY2_ROOM_COURTYARD, 76, 72 },
+  { RUBY2_ROOM_GREENHOUSE, 88, 92 }
+};
+
+static const Ruby2NativeMapEdge ruby2_native_map_edges[] = {
+  { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_HOMEROOM },
+  { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_LIBRARY },
+  { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_SCIENCE_LAB },
+  { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_TEACHER_OFFICE },
+  { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_CAFETERIA },
+  { RUBY2_ROOM_HALLWAY, RUBY2_ROOM_COURTYARD },
+  { RUBY2_ROOM_CAFETERIA, RUBY2_ROOM_COURTYARD },
+  { RUBY2_ROOM_COURTYARD, RUBY2_ROOM_GREENHOUSE }
+};
+
+static SDL_Rect navigation_map_rect(const Ruby2NativeLayout* layout) {
+  return layout ? rect_xywh(layout->navigation.x + 18, layout->navigation.y + 42, 154, 72) : rect_xywh(0, 0, 0, 0);
+}
+
+static const Ruby2NativeMapRoom* navigation_map_room(Ruby2RoomId room) {
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(ruby2_native_map_rooms) / sizeof(ruby2_native_map_rooms[0])); ++i) {
+    if (ruby2_native_map_rooms[i].room == room) return &ruby2_native_map_rooms[i];
+  }
+  return NULL;
+}
+
+static SDL_Point navigation_map_point(SDL_Rect map, Ruby2RoomId room) {
+  SDL_Point point;
+  const Ruby2NativeMapRoom* map_room = navigation_map_room(room);
+  point.x = map.x + map.w / 2;
+  point.y = map.y + map.h / 2;
+  if (map_room) {
+    point.x = map.x + (map.w * map_room->x_pct) / 100;
+    point.y = map.y + (map.h * map_room->y_pct) / 100;
+  }
+  return point;
+}
+
+static SDL_Rect navigation_map_node_rect(SDL_Rect map, Ruby2RoomId room) {
+  SDL_Point point = navigation_map_point(map, room);
+  return rect_xywh(point.x - 13, point.y - 13, 26, 26);
+}
+
+static const Ruby2UiNavigationSlot* navigation_slot_for_room(
+  const Ruby2UiSnapshot* snapshot,
+  Ruby2RoomId room
+) {
+  if (!snapshot || room >= RUBY2_ROOM_COUNT) return NULL;
+  for (uint8_t i = 0; i < snapshot->presentation.navigation.slot_count; ++i) {
+    const Ruby2UiNavigationSlot* slot = &snapshot->presentation.navigation.slots[i];
+    if (slot->target_room == room) return slot;
+  }
+  return NULL;
+}
+
+static void draw_navigation_map(
+  Ruby2NativeRenderer* renderer_state,
+  SDL_Renderer* renderer,
+  const Ruby2UiSnapshot* snapshot,
+  const Ruby2NativeLayout* layout,
+  const Ruby2NativeFrameState* frame_state,
+  uint32_t now_ms
+) {
+  SDL_Rect map = navigation_map_rect(layout);
+  if (!snapshot || !layout) return;
+
+  panel(renderer, map, 8, rgba(68, 57, 42, 218), rgba(255, 250, 240, 150));
+
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(ruby2_native_map_edges) / sizeof(ruby2_native_map_edges[0])); ++i) {
+    SDL_Point a = navigation_map_point(map, ruby2_native_map_edges[i].a);
+    SDL_Point b = navigation_map_point(map, ruby2_native_map_edges[i].b);
+    const Ruby2UiNavigationSlot* exit_a = navigation_slot_for_room(snapshot, ruby2_native_map_edges[i].a);
+    const Ruby2UiNavigationSlot* exit_b = navigation_slot_for_room(snapshot, ruby2_native_map_edges[i].b);
+    bool active = (snapshot->room == ruby2_native_map_edges[i].a && exit_b) ||
+                  (snapshot->room == ruby2_native_map_edges[i].b && exit_a);
+    set_color(renderer, active ? rgba(247, 211, 58, 230) : rgba(255, 250, 240, 82));
+    SDL_RenderDrawLine(renderer, a.x, a.y, b.x, b.y);
+  }
+
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(ruby2_native_map_rooms) / sizeof(ruby2_native_map_rooms[0])); ++i) {
+    const Ruby2NativeMapRoom* room = &ruby2_native_map_rooms[i];
+    const Ruby2UiNavigationSlot* exit_slot = navigation_slot_for_room(snapshot, room->room);
+    SDL_Point point = navigation_map_point(map, room->room);
+    SDL_Color fill = rgba(255, 250, 240, 202);
+    SDL_Color outline = rgba(35, 31, 32, 168);
+    int radius = 4;
+
+    if (room->room == snapshot->room) {
+      fill = rgb(210, 42, 42);
+      outline = rgb(255, 250, 240);
+      radius = 7;
+    } else if (exit_slot) {
+      fill = rgba(255, 250, 240, 245);
+      outline = rgb(247, 211, 58);
+      radius = 6;
+      if (frame_state && exit_slot->action == frame_state->flash_action && now_ms < frame_state->flash_until_ms) {
+        fill = rgb(210, 42, 42);
+        outline = rgb(255, 250, 240);
+      }
+    } else {
+      fill = rgba(255, 250, 240, 92);
+      outline = rgba(255, 250, 240, 58);
+      radius = 3;
+    }
+
+    fill_circle(renderer, point.x, point.y, radius, fill);
+    stroke_circle_thick(renderer, point.x, point.y, radius + 1, room->room == snapshot->room ? 2 : 1, outline);
+    if (exit_slot && exit_slot->key_label) {
+      draw_text(renderer_state, renderer, point.x + 8, point.y - 7, exit_slot->key_label, rgb(247, 211, 58), 1);
+    }
+  }
+}
+
+static Ruby2WorldActionId navigation_map_hit_action(
+  const Ruby2UiSnapshot* snapshot,
+  const Ruby2NativeLayout* layout,
+  int x,
+  int y
+) {
+  SDL_Rect map = navigation_map_rect(layout);
+  if (!snapshot || !layout || !rect_contains(map, x, y)) return RUBY2_ACTION_NONE;
+
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(ruby2_native_map_rooms) / sizeof(ruby2_native_map_rooms[0])); ++i) {
+    const Ruby2NativeMapRoom* room = &ruby2_native_map_rooms[i];
+    SDL_Rect node = navigation_map_node_rect(map, room->room);
+    const Ruby2UiNavigationSlot* slot;
+    if (!rect_contains(node, x, y)) continue;
+    slot = navigation_slot_for_room(snapshot, room->room);
+    return slot ? slot->action : RUBY2_ACTION_NONE;
+  }
+
+  return RUBY2_ACTION_NONE;
+}
+
+static void draw_navigation(
+  Ruby2NativeRenderer* renderer_state,
+  SDL_Renderer* renderer,
+  const Ruby2UiSnapshot* snapshot,
+  const Ruby2NativeLayout* layout,
+  const Ruby2NativeFrameState* frame_state,
+  uint32_t now_ms
+) {
+  const Ruby2UiNavigationPresentation* navigation;
+  SDL_Rect panel_rect;
+  if (!snapshot || !layout || snapshot->presentation.navigation.slot_count == 0) return;
+
+  navigation = &snapshot->presentation.navigation;
+  panel_rect = layout->navigation;
+  panel(renderer, panel_rect, 10, rgba(255, 250, 240, 232), rgba(35, 31, 32, 130));
+  draw_text(renderer_state, renderer, panel_rect.x + 18, panel_rect.y + 14, "Campus", rgb(35, 31, 32), 2);
+  draw_wrapped(renderer_state, renderer, panel_rect.x + 112, panel_rect.y + 17, panel_rect.w - 130, navigation->hint, rgb(82, 72, 66), 1, 1);
+  draw_navigation_map(renderer_state, renderer, snapshot, layout, frame_state, now_ms);
+
+  for (uint8_t i = 0; i < navigation->slot_count; ++i) {
+    const Ruby2UiNavigationSlot* slot = &navigation->slots[i];
+    SDL_Rect rect = navigation_slot_rect(layout, i);
+    SDL_Color bg = rgba(35, 31, 32, 220);
+    SDL_Color outline = rgba(255, 250, 240, 160);
+    char label[96];
+    if (frame_state && slot->action == frame_state->flash_action && now_ms < frame_state->flash_until_ms) {
+      bg = rgb(210, 42, 42);
+      outline = rgb(255, 250, 240);
+    }
+    panel(renderer, rect, 5, bg, outline);
+    (void)snprintf(label, sizeof(label), "%s  %s", slot->key_label ? slot->key_label : "?", slot->label ? slot->label : "Exit");
+    if (rect.h > 28) {
+      draw_text(renderer_state, renderer, rect.x + 16, rect.y + 9, label, rgb(255, 250, 240), 2);
+    } else {
+      draw_text(renderer_state, renderer, rect.x + 8, rect.y + 6, label, rgb(255, 250, 240), 1);
+    }
+  }
 }
 
 static SDL_Rect action_slot_rect(const Ruby2NativeLayout* layout, uint8_t slot_index) {
@@ -912,15 +1215,17 @@ void ruby2_native_renderer_render(
 ) {
   Ruby2NativeLayout layout;
   bool show_blackboard = frame_state && frame_state->show_blackboard;
+  bool scene_focused;
   if (!renderer_state || !renderer || !snapshot) return;
 
   layout = layout_for_snapshot(snapshot);
+  scene_focused = snapshot_is_scene_focused(snapshot);
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
   draw_background(renderer, &renderer_state->assets, snapshot);
   draw_topbar(renderer_state, renderer, snapshot, &layout);
   draw_people(renderer, &renderer_state->assets, snapshot, &layout);
   draw_focus(renderer_state, renderer, snapshot, &layout, show_blackboard);
-  if (frame_state && now_ms - frame_state->focus_changed_at_ms < RUBY2_NATIVE_FOCUS_TRANSITION_MS) {
+  if (scene_focused && frame_state && now_ms - frame_state->focus_changed_at_ms < RUBY2_NATIVE_FOCUS_TRANSITION_MS) {
     uint32_t age = now_ms - frame_state->focus_changed_at_ms;
     uint8_t alpha = (uint8_t)(58u - (58u * age / RUBY2_NATIVE_FOCUS_TRANSITION_MS));
     SDL_Rect focus = show_blackboard ? layout.focus_black_frame : layout.focus_speech;
@@ -930,6 +1235,7 @@ void ruby2_native_renderer_render(
   draw_inventory_slots(renderer_state, renderer, &renderer_state->assets, snapshot, &layout);
   draw_result_toast(renderer_state, renderer, &layout, frame_state, now_ms);
   draw_notebook(renderer_state, renderer, snapshot, &layout);
+  draw_navigation(renderer_state, renderer, snapshot, &layout, frame_state, now_ms);
   draw_actions(renderer_state, renderer, snapshot, &layout, frame_state, now_ms);
 }
 
@@ -950,6 +1256,21 @@ Ruby2NativeHit ruby2_native_renderer_hit_test(
        (show_blackboard && rect_contains(layout.focus_black_frame, x, y)))) {
     hit.kind = RUBY2_NATIVE_HIT_FOCUS_TOGGLE;
     return hit;
+  }
+
+  hit.action = navigation_map_hit_action(snapshot, &layout, x, y);
+  if (hit.action != RUBY2_ACTION_NONE) {
+    hit.kind = RUBY2_NATIVE_HIT_NAVIGATION;
+    return hit;
+  }
+
+  for (uint8_t i = 0; i < snapshot->presentation.navigation.slot_count; ++i) {
+    SDL_Rect rect = navigation_slot_rect(&layout, i);
+    if (rect_contains(rect, x, y)) {
+      hit.kind = RUBY2_NATIVE_HIT_NAVIGATION;
+      hit.action = snapshot->presentation.navigation.slots[i].action;
+      return hit;
+    }
   }
 
   for (uint8_t i = 0; i < snapshot->presentation.action_tray.slot_count; ++i) {

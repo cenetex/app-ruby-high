@@ -35,12 +35,15 @@ typedef struct {
   Ruby2Virtue virtue;
   Ruby2Archetype archetype;
   const char* beat_id;
+  /* Structured world state compiled by the deterministic kernel. These fields
+     are not authored dialogue; the LLM is responsible for the spoken line. */
   const char* memory_context;
   const char* location_context;
   const char* items_context;
   const char* avatar_context;
   const char* situation;
   const char* outcome;
+  /* Optional non-dialogue display fallback when no LLM backend is available. */
   const char* fallback;
   bool smooth_wake;
 } Ruby2PerformanceRequest;

@@ -226,15 +226,15 @@ static const char* cafeteria_location(void) {
 static const char* cafeteria_visible_avatars(Ruby2CharacterId witness) {
   switch (witness) {
     case RUBY2_CHARACTER_RAVI:
-      return "Ravi flattening the receipt; Ruby visible through the office window.";
+      return "Ravi flattening the Lunch Tray; Ruby visible through the office window.";
     case RUBY2_CHARACTER_INDRA:
       return "Indra beside the tray without touching it; Noor across the table.";
     case RUBY2_CHARACTER_NOOR:
-      return "Noor pinching the receipt corner; Lyra checking nearby trays.";
+      return "Noor pinching the Lunch Tray corner; Lyra checking nearby trays.";
     case RUBY2_CHARACTER_LYRA:
-      return "Lyra fanning three receipts; Mika standing behind her chair.";
+      return "Lyra fanning three Lunch Trays; Mika standing behind her chair.";
     default:
-      return "Two classmates at the table, both looking at the receipt.";
+      return "Two classmates at the table, both looking at the Lunch Tray.";
   }
 }
 
@@ -280,7 +280,7 @@ static Ruby2Discipline strongest_discipline(const Ruby2State* state) {
   return top;
 }
 
-static const char* margin_object(Ruby2Discipline discipline) {
+static const char* margin_item(Ruby2Discipline discipline) {
   switch (discipline) {
     case RUBY2_DISCIPLINE_SOURCE:
       return "work-order stamp";
@@ -289,7 +289,7 @@ static const char* margin_object(Ruby2Discipline discipline) {
     case RUBY2_DISCIPLINE_SYNC:
       return "shared table notes";
     case RUBY2_DISCIPLINE_SIGNAL:
-      return "printer footer";
+      return "printer lunch note";
     default:
       return "Notebook mark";
   }
@@ -317,7 +317,7 @@ static void margin_read(const Ruby2State* state) {
     "Notebook margin: %u dot%s by the %s. Notes look %s. Stress %d.\n",
     (unsigned)state->clocks[RUBY2_CLOCK_NULL_SIGNAL].value,
     state->clocks[RUBY2_CLOCK_NULL_SIGNAL].value == 1 ? "" : "s",
-    margin_object(discipline),
+    margin_item(discipline),
     margin_tone(virtue),
     state->clocks[RUBY2_CLOCK_STRESS].value
   );
@@ -341,6 +341,7 @@ static void speak(
 ) {
   char line[RUBY2_LLM_LINE_MAX];
   Ruby2PerformanceRequest request;
+  (void)fallback;
   memset(&request, 0, sizeof(request));
   request.speaker = speaker;
   request.room = room;
@@ -360,7 +361,7 @@ static void speak(
   if (ruby2_llm_perform_line(&request, line, sizeof(line))) {
     printf("%s: \"%s\"\n", ruby2_character_name(speaker), line);
   } else {
-    printf("%s: \"%s\"\n", ruby2_character_name(speaker), fallback);
+    printf("World state: %s\n", outcome ? outcome : situation);
   }
 }
 
@@ -481,36 +482,36 @@ static void social_followup(Ruby2State* state, const Ruby2ApproachOption* option
       RUBY2_VIRTUE_HONOR,
       RUBY2_CHARACTER_RUBY,
       RUBY2_ARCHETYPE_CONSCIENCE,
-      "Bring the receipt to Ruby after lunch.",
-      "The table gets quieter because the receipt is not just your problem anymore.",
-      "i remember the receipt leaving the lunch table instead of becoming gossip.",
-      "The zero-dollar receipt is being taken back to the adult who can verify the printer.",
-      "The student brings the impossible receipt back to Ruby instead of answering it alone.",
-      "Good. Weird evidence still gets a chain of custody."
+      "Bring the Lunch Tray to Ruby after lunch.",
+      "event=social_choice; item=lunch_tray; target=Ruby",
+      "memory=student_took_lunch_tray_to_teacher",
+      "event=social_choice; item=lunch_tray; intent=adult_verification",
+      "event=social_choice_resolved; item=lunch_tray; outcome=chain_of_custody",
+      NULL
     },
     {
       RUBY2_DISCIPLINE_SYNC,
       RUBY2_VIRTUE_HEART,
       RUBY2_CHARACTER_LYRA,
       RUBY2_ARCHETYPE_CONNECTOR,
-      "Ask who else got the same receipt.",
-      "Lyra checks three trays, then stops rewriting the same sentence.",
-      "i remember three trays matching before anyone had to pretend they were fine.",
-      "The table is checking what everyone can verify before the rumor gets faster.",
-      "The student turns one strange receipt into a shared check.",
-      "Okay. Shared panic is basically a spreadsheet with feelings."
+      "Ask who else got the same Lunch Tray.",
+      "event=social_choice; item=lunch_tray; target=nearby_trays",
+      "memory=three_lunch_trays_matched",
+      "event=social_choice; item=lunch_tray; intent=shared_verification",
+      "event=social_choice_resolved; item=lunch_tray; outcome=shared_check",
+      NULL
     },
     {
       RUBY2_DISCIPLINE_SIGNAL,
       RUBY2_VIRTUE_HEAD,
       RUBY2_CHARACTER_NOOR,
       RUBY2_ARCHETYPE_SIGNAL_READER,
-      "Copy the footer into the Notebook and leave the receipt on the tray.",
-      "The receipt curls toward the Notebook after you copy the footer.",
-      "i remember the footer getting copied exactly before the tray gave it back.",
-      "The receipt is still on the tray, but the repeated footer is now in the Notebook.",
-      "The student copies the impossible footer exactly and refuses to answer it.",
-      "Leaving the receipt there feels rude, but the Notebook looks less cursed."
+      "Copy the lunch note into the Notebook and leave the Lunch Tray on the tray.",
+      "event=social_choice; item=lunch_tray; target=Notebook",
+      "memory=lunch note_copied_exactly_from_lunch_tray",
+      "event=social_choice; item=lunch_tray; intent=record_lunch note",
+      "event=social_choice_resolved; item=lunch_tray; outcome=notebook_recorded_lunch note",
+      NULL
     }
   };
   Ruby2PerformanceRequest pregen_requests[3];
@@ -538,14 +539,14 @@ static void social_followup(Ruby2State* state, const Ruby2ApproachOption* option
     cafeteria_location(),
     option->cafeteria_items,
     option->cafeteria_avatars,
-    "Lunch turns the Homeroom work order into a receipt on the tray.",
+    "event=cafeteria_fallout; item=lunch_tray; source=tray",
     option->outcome,
     option->witness_fallback,
     true
   );
 
-  puts("Your tray receipt prints TOTAL: $0.00.");
-  puts("Under it: PLEASE RETURN WHAT YOU BORROWED.");
+  puts("A Lunch Tray is on the tray.");
+  puts("Under the header: PLEASE RETURN WHAT YOU BORROWED.");
   puts("How do you answer?");
   for (uint8_t i = 0; i < 3; ++i) {
     printf("%u. %s\n", (unsigned)(i + 1), choices[i].label);
@@ -562,7 +563,7 @@ static void social_followup(Ruby2State* state, const Ruby2ApproachOption* option
   if (line_pregen_take_ready(pregen, choice_index, pregen_line, sizeof(pregen_line))) {
     printf("%s: \"%s\"\n", ruby2_character_name(choices[choice_index].speaker), pregen_line);
   } else {
-    printf("%s: \"%s\"\n", ruby2_character_name(choices[choice_index].speaker), choices[choice_index].fallback);
+    printf("World state: %s\n", choices[choice_index].outcome);
   }
   line_pregen_request_stop(pregen);
   margin_read(state);
@@ -603,11 +604,11 @@ int main(void) {
       "i remember the student choosing the wet stamp over the confident answer card.",
       "Answer card, wet work order, blue office stamp, your Notebook.",
       "Ravi is front row with one hand already up; i am keeping the work order visible.",
-      "i remember the stamped work order from Homeroom showing up again as a tray receipt.",
-      "Lunch tray, zero-dollar receipt, mural wall, your Notebook.",
-      "my palms flatten the receipt; Ruby is visible through the office window.",
-      "Good. Wet ink beats confident ink.",
-      "OK, stamp beats speech. Annoying, but valid."
+      "memory=stamped_work_order_callback_at_lunch",
+      "Lunch tray, Lunch Tray, mural wall, your Notebook.",
+      "cast=Ravi; item=lunch_tray; Ruby visible through office window.",
+      NULL,
+      NULL
     },
     {
       RUBY2_DISCIPLINE_SENSE,
@@ -621,11 +622,11 @@ int main(void) {
       "i remember the student stopping on original instead of chasing the whole answer.",
       "Answer card with original underlined, wet work order, your pencil, your Notebook.",
       "Indra watches the underlined word from the second row; i wait by the board.",
-      "i remember the word original from Homeroom sitting beside the same strange footer.",
-      "Lunch tray, zero-dollar receipt, napkin with original copied once, your Notebook.",
-      "the receipt sits beside me untouched; Noor watches from across the table.",
-      "Good. That word was carrying a backpack.",
-      "Original is hiding a second sentence."
+      "memory=word_original_callback_at_lunch",
+      "Lunch tray, Lunch Tray, napkin with original copied once, your Notebook.",
+      "cast=Indra,Noor; item=lunch_tray.",
+      NULL,
+      NULL
     },
     {
       RUBY2_DISCIPLINE_SIGNAL,
@@ -633,17 +634,17 @@ int main(void) {
       RUBY2_CHARACTER_NOOR,
       6003,
       RUBY2_ARCHETYPE_SIGNAL_READER,
-      "Circle the footer Ruby says she did not print.",
-      "circle the footer Ruby says she did not print",
+      "Circle the lunch note Ruby says she did not print.",
+      "circle the lunch note Ruby says she did not print",
       "The student circles PLEASE RETURN WHAT YOU BORROWED on both cards.",
-      "i remember the pencil circle around the footer i did not print.",
-      "Answer card, wet work order, repeated footer, your pencil, your Notebook.",
+      "i remember the pencil circle around the lunch note i did not print.",
+      "Answer card, wet work order, repeated lunch note, your pencil, your Notebook.",
       "Noor sits sideways at a desk; i hold the work order by one dry corner.",
-      "i remember the new kid circling the footer before it followed us to lunch.",
-      "Lunch tray, zero-dollar receipt, curled footer, your Notebook.",
-      "my fingers pinch the receipt corner; Lyra is checking nearby trays.",
-      "Copy it exactly. Do not answer it.",
-      "Cool, the printer has unfinished business."
+      "memory=lunch note_callback_at_lunch",
+      "Lunch tray, Lunch Tray, curled lunch note, your Notebook.",
+      "cast=Noor,Lyra; item=lunch_tray.",
+      NULL,
+      NULL
     },
     {
       RUBY2_DISCIPLINE_SYNC,
@@ -657,11 +658,11 @@ int main(void) {
       "i remember the student pulling Ravi and Lyra back to the same stamp.",
       "Answer card, wet work order, shared desk, your Notebook.",
       "Ravi and Lyra are half-standing over the same desk; i point back to the board.",
-      "i remember everyone checking the same stamp before the receipt appeared.",
-      "Lunch tray, three matching receipts, Lyra's flashcards, your Notebook.",
-      "i fan three receipts beside my tray; Mika stands behind my chair.",
-      "Good. Same desk, same stamp, fewer ghosts.",
-      "Wait, that actually helped. I hate that it helped. Thank you."
+      "memory=shared_stamp_check_callback_at_lunch",
+      "Lunch tray, three matching Lunch Trays, Lyra's flashcards, your Notebook.",
+      "cast=Lyra,Mika; items=three_lunch_trays.",
+      NULL,
+      NULL
     }
   };
 
@@ -684,14 +685,14 @@ int main(void) {
     "HOMEROOM",
     homeroom_location(),
     "Ruby at the board; Ravi front row; Lyra by the window; Noor turned sideways at her desk.",
-    "Answer card, wet work order, repeated footer, your Notebook."
+    "Answer card, wet work order, repeated lunch note, your Notebook."
   );
 
   puts("Ruby tapes an answer card to the board:");
   puts("  The cafeteria mural is original to Ruby High, class of 1998.");
   puts("Then she holds up a wet work order:");
   puts("  Cafeteria mural repainted yesterday, 4:12 p.m.");
-  puts("Both papers have the same footer:");
+  puts("Both papers have the same lunch note:");
   puts("  PLEASE RETURN WHAT YOU BORROWED.");
   puts("Ruby says she did not print that line.");
   puts("What is the Ruby High move?");
@@ -717,7 +718,7 @@ int main(void) {
     homeroom_location(),
     picked->homeroom_items,
     picked->homeroom_avatars,
-    "Ruby is looking at the footer, the wet stamp, and the student's pencil mark.",
+    "Ruby is looking at the lunch note, the wet stamp, and the student's pencil mark.",
     picked->outcome,
     picked->ruby_fallback,
     false

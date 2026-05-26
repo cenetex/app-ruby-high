@@ -73,6 +73,20 @@ describe("viewer API client", () => {
     expect(onAuthCleared).toHaveBeenCalledTimes(1);
   });
 
+  it("does not attach the local OpenRouter key to cross-origin API calls", async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(200, { ok: true }));
+    const client = createViewerApiClient(baseDeps({
+      fetchImpl,
+      getApiKey: () => "sk-test",
+    }));
+
+    await client.apiFetch("https://example.com/api/apps/ruby-high/example");
+
+    const init = fetchImpl.mock.calls[0]?.[1];
+    expect(init?.headers).toBeInstanceOf(Headers);
+    expect((init?.headers as Headers).get("X-Openrouter-Key")).toBeNull();
+  });
+
   it("renders command sessions and tracks command settlement", async () => {
     const onCommandSession = vi.fn();
     const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {

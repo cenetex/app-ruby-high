@@ -18,6 +18,7 @@ typedef struct Ruby2NativeRenderer Ruby2NativeRenderer;
 typedef enum {
   RUBY2_NATIVE_HIT_NONE,
   RUBY2_NATIVE_HIT_FOCUS_TOGGLE,
+  RUBY2_NATIVE_HIT_NAVIGATION,
   RUBY2_NATIVE_HIT_ACTION
 } Ruby2NativeHitKind;
 

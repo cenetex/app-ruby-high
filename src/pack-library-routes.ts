@@ -76,6 +76,7 @@ const MORE_QUESTIONS_COUNT = moreQuestionsCount();
 const PACK_SEARCH_LIMIT = 24;
 const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
 const MAX_MATERIAL_URL_REDIRECTS = 5;
+const DEFAULT_MATERIAL_URL_HOSTS = ["raw.githubusercontent.com", "gist.githubusercontent.com"] as const;
 type PackLibrarySource = "official" | "creator" | "imported";
 const GENERATED_DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard"] as const;
 const GENERATED_STATS: readonly QuestionStat[] = ["head", "heart", "hustle", "honor"] as const;
@@ -2220,15 +2221,42 @@ function normalizeMarkdownSourceUrl(raw: string): string {
     throw new Error("Materials URL must use https.");
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("Materials URL must be http or https.");
-  if (url.hostname === "github.com") {
+  if (url.hostname.toLowerCase() === "github.com") {
     const parts = url.pathname.split("/").filter(Boolean);
     const blobIndex = parts.indexOf("blob");
     if (parts.length >= 5 && blobIndex === 2) {
       const [owner, repo, , branch, ...path] = parts;
-      return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path.join("/")}`;
+      url = new URL(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path.join("/")}`);
+    } else {
+      throw new Error("GitHub materials URL must point to a file blob.");
     }
   }
+  assertAllowedMaterialsHost(url);
   return url.toString();
+}
+
+function assertAllowedMaterialsHost(url: URL): void {
+  const hostname = url.hostname.toLowerCase();
+  if (isIP(hostname)) {
+    if (isBlockedAddress(hostname)) throw new Error("Materials URL host resolves to a private or reserved address.");
+    throw new Error("Materials URL host is not allowed.");
+  }
+  if (allowedMaterialUrlHosts().has(hostname)) return;
+  throw new Error(`Materials URL host is not allowed. Supported hosts: ${materialHostListLabel()}.`);
+}
+
+function allowedMaterialUrlHosts(): Set<string> {
+  const hosts = new Set<string>(DEFAULT_MATERIAL_URL_HOSTS);
+  const configured = process.env.RUBY_HIGH_ALLOWED_MATERIAL_HOSTS ?? "";
+  for (const host of configured.split(",")) {
+    const clean = host.trim().toLowerCase();
+    if (clean) hosts.add(clean);
+  }
+  return hosts;
+}
+
+function materialHostListLabel(): string {
+  return Array.from(allowedMaterialUrlHosts()).sort().join(", ");
 }
 
 async function assertSafeMaterialsUrl(raw: string): Promise<void> {

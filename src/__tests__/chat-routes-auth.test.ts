@@ -239,6 +239,9 @@ describe("auth callback redirect sanitization", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('window.location.replace("/api/apps/ruby-high/viewer")');
+    expect(res.body).toContain('localStorage.getItem("rh_openrouter_persist")');
+    expect(res.body).toContain("sessionStorage");
+    expect(res.body).not.toContain('localStorage.setItem("rh_openrouter_key", data.apiKey)');
     expect(res.body).not.toContain("evil.example");
   });
 

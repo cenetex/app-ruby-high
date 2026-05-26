@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { gunzipSync } from "node:zlib";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
+import { assetCacheControlFor } from "../routes/assets.js";
 import { renderViewerHtml } from "../viewer.js";
 
 function makeResponse() {
@@ -110,6 +111,7 @@ describe("PWA surface", () => {
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'none'");
     expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+    expect(csp).toContain("script-src-attr 'none'");
     expect(csp).toContain("frame-ancestors 'self'");
     expect(Buffer.isBuffer(response.raw)).toBe(true);
 
@@ -150,6 +152,12 @@ describe("PWA surface", () => {
     expect(response.text).toContain('url.pathname === ASSET_PREFIX + "privy-client.global.js"');
     expect(response.text).toContain('response.headers.get("cache-control")');
     expect(response.text).toContain("staleWhileRevalidate(request)");
+  });
+
+  it("serves versioned Privy bundles with immutable browser caching", () => {
+    expect(assetCacheControlFor("privy-client.global.js")).toBe("no-cache");
+    expect(assetCacheControlFor("privy-client.global.js", true)).toBe("public, max-age=31536000, immutable");
+    expect(assetCacheControlFor("privy-client.js", true)).toBe("public, max-age=31536000, immutable");
   });
 
   it("supports HEAD checks for PWA resources", async () => {

@@ -12,6 +12,7 @@
 #define RUBY2_UI_MAX_BLACKBOARD_LINES 6
 #define RUBY2_UI_MAX_REACTION_BUBBLES 4
 #define RUBY2_UI_MAX_ACTION_SLOTS 4
+#define RUBY2_UI_MAX_NAVIGATION_SLOTS RUBY2_WORLD_MAX_EXITS
 #define RUBY2_UI_MAX_ITEM_SLOTS RUBY2_ITEM_COUNT
 
 typedef enum {
@@ -85,11 +86,27 @@ typedef struct {
 } Ruby2UiActionTrayPresentation;
 
 typedef struct {
+  Ruby2WorldActionId action;
+  uint8_t action_index;
+  Ruby2RoomId target_room;
+  const char* key_label;
+  const char* label;
+} Ruby2UiNavigationSlot;
+
+typedef struct {
+  Ruby2UiNavigationSlot slots[RUBY2_UI_MAX_NAVIGATION_SLOTS];
+  uint8_t slot_count;
+  const char* placement;
+  const char* hint;
+} Ruby2UiNavigationPresentation;
+
+typedef struct {
   const char* layout;
   const char* notebook_line;
   Ruby2UiFocusPresentation focus;
   Ruby2UiReactionBubble reaction_bubbles[RUBY2_UI_MAX_REACTION_BUBBLES];
   uint8_t reaction_bubble_count;
+  Ruby2UiNavigationPresentation navigation;
   Ruby2UiActionTrayPresentation action_tray;
 } Ruby2UiPresentation;
 
@@ -98,7 +115,7 @@ typedef struct {
   Ruby2WorldActionKind kind;
   Ruby2RoomId target_room;
   Ruby2CharacterId target_character;
-  Ruby2WorldObjectId target_object;
+  Ruby2WorldItemId target_item;
   Ruby2Discipline discipline;
   Ruby2Virtue virtue;
   const char* label;
@@ -119,7 +136,7 @@ typedef struct {
   uint32_t tick;
   Ruby2RoomId room;
   Ruby2CharacterId character;
-  Ruby2WorldObjectId object;
+  Ruby2WorldItemId item;
   Ruby2WorldActionId action;
   const char* text;
   bool has_performance;
@@ -136,8 +153,9 @@ typedef struct {
   uint32_t discipline_counts[RUBY2_DISCIPLINE_COUNT];
   uint8_t people[RUBY2_CHARACTER_COUNT];
   uint8_t people_count;
-  uint8_t objects[RUBY2_WORLD_OBJECT_COUNT];
-  uint8_t object_count;
+  uint8_t local_items[RUBY2_WORLD_ITEM_COUNT];
+  uint8_t local_item_count;
+  Ruby2TeacherQuestionView active_question;
   Ruby2UiAction actions[RUBY2_WORLD_MAX_ACTIONS];
   uint8_t action_count;
   Ruby2UiItemSlot item_slots[RUBY2_UI_MAX_ITEM_SLOTS];

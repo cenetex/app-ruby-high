@@ -403,6 +403,7 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain(".account-workspace");
     expect(VIEWER_CSS).toContain("  .account-empty {\n    grid-column: 1 / -1;");
     expect(VIEWER_CSS).toContain(".account-trust-row");
+    expectScriptToContain(script, "function openCharacterCreation()");
     expectScriptToContain(script, "function openCharacterCreationFromAccount()");
     expect(html).toContain('id="blackboard-empty-action"');
     expectScriptToContain(script, "Create your first Ruby High student.");
@@ -428,6 +429,16 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "formatDuration(ai.durationMs || 6048e5)");
     expectScriptToContain(script, "AI Access active");
     expect(script).not.toContain("Roll your character to start today's class.");
+  });
+
+  it("turns completed guest lessons into a signup CTA instead of raw practice errors", () => {
+    const script = inlineScript(renderedViewer());
+
+    expectScriptToContain(script, "function guestSignupRequired");
+    expectScriptToContain(script, 'if (postClass.report && guestSignupRequired(t)) return "Sign up";');
+    expectScriptToContain(script, "function promptGuestSignup");
+    expectScriptToContain(script, "guest lesson complete|sign up to continue");
+    expectScriptToContain(script, "Sign up to continue");
   });
 
   it("labels offline classroom advance as Continue instead of Chat", () => {

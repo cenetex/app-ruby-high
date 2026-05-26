@@ -260,6 +260,28 @@ function fetchRequestJson(fetchMock: { mock: { calls: unknown[][] } }, index = 0
   return JSON.parse(String(init?.body ?? "{}"));
 }
 
+async function createDraftTeacher(cookie = "rh_session=alice"): Promise<{ draftId: string; teacherId: string }> {
+  let response = await route({
+    method: "POST",
+    path: "/api/apps/ruby-high/pack-drafts",
+    cookie,
+    body: { name: "Materials Guard" },
+  });
+  const draftId = response.body.draft.id as string;
+
+  response = await route({
+    method: "POST",
+    path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers`,
+    cookie,
+    body: {
+      displayName: "Materials Guard",
+      description: "Imports trusted lesson materials.",
+    },
+  });
+  const teacherId = response.body.teacher.id as string;
+  return { draftId, teacherId };
+}
+
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-pack-library-"));
   resetActivePack();
@@ -676,6 +698,71 @@ describe("/pack-library", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("imports GitHub blob material URLs through raw GitHub", async () => {
+    signInUser("alice");
+    const fetchMock = vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => new Response("# Week 1\n\nControl the variables.", {
+      status: 200,
+      headers: { "content-type": "text/markdown" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { draftId, teacherId } = await createDraftTeacher();
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/materials/from-url`,
+      cookie: "rh_session=alice",
+      clientIp: "203.0.113.22",
+      body: { url: "https://github.com/acme/course/blob/main/materials/week-1.md" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://raw.githubusercontent.com/acme/course/main/materials/week-1.md");
+    expect(response.body.teacher.materialSourceUrl).toBe("https://raw.githubusercontent.com/acme/course/main/materials/week-1.md");
+    expect(response.body.teacher.materials).toContain("Control the variables.");
+  });
+
+  it("rejects non-allowlisted material URL hosts before fetching", async () => {
+    signInUser("alice");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { draftId, teacherId } = await createDraftTeacher();
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/materials/from-url`,
+      cookie: "rh_session=alice",
+      clientIp: "203.0.113.22",
+      body: { url: "https://example.com/materials.md" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("host is not allowed");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized material URL responses", async () => {
+    signInUser("alice");
+    const fetchMock = vi.fn(async () => new Response("x".repeat(80_001), {
+      status: 200,
+      headers: { "content-type": "text/plain" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { draftId, teacherId } = await createDraftTeacher();
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/materials/from-url`,
+      cookie: "rh_session=alice",
+      clientIp: "203.0.113.22",
+      body: { url: "https://raw.githubusercontent.com/acme/course/main/too-big.md" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("80000 characters or less");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects material URL redirects to private-network hosts", async () => {
     signInUser("alice");
     const fetchMock = vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => new Response("", {
@@ -708,7 +795,7 @@ describe("/pack-library", () => {
       path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/materials/from-url`,
       cookie: "rh_session=alice",
       clientIp: "203.0.113.22",
-      body: { url: "https://93.184.216.34/materials.md" },
+      body: { url: "https://raw.githubusercontent.com/acme/course/main/materials.md" },
     });
 
     expect(response.status).toBe(400);

@@ -87,16 +87,17 @@ static const char* ruby2_ui_character_id(Ruby2CharacterId character_id) {
     "ravi",
     "indra",
     "noor",
-    "sami"
+    "sami",
+    "sally-science",
+    "professor-edward"
   };
   return character_id < RUBY2_CHARACTER_COUNT ? ids[character_id] : "none";
 }
 
-static const char* ruby2_ui_object_id(Ruby2WorldObjectId object_id) {
+static const char* ruby2_ui_world_item_id(Ruby2WorldItemId world_item_id) {
   static const char* ids[] = {
     "answer_card",
     "wet_work_order",
-    "zero_dollar_receipt",
     "notebook",
     "flashcards",
     "lunch_tray",
@@ -104,7 +105,7 @@ static const char* ruby2_ui_object_id(Ruby2WorldObjectId object_id) {
     "library_card",
     "lab_flask"
   };
-  return object_id < RUBY2_WORLD_OBJECT_COUNT ? ids[object_id] : "unknown_object";
+  return world_item_id < RUBY2_WORLD_ITEM_COUNT ? ids[world_item_id] : "unknown_item";
 }
 
 static const char* ruby2_ui_item_id(Ruby2ItemId item_id) {
@@ -146,7 +147,7 @@ static const char* ruby2_ui_action_id(Ruby2WorldActionId action_id) {
     "approach_sense",
     "approach_sync",
     "approach_signal",
-    "inspect_receipt",
+    "use_lunch_tray",
     "collect_notebook",
     "collect_flashcards",
     "collect_lunch_tray",
@@ -214,7 +215,7 @@ static const char* ruby2_ui_action_kind_name(Ruby2WorldActionKind action_kind) {
       return "attend";
     case RUBY2_WORLD_ACTION_APPROACH:
       return "approach";
-    case RUBY2_WORLD_ACTION_INSPECT:
+    case RUBY2_WORLD_ACTION_USE_ITEM:
       return "inspect";
     case RUBY2_WORLD_ACTION_COLLECT:
       return "collect";
@@ -292,13 +293,13 @@ static const char* ruby2_ui_tail_name(Ruby2UiTailDirection tail) {
   return tail == RUBY2_UI_TAIL_RIGHT ? "right" : "left";
 }
 
-static bool ruby2_ui_snapshot_has_object(
+static bool ruby2_ui_snapshot_has_local_item(
   const Ruby2UiSnapshot* snapshot,
-  Ruby2WorldObjectId object_id
+  Ruby2WorldItemId world_item_id
 ) {
   if (!snapshot) return false;
-  for (uint8_t i = 0; i < snapshot->object_count; ++i) {
-    if (snapshot->objects[i] == object_id) return true;
+  for (uint8_t i = 0; i < snapshot->local_item_count; ++i) {
+    if (snapshot->local_items[i] == world_item_id) return true;
   }
   return false;
 }
@@ -332,6 +333,76 @@ static uint8_t ruby2_ui_action_tray_limit(const Ruby2UiSnapshot* snapshot, bool 
     if (snapshot->actions[i].kind == RUBY2_WORLD_ACTION_CHAT_CHOICE) return 2;
   }
   return 4;
+}
+
+static const char* ruby2_ui_navigation_key_label(Ruby2RoomId from, Ruby2RoomId target) {
+  if (from == RUBY2_ROOM_HALLWAY) {
+    switch (target) {
+      case RUBY2_ROOM_HOMEROOM:
+        return "W";
+      case RUBY2_ROOM_LIBRARY:
+        return "A";
+      case RUBY2_ROOM_SCIENCE_LAB:
+        return "D";
+      case RUBY2_ROOM_CAFETERIA:
+        return "S";
+      case RUBY2_ROOM_COURTYARD:
+        return "E";
+      case RUBY2_ROOM_TEACHER_OFFICE:
+        return "C";
+      default:
+        return "?";
+    }
+  }
+
+  if (from == RUBY2_ROOM_CAFETERIA) {
+    switch (target) {
+      case RUBY2_ROOM_HALLWAY:
+        return "W";
+      case RUBY2_ROOM_COURTYARD:
+        return "S";
+      default:
+        return "?";
+    }
+  }
+
+  if (from == RUBY2_ROOM_COURTYARD) {
+    switch (target) {
+      case RUBY2_ROOM_HALLWAY:
+        return "W";
+      case RUBY2_ROOM_CAFETERIA:
+        return "A";
+      case RUBY2_ROOM_GREENHOUSE:
+        return "D";
+      default:
+        return "?";
+    }
+  }
+
+  if (target == RUBY2_ROOM_HALLWAY || target == RUBY2_ROOM_COURTYARD) {
+    return "W";
+  }
+
+  switch (target) {
+    case RUBY2_ROOM_HOMEROOM:
+      return "W";
+    case RUBY2_ROOM_LIBRARY:
+      return "A";
+    case RUBY2_ROOM_SCIENCE_LAB:
+      return "D";
+    case RUBY2_ROOM_CAFETERIA:
+      return "S";
+    case RUBY2_ROOM_GREENHOUSE:
+      return "Q";
+    case RUBY2_ROOM_COURTYARD:
+      return "E";
+    case RUBY2_ROOM_TEACHER_OFFICE:
+      return "C";
+    case RUBY2_ROOM_HALLWAY:
+    case RUBY2_ROOM_COUNT:
+    default:
+      return "?";
+  }
 }
 
 static bool ruby2_ui_person_present(const Ruby2UiSnapshot* snapshot, Ruby2CharacterId character_id) {
@@ -386,21 +457,96 @@ static Ruby2CharacterId ruby2_ui_select_speaker(const Ruby2UiSnapshot* snapshot)
       ruby2_ui_person_present(snapshot, event->character)) {
     return event->character;
   }
+  if (snapshot &&
+      snapshot->active_question.present &&
+      ruby2_ui_snapshot_has_action_kind(snapshot, RUBY2_WORLD_ACTION_APPROACH) &&
+      ruby2_ui_person_present(snapshot, snapshot->active_question.teacher)) {
+    return snapshot->active_question.teacher;
+  }
   if (ruby2_ui_person_present(snapshot, RUBY2_CHARACTER_RUBY)) return RUBY2_CHARACTER_RUBY;
   if (snapshot && snapshot->people_count > 0) return (Ruby2CharacterId)snapshot->people[0];
   return RUBY2_CHARACTER_RUBY;
 }
 
+static const char* ruby2_ui_event_display_line(const Ruby2UiEvent* event) {
+  if (!event) return NULL;
+  switch (event->kind) {
+    case RUBY2_EVENT_ROOM_ENTERED:
+      if (event->room == RUBY2_ROOM_HALLWAY) {
+        return "You are a Grade 9 Ruby High freshman in the Hallway. Pick up the Notebook, then reach Homeroom.";
+      }
+      if (event->room == RUBY2_ROOM_HOMEROOM) {
+        return "You are in Homeroom. Ruby is the teacher; answer her blackboard quiz to protect today's grade.";
+      }
+      if (event->room == RUBY2_ROOM_SCIENCE_LAB) {
+        return "You are in Science Lab. Sally Science is teaching; Mika is a classmate here.";
+      }
+      if (event->room == RUBY2_ROOM_LIBRARY) {
+        return "You are in the Library. Professor Edward is teaching; Indra is a classmate here.";
+      }
+      if (event->room == RUBY2_ROOM_CAFETERIA) {
+        return "You are in the Cafeteria. Take a Lunch Tray before joining a table.";
+      }
+      return "You enter the room. Check who is here, what items are here, and what moves are legal.";
+    case RUBY2_EVENT_TIME_ADVANCED:
+      return "The bell advances the day. Avatars move to their scheduled locations.";
+    case RUBY2_EVENT_CLASS_STARTED:
+      return "Class is active. Resolve the blackboard before you leave.";
+    case RUBY2_EVENT_APPROACH_RESOLVED:
+      return "Blackboard answer recorded. The result now affects the rest of the day.";
+    case RUBY2_EVENT_SOCIAL_TRIGGERED:
+      if (event->item == RUBY2_WORLD_ITEM_LUNCH_TRAY) {
+        return "Noor notices you at the cafeteria line. Take the Lunch Tray if you want to join a table.";
+      }
+      return "A classmate reacts to the current room state.";
+    case RUBY2_EVENT_ITEM_APPEARED:
+      return "A usable item is now in this location.";
+    case RUBY2_EVENT_ITEM_COLLECTED:
+      return "Item added to your bag.";
+    case RUBY2_EVENT_ITEM_USED:
+      if (event->item == RUBY2_WORLD_ITEM_LUNCH_TRAY) {
+        return "You sit down with the Lunch Tray. Noor has the next word.";
+      }
+      return "Item used.";
+    case RUBY2_EVENT_NOTEBOOK_UPDATED:
+      if (event->action == RUBY2_ACTION_SELECT_AVATAR_SOURCE ||
+          event->action == RUBY2_ACTION_SELECT_AVATAR_SENSE ||
+          event->action == RUBY2_ACTION_SELECT_AVATAR_SYNC ||
+          event->action == RUBY2_ACTION_SELECT_AVATAR_SIGNAL) {
+        return "Notebook updated: student style recorded.";
+      }
+      if (event->action == RUBY2_ACTION_USE_LUNCH_TRAY) {
+        return "Notebook updated: you joined Noor's lunch table.";
+      }
+      if (event->action == RUBY2_ACTION_APPROACH_SOURCE ||
+          event->action == RUBY2_ACTION_APPROACH_SENSE ||
+          event->action == RUBY2_ACTION_APPROACH_SYNC ||
+          event->action == RUBY2_ACTION_APPROACH_SIGNAL) {
+        return "Notebook updated: class board result recorded.";
+      }
+      return "Notebook updated.";
+    case RUBY2_EVENT_NPC_MOVED:
+      return "A scheduled avatar move resolved.";
+    case RUBY2_EVENT_AGENT_SPOKE:
+      return "A classmate is ready to speak.";
+    case RUBY2_EVENT_AGENT_REMEMBERED:
+      return "A classmate remembered the result.";
+    case RUBY2_EVENT_DIRECTOR_TRIGGERED:
+      return "The schedule pushes the day forward.";
+    case RUBY2_EVENT_IDLE:
+      return "You wait for the next legal change.";
+    case RUBY2_EVENT_AGENT_INTENT_REJECTED:
+    default:
+      return "Choose a legal move.";
+  }
+}
+
 static const char* ruby2_ui_speech_line(const Ruby2UiSnapshot* snapshot, Ruby2CharacterId speaker) {
   const Ruby2UiEvent* event = ruby2_ui_latest_display_event(snapshot);
-  bool has_answer_card = ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_ANSWER_CARD);
-  bool has_work_order = ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_WORK_ORDER);
+  bool has_answer_card = ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_ANSWER_CARD);
+  bool has_work_order = ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_WORK_ORDER);
   bool has_approaches = ruby2_ui_snapshot_has_action_kind(snapshot, RUBY2_WORLD_ACTION_APPROACH);
-  bool has_profile = ruby2_ui_snapshot_has_action_kind(snapshot, RUBY2_WORLD_ACTION_PROFILE);
 
-  if (has_profile) {
-    return "Before the first bell, choose the kind of student you are today.";
-  }
   if (event && event->has_performance && event->performance_line) return event->performance_line;
   if (snapshot &&
       snapshot->room == RUBY2_ROOM_HOMEROOM &&
@@ -408,46 +554,45 @@ static const char* ruby2_ui_speech_line(const Ruby2UiSnapshot* snapshot, Ruby2Ch
       has_answer_card &&
       has_work_order &&
       has_approaches) {
-    return "The answer card says original. The wet stamp says revised. Before you answer, decide what can actually be trusted.";
+    return "You are a new Ruby High freshman. Goal: answer Ruby's blackboard quiz, then reach lunch with a C or higher day.";
   }
   if (snapshot &&
       snapshot->room == RUBY2_ROOM_SCIENCE_LAB &&
       has_approaches) {
-    return "Mika taps the board: one result is copied, one is measured. Pick the method the room can replay.";
+    return "Goal: answer Sally Science's grade-banded question. This may review prior-grade material.";
   }
   if (snapshot &&
       snapshot->room == RUBY2_ROOM_LIBRARY &&
       has_approaches) {
-    return "Indra points at two versions of the same claim. Choose the check that survives the margin.";
+    return "Goal: answer Professor Edward's grade-banded question. This may review prior-grade material.";
   }
-  if (event && event->text) return event->text;
-  return "The room waits for a real move.";
+  if (event) return ruby2_ui_event_display_line(event);
+  return "You are a new Ruby High freshman. Pick up useful items, reach Homeroom, and answer class boards before the bell.";
 }
 
 static const char* ruby2_ui_notebook_line(const Ruby2UiSnapshot* snapshot) {
   if (!snapshot) return "Notebook margin clear.";
-  if (ruby2_ui_snapshot_has_action_kind(snapshot, RUBY2_WORLD_ACTION_PROFILE)) {
-    return "Student record empty. Pick an avatar before the school starts keeping receipts.";
-  }
   if (!ruby2_ui_snapshot_has_item(snapshot, RUBY2_ITEM_NOTEBOOK)) {
     return "Inventory slot empty. Pick up the Notebook if you want the day to remember you.";
   }
   for (uint8_t i = snapshot->event_count; i > 0; --i) {
     const Ruby2UiEvent* event = &snapshot->events[i - 1u];
-    if (event->kind == RUBY2_EVENT_NOTEBOOK_UPDATED && event->text) return event->text;
+    if (event->kind == RUBY2_EVENT_NOTEBOOK_UPDATED && event->room == snapshot->room) {
+      return ruby2_ui_event_display_line(event);
+    }
   }
 
   if (snapshot->room == RUBY2_ROOM_HOMEROOM &&
-      ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_ANSWER_CARD) &&
-      ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_WORK_ORDER)) {
-    return "Room steady. Current evidence: answer card, wet work order; Notebook in your bag.";
+      ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_ANSWER_CARD) &&
+      ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_WORK_ORDER)) {
+    return "Notebook ready. Current class: Ruby, Grade 9 Homeroom; answer the blackboard to protect your day grade.";
   }
   if (snapshot->room == RUBY2_ROOM_CAFETERIA &&
-      ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_RECEIPT)) {
-    return "Room steady. Current evidence: zero-dollar receipt; Notebook in your bag.";
+      ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_LUNCH_TRAY)) {
+    return "Room steady. Current item: Lunch Tray; Notebook in your bag.";
   }
   if (snapshot->room == RUBY2_ROOM_HALLWAY) {
-    return "Notebook margin clear. The next room will decide what kind of day this is.";
+    return "Notebook margin clear. You are a Grade 9 Ruby High freshman; Homeroom is the first required class.";
   }
   return "Notebook margin clear.";
 }
@@ -465,40 +610,23 @@ static void ruby2_ui_build_blackboard(
   focus->has_blackboard = true;
   focus->blackboard_kicker = "Blackboard";
 
-  if (snapshot->room == RUBY2_ROOM_HOMEROOM &&
-      ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_ANSWER_CARD) &&
-      ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_WORK_ORDER)) {
-    ruby2_ui_add_blackboard_line(focus, "ANSWER CARD: original");
-    ruby2_ui_add_blackboard_line(focus, "WORK ORDER: revised, wet");
-    ruby2_ui_add_blackboard_line(focus, "BOARD QUESTION:");
-    ruby2_ui_add_blackboard_line(focus, "What can be trusted?");
-    return;
-  }
-
-  if (snapshot->room == RUBY2_ROOM_SCIENCE_LAB &&
+  if (snapshot->active_question.present &&
       ruby2_ui_snapshot_has_action_kind(snapshot, RUBY2_WORLD_ACTION_APPROACH)) {
-    ruby2_ui_add_blackboard_line(focus, "LAB BOARD: duplicate result");
-    ruby2_ui_add_blackboard_line(focus, "flask log timestamp mismatch");
-    ruby2_ui_add_blackboard_line(focus, "QUIZ:");
-    ruby2_ui_add_blackboard_line(focus, "Which method can the room replay?");
-    return;
-  }
-
-  if (snapshot->room == RUBY2_ROOM_LIBRARY &&
-      ruby2_ui_snapshot_has_action_kind(snapshot, RUBY2_WORLD_ACTION_APPROACH)) {
-    ruby2_ui_add_blackboard_line(focus, "LIBRARY BOARD: claim drift");
-    ruby2_ui_add_blackboard_line(focus, "catalog copy != margin copy");
-    ruby2_ui_add_blackboard_line(focus, "QUIZ:");
-    ruby2_ui_add_blackboard_line(focus, "Which check keeps scope honest?");
+    focus->blackboard_kicker = snapshot->active_question.prior_grade_review
+      ? "Prior Grade Review"
+      : "Class Quiz";
+    for (uint8_t i = 0; i < snapshot->active_question.line_count; ++i) {
+      ruby2_ui_add_blackboard_line(focus, snapshot->active_question.lines[i]);
+    }
     return;
   }
 
   if (snapshot->room == RUBY2_ROOM_CAFETERIA &&
-      ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_RECEIPT)) {
-    ruby2_ui_add_blackboard_line(focus, "RECEIPT: $0.00");
-    ruby2_ui_add_blackboard_line(focus, "FOOTER: same footer");
-    ruby2_ui_add_blackboard_line(focus, "BOARD QUESTION:");
-    ruby2_ui_add_blackboard_line(focus, "Who can verify it?");
+      ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_LUNCH_TRAY)) {
+    ruby2_ui_add_blackboard_line(focus, "CAFETERIA: lunch line");
+    ruby2_ui_add_blackboard_line(focus, "ITEM: Lunch Tray");
+    ruby2_ui_add_blackboard_line(focus, "SOCIAL MOVE:");
+    ruby2_ui_add_blackboard_line(focus, "Choose where to sit.");
     return;
   }
 
@@ -511,22 +639,26 @@ static const char* ruby2_ui_reaction_line(
   const Ruby2UiSnapshot* snapshot,
   Ruby2CharacterId character_id
 ) {
-  bool has_work_order = ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_WORK_ORDER);
-  bool has_receipt = ruby2_ui_snapshot_has_object(snapshot, RUBY2_WORLD_OBJECT_RECEIPT);
+  bool has_work_order = ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_WORK_ORDER);
+  bool has_lunch_tray = ruby2_ui_snapshot_has_local_item(snapshot, RUBY2_WORLD_ITEM_LUNCH_TRAY);
 
   switch (character_id) {
     case RUBY2_CHARACTER_LYRA:
-      return has_work_order || has_receipt ? "stamp's still wet." : "checking the margin twice.";
+      return has_work_order || has_lunch_tray ? "verifying written item" : "checking the margin";
     case RUBY2_CHARACTER_RAVI:
-      return has_work_order ? "technically, evidence." : "OK so technically.";
+      return has_work_order ? "item check" : "room check";
     case RUBY2_CHARACTER_MIKA:
-      return "you cooked. for real.";
+      return "confidence check";
     case RUBY2_CHARACTER_INDRA:
-      return "it moved.";
+      return "change noticed";
+    case RUBY2_CHARACTER_SALLY_SCIENCE:
+      return "teacher check";
+    case RUBY2_CHARACTER_PROFESSOR_EDWARD:
+      return "teacher check";
     case RUBY2_CHARACTER_NOOR:
-      return has_receipt ? "trying too hard." : "the room noticed.";
+      return has_lunch_tray ? "social pattern check" : "room reaction check";
     case RUBY2_CHARACTER_SAMI:
-      return "respectfully, weird.";
+      return "mood check";
     default:
       return "present.";
   }
@@ -562,9 +694,9 @@ static int ruby2_ui_action_slot_priority(const Ruby2UiAction* action) {
       return 0;
     case RUBY2_DISCIPLINE_SENSE:
       return 1;
-    case RUBY2_DISCIPLINE_SIGNAL:
-      return 2;
     case RUBY2_DISCIPLINE_SYNC:
+      return 2;
+    case RUBY2_DISCIPLINE_SIGNAL:
       return 3;
     default:
       return 99;
@@ -573,28 +705,31 @@ static int ruby2_ui_action_slot_priority(const Ruby2UiAction* action) {
 
 static int ruby2_ui_action_slot_priority_general(const Ruby2UiAction* action) {
   if (!action) return 99;
-  if (action->id == RUBY2_ACTION_GO_SCIENCE_LAB || action->id == RUBY2_ACTION_GO_LIBRARY) {
+  if (action->kind == RUBY2_WORLD_ACTION_ATTEND) {
     return 0;
   }
-  if (action->kind == RUBY2_WORLD_ACTION_GO) {
+  if (action->id == RUBY2_ACTION_GO_SCIENCE_LAB || action->id == RUBY2_ACTION_GO_LIBRARY) {
     return 1;
   }
-  if (action->kind == RUBY2_WORLD_ACTION_INSPECT) {
+  if (action->kind == RUBY2_WORLD_ACTION_GO) {
     return 2;
   }
-  if (action->kind == RUBY2_WORLD_ACTION_TALK) {
+  if (action->kind == RUBY2_WORLD_ACTION_USE_ITEM) {
     return 3;
   }
-  if (action->kind == RUBY2_WORLD_ACTION_COLLECT) {
+  if (action->kind == RUBY2_WORLD_ACTION_TALK) {
     return 4;
   }
-  if (action->kind == RUBY2_WORLD_ACTION_CHECK_NOTES) {
+  if (action->kind == RUBY2_WORLD_ACTION_COLLECT) {
     return 5;
   }
   if (action->kind == RUBY2_WORLD_ACTION_WAIT) {
     return 6;
   }
-  return 7;
+  if (action->kind == RUBY2_WORLD_ACTION_CHECK_NOTES) {
+    return 7;
+  }
+  return 8;
 }
 
 static void ruby2_ui_action_slot_color(uint8_t slot, const char** token, const char** hex) {
@@ -623,6 +758,28 @@ static void ruby2_ui_add_action_slot(Ruby2UiSnapshot* snapshot, uint8_t action_i
   snapshot->presentation.action_tray.slot_count++;
 }
 
+static void ruby2_ui_build_navigation(Ruby2UiSnapshot* snapshot) {
+  if (!snapshot) return;
+  snapshot->presentation.navigation.placement = "campus_map";
+  snapshot->presentation.navigation.hint = "WASD/arrows move. Click a room to travel.";
+
+  for (uint8_t i = 0; i < snapshot->action_count; ++i) {
+    const Ruby2UiAction* action = &snapshot->actions[i];
+    Ruby2UiNavigationSlot* slot;
+    if (action->kind != RUBY2_WORLD_ACTION_GO ||
+        action->target_room >= RUBY2_ROOM_COUNT ||
+        snapshot->presentation.navigation.slot_count >= RUBY2_UI_MAX_NAVIGATION_SLOTS) {
+      continue;
+    }
+    slot = &snapshot->presentation.navigation.slots[snapshot->presentation.navigation.slot_count++];
+    slot->action = action->id;
+    slot->action_index = i;
+    slot->target_room = action->target_room;
+    slot->key_label = ruby2_ui_navigation_key_label(snapshot->room, action->target_room);
+    slot->label = ruby2_room_name(action->target_room);
+  }
+}
+
 static void ruby2_ui_build_action_tray(Ruby2UiSnapshot* snapshot) {
   bool has_approaches = false;
   bool has_profile = false;
@@ -647,23 +804,37 @@ static void ruby2_ui_build_action_tray(Ruby2UiSnapshot* snapshot) {
   if (has_approaches || has_profile) {
     for (int priority = 0; priority < 4; ++priority) {
       for (uint8_t i = 0; i < snapshot->action_count; ++i) {
-        if (snapshot->presentation.action_tray.slot_count >= tray_limit) return;
-        if (!used[i] && ruby2_ui_action_slot_priority(&snapshot->actions[i]) == priority) {
+        if (snapshot->presentation.action_tray.slot_count >= tray_limit) goto done;
+        if (!used[i] &&
+            snapshot->actions[i].kind != RUBY2_WORLD_ACTION_GO &&
+            ruby2_ui_action_slot_priority(&snapshot->actions[i]) == priority) {
           ruby2_ui_add_action_slot(snapshot, i);
           used[i] = true;
           break;
         }
       }
     }
-    return;
+    goto done;
   }
 
   for (int priority = 0; priority <= 7; ++priority) {
     for (uint8_t i = 0; i < snapshot->action_count; ++i) {
-      if (snapshot->presentation.action_tray.slot_count >= tray_limit) return;
-      if (!used[i] && ruby2_ui_action_slot_priority_general(&snapshot->actions[i]) == priority) {
+      if (snapshot->presentation.action_tray.slot_count >= tray_limit) goto done;
+      if (!used[i] &&
+          snapshot->actions[i].kind != RUBY2_WORLD_ACTION_GO &&
+          ruby2_ui_action_slot_priority_general(&snapshot->actions[i]) == priority) {
         ruby2_ui_add_action_slot(snapshot, i);
         used[i] = true;
+      }
+    }
+  }
+
+done:
+  if (snapshot->presentation.action_tray.slot_count == 0 && snapshot->action_count > 0) {
+    for (uint8_t i = 0; i < snapshot->action_count; ++i) {
+      if (snapshot->actions[i].kind != RUBY2_WORLD_ACTION_GO) {
+        ruby2_ui_add_action_slot(snapshot, i);
+        break;
       }
     }
   }
@@ -682,12 +853,14 @@ static void ruby2_ui_build_presentation(Ruby2UiSnapshot* snapshot) {
   snapshot->presentation.focus.speech_line = ruby2_ui_speech_line(snapshot, speaker);
   snapshot->presentation.focus.next_label = "Next";
   snapshot->presentation.focus.back_label = "Speech";
-  snapshot->presentation.focus.initial = RUBY2_UI_FOCUS_INITIAL_SPEECH;
 
   has_blackboard = ruby2_ui_snapshot_has_action_kind(snapshot, RUBY2_WORLD_ACTION_APPROACH);
   snapshot->presentation.focus.mode = has_blackboard
     ? RUBY2_UI_FOCUS_SPEECH_THEN_BLACKBOARD
     : RUBY2_UI_FOCUS_SPEECH_ONLY;
+  snapshot->presentation.focus.initial = has_blackboard
+    ? RUBY2_UI_FOCUS_INITIAL_BLACKBOARD
+    : RUBY2_UI_FOCUS_INITIAL_SPEECH;
   if (has_blackboard) ruby2_ui_build_blackboard(snapshot, &snapshot->presentation.focus);
 
   for (uint8_t i = 0; i < snapshot->people_count; ++i) {
@@ -700,6 +873,7 @@ static void ruby2_ui_build_presentation(Ruby2UiSnapshot* snapshot) {
     );
   }
 
+  ruby2_ui_build_navigation(snapshot);
   ruby2_ui_build_action_tray(snapshot);
 }
 
@@ -773,6 +947,29 @@ static void ruby2_ui_write_presentation_json(FILE* fp, const Ruby2UiSnapshot* sn
   }
   fputc(']', fp);
 
+  fputs(",\"navigation\":{\"placement\":", fp);
+  ruby2_ui_json_string(fp, presentation->navigation.placement);
+  fputs(",\"hint\":", fp);
+  ruby2_ui_json_string(fp, presentation->navigation.hint);
+  fputs(",\"slots\":[", fp);
+  for (uint8_t i = 0; i < presentation->navigation.slot_count; ++i) {
+    const Ruby2UiNavigationSlot* slot = &presentation->navigation.slots[i];
+    if (i != 0) fputc(',', fp);
+    fprintf(fp, "{\"actionIndex\":%u,\"actionId\":", (unsigned)slot->action_index);
+    ruby2_ui_json_string(fp, ruby2_ui_action_id(slot->action));
+    fputs(",\"targetRoomId\":", fp);
+    ruby2_ui_json_string(fp, ruby2_ui_room_id(slot->target_room));
+    fputs(",\"targetRoom\":", fp);
+    ruby2_ui_json_string(fp, ruby2_room_name(slot->target_room));
+    fputs(",\"keyLabel\":", fp);
+    ruby2_ui_json_string(fp, slot->key_label);
+    fputs(",\"label\":", fp);
+    ruby2_ui_json_string(fp, slot->label);
+    fputc('}', fp);
+  }
+  fputc(']', fp);
+  fputc('}', fp);
+
   fputs(",\"actionTray\":{\"placement\":", fp);
   ruby2_ui_json_string(fp, presentation->action_tray.placement);
   fputs(",\"palette\":", fp);
@@ -804,7 +1001,7 @@ static void ruby2_ui_copy_action(
   out->kind = action->kind;
   out->target_room = action->target_room;
   out->target_character = action->target_character;
-  out->target_object = action->target_object;
+  out->target_item = action->target_item;
   out->discipline = action->discipline;
   out->virtue = action->virtue;
   out->label = action->label;
@@ -835,11 +1032,12 @@ void ruby2_ui_snapshot_build(const Ruby2World* world, bool ranked_actions, Ruby2
       out->people[out->people_count++] = i;
     }
   }
-  for (uint8_t i = 0; i < RUBY2_WORLD_OBJECT_COUNT; ++i) {
-    if (ruby2_world_object_present(world, (Ruby2WorldObjectId)i, out->room)) {
-      out->objects[out->object_count++] = i;
+  for (uint8_t i = 0; i < RUBY2_WORLD_ITEM_COUNT; ++i) {
+    if (ruby2_world_item_present(world, (Ruby2WorldItemId)i, out->room)) {
+      out->local_items[out->local_item_count++] = i;
     }
   }
+  (void)ruby2_world_active_teacher_question(world, out->room, &out->active_question);
   out->item_slot_count = RUBY2_UI_MAX_ITEM_SLOTS;
   for (uint8_t i = 0; i < out->item_slot_count; ++i) {
     Ruby2UiItemSlot* slot = &out->item_slots[i];
@@ -878,7 +1076,7 @@ void ruby2_ui_snapshot_build(const Ruby2World* world, bool ranked_actions, Ruby2
     ui_event->tick = event->tick;
     ui_event->room = event->room;
     ui_event->character = event->character;
-    ui_event->object = event->object;
+    ui_event->item = event->item;
     ui_event->action = event->action;
     ui_event->text = event->text;
     if (ruby2_world_event_to_performance_request(world, event, &performance)) {
@@ -939,14 +1137,14 @@ bool ruby2_ui_snapshot_write_json(FILE* fp, const Ruby2UiSnapshot* snapshot) {
   }
   fputc(']', fp);
 
-  fputs(",\"objects\":[", fp);
-  for (uint8_t i = 0; i < snapshot->object_count; ++i) {
-    Ruby2WorldObjectId object_id = (Ruby2WorldObjectId)snapshot->objects[i];
+  fputs(",\"items\":[", fp);
+  for (uint8_t i = 0; i < snapshot->local_item_count; ++i) {
+    Ruby2WorldItemId world_item_id = (Ruby2WorldItemId)snapshot->local_items[i];
     if (i != 0) fputc(',', fp);
     fputs("{\"id\":", fp);
-    ruby2_ui_json_string(fp, ruby2_ui_object_id(object_id));
+    ruby2_ui_json_string(fp, ruby2_ui_world_item_id(world_item_id));
     fputs(",\"name\":", fp);
-    ruby2_ui_json_string(fp, ruby2_world_object_name(object_id));
+    ruby2_ui_json_string(fp, ruby2_world_item_name(world_item_id));
     fputc('}', fp);
   }
   fputc(']', fp);
@@ -1011,15 +1209,15 @@ bool ruby2_ui_snapshot_write_json(FILE* fp, const Ruby2UiSnapshot* snapshot) {
     } else {
       fputs("null", fp);
     }
-    fputs(",\"objectId\":", fp);
-    if (event->object < RUBY2_WORLD_OBJECT_COUNT) {
-      ruby2_ui_json_string(fp, ruby2_ui_object_id(event->object));
+    fputs(",\"itemId\":", fp);
+    if (event->item < RUBY2_WORLD_ITEM_COUNT) {
+      ruby2_ui_json_string(fp, ruby2_ui_world_item_id(event->item));
     } else {
       fputs("null", fp);
     }
-    fputs(",\"object\":", fp);
-    if (event->object < RUBY2_WORLD_OBJECT_COUNT) {
-      ruby2_ui_json_string(fp, ruby2_world_object_name(event->object));
+    fputs(",\"item\":", fp);
+    if (event->item < RUBY2_WORLD_ITEM_COUNT) {
+      ruby2_ui_json_string(fp, ruby2_world_item_name(event->item));
     } else {
       fputs("null", fp);
     }

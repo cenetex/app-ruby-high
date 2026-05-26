@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Pure helpers + constants for the inline viewer client.
 // Each export is stringified into the inline <script> IIFE by
 // viewer-parts/script.ts so it ends up as a sibling of runViewerClient.
@@ -6,6 +5,11 @@
 // (lastTelemetry, els, authed, etc.). Helpers that take state via
 // parameter are fine. Helpers may freely reference other helpers or
 // VIEWER_CONSTANTS — both are in the same IIFE scope at runtime.
+
+type LooseRecord = Record<string, any>;
+type NullableRecord = LooseRecord | null | undefined;
+type MarkdownRenderOptions = { inline?: boolean };
+type LegacyCryptoWindow = Window & { msCrypto?: Crypto };
 
 export const VIEWER_CONSTANTS = {
   VISITOR_ID_KEY: "ruby-high:visitor-id",
@@ -39,24 +43,24 @@ export const VIEWER_CONSTANTS = {
     honor:  { emoji: "🛡️", label: "Honor" },
   },
   HALL_PASS_CARDS_PER_PACK: 5,
-};
+} as const;
 
 // ── grading + score formatting ─────────────────────────────────────
-export function statLabel(stat) {
-  const meta = STAT_META[String(stat || "").toLowerCase()];
+export function statLabel(stat: unknown): string {
+  const meta = (VIEWER_CONSTANTS.STAT_META as Record<string, { emoji: string; label: string }>)[String(stat || "").toLowerCase()];
   return meta ? meta.emoji + " " + meta.label : "🧠 Head";
 }
-export function scoreAwardLabel(award) {
+export function scoreAwardLabel(award: NullableRecord): string {
   if (!award) return "";
   const points = Math.max(0, Math.round(Number(award.points || 0)));
   const mult = Math.max(1, Math.round(Number(award.multiplier || 1)));
   if (mult >= 5) return "+" + points + " Merit Stars · Daily Class ×5";
   return "+" + points + " Merit Stars" + (mult > 1 ? " · ×" + mult : "");
 }
-export function letterGradePasses(grade) {
+export function letterGradePasses(grade: unknown): boolean {
   return /^[ABC]/.test(String(grade || ""));
 }
-export function letterGradeForScore(score) {
+export function letterGradeForScore(score: unknown): string {
   const n = Number(score);
   if (!Number.isFinite(n)) return "—";
   if (n >= 90) return "A";
@@ -65,18 +69,18 @@ export function letterGradeForScore(score) {
   if (n > 0) return "D";
   return "F";
 }
-export function streakScoreMultiplier(count) {
+export function streakScoreMultiplier(count: unknown): number {
   const n = Math.max(0, Math.floor(Number(count || 0)));
   if (n >= 4) return 5;
   if (n >= 3) return 3;
   if (n >= 2) return 2;
   return 1;
 }
-export function formatClassScore(score) {
+export function formatClassScore(score: unknown): string {
   const n = Number(score);
   return Number.isFinite(n) ? Math.round(n) + "%" : "—";
 }
-export function todayCorrectSummary(today) {
+export function todayCorrectSummary(today: NullableRecord): { value: string; detail: string; met: boolean } {
   const answered = Math.max(0, Math.floor(Number(today && today.questionCount || 0)));
   const total = Math.max(answered, Math.floor(Number(today && today.totalQuestions || 3)));
   const correct = Math.max(0, Math.min(answered, Math.floor(Number(today && today.correctCount || 0))));
@@ -89,34 +93,34 @@ export function todayCorrectSummary(today) {
 }
 
 // ── visitor id ─────────────────────────────────────────────────────
-export function makeVisitorId() {
-  const cryptoObj = window.crypto || window.msCrypto;
+export function makeVisitorId(): string {
+  const cryptoObj = window.crypto || (window as LegacyCryptoWindow).msCrypto;
   if (cryptoObj && typeof cryptoObj.randomUUID === "function") return "rhv_" + cryptoObj.randomUUID();
   const random = Math.random().toString(36).slice(2, 12);
   return "rhv_" + Date.now().toString(36) + "_" + random;
 }
-export function getVisitorId() {
+export function getVisitorId(): string {
   try {
-    const existing = localStorage.getItem(VISITOR_ID_KEY);
+    const existing = localStorage.getItem(VIEWER_CONSTANTS.VISITOR_ID_KEY);
     if (existing && /^[A-Za-z0-9._:-]{8,128}$/.test(existing)) return existing;
     const next = makeVisitorId();
-    localStorage.setItem(VISITOR_ID_KEY, next);
+    localStorage.setItem(VIEWER_CONSTANTS.VISITOR_ID_KEY, next);
     return next;
   } catch (_err) {
     return "";
   }
 }
-export function attachVisitorHeader(headers) {
+export function attachVisitorHeader<T extends Headers>(headers: T): T {
   const visitorId = getVisitorId();
   if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);
   return headers;
 }
 
 // ── subject progress (takes progress object as input) ──────────────
-export function teacherShortName(faculty, fallback) {
+export function teacherShortName(faculty: NullableRecord, fallback?: string): string {
   return (faculty && (faculty.shortName || faculty.displayName)) || fallback || "Teacher";
 }
-export function earnedCourseGrade(progress) {
+export function earnedCourseGrade(progress: NullableRecord): string {
   if (!progress) return "";
   const grade = progress.courseGrade || progress.grade || "";
   if (!grade || grade === "—") return "";
@@ -125,23 +129,23 @@ export function earnedCourseGrade(progress) {
   if (required > 0 && completed < required) return "";
   return grade;
 }
-export function subjectProgressShortLabel(progress) {
+export function subjectProgressShortLabel(progress: NullableRecord): string {
   if (!progress) return "—";
   const required = Math.max(0, Math.floor(Number(progress.requiredClasses || 0)));
   const completed = Math.max(0, Math.floor(Number(progress.completedClasses || 0)));
   if (required > 0) return Math.min(completed, required) + "/" + required;
   return earnedCourseGrade(progress) || "—";
 }
-export function subjectProgressLongLabel(progress) {
+export function subjectProgressLongLabel(progress: NullableRecord): string {
   if (!progress) return "course pending";
   const required = Math.max(0, Math.floor(Number(progress.requiredClasses || 0)));
   if (required > 0) return subjectProgressShortLabel(progress) + " daily classes";
   return "course pending";
 }
-export function subjectStandingLabel(progress) {
+export function subjectStandingLabel(progress: NullableRecord): string {
   return earnedCourseGrade(progress) || subjectProgressLongLabel(progress);
 }
-export function subjectStatusText(progress) {
+export function subjectStatusText(progress: NullableRecord): string {
   if (!progress) return "settling in";
   const standing = subjectStandingLabel(progress);
   const done = Number(progress.completedClasses || 0);
@@ -156,29 +160,29 @@ export function subjectStatusText(progress) {
   if (required > 0) return Math.min(done, required) + "/" + required + " daily classes";
   return standing;
 }
-export function questionsLeftInClass(today) {
+export function questionsLeftInClass(today: NullableRecord): number {
   const total = Number(today && today.totalQuestions || 3);
   const done = Number(today && today.questionCount || 0);
   return Math.max(0, total - done);
 }
-export function questionsLeftText(today) {
+export function questionsLeftText(today: NullableRecord): string {
   const left = questionsLeftInClass(today);
   if (left <= 0) return "daily class complete";
   return left + " " + (left === 1 ? "question" : "questions") + " left";
 }
-export function questionsLeftSentence(today) {
+export function questionsLeftSentence(today: NullableRecord): string {
   const left = questionsLeftInClass(today);
   if (left <= 0) return "Daily class complete";
   return (left === 1 ? "There is " : "There are ") + questionsLeftText(today);
 }
 
 // ── number / money / token / duration formatting ───────────────────
-export function formatWholeNumber(value) {
+export function formatWholeNumber(value: unknown): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return "0";
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
-export function formatMoney(cents, currency) {
+export function formatMoney(cents: unknown, currency?: unknown): string {
   const amount = Number(cents || 0) / 100;
   const code = String(currency || "usd").toUpperCase();
   try {
@@ -187,14 +191,14 @@ export function formatMoney(cents, currency) {
     return code + " " + amount.toFixed(2);
   }
 }
-export function formatTokenAmount(amount, symbol) {
+export function formatTokenAmount(amount: unknown, symbol?: unknown): string {
   const numeric = Number(amount);
   const text = Number.isFinite(numeric)
     ? numeric.toLocaleString(undefined, { maximumFractionDigits: 9 })
     : String(amount || "0");
   return text + " $" + String(symbol || "RUBY").toUpperCase();
 }
-export function formatTokenDisplayAmount(value) {
+export function formatTokenDisplayAmount(value: unknown): string {
   const raw = String(value || "").trim();
   const parsed = Number(raw);
   if (!raw) return "?";
@@ -202,7 +206,7 @@ export function formatTokenDisplayAmount(value) {
   if (Number.isInteger(parsed)) return formatWholeNumber(parsed);
   return parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
-export function formatDuration(ms) {
+export function formatDuration(ms: unknown): string {
   const hours = Math.max(1, Math.round(Number(ms || 0) / 3600000));
   if (hours % 24 === 0) {
     const days = Math.max(1, Math.round(hours / 24));
@@ -214,7 +218,7 @@ export function formatDuration(ms) {
   }
   return hours + " hour" + (hours === 1 ? "" : "s");
 }
-export function formatRelativeExpiry(expiresAt) {
+export function formatRelativeExpiry(expiresAt: unknown): string {
   const ms = Math.max(0, Number(expiresAt || 0) - Date.now());
   if (ms <= 0) return "";
   const hours = Math.ceil(ms / 3600000);
@@ -223,42 +227,42 @@ export function formatRelativeExpiry(expiresAt) {
 }
 
 // ── short string / number utilities ────────────────────────────────
-export function positiveWholeNumber(value, fallback) {
+export function positiveWholeNumber(value: unknown, fallback: number): number {
   const parsed = Math.round(Number(value));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
-export function hallPassCostLabel(cost) {
+export function hallPassCostLabel(cost: unknown): string {
   const normalized = positiveWholeNumber(cost, 1);
   return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
 }
-export function clipPlayerContext(text, max) {
+export function clipPlayerContext(text: unknown, max?: number): string {
   const raw = String(text || "").replace(/\s+/g, " ").trim();
   if (!raw) return "";
   const limit = max || 150;
   return raw.length > limit ? raw.slice(0, limit - 1) + "…" : raw;
 }
-export function imageRequestId(prefix) {
-  const cryptoObj = window.crypto || window.msCrypto;
+export function imageRequestId(prefix?: unknown): string {
+  const cryptoObj = window.crypto || (window as LegacyCryptoWindow).msCrypto;
   if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
     return String(prefix || "image") + "-" + cryptoObj.randomUUID();
   }
   return String(prefix || "image") + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
 }
-export function shortWallet(address) {
+export function shortWallet(address: unknown): string {
   const raw = String(address || "");
   return raw.length > 12 ? raw.slice(0, 6) + "..." + raw.slice(-4) : raw;
 }
-export function walletPreviewAddress(address) {
+export function walletPreviewAddress(address: unknown): string {
   const raw = String(address || "").trim();
   return raw ? shortWallet(raw) : "Not connected";
 }
-export function walletPreviewLine(label, value) {
+export function walletPreviewLine(label: string, value: unknown): string {
   const text = String(value || "").trim();
   return label + ": " + (text || "Unavailable");
 }
 
 // ── date formatters ────────────────────────────────────────────────
-export function formatAccountDate(ts) {
+export function formatAccountDate(ts: unknown): string {
   const n = Number(ts || 0);
   if (!Number.isFinite(n) || n <= 0) return "unknown date";
   try {
@@ -267,26 +271,26 @@ export function formatAccountDate(ts) {
     return "unknown date";
   }
 }
-export function formatSealedDate(ts) {
+export function formatSealedDate(ts: unknown): string {
   if (!ts) return "—";
   try {
-    const d = new Date(ts);
+    const d = new Date(ts as string | number | Date);
     const m = d.toLocaleDateString(undefined, { month: "short" });
     return m + " " + d.getFullYear();
   } catch { return "—"; }
 }
 
 // ── ceremony / essay helpers ───────────────────────────────────────
-export function nextGradeAfterClient(grade) {
+export function nextGradeAfterClient(grade: unknown): string | null {
   const order = ["9", "10", "11", "12"];
   const idx = order.indexOf(String(grade));
   return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
 }
-export function fmtStat(n) { return (n >= 0 ? "+" : "") + n; }
-export function fmtRewardStat(stat, value) {
+export function fmtStat(n: number): string { return (n >= 0 ? "+" : "") + n; }
+export function fmtRewardStat(stat: string, value: number): string {
   return stat.toUpperCase() + " " + fmtStat(value) + " → " + fmtStat(Math.min(3, value + 1));
 }
-export function seededShuffle(arr, seedInput) {
+export function seededShuffle<T>(arr: T[], seedInput: unknown): T[] {
   const out = arr.slice();
   let s = (Number(seedInput) | 0) || 1;
   const rand = () => {
@@ -304,7 +308,7 @@ export function seededShuffle(arr, seedInput) {
   }
   return out;
 }
-export function hashCeremonySeed(s) {
+export function hashCeremonySeed(s: string): number {
   let h = 2166136261 | 0;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -312,54 +316,54 @@ export function hashCeremonySeed(s) {
   }
   return h | 0;
 }
-export function essayScoreText(score) {
+export function essayScoreText(score: unknown): string {
   if (score === null || score === undefined || score === "") return "—";
   const n = Number(score);
   if (!Number.isFinite(n)) return "—";
   const rounded = Math.round(n * 10) / 10;
   return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + "/10";
 }
-export function essayLetter(score) {
+export function essayLetter(score: unknown): string {
   const n = Number(score);
   return Number.isFinite(n) ? letterGradeForScore(n * 10) : "—";
 }
-export function clipEssayText(value, max) {
+export function clipEssayText(value: unknown, max: number): string {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (text.length <= max) return text;
   return text.slice(0, Math.max(0, max - 1)).trim() + "…";
 }
 
 // ── pack pricing labels (take product + solana config as inputs) ───
-export function packCountLabel(count) {
+export function packCountLabel(count: unknown): string {
   const n = Number.isFinite(Number(count)) && Number(count) > 0 ? Math.floor(Number(count)) : 1;
   return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
 }
-export function cardPackTokenSymbol(product, solana) {
+export function cardPackTokenSymbol(product: NullableRecord, solana: NullableRecord): string {
   return String((product && product.tokenSymbol) || (solana && solana.symbol) || "RUBY").trim() || "RUBY";
 }
-export function cardPackDebitLabel(product, solana) {
+export function cardPackDebitLabel(product: NullableRecord, solana: NullableRecord): string {
   const amount = product && product.tokenAmount != null ? product.tokenAmount : solana && solana.tokenAmount;
   return "-" + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
 }
-export function cardPackCreditLabel(product) {
+export function cardPackCreditLabel(product: NullableRecord): string {
   const count = product && Number.isFinite(Number(product.packCount)) ? Number(product.packCount) : 1;
   return "+" + packCountLabel(count) + " NFT";
 }
-export function cardPackPaymentDeltaLabel(product, solana) {
+export function cardPackPaymentDeltaLabel(product: NullableRecord, solana: NullableRecord): string {
   return cardPackDebitLabel(product, solana) + " · " + cardPackCreditLabel(product);
 }
-export function cardPackProductMeta(product, solana) {
-  const cardCount = Math.max(1, Math.floor(Number(product && product.cardCount || HALL_PASS_CARDS_PER_PACK)));
+export function cardPackProductMeta(product: NullableRecord, solana: NullableRecord): string {
+  const cardCount = Math.max(1, Math.floor(Number(product && product.cardCount || VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK)));
   return cardPackPaymentDeltaLabel(product, solana) + " · " + formatWholeNumber(cardCount) + " cards";
 }
 
 // ── HTML / markdown helpers (DOM-only, no app state) ───────────────
-export function escapeHtml(value) {
+export function escapeHtml(value: unknown): string {
   const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-  return String(value == null ? "" : value).replace(/[&<>"']/g, (c) => map[c]);
+  return String(value == null ? "" : value).replace(/[&<>"']/g, (c) => map[c as keyof typeof map]);
 }
-export function escape(s) { return escapeHtml(s); }
-export function safeMarkdownHref(href) {
+export function escape(s: unknown): string { return escapeHtml(s); }
+export function safeMarkdownHref(href: unknown): string | null {
   const raw = String(href || "").trim();
   if (!raw) return null;
   try {
@@ -369,20 +373,20 @@ export function safeMarkdownHref(href) {
     return null;
   }
 }
-export function sanitizeVisibleChatText(value) {
+export function sanitizeVisibleChatText(value: unknown): string {
   let text = String(value == null ? "" : value);
   const tags = "pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty";
   text = text.replace(new RegExp("<\\s*(" + tags + ")\\b[^>]*>[\\s\\S]*?<\\s*/\\s*\\1\\s*>", "gi"), "");
   text = text.replace(new RegExp("<\\s*/?\\s*(?:" + tags + ")\\b[^>]*\\/?>", "gi"), "");
   return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
-export function markdownInlineHtml(value) {
+export function markdownInlineHtml(value: unknown): string {
   const start = String.fromCharCode(0xe000);
   const end = String.fromCharCode(0xe001);
   const tick = String.fromCharCode(96);
-  const placeholders = [];
+  const placeholders: string[] = [];
   let text = sanitizeVisibleChatText(value);
-  const stash = (html) => {
+  const stash = (html: string): string => {
     const key = start + placeholders.length + end;
     placeholders.push(html);
     return key;
@@ -405,12 +409,12 @@ export function markdownInlineHtml(value) {
   const placeholderPattern = new RegExp(start + "(\\d+)" + end, "g");
   return html.replace(placeholderPattern, (_match, index) => placeholders[Number(index)] || "");
 }
-export function appendMarkdownInline(parent, text) {
+export function appendMarkdownInline(parent: Node, text: unknown): void {
   const span = document.createElement("span");
   span.innerHTML = markdownInlineHtml(text);
   while (span.firstChild) parent.appendChild(span.firstChild);
 }
-export function renderMarkdownInto(el, source, options) {
+export function renderMarkdownInto(el: HTMLElement | null, source: unknown, options?: MarkdownRenderOptions): void {
   if (!el) return;
   const opts = options || {};
   el.classList.add("markdown");
@@ -424,13 +428,13 @@ export function renderMarkdownInto(el, source, options) {
   }
   const lines = text.split("\n");
   const fence = String.fromCharCode(96).repeat(3);
-  const startsBlock = (line) =>
+  const startsBlock = (line: string): boolean =>
     /^\s{0,3}#{1,4}\s+/.test(line) ||
     /^\s{0,3}>\s?/.test(line) ||
     /^\s{0,3}[-*+]\s+/.test(line) ||
     /^\s{0,3}\d+[.)]\s+/.test(line) ||
     line.trim().slice(0, 3) === fence;
-  const appendParagraph = (chunk) => {
+  const appendParagraph = (chunk: string): void => {
     const p = document.createElement("p");
     appendMarkdownInline(p, chunk);
     el.appendChild(p);
@@ -440,7 +444,7 @@ export function renderMarkdownInto(el, source, options) {
     if (!lines[i].trim()) { i += 1; continue; }
     if (lines[i].trim().slice(0, 3) === fence) {
       i += 1;
-      const codeLines = [];
+      const codeLines: string[] = [];
       while (i < lines.length && lines[i].trim().slice(0, 3) !== fence) {
         codeLines.push(lines[i]);
         i += 1;
@@ -455,7 +459,7 @@ export function renderMarkdownInto(el, source, options) {
     }
     if (/^\s{0,3}#{1,4}\s+/.test(lines[i])) {
       const raw = lines[i].replace(/^\s{0,3}/, "");
-      const depth = Math.min(4, raw.match(/^#+/)[0].length);
+      const depth = Math.min(4, raw.match(/^#+/)?.[0].length ?? 1);
       const heading = document.createElement("h" + depth);
       appendMarkdownInline(heading, raw.replace(/^#{1,4}\s+/, ""));
       el.appendChild(heading);
@@ -463,7 +467,7 @@ export function renderMarkdownInto(el, source, options) {
       continue;
     }
     if (/^\s{0,3}>\s?/.test(lines[i])) {
-      const quoteLines = [];
+      const quoteLines: string[] = [];
       while (i < lines.length && /^\s{0,3}>\s?/.test(lines[i])) {
         quoteLines.push(lines[i].replace(/^\s{0,3}>\s?/, ""));
         i += 1;
@@ -495,7 +499,7 @@ export function renderMarkdownInto(el, source, options) {
       el.appendChild(list);
       continue;
     }
-    const paraLines = [];
+    const paraLines: string[] = [];
     while (i < lines.length && lines[i].trim() && !startsBlock(lines[i])) {
       paraLines.push(lines[i]);
       i += 1;

@@ -42,10 +42,10 @@ static void print_presence(const Ruby2World* world) {
   puts(any ? "" : "none");
 
   any = false;
-  printf("Objects: ");
-  for (uint8_t i = 0; i < RUBY2_WORLD_OBJECT_COUNT; ++i) {
-    if (ruby2_world_object_present(world, (Ruby2WorldObjectId)i, room_id)) {
-      printf("%s%s", any ? ", " : "", ruby2_world_object_name((Ruby2WorldObjectId)i));
+  printf("Items: ");
+  for (uint8_t i = 0; i < RUBY2_WORLD_ITEM_COUNT; ++i) {
+    if (ruby2_world_item_present(world, (Ruby2WorldItemId)i, room_id)) {
+      printf("%s%s", any ? ", " : "", ruby2_world_item_name((Ruby2WorldItemId)i));
       any = true;
     }
   }
@@ -86,12 +86,12 @@ static void print_actions(const Ruby2WorldActionList* actions) {
 
 int main(void) {
   Ruby2World world;
-  bool printed_receipt_note = false;
+  bool printed_lunch_tray_note = false;
   ruby2_world_init(&world);
 
   puts("Ruby High 2.1 - MUD kernel slice");
   puts("=================================");
-  puts("Rooms, people, objects, actions, and events are resolved by the world kernel.");
+  puts("Rooms, people, items, actions, and events are resolved by the world kernel.");
   puts("Player choices and micro-agent intents both pass through the same state authority.");
   print_events(&world);
 
@@ -122,9 +122,9 @@ int main(void) {
     ruby2_world_step_agents(&world);
     print_events(&world);
 
-    if (world.receipt_inspected && !printed_receipt_note) {
-      puts("\nNotebook: the receipt is now real evidence, not just lunch weirdness.");
-      printed_receipt_note = true;
+    if (world.lunch_tray_used && !printed_lunch_tray_note) {
+      puts("\nNotebook: the Lunch Tray is now recorded item.");
+      printed_lunch_tray_note = true;
     }
   }
 

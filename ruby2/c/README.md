@@ -15,7 +15,7 @@ not the graphical client yet. It proves the deterministic engine pieces first:
 - single active companion selection
 - trace-based First Bell/Captain Null theory-session outcome resolution through the same four discipline buttons
 - a deterministic Week One text simulation
-- a first MUD-shaped world kernel with rooms, exits, NPC placement, object
+- a first MUD-shaped world kernel with rooms, exits, NPC placement, item
   presence, action discovery, and an event queue
 - a command-level world action path, so UI choices are resolved as structured
   commands instead of requiring one enum forever
@@ -29,7 +29,7 @@ not the graphical client yet. It proves the deterministic engine pieces first:
   perception packet, authored agenda rules produce legal candidate intents, and
   the tiny ranker selects one accepted NPC move per tick
 - a v2 PRD for replacing one-shot NPC agendas with per-NPC goals, short validated
-  plans, class sessions, room pressure, relationship cells, Notebook objectives,
+  plans, class sessions, room pressure, relationship cells, Notebook goals,
   and seeded replay coverage
 - a Governor-Controller boundary where LLM/narrative configuration remains slow
   and structured while the native world kernel owns tactical execution
@@ -39,7 +39,7 @@ not the graphical client yet. It proves the deterministic engine pieces first:
 - a legal-candidate ranker scaffold for ordering already valid actions,
   agent agendas, LLM pregen branches, and Yearbook candidates
 - a UI snapshot scaffold that exposes room, time, clocks, disciplines, present
-  people, present objects, legal actions, and visible events as JSON
+  people, present items, legal actions, and visible events as JSON
 - a C-owned visual presentation contract layered onto the UI snapshot: focus
   speech/blackboard alternation, notebook strip, bottom four-button action tray,
   side inventory slots, and per-character witness reaction bubbles with stable
@@ -55,7 +55,7 @@ not the graphical client yet. It proves the deterministic engine pieces first:
 - a split native renderer module that owns SDL drawing, hit testing, text
   texture caching, scene layout, result toasts, and co-present witness bubbles
 - native SDL action consequences can start a non-blocking AI performance job
-  for the latest co-present event; authored fallback lines remain visible
+  for the latest co-present event; the C layer exposes structured world state
   immediately and a validated generated line can replace the active bubble
 - an integrated architecture contract for scaling the current C wedge into a
   content-driven engine
@@ -102,9 +102,9 @@ make -C ruby2/c native-run-ai
 `play-world` is the current world-kernel proof. It is not scripted as one
 linear scene function. The loop asks the world for available actions in the
 current room, applies the selected action through the world resolver, advances
-schedule state, moves NPCs, exposes objects, and emits events. The first slice
+schedule state, moves NPCs, exposes items, and emits events. The first slice
 covers Hallway, Homeroom, Cafeteria, Ruby, Lyra, Ravi, Noor, the Homeroom answer
-card/work order, and the lunch receipt trigger.
+card/work order, and the Lunch Tray trigger.
 Internally, `ruby2_world_apply_action` now compiles legacy action IDs into
 `Ruby2WorldCommand`, then applies that command. Rejected commands do not advance
 time. The Day One director lets the player wander to the Cafeteria before class,
@@ -112,9 +112,9 @@ but the Bell clock escalates and redirects them back to Homeroom instead of
 leaving the school day inert.
 
 Micro-agents use `Ruby2AgentIntent` instead of mutating state directly. An agent
-may request to move, speak, inspect an object, or remember an event; the world
+may request to move, speak, inspect an item, or remember an event; the world
 accepts only legal intents and emits rejection events for impossible actions
-such as remote speech, blocked room jumps, or inspecting absent objects. This is
+such as remote speech, blocked room jumps, or inspecting absent items. This is
 the C-side contract for later LLM-backed avatars: the model can propose a tool
 intent, but the deterministic world remains authoritative.
 
@@ -123,15 +123,16 @@ path validation, co-presence checks, clock ticks, relationship math, command
 acceptance, and replayable state mutation. The LLM/Narrative Governor may later
 refresh structured goal weights, motive summaries, or daily memory summaries in
 slow cycles, but those outputs must compile into schema-valid structs before the
-world step can use them. If the Governor is missing, slow, or invalid, authored
-fallback tables keep the simulation moving.
+world step can use them. If the Governor is missing, slow, or invalid, the
+simulation still advances but only displays structured world state, not
+kernel-authored character dialogue.
 
 `ruby2_world_step_agents` is the simulation hook: each world turn builds a
 local `Ruby2AgentPerception` for each placed NPC, queries authored agenda rules
 for legal `Ruby2AgentCandidateIntent` records, ranks those legal candidates, and
 submits only the first accepted intent through the world validator. The LLM layer
 can perform the accepted speech later, but it cannot make a remote character
-speak, move through a blocked route, inspect an absent object, or mutate durable
+speak, move through a blocked route, inspect an absent item, or mutate durable
 state directly.
 
 The current agenda table is an interim wedge, not the target social simulation.
@@ -159,7 +160,7 @@ Architecture scaling contract:
 - `ruby2_engine` owns durable state: clocks, items, affinity, discipline counts,
   virtues, active room, time block, Yearbook candidates, effect payload
   application, and gate evaluation.
-- `ruby2_world` owns spatial truth: room graph, NPC placement, object presence,
+- `ruby2_world` owns spatial truth: room graph, NPC placement, item presence,
   legal action discovery, command validation, event queue, bounded micro-agent
   intents, and future goal-plan intents.
 - `ruby2_ui` owns read-only snapshots for text, native SDL, or future graphical
@@ -185,9 +186,11 @@ cannot steal the visible speaker slot.
 `play-llm` is the current vertical slice. It keeps all game state deterministic
 and asks the local model only for bounded micro-agent lines. The model must
 return JSON with a `line` field; if it leaks analysis or returns invalid output,
-the simulator uses authored fallback copy instead.
-Fixed rail lines stay authored; native inference is reserved for reactive
-consequence beats where the character performance can actually vary.
+the simulator leaves the deterministic world state visible instead of inventing
+character dialogue in C.
+Fixed rail lines should be authored as scene contracts, not as final spoken
+character copy; native inference is reserved for reactive consequence beats
+where the character performance can actually vary.
 Some beats can opt into a two-pass wake: the first local-model call smooths the
 structured wake packet into a first-person inner stream, and the second call
 speaks the final bubble. This is intentionally beat-authored through
@@ -196,14 +199,14 @@ Visible multiple-choice beats can also start a small background pregen queue.
 The vertical slice uses this for the cafeteria choice: while the player is
 reading the three options, the simulator speculatively generates the highest
 priority consequence line. If that line is ready when the player chooses, the
-speech bubble is instant; otherwise the authored fallback line is used and the
-game keeps moving. The queue never mutates game state.
+speech bubble is instant; otherwise the structured world state stays visible and
+the game keeps moving. The queue never mutates game state.
 
 The native SDL app now uses the same performance contract after player actions.
-The deterministic world resolves the move first, the UI shows an authored
-fallback line immediately, and a background SDL thread asks the configured LLM
-for a replacement one-line bubble. If the model is unavailable, slow, or returns
-unsafe/mechanical text, the fallback stays on screen and play continues.
+The deterministic world resolves the move first, the UI shows a structured scene
+state immediately, and a background SDL thread asks the configured LLM for a
+replacement one-line bubble. If the model is unavailable, slow, or returns
+unsafe/mechanical text, no C-authored character line is substituted.
 
 The C wedge now defaults to `RUBY2_LLM_BACKEND=llama.cpp`. The default build
 ships with a no-dependency stub so tests and deterministic gameplay still build
@@ -268,10 +271,10 @@ make -C ruby2/c play-llm
 ```
 
 Use `RUBY2_LLM=0 make -C ruby2/c play-llm` or
-`RUBY2_LLM_BACKEND=fallback make -C ruby2/c play-llm` to force authored fallback
-lines. Use `RUBY2_LLM_TIMEOUT_SECONDS=40` only for the HTTP backend if the local
+`RUBY2_LLM_BACKEND=fallback make -C ruby2/c play-llm` to force deterministic
+world state without generated character speech. Use `RUBY2_LLM_TIMEOUT_SECONDS=40` only for the HTTP backend if the local
 model spends extra tokens before the JSON line. Use `RUBY2_LLM_MAX_TOKENS=768`
-for models that write hidden reasoning before the JSON object.
+for models that write hidden reasoning before the JSON item.
 
 The current scope intentionally matches the Wedge -1 / Wedge 0 spirit from
 `../DESIGN.md`: prove the rules before overbuilding sokol rendering, asset

@@ -11,6 +11,11 @@ import {
   type CourseProgress,
 } from "../services/ruby-high-service.js";
 import { FacultyService, toFacultyMember } from "../services/faculty-service.js";
+import { AuthService } from "../services/auth-service.js";
+import {
+  GUEST_SIGNUP_REQUIRED_MESSAGE,
+  guestAccessStateForSession,
+} from "../services/guest-access.js";
 import {
   type CharacterStats,
   type CharacterSlotEntitlements,
@@ -111,6 +116,13 @@ interface SessionTelemetry extends Record<string, unknown> {
     overrideId: string | null;
     active: PackSummaryTelemetry | null;
   };
+  guest_access: {
+    requiresSignup: boolean;
+    message: string;
+    dailyFacultyId: string;
+    dailyFacultyName: string;
+    allowedFacultyIds: string[];
+  } | null;
   active_teacher_provider: PublicTeacherProvider;
   active_course: PackCourse | null;
   active_course_progress: CourseProgress | null;
@@ -311,6 +323,11 @@ export function buildSessionState(args: {
   const { runtime, state, faculty } = args;
   const sessionId = getSessionId(runtime, args.cookieHeader);
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+  const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+  const authRecord = auth?.resolve(auth.parseSessionToken(args.cookieHeader));
+  const guestAccess = ruby && authRecord
+    ? guestAccessStateForSession({ record: authRecord, ruby, sessionId })
+    : null;
   const fac = facultyForState(state, state.faculty);
   const activePackFaculty = facultyForSession(state).find((f) => f.id === state.faculty)
     ?? facultyForSession(state)[0]
@@ -388,6 +405,17 @@ export function buildSessionState(args: {
         active: summary(active),
       };
     })(),
+    guest_access: guestAccess
+      ? {
+          requiresSignup: guestAccess.requiresSignup,
+          message: guestAccess.requiresSignup
+            ? GUEST_SIGNUP_REQUIRED_MESSAGE
+            : `Guest mode is limited to Homeroom and today's lesson (${guestAccess.dailyFacultyName}).`,
+          dailyFacultyId: guestAccess.dailyFacultyId,
+          dailyFacultyName: guestAccess.dailyFacultyName,
+          allowedFacultyIds: Array.from(guestAccess.allowedFacultyIds),
+        }
+      : null,
     active_teacher_provider: publicProviderForFaculty(activePackFaculty),
     active_course: courseForFacultyForSession(state, state.faculty),
     active_course_progress: ruby?.courseProgress(sessionId, state.faculty) ?? null,

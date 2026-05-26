@@ -5,7 +5,8 @@ CFLAGS ?= -std=c99 -Wall -Wextra -Werror -pedantic -O2
 CPPFLAGS ?= -Iinclude
 THREAD_FLAGS ?= -pthread
 UNAME_S := $(shell uname -s)
-LLAMA_CPP_DIR ?=
+LLAMA_CPP_CANDIDATES ?= ../llama.cpp ../../llama.cpp $(HOME)/develop/voicebox/deps/llama.cpp /opt/homebrew/opt/llama.cpp
+LLAMA_CPP_DIR ?= $(firstword $(foreach candidate,$(LLAMA_CPP_CANDIDATES),$(if $(wildcard $(candidate)/include/llama.h),$(candidate))))
 SDL2_CONFIG ?= sdl2-config
 SDL2_CFLAGS ?= $(shell $(SDL2_CONFIG) --cflags 2>/dev/null)
 SDL2_LIBS ?= $(shell $(SDL2_CONFIG) --libs 2>/dev/null) -lSDL2_test
@@ -25,8 +26,9 @@ endif
 BUILD_FLAVOR := $(if $(strip $(LLAMA_CPP_DIR)),llama,stub)
 BUILD_DIR := build/$(BUILD_FLAVOR)
 BIN_DIR := bin/$(BUILD_FLAVOR)
-RUBY2_NATIVE_AI_BACKEND ?= http
+RUBY2_NATIVE_AI_BACKEND ?= llama.cpp
 RUBY2_NATIVE_AI_MODEL ?= ruby-high-local
+RUBY2_NATIVE_LLAMA_MODEL ?= $(abspath ../models/google_gemma-4-E4B-it-Q4_K_M.gguf)
 RUBY2_NATIVE_AI_TIMEOUT_SECONDS ?= 6
 
 ENGINE_SRC := src/ruby2_engine.c
@@ -221,9 +223,15 @@ native-macos-app: native-assets $(BIN_DIR)/ruby2_native_app
 	  '  <true/>' \
 	  '</dict>' \
 	  '</plist>' > $(BIN_DIR)/RubyHighNative.app/Contents/Info.plist
+	codesign --force --deep --sign - $(BIN_DIR)/RubyHighNative.app
 
 native-open: native-macos-app
-	open -n $(abspath $(BIN_DIR))/RubyHighNative.app
+	open \
+	  --env RUBY2_LLM_BACKEND=$(RUBY2_NATIVE_AI_BACKEND) \
+	  --env RUBY2_LLM_MODEL=$(RUBY2_NATIVE_AI_MODEL) \
+	  --env RUBY2_LLAMA_MODEL=$(RUBY2_NATIVE_LLAMA_MODEL) \
+	  --env RUBY2_LLM_TIMEOUT_SECONDS=$(RUBY2_NATIVE_AI_TIMEOUT_SECONDS) \
+	  -n $(abspath $(BIN_DIR))/RubyHighNative.app
 
 native-run: native-assets $(BIN_DIR)/ruby2_native_app
 	$(BIN_DIR)/ruby2_native_app
@@ -231,6 +239,7 @@ native-run: native-assets $(BIN_DIR)/ruby2_native_app
 native-run-ai: native-assets $(BIN_DIR)/ruby2_native_app
 	RUBY2_LLM_BACKEND=$(RUBY2_NATIVE_AI_BACKEND) \
 	RUBY2_LLM_MODEL=$(RUBY2_NATIVE_AI_MODEL) \
+	RUBY2_LLAMA_MODEL=$(RUBY2_NATIVE_LLAMA_MODEL) \
 	RUBY2_LLM_TIMEOUT_SECONDS=$(RUBY2_NATIVE_AI_TIMEOUT_SECONDS) \
 	$(BIN_DIR)/ruby2_native_app
 

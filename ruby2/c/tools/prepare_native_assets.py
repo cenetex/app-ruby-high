@@ -37,6 +37,8 @@ CHARACTERS = {
     "noor.bmp": ROOT / "ruby2" / "visual-scene" / "generated" / "noor-cutout.png",
     "sami.bmp": ROOT / "ruby2" / "visual-scene" / "generated" / "sami-cutout.png",
     "indra.bmp": ROOT / "ruby2" / "visual-scene" / "generated" / "indra-cutout.png",
+    "sally-science.bmp": ROOT / "ruby2" / "visual-scene" / "generated" / "sally-science-cutout.png",
+    "professor-edward.bmp": ROOT / "ruby2" / "visual-scene" / "generated" / "professor-edward-cutout.png",
 }
 
 ITEMS = {
