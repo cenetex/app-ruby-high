@@ -318,7 +318,7 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).toContain("toSolanaWalletConnectors({ shouldAutoConnect: true })");
     expect(PRIVY_CLIENT_SOURCE).toContain("getIdentityToken");
     expect(PRIVY_CLIENT_SOURCE).toContain('const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];');
-    expect(PRIVY_CLIENT_SOURCE).toContain('const DEFAULT_RUBY_HIGH_PRIVY_LOGIN_METHODS: RubyHighPrivyLoginMethod[] = ["email", "wallet"];');
+    expect(PRIVY_CLIENT_SOURCE).toContain('const DEFAULT_RUBY_HIGH_PRIVY_LOGIN_METHODS: RubyHighPrivyLoginMethod[] = ["email", "wallet", "google", "twitter", "passkey"];');
     expect(PRIVY_CLIENT_SOURCE).toContain("const RUBY_HIGH_PRIVY_LOGIN_METHODS");
     expect(PRIVY_CLIENT_SOURCE).toContain("const loginMethods = loginMethodsForConfig(config);");
     expect(PRIVY_CLIENT_SOURCE).toContain("loginMethods,");

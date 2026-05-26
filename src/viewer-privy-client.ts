@@ -133,7 +133,7 @@ const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvw
 const PRIVY_ACTION_TIMEOUT_MS = 30_000;
 const SOLANA_WALLET_READY_TIMEOUT_MS = 5_000;
 const RUBY_HIGH_SOLANA_WALLET_LIST: WalletListEntry[] = ["phantom", "solflare", "backpack", "detected_solana_wallets"];
-const DEFAULT_RUBY_HIGH_PRIVY_LOGIN_METHODS: RubyHighPrivyLoginMethod[] = ["email", "wallet"];
+const DEFAULT_RUBY_HIGH_PRIVY_LOGIN_METHODS: RubyHighPrivyLoginMethod[] = ["email", "wallet", "google", "twitter", "passkey"];
 const RUBY_HIGH_PRIVY_LOGIN_METHODS = new Set<RubyHighPrivyLoginMethod>([
   "wallet",
   "email",

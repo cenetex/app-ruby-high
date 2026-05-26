@@ -111,7 +111,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_PUBLIC_BASE` | `http://localhost:3000` | Public URL the app is reachable at. **Must be HTTPS in production** — OpenRouter rejects HTTP callbacks. |
 | `RUBY_HIGH_PRIVY_APP_ID` | — | Enables Privy account sign-in when set with `RUBY_HIGH_PRIVY_CLIENT_ID` and one server verifier secret. |
 | `RUBY_HIGH_PRIVY_CLIENT_ID` | — | Public Privy client id embedded in the viewer so the browser SDK can initialize. |
-| `RUBY_HIGH_PRIVY_LOGIN_METHODS` | `email,wallet` | Comma-separated Privy login methods shown in the viewer. Each method must also be enabled in the Privy dashboard. |
+| `RUBY_HIGH_PRIVY_LOGIN_METHODS` | `email,wallet,google,twitter,passkey` | Comma-separated Privy login methods shown in the viewer. Use `google` for Gmail sign-in. Each method must also be enabled in the Privy dashboard. |
 | `RUBY_HIGH_PRIVY_APP_SECRET` | — | Preferred server-side Privy secret for verifying tokens and fetching linked wallet/user details. Set via secrets only. |
 | `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | — | Optional JWT verification-key fallback for deployments that do not use `RUBY_HIGH_PRIVY_APP_SECRET`. |
 | `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `dynamodb` for production. |

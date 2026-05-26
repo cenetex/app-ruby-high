@@ -329,14 +329,14 @@ describe("auth origin guard", () => {
 });
 
 describe("Privy auth", () => {
-  it("publishes email and wallet Privy login by default", () => {
+  it("publishes email, wallet, social, and passkey Privy login by default", () => {
     expect(getPrivyPublicConfigFromEnv({
       RUBY_HIGH_PRIVY_APP_ID: "privy-app-test",
       RUBY_HIGH_PRIVY_CLIENT_ID: "privy-client-test",
     } as NodeJS.ProcessEnv)).toEqual({
       appId: "privy-app-test",
       clientId: "privy-client-test",
-      loginMethods: ["email", "wallet"],
+      loginMethods: ["email", "wallet", "google", "twitter", "passkey"],
     });
   });
 
