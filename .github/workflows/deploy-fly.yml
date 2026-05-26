@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -61,7 +61,7 @@ jobs:
           sudo install -m 0755 "$(find /tmp/flyctl -type f -name flyctl -print -quit)" /usr/local/bin/flyctl
           flyctl version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
 
