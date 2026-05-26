@@ -54,21 +54,21 @@ static const Ruby2TeacherQuestion ruby2_teacher_questions[] = {
     false,
     {
       "GRADE 9 - RUBY",
-      "Answer card: \"original\"; wet work order: \"revised\".",
-      "Which item proves the answer changed?",
+      "Answer card: 2/3 + 1/6 = 5/6; work order: common denominator first.",
+      "Which item checks the answer?",
       "A answer card",
-      "B wet work order",
+      "B work order",
       "C Notebook   D Flashcards"
     },
     6,
     {
       "A. answer card",
-      "B. wet work order",
+      "B. work order",
       "C. Notebook",
       "D. Flashcards"
     },
     RUBY2_ACTION_APPROACH_SENSE,
-    "event=class_board_resolved; room=Homeroom; teacher=Ruby; grade=9; answer=B; result=correct; item=wet_work_order",
+    "event=class_board_resolved; room=Homeroom; teacher=Ruby; grade=9; answer=B; result=correct; item=work_order",
     "event=class_board_resolved; room=Homeroom; teacher=Ruby; grade=9; result=wrong_but_recovered; correct=B",
     "notebook=class_board_resolved; room=Homeroom; teacher=Ruby; grade=9; correct=B"
   },
@@ -81,16 +81,16 @@ static const Ruby2TeacherQuestion ruby2_teacher_questions[] = {
     true,
     {
       "GRADE 8 REVIEW - RUBY",
-      "Flashcards say evidence must be checkable.",
-      "Which line is evidence, not opinion?",
+      "Flashcards say a claim must be checkable.",
+      "Which line can the class check?",
       "A everyone knows it",
-      "B work order was stamped revised",
+      "B work order shows a denominator",
       "C it feels wrong   D Ruby seems worried"
     },
     6,
     {
       "A. everyone knows it",
-      "B. work order was stamped revised",
+      "B. work order shows a denominator",
       "C. it feels wrong",
       "D. Ruby seems worried"
     },
@@ -1422,7 +1422,7 @@ const char* ruby2_world_character_name(Ruby2CharacterId character_id) {
 const char* ruby2_world_item_name(Ruby2WorldItemId world_item_id) {
   static const char* names[] = {
     "answer card",
-    "wet work order",
+    "work order",
     "Notebook",
     "Flashcards",
     "Lunch Tray",
@@ -2449,7 +2449,7 @@ static void ruby2_world_query_ravi_intents(
       RUBY2_DISCIPLINE_SOURCE,
       RUBY2_VIRTUE_HUSTLE,
       0.70f,
-      "agent_line_request; speaker=Ravi; beat=hallway_item_callback; item=wet_work_order; goal=point_to_item; constraint=no_new_items",
+      "agent_line_request; speaker=Ravi; beat=hallway_item_callback; item=work_order; goal=point_to_item; constraint=no_new_items",
       "agent_reason=class_item_callback"
     );
   }

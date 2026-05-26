@@ -59,7 +59,7 @@ Secondary avatar assets:
 
 ### Items
 
-Use item cards as interactable desk/hand props in the first scene. They are
+Use item cards as interactable desk/hand items in the first scene. They are
 transparent and consistent.
 
 | Item | Asset | Size | Alpha |
@@ -77,7 +77,7 @@ transparent and consistent.
   well enough for the prototype, but official alpha exports would be cleaner.
 - Captain Null, Eliza, and Rati card assets are not consistently transparent.
   Use them as card/portrait panels for now, not layered standees.
-- Items are cards, not object-only props. That is acceptable for the first
+- Items are cards, not separate entity types. That is acceptable for the first
   visual language if we treat them as school artifacts on the desk.
 - No expression/pose variants yet. Current cutouts need scale, cropping,
   witness reads, and speech bubbles to carry scene emotion.

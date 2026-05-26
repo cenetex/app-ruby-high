@@ -8,7 +8,7 @@ Related docs: `ruby2/DESIGN.md`, `ruby2/c/README.md`
 ## 1. Summary
 
 Ruby High 2.0 should feel like a school world, not a sequence of room panels.
-The current C wedge has a good deterministic world kernel: rooms, exits, objects,
+The current C wedge has a good deterministic world kernel: rooms, exits, items,
 NPC placement, event queues, validated intents, and ranked legal actions. The
 missing layer is per-NPC agency.
 
@@ -67,7 +67,7 @@ simple goals inside deterministic rules.
 
 The player should notice that:
 
-- Lyra tries to verify answers and gets anxious when evidence is weak.
+- Lyra tries to verify answers and gets anxious when the item trail is weak.
 - Ravi chases sources, lab facts, and weird mismatches.
 - Indra waits for patterns, then gives decisive reads.
 - Mika stabilizes the room and supports recovery.
@@ -109,7 +109,7 @@ goal weights, motive summaries, memory summaries, response style, and candidate
 performance lines.
 
 The Controller is fast and tactical. It runs every world step, validates
-movement, path availability, co-presence, object visibility, relationship
+movement, path availability, co-presence, item visibility, relationship
 formulas, clock ticks, and effect application. It never waits for an LLM before
 an NPC can take a legal step.
 
@@ -145,7 +145,7 @@ classmates, question, stat, roster, and relationship state. That is stronger tha
 a generic map room because it makes learning and social reaction part of one
 scene.
 
-V2 should model `Ruby2ClassSession` as a first-class world object, not infer a
+V2 should model `Ruby2ClassSession` as a first-class world struct, not infer a
 class from a room plus a question flag.
 
 ### 5.2 NPCs Participate In Rounds
@@ -188,7 +188,7 @@ V2 should preserve the same boundary:
 
 V1's social card concept is useful, but v2 should make it spatial and systemic.
 After a board answer, the class should enter a short social round where seated
-NPCs pursue goals such as support, challenge, ask evidence, joke, or withdraw.
+NPCs pursue goals such as support, challenge, ask for checkable item, joke, or withdraw.
 
 ## 6. Design Inputs From Signal
 
@@ -215,9 +215,9 @@ Signal stations generate prices and contracts from inventory pressure. Ruby High
 rooms can generate social/learning pressure from local state:
 
 - Homeroom pressure: schedule drift, class confusion, unresolved board state.
-- Science Lab pressure: unverified variable, missing control, evidence conflict.
+- Science Lab pressure: unverified variable, missing control, method conflict.
 - Library pressure: source mismatch, catalog clue, quiet tension.
-- Cafeteria pressure: rumor, social fallout, seating choices, receipt mismatch.
+- Cafeteria pressure: rumor, social fallout, seating choices, Lunch Tray table mismatch.
 - Courtyard pressure: First Bell theory hype, absence, recovery, ambiguous witness.
 - Teacher Office pressure: stress, repair, missed class, institutional boundary.
 
@@ -294,7 +294,7 @@ NPCs should be legible over multiple beats:
 
 ```text
 arrival: Ruby pressures player toward Homeroom
-class: Lyra notices weak evidence
+class: Lyra notices a weak method
 passing: Lyra heads toward Library because her verification goal remains open
 lunch: Noor references the class mistake only if she witnessed it or heard it
 notebook: unresolved goals become tomorrow hooks or expire with a reason
@@ -319,7 +319,7 @@ A goal is an NPC-owned desire with urgency, target, expiry, and reason.
 Examples:
 
 - attend Homeroom before bell pressure reaches 2
-- verify the Cafeteria receipt source
+- verify the Cafeteria Lunch Tray table marker
 - support player after a public miss
 - challenge unsupported answer in Science Lab
 - ask Indra about the Library/First Bell source mismatch
@@ -337,8 +337,8 @@ succeed. Each step must be validated by the world before it mutates state.
 Examples:
 
 ```text
-Goal: verify receipt source
-Plan: move Cafeteria -> inspect Receipt -> speak if co-present -> remember clue
+Goal: verify Lunch Tray table marker
+Plan: move Cafeteria -> inspect Lunch Tray -> speak if co-present -> remember seating clue
 
 Goal: support player after miss
 Plan: move to current room if reachable -> speak support line -> update memory
@@ -376,7 +376,7 @@ Room pressure is local simulation state that creates goals and objectives.
 
 Examples:
 
-- `evidence_gap`
+- `method_gap`
 - `rumor_heat`
 - `bell_pressure`
 - `null_signal`
@@ -393,7 +393,7 @@ small, structured, and authored enough to render safely.
 Examples:
 
 - Lyra remembers player named the hidden variable.
-- Noor remembers the receipt copied Homeroom's footer.
+- Noor remembers the Lunch Tray table marker changed where people sat.
 - Mika remembers player recovered after a miss.
 - Indra remembers the Library sentence changed only in the Notebook margin.
 
@@ -449,10 +449,10 @@ typedef enum {
   RUBY2_NPC_GOAL_IDLE,
   RUBY2_NPC_GOAL_ATTEND_CLASS,
   RUBY2_NPC_GOAL_ANSWER_BOARD,
-  RUBY2_NPC_GOAL_VERIFY_EVIDENCE,
+  RUBY2_NPC_GOAL_VERIFY_METHOD,
   RUBY2_NPC_GOAL_SUPPORT_PEER,
   RUBY2_NPC_GOAL_CHALLENGE_PEER,
-  RUBY2_NPC_GOAL_INSPECT_OBJECT,
+  RUBY2_NPC_GOAL_INSPECT_ITEM,
   RUBY2_NPC_GOAL_SPREAD_OR_CHECK_RUMOR,
   RUBY2_NPC_GOAL_RECOVER_STRESS,
   RUBY2_NPC_GOAL_REPORT_ANOMALY
@@ -488,7 +488,7 @@ typedef struct {
   Ruby2NpcGoalKind kind;
   Ruby2RoomId target_room;
   Ruby2CharacterId target_character;
-  Ruby2WorldObjectId target_object;
+  Ruby2WorldItemId target_item;
   uint8_t urgency;
   uint32_t created_tick;
   uint32_t expires_tick;
@@ -499,7 +499,7 @@ typedef struct {
   Ruby2NpcPlanStepKind kind;
   Ruby2RoomId room;
   Ruby2CharacterId character;
-  Ruby2WorldObjectId object;
+  Ruby2WorldItemId item;
   Ruby2AgentIntentKind intent_kind;
   uint16_t text_id;
   uint16_t reason_tag;
@@ -548,7 +548,7 @@ typedef struct {
   int8_t rumor;
   int8_t stress;
   int8_t null_signal;
-  int8_t evidence_gap;
+  int8_t method_gap;
   int8_t social_tension;
   int8_t unresolved_source;
 } Ruby2RoomPressure;
@@ -563,7 +563,7 @@ phase constrains the next.
 ruby2_world_step()
   1. advance schedule/time-block if needed
   2. resolve required beat placement and class sessions
-  3. update room pressure from clocks, objects, memories, and board state
+  3. update room pressure from clocks, items, memories, and board state
   4. refresh or expire NPC goals
   5. build or repair short NPC plans
   6. emit candidate intents from plan cursors
@@ -596,7 +596,7 @@ Inputs:
 
 - current room
 - board problem
-- objects present
+- items present
 - clocks
 - last visible/internal events
 - unresolved Notebook goals
@@ -642,7 +642,7 @@ Rules:
 - if target room is unreachable, return blocked route reason
 - if speech requires co-presence, include move/wait first or fail with not
   co-present
-- if object absent, either move to known object room or fail with object absent
+- if item absent, either move to known item room or fail with item absent
 - if class session phase is wrong, wait or expire
 
 ### 11.5 Intent Resolution Phase
@@ -667,7 +667,7 @@ meets a memory threshold.
 Memory-worthy examples:
 
 - NPC supported/challenged the player in a class social round
-- NPC inspected an object tied to a Notebook objective
+- NPC inspected an item tied to a Notebook objective
 - NPC failed to reach a room because the player missed a schedule opportunity
 - relationship status changed
 - First Bell theory pressure changed the room
@@ -701,14 +701,14 @@ notebook: memory and next objective are written
 - seated NPC goals
 - relationship cells
 - room pressure
-- relevant objects
+- relevant items
 - recent school events
 
 ### 12.3 Social Response Types
 
 ```text
 support: reinforces player's approach or recovery
-challenge: asks for evidence or points out weakness
+challenge: asks for a checkable item or points out weakness
 clarify: explains a clue or asks teacher to reframe
 joke: relieves stress while preserving consequence
 withdraw: avoids speaking, which can still be a social signal
@@ -720,7 +720,7 @@ witness: records the moment for Notebook/Yearbook context
 Room pressure:
 
 ```text
-evidence_gap = 2
+method_gap = 2
 unresolved_source = 0
 social_tension = 1
 ```
@@ -728,8 +728,8 @@ social_tension = 1
 NPC goals:
 
 ```text
-Lyra: verify evidence
-Ravi: inspect/test object
+Lyra: verify method
+Ravi: inspect/test item
 Mika: support peer
 Noor: challenge fake-normal wording
 ```
@@ -769,7 +769,7 @@ Resolution:
 
 - Source/Signal trace applies.
 - Indra can witness the pattern.
-- Lyra may warm if evidence is careful.
+- Lyra may warm if the item check is careful.
 - Notebook gets a stronger Day Five clue if the player copies exactly.
 
 ## 13. NPC Goal Profiles
@@ -780,10 +780,10 @@ hard locks. Room pressure and relationship history can override them.
 | NPC | Default Desires | Plan Bias | Social Risk |
 |---|---|---|---|
 | Ruby | keep schedule legible, keep class humane, notice Null symptoms | move player toward required beat, frame lesson, remember important shifts | too much shepherding can feel like railroading |
-| Lyra | verify, get it right, avoid public uncertainty | inspect source, ask evidence, challenge weak answer | can become scoldy if not balanced by anxiety |
+| Lyra | verify, get it right, avoid public uncertainty | inspect source, ask for checkable item, challenge weak answer | can become scoldy if not balanced by anxiety |
 | Sami | conserve effort, puncture over-seriousness, avoid looking invested | wait, joke, challenge only when contradiction is obvious | can feel inert without useful cynicism hooks |
-| Ravi | chase weird facts, test claims, follow concrete objects | inspect, move to lab/object, speak enthusiastic fact | can become noise if every fact is disconnected |
-| Indra | detect patterns, speak rarely, protect precision | wait, observe, then deliver high-signal line | can feel omniscient unless evidence gated |
+| Ravi | chase weird facts, test claims, follow concrete items | inspect, move to lab/item, speak enthusiastic fact | can become noise if every fact is disconnected |
+| Indra | detect patterns, speak rarely, protect precision | wait, observe, then deliver high-signal line | can feel omniscient unless item-gated |
 | Mika | support peers, lower stress, help recovery | speak support, accompany, convert miss to next attempt | can become generic encouragement |
 | Noor | name contradictions, turn social pressure into comedy | joke, challenge fake normal, remember the theory beat | can undercut stakes if overused |
 
@@ -843,8 +843,8 @@ Add debug-only fields to UI snapshots or trace output:
     {
       "id": "lyra",
       "room": "science_lab",
-      "goal": "verify_evidence",
-      "goalReason": "science.evidence_gap",
+      "goal": "verify_method",
+      "goalReason": "science.method_gap",
       "plan": ["inspect:lab_flask", "speak:support_source"],
       "cursor": 0,
       "blockedReason": null
@@ -893,14 +893,14 @@ Forbidden:
 - decide whether an NPC witnessed something
 - decide affinity deltas
 - decide Notebook or Yearbook content IDs
-- create a new object, route, room, or reward
+- create a new item, route, room, or reward
 
 Prompt input should contain human-readable facts derived from engine state:
 
 ```text
 You are Lyra. You are in Science Lab. The player chose Source: name the hidden
 variable. Your current validated intent is support_peer because your goal is
-verify_evidence. Speak one line under 90 characters.
+verify_method. Speak one line under 90 characters.
 ```
 
 ## 17. Implementation Plan
@@ -943,7 +943,7 @@ Exit criteria:
 - no visible gameplay change required
 - existing tests still pass
 
-### Slice 2: Class Session Object
+### Slice 2: Class Session Struct
 
 Deliverables:
 
@@ -970,12 +970,12 @@ Deliverables:
 - deterministic goal refresh from schedule, class session, room pressure, and
   relationship state
 - plan builder for move, speak, inspect, remember, wait
-- blocked reasons for not co-present, blocked route, object absent, phase wrong,
+- blocked reasons for not co-present, blocked route, item absent, phase wrong,
   already committed
 
 Tests:
 
-- Lyra gets verify goal in evidence-gap class session
+- Lyra gets verify goal in method-gap class session
 - Mika gets support goal after player miss
 - Noor gets challenge/joke goal after contradiction pressure
 - unreachable target produces blocked route, not mutation
@@ -998,7 +998,7 @@ Tests:
 
 - move intent changes room only through validator
 - remote speech is rejected and recorded
-- object inspect fails when absent
+- item inspect fails when absent
 - accepted remember event is internal unless explicitly surfaced
 
 Exit criteria:
@@ -1031,15 +1031,15 @@ Exit criteria:
 Deliverables:
 
 - add `Ruby2RoomPressure` per room or compact equivalent
-- derive pressure from clocks, current session, objects, and memories
+- derive pressure from clocks, current session, items, and memories
 - create Notebook goals from pressure thresholds
 - let pressure feed NPC goal priority
 
 Tests:
 
-- receipt object increases Cafeteria social/rumor pressure
+- Lunch Tray item increases Cafeteria social/rumor pressure
 - source mismatch increases Library unresolved-source pressure
-- hidden variable increases Science evidence-gap pressure
+- hidden variable increases Science method-gap pressure
 - resolving correct approach lowers matching pressure or converts it to memory
 
 Exit criteria:
@@ -1145,7 +1145,7 @@ Weekly or test-run report should show:
 seed: 42
 school days simulated: 100
 NPCs with non-idle goals: Ruby 100, Lyra 82, Mika 70, Ravi 77, Indra 64, Noor 69, Sami 43
-invalid intents: 12 remote_speech, 4 blocked_route, 3 object_absent
+invalid intents: 12 remote_speech, 4 blocked_route, 3 item_absent
 class social rounds: Homeroom 100, Science 68, Library 57
 relationship ticks: 214
 unreachable board sessions: 0
@@ -1230,7 +1230,7 @@ Science Lab class session
 Why Science Lab first:
 
 - current v2 already has a Science Lab blackboard quiz
-- evidence/control/variable problems map cleanly to Source/Sense/Sync/Signal
+- method/control/variable problems map cleanly to Source/Sense/Sync/Signal
 - Ravi and Mika already have strong lab-facing identities
 - Lyra's verification behavior creates a natural social split
 - the result can be tested without needing a full open campus

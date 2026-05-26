@@ -97,7 +97,7 @@ static const char* ruby2_ui_character_id(Ruby2CharacterId character_id) {
 static const char* ruby2_ui_world_item_id(Ruby2WorldItemId world_item_id) {
   static const char* ids[] = {
     "answer_card",
-    "wet_work_order",
+    "work_order",
     "notebook",
     "flashcards",
     "lunch_tray",

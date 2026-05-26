@@ -79,7 +79,7 @@ static const char* ruby2_world_approach_fallback(Ruby2RoomId room, Ruby2WorldAct
       case RUBY2_ACTION_APPROACH_SENSE:
         return "Careful wording counts, but the flask still has to prove it.";
       case RUBY2_ACTION_APPROACH_SYNC:
-        return "Pair the notes, then make the evidence survive both of you.";
+        return "Pair the notes, then make the method survive both of you.";
       case RUBY2_ACTION_APPROACH_SIGNAL:
         return "A pattern is useful only after the control stops arguing.";
       default:
@@ -153,7 +153,7 @@ static const char* ruby2_world_chat_choice_fallback(Ruby2CharacterId character, 
     case RUBY2_CHARACTER_LYRA:
       return first_option ? "Yes. Check the wording before it checks us." : "Yes. Ask together before panic edits it.";
     case RUBY2_CHARACTER_RAVI:
-      return first_option ? "Thank you. Evidence first, volume second." : "Okay, group check. I can do group check.";
+      return first_option ? "Thank you. Item first, volume second." : "Okay, group check. I can do group check.";
     case RUBY2_CHARACTER_MIKA:
       return first_option ? "That is a clean first move." : "That keeps everybody moving.";
     case RUBY2_CHARACTER_INDRA:
@@ -175,7 +175,7 @@ static const char* ruby2_world_agent_spoke_fallback(Ruby2CharacterId character, 
   if (item == RUBY2_WORLD_ITEM_LUNCH_TRAY) {
     switch (character) {
       case RUBY2_CHARACTER_NOOR:
-        return "The Lunch Tray is evidence now. Somehow lunch made itself worse.";
+        return "The Lunch Tray is the item now. Somehow lunch made itself worse.";
       case RUBY2_CHARACTER_LYRA:
         return "I can compare trays, but I am not emotionally ready for matching trays.";
       case RUBY2_CHARACTER_RAVI:
@@ -253,7 +253,7 @@ bool ruby2_world_event_to_performance_request(
       out->items_context = ruby2_world_action_label(event->action);
       if (out->room == RUBY2_ROOM_HOMEROOM) {
         out->memory_context = "state=player chose an approach before choosing an answer";
-        out->location_context = "scene=Homeroom; items=answer card, wet work order, blackboard";
+        out->location_context = "scene=Homeroom; items=answer card, work order, blackboard";
         out->avatar_context = "cast=Ruby,Ravi,Lyra; Ruby role=teacher; classmates share item";
         out->situation = "beat=class_approach_resolved; purpose=teacher reacts to validated player method";
       } else if (out->room == RUBY2_ROOM_SCIENCE_LAB) {

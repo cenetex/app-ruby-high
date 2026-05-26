@@ -12,7 +12,7 @@ The player should read each screen as:
 ```text
 Where am I?
 Who is here?
-What object matters?
+What item matters?
 Who is speaking?
 Why are they reacting?
 What can I do next?
@@ -57,7 +57,7 @@ Rooms should keep their emotional function visible.
 | Location | Visual Read |
 | --- | --- |
 | Homeroom | safe, guided, Ruby-centered, first bell pressure |
-| Science Lab | bright surfaces, evidence objects, instrument clutter |
+| Science Lab | bright surfaces, lab items, instrument clutter |
 | Library | quiet contrast, shelves, margin notes, impossible text |
 | Cafeteria | crowded energy, trays, gossip surfaces |
 | Greenhouse | recovery, warmer light, slower pacing |
@@ -79,7 +79,7 @@ Rules:
 - Featured speaker anchors one side of the scene and is cropped by the bottom
   UI, giving a half-body close-up without new assets.
 - Other present characters appear lower in the room with one short read:
-  "checking the stamp twice", "not touching the margin", etc.
+  "checking the step twice", "not touching the margin", etc.
 - Avoid pretending characters are standing precisely on a generated floor until
   the asset pipeline has depth and occlusion metadata.
 - Use collectible card art for Yearbook/inventory/card surfaces, not for
@@ -133,12 +133,12 @@ the contradiction is too obvious.
 ## Blackboard Functionality
 
 The blackboard is not decoration. It is the teacher/problem surface that makes
-the current evidence legible. It shares the focus slot with the active speaker's
+the current problem state legible. It shares the focus slot with the active speaker's
 speech bubble.
 
 | Blackboard Region | Purpose | Source |
 | --- | --- | --- |
-| Evidence lines | What objects/facts are currently on the board | `snapshot.objects`, latest event |
+| Item lines | What items/claims are currently on the board | `snapshot.items`, latest event |
 | Board question/update | What problem the room is asking now | scene resolver / event kind |
 | Next / Speech toggle | Alternates between character line and board state | local presentation state |
 
@@ -170,9 +170,9 @@ input affordance only.
 The four approach buttons should show grounded actions, not stat names:
 
 ```text
-Compare the answer card with the wet work-order stamp.
-Ask what original is supposed to mean.
-Circle the footer Ruby says she did not print.
+Compare the answer card with the work-order step.
+Ask what revised changes in the answer.
+Circle the mismatch between answer card and work order.
 Ask Ravi and Lyra what each can verify.
 ```
 
@@ -188,7 +188,7 @@ C UI snapshot is the source of truth for:
 - visible clocks and discipline traces
 - class session phase and responder slots
 - people physically present
-- objects physically present
+- items physically present
 - latest speakable event / performance line
 - Notebook margin line
 - legal actions
@@ -199,8 +199,8 @@ C UI snapshot is the source of truth for:
 preserving the same state contract as the CLI.
 
 The renderer may add presentation-only reads, such as Lyra's tiny witness
-reaction or a procedural receipt card, but it should not invent state. If a
-person, object, clock, or action is not in the snapshot, it should not appear as
+reaction or a procedural item card, but it should not invent state. If a
+person, item, clock, or action is not in the snapshot, it should not appear as
 available in the scene.
 
 ## First Bell / Theory Hype Treatment
@@ -211,7 +211,7 @@ inside the existing school screen before it gets a dedicated session.
 Good first symptoms:
 
 - a First Bell issue is half-visible on a desk, shelf, or cafeteria tray
-- a photocopied panel disagrees with a hallway object
+- a photocopied panel disagrees with a hallway item
 - Notebook margin text borrows a comic word
 - a rumor/thread card appears in the Notebook strip
 - room tint cools as mood, not proof that the world changed

@@ -165,9 +165,9 @@ static const char* ruby2_room_inner_detail(Ruby2RoomId room_id) {
 static const char* ruby2_discipline_mind_detail(Ruby2Discipline discipline) {
   switch (discipline) {
     case RUBY2_DISCIPLINE_SOURCE:
-      return "the wet stamp matters more than the answer card";
+      return "the work-order step matters more than the answer card";
     case RUBY2_DISCIPLINE_SENSE:
-      return "the word original is carrying something it should not";
+      return "the revised step is carrying something it should not";
     case RUBY2_DISCIPLINE_SYNC:
       return "the room needs everyone looking at the same item";
     case RUBY2_DISCIPLINE_SIGNAL:

@@ -54,8 +54,8 @@ CHARACTER_ASSETS = {
 }
 
 REACTIONS = {
-    "lyra": "stamp's still wet.",
-    "ravi": "technically, evidence.",
+    "lyra": "check the step twice.",
+    "ravi": "the item has to prove it.",
     "mika": "you cooked. for real.",
     "noor": "trying too hard.",
     "sami": "respectfully, weird.",
@@ -73,10 +73,10 @@ BUBBLE_STYLES = {
     "professor-edward": ((240, 246, 255, 242), (73, 106, 162, 255)),
 }
 
-OBJECT_COPY = {
-    "answer_card": ("ANSWER", "original", "class of 1998"),
-    "wet_work_order": ("ORDER", "revised", "4:12 p.m."),
-    "zero_dollar_receipt": ("RECEIPT", "$0.00", "same footer"),
+ITEM_COPY = {
+    "answer_card": ("ANSWER", "5/6", "final answer"),
+    "work_order": ("ORDER", "denominator 6", "show the step"),
+    "lunch_tray": ("TRAY", "Table B", "seat marker"),
     "notebook": ("NOTEBOOK", "margin", "open"),
 }
 
@@ -178,9 +178,9 @@ def main_line(snapshot: dict) -> str:
     if event and event.get("performance", {}).get("line"):
         return event["performance"]["line"]
 
-    object_ids = {obj.get("id") for obj in snapshot.get("objects", [])}
-    if snapshot.get("roomId") == "homeroom" and {"answer_card", "wet_work_order"} <= object_ids:
-        return "The answer card says original. The wet stamp says revised. Before you answer, decide what can actually be trusted."
+    item_ids = {item.get("id") for item in snapshot.get("items", [])}
+    if snapshot.get("roomId") == "homeroom" and {"answer_card", "work_order"} <= item_ids:
+        return "The answer card gives the result. The work order has to support it before anyone trusts it."
     if event:
         return event.get("text", "")
     return "The room waits for a real move."
@@ -198,9 +198,9 @@ def notebook_line(snapshot: dict) -> str:
     for candidate in reversed(snapshot.get("events") or []):
         if candidate.get("kind") == "notebook_updated":
             return candidate.get("text", "")
-    object_names = ", ".join(obj.get("name", "") for obj in snapshot.get("objects", []))
-    if object_names:
-        return f"Room steady. Current evidence: {object_names}."
+    item_names = ", ".join(item.get("name", "") for item in snapshot.get("items", []))
+    if item_names:
+        return f"Room steady. Current items: {item_names}."
     return event.get("text", "Notebook margin clear.") if event else "Notebook margin clear."
 
 
@@ -227,28 +227,13 @@ def primary_actions(snapshot: dict) -> list[dict]:
 
 
 def blackboard_lines(snapshot: dict) -> list[str]:
-    object_ids = {obj.get("id") for obj in snapshot.get("objects", [])}
-    clocks = snapshot.get("clocks", {})
-    if snapshot.get("roomId") == "homeroom" and {"answer_card", "wet_work_order"} <= object_ids:
+    item_ids = {item.get("id") for item in snapshot.get("items", [])}
+    if snapshot.get("roomId") == "homeroom" and {"answer_card", "work_order"} <= item_ids:
         return [
-            "ANSWER CARD: original",
-            "WORK ORDER: revised, wet",
+            "ANSWER CARD: 5/6",
+            "WORK ORDER: denominator 6",
             "BOARD QUESTION:",
-            "What can be trusted?",
-        ]
-    if "zero_dollar_receipt" in object_ids and clocks.get("Null Signal", 0):
-        return [
-            "RECEIPT: $0.00",
-            "FOOTER: copied exactly",
-            "BOARD UPDATE:",
-            "The pattern followed.",
-        ]
-    if "zero_dollar_receipt" in object_ids:
-        return [
-            "RECEIPT: $0.00",
-            "FOOTER: same footer",
-            "BOARD QUESTION:",
-            "Who can verify it?",
+            "Which item checks the answer?",
         ]
     return [
         snapshot.get("room", "Room").upper(),
@@ -353,18 +338,18 @@ def draw_reaction_bubble(
     draw_wrapped(draw, text, (x0 + 18, y0 + 14), x1 - x0 - 36, F_REACT, SOFT_INK, line_gap=0)
 
 
-def draw_object_card(draw: ImageDraw.ImageDraw, object_id: str, box: tuple[int, int, int, int]) -> None:
+def draw_item_card(draw: ImageDraw.ImageDraw, item_id: str, box: tuple[int, int, int, int]) -> None:
     x0, y0, x1, y1 = box
-    title, main, sub = OBJECT_COPY.get(object_id, (object_id.upper(), "", ""))
+    title, main, sub = ITEM_COPY.get(item_id, (item_id.upper(), "", ""))
     fill = (255, 250, 240, 232)
-    if object_id == "wet_work_order":
+    if item_id == "work_order":
         fill = (232, 242, 246, 232)
-    elif object_id == "zero_dollar_receipt":
+    elif item_id == "lunch_tray":
         fill = (245, 245, 236, 232)
-    elif object_id == "notebook":
+    elif item_id == "notebook":
         fill = (230, 241, 238, 232)
     draw_panel(draw, box, fill=fill, outline=(35, 31, 32, 140), radius=9, width=2)
-    draw.text((x0 + 8, y0 + 9), title, fill=RUBY if object_id != "notebook" else BLUE, font=F_UI_SMALL)
+    draw.text((x0 + 8, y0 + 9), title, fill=RUBY if item_id != "notebook" else BLUE, font=F_UI_SMALL)
     draw.text((x0 + 8, y0 + 31), main, fill=INK, font=F_UI_BOLD)
     draw.text((x0 + 8, y0 + 58), sub, fill=SOFT_INK, font=F_UI_SMALL)
 
@@ -431,10 +416,10 @@ def draw_scene(snapshot: dict, out_path: Path) -> None:
         )
 
     rail_x = 1478
-    objects = snapshot.get("objects") or []
-    draw_panel(draw, (rail_x - 10, 206, rail_x + 100, 206 + max(1, len(objects)) * 92 + 16), fill=(255, 250, 240, 112), outline=(255, 250, 240, 82), radius=20, width=1)
-    for idx, obj in enumerate(objects[:4]):
-        draw_object_card(draw, obj.get("id", "object"), (rail_x, 224 + idx * 92, rail_x + 88, 302 + idx * 92))
+    items = snapshot.get("items") or []
+    draw_panel(draw, (rail_x - 10, 206, rail_x + 100, 206 + max(1, len(items)) * 92 + 16), fill=(255, 250, 240, 112), outline=(255, 250, 240, 82), radius=20, width=1)
+    for idx, item in enumerate(items[:4]):
+        draw_item_card(draw, item.get("id", "item"), (rail_x, 224 + idx * 92, rail_x + 88, 302 + idx * 92))
 
     actions = primary_actions(snapshot)
     draw_notebook_strip(draw, snapshot)

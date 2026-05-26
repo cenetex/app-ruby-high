@@ -216,11 +216,11 @@ static void line_pregen_stop_join(Ruby2LinePregen* pregen) {
 }
 
 static const char* homeroom_location(void) {
-  return "Homeroom, front board. The answer card is taped beside the wet work order.";
+  return "Homeroom, front board. The answer card and work order are clipped under the bell schedule.";
 }
 
 static const char* cafeteria_location(void) {
-  return "Cafeteria, end of the lunch table nearest the mural wall.";
+  return "Cafeteria, first table beside the tray rail.";
 }
 
 static const char* cafeteria_visible_avatars(Ruby2CharacterId witness) {
@@ -283,13 +283,13 @@ static Ruby2Discipline strongest_discipline(const Ruby2State* state) {
 static const char* margin_item(Ruby2Discipline discipline) {
   switch (discipline) {
     case RUBY2_DISCIPLINE_SOURCE:
-      return "work-order stamp";
+      return "work-order step";
     case RUBY2_DISCIPLINE_SENSE:
-      return "circled word";
+      return "marked term";
     case RUBY2_DISCIPLINE_SYNC:
       return "shared table notes";
     case RUBY2_DISCIPLINE_SIGNAL:
-      return "printer lunch note";
+      return "tray mark";
     default:
       return "Notebook mark";
   }
@@ -506,11 +506,11 @@ static void social_followup(Ruby2State* state, const Ruby2ApproachOption* option
       RUBY2_VIRTUE_HEAD,
       RUBY2_CHARACTER_NOOR,
       RUBY2_ARCHETYPE_SIGNAL_READER,
-      "Copy the lunch note into the Notebook and leave the Lunch Tray on the tray.",
+      "Copy the table mark into the Notebook and leave the Lunch Tray on the tray.",
       "event=social_choice; item=lunch_tray; target=Notebook",
-      "memory=lunch note_copied_exactly_from_lunch_tray",
-      "event=social_choice; item=lunch_tray; intent=record_lunch note",
-      "event=social_choice_resolved; item=lunch_tray; outcome=notebook_recorded_lunch note",
+      "memory=table_mark_copied_exactly_from_lunch_tray",
+      "event=social_choice; item=lunch_tray; intent=record_table_mark",
+      "event=social_choice_resolved; item=lunch_tray; outcome=notebook_recorded_table_mark",
       NULL
     }
   };
@@ -545,8 +545,8 @@ static void social_followup(Ruby2State* state, const Ruby2ApproachOption* option
     true
   );
 
-  puts("A Lunch Tray is on the tray.");
-  puts("Under the header: PLEASE RETURN WHAT YOU BORROWED.");
+  puts("A Lunch Tray is on the table.");
+  puts("Its table marker says Table B.");
   puts("How do you answer?");
   for (uint8_t i = 0; i < 3; ++i) {
     printf("%u. %s\n", (unsigned)(i + 1), choices[i].label);
@@ -598,15 +598,15 @@ int main(void) {
       RUBY2_CHARACTER_RAVI,
       6001,
       RUBY2_ARCHETYPE_CONSCIENCE,
-      "Compare the answer card with the wet work-order stamp.",
-      "compare the answer card with the wet work-order stamp",
-      "The student checks the stamped work order before trusting the answer card.",
-      "i remember the student choosing the wet stamp over the confident answer card.",
-      "Answer card, wet work order, blue office stamp, your Notebook.",
+      "Compare the answer card with the work-order step.",
+      "compare the answer card with the work-order step",
+      "The student checks the work-order step before trusting the answer card.",
+      "i remember the student choosing the work-order step over the confident answer card.",
+      "Answer card, work order, pencil, your Notebook.",
       "Ravi is front row with one hand already up; i am keeping the work order visible.",
-      "memory=stamped_work_order_callback_at_lunch",
-      "Lunch tray, Lunch Tray, mural wall, your Notebook.",
-      "cast=Ravi; item=lunch_tray; Ruby visible through office window.",
+      "memory=work_order_step_callback_at_lunch",
+      "Lunch Tray, table marker, your Notebook.",
+      "cast=Ravi; item=lunch_tray; focus=table_marker.",
       NULL,
       NULL
     },
@@ -616,14 +616,14 @@ int main(void) {
       RUBY2_CHARACTER_INDRA,
       6002,
       RUBY2_ARCHETYPE_SCHOLAR,
-      "Ask what original is supposed to mean.",
-      "ask what the answer means by original",
-      "The student catches the word original doing too much work.",
-      "i remember the student stopping on original instead of chasing the whole answer.",
-      "Answer card with original underlined, wet work order, your pencil, your Notebook.",
-      "Indra watches the underlined word from the second row; i wait by the board.",
-      "memory=word_original_callback_at_lunch",
-      "Lunch tray, Lunch Tray, napkin with original copied once, your Notebook.",
+      "Ask what revised changes in the answer.",
+      "ask what revised changes in the answer",
+      "The student catches the revised step before choosing the answer.",
+      "i remember the student stopping on revised instead of chasing the whole answer.",
+      "Answer card with revised underlined, work order, your pencil, your Notebook.",
+      "Indra watches the underlined term from the second row; i wait by the board.",
+      "memory=revised_step_callback_at_lunch",
+      "Lunch Tray, table marker, your Notebook.",
       "cast=Indra,Noor; item=lunch_tray.",
       NULL,
       NULL
@@ -634,14 +634,14 @@ int main(void) {
       RUBY2_CHARACTER_NOOR,
       6003,
       RUBY2_ARCHETYPE_SIGNAL_READER,
-      "Circle the lunch note Ruby says she did not print.",
-      "circle the lunch note Ruby says she did not print",
-      "The student circles PLEASE RETURN WHAT YOU BORROWED on both cards.",
-      "i remember the pencil circle around the lunch note i did not print.",
-      "Answer card, wet work order, repeated lunch note, your pencil, your Notebook.",
+      "Circle the mismatch between answer card and work order.",
+      "circle the mismatch between answer card and work order",
+      "The student circles the mismatch before the room repeats it.",
+      "i remember the pencil circle around the mismatch on the board.",
+      "Answer card, work order, blackboard, your pencil, your Notebook.",
       "Noor sits sideways at a desk; i hold the work order by one dry corner.",
-      "memory=lunch note_callback_at_lunch",
-      "Lunch tray, Lunch Tray, curled lunch note, your Notebook.",
+      "memory=board_mismatch_callback_at_lunch",
+      "Lunch Tray, table marker, your Notebook.",
       "cast=Noor,Lyra; item=lunch_tray.",
       NULL,
       NULL
@@ -654,12 +654,12 @@ int main(void) {
       RUBY2_ARCHETYPE_CONNECTOR,
       "Ask Ravi and Lyra what each of them can verify.",
       "ask Ravi and Lyra what each of them can actually verify",
-      "The student gets Ravi and Lyra looking at the same stamp before choosing.",
-      "i remember the student pulling Ravi and Lyra back to the same stamp.",
-      "Answer card, wet work order, shared desk, your Notebook.",
+      "The student gets Ravi and Lyra looking at the same work-order step before choosing.",
+      "i remember the student pulling Ravi and Lyra back to the same work-order step.",
+      "Answer card, work order, shared desk, your Notebook.",
       "Ravi and Lyra are half-standing over the same desk; i point back to the board.",
-      "memory=shared_stamp_check_callback_at_lunch",
-      "Lunch tray, three matching Lunch Trays, Lyra's flashcards, your Notebook.",
+      "memory=shared_work_order_check_callback_at_lunch",
+      "Lunch Tray, three table markers, Lyra's flashcards, your Notebook.",
       "cast=Lyra,Mika; items=three_lunch_trays.",
       NULL,
       NULL
@@ -685,16 +685,15 @@ int main(void) {
     "HOMEROOM",
     homeroom_location(),
     "Ruby at the board; Ravi front row; Lyra by the window; Noor turned sideways at her desk.",
-    "Answer card, wet work order, repeated lunch note, your Notebook."
+    "Answer card, work order, blackboard, your Notebook."
   );
 
   puts("Ruby tapes an answer card to the board:");
-  puts("  The cafeteria mural is original to Ruby High, class of 1998.");
-  puts("Then she holds up a wet work order:");
-  puts("  Cafeteria mural repainted yesterday, 4:12 p.m.");
-  puts("Both papers have the same lunch note:");
-  puts("  PLEASE RETURN WHAT YOU BORROWED.");
-  puts("Ruby says she did not print that line.");
+  puts("  2/3 + 1/6 = 5/6.");
+  puts("Then she clips up a work order:");
+  puts("  Show the common denominator before the final answer.");
+  puts("Both items are on the blackboard.");
+  puts("Ruby asks which classroom move checks the answer.");
   puts("What is the Ruby High move?");
   for (uint8_t i = 0; i < 4; ++i) {
     printf("%u. %s\n", (unsigned)(i + 1), options[i].label);
@@ -718,7 +717,7 @@ int main(void) {
     homeroom_location(),
     picked->homeroom_items,
     picked->homeroom_avatars,
-    "Ruby is looking at the lunch note, the wet stamp, and the student's pencil mark.",
+    "Ruby is looking at the answer card, the work-order step, and the student's pencil mark.",
     picked->outcome,
     picked->ruby_fallback,
     false

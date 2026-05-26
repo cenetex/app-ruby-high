@@ -25,7 +25,7 @@
             side: "left"
           },
           witnesses: [
-            { id: "lyra", name: "Lyra", role: "student", src: "./generated/lyra-cutout.png", read: "checking the stamp twice" },
+            { id: "lyra", name: "Lyra", role: "student", src: "./generated/lyra-cutout.png", read: "checking the work order twice" },
             { id: "ravi", name: "Ravi", role: "student", src: "./generated/ravi-cutout.png", read: "ready to prove something" }
           ]
         },
@@ -35,13 +35,13 @@
         ],
         speech: {
           speaker: "Ruby",
-          text: "The answer card says original. The wet stamp says revised. Before you answer, decide what you can actually trust."
+          text: "The answer card gives the final answer. The work order shows the step that has to support it."
         },
-        notebookLine: "Room steady. Ruby present. Two objects disagree before the question starts.",
+        notebookLine: "Room steady. Ruby present. Two class items need to agree before the question is done.",
         actions: [
-          "Compare the answer card with the wet work-order stamp.",
-          "Ask what original is supposed to mean.",
-          "Circle the footer Ruby says she did not print.",
+          "Compare the answer card with the work-order step.",
+          "Ask what revised changes in the answer.",
+          "Circle the mismatch between answer card and work order.",
           "Ask Ravi and Lyra what each can verify."
         ]
       },
@@ -153,24 +153,22 @@
   };
 
   const witnessReads = {
-    lyra: "stamp's still wet.",
-    ravi: "technically, evidence.",
+    lyra: "check the step twice.",
+    ravi: "the item has to prove it.",
     mika: "you cooked. for real.",
     noor: "trying too hard.",
     sami: "respectfully, weird.",
     indra: "it moved."
   };
 
-  const objectCards = {
-    answer_card: { title: "Answer", main: "original", sub: "class of 1998" },
-    wet_work_order: { title: "Order", main: "revised", sub: "4:12 p.m." },
-    zero_dollar_receipt: { title: "Receipt", main: "$0.00", sub: "same footer" },
+  const itemCards = {
+    answer_card: { title: "Answer", main: "5/6", sub: "final answer" },
+    work_order: { title: "Order", main: "denominator 6", sub: "show the step" },
+    lunch_tray: { title: "Tray", main: "Table B", sub: "seat marker" },
     notebook: { title: "Notebook", main: "margin", sub: "open" }
   };
 
-  const demoTransitions = {
-    "cafeteria-receipt:inspect_receipt": "receipt-inspected"
-  };
+  const demoTransitions = {};
 
   function latestEvent(snapshot) {
     const events = snapshot.events || [];
@@ -204,13 +202,13 @@
 
   function mainLine(snapshot, speakerName) {
     const event = latestSpeakableEvent(snapshot);
-    const objectIds = new Set((snapshot.objects || []).map((object) => object.id));
+    const itemIds = new Set((snapshot.items || []).map((item) => item.id));
 
     if (event && event.performance && event.performance.line) {
       return lineWithoutSpeakerPrefix(event.performance.line, speakerName);
     }
-    if (snapshot.roomId === "homeroom" && objectIds.has("answer_card") && objectIds.has("wet_work_order")) {
-      return "The answer card says original. The wet stamp says revised. Before you answer, decide what can actually be trusted.";
+    if (snapshot.roomId === "homeroom" && itemIds.has("answer_card") && itemIds.has("work_order")) {
+      return "The answer card gives the result. The work order has to support it before anyone trusts it.";
     }
     if (event && event.text) return lineWithoutSpeakerPrefix(event.text, speakerName);
     return "The room waits for a real move.";
@@ -222,8 +220,8 @@
       if (events[i].kind === "notebook_updated") return events[i].text;
     }
 
-    const objectNames = (snapshot.objects || []).map((object) => object.name).filter(Boolean);
-    if (objectNames.length) return `Room steady. Current evidence: ${objectNames.join(", ")}.`;
+    const itemNames = (snapshot.items || []).map((item) => item.name).filter(Boolean);
+    if (itemNames.length) return `Room steady. Current items: ${itemNames.join(", ")}.`;
     const event = latestEvent(snapshot);
     return event && event.text ? event.text : "Notebook margin clear.";
   }
@@ -260,31 +258,15 @@
 
   function blackboardLines(scene) {
     const snapshot = scene.snapshot || {};
-    const objectIds = new Set((snapshot.objects || []).map((object) => object.id));
+    const itemIds = new Set((snapshot.items || []).map((item) => item.id));
     const clocks = snapshot.clocks || {};
 
-    if (snapshot.roomId === "homeroom" && objectIds.has("answer_card") && objectIds.has("wet_work_order")) {
+    if (snapshot.roomId === "homeroom" && itemIds.has("answer_card") && itemIds.has("work_order")) {
       return [
-        "ANSWER CARD: original",
-        "WORK ORDER: revised, wet",
+        "ANSWER CARD: 5/6",
+        "WORK ORDER: denominator 6",
         "BOARD QUESTION:",
-        "What can be trusted?"
-      ];
-    }
-    if (objectIds.has("zero_dollar_receipt") && Number(clocks["Null Signal"] || 0) > 0) {
-      return [
-        "RECEIPT: $0.00",
-        "FOOTER: copied exactly",
-        "BOARD UPDATE:",
-        "The pattern followed."
-      ];
-    }
-    if (objectIds.has("zero_dollar_receipt")) {
-      return [
-        "RECEIPT: $0.00",
-        "FOOTER: same footer",
-        "BOARD QUESTION:",
-        "Who can verify it?"
+        "Which item checks the answer?"
       ];
     }
     return [
@@ -319,13 +301,13 @@
       .filter((entry) => Number(entry[1]) > 0)
       .map(([name, value]) => `${name} ${value}`);
 
-    const itemSlots = (snapshot.objects || []).map((object) => ({
-      id: object.id,
-      label: object.name,
-      objectCard: objectCards[object.id] || {
-        title: object.name || object.id,
+    const itemSlots = (snapshot.items || []).map((item) => ({
+      id: item.id,
+      label: item.name,
+      itemCard: itemCards[item.id] || {
+        title: item.name || item.id,
         main: "present",
-        sub: "room object"
+        sub: "room item"
       },
       active: true
     }));
@@ -484,17 +466,17 @@
     ]);
 
     const items = el("div", { className: "scene-items", attrs: { "aria-label": "Scene items" } }, scene.itemSlots.map((item) => {
-      const itemChildren = item.objectCard ? [
-        el("span", { className: "object-title", text: item.objectCard.title }),
-        el("strong", { text: item.objectCard.main }),
-        el("small", { text: item.objectCard.sub })
+      const itemChildren = item.itemCard ? [
+        el("span", { className: "item-title", text: item.itemCard.title }),
+        el("strong", { text: item.itemCard.main }),
+        el("small", { text: item.itemCard.sub })
       ] : [
         el("img", { attrs: { src: item.src, alt: "" } }),
         el("span", { text: item.label })
       ];
 
       return el("button", {
-        className: ["item-prop", item.objectCard ? "is-object-card" : "", item.active ? "is-active" : ""].filter(Boolean).join(" "),
+        className: ["item-card", item.itemCard ? "is-item-card" : "", item.active ? "is-active" : ""].filter(Boolean).join(" "),
         attrs: { type: "button", "aria-label": item.label }
       }, itemChildren);
     }));

@@ -596,11 +596,11 @@ const char* ruby2_candidate_title(uint16_t candidate_id) {
     case 5001: return "Held";
     case 5002: return "The Door Remembered";
     case 5003: return "Shadow In The Notebook";
-    case 6001: return "The Wet Stamp";
-    case 6002: return "The Word Original";
-    case 6003: return "The Borrowed Line";
+    case 6001: return "The Work-Order Step";
+    case 6002: return "The Revised Step";
+    case 6003: return "The Board Mismatch";
     case 6004: return "The Shared Stamp";
-    case 7001: return "The Cafeteria Slip";
+    case 7001: return "The Open Seat";
     default: return "Untitled Page Draft";
   }
 }
@@ -619,10 +619,10 @@ const char* ruby2_candidate_blurb(uint16_t candidate_id) {
     case 5001: return "Nothing happened loudly. That was the point.";
     case 5002: return "The door remembered it was a door because you held the pattern.";
     case 5003: return "The hallway got your name wrong, and the Notebook kept proof.";
-    case 6001: return "You held the wet work-order stamp up before the answer card could own the room.";
-    case 6002: return "You caught the word original hiding a second question.";
-    case 6003: return "You circled the lunch note Ruby did not print, then found it again at lunch.";
-    case 6004: return "You got Ravi and Lyra checking the same stamp before choosing a side.";
+    case 6001: return "You held the work-order step up before the answer card could own the room.";
+    case 6002: return "You caught the revised step hiding a second question.";
+    case 6003: return "You circled the mismatch between the answer card and work order.";
+    case 6004: return "You got Ravi and Lyra checking the same work-order step before choosing a side.";
     case 7001: return "You used the Lunch Tray to join Noor's table at lunch.";
     default: return "A page draft waits for the right memory.";
   }
@@ -667,8 +667,8 @@ const char* ruby2_candidate_tomorrow_hook(uint16_t candidate_id) {
     case 5003: return "Tomorrow, Noor says your name correctly before anyone else does.";
     case 6001: return "Tomorrow, Sally brings two sources and asks which one deserves the room.";
     case 6002: return "Tomorrow, Edward circles the word obvious and waits.";
-    case 6003: return "Tomorrow, your locker checkout slip has the same lunch note.";
-    case 6004: return "Tomorrow, Eliza asks what a room knows when everyone checks the same stamp.";
+    case 6003: return "Tomorrow, Ruby leaves two answer cards on the board and says only one can stand.";
+    case 6004: return "Tomorrow, Eliza asks what a room knows when everyone checks the same step.";
     case 7001: return "Tomorrow, Noor leaves a seat open at her table.";
     default: return "Tomorrow, Ruby has another question.";
   }

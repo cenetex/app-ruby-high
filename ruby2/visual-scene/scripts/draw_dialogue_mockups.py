@@ -46,8 +46,8 @@ F_CHOICE = font("/System/Library/Fonts/Supplemental/Arial Bold.ttf", 20)
 F_REACT = font("/System/Library/Fonts/Supplemental/Arial.ttf", 15)
 
 REACTION_COPY = {
-    "lyra": "stamp's still wet.",
-    "ravi": "technically, evidence.",
+    "lyra": "check the step twice.",
+    "ravi": "the item has to prove it.",
     "sami": "three versions. neat.",
     "noor": "popular is not true.",
     "indra": "it moved.",

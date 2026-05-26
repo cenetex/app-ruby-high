@@ -52,13 +52,13 @@
       ],
       "speech": {
         "speaker": "Ruby",
-        "text": "The answer card says original. The wet stamp says revised. Before you answer, decide what you can actually trust."
+          "text": "The answer card gives the final answer. The work order shows the step that has to support it."
       },
-      "notebookLine": "Room steady. Ruby present. Two objects disagree before the question starts.",
+      "notebookLine": "Room steady. Ruby present. Two class items need to agree before the question is done.",
       "actions": [
-        "Compare the answer card with the wet work-order stamp.",
-        "Ask what original is supposed to mean.",
-        "Circle the footer Ruby says she did not print.",
+        "Compare the answer card with the work-order step.",
+        "Ask what revised changes in the answer.",
+        "Circle the mismatch between answer card and work order.",
         "Ask Ravi and Lyra what each can verify."
       ]
     },

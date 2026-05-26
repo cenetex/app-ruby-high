@@ -436,7 +436,7 @@ h1 {
   backdrop-filter: blur(5px);
 }
 
-.item-prop {
+.item-card {
   position: relative;
   width: 48px;
   padding: 0;
@@ -446,13 +446,13 @@ h1 {
   filter: drop-shadow(0 10px 12px rgba(0, 0, 0, .28));
 }
 
-.item-prop img {
+.item-card img {
   display: block;
   width: 100%;
   height: auto;
 }
 
-.item-prop span {
+.item-card span {
   position: absolute;
   left: 50%;
   bottom: -12px;
@@ -466,11 +466,11 @@ h1 {
   white-space: nowrap;
 }
 
-.item-prop.is-active {
+.item-card.is-active {
   width: 56px;
 }
 
-.item-prop.is-object-card {
+.item-card.is-item-card {
   display: grid;
   width: 82px;
   min-height: 76px;
@@ -483,13 +483,13 @@ h1 {
   text-align: left;
 }
 
-.item-prop.is-object-card.is-active {
+.item-card.is-item-card.is-active {
   width: 88px;
 }
 
-.item-prop.is-object-card span,
-.item-prop.is-object-card strong,
-.item-prop.is-object-card small {
+.item-card.is-item-card span,
+.item-card.is-item-card strong,
+.item-card.is-item-card small {
   position: static;
   display: block;
   transform: none;
@@ -501,18 +501,18 @@ h1 {
   white-space: normal;
 }
 
-.item-prop.is-object-card .object-title {
+.item-card.is-item-card .item-title {
   color: var(--ruby);
   font-size: 10px;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.item-prop.is-object-card strong {
+.item-card.is-item-card strong {
   font-size: 14px;
 }
 
-.item-prop.is-object-card small {
+.item-card.is-item-card small {
   color: #4e4541;
   font-size: 10px;
 }
