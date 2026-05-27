@@ -28,6 +28,7 @@ COPY landing ./landing
 COPY scripts/server.mjs ./scripts/server.mjs
 COPY scripts/http-limits.mjs ./scripts/http-limits.mjs
 COPY scripts/landing.mjs ./scripts/landing.mjs
+COPY scripts/public-base.mjs ./scripts/public-base.mjs
 RUN mkdir -p /data
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \

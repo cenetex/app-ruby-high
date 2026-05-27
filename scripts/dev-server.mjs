@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { URL } from "node:url";
 import { bodyLimitForPath } from "./http-limits.mjs";
 import { serveLandingRequest } from "./landing.mjs";
+import { normalizePublicOrigin } from "./public-base.mjs";
 import {
   AuthService,
   ChatService,
@@ -19,7 +20,7 @@ import {
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "localhost";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
-const PUBLIC_BASE = process.env.RUBY_HIGH_PUBLIC_BASE ?? `http://${HOST}:${PORT}`;
+const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE) ?? `http://${HOST}:${PORT}`;
 
 const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
 console.log(`[ruby-high] state store: ${stateStore.describe()}`);

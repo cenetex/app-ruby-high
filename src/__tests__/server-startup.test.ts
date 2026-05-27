@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const serverEntry = readFileSync(new URL("../../scripts/server.mjs", import.meta.url), "utf8");
 const devServerEntry = readFileSync(new URL("../../scripts/dev-server.mjs", import.meta.url), "utf8");
 const httpLimits = readFileSync(new URL("../../scripts/http-limits.mjs", import.meta.url), "utf8");
+const publicBase = readFileSync(new URL("../../scripts/public-base.mjs", import.meta.url), "utf8");
 const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
 const flyConfig = readFileSync(new URL("../../fly.toml", import.meta.url), "utf8");
 
@@ -42,6 +43,15 @@ describe("production startup guardrails", () => {
     for (const file of relativeScriptImports) {
       expect(dockerfile).toContain(`COPY scripts/${file} ./scripts/${file}`);
     }
+  });
+
+  it("normalizes the dead legacy public host before building callbacks", () => {
+    expect(publicBase).toContain('export const CANONICAL_PUBLIC_ORIGIN = "https://ruby-high.ai";');
+    expect(publicBase).toContain('"rubyhighai.com"');
+    expect(publicBase).toContain('"www.rubyhighai.com"');
+    expect(serverEntry).toContain("const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE);");
+    expect(serverEntry).toContain("return normalizePublicOrigin(requestBase) ?? requestBase;");
+    expect(devServerEntry).toContain("const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE) ?? `http://${HOST}:${PORT}`;");
   });
 
   it("serves the static landing page at the root from Fly", () => {
