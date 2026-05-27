@@ -186,6 +186,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"Connect a Solana wallet to open packs and reveal Cards."');
     expectScriptToContain(script, '"Privy account · no Solana wallet"');
     expectScriptToContain(script, "function hallPassPacksForTelemetry(t)");
+    expectScriptToContain(script, 'pack.status !== "void"');
     expectScriptToContain(script, "function buildHallPassPack(pack)");
     expectScriptToContain(script, "No packs or Cards in this wallet yet.");
     expectScriptToContain(script, "async function openHallPassPackFromAccount(packId)");

@@ -2377,7 +2377,14 @@ export function runViewerClient(bootstrap) {
     const packs = Array.isArray(wallet.hallPassPacks) ? wallet.hallPassPacks.slice() : [];
     const byAsset = new Map();
     packs
-      .filter((pack) => pack && typeof pack === "object" && pack.id && pack.assetAddress && pack.mintSignature)
+      .filter((pack) => (
+        pack &&
+        typeof pack === "object" &&
+        pack.status !== "void" &&
+        pack.id &&
+        pack.assetAddress &&
+        pack.mintSignature
+      ))
       .forEach((pack) => {
         const key = String(pack.assetAddress || pack.id);
         const current = byAsset.get(key);
