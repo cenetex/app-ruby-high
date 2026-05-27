@@ -244,8 +244,8 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Edition", value: "First Bell Set" });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Live Profiles", value: FIRST_BELL_SET_LIVE_PROFILE_COUNT });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Draft Profiles", value: FIRST_BELL_SET_TOTAL_PROFILES });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Live Profiles", value: String(FIRST_BELL_SET_LIVE_PROFILE_COUNT) });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Draft Profiles", value: String(FIRST_BELL_SET_TOTAL_PROFILES) });
     expectWebsiteLink(lastResponse?.body);
 
     const handled = await handleNftRoutes(makeCtx({
@@ -386,7 +386,7 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set", value: "First Bell" });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Set Code", value: FIRST_BELL_SET_CODE });
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "NFT Type", value: "Pack" });
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: "5" });
     expectWebsiteLink(lastResponse?.body);
 
     const legacyUriHandled = await handleNftRoutes(makeCtx({
@@ -397,7 +397,7 @@ describe("Hall Pass NFT routes", () => {
     expect(legacyUriHandled).toBe(true);
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.description).toContain("5 revealable cards");
-    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: 5 });
+    expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "Cards Inside", value: "5" });
     expectWebsiteLink(lastResponse?.body);
 
     const openedUriHandled = await handleNftRoutes(makeCtx({

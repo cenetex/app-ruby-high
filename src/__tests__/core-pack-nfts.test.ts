@@ -207,8 +207,8 @@ describe("Core pack NFT checkout transactions", () => {
               metadata: {
                 name: "Ruby High: First Bell 3-Pack #456789",
                 attributes: [
-                  { trait_type: "Packs", value: 3 },
-                  { trait_type: "Cards Inside", value: 15 },
+                  { trait_type: "Packs", value: "3" },
+                  { trait_type: "Cards Inside", value: "15" },
                   { trait_type: "Serial", value: "456789" },
                 ],
               },

@@ -443,8 +443,8 @@ export function hallPassCollectionMetadataForRoute(args: {
       { trait_type: "Type", value: "Collection" },
       { trait_type: "Series", value: CARD_COLLECTION_SERIES },
       { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
-      { trait_type: "Live Profiles", value: FIRST_BELL_SET_LIVE_PROFILE_COUNT },
-      { trait_type: "Draft Profiles", value: FIRST_BELL_SET_TOTAL_PROFILES },
+      { trait_type: "Live Profiles", value: String(FIRST_BELL_SET_LIVE_PROFILE_COUNT) },
+      { trait_type: "Draft Profiles", value: String(FIRST_BELL_SET_TOTAL_PROFILES) },
       { trait_type: "Website", value: website },
     ],
     properties: {
