@@ -429,6 +429,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         card,
         ownerWalletAddress,
         mintAddress,
+        metadataUri,
         transactionMessageHash,
       });
       const verified = await verifyHallPassCardMint({

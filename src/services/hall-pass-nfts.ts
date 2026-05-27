@@ -77,6 +77,10 @@ const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-hi
 const CARD_COLLECTION_METADATA_URI_PATH = `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`;
 const CARD_BACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1";
 const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
+const MEMO_PROGRAM_IDS = new Set([
+  "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+  "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
+]);
 const ESTIMATED_CARD_MINT_LAMPORTS = 20_000_000n;
 const MINT_AUTHORITY_RESERVE_LAMPORTS = 20_000_000n;
 const SOLANA_RPC_TIMEOUT_MS = 12_000;
@@ -631,6 +635,7 @@ async function compileHallPassCardMintTransaction(
   ownerWalletAddress: string,
   latestBlockhash: LatestBlockhash,
   config: ReturnType<typeof readMintConfig>,
+  options: { metadataUri?: string } = {},
 ) {
   const umi = createUmi(config.rpcUrl).use(mplCore());
   const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
@@ -638,7 +643,9 @@ async function compileHallPassCardMintTransaction(
   const owner = publicKey(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
   const ownerSigner = createUmiNoopSigner(owner);
   const asset = createHallPassCardAssetSigner(umi, card, String(owner), config.authoritySecret);
-  const metadataUri = await hallPassNftMetadataUriForMint(card);
+  const metadataUri = typeof options.metadataUri === "string" && options.metadataUri.trim()
+    ? options.metadataUri.trim()
+    : await hallPassNftMetadataUriForMint(card);
   const collection = { publicKey: publicKey(config.collectionAddress) } as Awaited<ReturnType<typeof fetchCollectionV1>>;
   const builder = coreCreate(umi, {
     asset,
@@ -723,6 +730,7 @@ export async function submitSignedHallPassCardMintTransaction(
     card: RubyHighHallPassCard;
     ownerWalletAddress: string;
     mintAddress: string;
+    metadataUri?: string;
     transactionMessageHash?: string;
   },
 ): Promise<string> {
@@ -748,6 +756,7 @@ async function completeHallPassCardMintTransactionWithServerSigners(
     card: RubyHighHallPassCard;
     ownerWalletAddress: string;
     mintAddress: string;
+    metadataUri?: string;
     transactionMessageHash?: string;
   },
   config: ReturnType<typeof readMintConfig>,
@@ -798,6 +807,7 @@ async function signedHallPassCardMintMatchesPreparedTransaction(
     card: RubyHighHallPassCard;
     ownerWalletAddress: string;
     mintAddress: string;
+    metadataUri?: string;
   },
   config: ReturnType<typeof readMintConfig>,
 ): Promise<boolean> {
@@ -811,6 +821,11 @@ async function signedHallPassCardMintMatchesPreparedTransaction(
     prepared.ownerWalletAddress,
     { blockhash: recentBlockhash, lastValidBlockHeight: 0 },
     config,
+    {
+      metadataUri: prepared.metadataUri ||
+        prepared.card.pendingMintMetadataUri ||
+        prepared.card.metadataUri,
+    },
   );
   if (String(expected.asset.publicKey) !== cleanSolanaAddress(prepared.mintAddress, "Card asset")) return false;
   const expectedShape = parseSolanaTransactionForInstructionMatch(
@@ -917,7 +932,7 @@ function parseSolanaTransactionForInstructionMatch(transactionBase64: string): P
 }
 
 function withoutWalletOnlyInstructions(instructions: ParsedInstructionShape[]): ParsedInstructionShape[] {
-  return instructions.filter((ix) => ix.programId !== COMPUTE_BUDGET_PROGRAM_ID);
+  return instructions.filter((ix) => ix.programId !== COMPUTE_BUDGET_PROGRAM_ID && !MEMO_PROGRAM_IDS.has(ix.programId));
 }
 
 function sameInstructionList(actual: ParsedInstructionShape[], expected: ParsedInstructionShape[]): boolean {

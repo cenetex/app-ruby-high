@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ComputeBudgetProgram,
   Keypair,
+  PublicKey,
   Transaction,
   TransactionInstruction,
   VersionedTransaction,
@@ -22,11 +23,13 @@ import {
   submitSignedHallPassCardMintTransaction,
   verifyHallPassCardBurn,
 } from "../services/hall-pass-nfts.js";
+import { setNftMetadataUploaderForTest } from "../services/nft-metadata-storage.js";
 
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_NFT_RPC_URL: process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL,
   RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
+  RUBY_HIGH_NFT_METADATA_STORAGE: process.env.RUBY_HIGH_NFT_METADATA_STORAGE,
 };
 
 const OWNER = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
@@ -201,7 +204,7 @@ describe("verifyHallPassCardBurn", () => {
     expect(submitted.message.recentBlockhash).toBe(refreshedBlockhash);
   });
 
-  it("accepts equivalent browser wallet transactions reserialized with compute budget instructions", async () => {
+  it("accepts equivalent browser wallet transactions reserialized with wallet-only instructions", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
     process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
@@ -249,6 +252,11 @@ describe("verifyHallPassCardBurn", () => {
       recentBlockhash: Keypair.generate().publicKey.toBase58(),
     });
     walletTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    walletTransaction.add(new TransactionInstruction({
+      programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      keys: [],
+      data: Buffer.from("ruby-high-wallet-sign"),
+    }));
     for (const ix of preparedTransaction.message.compiledInstructions) {
       walletTransaction.add(new TransactionInstruction({
         programId: accountKeys[ix.programIdIndex]!,
@@ -277,6 +285,86 @@ describe("verifyHallPassCardBurn", () => {
     expect(sentTransactions).toHaveLength(1);
     const submitted = Transaction.from(Buffer.from(sentTransactions[0]!, "base64"));
     expect(submitted.instructions[0]?.programId.toBase58()).toBe(ComputeBudgetProgram.programId.toBase58());
+  });
+
+  it("reuses the prepared card metadata URI when matching refreshed wallet transactions", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    process.env.RUBY_HIGH_NFT_METADATA_STORAGE = "irys-solana";
+    const sentTransactions: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
+      if (request.method === "getLatestBlockhash") {
+        return rpcResponse(request.id, {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        });
+      }
+      if (request.method === "simulateTransaction") {
+        return rpcResponse(request.id, { err: null, logs: [] });
+      }
+      if (request.method === "sendTransaction") {
+        sentTransactions.push(String(request.params?.[0] ?? ""));
+        return rpcResponse(request.id, SUBMITTED_SIGNATURE);
+      }
+      if (request.method === "getTransaction") {
+        return rpcResponse(request.id, {
+          meta: { err: null },
+          transaction: { signatures: [SUBMITTED_SIGNATURE] },
+        });
+      }
+      throw new Error(`Unexpected Solana RPC method ${request.method}`);
+    }));
+
+    let uploadCount = 0;
+    let restoreUploader = setNftMetadataUploaderForTest(async (payload) => {
+      uploadCount += 1;
+      return `https://gateway.irys.xyz/prepared-${payload.metadataHash.slice(0, 12)}`;
+    });
+    try {
+      const owner = Keypair.generate();
+      const ownerAddress = owner.publicKey.toBase58();
+      const card = {
+        id: "unit-card-prepared-metadata-uri",
+        characterId: "ruby",
+        characterName: "Ruby",
+        serial: 21,
+      } as any;
+      const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
+      expect(uploadCount).toBe(1);
+
+      restoreUploader();
+      restoreUploader = setNftMetadataUploaderForTest(async () => {
+        throw new Error("submit should not re-upload card metadata");
+      });
+
+      const transaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
+      transaction.message.recentBlockhash = Keypair.generate().publicKey.toBase58();
+      transaction.sign([owner]);
+      const signature = await submitSignedHallPassCardMintTransaction(
+        Buffer.from(transaction.serialize()).toString("base64"),
+        [ownerAddress, prepared.mintAddress],
+        {
+          card: {
+            ...card,
+            pendingMintMetadataUri: prepared.metadataUri,
+          },
+          ownerWalletAddress: ownerAddress,
+          mintAddress: prepared.mintAddress,
+          metadataUri: prepared.metadataUri,
+          transactionMessageHash: prepared.transactionMessageHash,
+        },
+      );
+
+      expect(signature).toBe(SUBMITTED_SIGNATURE);
+      expect(sentTransactions).toHaveLength(1);
+      expect(uploadCount).toBe(1);
+    } finally {
+      restoreUploader();
+    }
   });
 
   it("rejects owner-signed mint transactions whose mint instructions changed", async () => {
