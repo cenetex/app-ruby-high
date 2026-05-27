@@ -20,6 +20,14 @@ export interface NftMetadataUploadPayload {
   metadataHash: string;
 }
 
+export interface PublicNftMetadataStorageStatus {
+  mode: "app-hosted" | "arweave" | string;
+  durable: boolean;
+  configured: boolean;
+  gateway?: string;
+  reason?: string;
+}
+
 let uploaderOverride: ((payload: NftMetadataUploadPayload) => Promise<string>) | null = null;
 const uploadedMetadataUris = new Map<string, Promise<string>>();
 
@@ -37,6 +45,42 @@ export function setNftMetadataUploaderForTest(
 
 export function nftMetadataStorageEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return metadataStorageMode(env) === "arweave";
+}
+
+export function publicNftMetadataStorageStatus(env: NodeJS.ProcessEnv = process.env): PublicNftMetadataStorageStatus {
+  const mode = metadataStorageMode(env);
+  if (!mode) {
+    return {
+      mode: "app-hosted",
+      durable: false,
+      configured: true,
+    };
+  }
+  if (mode !== "arweave") {
+    return {
+      mode,
+      durable: false,
+      configured: false,
+      reason: `Unsupported NFT metadata storage mode "${mode}".`,
+    };
+  }
+  try {
+    arweaveJwk(env);
+    return {
+      mode,
+      durable: true,
+      configured: true,
+      gateway: metadataGateway(env),
+    };
+  } catch (err) {
+    return {
+      mode,
+      durable: true,
+      configured: false,
+      gateway: metadataGateway(env),
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function durableNftMetadataUri(input: DurableNftMetadataInput): Promise<string> {

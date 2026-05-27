@@ -33,7 +33,13 @@ These are the known collection addresses from the current production configurati
 - Core pack collection: `GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q`
 - Observed Ruby High authority: `B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP`
 
-If either collection was created with immutable metadata and its on-chain name or URI is already wrong, do not keep patching around it forever. Create a fresh canonical collection with the copy above, set the corresponding environment variable, and verify that collection instead.
+May 27, 2026 audit:
+
+- Cards observed in wallet `57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC` are on-chain verified into `Bu43twu7FsZUHVnYLWuAHLGzseSywm6uHTcD6EDAcX8Q`, and their first creator is verified as `B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP`.
+- The card collection NFT itself has immutable on-chain metadata with `name = Ruby High` and an app-hosted metadata URI. Phantom prioritizes the verified collection NFT's on-chain name when grouping collectibles, so this collection will not show the full `Ruby High: First Bell` name even though its items are properly collection-verified.
+- The Core pack collection currently has `name = Ruby High Packs`, an app-hosted metadata URI, and verified creators. It can be repaired in place if the collection update authority is available, but wallet support and marketplace indexing are still more variable than Token Metadata receipts.
+
+If either collection was created with immutable metadata and its on-chain name or URI is already wrong, do not keep patching around it forever. Create a fresh canonical collection with the copy above, set the corresponding environment variable, and verify that collection instead. New collection creation should use durable metadata JSON when `RUBY_HIGH_NFT_METADATA_STORAGE=arweave` is configured.
 
 ## Metadata Policy
 

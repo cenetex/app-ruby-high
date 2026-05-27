@@ -38,7 +38,7 @@ import {
   FIRST_BELL_SET_NAME,
 } from "./hall-pass-card-catalog.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
-import { durableNftMetadataUri } from "./nft-metadata-storage.js";
+import { durableNftMetadataUri, publicNftMetadataStorageStatus } from "./nft-metadata-storage.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -74,6 +74,7 @@ export interface PublicCorePackNftStatus {
   symbol: string;
   authorityAddress?: string;
   collectionAddress?: string;
+  metadataStorage?: ReturnType<typeof publicNftMetadataStorageStatus>;
   reason?: string;
 }
 
@@ -274,6 +275,7 @@ export function publicCorePackNftStatus(env: NodeJS.ProcessEnv = process.env): P
     symbol: status.symbol,
     ...(status.authorityAddress ? { authorityAddress: status.authorityAddress } : {}),
     ...(status.collectionAddress ? { collectionAddress: status.collectionAddress } : {}),
+    metadataStorage: publicNftMetadataStorageStatus(env),
     ...(status.reason ? { reason: status.reason } : {}),
   };
 }
@@ -378,6 +380,18 @@ async function corePackOpenedNftMetadataUriForUpdate(input: CorePackNftOpenedUpd
 
 export function coreCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
   return `${publicBaseUrlFromEnv(env)}${CORE_PACK_NFT_PREFIX}/metadata/core/collection.json`;
+}
+
+export async function coreCollectionMetadataUriForMint(env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const fallbackUri = coreCollectionMetadataUri(env);
+  return durableNftMetadataUri({
+    fallbackUri,
+    metadata: corePackCollectionMetadataForRoute({
+      publicBaseUrl: publicBaseUrlFromEnv(env),
+    }),
+    assetKey: "api/apps/ruby-high/nft/metadata/core/collection.json",
+    env,
+  });
 }
 
 export function corePackAssetPluginsForMint(args: {
@@ -879,7 +893,7 @@ export async function createCorePackCollection(): Promise<CoreCollectionCreateRe
   const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
   umi.use(keypairIdentity(authorityKeypair, true));
   const collection = generateSigner(umi);
-  const metadataUri = coreCollectionMetadataUri();
+  const metadataUri = await coreCollectionMetadataUriForMint();
   const sent = await sendAndConfirmCoreTransaction(umi, createCollection(umi, {
     collection,
     updateAuthority: umi.identity.publicKey,
@@ -887,7 +901,6 @@ export async function createCorePackCollection(): Promise<CoreCollectionCreateRe
     name: PACK_COLLECTION_NAME,
     uri: metadataUri,
     plugins: [
-      { type: "ImmutableMetadata" },
       {
         type: "VerifiedCreators",
         signatures: [{ address: umi.identity.publicKey, verified: true }],

@@ -66,7 +66,7 @@ import {
   revealProvenanceProperties,
 } from "./hall-pass-reveal-provenance.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
-import { durableNftMetadataUri } from "./nft-metadata-storage.js";
+import { durableNftMetadataUri, publicNftMetadataStorageStatus } from "./nft-metadata-storage.js";
 
 type LatestBlockhash = Parameters<typeof setTransactionMessageLifetimeUsingBlockhash>[0];
 
@@ -109,6 +109,7 @@ export interface PublicHallPassNftStatus {
   symbol: string;
   authorityAddress?: string;
   collectionAddress?: string;
+  metadataStorage?: ReturnType<typeof publicNftMetadataStorageStatus>;
   reason?: string;
 }
 
@@ -304,6 +305,7 @@ export function publicHallPassNftStatus(env: NodeJS.ProcessEnv = process.env): P
     symbol: status.symbol,
     ...(status.authorityAddress ? { authorityAddress: status.authorityAddress } : {}),
     ...(status.collectionAddress ? { collectionAddress: status.collectionAddress } : {}),
+    metadataStorage: publicNftMetadataStorageStatus(env),
     ...(status.reason ? { reason: status.reason } : {}),
   };
 }
@@ -1146,7 +1148,7 @@ export async function createHallPassCardCollection(): Promise<HallPassCollection
   const config = readMintConfig();
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
   const mint = await generateKeyPairSigner();
-  const metadataUri = hallPassCollectionMetadataUri();
+  const metadataUri = await hallPassCollectionMetadataUriForMint();
   const [createInstruction, mintInstruction] = await createNft({
     mint,
     authority,
@@ -1158,7 +1160,7 @@ export async function createHallPassCardCollection(): Promise<HallPassCollection
     sellerFeeBasisPoints: 0,
     creators: verifiedCreatorArgs(authority.address),
     primarySaleHappened: true,
-    isMutable: false,
+    isMutable: true,
     collection: null,
     uses: null,
     collectionDetails: { __kind: "V1", size: 0n },
@@ -1331,6 +1333,18 @@ export function hallPassCardCollectionForMint(collectionAddress?: string): { key
 
 function hallPassCollectionMetadataUri(env: NodeJS.ProcessEnv = process.env): string {
   return `${publicBaseUrlFromEnv(env)}${CARD_COLLECTION_METADATA_URI_PATH}`;
+}
+
+export async function hallPassCollectionMetadataUriForMint(env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const fallbackUri = hallPassCollectionMetadataUri(env);
+  return durableNftMetadataUri({
+    fallbackUri,
+    metadata: hallPassCollectionMetadataForRoute({
+      publicBaseUrl: publicBaseUrlFromEnv(env),
+    }),
+    assetKey: "api/apps/ruby-high/nft/metadata/hall-pass/collection.json",
+    env,
+  });
 }
 
 function normalizeSerial(serial: string): string {
