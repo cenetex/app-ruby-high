@@ -46,6 +46,7 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS,
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
+  RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
 };
 
 let restoreCorePackMinter: (() => void) | null = null;
@@ -185,6 +186,7 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS;
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
+  process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
   restoreCorePackMinter = setCorePackNftMinterForTest(async (input) => deterministicCorePackMintForTest(input));
   restoreCorePackVerifier = setCorePackNftVerifierForTest(async (input) => ({
     ownerWalletAddress: input.ownerWalletAddress,

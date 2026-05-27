@@ -138,13 +138,13 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for NFT minting. |
-| `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack NFTs and Token Metadata card NFTs. Also drives creator attribution in served JSON metadata. Set via secrets only. |
+| `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack and card NFTs. Also drives creator attribution in served JSON metadata. Set via secrets only. |
 | `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads; unset keeps app-hosted metadata JSON. |
 | `RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK` | — | Arweave RSA JWK JSON used when `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`. `RUBY_HIGH_ARWEAVE_JWK`, `RUBY_HIGH_ARWEAVE_WALLET_JWK`, and `ARWEAVE_JWK` are also accepted. |
 | `RUBY_HIGH_NFT_METADATA_GATEWAY` | `https://arweave.net` | Gateway prefix returned for uploaded metadata JSON. |
 | `RUBY_HIGH_PACK_REVEAL_SECRET` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Server-only HMAC secret for deterministic pack-to-card mapping. Set a stable production secret so the mapping remains fair and non-public. |
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |
-| `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` | — | Metaplex Token Metadata collection mint for Ruby High: First Bell card NFTs. Create once with `npm run nft:create-card-collection`, then set this value so cards verify into `Ruby High: First Bell`. |
+| `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High: First Bell card NFTs. Create once with `npm run nft:create-card-collection`, then set this value. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_MINT` | `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump` | SPL-token mint accepted for crypto pack purchases. |
 | `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY` | Treasury wallet owner that must receive the SPL-token transfer. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL` | `RUBY` | Display symbol for the Solana token. |
@@ -201,7 +201,7 @@ Solana purchases are separate from Stripe and use the configured SPL token to mi
 - The default treasury wallet is `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY`.
 - Every built-in pack defaults to `100000` `$RUBY`.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
-- Create the card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS` to the printed address so card NFTs verify into `Ruby High: First Bell`.
+- Create the Core card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` to the printed address.
 - The current First Bell runtime manifest has 24 mintable profiles and a 12-profile alternate-art expansion, for 36 draft profiles total in `src/services/hall-pass-card-catalog.ts`. Revealed metadata includes `Set`, `Set Code`, `Set Number`, `Card Profile ID`, `Card Name`, `Subject`, media traits, and creator attribution. Reveal proof data stays under `properties.provenance` instead of visible marketplace traits.
 - Wallet-facing card crops are plain images, not cards inside cards: students, teachers, and specials are tall avatar crops; items are square; locations are wide. Regenerate crops with `npm run nft:crop-cards` after changing source art. Use `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <ids>` to refresh Grok source art through OpenRouter before cropping.
 - Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Pack/card records and receipts carry `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`, and reveal-time `revealSeed` provenance; see [`NFT_PROVABLY_FAIR_V1_1.md`](./NFT_PROVABLY_FAIR_V1_1.md) for the published algorithm.

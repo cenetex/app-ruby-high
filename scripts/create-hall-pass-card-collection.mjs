@@ -9,7 +9,7 @@ try {
     collectionAddress: result.collectionAddress,
     signature: result.signature,
     metadataUri: result.metadataUri,
-    env: `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS=${result.collectionAddress}`,
+    env: `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS=${result.collectionAddress}`,
   }, null, 2));
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));

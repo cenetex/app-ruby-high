@@ -26,6 +26,7 @@ import {
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_NFT_RPC_URL: process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL,
+  RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
 };
 
 const OWNER = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
@@ -42,7 +43,7 @@ afterEach(() => {
 });
 
 describe("verifyHallPassCardBurn", () => {
-  it("uses branded, market-friendly on-chain card names within Token Metadata limits", () => {
+  it("uses branded, market-friendly on-chain card names within wallet limits", () => {
     expect(hallPassCardOnChainNameForMint({ characterName: "Mika", serial: 823842 } as any)).toBe("Mika Ruby High Card #823842");
     expect(hallPassCardOnChainNameForMint({ characterName: "Library Card", serial: 254854 } as any)).toBe("Ruby High: Library Card #254854");
     expect(hallPassCardOnChainNameForMint({ characterName: "Professor Edward", serial: 424242 } as any)).toBe("Ruby High: Prof. Edward #424242");
@@ -52,11 +53,10 @@ describe("verifyHallPassCardBurn", () => {
     }
   });
 
-  it("sets an unverified Token Metadata collection at create time for later verification", () => {
+  it("normalizes the Core card collection account for minting", () => {
     expect(hallPassCardCollectionForMint(undefined)).toBeNull();
     expect(hallPassCardCollectionForMint("Bu43twu7FsZUHVnYLWuAHLGzseSywm6uHTcD6EDAcX8Q")).toMatchObject({
-      key: "Bu43twu7FsZUHVnYLWuAHLGzseSywm6uHTcD6EDAcX8Q",
-      verified: false,
+      publicKey: "Bu43twu7FsZUHVnYLWuAHLGzseSywm6uHTcD6EDAcX8Q",
     });
   });
 
@@ -74,6 +74,7 @@ describe("verifyHallPassCardBurn", () => {
   it("prepares an unsigned wallet-first mint, then completes server signatures after owner signing", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     const sentTransactions: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
       const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
@@ -141,6 +142,7 @@ describe("verifyHallPassCardBurn", () => {
   it("accepts owner signatures returned by standard Solana browser wallets with refreshed blockhashes", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     const sentTransactions: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
       const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
@@ -202,6 +204,7 @@ describe("verifyHallPassCardBurn", () => {
   it("accepts equivalent browser wallet transactions reserialized with compute budget instructions", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     const sentTransactions: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
       const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
@@ -279,6 +282,7 @@ describe("verifyHallPassCardBurn", () => {
   it("rejects owner-signed mint transactions whose mint instructions changed", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
       const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
       if (request.method === "getLatestBlockhash") {
@@ -304,15 +308,15 @@ describe("verifyHallPassCardBurn", () => {
       serial: 18,
     } as any;
     const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
-    const transaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
-    const instruction = transaction.message.compiledInstructions.find((ix) => ix.data.length > 0);
+    const transaction = Transaction.from(Buffer.from(prepared.transactionBase64, "base64"));
+    const instruction = transaction.instructions.find((ix) => ix.data.length > 0);
     if (!instruction) throw new Error("prepared transaction has no instruction data");
-    instruction.data = new Uint8Array(instruction.data);
+    instruction.data = Buffer.from(instruction.data);
     instruction.data[0] = instruction.data[0]! ^ 1;
-    transaction.sign([owner]);
+    transaction.partialSign(owner);
 
     await expect(submitSignedHallPassCardMintTransaction(
-      Buffer.from(transaction.serialize()).toString("base64"),
+      transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
       [ownerAddress, prepared.mintAddress],
       {
         card,
@@ -323,9 +327,10 @@ describe("verifyHallPassCardBurn", () => {
     )).rejects.toThrow(/does not match this Ruby High card/);
   });
 
-  it("accepts parsed burn instructions whose wallet is in multisigAuthority/signers", async () => {
+  it("accepts Core burn instructions for the connected wallet", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -337,16 +342,15 @@ describe("verifyHallPassCardBurn", () => {
             signatures: [SIGNATURE],
             message: {
               instructions: [{
-                parsed: {
-                  type: "burn",
-                  info: {
-                    account: "3fefo5FWgu4h1YsCyJsyzvRbwUuTLPXKCMzhvhnRnT7c",
-                    amount: "1",
-                    mint: MINT,
-                    multisigAuthority: OWNER,
-                    signers: [OWNER],
-                  },
-                },
+                programId: "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
+                accounts: [
+                  MINT,
+                  "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+                  OWNER,
+                  OWNER,
+                  "11111111111111111111111111111111",
+                ],
+                data: "uy",
               }],
             },
           },

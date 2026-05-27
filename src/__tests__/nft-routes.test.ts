@@ -60,8 +60,8 @@ const OWNER = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
 const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
+  RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
   RUBY_HIGH_PACK_REVEAL_SECRET: process.env.RUBY_HIGH_PACK_REVEAL_SECRET,
-  RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
 };
 
@@ -157,6 +157,7 @@ function expectNoVisibleProvenanceTraits(metadata: any): void {
 beforeEach(async () => {
   restoreEnv();
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
+  process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
   process.env.RUBY_HIGH_PACK_REVEAL_SECRET = "nft-route-test-reveal-secret";
   process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://ruby-high.ai";
   restoreMintBuilder = setHallPassNftMintTransactionBuilderForTest(async (card, ownerWalletAddress) => ({

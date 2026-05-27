@@ -1,43 +1,32 @@
 import { createHash } from "node:crypto";
-import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import {
-  assertIsFullySignedTransaction,
-  address,
-  appendTransactionMessageInstructions,
-  blockhash,
-  compileTransaction,
-  createKeyPairSignerFromBytes,
-  createKeyPairSignerFromPrivateKeyBytes,
-  createNoopSigner,
+  PublicKey as Web3PublicKey,
+  Transaction,
+  VersionedTransaction,
+} from "@solana/web3.js";
+import {
   createSolanaRpc,
-  createTransactionMessage,
-  generateKeyPairSigner,
-  getBase64EncodedWireTransaction,
-  getTransactionDecoder,
-  getTransactionEncoder,
-  partiallySignTransaction,
-  partiallySignTransactionMessageWithSigners,
-  pipe,
-  setTransactionMessageFeePayer,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
-  signTransactionMessageWithSigners,
 } from "@solana/kit";
-import type { Instruction, TransactionSigner } from "@solana/kit";
 import {
-  TokenStandard,
-  createNft,
-  fetchDigitalAsset,
-  fetchDigitalAssetWithAssociatedToken,
-  findMasterEditionPda,
-  findMetadataPda,
-  getBurnV1InstructionAsync,
-  getSetAndVerifySizedCollectionItemInstruction,
-} from "@metaplex-foundation/mpl-token-metadata-kit";
+  burn as coreBurn,
+  collectionAddress as coreAssetCollectionAddress,
+  create as coreCreate,
+  createCollection as coreCreateCollection,
+  fetchAssetV1,
+  fetchCollectionV1,
+  mplCore,
+} from "@metaplex-foundation/mpl-core";
 import {
-  findAssociatedTokenPda,
-  TOKEN_PROGRAM_ADDRESS,
-} from "@solana-program/token";
+  createNoopSigner as createUmiNoopSigner,
+  createSignerFromKeypair,
+  generateSigner as generateUmiSigner,
+  keypairIdentity,
+  publicKey,
+  type TransactionBuilder,
+  type Umi,
+} from "@metaplex-foundation/umi";
+import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { toWeb3JsInstruction, toWeb3JsKeypair } from "@metaplex-foundation/umi-web3js-adapters";
 import type { RubyHighHallPassCard } from "../types.js";
 import {
   FIRST_BELL_SET_CODE,
@@ -68,12 +57,13 @@ import {
 import { nftImageUri } from "./nft-arweave-assets.js";
 import { durableNftMetadataUri, publicNftMetadataStorageStatus } from "./nft-metadata-storage.js";
 
-type LatestBlockhash = Parameters<typeof setTransactionMessageLifetimeUsingBlockhash>[0];
+type LatestBlockhash = { blockhash: string; lastValidBlockHeight?: number | bigint };
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BASE58_INDEX = new Map(BASE58_ALPHABET.split("").map((char, index) => [char, index]));
+const CORE_PROGRAM_ID = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d";
 const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
@@ -261,7 +251,7 @@ export function hallPassNftStatus(env: NodeJS.ProcessEnv = process.env): HallPas
   const publicBaseUrl = publicBaseUrlFromEnv(env);
   const rpcUrl = nftRpcUrl(env);
   const symbol = nftSymbol(env);
-  const collectionAddress = cleanEnv(env.RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS);
+  const collectionAddress = cleanEnv(env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS);
   const secret = cleanEnv(env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY);
   if (!secret) {
     return {
@@ -272,16 +262,25 @@ export function hallPassNftStatus(env: NodeJS.ProcessEnv = process.env): HallPas
       reason: "RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY is not set.",
     };
   }
+  if (!collectionAddress) {
+    return {
+      configured: false,
+      publicBaseUrl,
+      rpcUrl,
+      symbol,
+      reason: "RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS is not set.",
+    };
+  }
   try {
     const bytes = parseSecretKeyBytes(secret);
-    if (collectionAddress) cleanSolanaAddress(collectionAddress, "Card collection address");
+    cleanSolanaAddress(collectionAddress, "Core card collection address");
     return {
       configured: true,
       publicBaseUrl,
       rpcUrl,
       symbol,
       authorityAddress: addressFromPublicKeyBytes(bytes),
-      ...(collectionAddress ? { collectionAddress } : {}),
+      collectionAddress,
     };
   } catch (err) {
     return {
@@ -289,7 +288,7 @@ export function hallPassNftStatus(env: NodeJS.ProcessEnv = process.env): HallPas
       publicBaseUrl,
       rpcUrl,
       symbol,
-      ...(collectionAddress ? { collectionAddress } : {}),
+      collectionAddress,
       reason: err instanceof Error ? err.message : String(err),
     };
   }
@@ -340,35 +339,32 @@ function revealProvenanceFromCard(card: RubyHighHallPassCard): HallPassRevealPro
   };
 }
 
-function verifiedCreatorArgs(addressValue: string) {
-  return [{ address: address(addressValue), verified: true, share: 100 }];
-}
-
-async function createHallPassCardMintSigner(
+function createHallPassCardAssetSigner(
+  umi: Pick<Umi, "eddsa">,
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
   authoritySecret: Uint8Array,
 ) {
   const seed = createHash("sha256")
-    .update("ruby-high-card-mint-v1\0")
+    .update("ruby-high-core-card-asset-v1\0")
     .update(authoritySecret)
     .update("\0")
     .update(cleanCardId(card.id))
     .update("\0")
     .update(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"))
     .digest();
-  return createKeyPairSignerFromPrivateKeyBytes(seed);
+  return createSignerFromKeypair(umi, umi.eddsa.createKeypairFromSeed(seed));
 }
 
 function hashTransactionMessageBytes(messageBytes: ArrayLike<number>): string {
   return createHash("sha256").update(Buffer.from(messageBytes)).digest("hex");
 }
 
-function transactionSignatureForAddress(
-  transaction: ReturnType<ReturnType<typeof getTransactionDecoder>["decode"]>,
-  signerAddress: string,
-) {
-  return (transaction.signatures as Record<string, Uint8Array | null | undefined>)[signerAddress] ?? null;
+function hashWeb3TransactionMessage(transaction: Transaction | VersionedTransaction): string {
+  const messageBytes = transaction instanceof Transaction
+    ? transaction.serializeMessage()
+    : transaction.message.serialize();
+  return hashTransactionMessageBytes(messageBytes);
 }
 
 export function hallPassNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string {
@@ -455,6 +451,46 @@ export function hallPassCollectionMetadataForRoute(args: {
       ...metadataCreatorProperties(),
     },
   };
+}
+
+export function coreCardAssetPluginsForMint(args: {
+  authorityAddress: string;
+  card: Pick<RubyHighHallPassCard, "characterId" | "characterName" | "serial"> & Partial<RubyHighHallPassCard>;
+}) {
+  const profile = hallPassCardCatalogEntry(args.card.characterId);
+  const serial = normalizeSerial(String(args.card.serial || "1"));
+  const attributeList = [
+    { key: "School", value: "Ruby High" },
+    { key: "Collection", value: CARD_COLLECTION_NAME },
+    { key: "Set", value: CARD_COLLECTION_SERIES },
+    { key: "Set Code", value: FIRST_BELL_SET_CODE },
+    { key: "NFT Type", value: "Card" },
+    { key: "State", value: "Revealed" },
+    { key: "Serial", value: serial },
+  ];
+  if (profile) {
+    attributeList.push(
+      { key: "Set Number", value: hallPassCardSetNumber(profile) },
+      { key: "Card Profile ID", value: hallPassCardProfileId(profile) },
+      { key: "Card Name", value: hallPassCardName(profile) },
+      { key: "Character", value: profile.characterName },
+      { key: "Role", value: hallPassCardRoleLabel(profile.role) },
+      { key: "Rarity", value: hallPassCardRarityLabel(profile.rarity) },
+      { key: "Subject", value: hallPassCardSubject(profile) },
+    );
+  } else if (args.card.characterName) {
+    attributeList.push({ key: "Character", value: args.card.characterName });
+  }
+  return [
+    {
+      type: "VerifiedCreators" as const,
+      signatures: [{ address: publicKey(args.authorityAddress), verified: true }],
+    },
+    {
+      type: "Attributes" as const,
+      attributeList,
+    },
+  ];
 }
 
 export function hallPassCardBackMetadataForRoute(args: {
@@ -567,21 +603,23 @@ export async function buildHallPassCardMintTransaction(
   if (mintTransactionBuilderOverride) return mintTransactionBuilderOverride(card, ownerWalletAddress);
   const config = readMintConfig();
   const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card mint");
-  const { owner, mint, metadataUri, transaction: unsigned } = await compileHallPassCardMintTransaction(
+  const { owner, asset, metadataUri, transaction: unsigned } = await compileHallPassCardMintTransaction(
     card,
     ownerWalletAddress,
     latestBlockhash,
     config,
   );
-  const transactionBase64 = getBase64EncodedWireTransaction(unsigned);
+  const transactionBase64 = unsigned
+    .serialize({ requireAllSignatures: false, verifySignatures: false })
+    .toString("base64");
   await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
   return {
     cardId: card.id,
-    ownerWalletAddress: owner,
-    mintAddress: mint.address,
+    ownerWalletAddress: String(owner),
+    mintAddress: String(asset.publicKey),
     metadataUri,
     transactionBase64,
-    transactionMessageHash: hashTransactionMessageBytes(unsigned.messageBytes),
+    transactionMessageHash: hashWeb3TransactionMessage(unsigned),
     transactionEncoding: "base64",
     chain: "solana:mainnet",
     rpcUrl: config.rpcUrl,
@@ -594,47 +632,35 @@ async function compileHallPassCardMintTransaction(
   latestBlockhash: LatestBlockhash,
   config: ReturnType<typeof readMintConfig>,
 ) {
-  const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
-  const ownerSigner = createNoopSigner(owner);
-  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
-  const mint = await createHallPassCardMintSigner(card, owner, config.authoritySecret);
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const owner = publicKey(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
+  const ownerSigner = createUmiNoopSigner(owner);
+  const asset = createHallPassCardAssetSigner(umi, card, String(owner), config.authoritySecret);
   const metadataUri = await hallPassNftMetadataUriForMint(card);
-  const [createInstruction, mintInstruction] = await createNft({
-    mint,
-    authority,
+  const collection = { publicKey: publicKey(config.collectionAddress) } as Awaited<ReturnType<typeof fetchCollectionV1>>;
+  const builder = coreCreate(umi, {
+    asset,
+    collection,
+    authority: umi.identity,
     payer: ownerSigner,
-    updateAuthority: authority,
+    owner,
     name: hallPassCardOnChainNameForMint(card),
-    symbol: config.symbol,
     uri: metadataUri,
-    sellerFeeBasisPoints: 0,
-    creators: verifiedCreatorArgs(authority.address),
-    primarySaleHappened: true,
-    isMutable: false,
-    collection: hallPassCardCollectionForMint(config.collectionAddress),
-    uses: null,
-    collectionDetails: null,
-    ruleSet: null,
-    decimals: null,
-    printSupply: null,
-    tokenOwner: owner,
+    plugins: coreCardAssetPluginsForMint({
+      authorityAddress: String(umi.identity.publicKey),
+      card,
+    }),
   });
-  const instructions: Instruction[] = [createInstruction, mintInstruction];
-  if (config.collectionAddress) {
-    instructions.push(await collectionVerificationInstruction({
-      authority,
-      payer: ownerSigner,
-      collectionAddress: config.collectionAddress,
-      mintAddress: mint.address,
-    }));
+  const transaction = new Transaction({
+    feePayer: new Web3PublicKey(String(owner)),
+    recentBlockhash: String(latestBlockhash.blockhash),
+  });
+  for (const instruction of builder.getInstructions()) {
+    transaction.add(toWeb3JsInstruction(instruction));
   }
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (tx) => setTransactionMessageFeePayerSigner(ownerSigner, tx),
-    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-    (tx) => appendTransactionMessageInstructions(instructions, tx),
-  );
-  return { owner, mint, metadataUri, transaction: compileTransaction(message) };
+  return { owner, asset, metadataUri, transaction };
 }
 
 export async function verifyHallPassCardMint(input: {
@@ -646,19 +672,19 @@ export async function verifyHallPassCardMint(input: {
   if (mintVerifierOverride) return mintVerifierOverride(input);
   const config = readMintConfig();
   const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
-  const mintAddress = cleanSolanaAddress(input.mintAddress, "Card mint");
+  const mintAddress = cleanSolanaAddress(input.mintAddress, "Card asset");
   const signature = cleanSignature(input.mintSignature, "Solana card mint signature");
   const metadataUri = input.metadataUri.trim();
   if (!metadataUri) throw new Error("Card metadata URI is required.");
   let transaction: Record<string, any> | null = null;
   let asset: any = null;
   let lastError: unknown = null;
-  const rpc = createSolanaRpc(config.rpcUrl);
+  const umi = createUmi(config.rpcUrl).use(mplCore());
   for (let attempt = 0; attempt < 8; attempt += 1) {
     if (attempt > 0) await sleep(Math.min(3000, 650 + attempt * 400));
     try {
       transaction = await fetchParsedTransaction(config.rpcUrl, signature);
-      asset = await fetchDigitalAssetWithAssociatedToken(rpc, address(mintAddress), address(ownerWalletAddress));
+      asset = await fetchAssetV1(umi, publicKey(mintAddress), { commitment: "confirmed" });
       if (transaction && asset) break;
     } catch (err) {
       lastError = err;
@@ -672,23 +698,13 @@ export async function verifyHallPassCardMint(input: {
   const signatures = Array.isArray(transaction.transaction?.signatures) ? transaction.transaction.signatures : [];
   if (!signatures.includes(signature)) throw new Error("Solana RPC returned a different card mint transaction.");
   if (!asset) throw new Error("Card NFT was not found on-chain yet. Try again after confirmation.");
-  if (String(asset.metadata?.mint ?? "") !== mintAddress) throw new Error("Card NFT metadata mint does not match this reveal.");
-  const actualUri = String(asset.metadata?.uri ?? "").trim();
+  if (String(asset.publicKey ?? "") !== mintAddress) throw new Error("Card NFT asset does not match this reveal.");
+  const actualUri = String(asset.uri ?? "").trim();
   if (actualUri !== metadataUri) throw new Error("Card NFT metadata does not match this reveal.");
-  const expectedAuthority = addressFromPublicKeyBytes(config.authoritySecret);
-  if (String(asset.metadata?.updateAuthority ?? "") !== expectedAuthority) {
-    throw new Error("Card NFT was not minted by Ruby High.");
-  }
-  const tokenOwner = String(asset.token?.owner ?? "").trim();
-  if (tokenOwner !== ownerWalletAddress) throw new Error("Card NFT owner does not match the connected wallet.");
-  if (typeof asset.token?.amount === "bigint" && asset.token.amount !== 1n) {
-    throw new Error("Card NFT token balance is invalid.");
-  }
-  if (config.collectionAddress) {
-    const collection = optionValue(asset.metadata?.collection);
-    if (!collection || String(collection.key ?? "") !== config.collectionAddress || !collection.verified) {
-      throw new Error("Card NFT is not verified into the Ruby High collection.");
-    }
+  if (String(asset.owner ?? "").trim() !== ownerWalletAddress) throw new Error("Card NFT owner does not match the connected wallet.");
+  const collection = coreAssetCollectionAddress(asset);
+  if (String(collection ?? "") !== config.collectionAddress) {
+    throw new Error("Card NFT is not in the Ruby High Core collection.");
   }
   return {
     signature,
@@ -720,7 +736,7 @@ export async function submitSignedHallPassCardMintTransaction(
     : clean;
   const signature = await sendBase64TransactionWithPreflightFallback(
     createSolanaRpc(config.rpcUrl),
-    transactionBase64 as ReturnType<typeof getBase64EncodedWireTransaction>,
+    transactionBase64,
   );
   await confirmSubmittedTransaction(config.rpcUrl, String(signature), "Card mint");
   return String(signature);
@@ -737,14 +753,13 @@ async function completeHallPassCardMintTransactionWithServerSigners(
   config: ReturnType<typeof readMintConfig>,
 ): Promise<string> {
   const ownerWalletAddress = cleanSolanaAddress(prepared.ownerWalletAddress, "Owner Solana wallet");
-  const mintAddress = cleanSolanaAddress(prepared.mintAddress, "Card mint");
+  const mintAddress = cleanSolanaAddress(prepared.mintAddress, "Card asset");
   const expectedHash = typeof prepared.transactionMessageHash === "string"
     ? prepared.transactionMessageHash.trim()
     : "";
   if (!expectedHash) throw new Error("Card mint transaction was not prepared. Refresh and try again.");
 
-  const transaction = decodeBase64Transaction(signedTransactionBase64, "Signed card mint transaction");
-  const actualHash = hashTransactionMessageBytes(transaction.messageBytes);
+  const actualHash = hashSignedTransactionMessage(signedTransactionBase64, "Signed card mint transaction");
   if (actualHash !== expectedHash && !(await signedHallPassCardMintMatchesPreparedTransaction(
     signedTransactionBase64,
     prepared,
@@ -752,18 +767,27 @@ async function completeHallPassCardMintTransactionWithServerSigners(
   ))) {
     throw new Error("Signed card mint transaction does not match this Ruby High card.");
   }
-  if (!transactionSignatureForAddress(transaction, ownerWalletAddress)) {
+  if (!signedTransactionHasSignatureForAddress(signedTransactionBase64, ownerWalletAddress)) {
     throw new Error("Signed card mint transaction is missing the owner signature.");
   }
 
-  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
-  const mint = await createHallPassCardMintSigner(prepared.card, ownerWalletAddress, config.authoritySecret);
-  if (String(mint.address) !== mintAddress) {
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authority = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  const asset = createHallPassCardAssetSigner(umi, prepared.card, ownerWalletAddress, config.authoritySecret);
+  if (String(asset.publicKey) !== mintAddress) {
     throw new Error("Signed card mint transaction does not match this Ruby High card.");
   }
-  const completed = await partiallySignTransaction([authority.keyPair, mint.keyPair], transaction);
-  assertIsFullySignedTransaction(completed);
-  const transactionBase64 = getBase64EncodedWireTransaction(completed);
+  const completed = VersionedTransaction.deserialize(decodeBase64TransactionBytes(
+    signedTransactionBase64,
+    "Signed card mint transaction",
+  ));
+  completed.sign([toWeb3JsKeypair(authority), toWeb3JsKeypair(asset)]);
+  if (!signedVersionedTransactionHasSignatureForAddress(completed, ownerWalletAddress) ||
+      !signedVersionedTransactionHasSignatureForAddress(completed, String(authority.publicKey)) ||
+      !signedVersionedTransactionHasSignatureForAddress(completed, String(asset.publicKey))) {
+    throw new Error("Signed card mint transaction is missing a required signature.");
+  }
+  const transactionBase64 = Buffer.from(completed.serialize()).toString("base64");
   await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
   return transactionBase64;
 }
@@ -785,12 +809,12 @@ async function signedHallPassCardMintMatchesPreparedTransaction(
   const expected = await compileHallPassCardMintTransaction(
     prepared.card,
     prepared.ownerWalletAddress,
-    { blockhash: blockhash(recentBlockhash), lastValidBlockHeight: 0n },
+    { blockhash: recentBlockhash, lastValidBlockHeight: 0 },
     config,
   );
-  if (String(expected.mint.address) !== cleanSolanaAddress(prepared.mintAddress, "Card mint")) return false;
+  if (String(expected.asset.publicKey) !== cleanSolanaAddress(prepared.mintAddress, "Card asset")) return false;
   const expectedShape = parseSolanaTransactionForInstructionMatch(
-    getBase64EncodedWireTransaction(expected.transaction),
+    expected.transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
   );
   if (!expectedShape) return false;
   return sameInstructionList(
@@ -799,16 +823,39 @@ async function signedHallPassCardMintMatchesPreparedTransaction(
   );
 }
 
-function decodeBase64Transaction(transactionBase64: string, label: string) {
+function decodeBase64TransactionBytes(transactionBase64: string, label: string): Buffer {
   const raw = transactionBase64.trim();
   if (!raw) throw new Error(`${label} is missing.`);
   const bytes = Buffer.from(raw, "base64");
   if (bytes.length <= 0 || bytes.length > 1232) throw new Error(`${label} is invalid.`);
+  return bytes;
+}
+
+function hashSignedTransactionMessage(transactionBase64: string, label: string): string {
+  const bytes = decodeBase64TransactionBytes(transactionBase64, label);
   try {
-    return getTransactionDecoder().decode(bytes);
+    return hashWeb3TransactionMessage(VersionedTransaction.deserialize(bytes));
   } catch {
     throw new Error(`${label} is invalid.`);
   }
+}
+
+function signedTransactionHasSignatureForAddress(transactionBase64: string, signerAddress: string): boolean {
+  try {
+    return signedVersionedTransactionHasSignatureForAddress(
+      VersionedTransaction.deserialize(decodeBase64TransactionBytes(transactionBase64, "Signed card mint transaction")),
+      signerAddress,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function signedVersionedTransactionHasSignatureForAddress(transaction: VersionedTransaction, signerAddress: string): boolean {
+  const accountKeys = transaction.message.getAccountKeys().staticAccountKeys.map((key) => key.toBase58());
+  const index = accountKeys.indexOf(signerAddress);
+  const signature = index >= 0 ? transaction.signatures[index] : null;
+  return !!signature && signature.some((byte) => byte !== 0);
 }
 
 function signedSolanaTransactionAccountKeys(transactionBase64: string): string[] {
@@ -918,78 +965,66 @@ export async function mintHallPassCardNft(
   if (minterOverride) return minterOverride(card, ownerWalletAddress);
   const config = readMintConfig();
   await assertHallPassMintAuthorityCapacity(1);
-  const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
-  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
-  const mint = await generateKeyPairSigner();
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const owner = publicKey(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
+  const collection = await fetchCollectionV1(umi, publicKey(config.collectionAddress));
+  const asset = generateUmiSigner(umi);
   const metadataUri = await hallPassNftMetadataUriForMint(card);
-  const instructions: Instruction[] = [];
-  const [createInstruction, mintInstruction] = await createNft({
-    mint,
-    authority,
-    payer: authority,
-    updateAuthority: authority,
+  const sent = await sendAndConfirmCoreTransaction(umi, coreCreate(umi, {
+    asset,
+    collection,
+    authority: umi.identity,
+    payer: umi.payer,
+    owner,
     name: hallPassCardOnChainNameForMint(card),
-    symbol: config.symbol,
     uri: metadataUri,
-    sellerFeeBasisPoints: 0,
-    creators: verifiedCreatorArgs(authority.address),
-    primarySaleHappened: true,
-    isMutable: false,
-    collection: hallPassCardCollectionForMint(config.collectionAddress),
-    uses: null,
-    collectionDetails: null,
-    ruleSet: null,
-    decimals: null,
-    printSupply: null,
-    tokenOwner: owner,
-  });
-  instructions.push(createInstruction, mintInstruction);
-  if (config.collectionAddress) {
-    instructions.push(await collectionVerificationInstruction({
-      authority,
-      payer: authority,
-      collectionAddress: config.collectionAddress,
-      mintAddress: mint.address,
-    }));
-  }
-  const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card mint");
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (tx) => setTransactionMessageFeePayerSigner(authority, tx),
-    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-    (tx) => appendTransactionMessageInstructions(instructions, tx),
-  );
-  const signed = await signTransactionMessageWithSigners(message);
-  const signature = await sendBase64TransactionWithPreflightFallback(
-    createSolanaRpc(config.rpcUrl),
-    getBase64EncodedWireTransaction(signed),
-  );
-  await confirmSubmittedTransaction(config.rpcUrl, String(signature), "Card mint");
+    plugins: coreCardAssetPluginsForMint({
+      authorityAddress: String(umi.identity.publicKey),
+      card,
+    }),
+  }));
   return {
-    ownerWalletAddress: owner,
-    mintAddress: mint.address,
-    mintSignature: String(signature),
+    ownerWalletAddress: String(owner),
+    mintAddress: String(asset.publicKey),
+    mintSignature: base58Encode(sent.signature),
     metadataUri,
   };
 }
 
 async function sendBase64TransactionWithPreflightFallback(
   rpc: ReturnType<typeof createSolanaRpc>,
-  transactionBase64: ReturnType<typeof getBase64EncodedWireTransaction>,
+  transactionBase64: string,
 ): Promise<string> {
   try {
-    return String(await withSolanaRpcTimeout(rpc.sendTransaction(transactionBase64, {
+    return String(await withSolanaRpcTimeout(rpc.sendTransaction(transactionBase64 as any, {
       encoding: "base64",
       maxRetries: 3n,
       skipPreflight: false,
     }).send(), "Solana timed out while submitting the card mint."));
   } catch (err) {
     if (!isPreflightUnsupportedError(err)) throw err;
-    return String(await withSolanaRpcTimeout(rpc.sendTransaction(transactionBase64, {
+    return String(await withSolanaRpcTimeout(rpc.sendTransaction(transactionBase64 as any, {
       encoding: "base64",
       maxRetries: 3n,
       skipPreflight: true,
     }).send(), "Solana timed out while submitting the card mint."));
+  }
+}
+
+async function sendAndConfirmCoreTransaction(umi: Umi, builder: TransactionBuilder): ReturnType<TransactionBuilder["sendAndConfirm"]> {
+  try {
+    return await builder.sendAndConfirm(umi, {
+      send: { skipPreflight: false, maxRetries: 3 },
+      confirm: { commitment: "confirmed" },
+    });
+  } catch (err) {
+    if (!isPreflightUnsupportedError(err)) throw err;
+    return builder.sendAndConfirm(umi, {
+      send: { skipPreflight: true, maxRetries: 3 },
+      confirm: { commitment: "confirmed" },
+    });
   }
 }
 
@@ -1094,42 +1129,11 @@ async function confirmSubmittedTransaction(
 
 export async function ensureHallPassCardCollectionVerified(mintAddress: string): Promise<boolean> {
   const config = readMintConfig();
-  if (!config.collectionAddress) return false;
-  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
-  const mint = address(cleanSolanaAddress(mintAddress, "Card mint"));
-  const rpc = createSolanaRpc(config.rpcUrl);
-  const asset = await fetchDigitalAsset(rpc, mint);
-  const currentCollection = (() => {
-    const raw = asset.metadata.collection as any;
-    if (!raw || typeof raw !== "object") return null;
-    if ("__option" in raw) return raw.__option === "Some" ? raw.value ?? null : null;
-    return raw;
-  })();
-  if (
-    currentCollection &&
-    currentCollection.verified &&
-    String(currentCollection.key) === config.collectionAddress
-  ) {
-    return false;
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const asset = await fetchAssetV1(umi, publicKey(cleanSolanaAddress(mintAddress, "Card asset")), { commitment: "confirmed" });
+  if (String(coreAssetCollectionAddress(asset) ?? "") !== config.collectionAddress) {
+    throw new Error("Card NFT is not in the Ruby High Core collection.");
   }
-  const instruction = await collectionVerificationInstruction({
-    authority,
-    collectionAddress: config.collectionAddress,
-    mintAddress: mint,
-  });
-  const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (tx) => setTransactionMessageFeePayerSigner(authority, tx),
-    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-    (tx) => appendTransactionMessageInstructions([instruction], tx),
-  );
-  const signed = await signTransactionMessageWithSigners(message);
-  await rpc.sendTransaction(getBase64EncodedWireTransaction(signed), {
-    encoding: "base64",
-    maxRetries: 3n,
-    skipPreflight: true,
-  }).send();
   return true;
 }
 
@@ -1145,48 +1149,36 @@ export async function assertHallPassMintAuthorityCapacity(cardCount: number): Pr
 }
 
 export async function createHallPassCardCollection(): Promise<HallPassCollectionCreateResult> {
-  const config = readMintConfig();
-  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
-  const mint = await generateKeyPairSigner();
+  const config = readMintAuthorityConfig();
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const collection = generateUmiSigner(umi);
   const metadataUri = await hallPassCollectionMetadataUriForMint();
-  const [createInstruction, mintInstruction] = await createNft({
-    mint,
-    authority,
-    payer: authority,
-    updateAuthority: authority,
+  const sent = await sendAndConfirmCoreTransaction(umi, coreCreateCollection(umi, {
+    collection,
     name: CARD_COLLECTION_NAME,
-    symbol: config.symbol,
     uri: metadataUri,
-    sellerFeeBasisPoints: 0,
-    creators: verifiedCreatorArgs(authority.address),
-    primarySaleHappened: true,
-    isMutable: true,
-    collection: null,
-    uses: null,
-    collectionDetails: { __kind: "V1", size: 0n },
-    ruleSet: null,
-    decimals: null,
-    printSupply: null,
-    tokenOwner: authority.address,
-    isCollection: true,
-  });
-  const rpc = createSolanaRpc(config.rpcUrl);
-  const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (tx) => setTransactionMessageFeePayerSigner(authority, tx),
-    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-    (tx) => appendTransactionMessageInstructions([createInstruction, mintInstruction], tx),
-  );
-  const signed = await signTransactionMessageWithSigners(message);
-  const signature = await rpc.sendTransaction(getBase64EncodedWireTransaction(signed), {
-    encoding: "base64",
-    maxRetries: 3n,
-    skipPreflight: true,
-  }).send();
+    plugins: [
+      {
+        type: "VerifiedCreators" as const,
+        signatures: [{ address: publicKey(String(umi.identity.publicKey)), verified: true }],
+      },
+      {
+        type: "Attributes" as const,
+        attributeList: [
+          { key: "School", value: "Ruby High" },
+          { key: "Collection", value: CARD_COLLECTION_NAME },
+          { key: "Set", value: CARD_COLLECTION_SERIES },
+          { key: "Set Code", value: FIRST_BELL_SET_CODE },
+          { key: "NFT Type", value: "Card Collection" },
+        ],
+      },
+    ],
+  }));
   return {
-    collectionAddress: mint.address,
-    signature: String(signature),
+    collectionAddress: String(collection.publicKey),
+    signature: base58Encode(sent.signature),
     metadataUri,
   };
 }
@@ -1206,44 +1198,40 @@ export async function buildHallPassCardsBurnTransaction(
   if (!firstCard) throw new Error("No card was selected for burning.");
   if (burnTransactionBuilderOverride) return burnTransactionBuilderOverride(firstCard, ownerWalletAddress);
   const config = readMintConfig();
-  const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
-  const ownerSigner = createNoopSigner(owner);
-  const instructions: Instruction[] = [];
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const owner = publicKey(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
+  const ownerSigner = createUmiNoopSigner(owner);
+  const collection = { publicKey: publicKey(config.collectionAddress) } as Awaited<ReturnType<typeof fetchCollectionV1>>;
+  const builders: TransactionBuilder[] = [];
   let firstMint = "";
-  let firstTokenAccount = "";
   for (const card of cards) {
-    const mint = address(cleanSolanaAddress(card.mintAddress || "", "Card mint"));
-    if (!firstMint) firstMint = mint;
-    const [tokenAccount] = await findAssociatedTokenPda({
-      owner,
-      tokenProgram: TOKEN_PROGRAM_ADDRESS,
-      mint,
-    });
-    if (!firstTokenAccount) firstTokenAccount = tokenAccount;
-    instructions.push(await getBurnV1InstructionAsync({
+    const mint = publicKey(cleanSolanaAddress(card.mintAddress || "", "Card asset"));
+    if (!firstMint) firstMint = String(mint);
+    builders.push(coreBurn(umi, {
+      asset: { publicKey: mint, owner },
+      collection,
       authority: ownerSigner,
-      mint,
-      token: tokenAccount,
-      tokenOwner: owner,
-      tokenStandard: TokenStandard.NonFungible,
-      amount: 1n,
+      payer: ownerSigner,
     }));
   }
   const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card burn");
-  const transactionBytes = pipe(
-    createTransactionMessage({ version: 0 }),
-    (tx) => setTransactionMessageFeePayer(owner, tx),
-    (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-    (tx) => appendTransactionMessageInstructions(instructions, tx),
-    (tx) => compileTransaction(tx),
-    (tx) => new Uint8Array(getTransactionEncoder().encode(tx)),
-  );
-  const transaction = Buffer.from(transactionBytes).toString("base64");
+  const burnTransaction = new Transaction({
+    feePayer: new Web3PublicKey(String(owner)),
+    recentBlockhash: String(latestBlockhash.blockhash),
+  });
+  for (const builder of builders) {
+    for (const instruction of builder.getInstructions()) {
+      burnTransaction.add(toWeb3JsInstruction(instruction));
+    }
+  }
+  const transaction = burnTransaction
+    .serialize({ requireAllSignatures: false, verifySignatures: false })
+    .toString("base64");
   await simulateBase64TransactionForSigning(config.rpcUrl, transaction, "Card burn");
   return {
-    ownerWalletAddress: owner,
+    ownerWalletAddress: String(owner),
     mintAddress: firstMint,
-    tokenAccountAddress: firstTokenAccount,
+    tokenAccountAddress: "",
     transaction,
     transactionEncoding: "base64",
     rpcUrl: config.rpcUrl,
@@ -1258,7 +1246,7 @@ export async function verifyHallPassCardBurn(input: {
   if (burnVerifierOverride) return burnVerifierOverride(input);
   const config = readMintConfig();
   const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
-  const mintAddress = cleanSolanaAddress(input.mintAddress, "Card mint");
+  const mintAddress = cleanSolanaAddress(input.mintAddress, "Card asset");
   const signature = cleanSignature(input.burnSignature, "Solana burn signature");
   let transaction: Record<string, any> | null = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -1270,7 +1258,7 @@ export async function verifyHallPassCardBurn(input: {
   if (transaction.meta?.err != null) throw new Error("Solana burn transaction failed on-chain.");
   const signatures = Array.isArray(transaction.transaction?.signatures) ? transaction.transaction.signatures : [];
   if (!signatures.includes(signature)) throw new Error("Solana RPC returned a different burn transaction.");
-  if (!transactionBurnsMintFromOwner(transaction, mintAddress, ownerWalletAddress)) {
+  if (!transactionBurnsCoreAssetFromOwner(transaction, mintAddress, ownerWalletAddress, config.collectionAddress)) {
     throw new Error("Solana transaction does not burn this Ruby High card.");
   }
   return {
@@ -1286,7 +1274,7 @@ function readMintConfig(): {
   authoritySecret: Uint8Array;
   rpcUrl: string;
   symbol: string;
-  collectionAddress?: string;
+  collectionAddress: string;
 } {
   const status = hallPassNftStatus();
   if (!status.configured) throw new Error(status.reason || "Card minting is not configured.");
@@ -1295,7 +1283,23 @@ function readMintConfig(): {
     authoritySecret: parseSecretKeyBytes(secret),
     rpcUrl: status.rpcUrl,
     symbol: status.symbol,
-    ...(status.collectionAddress ? { collectionAddress: status.collectionAddress } : {}),
+    collectionAddress: status.collectionAddress!,
+  };
+}
+
+function readMintAuthorityConfig(): {
+  authoritySecret: Uint8Array;
+  rpcUrl: string;
+  symbol: string;
+} {
+  const rpcUrl = nftRpcUrl(process.env);
+  const symbol = nftSymbol(process.env);
+  const secret = cleanEnv(process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY);
+  if (!secret) throw new Error("RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY is not set.");
+  return {
+    authoritySecret: parseSecretKeyBytes(secret),
+    rpcUrl,
+    symbol,
   };
 }
 
@@ -1323,11 +1327,10 @@ export function hallPassCardOnChainNameForMint(card: Pick<RubyHighHallPassCard, 
   return `Ruby High Card #${serial}`;
 }
 
-export function hallPassCardCollectionForMint(collectionAddress?: string): { key: ReturnType<typeof address>; verified: false } | null {
+export function hallPassCardCollectionForMint(collectionAddress?: string): { publicKey: ReturnType<typeof publicKey> } | null {
   if (!collectionAddress) return null;
   return {
-    key: address(cleanSolanaAddress(collectionAddress, "Card collection address")),
-    verified: false,
+    publicKey: publicKey(cleanSolanaAddress(collectionAddress, "Core card collection address")),
   };
 }
 
@@ -1413,13 +1416,6 @@ function cleanSignature(value: string, label = "Solana signature"): string {
   return clean;
 }
 
-function optionValue<T = any>(value: unknown): T | null {
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  if ("__option" in record) return record.__option === "Some" ? (record.value as T) ?? null : null;
-  return value as T;
-}
-
 async function fetchParsedTransaction(rpcUrl: string, signature: string): Promise<Record<string, any> | null> {
   const response = await fetchSolanaRpc(rpcUrl, {
     jsonrpc: "2.0",
@@ -1458,33 +1454,11 @@ function transactionFailureDetail(transaction: Record<string, any>): string {
   }
 }
 
-async function collectionVerificationInstruction(input: {
-  authority: Awaited<ReturnType<typeof createKeyPairSignerFromBytes>>;
-  payer?: TransactionSigner;
-  collectionAddress: string;
-  mintAddress: string;
-}): Promise<Instruction> {
-  const mint = address(input.mintAddress);
-  const collectionMint = address(cleanSolanaAddress(input.collectionAddress, "Card collection address"));
-  const [metadata] = await findMetadataPda({ mint });
-  const [collectionMetadata] = await findMetadataPda({ mint: collectionMint });
-  const [collectionMasterEdition] = await findMasterEditionPda({ mint: collectionMint });
-  return getSetAndVerifySizedCollectionItemInstruction({
-    metadata,
-    collectionAuthority: input.authority,
-    payer: input.payer ?? input.authority,
-    updateAuthority: input.authority.address,
-    collectionMint,
-    collection: collectionMetadata,
-    collectionMasterEditionAccount: collectionMasterEdition,
-  });
-}
-
 async function mintAuthorityBalanceLamports(): Promise<bigint> {
   if (authorityBalanceOverride) return authorityBalanceOverride();
-  const config = readMintConfig();
-  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
-  const { value } = await createSolanaRpc(config.rpcUrl).getBalance(authority.address).send();
+  const config = readMintAuthorityConfig();
+  const authorityAddress = addressFromPublicKeyBytes(config.authoritySecret);
+  const { value } = await createSolanaRpc(config.rpcUrl).getBalance(authorityAddress as any).send();
   return BigInt(value);
 }
 
@@ -1496,39 +1470,35 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function transactionBurnsMintFromOwner(
+function transactionBurnsCoreAssetFromOwner(
   transaction: Record<string, any>,
-  mintAddress: string,
+  assetAddress: string,
   ownerWalletAddress: string,
+  collectionAddress: string,
 ): boolean {
   const instructions = [
     ...readInstructions(transaction.transaction?.message?.instructions),
     ...readInstructions(transaction.meta?.innerInstructions),
   ];
   return instructions.some((instruction) => {
-    const parsed = instruction?.parsed;
-    if (!parsed || typeof parsed !== "object") return false;
-    const type = typeof parsed.type === "string" ? parsed.type.toLowerCase() : "";
-    if (type !== "burn" && type !== "burnchecked" && type !== "burn_checked") return false;
-    const info = parsed.info && typeof parsed.info === "object" ? parsed.info as Record<string, unknown> : {};
-    const mint = typeof info.mint === "string" ? info.mint : "";
-    const owner = typeof info.owner === "string"
-      ? info.owner
-      : typeof info.authority === "string"
-        ? info.authority
-        : typeof info.multisigAuthority === "string"
-          ? info.multisigAuthority
-          : "";
-    const signers = Array.isArray(info.signers) ? info.signers.filter((signer): signer is string => typeof signer === "string") : [];
-    const tokenAmount = info.tokenAmount && typeof info.tokenAmount === "object"
-      ? info.tokenAmount as Record<string, unknown>
-      : {};
-    const amount = typeof info.amount === "string" || typeof info.amount === "number" || typeof info.amount === "bigint"
-      ? String(info.amount)
-      : typeof tokenAmount.amount === "string" || typeof tokenAmount.amount === "number" || typeof tokenAmount.amount === "bigint"
-        ? String(tokenAmount.amount)
+    const programId = typeof instruction?.programId === "string"
+      ? instruction.programId
+      : typeof instruction?.programId?.toBase58 === "function"
+        ? instruction.programId.toBase58()
         : "";
-    return mint === mintAddress && (owner === ownerWalletAddress || signers.includes(ownerWalletAddress)) && amount === "1";
+    if (programId !== CORE_PROGRAM_ID) return false;
+    const accounts = Array.isArray(instruction.accounts)
+      ? instruction.accounts.filter((account: unknown): account is string => typeof account === "string")
+      : [];
+    if (accounts[0] !== assetAddress || accounts[1] !== collectionAddress) return false;
+    if (!accounts.includes(ownerWalletAddress)) return false;
+    const data = typeof instruction.data === "string" ? instruction.data : "";
+    if (!data) return false;
+    try {
+      return base58Decode(data)[0] === 12;
+    } catch {
+      return false;
+    }
   });
 }
 

@@ -24,7 +24,7 @@ profiles.
 | Surface | Count | Notes |
 | --- | ---: | --- |
 | Hall Pass card metadata profiles | 24 live / 36 draft | All live profiles use plain `assets/nft/market-cards/*.png` media generated from source portraits or Grok-regenerated source art. |
-| Card collection metadata | 1 | Token Metadata collection, `Ruby High: First Bell`. |
+| Card collection metadata | 1 | Metaplex Core collection, `Ruby High: First Bell`. |
 | Core pack collection metadata | 1 | Metaplex Core collection, `Ruby High: First Bell Packs`. |
 | Core pack metadata state variants | 2 | Sealed and opened art served from the same metadata URL based on app state. |
 | Face-down card metadata | Dynamic | Served for unminted card ids through the card-id metadata route. |
@@ -272,9 +272,9 @@ verified oracle bytes.
 - Core pack collection creation uses `npm run nft:create-core-collection`.
 - Plain market-card crops are regenerated with `npm run nft:crop-cards`.
 - Grok source art can be regenerated with `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <comma-separated-card-ids>`. The script reads `OPENROUTER_KEY` from `.env`, writes current `<id>.jpg` files plus hash-stamped history, and preserves the aspect policy: items square, locations wide, rare-teacher avatars tall.
-- Card NFTs use Metaplex Token Metadata, seller fee `0`, immutable
-  on-chain metadata, verified creator attribution, and optional collection
-  verification through `RUBY_HIGH_SOLANA_CARD_COLLECTION_ADDRESS`.
+- Card NFTs use Metaplex Core assets, require
+  `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS`, store durable revealed
+  metadata URIs on chain, and include verified creator and attribute plugins.
 - Core pack NFTs use Metaplex Core assets, require
   `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS`, store the dynamic HTTP metadata
   URI on chain, and create new pack collections with immutable metadata plus
