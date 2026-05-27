@@ -1854,6 +1854,9 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
+    if (/Need\s+[\d,.]+\s+RUBY|needs?\s+[\d,.]+\s+RUBY|not enough\s+RUBY/i.test(message)) {
+      return message.replace(/^Card pack checkout\s*·\s*/i, "") + " Get $RUBY in the connected wallet, then try again.";
+    }
     if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
       return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
     }
@@ -3938,13 +3941,15 @@ export function runViewerClient(bootstrap) {
   async function startSolanaPayment(productId) {
     if (!productId || billingBusy) return;
     billingBusy = true;
+    let finalBillingStatus = null;
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
     setBillingStatus("Starting card pack checkout...", false);
     try {
       if (!connectedSolanaWalletAddress()) {
         const connected = await ensureSolanaWalletForBilling();
         if (!connected) {
-          setBillingStatus("Card pack checkout canceled.", false);
+          finalBillingStatus = ["Card pack checkout canceled.", false];
+          setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
           return;
         }
       }
@@ -3978,7 +3983,8 @@ export function runViewerClient(bootstrap) {
         confirmText: "Open wallet",
       });
       if (!approved) {
-        setBillingStatus("Card pack checkout canceled.", false);
+        finalBillingStatus = ["Card pack checkout canceled.", false];
+        setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
         return;
       }
       setBillingStatus("Confirm the card pack payment in your wallet...", false);
@@ -3989,11 +3995,14 @@ export function runViewerClient(bootstrap) {
       await confirmSolanaPayment(productId, signature, payment && payment.walletAddress, data);
     } catch (err) {
       hidePackMintProgress();
-      setBillingStatus("Card pack checkout failed · " + friendlySolanaActionError(err, "If your wallet already signed, keep this wallet connected and try again in a minute."), true);
+      finalBillingStatus = ["Card pack checkout failed · " + friendlySolanaActionError(err, "If your wallet already signed, keep this wallet connected and try again in a minute."), true];
+      setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
+      setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1]);
     } finally {
       billingBusy = false;
       renderAccountPage();
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
+      if (finalBillingStatus) setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
     }
   }
 

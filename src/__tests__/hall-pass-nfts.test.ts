@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Keypair, VersionedTransaction } from "@solana/web3.js";
+import {
+  ComputeBudgetProgram,
+  Keypair,
+  Transaction,
+  TransactionInstruction,
+  VersionedTransaction,
+} from "@solana/web3.js";
 import {
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
@@ -191,6 +197,83 @@ describe("verifyHallPassCardBurn", () => {
     expect(sentTransactions).toHaveLength(1);
     const submitted = VersionedTransaction.deserialize(Buffer.from(sentTransactions[0]!, "base64"));
     expect(submitted.message.recentBlockhash).toBe(refreshedBlockhash);
+  });
+
+  it("accepts equivalent browser wallet transactions reserialized with compute budget instructions", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    const sentTransactions: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
+      if (request.method === "getLatestBlockhash") {
+        return rpcResponse(request.id, {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        });
+      }
+      if (request.method === "simulateTransaction") {
+        return rpcResponse(request.id, { err: null, logs: [] });
+      }
+      if (request.method === "sendTransaction") {
+        sentTransactions.push(String(request.params?.[0] ?? ""));
+        return rpcResponse(request.id, SUBMITTED_SIGNATURE);
+      }
+      if (request.method === "getTransaction") {
+        return rpcResponse(request.id, {
+          meta: { err: null },
+          transaction: { signatures: [SUBMITTED_SIGNATURE] },
+        });
+      }
+      throw new Error(`Unexpected Solana RPC method ${request.method}`);
+    }));
+
+    const owner = Keypair.generate();
+    const ownerAddress = owner.publicKey.toBase58();
+    const card = {
+      id: "unit-card-wallet-reserialized",
+      characterId: "ruby",
+      characterName: "Ruby",
+      serial: 20,
+    } as any;
+    const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
+    const preparedTransaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
+    const accountKeys = preparedTransaction.message.getAccountKeys().staticAccountKeys;
+    const message = preparedTransaction.message as any;
+    const walletTransaction = new Transaction({
+      feePayer: owner.publicKey,
+      recentBlockhash: Keypair.generate().publicKey.toBase58(),
+    });
+    walletTransaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+    for (const ix of preparedTransaction.message.compiledInstructions) {
+      walletTransaction.add(new TransactionInstruction({
+        programId: accountKeys[ix.programIdIndex]!,
+        keys: ix.accountKeyIndexes.map((index) => ({
+          pubkey: accountKeys[index]!,
+          isSigner: Boolean(message.isAccountSigner(index)),
+          isWritable: Boolean(message.isAccountWritable(index)),
+        })),
+        data: Buffer.from(ix.data),
+      }));
+    }
+    walletTransaction.partialSign(owner);
+
+    const signature = await submitSignedHallPassCardMintTransaction(
+      walletTransaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+      [ownerAddress, prepared.mintAddress],
+      {
+        card,
+        ownerWalletAddress: ownerAddress,
+        mintAddress: prepared.mintAddress,
+        transactionMessageHash: prepared.transactionMessageHash,
+      },
+    );
+
+    expect(signature).toBe(SUBMITTED_SIGNATURE);
+    expect(sentTransactions).toHaveLength(1);
+    const submitted = Transaction.from(Buffer.from(sentTransactions[0]!, "base64"));
+    expect(submitted.instructions[0]?.programId.toBase58()).toBe(ComputeBudgetProgram.programId.toBase58());
   });
 
   it("rejects owner-signed mint transactions whose mint instructions changed", async () => {

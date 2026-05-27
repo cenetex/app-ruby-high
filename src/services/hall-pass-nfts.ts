@@ -86,6 +86,7 @@ const CARD_COLLECTION_EDITION = "First Bell Set";
 const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1";
 const CARD_COLLECTION_METADATA_URI_PATH = `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`;
 const CARD_BACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1";
+const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
 const ESTIMATED_CARD_MINT_LAMPORTS = 20_000_000n;
 const MINT_AUTHORITY_RESERVE_LAMPORTS = 20_000_000n;
 const SOLANA_RPC_TIMEOUT_MS = 12_000;
@@ -742,9 +743,8 @@ async function completeHallPassCardMintTransactionWithServerSigners(
 
   const transaction = decodeBase64Transaction(signedTransactionBase64, "Signed card mint transaction");
   const actualHash = hashTransactionMessageBytes(transaction.messageBytes);
-  if (actualHash !== expectedHash && !(await signedHallPassCardMintMatchesPreparedBlockhash(
+  if (actualHash !== expectedHash && !(await signedHallPassCardMintMatchesPreparedTransaction(
     signedTransactionBase64,
-    actualHash,
     prepared,
     config,
   ))) {
@@ -766,9 +766,8 @@ async function completeHallPassCardMintTransactionWithServerSigners(
   return transactionBase64;
 }
 
-async function signedHallPassCardMintMatchesPreparedBlockhash(
+async function signedHallPassCardMintMatchesPreparedTransaction(
   signedTransactionBase64: string,
-  actualHash: string,
   prepared: {
     card: RubyHighHallPassCard;
     ownerWalletAddress: string;
@@ -776,6 +775,9 @@ async function signedHallPassCardMintMatchesPreparedBlockhash(
   },
   config: ReturnType<typeof readMintConfig>,
 ): Promise<boolean> {
+  const actual = parseSolanaTransactionForInstructionMatch(signedTransactionBase64);
+  if (!actual) return false;
+  if (actual.feePayer !== cleanSolanaAddress(prepared.ownerWalletAddress, "Owner Solana wallet")) return false;
   const recentBlockhash = signedSolanaTransactionRecentBlockhash(signedTransactionBase64);
   if (!recentBlockhash) return false;
   const expected = await compileHallPassCardMintTransaction(
@@ -785,7 +787,14 @@ async function signedHallPassCardMintMatchesPreparedBlockhash(
     config,
   );
   if (String(expected.mint.address) !== cleanSolanaAddress(prepared.mintAddress, "Card mint")) return false;
-  return hashTransactionMessageBytes(expected.transaction.messageBytes) === actualHash;
+  const expectedShape = parseSolanaTransactionForInstructionMatch(
+    getBase64EncodedWireTransaction(expected.transaction),
+  );
+  if (!expectedShape) return false;
+  return sameInstructionList(
+    withoutWalletOnlyInstructions(actual.instructions),
+    expectedShape.instructions,
+  );
 }
 
 function decodeBase64Transaction(transactionBase64: string, label: string) {
@@ -812,6 +821,66 @@ function signedSolanaTransactionAccountKeys(transactionBase64: string): string[]
     const transaction = Transaction.from(bytes);
     return transaction.compileMessage().accountKeys.map((key) => key.toBase58());
   }
+}
+
+type ParsedInstructionShape = {
+  programId: string;
+  accounts: string[];
+  dataBase64: string;
+};
+
+type ParsedTransactionShape = {
+  feePayer: string;
+  instructions: ParsedInstructionShape[];
+};
+
+function parseSolanaTransactionForInstructionMatch(transactionBase64: string): ParsedTransactionShape | null {
+  const raw = transactionBase64.trim();
+  if (!raw) return null;
+  const bytes = Buffer.from(raw, "base64");
+  if (bytes.length <= 0 || bytes.length > 1232) return null;
+  try {
+    const transaction = VersionedTransaction.deserialize(bytes);
+    const accountKeys = transaction.message.getAccountKeys().staticAccountKeys.map((key) => key.toBase58());
+    return {
+      feePayer: accountKeys[0] ?? "",
+      instructions: transaction.message.compiledInstructions.map((ix) => ({
+        programId: accountKeys[ix.programIdIndex] ?? "",
+        accounts: ix.accountKeyIndexes.map((index) => accountKeys[index] ?? ""),
+        dataBase64: Buffer.from(ix.data).toString("base64"),
+      })),
+    };
+  } catch {
+    try {
+      const transaction = Transaction.from(bytes);
+      return {
+        feePayer: transaction.feePayer?.toBase58() ?? transaction.compileMessage().accountKeys[0]?.toBase58() ?? "",
+        instructions: transaction.instructions.map((ix) => ({
+          programId: ix.programId.toBase58(),
+          accounts: ix.keys.map((key) => key.pubkey.toBase58()),
+          dataBase64: Buffer.from(ix.data).toString("base64"),
+        })),
+      };
+    } catch {
+      return null;
+    }
+  }
+}
+
+function withoutWalletOnlyInstructions(instructions: ParsedInstructionShape[]): ParsedInstructionShape[] {
+  return instructions.filter((ix) => ix.programId !== COMPUTE_BUDGET_PROGRAM_ID);
+}
+
+function sameInstructionList(actual: ParsedInstructionShape[], expected: ParsedInstructionShape[]): boolean {
+  if (actual.length !== expected.length) return false;
+  return actual.every((ix, index) => {
+    const expectedIx = expected[index];
+    return !!expectedIx &&
+      ix.programId === expectedIx.programId &&
+      ix.dataBase64 === expectedIx.dataBase64 &&
+      ix.accounts.length === expectedIx.accounts.length &&
+      ix.accounts.every((account, accountIndex) => account === expectedIx.accounts[accountIndex]);
+  });
 }
 
 function signedSolanaTransactionRecentBlockhash(transactionBase64: string): string {

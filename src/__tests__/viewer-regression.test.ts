@@ -274,6 +274,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'title: "Confirm card pack payment?"');
     expectScriptToContain(script, "Your wallet should show a RUBY debit and Ruby High pack NFT create. The network fee is paid by this wallet.");
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
+    expectScriptToContain(script, "let finalBillingStatus = null");
+    expectScriptToContain(script, "if (finalBillingStatus) setBillingStatus(finalBillingStatus[0], finalBillingStatus[1])");
+    expectScriptToContain(script, "setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1])");
+    expectScriptToContain(script, "Get $RUBY in the connected wallet, then try again.");
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
     expect(script).not.toContain('"prepare card mint " + prepared.status');
     expect(script).not.toContain('"solana quote " + r.status');
