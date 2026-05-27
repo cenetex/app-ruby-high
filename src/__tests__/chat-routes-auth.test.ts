@@ -1086,6 +1086,56 @@ describe("chat event context", () => {
     expect(promptText).not.toContain("Correct choice:");
   });
 
+  it("does not truncate longer streamed player avatar lines at the final commit event", async () => {
+    const token = "route-player-line-long-token";
+    const record = {
+      userId: "route-player-line-long-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Player Long Line",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.createCharacter(stateKey, {
+      name: "Mina",
+      playbookId: "outsider",
+      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+      arcAnswer: "I want to notice what everyone else keeps stepping around.",
+      personality: "Quietly intense, observant, and allergic to obvious answers.",
+    });
+    ruby.pickAndPose(stateKey, { faculty: "ruby" });
+    const longLine = [
+      "I think the board is asking whether we trust the category label or the actual example,",
+      "and I do not want to rush past the tiny exception just because the first two options sound cleaner.",
+      "Can someone check if the wording is setting up a trap before I lock this in?",
+    ].join(" ");
+
+    (globalThis.fetch as any).mockImplementation(async () => llmSseTextResponse(longLine));
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/player-line"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          context: { intent: "hint" },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(longLine.length).toBeGreaterThan(220);
+    expect(res.body).toContain("event: player-delta");
+    expect(res.body).toContain("event: player-line");
+    expect(res.body).toContain("Can someone check if the wording is setting up a trap before I lock this in?");
+    expect(res.body).not.toContain("...");
+  });
+
   it("can persist Chat button player lines when a student is the only responder", async () => {
     const token = "route-player-line-student-record-token";
     const record = {

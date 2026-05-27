@@ -878,7 +878,6 @@ function playerIntentDirective(intent: PlayerChatIntent): string {
 
 function sanitizePlayerLine(text: string, playerName: string): string {
   return cleanAvatarChatLine(text, {
-    maxChars: 220,
     speakerPrefixes: [playerName, "player", "you"],
   });
 }
@@ -931,7 +930,7 @@ function streamPlayerLine(args: {
     systemPrompt: `You are ${character.name}, a Ruby High student avatar. Write only their next line in their voice.`,
     userPrompt,
     model: resolveStudentModel(),
-    maxTokens: 80,
+    maxTokens: 140,
     temperature: 0.9,
     clean: (text) => sanitizePlayerLine(text, character.name),
     unusable: (text) => avatarChatLineLooksTooThin(text),
