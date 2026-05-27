@@ -770,6 +770,10 @@ export class RubyHighService extends Service {
   private readonly backgroundWrites = new Set<Promise<void>>();
   private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
   private readonly disposeLogSink: () => void;
+  private persistedPackRecords: StoredContentPackRecord[] | null = null;
+  private teacherRecords: StoredTeacherRecord[] | null = null;
+  private draftPackRecords: StoredDraftContentPackRecord[] | null = null;
+  private packInstallationRecords: StoredPackInstallationRecord[] | null = null;
   private faculty: FacultyService | null = null;
   private loaded = false;
 
@@ -790,6 +794,10 @@ export class RubyHighService extends Service {
     this.disposeLogSink();
     this.sessions.clear();
     this.metricEvents.clear();
+    this.persistedPackRecords = null;
+    this.teacherRecords = null;
+    this.draftPackRecords = null;
+    this.packInstallationRecords = null;
   }
 
   /** Wait for any in-flight persistence writes to flush. Useful in tests. */
@@ -2298,7 +2306,25 @@ export class RubyHighService extends Service {
 
   private async hydrate(): Promise<void> {
     if (this.loaded) return;
-    const storedPacks = await this.store.loadPacks();
+    const [
+      storedPacks,
+      storedTeachers,
+      storedDraftPacks,
+      storedPackInstallations,
+      loaded,
+      storedMetricEvents,
+    ] = await Promise.all([
+      this.store.loadPacks(),
+      this.store.loadTeachers(),
+      this.store.loadDraftPacks(),
+      this.store.loadPackInstallations(),
+      this.store.load(),
+      this.store.loadMetricEvents?.() ?? Promise.resolve([]),
+    ]);
+    this.persistedPackRecords = storedPacks.slice();
+    this.teacherRecords = storedTeachers.slice();
+    this.draftPackRecords = storedDraftPacks.slice();
+    this.packInstallationRecords = storedPackInstallations.slice();
     storedPacks
       .slice()
       .sort((a, b) => a.touchedAt - b.touchedAt)
@@ -2318,15 +2344,13 @@ export class RubyHighService extends Service {
           });
         }
     });
-    const loaded = await this.store.load();
     let repaired = false;
     for (const [k, v] of loaded) {
       const state = normalizeLoaded(v);
       repaired = this.reconcileLoadedPackState(state) || repaired;
       this.sessions.set(k, state);
     }
-    const storedMetricEvents = await this.store.loadMetricEvents?.();
-    for (const event of storedMetricEvents ?? []) {
+    for (const event of storedMetricEvents) {
       this.metricEvents.set(event.id, event);
     }
     this.loaded = true;
@@ -2403,12 +2427,14 @@ export class RubyHighService extends Service {
   }
 
   async persistImportedPack(sessionId: string, pack: ContentPack): Promise<void> {
+    const record: StoredContentPackRecord = {
+      pack,
+      ownerSessionId: sessionId,
+      touchedAt: Date.now(),
+    };
     try {
-      await this.store.savePack({
-        pack,
-        ownerSessionId: sessionId,
-        touchedAt: Date.now(),
-      });
+      await this.store.savePack(record);
+      this.upsertPersistedPackRecord(record);
       await this.prunePersistedImportedPacks(sessionId);
     } catch (err) {
       log.error("ruby-high.persist-pack-failed", err, { sessionId, packId: pack.id });
@@ -2417,20 +2443,24 @@ export class RubyHighService extends Service {
   }
 
   async listPersistedPackRecords(): Promise<StoredContentPackRecord[]> {
-    return this.store.loadPacks();
+    if (!this.persistedPackRecords) this.persistedPackRecords = await this.store.loadPacks();
+    return this.persistedPackRecords.slice();
   }
 
   async listTeacherRecords(): Promise<StoredTeacherRecord[]> {
-    return this.store.loadTeachers();
+    if (!this.teacherRecords) this.teacherRecords = await this.store.loadTeachers();
+    return this.teacherRecords.slice();
   }
 
   async listDraftPackRecords(): Promise<StoredDraftContentPackRecord[]> {
-    return this.store.loadDraftPacks();
+    if (!this.draftPackRecords) this.draftPackRecords = await this.store.loadDraftPacks();
+    return this.draftPackRecords.slice();
   }
 
   async saveDraftPackRecord(record: StoredDraftContentPackRecord): Promise<void> {
     try {
       await this.store.saveDraftPack(record);
+      this.upsertDraftPackRecord(record);
     } catch (err) {
       log.error("ruby-high.persist-draft-pack-failed", err, { draftId: record.id });
       throw err;
@@ -2440,6 +2470,7 @@ export class RubyHighService extends Service {
   async deleteDraftPackRecord(draftId: string): Promise<void> {
     try {
       await this.store.deleteDraftPack(draftId);
+      this.removeDraftPackRecord(draftId);
     } catch (err) {
       log.error("ruby-high.delete-draft-pack-failed", err, { draftId });
       throw err;
@@ -2450,6 +2481,7 @@ export class RubyHighService extends Service {
     try {
       unregisterPack(packId);
       await this.store.deletePack(ownerSessionId, packId);
+      this.removePersistedPackRecord(ownerSessionId, packId);
     } catch (err) {
       log.error("ruby-high.delete-pack-failed", err, { ownerSessionId, packId });
       throw err;
@@ -2459,6 +2491,7 @@ export class RubyHighService extends Service {
   async deleteTeacherRecord(teacherId: string): Promise<void> {
     try {
       await this.store.deleteTeacher(teacherId);
+      this.removeTeacherRecord(teacherId);
     } catch (err) {
       log.error("ruby-high.delete-teacher-failed", err, { teacherId });
       throw err;
@@ -2468,6 +2501,7 @@ export class RubyHighService extends Service {
   async deletePackInstallationRecord(userId: string, packId: string): Promise<void> {
     try {
       await this.store.deletePackInstallation(userId, packId);
+      this.removePackInstallationRecord(userId, packId);
     } catch (err) {
       log.error("ruby-high.delete-pack-installation-failed", err, { userId, packId });
       throw err;
@@ -2475,12 +2509,14 @@ export class RubyHighService extends Service {
   }
 
   async listPackInstallationRecords(): Promise<StoredPackInstallationRecord[]> {
-    return this.store.loadPackInstallations();
+    if (!this.packInstallationRecords) this.packInstallationRecords = await this.store.loadPackInstallations();
+    return this.packInstallationRecords.slice();
   }
 
   async savePackInstallationRecord(record: StoredPackInstallationRecord): Promise<void> {
     try {
       await this.store.savePackInstallation(record);
+      this.upsertPackInstallationRecord(record);
     } catch (err) {
       log.error("ruby-high.persist-pack-installation-failed", err, { userId: record.userId, packId: record.packId });
       throw err;
@@ -2492,20 +2528,23 @@ export class RubyHighService extends Service {
     opts: { previousOwnerSessionId?: string | null; creatorUserId?: string; courseSlot?: StoredCourseSlotRecord; allowGlobalOverwrite?: boolean } = {},
   ): Promise<void> {
     const touchedAt = Date.now();
+    const record: StoredContentPackRecord = {
+      pack,
+      ownerSessionId: null,
+      ...(opts.creatorUserId ? { creatorUserId: opts.creatorUserId } : {}),
+      ...(opts.courseSlot ? { courseSlot: opts.courseSlot } : {}),
+      touchedAt,
+    };
     try {
       registerPublicPack(pack, touchedAt, {
         ownerSessionId: opts.previousOwnerSessionId ?? null,
         allowGlobalOverwrite: opts.allowGlobalOverwrite,
       });
-      await this.store.savePack({
-        pack,
-        ownerSessionId: null,
-        ...(opts.creatorUserId ? { creatorUserId: opts.creatorUserId } : {}),
-        ...(opts.courseSlot ? { courseSlot: opts.courseSlot } : {}),
-        touchedAt,
-      });
+      await this.store.savePack(record);
+      this.upsertPersistedPackRecord(record);
       if (opts.previousOwnerSessionId) {
         await this.store.deletePack(opts.previousOwnerSessionId, pack.id);
+        this.removePersistedPackRecord(opts.previousOwnerSessionId, pack.id);
       }
     } catch (err) {
       log.error("ruby-high.persist-public-teacher-pack-failed", err, { packId: pack.id });
@@ -2514,13 +2553,13 @@ export class RubyHighService extends Service {
   }
 
   private async prunePersistedImportedPacks(sessionId: string): Promise<void> {
-    const owned = (await this.store.loadPacks())
+    const owned = (await this.listPersistedPackRecords())
       .filter((record) => record.ownerSessionId === sessionId)
       .sort((a, b) => a.touchedAt - b.touchedAt || a.pack.id.localeCompare(b.pack.id));
     const excess = owned.length - MAX_PACKS_PER_OWNER;
     if (excess <= 0) return;
     await Promise.all(
-      owned.slice(0, excess).map((record) => this.store.deletePack(record.ownerSessionId, record.pack.id)),
+      owned.slice(0, excess).map((record) => this.deletePersistedPackRecord(record.ownerSessionId, record.pack.id)),
     );
   }
 
@@ -2532,13 +2571,64 @@ export class RubyHighService extends Service {
   }
 
   private persistGlobalPack(pack: ContentPack): void {
-    this.trackBackgroundWrite(this.store.savePack({
+    const record: StoredContentPackRecord = {
       pack,
       ownerSessionId: GLOBAL_PACK_OWNER,
       touchedAt: Date.now(),
-    }).catch((err) => {
+    };
+    this.upsertPersistedPackRecord(record);
+    this.trackBackgroundWrite(this.store.savePack(record).catch((err) => {
       log.error("ruby-high.persist-global-pack-failed", err, { packId: pack.id });
     }));
+  }
+
+  private upsertPersistedPackRecord(record: StoredContentPackRecord): void {
+    if (!this.persistedPackRecords) return;
+    const key = persistedPackRecordKey(record.ownerSessionId, record.pack.id);
+    const index = this.persistedPackRecords.findIndex((entry) =>
+      persistedPackRecordKey(entry.ownerSessionId, entry.pack.id) === key);
+    if (index >= 0) this.persistedPackRecords[index] = record;
+    else this.persistedPackRecords.push(record);
+  }
+
+  private removePersistedPackRecord(ownerSessionId: string | null, packId: string): void {
+    if (!this.persistedPackRecords) return;
+    const key = persistedPackRecordKey(ownerSessionId, packId);
+    this.persistedPackRecords = this.persistedPackRecords.filter((entry) =>
+      persistedPackRecordKey(entry.ownerSessionId, entry.pack.id) !== key);
+  }
+
+  private removeTeacherRecord(teacherId: string): void {
+    if (!this.teacherRecords) return;
+    this.teacherRecords = this.teacherRecords.filter((entry) => entry.id !== teacherId);
+  }
+
+  private upsertDraftPackRecord(record: StoredDraftContentPackRecord): void {
+    if (!this.draftPackRecords) return;
+    const index = this.draftPackRecords.findIndex((entry) => entry.id === record.id);
+    if (index >= 0) this.draftPackRecords[index] = record;
+    else this.draftPackRecords.push(record);
+  }
+
+  private removeDraftPackRecord(draftId: string): void {
+    if (!this.draftPackRecords) return;
+    this.draftPackRecords = this.draftPackRecords.filter((entry) => entry.id !== draftId);
+  }
+
+  private upsertPackInstallationRecord(record: StoredPackInstallationRecord): void {
+    if (!this.packInstallationRecords) return;
+    const key = packInstallationRecordKey(record.userId, record.packId);
+    const index = this.packInstallationRecords.findIndex((entry) =>
+      packInstallationRecordKey(entry.userId, entry.packId) === key);
+    if (index >= 0) this.packInstallationRecords[index] = record;
+    else this.packInstallationRecords.push(record);
+  }
+
+  private removePackInstallationRecord(userId: string, packId: string): void {
+    if (!this.packInstallationRecords) return;
+    const key = packInstallationRecordKey(userId, packId);
+    this.packInstallationRecords = this.packInstallationRecords.filter((entry) =>
+      packInstallationRecordKey(entry.userId, entry.packId) !== key);
   }
 
   listFaculty(): FacultyMember[] {
@@ -6489,6 +6579,14 @@ function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
   }
   out.sort((a, b) => a.completedAt - b.completedAt || a.name.localeCompare(b.name));
   return out.slice(-STUDENT_POOL_LIMIT);
+}
+
+function persistedPackRecordKey(ownerSessionId: string | null, packId: string): string {
+  return `${ownerSessionId ?? "public"}:${packId}`;
+}
+
+function packInstallationRecordKey(userId: string, packId: string): string {
+  return `${userId}:${packId}`;
 }
 
 function normalizeLoaded(s: QuizState): QuizState {
