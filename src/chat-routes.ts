@@ -919,6 +919,7 @@ function streamPlayerLine(args: {
     `Turn intent: ${args.intent}. ${playerIntentDirective(args.intent)}`,
     "",
     "Write exactly one natural spoken line for the player avatar, 8-24 words.",
+    "Make it a complete chat message, not a fragment.",
     "Speak as the student, not as narrator. No speaker label. No quotation marks.",
     "Do not mention phase names, schedulers, tools, UI buttons, or that a model generated this.",
     "Do not say 'what does the report say' unless the visible context is literally a report and that is the most natural thing to ask.",
@@ -933,7 +934,8 @@ function streamPlayerLine(args: {
     maxTokens: 140,
     temperature: 0.9,
     clean: (text) => sanitizePlayerLine(text, character.name),
-    unusable: (text) => avatarChatLineLooksTooThin(text),
+    unusable: (text) => avatarChatLineLooksTooThin(text, { minWords: 4, minChars: 16 }),
+    fallback: () => fallbackPlayerLine({ intent: args.intent, state: args.state, bankStatus: args.bankStatus }),
   });
 }
 

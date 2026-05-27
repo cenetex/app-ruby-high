@@ -1351,6 +1351,63 @@ describe("chat event context", () => {
     )).toBe(true);
   });
 
+  it("does not commit short player avatar fragments from the model", async () => {
+    const token = "route-room-turn-player-fragment-token";
+    const record = {
+      userId: "route-room-turn-player-fragment-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Room Turn Player Fragment",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.createCharacter(stateKey, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(stateKey, "9");
+    ruby.pickAndPose(stateKey, { faculty: "ruby" });
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let calls = 0;
+    (globalThis.fetch as any).mockImplementation(async () => {
+      calls += 1;
+      return llmSseTextResponse(calls === 1
+        ? "Is it"
+        : "wait Vince, check the wording first - that's where the trap is.");
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          context: { intent: "hint" },
+          clientTurnSeq: 1,
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: player-delta");
+    expect(res.body).toContain("Is it");
+    expect(res.body).toContain("event: player-line");
+    expect(res.body).toContain("Can someone give me the first clue without saying it outright?");
+    expect(res.body).not.toContain("event: error");
+    const history = chat.history({ sessionToken: token, faculty: "ruby" });
+    expect(history.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
+      "Can someone give me the first clue without saying it outright?",
+    ]);
+  });
+
   it("shows the same completed class report board to the player avatar prompt", async () => {
     const token = "route-player-line-report-board-token";
     auth.injectSessionForTest(token, {
