@@ -314,6 +314,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
     const stateKey = deps.auth.stateKeyForRecord(record);
     const cardId = typeof body.cardId === "string" ? body.cardId.trim().slice(0, 96) : "";
+    const clientBuild = cleanClientBuild(body.clientBuild);
     const ownerWalletAddress = cleanOwnerWalletAddress(
       typeof body.ownerWalletAddress === "string" && body.ownerWalletAddress.trim()
         ? body.ownerWalletAddress
@@ -321,6 +322,15 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           ? deps.auth.walletAddressForRecord(record)
           : "",
     );
+    const requestId = nftRequestId("cmp");
+    log.event("nft.card-mint-prepare-received", {
+      requestId,
+      sessionId: stateKey,
+      cardId,
+      ownerWalletAddress,
+      clientBuild,
+      userAgent: clipLogValue(headerString(ctx.userAgentHeader), 96),
+    });
     if (!cardId) {
       ctx.error(ctx.res, "Card id is required.", 400);
       return true;
@@ -348,6 +358,15 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         transactionMessageHash: mint.transactionMessageHash,
       });
       await deps.ruby.flushSession(stateKey);
+      log.event("nft.card-mint-prepare-built", {
+        requestId,
+        sessionId: stateKey,
+        cardId,
+        ownerWalletAddress: mint.ownerWalletAddress,
+        mintAddress: mint.mintAddress,
+        metadataUri: previewUri(mint.metadataUri),
+        clientBuild,
+      });
       ctx.json(ctx.res, {
         ok: true,
         card: revealedCardPayload(preparedCard),
@@ -369,9 +388,11 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       });
     } catch (err) {
       log.error("nft.card-mint-prepare-failed", err, {
+        requestId,
         sessionId: stateKey,
         cardId,
         ownerWalletAddress,
+        clientBuild,
       });
       ctx.error(ctx.res, publicNftErrorMessage(err), 502);
     }
@@ -397,6 +418,19 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     const mintAddress = cleanOwnerWalletAddress(typeof body.mintAddress === "string" ? body.mintAddress : "");
     const metadataUri = typeof body.metadataUri === "string" ? body.metadataUri.trim() : "";
     const signedTransactionBase64 = typeof body.signedTransactionBase64 === "string" ? body.signedTransactionBase64.trim() : "";
+    const clientBuild = cleanClientBuild(body.clientBuild);
+    const requestId = nftRequestId("cms");
+    log.event("nft.card-mint-submit-received", {
+      requestId,
+      sessionId: stateKey,
+      cardId,
+      ownerWalletAddress,
+      mintAddress,
+      metadataUri: previewUri(metadataUri),
+      signedTransactionBytes: signedTransactionBase64 ? Math.floor((signedTransactionBase64.length * 3) / 4) : 0,
+      clientBuild,
+      userAgent: clipLogValue(headerString(ctx.userAgentHeader), 96),
+    });
     if (!cardId || !ownerWalletAddress || !mintAddress || !metadataUri || !signedTransactionBase64) {
       ctx.error(ctx.res, "Card mint submission is incomplete.", 400);
       return true;
@@ -446,6 +480,15 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         metadataUri: verified.metadataUri,
       });
       await deps.ruby.flushSession(stateKey);
+      log.event("nft.card-mint-submit-recorded", {
+        requestId,
+        sessionId: stateKey,
+        cardId,
+        ownerWalletAddress: verified.ownerWalletAddress,
+        mintAddress: verified.mintAddress,
+        mintSignature: verified.signature,
+        clientBuild,
+      });
       ctx.json(ctx.res, {
         ok: true,
         card: revealedCardPayload(recorded.card),
@@ -462,12 +505,15 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       });
     } catch (err) {
       log.error("nft.card-mint-submit-failed", err, {
+        requestId,
         sessionId: stateKey,
         cardId,
         ownerWalletAddress,
         mintAddress,
+        metadataUri: previewUri(metadataUri),
+        clientBuild,
       });
-      ctx.error(ctx.res, publicNftErrorMessage(err), 400);
+      ctx.error(ctx.res, `${publicNftErrorMessage(err)} [${requestId}]`, 400);
     }
     return true;
   }
@@ -969,6 +1015,32 @@ function publicPackSyncErrorMessage(err: unknown): string {
     return "Solana RPC could not sync wallet pack NFTs. Check the configured Ruby High Solana RPC.";
   }
   return raw || "Pack NFT sync failed.";
+}
+
+function cleanClientBuild(value: unknown): string {
+  return typeof value === "string" ? value.trim().slice(0, 32) : "";
+}
+
+function nftRequestId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function headerString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.filter((item) => typeof item === "string").join(", ");
+  return "";
+}
+
+function clipLogValue(value: string, maxLength: number): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  return clean.length > maxLength ? `${clean.slice(0, maxLength - 1)}...` : clean;
+}
+
+function previewUri(value: string): string {
+  const clean = value.trim();
+  if (clean.length <= 96) return clean;
+  return `${clean.slice(0, 72)}...${clean.slice(-20)}`;
 }
 
 function publicNftErrorMessage(err: unknown): string {

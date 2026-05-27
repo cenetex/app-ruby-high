@@ -3502,7 +3502,7 @@ export function runViewerClient(bootstrap) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         timeoutMs: 120000,
-        body: JSON.stringify({ cardId: cleanCardId, ownerWalletAddress }),
+        body: JSON.stringify({ cardId: cleanCardId, ownerWalletAddress, clientBuild: buildId }),
       });
       const preparedData = await prepared.json().catch(() => ({}));
       if (!prepared.ok || !preparedData || !preparedData.ok || !preparedData.mint) {
@@ -3538,6 +3538,7 @@ export function runViewerClient(bootstrap) {
           mintAddress: preparedData.mint.mintAddress,
           metadataUri: preparedData.mint.metadataUri,
           signedTransactionBase64: signed.signedTransactionBase64,
+          clientBuild: buildId,
         }),
       });
       const data = await confirmed.json().catch(() => ({}));
