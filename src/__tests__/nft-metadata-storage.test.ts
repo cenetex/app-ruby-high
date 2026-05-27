@@ -31,11 +31,24 @@ describe("NFT metadata storage", () => {
       gateway: "https://arweave.net",
       reason: expect.stringContaining("no Arweave JWK secret"),
     });
-    expect(publicNftMetadataStorageStatus({ RUBY_HIGH_NFT_METADATA_STORAGE: "irys-solana" })).toEqual({
+    expect(publicNftMetadataStorageStatus({ RUBY_HIGH_NFT_METADATA_STORAGE: "irys-solana" })).toMatchObject({
       mode: "irys-solana",
-      durable: false,
+      durable: true,
       configured: false,
-      reason: "Unsupported NFT metadata storage mode \"irys-solana\".",
+      gateway: "https://gateway.irys.xyz",
+      reason: expect.stringContaining("no Solana wallet secret"),
+    });
+  });
+
+  it("reports Irys Solana as durable when a wallet secret is configured", () => {
+    expect(publicNftMetadataStorageStatus({
+      RUBY_HIGH_NFT_METADATA_STORAGE: "irys-solana",
+      RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: JSON.stringify(new Array(64).fill(1)),
+    })).toEqual({
+      mode: "irys-solana",
+      durable: true,
+      configured: true,
+      gateway: "https://gateway.irys.xyz",
     });
   });
 
@@ -89,6 +102,24 @@ describe("NFT metadata storage", () => {
     }));
   });
 
+  it("supports Irys Solana as a durable metadata mode", async () => {
+    const uploader = vi.fn(async () => "https://gateway.irys.xyz/irys-json");
+    restoreUploader = setNftMetadataUploaderForTest(uploader);
+
+    await expect(durableNftMetadataUri({
+      fallbackUri: "https://ruby-high.ai/pack.json",
+      assetKey: "api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json",
+      metadata: { name: "Ruby High: First Bell Pack #123456", symbol: "RUBY" },
+      env: { RUBY_HIGH_NFT_METADATA_STORAGE: "irys-solana" },
+    })).resolves.toBe("https://gateway.irys.xyz/irys-json");
+
+    expect(uploader).toHaveBeenCalledWith(expect.objectContaining({
+      assetKey: "api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json",
+      fallbackUri: "https://ruby-high.ai/pack.json",
+      metadataJson: "{\"name\":\"Ruby High: First Bell Pack #123456\",\"symbol\":\"RUBY\"}",
+    }));
+  });
+
   it("uploads collection metadata for new canonical collection creation", async () => {
     const uploader = vi.fn(async ({ assetKey }) => `https://arweave.net/${assetKey.replaceAll("/", "-")}`);
     restoreUploader = setNftMetadataUploaderForTest(uploader);
@@ -121,7 +152,7 @@ describe("NFT metadata storage", () => {
       fallbackUri: "https://ruby-high.ai/card.json",
       assetKey: "api/apps/ruby-high/nft/metadata/hall-pass/lyra/1.json",
       metadata: { name: "Ruby High: Lyra #1" },
-      env: { RUBY_HIGH_NFT_METADATA_STORAGE: "irys-solana" },
+      env: { RUBY_HIGH_NFT_METADATA_STORAGE: "bogus" },
     })).rejects.toThrow(/Unsupported NFT metadata storage mode/);
   });
 });

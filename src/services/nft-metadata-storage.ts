@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
+import { Uploader } from "@irys/upload";
+import { Solana } from "@irys/upload-solana";
 import Arweave from "arweave";
 import type { JWKInterface } from "arweave/node/lib/wallet";
 import { log } from "./logger.js";
 
 const DEFAULT_ARWEAVE_GATEWAY = "https://arweave.net";
+const DEFAULT_IRYS_GATEWAY = "https://gateway.irys.xyz";
 
 export interface DurableNftMetadataInput {
   fallbackUri: string;
@@ -21,7 +24,7 @@ export interface NftMetadataUploadPayload {
 }
 
 export interface PublicNftMetadataStorageStatus {
-  mode: "app-hosted" | "arweave" | string;
+  mode: "app-hosted" | "arweave" | "irys-solana" | string;
   durable: boolean;
   configured: boolean;
   gateway?: string;
@@ -44,7 +47,7 @@ export function setNftMetadataUploaderForTest(
 }
 
 export function nftMetadataStorageEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return metadataStorageMode(env) === "arweave";
+  return supportedMetadataStorageMode(metadataStorageMode(env));
 }
 
 export function publicNftMetadataStorageStatus(env: NodeJS.ProcessEnv = process.env): PublicNftMetadataStorageStatus {
@@ -56,7 +59,7 @@ export function publicNftMetadataStorageStatus(env: NodeJS.ProcessEnv = process.
       configured: true,
     };
   }
-  if (mode !== "arweave") {
+  if (!supportedMetadataStorageMode(mode)) {
     return {
       mode,
       durable: false,
@@ -65,7 +68,7 @@ export function publicNftMetadataStorageStatus(env: NodeJS.ProcessEnv = process.
     };
   }
   try {
-    arweaveJwk(env);
+    assertMetadataStorageConfigured(mode, env);
     return {
       mode,
       durable: true,
@@ -88,8 +91,8 @@ export async function durableNftMetadataUri(input: DurableNftMetadataInput): Pro
   const fallbackUri = input.fallbackUri.trim();
   const mode = metadataStorageMode(env);
   if (!mode) return fallbackUri;
-  if (mode !== "arweave") {
-    throw new Error(`Unsupported NFT metadata storage mode "${mode}". Use "arweave" or unset RUBY_HIGH_NFT_METADATA_STORAGE.`);
+  if (!supportedMetadataStorageMode(mode)) {
+    throw new Error(`Unsupported NFT metadata storage mode "${mode}". Use "arweave", "irys-solana", or unset RUBY_HIGH_NFT_METADATA_STORAGE.`);
   }
   if (!input.metadata) return fallbackUri;
   const assetKey = normalizeAssetKey(input.assetKey);
@@ -105,7 +108,10 @@ export async function durableNftMetadataUri(input: DurableNftMetadataInput): Pro
       metadata,
       metadataJson,
       metadataHash,
-    }, env);
+    }, env).catch((err) => {
+      if (uploadedMetadataUris.get(cacheKey) === promise) uploadedMetadataUris.delete(cacheKey);
+      throw err;
+    });
     uploadedMetadataUris.set(cacheKey, promise);
   }
   return promise;
@@ -113,6 +119,8 @@ export async function durableNftMetadataUri(input: DurableNftMetadataInput): Pro
 
 async function uploadDurableJson(payload: NftMetadataUploadPayload, env: NodeJS.ProcessEnv): Promise<string> {
   if (uploaderOverride) return uploaderOverride(payload);
+  const mode = metadataStorageMode(env);
+  if (mode === "irys-solana") return uploadIrysSolanaJson(payload, env);
   return uploadDirectArweaveJson(payload, env);
 }
 
@@ -139,11 +147,28 @@ async function uploadDirectArweaveJson(payload: NftMetadataUploadPayload, env: N
 }
 
 function metadataGateway(env: NodeJS.ProcessEnv): string {
-  return cleanBaseUrl(cleanEnv(env.RUBY_HIGH_NFT_METADATA_GATEWAY) || DEFAULT_ARWEAVE_GATEWAY);
+  const fallback = metadataStorageMode(env) === "irys-solana" ? DEFAULT_IRYS_GATEWAY : DEFAULT_ARWEAVE_GATEWAY;
+  return cleanBaseUrl(cleanEnv(env.RUBY_HIGH_NFT_METADATA_GATEWAY) || fallback);
 }
 
 function metadataStorageMode(env: NodeJS.ProcessEnv): string {
   return cleanEnv(env.RUBY_HIGH_NFT_METADATA_STORAGE).toLowerCase();
+}
+
+function supportedMetadataStorageMode(mode: string): boolean {
+  return mode === "arweave" || mode === "irys-solana";
+}
+
+function assertMetadataStorageConfigured(mode: string, env: NodeJS.ProcessEnv): void {
+  if (mode === "arweave") {
+    arweaveJwk(env);
+    return;
+  }
+  if (mode === "irys-solana") {
+    irysSolanaWallet(env);
+    return;
+  }
+  throw new Error(`Unsupported NFT metadata storage mode "${mode}".`);
 }
 
 function arweaveClient(env: NodeJS.ProcessEnv) {
@@ -168,6 +193,88 @@ function arweaveJwk(env: NodeJS.ProcessEnv): JWKInterface {
   const jwk = findJwk(parsed);
   if (!jwk) throw new Error("Configured Arweave secret does not contain an RSA JWK.");
   return jwk;
+}
+
+async function uploadIrysSolanaJson(payload: NftMetadataUploadPayload, env: NodeJS.ProcessEnv): Promise<string> {
+  const irys = await irysSolanaClient(env);
+  const tags = tagsForMetadata(payload);
+  const data = Buffer.from(payload.metadataJson, "utf8");
+  await ensureIrysBalance(irys, data.length, tags, env);
+  const receipt = await irys.upload(data, { tags });
+  if (!receipt?.id) throw new Error("Irys metadata upload did not return a transaction id.");
+  const uri = `${metadataGateway(env)}/${receipt.id}`;
+  log.event("nft.metadata-uploaded", {
+    provider: "irys-solana",
+    assetKey: payload.assetKey,
+    uri,
+    metadataHash: payload.metadataHash,
+  });
+  return uri;
+}
+
+async function irysSolanaClient(env: NodeJS.ProcessEnv): Promise<any> {
+  let builder = Uploader(Solana)
+    .withWallet(irysSolanaWallet(env))
+    .timeout(120_000)
+    .withTokenOptions({ finality: "confirmed" });
+
+  if (cleanEnv(env.RUBY_HIGH_NFT_METADATA_IRYS_NETWORK).toLowerCase() === "devnet") builder = builder.devnet();
+  else builder = builder.mainnet();
+
+  builder = builder.withRpc(
+    cleanEnv(env.RUBY_HIGH_NFT_METADATA_IRYS_SOLANA_RPC_URL)
+    || cleanEnv(env.RUBY_HIGH_SOLANA_NFT_RPC_URL)
+    || cleanEnv(env.RUBY_HIGH_SOLANA_RPC_URL)
+    || cleanEnv(env.SOLANA_RPC_URL)
+    || "https://api.mainnet-beta.solana.com",
+  );
+  return builder;
+}
+
+function irysSolanaWallet(env: NodeJS.ProcessEnv): string | number[] {
+  const raw = cleanEnv(env.RUBY_HIGH_NFT_METADATA_IRYS_SOLANA_SECRET_KEY)
+    || cleanEnv(env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY)
+    || cleanEnv(env.SOLANA_PRIVATE_KEY);
+  if (!raw) {
+    throw new Error("NFT metadata storage is set to irys-solana but no Solana wallet secret is configured.");
+  }
+  return findSolanaWalletSecret(parseMaybeJson(raw)) ?? raw;
+}
+
+async function ensureIrysBalance(
+  irys: any,
+  size: number,
+  tags: Array<{ name: string; value: string }>,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const price = await irys.getPrice(size, { tags });
+  const balance = await irys.getLoadedBalance();
+  if (balance.gte(price)) return;
+  const autoFund = truthyEnv(env.RUBY_HIGH_NFT_METADATA_IRYS_AUTO_FUND);
+  const shortage = price.minus(balance);
+  if (!autoFund) {
+    throw new Error(`Irys metadata balance is short by ${shortage.toString()} atomic SOL units.`);
+  }
+  const fundingAmount = shortage.plus(price.dividedToIntegerBy(10)).plus(10_000);
+  const receipt = await irys.fund(fundingAmount);
+  log.event("nft.metadata-irys-funded", {
+    amount: fundingAmount.toString(),
+    signature: receipt?.id ? String(receipt.id) : "",
+  });
+}
+
+function findSolanaWalletSecret(value: unknown): string | number[] | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value) && value.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+    return value as number[];
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ["secretKey", "privateKey", "keypair", "wallet", "solanaWallet", "solana_wallet"]) {
+    const found = findSolanaWalletSecret(record[key]);
+    if (found) return found;
+  }
+  return null;
 }
 
 function findJwk(value: unknown): JWKInterface | null {
@@ -221,6 +328,18 @@ function cleanBaseUrl(value: string): string {
 
 function cleanEnv(value: string | undefined): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function truthyEnv(value: string | undefined): boolean {
+  return /^(1|true|yes|on)$/i.test(cleanEnv(value));
+}
+
+function parseMaybeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function parseJson(text: string, label: string): unknown {
