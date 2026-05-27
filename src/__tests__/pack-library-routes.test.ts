@@ -125,6 +125,14 @@ function stubCourseGeneratorFetch() {
             description: "Turns noisy inputs into clear evidence questions.",
             quote: "Every signal needs a control.",
           },
+        }),
+      },
+    }],
+  };
+  const questionSpec = {
+    choices: [{
+      message: {
+        content: JSON.stringify({
           questions: [
             {
               prompt: "What does sampling bias change?",
@@ -190,7 +198,7 @@ function stubCourseGeneratorFetch() {
       },
     }],
   };
-  const responses = [courseSpec, teacherPortrait];
+  const responses = [courseSpec, questionSpec, teacherPortrait];
   const fetchMock = vi.fn(async () => {
     const body = responses.shift() ?? teacherPortrait;
     return new Response(JSON.stringify(body), {
@@ -623,12 +631,175 @@ describe("/pack-library", () => {
       "hustle",
       "honor",
     ]);
-    const coursePrompt = fetchRequestJson(fetchMock).messages[1].content as string;
-    expect(coursePrompt).toContain("Balance requirements");
-    expect(coursePrompt).toContain("difficulty=easy, stat=head");
-    expect(coursePrompt).toContain("difficulty=medium, stat=heart");
+    const metadataPrompt = fetchRequestJson(fetchMock).messages[1].content as string;
+    expect(metadataPrompt).toContain("Do not generate questions in this response.");
+    const questionPrompt = fetchRequestJson(fetchMock, 1).messages[1].content as string;
+    expect(questionPrompt).toContain("Balance requirements");
+    expect(questionPrompt).toContain("difficulty=easy, stat=head");
+    expect(questionPrompt).toContain("difficulty=medium, stat=heart");
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("repairs generated course JSON with raw quoted source titles in question text", async () => {
+    signInUser("alice");
+    const courseSpec = {
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            courseTitle: "Deep RL Seminar",
+            courseDescription: "A generated course on experimental rigor.",
+            teacher: {
+              displayName: "Dr. Henderson",
+              subject: "Deep Reinforcement Learning",
+              description: "Turns reproducibility concerns into careful class questions.",
+              quote: "Deep reinforcement learning needs experiments that matter.",
+            },
+          }),
+        },
+      }],
+    };
+    const questionSpec = {
+      choices: [{
+        message: {
+          content: `{
+            "questions":[{
+              "prompt":"What does "Deep Reinforcement Learning That Matters" ask researchers to improve?",
+              "subject":"reproducibility",
+              "difficulty":"easy",
+              "options":{
+                "A":"Experimental rigor and reporting",
+                "B":"The classroom seating chart",
+                "C":"The number of hidden variables",
+                "D":"The title page typography"
+              },
+              "correct":"A",
+              "explanation":"The paper "Deep Reinforcement Learning That Matters" focuses on making empirical results more reliable."
+            }]
+          }`,
+        },
+      }],
+    };
+    const teacherPortrait = {
+      choices: [{
+        message: {
+          images: [{ image_url: { url: "data:image/png;base64,VEVBQ0hFUg==" } }],
+        },
+      }],
+    };
+    const responses = [courseSpec, questionSpec, teacherPortrait];
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(responses.shift() ?? teacherPortrait), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Deep RL" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate`,
+      cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
+      body: {
+        requestId: "course-generate-quoted-title",
+        materials: "Henderson et al., \"Deep Reinforcement Learning That Matters,\" AAAI 2018.",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.teacher.questions).toHaveLength(1);
+    expect(response.body.teacher.questions[0]).toMatchObject({
+      prompt: "What does \"Deep Reinforcement Learning That Matters\" ask researchers to improve?",
+      answer: "The paper \"Deep Reinforcement Learning That Matters\" focuses on making empirical results more reliable.",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("falls back to deterministic course metadata when the metadata JSON is malformed", async () => {
+    signInUser("alice");
+    const courseSpec = {
+      choices: [{
+        message: {
+          content: `{"courseTitle":"Broken metadata`,
+        },
+      }],
+    };
+    const questionSpec = {
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            questions: [
+              {
+                prompt: "What should ARC-style tasks test?",
+                subject: "abstract reasoning",
+                difficulty: "easy",
+                options: {
+                  A: "Generalizable reasoning",
+                  B: "Locker location",
+                  C: "Hall Pass balances",
+                  D: "Wallpaper color",
+                },
+                correct: "A",
+                explanation: "The materials concern abstract reasoning benchmarks.",
+              },
+            ],
+          }),
+        },
+      }],
+    };
+    const teacherPortrait = {
+      choices: [{
+        message: {
+          images: [{ image_url: { url: "data:image/png;base64,VEVBQ0hFUg==" } }],
+        },
+      }],
+    };
+    const responses = [courseSpec, questionSpec, teacherPortrait];
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(responses.shift() ?? teacherPortrait), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "ARC Abstract Reasoning" },
+    });
+    const draftId = response.body.draft.id as string;
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate`,
+      cookie: "rh_session=alice",
+      apiKeyHeader: "sk-test",
+      body: {
+        requestId: "course-generate-metadata-fallback",
+        materials: "# ARC Prize 2024\n\nTechnical report on abstract reasoning benchmarks.",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.draft.name).toBe("ARC Abstract Reasoning");
+    expect(response.body.teacher).toMatchObject({
+      displayName: "Professor Abstract",
+      subject: "arc abstract reasoning",
+      profileImageUrl: "data:image/png;base64,VEVBQ0hFUg==",
+    });
+    expect(response.body.teacher.questions).toHaveLength(1);
+    expect(response.body.teacher.questions[0]).toMatchObject({
+      prompt: "What should ARC-style tasks test?",
+      answer: "The materials concern abstract reasoning benchmarks.",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("does not spend the server OpenRouter key on local-provider course portraits", async () => {

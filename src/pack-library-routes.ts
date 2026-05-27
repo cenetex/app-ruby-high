@@ -72,6 +72,7 @@ const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENE
 const COURSE_SLOT_HALL_PASS_COST = courseSlotCost();
 const QUESTION_GENERATION_HALL_PASS_COST = questionGenerationCost();
 const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 18);
+const COURSE_GENERATION_QUESTION_BATCH_SIZE = Math.max(2, Math.min(6, readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_BATCH_SIZE, 6)));
 const MORE_QUESTIONS_COUNT = moreQuestionsCount();
 const PACK_SEARCH_LIMIT = 24;
 const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
@@ -1450,6 +1451,8 @@ interface GeneratedCourseSpec {
   questions: BankedQuestion[];
 }
 
+type GeneratedCourseMetadata = Omit<GeneratedCourseSpec, "questions">;
+
 function resolveCourseGenerationCredential(
   ctx: Pick<PackLibraryRouteContext, "apiKeyHeader">,
   ruby: RubyHighService,
@@ -1558,21 +1561,19 @@ async function generateCourseSpecWithAi(args: {
   questionCount: number;
 }): Promise<GeneratedCourseSpec> {
   const teacherId = args.teacher?.id ?? newTeacherId();
-  const facultyId = draftTeacherFacultyIdForId(teacherId);
   const requestedCount = Math.max(4, Math.min(24, args.questionCount || COURSE_GENERATION_QUESTION_COUNT));
   const materials = args.materials.trim();
-  const balanceTargets = questionBalanceTargets([], requestedCount);
   const prompt = [
     `Draft pack: ${args.draft.name || "Untitled Content Pack"}`,
     args.draft.description ? `Draft description: ${args.draft.description}` : "",
     args.teacher ? `Existing teacher name: ${args.teacher.displayName}` : "Create one teacher for this course.",
     args.teacher?.description ? `Existing teacher style: ${args.teacher.description}` : "",
-    `Create a Ruby High course teacher and exactly ${requestedCount} multiple-choice study questions from the course materials.`,
+    "Create a Ruby High course title and teacher from the course materials.",
     "Return only JSON. Do not include markdown fences.",
     "Use this exact shape:",
-    `{"courseTitle":"...","courseDescription":"...","teacher":{"displayName":"...","subject":"...","description":"...","quote":"..."},"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
-    "Questions must be answerable from the materials. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must be A, B, C, or D.",
-    questionBalancePrompt(balanceTargets),
+    `{"courseTitle":"...","courseDescription":"...","teacher":{"displayName":"...","subject":"...","description":"...","quote":"..."}}`,
+    "If you mention quoted titles or phrases inside a JSON string, use single quotes or escaped double quotes so the JSON remains valid.",
+    "Do not generate questions in this response.",
     "Course materials:",
     materials.slice(0, 24_000),
   ].filter(Boolean).join("\n\n");
@@ -1589,7 +1590,7 @@ async function generateCourseSpecWithAi(args: {
         },
         { role: "user", content: prompt },
       ],
-      max_tokens: 5200,
+      max_tokens: 900,
       temperature: 0.45,
     },
   });
@@ -1600,15 +1601,185 @@ async function generateCourseSpecWithAi(args: {
   const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content?.trim() ?? "";
   if (!text) throw new Error("Course generator returned an empty response.");
-  const parsed = parseJsonObject(text);
-  return normalizeGeneratedCourseSpec(parsed, {
+  const fallbackSubject = subjectFromHeading(args.draft.name || args.teacher?.displayName || firstMarkdownHeading(materials) || "course");
+  const metadata = normalizeGeneratedCourseMetadataLenient(text, {
     teacherId,
-    facultyId,
     existingTeacher: args.teacher,
-    fallbackSubject: subjectFromHeading(args.draft.name || args.teacher?.displayName || "course"),
-    questionCount: requestedCount,
-    balanceTargets,
+    fallbackSubject,
+    fallbackTitle: cleanGeneratedText(args.draft.name || firstMarkdownHeading(materials), 80) || `${fallbackSubject} Course`,
+    fallbackDescription: courseDescriptionFromMaterials(materials, fallbackSubject),
   });
+  const questions = await generateCourseQuestionsWithAi({
+    apiKey: args.apiKey,
+    draft: args.draft,
+    generated: metadata,
+    materials,
+    questionCount: requestedCount,
+  });
+  return { ...metadata, questions };
+}
+
+function normalizeGeneratedCourseMetadataLenient(
+  text: string,
+  opts: {
+    teacherId: string;
+    existingTeacher: StoredDraftTeacherRecord | null;
+    fallbackSubject: string;
+    fallbackTitle: string;
+    fallbackDescription: string;
+  },
+): GeneratedCourseMetadata {
+  try {
+    return normalizeGeneratedCourseMetadata(parseJsonObject(text, "Course generator"), opts);
+  } catch (err) {
+    log.error("pack-draft.course-metadata-fallback", err, { teacherId: opts.teacherId });
+    return fallbackGeneratedCourseMetadata(opts);
+  }
+}
+
+function fallbackGeneratedCourseMetadata(opts: {
+  teacherId: string;
+  existingTeacher: StoredDraftTeacherRecord | null;
+  fallbackSubject: string;
+  fallbackTitle: string;
+  fallbackDescription: string;
+}): GeneratedCourseMetadata {
+  const subject = cleanGeneratedText(opts.existingTeacher?.subject || opts.fallbackSubject, 80) || "open study";
+  return {
+    teacherId: opts.teacherId,
+    displayName: cleanGeneratedText(opts.existingTeacher?.displayName, 64) || teacherNameFromSubject(subject),
+    subject,
+    description: cleanGeneratedText(opts.existingTeacher?.description, 700) ||
+      `A focused Ruby High teacher who turns ${subject} materials into clear study questions.`,
+    quote: cleanGeneratedText(opts.existingTeacher?.quote, 160) || "Read closely, answer carefully.",
+    courseTitle: cleanGeneratedText(opts.fallbackTitle, 80) || `${subject} Course`,
+    courseDescription: cleanGeneratedText(opts.fallbackDescription, 180) || `Generated course on ${subject}.`,
+  };
+}
+
+async function generateCourseQuestionsWithAi(args: {
+  apiKey: string;
+  draft: StoredDraftContentPackRecord;
+  generated: GeneratedCourseMetadata;
+  materials: string;
+  questionCount: number;
+}): Promise<BankedQuestion[]> {
+  const requestedCount = Math.max(4, Math.min(24, args.questionCount || COURSE_GENERATION_QUESTION_COUNT));
+  const balanceTargets = questionBalanceTargets([], requestedCount);
+  const questions: BankedQuestion[] = [];
+  const maxBatches = Math.ceil(requestedCount / COURSE_GENERATION_QUESTION_BATCH_SIZE) + 2;
+  for (let batchIndex = 0; questions.length < requestedCount && batchIndex < maxBatches; batchIndex += 1) {
+    const batchCount = Math.min(COURSE_GENERATION_QUESTION_BATCH_SIZE, requestedCount - questions.length);
+    const batch = await generateCourseQuestionBatchWithAi({
+      ...args,
+      questionCount: batchCount,
+      startIndex: questions.length,
+      existingQuestions: questions,
+      balanceTargets: balanceTargets.slice(questions.length, questions.length + batchCount),
+    });
+    questions.push(...batch);
+    if (batch.length < batchCount) break;
+  }
+  if (questions.length === 0) throw new Error("Course generator did not return usable questions.");
+  return questions.slice(0, requestedCount);
+}
+
+async function generateCourseQuestionBatchWithAi(args: {
+  apiKey: string;
+  draft: StoredDraftContentPackRecord;
+  generated: GeneratedCourseMetadata;
+  materials: string;
+  questionCount: number;
+  startIndex: number;
+  existingQuestions: BankedQuestion[];
+  balanceTargets: readonly QuestionBalanceTarget[];
+}): Promise<BankedQuestion[]> {
+  const prompt = [
+    `Draft pack: ${args.draft.name || "Untitled Content Pack"}`,
+    `Teacher: ${args.generated.displayName}`,
+    args.generated.subject ? `Subject: ${args.generated.subject}` : "",
+    args.generated.description ? `Teacher style: ${args.generated.description}` : "",
+    `Write exactly ${args.questionCount} multiple-choice study questions from the course materials.`,
+    "Return only JSON. Do not include markdown fences.",
+    "Use this exact shape:",
+    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    "If you mention quoted titles or phrases inside a JSON string, use single quotes or escaped double quotes so the JSON remains valid.",
+    "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must be A, B, C, or D.",
+    existingQuestionPrompt(args.existingQuestions),
+    questionBalanceStatusPrompt(args.existingQuestions.map((question) => ({
+      difficulty: question.difficulty,
+      stat: normalizeQuestionStat(question.stat) ?? "head",
+    }))),
+    questionBalancePrompt(args.balanceTargets),
+    "Course materials:",
+    args.materials.slice(0, 24_000),
+  ].filter(Boolean).join("\n\n");
+  const response = await fetchLlmChatCompletions({
+    apiKey: args.apiKey,
+    title: "Ruby High Course Question Generator",
+    timeoutMs: 45_000,
+    body: {
+      model: resolveStudentModel(),
+      messages: [
+        {
+          role: "system",
+          content: "You write concise Ruby High multiple-choice study questions. You always return valid JSON and no prose.",
+        },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: Math.max(1800, Math.min(4200, args.questionCount * 600)),
+      temperature: 0.45,
+    },
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`${llmProviderName()} ${response.status}: ${detail || response.statusText}`);
+  }
+  const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const text = body.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!text) throw new Error("Course question generator returned an empty response.");
+  const parsed = parseJsonObject(text, "Course question generator");
+  const root = asRecord(parsed);
+  const rawQuestions = root?.questions ?? parsed;
+  const questions = normalizeGeneratedQuestions(rawQuestions, {
+    facultyId: draftTeacherFacultyIdForId(args.generated.teacherId),
+    subject: args.generated.subject || subjectFromHeading(args.generated.displayName),
+    limit: args.questionCount,
+    startIndex: args.startIndex,
+    balanceTargets: args.balanceTargets,
+  });
+  if (questions.length === 0) throw new Error("Course question generator did not return usable questions.");
+  return questions;
+}
+
+function existingQuestionPrompt(questions: readonly BankedQuestion[]): string {
+  if (questions.length === 0) return "";
+  return [
+    "Existing generated question prompts to avoid:",
+    ...questions.slice(-12).map((question, index) => `${index + 1}. ${question.prompt}`),
+  ].join("\n");
+}
+
+function firstMarkdownHeading(text: string): string {
+  const line = text.split(/\r?\n/).find((entry) => /^#{1,3}\s+\S/.test(entry.trim()));
+  return line ? line.replace(/^#{1,3}\s+/, "").trim() : "";
+}
+
+function courseDescriptionFromMaterials(materials: string, subject: string): string {
+  const firstUsefulLine = materials
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#{1,6}\s+/, "").trim())
+    .find((line) => line.length >= 24 && !/^\[[0-9]+\]/.test(line));
+  return cleanGeneratedText(firstUsefulLine, 180) || `Generated course on ${subject}.`;
+}
+
+function teacherNameFromSubject(subject: string): string {
+  const words = subject
+    .replace(/[^A-Za-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const last = words.find((word) => word.length > 3) ?? "Course";
+  return `Professor ${last[0]!.toUpperCase()}${last.slice(1)}`;
 }
 
 async function generateAdditionalQuestionsWithAi(args: {
@@ -1633,6 +1804,7 @@ async function generateAdditionalQuestionsWithAi(args: {
     "Return only JSON. Do not include markdown fences.",
     "Use this exact shape:",
     `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    "If you mention quoted titles or phrases inside a JSON string, use single quotes or escaped double quotes so the JSON remains valid.",
     "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must be A, B, C, or D.",
     questionBalanceStatusPrompt(existingBalance),
     questionBalancePrompt(balanceTargets),
@@ -1663,7 +1835,7 @@ async function generateAdditionalQuestionsWithAi(args: {
   const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
   const text = body.choices?.[0]?.message?.content?.trim() ?? "";
   if (!text) throw new Error("Question generator returned an empty response.");
-  const parsed = parseJsonObject(text);
+  const parsed = parseJsonObject(text, "Question generator");
   const root = asRecord(parsed);
   const rawQuestions = root?.questions ?? parsed;
   const questions = normalizeGeneratedQuestions(rawQuestions, {
@@ -1966,17 +2138,14 @@ function balanceTieBreak(difficulty: Difficulty, stat: QuestionStat, best: Quest
   return GENERATED_STATS.indexOf(stat) - GENERATED_STATS.indexOf(best.stat);
 }
 
-function normalizeGeneratedCourseSpec(
+function normalizeGeneratedCourseMetadata(
   value: unknown,
   opts: {
     teacherId: string;
-    facultyId: string;
     existingTeacher: StoredDraftTeacherRecord | null;
     fallbackSubject: string;
-    questionCount: number;
-    balanceTargets?: readonly QuestionBalanceTarget[];
   },
-): GeneratedCourseSpec {
+): GeneratedCourseMetadata {
   const root = asRecord(value);
   if (!root) throw new Error("Course generator response was not a JSON object.");
   const teacher = asRecord(root.teacher) ?? root;
@@ -1993,13 +2162,6 @@ function normalizeGeneratedCourseSpec(
     700,
   ) || "A focused Ruby High teacher.";
   const quote = cleanGeneratedText(firstString(teacher, ["quote", "signatureLine"]), 160);
-  const questions = normalizeGeneratedQuestions(root.questions, {
-    facultyId: opts.facultyId,
-    subject,
-    limit: opts.questionCount,
-    balanceTargets: opts.balanceTargets,
-  });
-  if (questions.length === 0) throw new Error("Course generator did not return usable questions.");
   return {
     teacherId: opts.teacherId,
     displayName,
@@ -2008,7 +2170,6 @@ function normalizeGeneratedCourseSpec(
     quote,
     courseTitle: cleanGeneratedText(firstString(root, ["courseTitle", "title", "packName"]), 80) || `${displayName} Course`,
     courseDescription: cleanGeneratedText(firstString(root, ["courseDescription", "description"]), 180) || description,
-    questions,
   };
 }
 
@@ -2092,16 +2253,162 @@ function generatedQuestionOptions(record: Record<string, unknown>): { options: R
   return { options, correct };
 }
 
-function parseJsonObject(text: string): unknown {
-  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
-    throw new Error("Course generator returned invalid JSON.");
+function parseJsonObject(text: string, label = "Generator"): unknown {
+  const cleaned = cleanGeneratedJsonText(text);
+  const candidates = generatedJsonCandidates(cleaned);
+  const errors: string[] = [];
+  for (const candidate of candidates) {
+    const direct = tryParseJson(candidate);
+    if (direct.ok) return direct.value;
+    errors.push(direct.error.message);
+
+    const repaired = repairLooseGeneratedJson(candidate);
+    if (repaired !== candidate) {
+      const parsed = tryParseJson(repaired);
+      if (parsed.ok) {
+        log.event("pack-draft.generated-json-repaired", { label });
+        return parsed.value;
+      }
+      errors.push(parsed.error.message);
+    }
   }
+  log.error("pack-draft.generated-json-invalid", new Error(errors[0] ?? "invalid JSON"), { label });
+  throw new Error(`${label} returned invalid JSON.`);
+}
+
+function cleanGeneratedJsonText(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+}
+
+function generatedJsonCandidates(cleaned: string): string[] {
+  const candidates = [cleaned];
+  const objectStart = cleaned.indexOf("{");
+  const arrayStart = cleaned.indexOf("[");
+  const starts = [objectStart, arrayStart].filter((index) => index >= 0);
+  const start = starts.length ? Math.min(...starts) : -1;
+  if (start >= 0) {
+    const end = cleaned.lastIndexOf(cleaned[start] === "{" ? "}" : "]");
+    if (end > start) candidates.push(cleaned.slice(start, end + 1));
+  }
+  return Array.from(new Set(candidates.filter((candidate) => candidate.trim().length > 0)));
+}
+
+function tryParseJson(text: string): { ok: true; value: unknown } | { ok: false; error: Error } {
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err : new Error(String(err)) };
+  }
+}
+
+function repairLooseGeneratedJson(text: string): string {
+  return stripTrailingCommasOutsideStrings(escapeLooseJsonStringContent(text));
+}
+
+function escapeLooseJsonStringContent(text: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (!inString) {
+      if (ch === "\"") inString = true;
+      out += ch;
+      continue;
+    }
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      out += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === "\"") {
+      if (looseQuoteLooksTerminating(text, i)) {
+        inString = false;
+        out += ch;
+      } else {
+        out += "\\\"";
+      }
+      continue;
+    }
+    if (ch === "\n") {
+      out += "\\n";
+      continue;
+    }
+    if (ch === "\r") {
+      out += "\\r";
+      continue;
+    }
+    if (ch === "\t") {
+      out += "\\t";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function looseQuoteLooksTerminating(text: string, quoteIndex: number): boolean {
+  const nextIndex = nextMeaningfulIndex(text, quoteIndex + 1);
+  if (nextIndex < 0) return true;
+  const next = text[nextIndex];
+  if (next === ":" || next === "}" || next === "]") return true;
+  if (next !== ",") return false;
+  const afterCommaIndex = nextMeaningfulIndex(text, nextIndex + 1);
+  if (afterCommaIndex < 0) return true;
+  const afterComma = text[afterCommaIndex]!;
+  return afterComma === "\"" ||
+    afterComma === "{" ||
+    afterComma === "[" ||
+    afterComma === "}" ||
+    afterComma === "]" ||
+    afterComma === "-" ||
+    /[0-9tfn]/.test(afterComma);
+}
+
+function stripTrailingCommasOutsideStrings(text: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (inString) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "," && ["]", "}"].includes(text[nextMeaningfulIndex(text, i + 1)] ?? "")) {
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function nextMeaningfulIndex(text: string, start: number): number {
+  for (let i = start; i < text.length; i += 1) {
+    if (!/\s/.test(text[i]!)) return i;
+  }
+  return -1;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
