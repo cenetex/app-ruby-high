@@ -73,6 +73,7 @@ const COURSE_SLOT_HALL_PASS_COST = courseSlotCost();
 const QUESTION_GENERATION_HALL_PASS_COST = questionGenerationCost();
 const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 6);
 const COURSE_GENERATION_QUESTION_BATCH_SIZE = Math.max(2, Math.min(6, readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_BATCH_SIZE, 6)));
+const COURSE_GENERATION_JOB_TTL_MS = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_JOB_TTL_MS, 30 * 60 * 1000);
 const EMPTY_DRAFT_CLEANUP_AGE_MS = readPositiveInt(process.env.RUBY_HIGH_EMPTY_DRAFT_CLEANUP_AGE_MS, 10 * 60 * 1000);
 const EMPTY_DRAFT_CLEANUP_LIMIT = readPositiveInt(process.env.RUBY_HIGH_EMPTY_DRAFT_CLEANUP_LIMIT, 25);
 const MORE_QUESTIONS_COUNT = moreQuestionsCount();
@@ -88,6 +89,43 @@ interface QuestionBalanceTarget {
   difficulty: Difficulty;
   stat: QuestionStat;
 }
+
+type CourseGenerationJobStatus = "running" | "complete" | "error";
+type CourseGenerationJobStep = "materials" | "teacher" | "questions" | "portrait" | "saving";
+
+interface CourseGenerationJob {
+  id: string;
+  key: string;
+  requestId: string;
+  ownerUserId: string;
+  sessionId: string;
+  draftId: string;
+  teacherId: string;
+  status: CourseGenerationJobStatus;
+  step: CourseGenerationJobStep;
+  pct: number;
+  message: string;
+  error?: string;
+  draft?: StoredDraftContentPackRecord;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface CourseGenerationJobArgs {
+  job: CourseGenerationJob;
+  deps: PackLibraryRouteDeps;
+  record: AuthRecord;
+  draft: StoredDraftContentPackRecord;
+  teacherId: string;
+  materials: string;
+  materialSourceUrl: string;
+  apiKey: string;
+  imageApiKey: string;
+  questionCount: number;
+}
+
+const courseGenerationJobs = new Map<string, CourseGenerationJob>();
+const courseGenerationJobIdsByKey = new Map<string, string>();
 
 export async function handlePackLibraryRoutes(
   ctx: PackLibraryRouteContext,
@@ -298,6 +336,20 @@ export async function handlePackLibraryRoutes(
     return true;
   }
 
+  const courseGenerateStatusPath = sub.match(/^\/([^/]+)\/course\/generate\/([^/]+)$/);
+  if (ctx.method === "GET" && courseGenerateStatusPath?.[1] && courseGenerateStatusPath?.[2]) {
+    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(courseGenerateStatusPath[1]), ctx);
+    if (!draft) return true;
+    const jobId = decodeURIComponent(courseGenerateStatusPath[2]);
+    const job = courseGenerationJobs.get(jobId);
+    if (!job || job.draftId !== draft.id || job.ownerUserId !== record.userId) {
+      ctx.error(ctx.res, "Course generation status expired. Reopen the draft to see any saved changes.", 404);
+      return true;
+    }
+    ctx.json(ctx.res, courseGenerationJobPayload(job, deps.ruby));
+    return true;
+  }
+
   const courseGeneratePath = sub.match(/^\/([^/]+)\/course\/generate$/);
   if (ctx.method === "POST" && courseGeneratePath?.[1]) {
     const draft = await requireDraft(deps.ruby, record, decodeURIComponent(courseGeneratePath[1]), ctx);
@@ -332,34 +384,32 @@ export async function handlePackLibraryRoutes(
       return true;
     }
     try {
-      const generated = await generateCourseSpecWithAi({
-        apiKey: credential.apiKey,
+      const requestId = cleanClientRequestId(bodyString(body, "requestId")) || newCourseGenerationJobId();
+      const existingJob = courseGenerationJobForRequest(record.userId, draft.id, requestId);
+      if (existingJob) {
+        ctx.json(ctx.res, courseGenerationJobPayload(existingJob, deps.ruby), existingJob.status === "running" ? 202 : 200);
+        return true;
+      }
+      const job = createCourseGenerationJob({
+        requestId,
+        ownerUserId: record.userId,
+        sessionId,
+        draftId: draft.id,
+        teacherId: targetTeacherId,
+      });
+      void runCourseGenerationJob({
+        job,
+        deps,
+        record,
         draft,
-        teacher: targetTeacher,
-        materials,
-        questionCount: questionCountFrom(bodyValue(body, "questionCount")),
-      });
-      const profileImageUrl = await generateCourseTeacherPortrait({
-        apiKey: credential.imageApiKey,
-        generated,
-      });
-      const updated = applyGeneratedCourseSpec(draft, {
         teacherId: targetTeacherId,
         materials,
         materialSourceUrl: bodyString(body, "materialSourceUrl"),
-        generated,
-        profileImageUrl,
+        apiKey: credential.apiKey,
+        imageApiKey: credential.imageApiKey,
+        questionCount: questionCountFrom(bodyValue(body, "questionCount")),
       });
-      await deps.ruby.saveDraftPackRecord(updated);
-      const teacher = updated.teachers.find((entry) => entry.id === generated.teacherId);
-      ctx.json(ctx.res, {
-        ok: true,
-        draft: draftDetail(updated),
-        teacher: teacher ? teacherDetail(teacher) : null,
-        hallPassCost: 0,
-        hallPasses: deps.ruby.hallPassBalance(sessionId),
-        entitlements: hostedEntitlementStatus({ ruby: deps.ruby, sessionId }),
-      });
+      ctx.json(ctx.res, courseGenerationJobPayload(job, deps.ruby), 202);
     } catch (err) {
       const status = clientErrorStatus(err);
       if (status >= 500) log.error("pack-draft.course-generate-failed", err, { userId: record.userId, draftId: draft.id });
@@ -1498,6 +1548,190 @@ async function requireDraft(
   return draft;
 }
 
+function courseGenerationJobKey(ownerUserId: string, draftId: string, requestId: string): string {
+  return `${ownerUserId}:${draftId}:${requestId}`;
+}
+
+function newCourseGenerationJobId(): string {
+  return `course_job_${Date.now().toString(36)}_${randomBytes(6).toString("hex")}`;
+}
+
+function sweepCourseGenerationJobs(now = Date.now()): void {
+  for (const [jobId, job] of courseGenerationJobs) {
+    if (now - job.updatedAt < COURSE_GENERATION_JOB_TTL_MS) continue;
+    courseGenerationJobs.delete(jobId);
+    courseGenerationJobIdsByKey.delete(job.key);
+  }
+}
+
+function courseGenerationJobForRequest(
+  ownerUserId: string,
+  draftId: string,
+  requestId: string,
+): CourseGenerationJob | null {
+  sweepCourseGenerationJobs();
+  const jobId = courseGenerationJobIdsByKey.get(courseGenerationJobKey(ownerUserId, draftId, requestId));
+  return jobId ? courseGenerationJobs.get(jobId) ?? null : null;
+}
+
+function createCourseGenerationJob(args: {
+  requestId: string;
+  ownerUserId: string;
+  sessionId: string;
+  draftId: string;
+  teacherId: string;
+}): CourseGenerationJob {
+  sweepCourseGenerationJobs();
+  const now = Date.now();
+  const job: CourseGenerationJob = {
+    id: newCourseGenerationJobId(),
+    key: courseGenerationJobKey(args.ownerUserId, args.draftId, args.requestId),
+    requestId: args.requestId,
+    ownerUserId: args.ownerUserId,
+    sessionId: args.sessionId,
+    draftId: args.draftId,
+    teacherId: args.teacherId,
+    status: "running",
+    step: "materials",
+    pct: 4,
+    message: "Queued course generation.",
+    createdAt: now,
+    updatedAt: now,
+  };
+  courseGenerationJobs.set(job.id, job);
+  courseGenerationJobIdsByKey.set(job.key, job.id);
+  return job;
+}
+
+function updateCourseGenerationJob(
+  job: CourseGenerationJob,
+  step: CourseGenerationJobStep,
+  pct: number,
+  message: string,
+): void {
+  job.step = step;
+  job.pct = Math.max(0, Math.min(99, Math.round(pct)));
+  job.message = message;
+  job.updatedAt = Date.now();
+  log.event("pack-draft.course-generate-stage", {
+    jobId: job.id,
+    draftId: job.draftId,
+    requestId: job.requestId,
+    step,
+    pct: job.pct,
+  });
+}
+
+function completeCourseGenerationJob(
+  job: CourseGenerationJob,
+  draft: StoredDraftContentPackRecord,
+  teacherId: string,
+): void {
+  job.status = "complete";
+  job.step = "saving";
+  job.pct = 100;
+  job.message = "Course generated.";
+  job.draft = draft;
+  job.teacherId = teacherId;
+  job.updatedAt = Date.now();
+  log.event("pack-draft.course-generate-complete", {
+    jobId: job.id,
+    draftId: job.draftId,
+    requestId: job.requestId,
+    teacherId,
+    durationMs: job.updatedAt - job.createdAt,
+  });
+}
+
+function failCourseGenerationJob(job: CourseGenerationJob, err: unknown): void {
+  job.status = "error";
+  job.error = err instanceof Error ? err.message : String(err);
+  job.message = job.error || "Course generation failed.";
+  job.updatedAt = Date.now();
+  log.error("pack-draft.course-generate-job-failed", err, {
+    jobId: job.id,
+    draftId: job.draftId,
+    requestId: job.requestId,
+    step: job.step,
+    durationMs: job.updatedAt - job.createdAt,
+  });
+}
+
+function courseGenerationJobPayload(job: CourseGenerationJob, ruby: RubyHighService): Record<string, unknown> {
+  const teacher = job.draft?.teachers.find((entry) => entry.id === job.teacherId) ?? null;
+  return {
+    ok: job.status !== "error",
+    jobId: job.id,
+    requestId: job.requestId,
+    status: job.status,
+    step: job.step,
+    pct: job.pct,
+    message: job.message,
+    ...(job.status === "error" ? { error: job.error || job.message } : {}),
+    ...(job.status === "complete" && job.draft ? {
+      draft: draftDetail(job.draft),
+      teacher: teacher ? teacherDetail(teacher) : null,
+      hallPassCost: 0,
+      hallPasses: ruby.hallPassBalance(job.sessionId),
+      entitlements: hostedEntitlementStatus({ ruby, sessionId: job.sessionId }),
+    } : {}),
+  };
+}
+
+async function runCourseGenerationJob(args: CourseGenerationJobArgs): Promise<void> {
+  const { job } = args;
+  try {
+    log.event("pack-draft.course-generate-started", {
+      jobId: job.id,
+      draftId: job.draftId,
+      requestId: job.requestId,
+      teacherId: args.teacherId || null,
+      questionCount: args.questionCount,
+      materialChars: args.materials.length,
+    });
+    updateCourseGenerationJob(job, "teacher", 18, "Creating teacher name and voice.");
+    const targetTeacher = args.teacherId
+      ? args.draft.teachers.find((entry) => entry.id === args.teacherId) ?? null
+      : null;
+    const metadata = await generateCourseMetadataWithAi({
+      apiKey: args.apiKey,
+      draft: args.draft,
+      teacher: targetTeacher,
+      materials: args.materials,
+    });
+    job.teacherId = metadata.teacherId;
+    updateCourseGenerationJob(job, "questions", 44, "Writing class questions.");
+    const questions = await generateCourseQuestionsWithAi({
+      apiKey: args.apiKey,
+      draft: args.draft,
+      generated: metadata,
+      materials: args.materials,
+      questionCount: args.questionCount,
+    });
+    const generated: GeneratedCourseSpec = { ...metadata, questions };
+    updateCourseGenerationJob(job, "portrait", 72, "Generating teacher portrait.");
+    const profileImageUrl = await generateCourseTeacherPortrait({
+      apiKey: args.imageApiKey,
+      generated,
+    });
+    updateCourseGenerationJob(job, "saving", 94, "Saving the pack.");
+    const latestDraft = (await args.deps.ruby.listDraftPackRecords()).find((entry) => entry.id === args.draft.id) ?? args.draft;
+    if (latestDraft.ownerUserId !== args.record.userId) throw new Error("Only the owner can edit this draft pack.");
+    const updated = applyGeneratedCourseSpec(latestDraft, {
+      teacherId: args.teacherId,
+      materials: args.materials,
+      materialSourceUrl: args.materialSourceUrl,
+      generated,
+      profileImageUrl,
+    });
+    await args.deps.ruby.saveDraftPackRecord(updated);
+    const teacher = updated.teachers.find((entry) => entry.id === generated.teacherId);
+    completeCourseGenerationJob(job, updated, teacher?.id ?? generated.teacherId);
+  } catch (err) {
+    failCourseGenerationJob(job, err);
+  }
+}
+
 interface CourseGenerationCredential {
   apiKey: string | null;
   imageApiKey: string | null;
@@ -1629,15 +1863,13 @@ function appendGeneratedQuestionsForTeacher(
   });
 }
 
-async function generateCourseSpecWithAi(args: {
+async function generateCourseMetadataWithAi(args: {
   apiKey: string;
   draft: StoredDraftContentPackRecord;
   teacher: StoredDraftTeacherRecord | null;
   materials: string;
-  questionCount: number;
-}): Promise<GeneratedCourseSpec> {
+}): Promise<GeneratedCourseMetadata> {
   const teacherId = args.teacher?.id ?? newTeacherId();
-  const requestedCount = Math.max(4, Math.min(24, args.questionCount || COURSE_GENERATION_QUESTION_COUNT));
   const materials = args.materials.trim();
   const prompt = [
     `Draft pack: ${args.draft.name || "Untitled Content Pack"}`,
@@ -1685,14 +1917,7 @@ async function generateCourseSpecWithAi(args: {
     fallbackTitle: cleanGeneratedText(args.draft.name || firstMarkdownHeading(materials), 80) || `${fallbackSubject} Course`,
     fallbackDescription: courseDescriptionFromMaterials(materials, fallbackSubject),
   });
-  const questions = await generateCourseQuestionsWithAi({
-    apiKey: args.apiKey,
-    draft: args.draft,
-    generated: metadata,
-    materials,
-    questionCount: requestedCount,
-  });
-  return { ...metadata, questions };
+  return metadata;
 }
 
 function normalizeGeneratedCourseMetadataLenient(

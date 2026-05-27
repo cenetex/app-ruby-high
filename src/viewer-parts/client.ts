@@ -8802,6 +8802,14 @@ export function runViewerClient(bootstrap) {
       if (!r.ok) throw new Error(data.error || "generate course " + r.status);
       return data;
     },
+    async courseGenerationStatus(draftId, jobId, options) {
+      const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/course/generate/" + encodeURIComponent(jobId), {
+        signal: options && options.signal,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "course generation " + r.status);
+      return data;
+    },
     async deleteQuestion(draftId, teacherId, questionId) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts/" + encodeURIComponent(draftId) + "/teachers/" + encodeURIComponent(teacherId) + "/questions/" + encodeURIComponent(questionId), {
         method: "DELETE",
@@ -9086,6 +9094,58 @@ export function runViewerClient(bootstrap) {
     if (courseProgressBarEl) courseProgressBarEl.setAttribute("aria-valuenow", "0");
     if (courseProgressFillEl) courseProgressFillEl.style.width = "0%";
     if (courseGenerationChecklistEl) courseGenerationChecklistEl.textContent = "";
+  }
+  function makeAbortError() {
+    const err = new Error("aborted");
+    err.name = "AbortError";
+    return err;
+  }
+  function waitForCourseGenerationPoll(ms, signal) {
+    if (signal && signal.aborted) return Promise.reject(makeAbortError());
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        if (signal) signal.removeEventListener("abort", onAbort);
+        fn();
+      };
+      const timer = window.setTimeout(() => finish(resolve), ms);
+      const onAbort = () => finish(() => reject(makeAbortError()));
+      if (!signal) return;
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+  function updateCourseGenerationProgressFromJob(job) {
+    if (!job || typeof job !== "object") return;
+    const pct = Number(job.pct || 0);
+    const step = String(job.step || courseGenerationStepForPct(pct).key);
+    updateCourseGenerationProgress(pct > 0 ? pct : 4, step, job.status === "error");
+    const message = String(job.message || "");
+    if (message) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = message;
+        packEditStatusEl.classList.toggle("is-invalid", job.status === "error");
+      }
+      if (courseGenerationStatusEl) {
+        courseGenerationStatusEl.textContent = message;
+        courseGenerationStatusEl.classList.toggle("is-invalid", job.status === "error");
+      }
+    }
+  }
+  async function waitForCourseGenerationJob(draftId, initialJob, signal) {
+    let job = initialJob;
+    for (;;) {
+      if (signal && signal.aborted) throw makeAbortError();
+      updateCourseGenerationProgressFromJob(job);
+      if (job && job.status === "complete") return job;
+      if (job && job.status === "error") throw new Error(job.error || job.message || "Course generation failed.");
+      const jobId = job && job.jobId;
+      if (!jobId) throw new Error("Course generation did not return a job id.");
+      await waitForCourseGenerationPoll(1500, signal);
+      job = await packStudioClient.courseGenerationStatus(draftId, jobId, { signal });
+    }
   }
   function packGenerationInFlight() {
     return !!(pendingTeacherImageBusy || packQuestionGenerationBusy);
@@ -10654,13 +10714,15 @@ export function runViewerClient(bootstrap) {
     }
     const statusEl = teacher ? teacherGenerationStatusEl : courseGenerationStatusEl;
     if (statusEl) {
-      statusEl.textContent = "Generating course, portrait, and questions...";
+      statusEl.textContent = "Starting course generation...";
       statusEl.classList.remove("is-invalid");
     }
     try {
-      const data = await packStudioClient.generateCourse(currentDraft.id, payload, {
+      const started = await packStudioClient.generateCourse(currentDraft.id, payload, {
         signal: controller ? controller.signal : undefined,
       });
+      if (runId !== packQuestionGenerationRunId) return;
+      const data = await waitForCourseGenerationJob(currentDraft.id, started, controller ? controller.signal : undefined);
       if (runId !== packQuestionGenerationRunId) return;
       currentDraft = data.draft;
       if (data && typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements);
@@ -10696,6 +10758,7 @@ export function runViewerClient(bootstrap) {
 
   function cancelQuestionGeneration() {
     if (!packQuestionGenerationBusy) return;
+    const wasCourseGeneration = packQuestionGenerationKind === "course";
     packQuestionGenerationRunId += 1;
     try {
       if (packQuestionGenerationAbortController) packQuestionGenerationAbortController.abort();
@@ -10706,16 +10769,20 @@ export function runViewerClient(bootstrap) {
     packQuestionGenerationBusy = false;
     packQuestionGenerationKind = "";
     if (packEditStatusEl) {
-      packEditStatusEl.textContent = "Course generation canceled.";
+      packEditStatusEl.textContent = wasCourseGeneration
+        ? "Stopped watching course generation. Reopen the draft in a moment if it finishes."
+        : "Question generation canceled.";
       packEditStatusEl.classList.remove("is-invalid");
     }
-    resetCourseGenerationProgress();
+    if (wasCourseGeneration) resetCourseGenerationProgress();
     if (teacherGenerationStatusEl) {
       teacherGenerationStatusEl.textContent = "Generation canceled. Questions are unchanged.";
       teacherGenerationStatusEl.classList.remove("is-invalid");
     }
     if (courseGenerationStatusEl) {
-      courseGenerationStatusEl.textContent = "Generation canceled.";
+      courseGenerationStatusEl.textContent = wasCourseGeneration
+        ? "Stopped watching. The server may still save the course."
+        : "Generation canceled.";
       courseGenerationStatusEl.classList.remove("is-invalid");
     }
     syncPackGenerationControls();

@@ -262,6 +262,26 @@ async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: num
   return lastResponse!;
 }
 
+async function waitForCourseGeneration(
+  draftId: string,
+  started: { status: number; body: any },
+  cookie = "rh_session=alice",
+): Promise<{ status: number; body: any }> {
+  expect(started.status).toBe(202);
+  expect(started.body.status).toBe("running");
+  expect(started.body.jobId).toEqual(expect.any(String));
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate/${started.body.jobId}`,
+      cookie,
+    });
+    if (response.body.status === "complete" || response.body.status === "error") return response;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("course generation job did not finish");
+}
+
 function fetchRequestJson(fetchMock: { mock: { calls: unknown[][] } }, index = 0): any {
   const call = fetchMock.mock.calls[index] ?? [];
   const init = call[1] as { body?: unknown } | undefined;
@@ -630,6 +650,7 @@ describe("/pack-library", () => {
         ].join("\n"),
       },
     });
+    response = await waitForCourseGeneration(draftId, response);
 
     expect(response.status).toBe(200);
     expect(response.body.hallPassCost).toBe(0);
@@ -746,6 +767,7 @@ describe("/pack-library", () => {
         materials: "Henderson et al., \"Deep Reinforcement Learning That Matters,\" AAAI 2018.",
       },
     });
+    response = await waitForCourseGeneration(draftId, response);
 
     expect(response.status).toBe(200);
     expect(response.body.teacher.questions).toHaveLength(1);
@@ -820,6 +842,7 @@ describe("/pack-library", () => {
         materials: "# ARC Prize 2024\n\nTechnical report on abstract reasoning benchmarks.",
       },
     });
+    response = await waitForCourseGeneration(draftId, response);
 
     expect(response.status).toBe(200);
     expect(response.body.draft.name).toBe("ARC Abstract Reasoning");
