@@ -214,39 +214,27 @@ export async function* chatCompletionStream(opts: ChatCompletionStreamOpts): Asy
       const { value, done } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-      let idx: number;
-      while ((idx = buf.indexOf("\n\n")) !== -1) {
-        const frame = buf.slice(0, idx).trim();
-        buf = buf.slice(idx + 2);
+      while (true) {
+        const separator = /\r?\n\r?\n/.exec(buf);
+        if (!separator) break;
+        const frame = buf.slice(0, separator.index).trim();
+        buf = buf.slice(separator.index + separator[0].length);
         if (!frame) continue;
-        for (const line of frame.split(/\r?\n/)) {
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-          const parsed = safeJson(payload);
-          const choice = firstChoice(parsed);
-          if (!choice) continue;
-          const delta = choice.delta ?? {};
-          if (typeof delta.content === "string" && delta.content.length > 0) {
-            yield { kind: "text", text: delta.content };
-          }
-          if (Array.isArray(delta.tool_calls)) {
-            for (const tc of delta.tool_calls) {
-              const slot = typeof tc?.index === "number" ? tc.index : toolCalls.size;
-              const existing = toolCalls.get(slot) ?? { id: typeof tc?.id === "string" ? tc.id : "", name: "", arguments: "" };
-              if (typeof tc?.id === "string") existing.id = tc.id;
-              if (typeof tc?.function?.name === "string") existing.name = tc.function.name;
-              if (typeof tc?.function?.arguments === "string") existing.arguments += tc.function.arguments;
-              toolCalls.set(slot, existing);
-            }
-          }
-          if (choice.finish_reason) {
-            yield* flushToolCalls(toolCalls);
-            yield { kind: "finish", reason: typeof choice.finish_reason === "string" ? choice.finish_reason : null };
-            emitUsage("success", r.status);
-            return;
-          }
+        const finished = yield* streamChunksFromSseFrame(frame, toolCalls);
+        if (finished) {
+          emitUsage("success", r.status);
+          return;
         }
+      }
+    }
+
+    buf += decoder.decode();
+    const trailingFrame = buf.trim();
+    if (trailingFrame) {
+      const finished = yield* streamChunksFromSseFrame(trailingFrame, toolCalls);
+      if (finished) {
+        emitUsage("success", r.status);
+        return;
       }
     }
 
@@ -280,6 +268,40 @@ function firstChoice(value: unknown): { delta?: Record<string, unknown>; finish_
   if (!Array.isArray(choices)) return null;
   const first = choices[0];
   return first && typeof first === "object" ? first as { delta?: Record<string, unknown>; finish_reason?: unknown } : null;
+}
+
+async function* streamChunksFromSseFrame(
+  frame: string,
+  toolCalls: Map<number, { id: string; name: string; arguments: string }>,
+): AsyncGenerator<OpenRouterStreamChunk, boolean, unknown> {
+  for (const line of frame.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    const parsed = safeJson(payload);
+    const choice = firstChoice(parsed);
+    if (!choice) continue;
+    const delta = choice.delta ?? {};
+    if (typeof delta.content === "string" && delta.content.length > 0) {
+      yield { kind: "text", text: delta.content };
+    }
+    if (Array.isArray(delta.tool_calls)) {
+      for (const tc of delta.tool_calls) {
+        const slot = typeof tc?.index === "number" ? tc.index : toolCalls.size;
+        const existing = toolCalls.get(slot) ?? { id: typeof tc?.id === "string" ? tc.id : "", name: "", arguments: "" };
+        if (typeof tc?.id === "string") existing.id = tc.id;
+        if (typeof tc?.function?.name === "string") existing.name = tc.function.name;
+        if (typeof tc?.function?.arguments === "string") existing.arguments += tc.function.arguments;
+        toolCalls.set(slot, existing);
+      }
+    }
+    if (choice.finish_reason) {
+      yield* flushToolCalls(toolCalls);
+      yield { kind: "finish", reason: typeof choice.finish_reason === "string" ? choice.finish_reason : null };
+      return true;
+    }
+  }
+  return false;
 }
 
 async function* flushToolCalls(

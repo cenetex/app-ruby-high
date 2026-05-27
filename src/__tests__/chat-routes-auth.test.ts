@@ -119,6 +119,13 @@ function buildSseChunk(text: string): Uint8Array {
   ].join(""));
 }
 
+function llmSseTextResponse(text: string): Response {
+  return new Response(buildSseChunk(text) as BodyInit, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
 function fakePublicGuestPack(): ContentPack {
   return {
     id: "teacher:route-lounge-guest",
@@ -1033,6 +1040,10 @@ describe("chat event context", () => {
     });
     ruby.pickAndPose(stateKey, { faculty: "ruby" });
     chat.appendPlayerMessage({ sessionToken: token, faculty: "ruby" }, "Ruby, I think the board is trying to trick us.");
+    chat.appendEvent(
+      { sessionToken: token, faculty: "ruby" },
+      { kind: "chime", text: "Sami (classmate) chimed in: \"the wording is the trap this time.\"" },
+    );
 
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;
@@ -1040,9 +1051,7 @@ describe("chat event context", () => {
         url: typeof input === "string" ? input : input.url,
         body: init?.body ? JSON.parse(init.body) : null,
       };
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: "Mika, am I supposed to trust the wording or the pattern here?" } }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return llmSseTextResponse("Mika, am I supposed to trust the wording or the pattern here?");
     });
 
     const res = new TestResponse();
@@ -1062,13 +1071,17 @@ describe("chat event context", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).line).toBe("Mika, am I supposed to trust the wording or the pattern here?");
+    expect(res.body).toContain("event: player-delta");
+    expect(res.body).toContain("event: player-line");
+    expect(res.body).toContain("Mika, am I supposed to trust the wording or the pattern here?");
     expect(capturedChatRequest).not.toBeNull();
     const promptText = JSON.stringify(capturedChatRequest.body.messages);
     expect(promptText).toContain("You are writing the next chat bubble for the player's avatar, Mina");
     expect(promptText).toContain("Quietly intense, observant");
     expect(promptText).toContain("Recent dialogue");
     expect(promptText).toContain("Ruby, I think the board is trying to trick us.");
+    expect(promptText).toContain("Recent visible room events");
+    expect(promptText).toContain("Sami (classmate) chimed in");
     expect(promptText).toContain("Hidden from the player right now: the correct answer.");
     expect(promptText).not.toContain("Correct choice:");
   });
@@ -1090,9 +1103,7 @@ describe("chat event context", () => {
       personality: "Quietly intense, observant, and allergic to obvious answers.",
     });
     (globalThis.fetch as any).mockImplementation(async () => {
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: "nah mina that wording is definitely suspicious" } }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return llmSseTextResponse("nah mina that wording is definitely suspicious");
     });
 
     const res = new TestResponse();
@@ -1142,9 +1153,7 @@ describe("chat event context", () => {
         url: typeof input === "string" ? input : input.url,
         body: init?.body ? JSON.parse(init.body) : null,
       };
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: "yo" } }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return llmSseTextResponse("yo");
     });
 
     const res = new TestResponse();
@@ -1167,7 +1176,9 @@ describe("chat event context", () => {
     expect(res.statusCode).toBe(200);
     expect(capturedChatRequest).not.toBeNull();
     expect(JSON.stringify(capturedChatRequest.body.messages)).toContain("At least 4 words");
-    expect(JSON.parse(res.body).line).toBe("okay Vince, nice one - that answer was clean.");
+    expect(res.body).toContain("event: student-delta");
+    expect(res.body).toContain("event: student");
+    expect(res.body).toContain("okay Vince, nice one - that answer was clean.");
   });
 
   it("routes Chat button player lines through one room turn ledger before a student response", async () => {
@@ -1197,9 +1208,7 @@ describe("chat event context", () => {
       const content = requests.length === 1
         ? "Can someone give me the first clue without saying it outright?"
         : "wait Vince, check the wording first - that's where the trap is.";
-      return new Response(JSON.stringify({
-        choices: [{ message: { content } }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return llmSseTextResponse(content);
     });
 
     const res = new TestResponse();
@@ -1220,8 +1229,10 @@ describe("chat event context", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: player-delta");
     expect(res.body).toContain("event: player-line");
     expect(res.body).toContain("Can someone give me the first clue without saying it outright?");
+    expect(res.body).toContain("event: student-delta");
     expect(res.body).toContain("event: student");
     expect(res.body).toContain("wait Vince, check the wording first");
     const history = chat.history({ sessionToken: token, faculty: "ruby" });
@@ -1259,9 +1270,7 @@ describe("chat event context", () => {
     (globalThis.fetch as any).mockImplementation(async () => {
       calls += 1;
       if (calls === 1) return new Response("player model down", { status: 500, statusText: "Bad Gateway" });
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: "yo" } }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return llmSseTextResponse("yo");
     });
 
     const res = new TestResponse();
@@ -1322,9 +1331,7 @@ describe("chat event context", () => {
         url: typeof input === "string" ? input : input.url,
         body: init?.body ? JSON.parse(init.body) : null,
       };
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: "Okay, that F is loud. Can we practice the weak spot now?" } }],
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return llmSseTextResponse("Okay, that F is loud. Can we practice the weak spot now?");
     });
 
     const res = new TestResponse();
@@ -1344,7 +1351,9 @@ describe("chat event context", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).line).toBe("Okay, that F is loud. Can we practice the weak spot now?");
+    expect(res.body).toContain("event: player-delta");
+    expect(res.body).toContain("event: player-line");
+    expect(res.body).toContain("Okay, that F is loud. Can we practice the weak spot now?");
     const promptText = JSON.stringify(capturedChatRequest.body.messages);
     expect(promptText).toContain("Visible board: class report card for Sally Science.");
     expect(promptText).toContain("Today's graded class is complete.");

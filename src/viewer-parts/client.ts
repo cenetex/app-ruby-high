@@ -10908,8 +10908,9 @@ export function runViewerClient(bootstrap) {
   });
 
   // ── student chime ─────────────────────────────────────────────────────────
-  // When AI is enabled, fire the LLM-backed /chat/student-chime endpoint so
-  // students respond in their own voice. Offline mode uses canned lines.
+  // When AI is enabled, fire the LLM-backed streaming /chat/student-chime
+  // endpoint so students respond in their own voice. Offline mode uses canned
+  // lines.
   let lastChimeAt = 0;
   function studentChimeAllowed() {
     const now = Date.now();
@@ -10941,16 +10942,43 @@ export function runViewerClient(bootstrap) {
       if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
       return true;
     }
+    let streamedEl = null;
     try {
       const r = await apiFetch("/api/apps/ruby-high/chat/student-chime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: who.id, situation, note, faculty, playerText, recordPlayerText }),
       });
-      if (!r.ok) throw new Error("student " + r.status);
-      const data = await r.json();
-      const line = (data && data.line) || pickRandom(STUDENT_LINES_GREET);
-      if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: line, color: who.color, studentId: who.id });
+      let finalLine = "";
+      await consumeViewerSseStream(r, {
+        isCurrent: chimeStillCurrent,
+        onErrorResponse(error) {
+          throw new Error("student " + (error || r.status));
+        },
+        onEvent(event, parsed) {
+          if (event === "student-delta") {
+            if (!streamedEl) streamedEl = appendMsg({ kind: "student", name: who.name, body: "", color: who.color, studentId: who.id });
+            streamedEl.dataset.markdownRaw = (streamedEl.dataset.markdownRaw || "") + ((parsed && parsed.text) || "");
+            renderMarkdownInto(streamedEl, streamedEl.dataset.markdownRaw);
+            scrollIfPinned();
+          } else if (event === "student") {
+            finalLine = (parsed && parsed.line) || finalLine;
+            if (streamedEl && finalLine) {
+              streamedEl.dataset.markdownRaw = sanitizeVisibleChatText(finalLine);
+              renderMarkdownInto(streamedEl, streamedEl.dataset.markdownRaw);
+              scrollIfPinned();
+            } else if (finalLine && chimeStillCurrent()) {
+              appendMsg({ kind: "student", name: who.name, body: finalLine, color: who.color, studentId: who.id });
+            }
+          } else if (event === "error") {
+            throw new Error(parsed && parsed.message ? parsed.message : "student chime failed");
+          }
+        },
+        watchdogMs: 45000,
+      });
+      if (!finalLine && !streamedEl && chimeStillCurrent()) {
+        appendMsg({ kind: "student", name: who.name, body: pickRandom(STUDENT_LINES_GREET), color: who.color, studentId: who.id });
+      }
       return true;
     } catch (err) {
       // Fallback to canned line if the API call fails.
@@ -10959,7 +10987,15 @@ export function runViewerClient(bootstrap) {
         : situation === "answer-wrong"
           ? pickRandom(STUDENT_LINES_WRONG)
           : pickRandom(STUDENT_LINES_GREET);
-      if (chimeStillCurrent()) appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
+      if (chimeStillCurrent()) {
+        if (streamedEl) {
+          streamedEl.dataset.markdownRaw = sanitizeVisibleChatText(fallback);
+          renderMarkdownInto(streamedEl, streamedEl.dataset.markdownRaw);
+          scrollIfPinned();
+        } else {
+          appendMsg({ kind: "student", name: who.name, body: fallback, color: who.color, studentId: who.id });
+        }
+      }
       return false;
     }
   }
@@ -11550,6 +11586,14 @@ export function runViewerClient(bootstrap) {
     // Default speaker = current channel's teacher; overridden by speaker events.
     let speaker = teacherInfo(lastTelemetry && lastTelemetry.faculty);
     let streamMsgEl = null;
+    let playerStreamMsgEl = null;
+    let studentStreamMsgEl = null;
+    function replaceStreamMsgBody(el, text) {
+      if (!el) return;
+      el.dataset.markdownRaw = sanitizeVisibleChatText(text || "");
+      renderMarkdownInto(el, el.dataset.markdownRaw);
+      scrollIfPinned();
+    }
     await consumeViewerSseStream(response, {
       isCurrent() {
         return chatStreamStillCurrent(opts);
@@ -11561,22 +11605,51 @@ export function runViewerClient(bootstrap) {
         if (event === "speaker") {
           speaker = teacherInfo(parsed.facultyId);
           streamMsgEl = null; // force a new bubble for the new speaker
+        } else if (event === "player-delta") {
+          if (!playerStreamMsgEl) {
+            playerStreamMsgEl = appendMsg({ kind: "you", name: playerDisplayName(), body: "", color: "var(--accent)" });
+          }
+          playerStreamMsgEl.dataset.markdownRaw = (playerStreamMsgEl.dataset.markdownRaw || "") + ((parsed && parsed.text) || "");
+          renderMarkdownInto(playerStreamMsgEl, playerStreamMsgEl.dataset.markdownRaw);
+          scrollIfPinned(true);
         } else if (event === "player-line") {
           const text = parsed && parsed.text ? String(parsed.text) : "";
-          if (text) appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
+          if (text) {
+            if (playerStreamMsgEl) replaceStreamMsgBody(playerStreamMsgEl, text);
+            else appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
+          }
+          playerStreamMsgEl = null;
           streamMsgEl = null;
-        } else if (event === "student") {
+        } else if (event === "student-delta") {
           const student = parsed && parsed.student ? parsed.student : {};
-          const line = parsed && parsed.line ? String(parsed.line) : "";
-          if (line) {
-            appendMsg({
+          if (!studentStreamMsgEl) {
+            studentStreamMsgEl = appendMsg({
               kind: "student",
               name: student.name || "Student",
-              body: line,
+              body: "",
               color: student.color || "#52c673",
               studentId: student.id || "",
             });
           }
+          studentStreamMsgEl.dataset.markdownRaw = (studentStreamMsgEl.dataset.markdownRaw || "") + ((parsed && parsed.text) || "");
+          renderMarkdownInto(studentStreamMsgEl, studentStreamMsgEl.dataset.markdownRaw);
+          scrollIfPinned();
+        } else if (event === "student") {
+          const student = parsed && parsed.student ? parsed.student : {};
+          const line = parsed && parsed.line ? String(parsed.line) : "";
+          if (line) {
+            if (studentStreamMsgEl) replaceStreamMsgBody(studentStreamMsgEl, line);
+            else {
+              appendMsg({
+                kind: "student",
+                name: student.name || "Student",
+                body: line,
+                color: student.color || "#52c673",
+                studentId: student.id || "",
+              });
+            }
+          }
+          studentStreamMsgEl = null;
           streamMsgEl = null;
         } else if (event === "delta") {
           if (!streamMsgEl) {
@@ -11599,12 +11672,16 @@ export function runViewerClient(bootstrap) {
         } else if (event === "error") {
           appendSystem("error · " + (parsed.message || "unknown"));
           refreshSessionAfterStreamEvent();
+          playerStreamMsgEl = null;
+          studentStreamMsgEl = null;
           streamMsgEl = null;
         } else if (event === "waiting" || event === "opinion-graded") {
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "done" || event === "end") {
           refreshSessionAfterStreamEvent();
+          playerStreamMsgEl = null;
+          studentStreamMsgEl = null;
           streamMsgEl = null;
         }
       },

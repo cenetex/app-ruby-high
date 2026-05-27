@@ -235,7 +235,11 @@ export class ChatService extends Service {
   }
 
   events_for_test(key: ChatHistoryKey): RoomEvent[] {
-    return this.events.get(this.keyOf(key)) ?? [];
+    return this.roomEvents(key);
+  }
+
+  roomEvents(key: ChatHistoryKey): RoomEvent[] {
+    return [...(this.events.get(this.keyOf(key)) ?? [])];
   }
 
   async *send(opts: SendOpts): AsyncGenerator<ChatStreamEvent> {

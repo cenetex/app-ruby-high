@@ -1,5 +1,11 @@
 import { log } from "./logger.js";
 import { DEFAULT_COURSE_MODEL, DEFAULT_OPENROUTER_MODEL, DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
+import {
+  chatCompletionStream,
+  OPENROUTER_STREAM_TIMEOUT_MS,
+  type OpenRouterRequest,
+  type OpenRouterStreamChunk,
+} from "./openrouter-client.js";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
@@ -157,6 +163,32 @@ export async function fetchLlmChatCompletions(
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+export async function* streamLlmChatCompletions(
+  args: {
+    apiKey?: string | null;
+    body: OpenRouterRequest;
+    timeoutMs?: number;
+    title?: string;
+    label?: string;
+  },
+): AsyncGenerator<OpenRouterStreamChunk> {
+  const provider = llmProviderInfo();
+  const label = args.label ?? args.title ?? "chat-completions-stream";
+  const apiKey = resolveLlmApiKey(args.apiKey);
+  if (!apiKey) throw new Error(`${label}: ${provider.name} API key required.`);
+  yield* chatCompletionStream({
+    url: provider.chatCompletionsUrl,
+    headers: llmHeaders(apiKey, { title: args.title }),
+    body: {
+      ...args.body,
+      model: resolveLlmModel(String(args.body.model ?? "")),
+    },
+    label,
+    providerName: provider.name,
+    timeoutMs: args.timeoutMs ?? OPENROUTER_STREAM_TIMEOUT_MS,
+  });
 }
 
 export async function throwLlmResponseError(r: Response, label: string): Promise<never> {

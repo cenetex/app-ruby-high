@@ -1,13 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
-import { ChatService, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
+import { ChatService, type ChatMessage, type ChatStreamEvent, type RoomEvent, type ToolCall } from "./services/chat-service.js";
 import {
   HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
   RubyHighService,
   type HallPassCardBurnInput,
   type QuestionBankStatus,
 } from "./services/ruby-high-service.js";
+import {
+  type AvatarChatLineStreamEvent,
+  avatarChatLineLooksTooThin,
+  cleanAvatarChatLine,
+  streamAvatarChatLine,
+  streamTeacherAvatarTurn,
+} from "./services/avatar-chat.js";
 import { TokenBucket } from "./services/rate-limit.js";
 import { log } from "./services/logger.js";
 import {
@@ -633,7 +640,7 @@ async function gradeOpinionResponses(args: {
   return parseTeacherGrades(text);
 }
 
-async function generateStudentLine(args: {
+function streamStudentLine(args: {
   apiKey: string;
   student: StudentCharacter;
   situation: string;
@@ -655,7 +662,7 @@ async function generateStudentLine(args: {
    *  ("yo", "fr") instead of an actual reply. Quoted into the prompt
    *  verbatim so the student can react to the words on screen. */
   playerText?: string;
-}): Promise<string> {
+}): AsyncGenerator<AvatarChatLineStreamEvent> {
   const facultyContext = args.faculty
     ? `The current class is taught by ${args.faculty.replace("-", " ")}.`
     : "";
@@ -690,35 +697,18 @@ async function generateStudentLine(args: {
     "Do not answer with a filler-only fragment like 'yo', 'we', 'fr', 'lol', or 'idk'.",
   ].filter(Boolean).join("\n");
 
-  const body = await llmJson<OpenRouterChatCompletion>({
+  return streamAvatarChatLine({
     apiKey: args.apiKey,
-    label: "chat",
-    body: {
-      model: resolveStudentModel(),
-      messages: [
-        { role: "system", content: args.student.systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: 80,
-      temperature: 0.95,
-    },
+    label: "student-line",
+    systemPrompt: args.student.systemPrompt,
+    userPrompt,
+    model: resolveStudentModel(),
+    maxTokens: 80,
+    temperature: 0.95,
+    clean: (text) => cleanAvatarChatLine(text),
+    unusable: (text) => avatarChatLineLooksTooThin(text, { minWords: 4, minChars: 16 }),
+    fallback: () => fallbackStudentChime(args),
   });
-  const text = body.choices?.[0]?.message?.content?.trim() ?? "";
-  // Strip wrapping quotes if model added them.
-  const cleaned = text.replace(/^["'\s]+|["'\s]+$/g, "").replace(/\s+/g, " ").trim();
-  return studentChimeLooksTooThin(cleaned)
-    ? fallbackStudentChime(args)
-    : cleaned;
-}
-
-function studentChimeLooksTooThin(text: string): boolean {
-  if (!text) return true;
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (!cleaned) return true;
-  const words = cleaned.split(" ").filter(Boolean);
-  if (words.length < 4) return true;
-  if (cleaned.length < 16) return true;
-  return false;
 }
 
 function fallbackStudentChime(args: {
@@ -865,6 +855,14 @@ function recentDialogueForPlayer(history: ChatMessage[], state: QuizState): stri
   return rows.length ? ["Recent dialogue:", ...rows].join("\n") : "Recent dialogue: none yet.";
 }
 
+function recentRoomEventsForPlayer(events: RoomEvent[] | undefined): string {
+  const rows = (events ?? [])
+    .filter((event) => event.text.trim().length > 0)
+    .slice(-8)
+    .map((event) => `  - ${clipped(event.text.trim(), 220)}`);
+  return rows.length ? ["Recent visible room events:", ...rows].join("\n") : "";
+}
+
 function playerIntentDirective(intent: PlayerChatIntent): string {
   if (intent === "hint") {
     return "The player is asking the room for a clue about the live board. Do not answer the challenge; ask for help or name what feels confusing.";
@@ -879,21 +877,21 @@ function playerIntentDirective(intent: PlayerChatIntent): string {
 }
 
 function sanitizePlayerLine(text: string, playerName: string): string {
-  let line = text.trim().replace(/^["'\s]+|["'\s]+$/g, "");
-  const prefix = new RegExp(`^(${playerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|player|you)\\s*:\\s*`, "i");
-  line = line.replace(prefix, "").trim();
-  if (line.length > 220) line = line.slice(0, 219).trimEnd() + "…";
-  return line;
+  return cleanAvatarChatLine(text, {
+    maxChars: 220,
+    speakerPrefixes: [playerName, "player", "you"],
+  });
 }
 
-async function generatePlayerLine(args: {
+function streamPlayerLine(args: {
   apiKey: string;
   state: QuizState;
   faculty: string;
   intent: PlayerChatIntent;
   history: ChatMessage[];
+  roomEvents?: RoomEvent[];
   bankStatus?: QuestionBankStatus | null;
-}): Promise<string> {
+}): AsyncGenerator<AvatarChatLineStreamEvent> {
   const character = args.state.character;
   if (!character) throw new Error("Create a character before using AI Chat.");
   const playbook = PLAYBOOKS.find((p) => p.id === character.playbookId);
@@ -917,6 +915,7 @@ async function generatePlayerLine(args: {
     playerVisibleBoardContext(args.state, args.intent, args.bankStatus),
     "",
     recentDialogueForPlayer(args.history, args.state),
+    recentRoomEventsForPlayer(args.roomEvents),
     "",
     `Turn intent: ${args.intent}. ${playerIntentDirective(args.intent)}`,
     "",
@@ -926,32 +925,33 @@ async function generatePlayerLine(args: {
     "Do not say 'what does the report say' unless the visible context is literally a report and that is the most natural thing to ask.",
   ].filter(Boolean).join("\n");
 
-  const body = await llmJson<OpenRouterChatCompletion>({
+  return streamAvatarChatLine({
     apiKey: args.apiKey,
     label: "player-line",
-    body: {
-      model: resolveStudentModel(),
-      messages: [
-        {
-          role: "system",
-          content: `You are ${character.name}, a Ruby High student avatar. Write only their next line in their voice.`,
-        },
-        { role: "user", content: userPrompt },
-      ],
-      max_tokens: 80,
-      temperature: 0.9,
-    },
+    systemPrompt: `You are ${character.name}, a Ruby High student avatar. Write only their next line in their voice.`,
+    userPrompt,
+    model: resolveStudentModel(),
+    maxTokens: 80,
+    temperature: 0.9,
+    clean: (text) => sanitizePlayerLine(text, character.name),
+    unusable: (text) => avatarChatLineLooksTooThin(text),
   });
-  const text = body.choices?.[0]?.message?.content ?? "";
-  const line = sanitizePlayerLine(text, character.name);
-  if (!line) throw new Error("Player avatar did not produce a line.");
-  return line;
 }
 
-function fallbackPlayerLine(intent: PlayerChatIntent): string {
+function fallbackPlayerLine(args: {
+  intent: PlayerChatIntent;
+  state: QuizState;
+  bankStatus?: QuestionBankStatus | null;
+}): string {
+  const { intent, state, bankStatus } = args;
   if (intent === "hint") return "Can someone give me the first clue without saying it outright?";
-  if (intent === "report") return "Okay, I need a second with that one. What did everyone notice?";
+  if (intent === "report") {
+    if (state.lastReveal?.wasCorrect) return "Okay, that landed. What should I watch for on the next one?";
+    if (state.lastReveal) return "I missed the trap there. What should I review before the next one?";
+    return "Okay, I need a second with that one. What did everyone notice?";
+  }
   if (intent === "lounge") return "Wait, what did you mean by that?";
+  if (playerClassReportContext(bankStatus)) return "That report is clear. Can we practice the weak spot now?";
   return "I'm ready. What's the room looking at next?";
 }
 
@@ -2053,7 +2053,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
     try {
       const bank = ruby.questionBankStatus(getSessionId(runtime, ctx.cookieHeader), faculty);
-      for await (const ev of chat.send({
+      for await (const ev of streamTeacherAvatarTurn(chat, {
         apiKey,
         sessionToken: token,
         agentSessionId: sessionId,
@@ -2107,15 +2107,24 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         return true;
       }
       let playerLine: string;
+      const historyFaculty = faculty === "lounge" ? "lounge" : faculty;
       try {
-        playerLine = await generatePlayerLine({
+        playerLine = "";
+        for await (const ev of streamPlayerLine({
           apiKey,
           state,
           faculty,
           intent,
-          history: chat.history({ sessionToken: token, faculty }),
+          history: chat.history({ sessionToken: token, faculty: historyFaculty }),
+          roomEvents: chat.roomEvents({ sessionToken: token, faculty: historyFaculty }),
           bankStatus,
-        });
+        })) {
+          if (ev.type === "delta") {
+            send("player-delta", { text: ev.text, intent });
+          } else if (ev.type === "done") {
+            playerLine = ev.text;
+          }
+        }
       } catch (err) {
         if (!state.character) throw err;
         log.event("chat.room-turn-player-line-fallback", {
@@ -2123,14 +2132,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           intent,
           reason: err instanceof Error ? err.message : String(err),
         });
-        playerLine = fallbackPlayerLine(intent);
+        playerLine = fallbackPlayerLine({ intent, state, bankStatus });
       }
       if (isStaleChatEvent()) {
         send("done", { type: "done", finishReason: "stale-turn" });
         return true;
       }
-      send("player-line", { text: playerLine, intent });
-      const historyFaculty = faculty === "lounge" ? "lounge" : faculty;
+      send("player-line", { text: playerLine, intent, replace: true });
       chat.appendPlayerMessage({ sessionToken: token, faculty: historyFaculty }, playerLine);
 
       if (isStaleChatEvent()) {
@@ -2155,8 +2163,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
         const situation = intent === "hint" ? "player-asked-hint" : "player-chat";
         let line: string;
+        const studentPayload = { id: responder.student.id, name: responder.student.name, color: responder.student.color };
         try {
-          line = await generateStudentLine({
+          line = "";
+          for await (const ev of streamStudentLine({
             apiKey,
             student: responder.student,
             situation,
@@ -2166,7 +2176,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             classmateNames,
             teacherSaid,
             playerText: playerLine,
-          });
+          })) {
+            if (ev.type === "delta") {
+              send("student-delta", { student: studentPayload, text: ev.text });
+            } else if (ev.type === "done") {
+              line = ev.text;
+            }
+          }
         } catch (err) {
           log.event("chat.room-turn-student-line-fallback", {
             faculty,
@@ -2186,8 +2202,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           return true;
         }
         send("student", {
-          student: { id: responder.student.id, name: responder.student.name, color: responder.student.color },
+          student: studentPayload,
           line,
+          replace: true,
         });
         if (line) {
           chat.appendEvent(
@@ -2207,7 +2224,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         const speaker = pickNextLoungeSpeaker(chat, token, teacherIds);
         const loungeSystem = loungeSystemContext(loungeState, teacherIds);
         send("speaker", { facultyId: speaker });
-        for await (const ev of chat.send({
+        for await (const ev of streamTeacherAvatarTurn(chat, {
           apiKey,
           sessionToken: token,
           agentSessionId: sessionId,
@@ -2229,7 +2246,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       send("speaker", { facultyId: faculty });
       let questionPosted = false;
       let handoffFired = false;
-      for await (const ev of chat.send({
+      for await (const ev of streamTeacherAvatarTurn(chat, {
         apiKey,
         sessionToken: token,
         agentSessionId: sessionId,
@@ -2278,7 +2295,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             { sessionToken: token, faculty },
             { kind: "note", text: noQuestionNote },
           );
-          for await (const ev of chat.send({
+          for await (const ev of streamTeacherAvatarTurn(chat, {
             apiKey,
             sessionToken: token,
             agentSessionId: sessionId,
@@ -2323,18 +2340,29 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const state = ruby.getOrCreate(sessionId);
     const intent = cleanPlayerChatIntent(body?.context?.intent) ?? playerIntentForPhase(state);
     const bankStatus = faculty === "lounge" ? null : ruby.questionBankStatus(sessionId, faculty);
+    const { send, end } = openSse(ctx.res);
     try {
-      const line = await generatePlayerLine({
+      let line = "";
+      for await (const ev of streamPlayerLine({
         apiKey,
         state,
         faculty,
         intent,
         history: chat.history({ sessionToken: token, faculty }),
+        roomEvents: chat.roomEvents({ sessionToken: token, faculty }),
         bankStatus,
-      });
-      ctx.json(ctx.res, { ok: true, line, intent });
+      })) {
+        if (ev.type === "delta") {
+          send("player-delta", { text: ev.text, intent });
+        } else if (ev.type === "done") {
+          line = ev.text;
+        }
+      }
+      send("player-line", { ok: true, text: line, line, intent, replace: true });
     } catch (err) {
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      end();
     }
     return true;
   }
@@ -2412,7 +2440,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
               : playerLine
               ? "The student just spoke in the lounge. Reply to them directly in character in 1-2 short sentences, then keep the faculty-room scene moving."
               : undefined;
-          for await (const ev of chat.send({
+          for await (const ev of streamTeacherAvatarTurn(chat, {
             apiKey,
             sessionToken: token,
             agentSessionId: getSessionId(runtime, ctx.cookieHeader),
@@ -2558,7 +2586,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       let questionPosted = false;
       let handoffFired = false;
       const allowOpinionTool = !(trigger === "manual" && contextIntent === "advance");
-      for await (const ev of chat.send({
+      for await (const ev of streamTeacherAvatarTurn(chat, {
         apiKey,
         sessionToken: token,
         agentSessionId: sessionId,
@@ -2615,7 +2643,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             { sessionToken: token, faculty },
             { kind: "note", text: noQuestionNote },
           );
-          for await (const ev of chat.send({
+          for await (const ev of streamTeacherAvatarTurn(chat, {
             apiKey,
             sessionToken: token,
             agentSessionId,
@@ -2638,9 +2666,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
-  // Cheap one-shot LLM call for an AI student to chime in. Returns a single
-  // short line (no streaming, no history). Client fires this on triggers like
-  // an answer reveal or a teacher message landing.
+  // Streaming LLM call for an AI student to chime in. Client fires this on
+  // triggers like an answer reveal or a teacher message landing.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/student-chime`) {
     const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
@@ -2709,8 +2736,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         },
       );
     }
+    const { send, end } = openSse(ctx.res);
     try {
-      const line = await generateStudentLine({
+      const studentPayload = { id: student.id, name: student.name, color: student.color };
+      let line = "";
+      for await (const ev of streamStudentLine({
         apiKey,
         student,
         situation,
@@ -2720,7 +2750,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         classmateNames,
         teacherSaid,
         playerText,
-      });
+      })) {
+        if (ev.type === "delta") {
+          send("student-delta", { student: studentPayload, text: ev.text });
+        } else if (ev.type === "done") {
+          line = ev.text;
+        }
+      }
       // Stamp the chime into the active teacher's room awareness so the
       // next teacher turn's RECENT EVENTS synopsis includes it. Without
       // this, an NPC speaks on screen, the player replies "Thanks Sami!"
@@ -2738,13 +2774,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           },
         );
       }
-      ctx.json(ctx.res, {
+      send("student", {
         ok: true,
-        student: { id: student.id, name: student.name, color: student.color },
+        student: studentPayload,
         line,
+        replace: true,
       });
     } catch (err) {
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      end();
     }
     return true;
   }
