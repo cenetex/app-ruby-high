@@ -5,11 +5,12 @@ import {
   llmProviderInfo,
   llmHeaders,
   llmProviderKind,
+  resolveCourseModel,
   resolveLlmApiKey,
   resolveLlmModel,
   resolveStudentModel,
 } from "../services/llm-provider.js";
-import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
+import { DEFAULT_COURSE_MODEL, DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -23,8 +24,16 @@ describe("llm-provider", () => {
     expect(llmProviderInfo().defaultModel).toBe(DEFAULT_OPENROUTER_MODEL);
     expect(resolveLlmModel("")).toBe(DEFAULT_OPENROUTER_MODEL);
     expect(resolveStudentModel()).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(resolveCourseModel()).toBe(DEFAULT_COURSE_MODEL);
     expect(resolveLlmModel("custom/model")).toBe("custom/model");
     expect(resolveLlmApiKey("sk-user")).toBe("sk-user");
+  });
+
+  it("allows course generation to use a dedicated model", () => {
+    vi.stubEnv("RUBY_HIGH_COURSE_MODEL", "custom/course-model");
+
+    expect(resolveCourseModel()).toBe("custom/course-model");
+    expect(resolveStudentModel()).toBe(DEFAULT_OPENROUTER_MODEL);
   });
 
   it("normalizes a local OpenAI-compatible base URL", () => {

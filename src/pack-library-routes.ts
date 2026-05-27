@@ -38,7 +38,7 @@ import {
 import {
   fetchLlmChatCompletions,
   llmProviderName,
-  resolveStudentModel,
+  resolveCourseModel,
 } from "./services/llm-provider.js";
 import {
   maybeUploadPortrait,
@@ -1582,7 +1582,7 @@ async function generateCourseSpecWithAi(args: {
     title: "Ruby High Course Generator",
     timeoutMs: 45_000,
     body: {
-      model: resolveStudentModel(),
+      model: resolveCourseModel(),
       messages: [
         {
           role: "system",
@@ -1719,7 +1719,7 @@ async function generateCourseQuestionBatchWithAi(args: {
     title: "Ruby High Course Question Generator",
     timeoutMs: 45_000,
     body: {
-      model: resolveStudentModel(),
+      model: resolveCourseModel(),
       messages: [
         {
           role: "system",
@@ -1816,7 +1816,7 @@ async function generateAdditionalQuestionsWithAi(args: {
     title: "Ruby High Question Generator",
     timeoutMs: 45_000,
     body: {
-      model: resolveStudentModel(),
+      model: resolveCourseModel(),
       messages: [
         {
           role: "system",

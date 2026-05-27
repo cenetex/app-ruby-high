@@ -1,5 +1,5 @@
 import { log } from "./logger.js";
-import { DEFAULT_OPENROUTER_MODEL, DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
+import { DEFAULT_COURSE_MODEL, DEFAULT_OPENROUTER_MODEL, DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
@@ -70,6 +70,10 @@ export function resolveLlmModel(requested: string | undefined | null): string {
 
 export function resolveStudentModel(): string {
   return resolveLlmModel(process.env.RUBY_HIGH_STUDENT_MODEL ?? DEFAULT_STUDENT_MODEL);
+}
+
+export function resolveCourseModel(): string {
+  return resolveLlmModel(process.env.RUBY_HIGH_COURSE_MODEL ?? DEFAULT_COURSE_MODEL);
 }
 
 export function resolveLlmApiKey(userApiKey?: string | null): string | null {
