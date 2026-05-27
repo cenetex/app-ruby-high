@@ -543,6 +543,7 @@ export interface RubyHighHallPassCard {
   pendingMintOwnerWalletAddress?: string;
   pendingMintAddress?: string;
   pendingMintMetadataUri?: string;
+  pendingMintTransactionHash?: string;
   pendingMintPreparedAt?: number;
   mintAddress?: string;
   mintSignature?: string;

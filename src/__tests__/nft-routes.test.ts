@@ -164,6 +164,7 @@ beforeEach(async () => {
     mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
     metadataUri: `https://ruby-high.ai/api/apps/ruby-high/nft/metadata/hall-pass/card/${encodeURIComponent(card.id)}.json`,
     transactionBase64: "AQID",
+    transactionMessageHash: "prepared-transaction-hash",
     transactionEncoding: "base64",
     chain: "solana:mainnet",
     rpcUrl: "https://rpc.example",
@@ -664,6 +665,7 @@ describe("Hall Pass NFT routes", () => {
       ownerWalletAddress: OWNER,
       mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       transactionBase64: "AQID",
+      transactionMessageHash: "prepared-transaction-hash",
       chain: "solana:mainnet",
       serverMinted: false,
     });
@@ -675,6 +677,7 @@ describe("Hall Pass NFT routes", () => {
       pendingMintOwnerWalletAddress: OWNER,
       pendingMintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       pendingMintMetadataUri: lastResponse?.body.mint.metadataUri,
+      pendingMintTransactionHash: "prepared-transaction-hash",
       pendingMintPreparedAt: expect.any(Number),
     });
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(false);
@@ -689,6 +692,7 @@ describe("Hall Pass NFT routes", () => {
       mintAddress: "PreparedMint11111111111111111111111111111",
       metadataUri: durableMetadataUri,
       transactionBase64: "AQID",
+      transactionMessageHash: "durable-prepared-transaction-hash",
       transactionEncoding: "base64",
       chain: "solana:mainnet",
       rpcUrl: "https://rpc.example",
@@ -714,6 +718,7 @@ describe("Hall Pass NFT routes", () => {
     expect(recordedCard).toMatchObject({
       pendingMintAddress: "PreparedMint11111111111111111111111111111",
       pendingMintMetadataUri: durableMetadataUri,
+      pendingMintTransactionHash: "durable-prepared-transaction-hash",
     });
 
     const handled = await handleNftRoutes(makeCtx({
@@ -792,7 +797,15 @@ describe("Hall Pass NFT routes", () => {
       source: "stripe",
     });
     const card = grant.cards![0]!;
-    const metadataUri = hallPassNftMetadataUri(card);
+
+    await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-prepare",
+      cookie: "rh_session=owner-paid-submit",
+      body: { cardId: card.id, ownerWalletAddress: OWNER },
+    }), deps());
+    expect(lastResponse?.status).toBe(200);
+    const preparedMetadataUri = lastResponse?.body.mint.metadataUri;
 
     const handled = await handleNftRoutes(makeCtx({
       method: "POST",
@@ -802,7 +815,7 @@ describe("Hall Pass NFT routes", () => {
         cardId: card.id,
         ownerWalletAddress: OWNER,
         mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-        metadataUri,
+        metadataUri: preparedMetadataUri,
         signedTransactionBase64: "AQID",
       },
     }), deps());
@@ -815,7 +828,7 @@ describe("Hall Pass NFT routes", () => {
       id: card.id,
       mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       mintSignature: "5mSubmittedCardMintSignature222222222222222222222222222222222",
-      metadataUri,
+      metadataUri: preparedMetadataUri,
     });
     expect(lastResponse?.body.remaining).toBe(1);
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(true);
@@ -845,6 +858,7 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.mint).toMatchObject({
       ownerWalletAddress: OWNER,
       transactionBase64: "AQID",
+      transactionMessageHash: "prepared-transaction-hash",
       serverMinted: false,
     });
     expect(lastResponse?.body.remaining).toBe(8);

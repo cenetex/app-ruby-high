@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Keypair } from "@solana/web3.js";
+import {
+  generateKeyPairSigner,
+  getBase64EncodedWireTransaction,
+  getTransactionDecoder,
+  isFullySignedTransaction,
+  partiallySignTransaction,
+} from "@solana/kit";
 import {
   assertHallPassMintAuthorityCapacity,
+  buildHallPassCardMintTransaction,
   hallPassCardCollectionForMint,
   hallPassCardOnChainNameForMint,
   setHallPassNftAuthorityBalanceForTest,
+  submitSignedHallPassCardMintTransaction,
   verifyHallPassCardBurn,
 } from "../services/hall-pass-nfts.js";
 
@@ -15,6 +25,7 @@ const ORIGINAL_ENV = {
 const OWNER = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
 const MINT = "BgVZqawE7eBunbwHh7r9NNtaftRo3FHeqcFFZoteBhSh";
 const SIGNATURE = "5UYZSy27Jo9Fca56cxga1ZqRiPMZYAFt5HeTT9qbmSWRxWqukQiEAJFKRpX9HzzPj1GAFih42hLSZJKynr9Z3MEr";
+const SUBMITTED_SIGNATURE = "5mSubmittedCardMintSignature222222222222222222222222222222222";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -52,6 +63,115 @@ describe("verifyHallPassCardBurn", () => {
     const restoreFunded = setHallPassNftAuthorityBalanceForTest(async () => 40_000_000n);
     await expect(assertHallPassMintAuthorityCapacity(1)).resolves.toBeUndefined();
     restoreFunded();
+  });
+
+  it("prepares an unsigned wallet-first mint, then completes server signatures after owner signing", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    const sentTransactions: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
+      if (request.method === "getLatestBlockhash") {
+        return rpcResponse(request.id, {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        });
+      }
+      if (request.method === "simulateTransaction") {
+        return rpcResponse(request.id, { err: null, logs: [] });
+      }
+      if (request.method === "sendTransaction") {
+        sentTransactions.push(String(request.params?.[0] ?? ""));
+        return rpcResponse(request.id, SUBMITTED_SIGNATURE);
+      }
+      if (request.method === "getTransaction") {
+        return rpcResponse(request.id, {
+          meta: { err: null },
+          transaction: { signatures: [SUBMITTED_SIGNATURE] },
+        });
+      }
+      throw new Error(`Unexpected Solana RPC method ${request.method}`);
+    }));
+
+    const owner = await generateKeyPairSigner();
+    const card = {
+      id: "unit-card-wallet-first",
+      characterId: "ruby",
+      characterName: "Ruby",
+      serial: 17,
+    } as any;
+    const prepared = await buildHallPassCardMintTransaction(card, owner.address);
+    const decoder = getTransactionDecoder();
+    const unsigned = decoder.decode(Buffer.from(prepared.transactionBase64, "base64"));
+
+    expect(testSignatureForAddress(unsigned, owner.address)).toBeNull();
+    expect(testSignatureForAddress(unsigned, prepared.mintAddress)).toBeNull();
+    expect(isFullySignedTransaction(unsigned)).toBe(false);
+
+    const ownerSigned = await partiallySignTransaction([owner.keyPair], unsigned);
+    expect(testSignatureForAddress(ownerSigned, owner.address)).not.toBeNull();
+    expect(testSignatureForAddress(ownerSigned, prepared.mintAddress)).toBeNull();
+    expect(isFullySignedTransaction(ownerSigned)).toBe(false);
+
+    const signature = await submitSignedHallPassCardMintTransaction(
+      getBase64EncodedWireTransaction(ownerSigned),
+      [owner.address, prepared.mintAddress],
+      {
+        card,
+        ownerWalletAddress: owner.address,
+        mintAddress: prepared.mintAddress,
+        transactionMessageHash: prepared.transactionMessageHash,
+      },
+    );
+
+    expect(signature).toBe(SUBMITTED_SIGNATURE);
+    expect(sentTransactions).toHaveLength(1);
+    const submitted = decoder.decode(Buffer.from(sentTransactions[0]!, "base64"));
+    expect(isFullySignedTransaction(submitted)).toBe(true);
+  });
+
+  it("rejects owner-signed mint transactions whose message hash changed", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
+      if (request.method === "getLatestBlockhash") {
+        return rpcResponse(request.id, {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        });
+      }
+      if (request.method === "simulateTransaction") {
+        return rpcResponse(request.id, { err: null, logs: [] });
+      }
+      throw new Error(`Unexpected Solana RPC method ${request.method}`);
+    }));
+
+    const owner = await generateKeyPairSigner();
+    const card = {
+      id: "unit-card-hash-mismatch",
+      characterId: "ruby",
+      characterName: "Ruby",
+      serial: 18,
+    } as any;
+    const prepared = await buildHallPassCardMintTransaction(card, owner.address);
+    const unsigned = getTransactionDecoder().decode(Buffer.from(prepared.transactionBase64, "base64"));
+    const ownerSigned = await partiallySignTransaction([owner.keyPair], unsigned);
+
+    await expect(submitSignedHallPassCardMintTransaction(
+      getBase64EncodedWireTransaction(ownerSigned),
+      [owner.address, prepared.mintAddress],
+      {
+        card,
+        ownerWalletAddress: owner.address,
+        mintAddress: prepared.mintAddress,
+        transactionMessageHash: "not-the-prepared-message",
+      },
+    )).rejects.toThrow(/does not match this Ruby High card/);
   });
 
   it("accepts parsed burn instructions whose wallet is in multisigAuthority/signers", async () => {
@@ -97,3 +217,17 @@ describe("verifyHallPassCardBurn", () => {
     });
   });
 });
+
+function rpcResponse(id: unknown, result: unknown) {
+  const body = JSON.stringify({ jsonrpc: "2.0", id, result });
+  return {
+    ok: true,
+    status: 200,
+    json: async () => JSON.parse(body),
+    text: async () => body,
+  };
+}
+
+function testSignatureForAddress(transaction: { signatures: unknown }, signerAddress: string) {
+  return ((transaction.signatures as Record<string, Uint8Array | null | undefined>)[signerAddress]) ?? null;
+}

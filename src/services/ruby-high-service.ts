@@ -461,6 +461,7 @@ export interface HallPassCardMintPreparationInput {
   ownerWalletAddress: string;
   mintAddress: string;
   metadataUri: string;
+  transactionMessageHash?: string;
   at?: number;
 }
 
@@ -2010,6 +2011,11 @@ export class RubyHighService extends Service {
     card.pendingMintOwnerWalletAddress = ownerWalletAddress;
     card.pendingMintAddress = mintAddress;
     card.pendingMintMetadataUri = metadataUri;
+    const transactionMessageHash = typeof input.transactionMessageHash === "string"
+      ? input.transactionMessageHash.trim()
+      : "";
+    if (transactionMessageHash) card.pendingMintTransactionHash = transactionMessageHash;
+    else delete card.pendingMintTransactionHash;
     card.pendingMintPreparedAt = at;
     card.updatedAt = at;
     state.wallet.hallPassCards = normalizeHallPassCards(cards);
@@ -2045,6 +2051,7 @@ export class RubyHighService extends Service {
     delete card.pendingMintOwnerWalletAddress;
     delete card.pendingMintAddress;
     delete card.pendingMintMetadataUri;
+    delete card.pendingMintTransactionHash;
     delete card.pendingMintPreparedAt;
     card.revealedAt = at;
     card.updatedAt = at;
@@ -5879,6 +5886,7 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
     "pendingMintOwnerWalletAddress",
     "pendingMintAddress",
     "pendingMintMetadataUri",
+    "pendingMintTransactionHash",
     "mintAddress",
     "mintSignature",
     "metadataUri",

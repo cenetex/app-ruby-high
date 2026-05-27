@@ -1,16 +1,20 @@
 import { createHash } from "node:crypto";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
 import {
+  assertIsFullySignedTransaction,
   address,
   appendTransactionMessageInstructions,
   compileTransaction,
   createKeyPairSignerFromBytes,
+  createKeyPairSignerFromPrivateKeyBytes,
   createNoopSigner,
   createSolanaRpc,
   createTransactionMessage,
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
+  getTransactionDecoder,
   getTransactionEncoder,
+  partiallySignTransaction,
   partiallySignTransactionMessageWithSigners,
   pipe,
   setTransactionMessageFeePayer,
@@ -117,6 +121,7 @@ export interface HallPassCardMintTransaction {
   mintAddress: string;
   metadataUri: string;
   transactionBase64: string;
+  transactionMessageHash: string;
   transactionEncoding: "base64";
   chain: "solana:mainnet";
   rpcUrl: string;
@@ -333,6 +338,33 @@ function verifiedCreatorArgs(addressValue: string) {
   return [{ address: address(addressValue), verified: true, share: 100 }];
 }
 
+async function createHallPassCardMintSigner(
+  card: RubyHighHallPassCard,
+  ownerWalletAddress: string,
+  authoritySecret: Uint8Array,
+) {
+  const seed = createHash("sha256")
+    .update("ruby-high-card-mint-v1\0")
+    .update(authoritySecret)
+    .update("\0")
+    .update(cleanCardId(card.id))
+    .update("\0")
+    .update(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"))
+    .digest();
+  return createKeyPairSignerFromPrivateKeyBytes(seed);
+}
+
+function hashTransactionMessageBytes(messageBytes: ArrayLike<number>): string {
+  return createHash("sha256").update(Buffer.from(messageBytes)).digest("hex");
+}
+
+function transactionSignatureForAddress(
+  transaction: ReturnType<ReturnType<typeof getTransactionDecoder>["decode"]>,
+  signerAddress: string,
+) {
+  return (transaction.signatures as Record<string, Uint8Array | null | undefined>)[signerAddress] ?? null;
+}
+
 export function hallPassNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.ProcessEnv = process.env): string {
   const finalUri = hallPassRevealedNftMetadataUri(card, env);
   if (finalUri) return finalUri;
@@ -531,7 +563,7 @@ export async function buildHallPassCardMintTransaction(
   const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
   const ownerSigner = createNoopSigner(owner);
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
-  const mint = await generateKeyPairSigner();
+  const mint = await createHallPassCardMintSigner(card, owner, config.authoritySecret);
   const metadataUri = await hallPassNftMetadataUriForMint(card);
   const [createInstruction, mintInstruction] = await createNft({
     mint,
@@ -569,14 +601,16 @@ export async function buildHallPassCardMintTransaction(
     (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
     (tx) => appendTransactionMessageInstructions(instructions, tx),
   );
-  const signed = await partiallySignTransactionMessageWithSigners(message);
-  const transactionBase64 = getBase64EncodedWireTransaction(signed);
+  const unsigned = compileTransaction(message);
+  const transactionBase64 = getBase64EncodedWireTransaction(unsigned);
+  await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
   return {
     cardId: card.id,
     ownerWalletAddress: owner,
     mintAddress: mint.address,
     metadataUri,
     transactionBase64,
+    transactionMessageHash: hashTransactionMessageBytes(unsigned.messageBytes),
     transactionEncoding: "base64",
     chain: "solana:mainnet",
     rpcUrl: config.rpcUrl,
@@ -649,18 +683,77 @@ export async function verifyHallPassCardMint(input: {
 export async function submitSignedHallPassCardMintTransaction(
   signedTransactionBase64: string,
   requiredAccounts: string[] = [],
+  prepared?: {
+    card: RubyHighHallPassCard;
+    ownerWalletAddress: string;
+    mintAddress: string;
+    transactionMessageHash?: string;
+  },
 ): Promise<string> {
   const clean = signedTransactionBase64.trim();
   if (!clean) throw new Error("Signed card mint transaction is missing.");
   if (mintSubmitterOverride) return mintSubmitterOverride(clean);
   requireSignedTransactionAccounts(clean, requiredAccounts);
   const config = readMintConfig();
+  const transactionBase64 = prepared
+    ? await completeHallPassCardMintTransactionWithServerSigners(clean, prepared, config)
+    : clean;
   const signature = await sendBase64TransactionWithPreflightFallback(
     createSolanaRpc(config.rpcUrl),
-    clean as ReturnType<typeof getBase64EncodedWireTransaction>,
+    transactionBase64 as ReturnType<typeof getBase64EncodedWireTransaction>,
   );
   await confirmSubmittedTransaction(config.rpcUrl, String(signature), "Card mint");
   return String(signature);
+}
+
+async function completeHallPassCardMintTransactionWithServerSigners(
+  signedTransactionBase64: string,
+  prepared: {
+    card: RubyHighHallPassCard;
+    ownerWalletAddress: string;
+    mintAddress: string;
+    transactionMessageHash?: string;
+  },
+  config: ReturnType<typeof readMintConfig>,
+): Promise<string> {
+  const ownerWalletAddress = cleanSolanaAddress(prepared.ownerWalletAddress, "Owner Solana wallet");
+  const mintAddress = cleanSolanaAddress(prepared.mintAddress, "Card mint");
+  const expectedHash = typeof prepared.transactionMessageHash === "string"
+    ? prepared.transactionMessageHash.trim()
+    : "";
+  if (!expectedHash) throw new Error("Card mint transaction was not prepared. Refresh and try again.");
+
+  const transaction = decodeBase64Transaction(signedTransactionBase64, "Signed card mint transaction");
+  const actualHash = hashTransactionMessageBytes(transaction.messageBytes);
+  if (actualHash !== expectedHash) {
+    throw new Error("Signed card mint transaction does not match this Ruby High card.");
+  }
+  if (!transactionSignatureForAddress(transaction, ownerWalletAddress)) {
+    throw new Error("Signed card mint transaction is missing the owner signature.");
+  }
+
+  const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
+  const mint = await createHallPassCardMintSigner(prepared.card, ownerWalletAddress, config.authoritySecret);
+  if (String(mint.address) !== mintAddress) {
+    throw new Error("Signed card mint transaction does not match this Ruby High card.");
+  }
+  const completed = await partiallySignTransaction([authority.keyPair, mint.keyPair], transaction);
+  assertIsFullySignedTransaction(completed);
+  const transactionBase64 = getBase64EncodedWireTransaction(completed);
+  await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
+  return transactionBase64;
+}
+
+function decodeBase64Transaction(transactionBase64: string, label: string) {
+  const raw = transactionBase64.trim();
+  if (!raw) throw new Error(`${label} is missing.`);
+  const bytes = Buffer.from(raw, "base64");
+  if (bytes.length <= 0 || bytes.length > 1232) throw new Error(`${label} is invalid.`);
+  try {
+    return getTransactionDecoder().decode(bytes);
+  } catch {
+    throw new Error(`${label} is invalid.`);
+  }
 }
 
 function signedSolanaTransactionAccountKeys(transactionBase64: string): string[] {

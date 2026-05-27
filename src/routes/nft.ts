@@ -336,6 +336,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ownerWalletAddress: mint.ownerWalletAddress,
         mintAddress: mint.mintAddress,
         metadataUri: mint.metadataUri,
+        transactionMessageHash: mint.transactionMessageHash,
       });
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
@@ -348,6 +349,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           mintAddress: mint.mintAddress,
           metadataUri: mint.metadataUri,
           transactionBase64: mint.transactionBase64,
+          transactionMessageHash: mint.transactionMessageHash,
           transactionEncoding: mint.transactionEncoding,
           chain: mint.chain,
           rpcUrl: mint.rpcUrl,
@@ -399,15 +401,27 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       ctx.error(ctx.res, "Card belongs to a different wallet.", 400);
       return true;
     }
-    if (!hallPassCardMintMetadataMatches(card, { ownerWalletAddress, mintAddress, metadataUri })) {
+    if (!hallPassCardPendingMintMatches(card, { ownerWalletAddress, mintAddress, metadataUri })) {
       ctx.error(ctx.res, "Card mint metadata does not match this card.", 400);
+      return true;
+    }
+    const transactionMessageHash = typeof card.pendingMintTransactionHash === "string"
+      ? card.pendingMintTransactionHash.trim()
+      : "";
+    if (!transactionMessageHash) {
+      ctx.error(ctx.res, "Card mint transaction was not prepared. Refresh and try again.", 400);
       return true;
     }
     try {
       const mintSignature = await submitSignedHallPassCardMintTransaction(signedTransactionBase64, [
         ownerWalletAddress,
         mintAddress,
-      ]);
+      ], {
+        card,
+        ownerWalletAddress,
+        mintAddress,
+        transactionMessageHash,
+      });
       const verified = await verifyHallPassCardMint({
         ownerWalletAddress,
         mintAddress,
@@ -572,6 +586,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ownerWalletAddress: mint.ownerWalletAddress,
         mintAddress: mint.mintAddress,
         metadataUri: mint.metadataUri,
+        transactionMessageHash: mint.transactionMessageHash,
       });
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
@@ -585,6 +600,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           mintAddress: mint.mintAddress,
           metadataUri: mint.metadataUri,
           transactionBase64: mint.transactionBase64,
+          transactionMessageHash: mint.transactionMessageHash,
           transactionEncoding: mint.transactionEncoding,
           chain: mint.chain,
           rpcUrl: mint.rpcUrl,
@@ -741,6 +757,20 @@ function hallPassCardMintMetadataMatches(
   return (
     typeof card.pendingMintMetadataUri === "string" &&
     card.pendingMintMetadataUri.trim() === metadataUri &&
+    typeof card.pendingMintAddress === "string" &&
+    card.pendingMintAddress.trim() === input.mintAddress &&
+    typeof card.pendingMintOwnerWalletAddress === "string" &&
+    card.pendingMintOwnerWalletAddress.trim() === input.ownerWalletAddress
+  );
+}
+
+function hallPassCardPendingMintMatches(
+  card: RubyHighHallPassCard,
+  input: { ownerWalletAddress: string; mintAddress: string; metadataUri: string },
+): boolean {
+  return (
+    typeof card.pendingMintMetadataUri === "string" &&
+    card.pendingMintMetadataUri.trim() === input.metadataUri.trim() &&
     typeof card.pendingMintAddress === "string" &&
     card.pendingMintAddress.trim() === input.mintAddress &&
     typeof card.pendingMintOwnerWalletAddress === "string" &&
