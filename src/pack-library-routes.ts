@@ -186,8 +186,8 @@ export async function handlePackLibraryRoutes(
     if (ctx.method === "DELETE" && deletePackMatch?.[1]) {
       const packId = decodeURIComponent(deletePackMatch[1]);
       try {
-        await deleteOwnedPublishedPack({ ruby: deps.ruby, record, sessionId, packId });
-        ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
+        const deleted = await deleteOwnedPublishedPack({ ruby: deps.ruby, record, sessionId, packId });
+        ctx.json(ctx.res, deletedPublishedPackPayload(deps.ruby, sessionId, deleted));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const status = message.includes("Only the owner") ? 403 : clientErrorStatus(err);
@@ -246,7 +246,7 @@ export async function handlePackLibraryRoutes(
     const draft = await requireDraft(deps.ruby, record, decodeURIComponent(draftIdMatch[1]), ctx);
     if (!draft) return true;
     await deps.ruby.deleteDraftPackRecord(draft.id);
-    ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
+    ctx.json(ctx.res, deletedDraftPackPayload(deps.ruby, sessionId, draft.id));
     return true;
   }
 
@@ -701,6 +701,40 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
   };
 }
 
+function deletedDraftPackPayload(ruby: RubyHighService, sessionId: string, draftId: string) {
+  return {
+    ok: true,
+    deleted: { kind: "draft", id: draftId },
+    draftId,
+    ...packLibraryDeleteState(ruby, sessionId),
+  };
+}
+
+function deletedPublishedPackPayload(
+  ruby: RubyHighService,
+  sessionId: string,
+  deleted: DeleteOwnedPublishedPackResult,
+) {
+  return {
+    ok: true,
+    deleted: { kind: "published", id: deleted.packId },
+    packId: deleted.packId,
+    removedDraftIds: deleted.removedDraftIds,
+    removedPackRecordCount: deleted.removedPackRecordCount,
+    removedTeacherCount: deleted.removedTeacherCount,
+    removedInstallationCount: deleted.removedInstallationCount,
+    ...packLibraryDeleteState(ruby, sessionId),
+  };
+}
+
+function packLibraryDeleteState(ruby: RubyHighService, sessionId: string) {
+  const state = ruby.getOrCreate(sessionId);
+  return {
+    activePackId: currentActivePackId(ruby, sessionId),
+    guest: guestPayload(state, weeklyAutoGuestPack(), guestPackForSession(state)),
+  };
+}
+
 async function creatorPackSearchPayload(
   ruby: RubyHighService,
   record: AuthRecord,
@@ -854,7 +888,7 @@ async function deleteOwnedPublishedPack(args: {
   record: AuthRecord;
   sessionId: string;
   packId: string;
-}): Promise<void> {
+}): Promise<DeleteOwnedPublishedPackResult> {
   if (args.packId === ORIGINAL_PACK_ID) throw new Error("Ruby High Original is read only.");
   const persisted = (await args.ruby.listPersistedPackRecords()).filter((entry) => entry.pack.id === args.packId);
   const ownedLegacyTeachers = (await args.ruby.listTeacherRecords())
@@ -873,13 +907,21 @@ async function deleteOwnedPublishedPack(args: {
   await Promise.all(backingDrafts.map((draft) => args.ruby.deleteDraftPackRecord(draft.id)));
   await Promise.all(ownedLegacyTeachers.map((teacher) => args.ruby.deleteTeacherRecord(teacher.id)));
   const installs = await args.ruby.listPackInstallationRecords();
-  await Promise.all(installs
-    .filter((install) => install.packId === args.packId)
-    .map((install) => args.ruby.deletePackInstallationRecord(install.userId, install.packId)));
+  const removedInstallations = installs.filter((install) => install.packId === args.packId);
+  await Promise.all(removedInstallations.map((install) =>
+    args.ruby.deletePackInstallationRecord(install.userId, install.packId)
+  ));
 
   if (guestPackForSession(args.ruby.getOrCreate(args.sessionId))?.id === args.packId) {
     await setGuestAuto({ ruby: args.ruby, sessionId: args.sessionId });
   }
+  return {
+    packId: args.packId,
+    removedDraftIds: backingDrafts.map((draft) => draft.id),
+    removedPackRecordCount: persisted.length || (ownedLegacyTeachers.length > 0 ? 1 : 0),
+    removedTeacherCount: ownedLegacyTeachers.length,
+    removedInstallationCount: removedInstallations.length,
+  };
 }
 
 async function ensurePublishedEditDraft(args: {
@@ -1438,6 +1480,14 @@ interface CourseGenerationCredential {
 interface QuestionGenerationCredential {
   apiKey: string | null;
   hosted: boolean;
+}
+
+interface DeleteOwnedPublishedPackResult {
+  packId: string;
+  removedDraftIds: string[];
+  removedPackRecordCount: number;
+  removedTeacherCount: number;
+  removedInstallationCount: number;
 }
 
 interface GeneratedCourseSpec {

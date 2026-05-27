@@ -568,7 +568,12 @@ describe("/pack-library", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body.drafts.some((draft: { id: string }) => draft.id === draftId)).toBe(false);
+    expect(response.body).toMatchObject({
+      ok: true,
+      deleted: { kind: "draft", id: draftId },
+      draftId,
+    });
+    expect(response.body).not.toHaveProperty("drafts");
     expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
   });
 
@@ -1160,7 +1165,12 @@ describe("/pack-library", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body.packs.some((entry: { id: string }) => entry.id === pack.id)).toBe(false);
+    expect(response.body).toMatchObject({
+      ok: true,
+      deleted: { kind: "published", id: pack.id },
+      packId: pack.id,
+    });
+    expect(response.body).not.toHaveProperty("packs");
     expect((await ruby.listPersistedPackRecords()).some((entry) => entry.pack.id === pack.id)).toBe(false);
     expect(getPackByIdForSession(pack.id, aliceSessionId)).toBeNull();
   });
@@ -1410,7 +1420,13 @@ describe("/pack-library", () => {
       cookie: "rh_session=alice",
     });
     expect(response.status).toBe(200);
-    expect(response.body.packs.some((pack: { id: string }) => pack.id === packId)).toBe(false);
+    expect(response.body).toMatchObject({
+      ok: true,
+      deleted: { kind: "published", id: packId },
+      packId,
+      removedDraftIds: [draftId],
+    });
+    expect(response.body).not.toHaveProperty("packs");
     expect((await ruby.listPersistedPackRecords()).some((entry) => entry.pack.id === packId)).toBe(false);
     expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
     expect((await ruby.listPackInstallationRecords()).some((entry) => entry.packId === packId)).toBe(false);

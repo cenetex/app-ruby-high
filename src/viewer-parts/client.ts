@@ -9338,9 +9338,10 @@ export function runViewerClient(bootstrap) {
     packStatusEl.textContent = "Deleting pack...";
     packStatusEl.classList.remove("is-invalid");
     try {
-      packLibraryState = opts && opts.draft
+      const deleteResult = opts && opts.draft
         ? await packStudioClient.deleteDraftPack(pack.id)
         : await packStudioClient.deletePublishedPack(pack.id);
+      applyPackDeletionResult(pack, opts, deleteResult);
       renderPackList();
       renderDraftPackList();
       packStatusEl.textContent = "Pack deleted.";
@@ -9350,6 +9351,30 @@ export function runViewerClient(bootstrap) {
     } finally {
       setPackBusy(false);
     }
+  }
+
+  function applyPackDeletionResult(pack, opts, result) {
+    if (result && Array.isArray(result.packs) && Array.isArray(result.drafts)) {
+      packLibraryState = result;
+      return;
+    }
+    const current = packLibraryState || { packs: [], drafts: [] };
+    const next = Object.assign({}, current);
+    const hasActivePackId = result && Object.prototype.hasOwnProperty.call(result, "activePackId");
+    if (hasActivePackId) next.activePackId = result.activePackId;
+    if (result && result.guest) next.guest = result.guest;
+    if (opts && opts.draft) {
+      const draftId = result && (result.draftId || (result.deleted && result.deleted.id)) || pack.id;
+      next.drafts = (current.drafts || []).filter((draft) => draft.id !== draftId);
+    } else {
+      const packId = result && (result.packId || (result.deleted && result.deleted.id)) || pack.id;
+      const removedDraftIds = new Set((result && result.removedDraftIds) || []);
+      next.packs = (current.packs || []).filter((entry) => entry.id !== packId);
+      next.drafts = (current.drafts || []).filter((draft) =>
+        draft.derivedFrom !== packId && ("pack:" + draft.id) !== packId && !removedDraftIds.has(draft.id)
+      );
+    }
+    packLibraryState = next;
   }
 
   async function uninstallLibraryPack(pack) {
