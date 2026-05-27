@@ -49,6 +49,7 @@ import {
   hallPassCardSubject,
 } from "./hall-pass-card-catalog.js";
 import { isPreflightUnsupportedError } from "./solana-errors.js";
+import { log } from "./logger.js";
 import {
   type HallPassRevealProvenance,
   HALL_PASS_PACK_REVEAL_ALGORITHM,
@@ -813,12 +814,12 @@ async function signedHallPassCardMintMatchesPreparedTransaction(
 ): Promise<boolean> {
   const actual = parseSolanaTransactionForInstructionMatch(signedTransactionBase64);
   if (!actual) return false;
-  if (actual.feePayer !== cleanSolanaAddress(prepared.ownerWalletAddress, "Owner Solana wallet")) return false;
+  const ownerWalletAddress = cleanSolanaAddress(prepared.ownerWalletAddress, "Owner Solana wallet");
   const recentBlockhash = signedSolanaTransactionRecentBlockhash(signedTransactionBase64);
   if (!recentBlockhash) return false;
   const expected = await compileHallPassCardMintTransaction(
     prepared.card,
-    prepared.ownerWalletAddress,
+    ownerWalletAddress,
     { blockhash: recentBlockhash, lastValidBlockHeight: 0 },
     config,
     {
@@ -827,15 +828,28 @@ async function signedHallPassCardMintMatchesPreparedTransaction(
         prepared.card.metadataUri,
     },
   );
-  if (String(expected.asset.publicKey) !== cleanSolanaAddress(prepared.mintAddress, "Card asset")) return false;
+  const mintAddress = cleanSolanaAddress(prepared.mintAddress, "Card asset");
+  if (String(expected.asset.publicKey) !== mintAddress) return false;
   const expectedShape = parseSolanaTransactionForInstructionMatch(
     expected.transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
   );
   if (!expectedShape) return false;
-  return sameInstructionList(
-    withoutWalletOnlyInstructions(actual.instructions),
-    expectedShape.instructions,
-  );
+  const actualInstructions = withoutWalletOnlyInstructions(actual.instructions);
+  const matches = sameInstructionList(actualInstructions, expectedShape.instructions);
+  if (!matches) {
+    log.event("nft.card-mint-transaction-mismatch", {
+      ownerWalletAddress,
+      mintAddress,
+      feePayerMatchesOwner: actual.feePayer === ownerWalletAddress,
+      feePayerPreview: previewSolanaAddress(actual.feePayer),
+      actualInstructionCount: actualInstructions.length,
+      expectedInstructionCount: expectedShape.instructions.length,
+      actualPrograms: actualInstructions.map((ix) => ix.programId),
+      expectedPrograms: expectedShape.instructions.map((ix) => ix.programId),
+      ownerSigned: signedTransactionHasSignatureForAddress(signedTransactionBase64, ownerWalletAddress),
+    });
+  }
+  return matches;
 }
 
 function decodeBase64TransactionBytes(transactionBase64: string, label: string): Buffer {
@@ -945,6 +959,12 @@ function sameInstructionList(actual: ParsedInstructionShape[], expected: ParsedI
       ix.accounts.length === expectedIx.accounts.length &&
       ix.accounts.every((account, accountIndex) => account === expectedIx.accounts[accountIndex]);
   });
+}
+
+function previewSolanaAddress(address: string): string {
+  const clean = address.trim();
+  if (clean.length <= 12) return clean;
+  return `${clean.slice(0, 6)}...${clean.slice(-6)}`;
 }
 
 function signedSolanaTransactionRecentBlockhash(transactionBase64: string): string {

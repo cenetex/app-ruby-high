@@ -287,6 +287,84 @@ describe("verifyHallPassCardBurn", () => {
     expect(submitted.instructions[0]?.programId.toBase58()).toBe(ComputeBudgetProgram.programId.toBase58());
   });
 
+  it("accepts matching wallet transactions when a signer layer changes the fee payer", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    const sentTransactions: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
+      if (request.method === "getLatestBlockhash") {
+        return rpcResponse(request.id, {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        });
+      }
+      if (request.method === "simulateTransaction") {
+        return rpcResponse(request.id, { err: null, logs: [] });
+      }
+      if (request.method === "sendTransaction") {
+        sentTransactions.push(String(request.params?.[0] ?? ""));
+        return rpcResponse(request.id, SUBMITTED_SIGNATURE);
+      }
+      if (request.method === "getTransaction") {
+        return rpcResponse(request.id, {
+          meta: { err: null },
+          transaction: { signatures: [SUBMITTED_SIGNATURE] },
+        });
+      }
+      throw new Error(`Unexpected Solana RPC method ${request.method}`);
+    }));
+
+    const owner = Keypair.generate();
+    const feePayer = Keypair.generate();
+    const ownerAddress = owner.publicKey.toBase58();
+    const card = {
+      id: "unit-card-sponsored-fee-payer",
+      characterId: "ruby",
+      characterName: "Ruby",
+      serial: 22,
+    } as any;
+    const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
+    const preparedTransaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
+    const accountKeys = preparedTransaction.message.getAccountKeys().staticAccountKeys;
+    const message = preparedTransaction.message as any;
+    const walletTransaction = new Transaction({
+      feePayer: feePayer.publicKey,
+      recentBlockhash: Keypair.generate().publicKey.toBase58(),
+    });
+    for (const ix of preparedTransaction.message.compiledInstructions) {
+      walletTransaction.add(new TransactionInstruction({
+        programId: accountKeys[ix.programIdIndex]!,
+        keys: ix.accountKeyIndexes.map((index) => ({
+          pubkey: accountKeys[index]!,
+          isSigner: Boolean(message.isAccountSigner(index)),
+          isWritable: Boolean(message.isAccountWritable(index)),
+        })),
+        data: Buffer.from(ix.data),
+      }));
+    }
+    walletTransaction.partialSign(feePayer, owner);
+
+    const signature = await submitSignedHallPassCardMintTransaction(
+      walletTransaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+      [ownerAddress, prepared.mintAddress],
+      {
+        card,
+        ownerWalletAddress: ownerAddress,
+        mintAddress: prepared.mintAddress,
+        transactionMessageHash: prepared.transactionMessageHash,
+      },
+    );
+
+    expect(signature).toBe(SUBMITTED_SIGNATURE);
+    expect(sentTransactions).toHaveLength(1);
+    const submitted = Transaction.from(Buffer.from(sentTransactions[0]!, "base64"));
+    expect(submitted.feePayer?.toBase58()).toBe(feePayer.publicKey.toBase58());
+  });
+
   it("reuses the prepared card metadata URI when matching refreshed wallet transactions", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
