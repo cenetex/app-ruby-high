@@ -1078,12 +1078,14 @@ describe("chat event context", () => {
     const promptText = JSON.stringify(capturedChatRequest.body.messages);
     expect(promptText).toContain("You are writing the next chat bubble for the player's avatar, Mina");
     expect(promptText).toContain("Quietly intense, observant");
+    expect(promptText).toContain("Room scene context");
     expect(promptText).toContain("Recent dialogue");
     expect(promptText).toContain("Ruby, I think the board is trying to trick us.");
     expect(promptText).toContain("Recent visible room events");
     expect(promptText).toContain("Sami (classmate) chimed in");
     expect(promptText).toContain("Hidden from the player right now: the correct answer.");
     expect(promptText).not.toContain("Correct choice:");
+    expect(promptText).not.toContain("Correct answer:");
   });
 
   it("does not truncate longer streamed player avatar lines at the final commit event", async () => {
@@ -1292,8 +1294,13 @@ describe("chat event context", () => {
     expect(chat.events_for_test({ sessionToken: token, faculty: "ruby" }).some((event) =>
       event.kind === "chime" && event.text.includes("wait Vince")
     )).toBe(true);
-    expect(JSON.stringify(requests[0].messages)).toContain("You are writing the next chat bubble for the player's avatar, Vince");
-    expect(JSON.stringify(requests[1].messages)).toContain("Situation: player-asked-hint");
+    const playerPrompt = JSON.stringify(requests[0].messages);
+    const studentPrompt = JSON.stringify(requests[1].messages);
+    expect(playerPrompt).toContain("You are writing the next chat bubble for the player's avatar, Vince");
+    expect(playerPrompt).toContain("Room scene context");
+    expect(studentPrompt).toContain("Situation: player-asked-hint");
+    expect(studentPrompt).toContain("Room scene context");
+    expect(studentPrompt).toContain("Vince said");
   });
 
   it("keeps room turns usable when player-line generation falls back", async () => {

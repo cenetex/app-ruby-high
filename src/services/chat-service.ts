@@ -87,6 +87,14 @@ export interface RoomEvent {
   at: number;
 }
 
+export interface AvatarPromptContext {
+  roomBlock: string;
+  boardBlock: string;
+  recentEventsBlock: string;
+  dialogueBlock: string;
+  recentTexts: string[];
+}
+
 const HISTORY_LIMIT = 30;
 const EVENT_LOG_LIMIT = 60;
 const DEFAULT_AGENT_ROUNDS = 4;
@@ -240,6 +248,51 @@ export class ChatService extends Service {
 
   roomEvents(key: ChatHistoryKey): RoomEvent[] {
     return [...(this.events.get(this.keyOf(key)) ?? [])];
+  }
+
+  avatarPromptContext(opts: {
+    sessionToken: string;
+    agentSessionId: string;
+    faculty: string;
+    bucketKey?: string;
+    historyLimit?: number;
+    eventLimit?: number;
+  }): AvatarPromptContext {
+    if (!this.ruby) throw new Error("RubyHighService not bound to ChatService.");
+    const state = this.ruby.getOrCreate(opts.agentSessionId);
+    const rawBucketFaculty = opts.bucketKey ?? opts.faculty;
+    const bucketFaculty = rawBucketFaculty === "lounge"
+      ? rawBucketFaculty
+      : (resolveFacultyIdForSession(state, rawBucketFaculty) ?? rawBucketFaculty);
+    const activeFaculty = opts.faculty === "lounge"
+      ? opts.faculty
+      : (resolveFacultyIdForSession(state, opts.faculty) ?? opts.faculty);
+    const key: ChatHistoryKey = { sessionToken: opts.sessionToken, faculty: bucketFaculty };
+    const historyLimit = opts.historyLimit ?? 8;
+    const eventLimit = opts.eventLimit ?? 8;
+    const recentHistory = this.history(key)
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim().length > 0)
+      .slice(-historyLimit);
+    const recentEvents = this.roomEvents(key)
+      .filter((event) => event.text.trim().length > 0)
+      .slice(-eventLimit);
+    const bankStatus = activeFaculty === "lounge" ? null : this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
+    const dialogueLines = recentHistory.map((m) => formatDialogueLineForAvatar(state, m));
+    const eventLines = recentEvents.map((event) => `  - ${clipForPrompt(event.text.trim(), 220)}`);
+    return {
+      roomBlock: describeRoomForAvatar(state),
+      boardBlock: describeBoardForAvatar(state, bankStatus),
+      recentEventsBlock: eventLines.length
+        ? ["Recent visible room events (context only; do not imitate this format):", ...eventLines].join("\n")
+        : "Recent visible room events: none.",
+      dialogueBlock: dialogueLines.length
+        ? ["Recent dialogue (context only; do not imitate this format):", ...dialogueLines].join("\n")
+        : "Recent dialogue: none yet.",
+      recentTexts: [
+        ...recentHistory.map((m) => m.content.trim()),
+        ...recentEvents.map((event) => event.text.trim()),
+      ],
+    };
   }
 
   async *send(opts: SendOpts): AsyncGenerator<ChatStreamEvent> {
@@ -960,6 +1013,30 @@ function npcRoomDescriptor(npc: NpcStudentState): string {
   return vibe ? `${name} (${vibe})` : name;
 }
 
+function clipForPrompt(text: string, max = 220): string {
+  return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+}
+
+function facultyDisplayNameForPrompt(state: QuizState, facultyId?: string): string {
+  const id = facultyId || state.faculty || "ruby";
+  if (id === "lounge") return "the lounge";
+  const packFaculty = facultyByIdForSession(state, id);
+  if (packFaculty) return packFaculty.displayName;
+  try {
+    return teacherById(id).displayName;
+  } catch {
+    return id.replace(/-/g, " ");
+  }
+}
+
+function formatDialogueLineForAvatar(state: QuizState, message: ChatMessage): string {
+  const speaker = message.role === "user"
+    ? (state.character?.name ?? "Player avatar")
+    : facultyDisplayNameForPrompt(state, message.faculty);
+  const verb = message.role === "user" ? "said" : "replied";
+  return `  - ${speaker} ${verb} "${clipForPrompt(message.content.trim(), 180)}"`;
+}
+
 /** Find the timestamp of the most recent assistant message belonging to
  *  this speaker. Used to scope the RECENT EVENTS synopsis to "what's
  *  happened since I last spoke." Returns 0 if the speaker has not yet
@@ -978,6 +1055,31 @@ function lastAssistantAtForSpeaker(history: ChatMessage[], speakerId: string): n
     if (m.role === "assistant" && m.faculty === speakerId) return m.at;
   }
   return 0;
+}
+
+function describeRoomForAvatar(state: QuizState): string {
+  if (!state.character) return "Room scene context: no player avatar has been created yet.";
+  const c = state.character;
+  const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
+  const lines: string[] = [];
+  lines.push("Room scene context: Ruby High group chat, not a 1:1 chatbot.");
+  const room = roomForFacultyForSession(state, state.faculty);
+  if (room && room.teaches && state.currentGrade) {
+    const roster = state.npcRosters[state.currentGrade] ?? [];
+    const inRoom = npcsInRoom(roster, room.id as TeachingRoomId);
+    if (inRoom.length) {
+      lines.push("Classmates currently in the room:");
+      for (const npc of inRoom) lines.push(`  - ${npcRoomDescriptor(npc)}`);
+    }
+  }
+  lines.push(`Player avatar: ${c.name}.`);
+  lines.push(`  Personality: ${c.personality}`);
+  lines.push(`  Stats: HEAD ${fmt(c.stats.head)}, HEART ${fmt(c.stats.heart)}, HUSTLE ${fmt(c.stats.hustle)}, HONOR ${fmt(c.stats.honor)}.`);
+  if (c.arcAnswer) lines.push(`  Private arc answer: "${c.arcAnswer}".`);
+  const relationshipLines = describeRelationshipStateForTeacher(state);
+  if (relationshipLines.length > 0) lines.push(...relationshipLines);
+  lines.push("Treat teachers, the player avatar, and classmates as separate people in the same room.");
+  return lines.join("\n");
 }
 
 /** Room-scene framing for the teacher: who's in the room. The player and
@@ -1100,6 +1202,96 @@ function describeClassReportBoardForModel(status: QuestionBankStatus): string | 
     required > 0 ? `Subject progress shown: ${completed}/${required} daily classes passed.` : "",
     "Practice is open after this report; a fresh board should appear only when the engine or allowed tool flow advances.",
   ].filter(Boolean).join("\n");
+}
+
+function describeClassReportBoardForAvatar(status: QuestionBankStatus): string | null {
+  const today = status.todayClass;
+  if (today?.status !== "complete") return null;
+  const completed = status.completedClasses ?? 0;
+  const required = status.requiredClasses ?? 0;
+  return [
+    `Visible board: class report card for ${status.displayName}.`,
+    "Today's graded class is complete.",
+    today.letterGrade ? `Final grade shown: ${today.letterGrade}.` : "",
+    typeof today.score === "number" ? `Today score shown: ${formatBoardPercent(today.score)}.` : "",
+    status.courseGrade ? `Course grade shown: ${status.courseGrade}.` : "",
+    required > 0 ? `Course progress shown: ${completed}/${required} completed classes.` : "",
+    "The report card says practice is open; there is no live challenge on the board yet.",
+  ].filter(Boolean).join("\n");
+}
+
+function describeBoardForAvatar(state: QuizState, bankStatus?: QuestionBankStatus | null): string {
+  const q = state.current;
+  const reveal = state.lastReveal;
+  if (q) {
+    const resolvedThisQ =
+      !!state.activeRound && state.activeRound.questionId === q.id && state.activeRound.resolved &&
+      !!reveal && reveal.questionId === q.id;
+    if (resolvedThisQ && reveal) {
+      const answer = reveal.forfeit
+        ? "timed out"
+        : reveal.wasCorrect
+          ? `answered ${reveal.answerText ?? reveal.picked ?? "correctly"} and was right`
+          : `answered ${reveal.answerText ?? reveal.picked ?? "incorrectly"} and missed it`;
+      const correct = reveal.expectedAnswer
+        ? `Expected answer: ${reveal.expectedAnswer}.`
+        : reveal.correct
+          ? `Correct choice: ${reveal.correct}.`
+          : "";
+      return [
+        "Visible board: the last challenge has resolved.",
+        `Result: the player ${answer}.`,
+        reveal.questionPrompt ? `Question: ${reveal.questionPrompt}` : `Question: ${q.prompt}`,
+        correct,
+        reveal.explanation ? `Explanation shown on board: ${reveal.explanation}` : "",
+      ].filter(Boolean).join("\n");
+    }
+    if (q.type === "opinion") {
+      return [
+        "Visible board: open free-response challenge.",
+        `Prompt: ${q.prompt}`,
+        q.rubric ? `Rubric shown: ${q.rubric}` : "",
+      ].filter(Boolean).join("\n");
+    }
+    const optionLines = q.type === "multiple-choice" && q.options
+      ? Object.entries(q.options).map(([k, v]) => `  ${k}) ${v}`)
+      : [];
+    return [
+      q.type === "typed-answer" || q.type === "image-occlusion"
+        ? "Visible board: typed-response challenge."
+        : "Visible board: multiple-choice challenge.",
+      `Prompt: ${q.prompt}`,
+      ...optionLines,
+      "Hidden from the player right now: the correct answer.",
+    ].join("\n");
+  }
+
+  const classReport = bankStatus ? describeClassReportBoardForAvatar(bankStatus) : null;
+  if (classReport) return classReport;
+
+  if (reveal) {
+    const answer = reveal.forfeit
+      ? "timed out"
+      : reveal.wasCorrect
+        ? `answered ${reveal.answerText ?? reveal.picked ?? "correctly"} and was right`
+        : `answered ${reveal.answerText ?? reveal.picked ?? "incorrectly"} and missed it`;
+    const correct = reveal.expectedAnswer
+      ? `Expected answer: ${reveal.expectedAnswer}.`
+      : reveal.correct
+        ? `Correct choice: ${reveal.correct}.`
+        : "";
+    return [
+      "Visible board: the last challenge has resolved.",
+      `Result: the player ${answer}.`,
+      reveal.questionPrompt ? `Question: ${reveal.questionPrompt}` : "",
+      correct,
+      reveal.explanation ? `Explanation shown on board: ${reveal.explanation}` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  return state.phase === "lounge"
+    ? "Visible board: none. This is a lounge conversation."
+    : "Visible board: empty. The room is between challenges.";
 }
 
 function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus | null): string {

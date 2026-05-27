@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
-import { ChatService, type ChatMessage, type ChatStreamEvent, type RoomEvent, type ToolCall } from "./services/chat-service.js";
+import { ChatService, type AvatarPromptContext, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
 import {
   HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
   RubyHighService,
@@ -647,6 +647,7 @@ function streamStudentLine(args: {
   situation: string;
   note?: string;
   faculty?: string;
+  avatarContext?: AvatarPromptContext;
   /** Player display name. Lets the NPC address them by name when natural
    *  ("nice one Rayan") instead of saying "the player." */
   playerName?: string;
@@ -686,6 +687,10 @@ function streamStudentLine(args: {
   const noteContext = args.note ? `Context: ${args.note}` : "";
   const userPrompt = [
     `Situation: ${args.situation}.`,
+    args.avatarContext?.roomBlock,
+    args.avatarContext?.boardBlock,
+    args.avatarContext?.recentEventsBlock,
+    args.avatarContext?.dialogueBlock,
     facultyContext,
     playerContext,
     classmatesContext,
@@ -712,29 +717,74 @@ function streamStudentLine(args: {
   });
 }
 
+function hashString(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function pickFallbackVariant(candidates: string[], recentTexts: string[], seedText: string): string {
+  const recent = recentTexts.join("\n").toLowerCase();
+  const fresh = candidates.filter((candidate) => !recent.includes(candidate.toLowerCase()));
+  const pool = fresh.length ? fresh : candidates;
+  if (fresh.length === candidates.length) return pool[0] ?? "";
+  return pool[hashString(seedText) % pool.length] ?? pool[0] ?? "";
+}
+
 function fallbackStudentChime(args: {
   student: StudentCharacter;
   situation: string;
   playerName?: string;
   teacherSaid?: string;
+  note?: string;
+  avatarContext?: AvatarPromptContext;
 }): string {
   const player = (args.playerName || "you").trim().split(/\s+/)[0] || "you";
+  const recentTexts = args.avatarContext?.recentTexts ?? [];
+  const seed = [args.student.id, args.situation, player, args.teacherSaid ?? "", args.note ?? ""].join("|");
   if (args.situation === "answer-correct") {
-    return `okay ${player}, nice one - that answer was clean.`;
+    return pickFallbackVariant([
+      `okay ${player}, nice one - that answer was clean.`,
+      `yeah ${player}, that read landed better than i expected.`,
+      `nice pull ${player}, the wording did not catch you.`,
+    ], recentTexts, seed);
   }
   if (args.situation === "answer-wrong") {
-    return `nah ${player}, that one was mean - i almost missed it too.`;
+    return pickFallbackVariant([
+      `nah ${player}, that one was mean - i almost missed it too.`,
+      `yeah ${player}, that wording was doing too much there.`,
+      `i get why you picked that, ${player}; the trap was tiny.`,
+    ], recentTexts, seed);
   }
   if (args.situation === "player-asked-hint") {
-    return `wait ${player}, check the wording first - that's where the trap is.`;
+    return pickFallbackVariant([
+      `wait ${player}, check the wording first - that's where the trap is.`,
+      `start with the weirdest word, ${player}; that's usually the hook.`,
+      `look at what the question excludes, ${player}, not just what it asks.`,
+    ], recentTexts, seed);
   }
   if (args.situation === "mention" || args.situation === "player-chat") {
-    return `okay ${player}, i get what you're saying - that actually tracks.`;
+    return pickFallbackVariant([
+      `okay ${player}, i get what you're saying - that actually tracks.`,
+      `yeah ${player}, that is the part i would slow down on too.`,
+      `i think you're reading the room right, ${player}.`,
+    ], recentTexts, seed);
   }
   if (args.teacherSaid) {
-    return `wait, that tracks with what the teacher just said.`;
+    return pickFallbackVariant([
+      `wait, that tracks with what the teacher just said.`,
+      `yeah, that lines up with the teacher's last point.`,
+      `okay, i think the teacher just gave us the angle.`,
+    ], recentTexts, seed);
   }
-  return `okay wait, i actually have a take on that.`;
+  return pickFallbackVariant([
+    `okay wait, i actually have a take on that.`,
+    `hold on, i think there is a cleaner read here.`,
+    `wait, this is making more sense than it looked.`,
+  ], recentTexts, seed);
 }
 
 function playerIntentForPhase(state: QuizState): PlayerChatIntent {
@@ -781,87 +831,6 @@ function playerClassReportContext(bankStatus?: QuestionBankStatus | null): strin
     required > 0 ? `Course progress shown: ${completed}/${required} completed classes.` : "",
     "The report card says practice is open; there is no live challenge on the board yet.",
   ].filter(Boolean).join("\n");
-}
-
-function playerVisibleBoardContext(
-  state: QuizState,
-  intent: PlayerChatIntent,
-  bankStatus?: QuestionBankStatus | null,
-): string {
-  const reveal = state.lastReveal;
-  if (intent === "report" && reveal) {
-    const answer = reveal.forfeit
-      ? "timed out"
-      : reveal.wasCorrect
-        ? `answered ${reveal.answerText ?? reveal.picked ?? "correctly"} and was right`
-        : `answered ${reveal.answerText ?? reveal.picked ?? "incorrectly"} and missed it`;
-    const correct = reveal.expectedAnswer
-      ? `Expected answer: ${reveal.expectedAnswer}.`
-      : reveal.correct
-        ? `Correct choice: ${reveal.correct}.`
-        : "";
-    return [
-      "Visible board: the last challenge has resolved.",
-      `Result: the player ${answer}.`,
-      reveal.questionPrompt ? `Question: ${reveal.questionPrompt}` : "",
-      correct,
-      reveal.explanation ? `Explanation shown on board: ${reveal.explanation}` : "",
-    ].filter(Boolean).join("\n");
-  }
-
-  const q = state.current;
-  if (q) {
-    const type = q.type ?? "multiple-choice";
-    const optionLines = type === "multiple-choice" && q.options
-      ? Object.entries(q.options).map(([k, v]) => `  ${k}) ${v}`)
-      : [];
-    return [
-      type === "opinion"
-        ? "Visible board: open free-response challenge."
-        : type === "typed-answer" || type === "image-occlusion"
-          ? "Visible board: typed-response challenge."
-          : "Visible board: multiple-choice challenge.",
-      `Prompt: ${q.prompt}`,
-      ...optionLines,
-      "Hidden from the player right now: the correct answer.",
-    ].join("\n");
-  }
-
-  const classReport = playerClassReportContext(bankStatus);
-  if (classReport) return classReport;
-
-  if (reveal) {
-    return [
-      "Visible board: no live challenge; the recent result may still be in the room's memory.",
-      reveal.questionPrompt ? `Recent question: ${reveal.questionPrompt}` : "",
-      reveal.wasCorrect ? "Recent result: correct." : reveal.forfeit ? "Recent result: timed out." : "Recent result: missed.",
-    ].filter(Boolean).join("\n");
-  }
-
-  return state.phase === "lounge"
-    ? "Visible board: none. This is a lounge conversation."
-    : "Visible board: empty. The room is between challenges.";
-}
-
-function recentDialogueForPlayer(history: ChatMessage[], state: QuizState): string {
-  const rows = history
-    .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim().length > 0)
-    .slice(-8)
-    .map((m) => {
-      const speaker = m.role === "user"
-        ? (state.character?.name ?? "Player")
-        : facultyDisplayNameForState(state, m.faculty);
-      return `${speaker}: ${clipped(m.content.trim(), 180)}`;
-    });
-  return rows.length ? ["Recent dialogue:", ...rows].join("\n") : "Recent dialogue: none yet.";
-}
-
-function recentRoomEventsForPlayer(events: RoomEvent[] | undefined): string {
-  const rows = (events ?? [])
-    .filter((event) => event.text.trim().length > 0)
-    .slice(-8)
-    .map((event) => `  - ${clipped(event.text.trim(), 220)}`);
-  return rows.length ? ["Recent visible room events:", ...rows].join("\n") : "";
 }
 
 function playerIntentDirective(intent: PlayerChatIntent): string {
@@ -912,8 +881,7 @@ function streamPlayerLine(args: {
   state: QuizState;
   faculty: string;
   intent: PlayerChatIntent;
-  history: ChatMessage[];
-  roomEvents?: RoomEvent[];
+  avatarContext: AvatarPromptContext;
   bankStatus?: QuestionBankStatus | null;
 }): AsyncGenerator<AvatarChatLineStreamEvent> {
   const character = args.state.character;
@@ -936,10 +904,11 @@ function streamPlayerLine(args: {
     `Stats: HEAD ${fmt(stats.head)}, HEART ${fmt(stats.heart)}, HUSTLE ${fmt(stats.hustle)}, HONOR ${fmt(stats.honor)}.`,
     classmateContextForPlayer(args.state, args.faculty),
     "",
-    playerVisibleBoardContext(args.state, args.intent, args.bankStatus),
+    args.avatarContext.roomBlock,
+    args.avatarContext.boardBlock,
     "",
-    recentDialogueForPlayer(args.history, args.state),
-    recentRoomEventsForPlayer(args.roomEvents),
+    args.avatarContext.recentEventsBlock,
+    args.avatarContext.dialogueBlock,
     "",
     `Turn intent: ${args.intent}. ${playerIntentDirective(args.intent)}`,
     "",
@@ -960,7 +929,12 @@ function streamPlayerLine(args: {
     temperature: 0.9,
     clean: (text) => sanitizePlayerLine(text, character.name),
     unusable: (text) => playerLineLooksUnusable(text, { state: args.state, faculty: args.faculty, facultyName }),
-    fallback: () => fallbackPlayerLine({ intent: args.intent, state: args.state, bankStatus: args.bankStatus }),
+    fallback: () => fallbackPlayerLine({
+      intent: args.intent,
+      state: args.state,
+      bankStatus: args.bankStatus,
+      recentTexts: args.avatarContext.recentTexts,
+    }),
   });
 }
 
@@ -968,17 +942,59 @@ function fallbackPlayerLine(args: {
   intent: PlayerChatIntent;
   state: QuizState;
   bankStatus?: QuestionBankStatus | null;
+  recentTexts?: string[];
 }): string {
   const { intent, state, bankStatus } = args;
-  if (intent === "hint") return "Can someone give me the first clue without saying it outright?";
-  if (intent === "report") {
-    if (state.lastReveal?.wasCorrect) return "Okay, that landed. What should I watch for on the next one?";
-    if (state.lastReveal) return "I missed the trap there. What should I review before the next one?";
-    return "Okay, I need a second with that one. What did everyone notice?";
+  const recentTexts = args.recentTexts ?? [];
+  const seed = [intent, state.character?.name ?? "", state.score.total, state.score.correct, state.current?.id ?? "", state.lastReveal?.questionId ?? ""].join("|");
+  if (intent === "hint") {
+    return pickFallbackVariant([
+      "Can someone give me the first clue without saying it outright?",
+      "I need a nudge on how to read this board, not the answer.",
+      "What should I notice first before I pick anything?",
+      "I'm stuck on the wording. What's the cleanest clue here?",
+    ], recentTexts, seed);
   }
-  if (intent === "lounge") return "Wait, what did you mean by that?";
-  if (playerClassReportContext(bankStatus)) return "That report is clear. Can we practice the weak spot now?";
-  return "I'm ready. What's the room looking at next?";
+  if (intent === "report") {
+    if (state.lastReveal?.wasCorrect) {
+      return pickFallbackVariant([
+        "Okay, that landed. What should I watch for on the next one?",
+        "That one clicked. What was the key clue I should remember?",
+        "I think I saw it that time. What should I carry forward?",
+      ], recentTexts, seed);
+    }
+    if (state.lastReveal) {
+      return pickFallbackVariant([
+        "I missed the trap there. What should I review before the next one?",
+        "That one got me. What was the clue I skipped?",
+        "I see the miss now. What should I slow down on next time?",
+      ], recentTexts, seed);
+    }
+    return pickFallbackVariant([
+      "Okay, I need a second with that one. What did everyone notice?",
+      "I'm still sorting that out. What was the main takeaway?",
+      "That felt trickier than it looked. What should I keep?",
+    ], recentTexts, seed);
+  }
+  if (intent === "lounge") {
+    return pickFallbackVariant([
+      "Wait, what did you mean by that?",
+      "I heard that, but I think I need the context.",
+      "Is that about today's class, or something else?",
+    ], recentTexts, seed);
+  }
+  if (playerClassReportContext(bankStatus)) {
+    return pickFallbackVariant([
+      "That report is clear. Can we practice the weak spot now?",
+      "Okay, the report makes sense. Can we work the weakest part?",
+      "I see the grade. What should I drill before the next class?",
+    ], recentTexts, seed);
+  }
+  return pickFallbackVariant([
+    "I'm ready. What's the room looking at next?",
+    "Okay, I'm with you. What are we taking on next?",
+    "I'm caught up. What should we focus on now?",
+  ], recentTexts, seed);
 }
 
 function playerChatContextNote(state: QuizState, intent: PlayerChatIntent, playerLine: string): string {
@@ -2134,6 +2150,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       }
       let playerLine: string;
       const historyFaculty = faculty === "lounge" ? "lounge" : faculty;
+      const playerAvatarContext = chat.avatarPromptContext({
+        sessionToken: token,
+        agentSessionId: sessionId,
+        faculty,
+        bucketKey: historyFaculty,
+      });
       try {
         playerLine = "";
         for await (const ev of streamPlayerLine({
@@ -2141,8 +2163,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           state,
           faculty,
           intent,
-          history: chat.history({ sessionToken: token, faculty: historyFaculty }),
-          roomEvents: chat.roomEvents({ sessionToken: token, faculty: historyFaculty }),
+          avatarContext: playerAvatarContext,
           bankStatus,
         })) {
           if (ev.type === "delta") {
@@ -2158,7 +2179,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           intent,
           reason: err instanceof Error ? err.message : String(err),
         });
-        playerLine = fallbackPlayerLine({ intent, state, bankStatus });
+        playerLine = fallbackPlayerLine({ intent, state, bankStatus, recentTexts: playerAvatarContext.recentTexts });
       }
       if (isStaleChatEvent()) {
         send("done", { type: "done", finishReason: "stale-turn" });
@@ -2190,14 +2211,21 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         const situation = intent === "hint" ? "player-asked-hint" : "player-chat";
         let line: string;
         const studentPayload = { id: responder.student.id, name: responder.student.name, color: responder.student.color };
+        const studentAvatarContext = chat.avatarPromptContext({
+          sessionToken: token,
+          agentSessionId: sessionId,
+          faculty,
+        });
+        const studentNote = playerChatContextNote(freshState, intent, playerLine);
         try {
           line = "";
           for await (const ev of streamStudentLine({
             apiKey,
             student: responder.student,
             situation,
-            note: playerChatContextNote(freshState, intent, playerLine),
+            note: studentNote,
             faculty,
+            avatarContext: studentAvatarContext,
             playerName: freshState.character?.name,
             classmateNames,
             teacherSaid,
@@ -2221,6 +2249,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             situation,
             playerName: freshState.character?.name,
             teacherSaid,
+            note: studentNote,
+            avatarContext: studentAvatarContext,
           });
         }
         if (isStaleChatEvent()) {
@@ -2369,13 +2399,17 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const { send, end } = openSse(ctx.res);
     try {
       let line = "";
+      const playerAvatarContext = chat.avatarPromptContext({
+        sessionToken: token,
+        agentSessionId: sessionId,
+        faculty,
+      });
       for await (const ev of streamPlayerLine({
         apiKey,
         state,
         faculty,
         intent,
-        history: chat.history({ sessionToken: token, faculty }),
-        roomEvents: chat.roomEvents({ sessionToken: token, faculty }),
+        avatarContext: playerAvatarContext,
         bankStatus,
       })) {
         if (ev.type === "delta") {
@@ -2765,6 +2799,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const { send, end } = openSse(ctx.res);
     try {
       const studentPayload = { id: student.id, name: student.name, color: student.color };
+      const avatarContext = faculty
+        ? chat.avatarPromptContext({
+            sessionToken: token,
+            agentSessionId: sessionId,
+            faculty,
+          })
+        : undefined;
       let line = "";
       for await (const ev of streamStudentLine({
         apiKey,
@@ -2772,6 +2813,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         situation,
         note: body?.note,
         faculty,
+        avatarContext,
         playerName,
         classmateNames,
         teacherSaid,
