@@ -2188,8 +2188,16 @@ export function runViewerClient(bootstrap) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) throw new Error(nftHttpErrorMessage("Pack sync", r, data, "Your packs were not changed; try again in a minute."));
       const importedCount = Math.max(0, Math.floor(Number(data.importedCount || 0)));
-      if (importedCount > 0) {
-        if (!quiet) setPrivyStatus("Imported " + formatWholeNumber(importedCount) + " pack NFT" + (importedCount === 1 ? "" : "s") + " from this wallet.", false);
+      const removedCount = Math.max(0, Math.floor(Number(data.removedCount || 0)));
+      const restoredCount = Math.max(0, Math.floor(Number(data.restoredCount || 0)));
+      if (importedCount > 0 || removedCount > 0 || restoredCount > 0) {
+        if (!quiet) {
+          const pieces = [];
+          if (importedCount > 0) pieces.push("imported " + formatWholeNumber(importedCount));
+          if (restoredCount > 0) pieces.push("restored " + formatWholeNumber(restoredCount));
+          if (removedCount > 0) pieces.push("removed " + formatWholeNumber(removedCount));
+          setPrivyStatus("Wallet pack sync " + pieces.join(", ") + " pack NFT" + (importedCount + removedCount + restoredCount === 1 ? "" : "s") + ".", false);
+        }
         await fetchSession();
         renderAccountPage();
       } else if (force) {
@@ -3965,8 +3973,8 @@ export function runViewerClient(bootstrap) {
         recipient: data.recipient,
         mint: data.mint,
         reference: data.reference,
-        prompt: "Your wallet may show only the RUBY debit; Ruby High files the pack NFT after confirmation.",
-        copy: "Ruby High will ask your wallet to pay RUBY for a pack NFT. This should not ask for broad approvals.",
+        prompt: "Your wallet should show a RUBY debit and Ruby High pack NFT create. The network fee is paid by this wallet.",
+        copy: "Ruby High will ask your wallet to pay RUBY and create one authorized pack NFT. This should not ask for broad approvals.",
         confirmText: "Open wallet",
       });
       if (!approved) {
@@ -3976,8 +3984,8 @@ export function runViewerClient(bootstrap) {
       setBillingStatus("Confirm the card pack payment in your wallet...", false);
       const payment = await client.paySolanaQuote(data);
       const signature = payment && payment.signature ? payment.signature : "";
-      showPackMintProgress("Payment signed. Minting your Ruby High pack...");
-      setBillingStatus("Payment sent. Minting pack...", false);
+      showPackMintProgress("Payment signed. Confirming your Ruby High pack...");
+      setBillingStatus("Payment sent. Confirming pack...", false);
       await confirmSolanaPayment(productId, signature, payment && payment.walletAddress, data);
     } catch (err) {
       hidePackMintProgress();

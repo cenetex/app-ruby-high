@@ -10,6 +10,7 @@ import {
   update,
 } from "@metaplex-foundation/mpl-core";
 import {
+  createNoopSigner,
   generateSigner,
   keypairIdentity,
   publicKey,
@@ -17,6 +18,7 @@ import {
   type Umi,
 } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
+import { toWeb3JsInstruction, toWeb3JsKeypair } from "@metaplex-foundation/umi-web3js-adapters";
 import { address as kitAddress } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import {
@@ -583,6 +585,9 @@ export async function buildCorePackPurchaseTransaction(
   const paymentReference = cleanSolanaAddress(input.paymentReference, "Solana payment reference");
   const tokenDecimals = readTokenDecimals(input.tokenDecimals);
   const tokenAmountBaseUnits = readBaseUnits(input.tokenAmountBaseUnits);
+  const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
+  const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
+  const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
   const source = input.sourceTokenAccountAddress && isBase58ishAddress(input.sourceTokenAccountAddress)
     ? { tokenAccountAddress: input.sourceTokenAccountAddress.trim(), balanceBaseUnits: tokenAmountBaseUnits }
     : await findOwnerTokenAccountForPayment({
@@ -599,6 +604,36 @@ export async function buildCorePackPurchaseTransaction(
     mint: kitAddress(tokenMint),
   });
   const latestBlockhash = input.latestBlockhash ?? await fetchLatestBlockhash(config.rpcUrl);
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const owner = publicKey(ownerWalletAddress);
+  const collection = { publicKey: publicKey(config.collectionAddress) } as Awaited<ReturnType<typeof fetchCollectionV1>>;
+  const asset = generateSigner(umi);
+  const metadataUri = await corePackNftMetadataUriForMint({
+    productId: input.productId,
+    packCount,
+    cardCount,
+    ownerWalletAddress,
+    paymentSignature: String(asset.publicKey),
+  });
+  const serial = packSerial(String(asset.publicKey));
+  const packCreate = create(umi, {
+    asset,
+    collection,
+    authority: umi.identity,
+    payer: createNoopSigner(owner),
+    owner,
+    name: packCount === 1 ? `${FIRST_BELL_SET_NAME} Pack #${serial}` : `${FIRST_BELL_SET_NAME} ${packCount}-Pack #${serial}`,
+    uri: metadataUri,
+    plugins: corePackAssetPluginsForMint({
+      authorityAddress: String(umi.identity.publicKey),
+      productId: input.productId,
+      packCount,
+      cardCount,
+      serial,
+    }),
+  });
   const transaction = new Web3Transaction({
     feePayer: new Web3PublicKey(ownerWalletAddress),
     recentBlockhash: latestBlockhash.blockhash,
@@ -618,6 +653,10 @@ export async function buildCorePackPurchaseTransaction(
     decimals: tokenDecimals,
     reference: paymentReference,
   }));
+  for (const instruction of packCreate.getInstructions()) {
+    transaction.add(toWeb3JsInstruction(instruction));
+  }
+  transaction.partialSign(toWeb3JsKeypair(authorityKeypair), toWeb3JsKeypair(asset));
   const transactionBase64 = transaction
     .serialize({ requireAllSignatures: false, verifySignatures: false })
     .toString("base64");
@@ -626,6 +665,8 @@ export async function buildCorePackPurchaseTransaction(
   }
   return {
     ownerWalletAddress,
+    assetAddress: String(asset.publicKey),
+    metadataUri,
     sourceTokenAccountAddress: source.tokenAccountAddress,
     destinationTokenAccountAddress,
     transactionBase64,

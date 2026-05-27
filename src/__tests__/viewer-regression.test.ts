@@ -193,6 +193,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'prompt: "No wallet signature is expected for pack opening."');
     expectScriptToContain(script, "async function syncWalletPackNftsFromAccount(opts)");
     expectScriptToContain(script, 'apiBase + "/nft/sync-packs"');
+    expectScriptToContain(script, "const removedCount = Math.max(0, Math.floor(Number(data.removedCount || 0)))");
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
     expectScriptToContain(script, 'img.src = status === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL');
     expectScriptToContain(script, 'item.className = "account-pack-tile is-" + String(pack.status || "active")');
@@ -271,7 +272,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, 'title: "Connect Solana wallet?"');
     expectScriptToContain(script, 'title: "Confirm card pack payment?"');
-    expectScriptToContain(script, "Your wallet may show only the RUBY debit; Ruby High files the pack NFT after confirmation.");
+    expectScriptToContain(script, "Your wallet should show a RUBY debit and Ruby High pack NFT create. The network fee is paid by this wallet.");
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "await client.paySolanaQuote(data)");
     expect(script).not.toContain('"prepare card mint " + prepared.status');
@@ -599,6 +600,10 @@ describe("viewer regression guardrails", () => {
     expect(cssRule(".pack-grid")).not.toContain("grid-template-columns");
     expect(cssRule(".pack-search-row")).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(cssRule(".pack-card-item")).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(VIEWER_CSS).toContain("@media (max-width: 560px)");
+    expect(VIEWER_CSS).toContain('grid-template-areas:\n        "head"\n        "meta"\n        "actions";');
+    expect(VIEWER_CSS).toContain("grid-template-columns: repeat(auto-fit, minmax(92px, 1fr))");
+    expect(VIEWER_CSS).toContain("grid-column: 1 / -1");
     expectScriptToContain(script, 'card.addEventListener("click", () => {');
     expectScriptToContain(script, "state.textContent = isSearch");
     expectScriptToContain(script, ': pack.active ? "Guest now" : "Set guest"');

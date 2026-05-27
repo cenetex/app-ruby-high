@@ -12,6 +12,7 @@ import {
   type CorePackPurchaseTransactionResult,
   deterministicCorePackMintForTest,
   setCorePackNftMinterForTest,
+  setCorePackNftVerifierForTest,
   setCorePackPurchaseTransactionBuilderForTest,
 } from "../services/core-pack-nfts.js";
 import { setHallPassNftBurnVerifierForTest } from "../services/hall-pass-nfts.js";
@@ -48,6 +49,7 @@ const ORIGINAL_ENV = {
 };
 
 let restoreCorePackMinter: (() => void) | null = null;
+let restoreCorePackVerifier: (() => void) | null = null;
 let restoreCorePackPurchaseBuilder: (() => void) | null = null;
 let restoreHallPassBurnVerifier: (() => void) | null = null;
 const TEST_SOLANA_OWNER = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
@@ -184,6 +186,12 @@ beforeEach(async () => {
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
   restoreCorePackMinter = setCorePackNftMinterForTest(async (input) => deterministicCorePackMintForTest(input));
+  restoreCorePackVerifier = setCorePackNftVerifierForTest(async (input) => ({
+    ownerWalletAddress: input.ownerWalletAddress,
+    assetAddress: input.assetAddress,
+    mintSignature: input.paymentSignature,
+    metadataUri: input.metadataUri || deterministicCorePackMintForTest(input).metadataUri,
+  }));
   restoreHallPassBurnVerifier = setHallPassNftBurnVerifierForTest(async (burn) => ({
     signature: burn.burnSignature,
     ownerWalletAddress: burn.ownerWalletAddress,
@@ -201,9 +209,11 @@ beforeEach(async () => {
 afterEach(async () => {
   restoreEnv();
   if (restoreCorePackMinter) restoreCorePackMinter();
+  if (restoreCorePackVerifier) restoreCorePackVerifier();
   if (restoreCorePackPurchaseBuilder) restoreCorePackPurchaseBuilder();
   if (restoreHallPassBurnVerifier) restoreHallPassBurnVerifier();
   restoreCorePackMinter = null;
+  restoreCorePackVerifier = null;
   restoreCorePackPurchaseBuilder = null;
   restoreHallPassBurnVerifier = null;
   vi.restoreAllMocks();
@@ -841,37 +851,38 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.error).toContain("Solana wallet address");
   });
 
-  it("records a server-minted Pack NFT after verifying the payment transaction", async () => {
-    const stateKey = signInUser("solana-server-mint-paid");
+  it("records a wallet-paid Pack NFT after verifying the payment transaction", async () => {
+    const stateKey = signInUser("solana-wallet-mint-paid");
     const ownerWalletAddress = TEST_SOLANA_OWNER;
     const packAssetAddress = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     const packMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-3/456789.json?packs=3&cards=15";
-    const packMintSignature = "6".repeat(88);
     stubCorePackPurchaseBuilderForTest({
       expected: {
         productId: "card-pack-3",
         ownerWalletAddress,
       },
     });
-    restoreCorePackMinter?.();
-    restoreCorePackMinter = setCorePackNftMinterForTest(async (input) => {
+    restoreCorePackVerifier?.();
+    restoreCorePackVerifier = setCorePackNftVerifierForTest(async (input) => {
       expect(input).toMatchObject({
         productId: "card-pack-3",
         packCount: 3,
         cardCount: 15,
         ownerWalletAddress,
+        assetAddress: packAssetAddress,
+        metadataUri: packMetadataUri,
       });
       return {
         ownerWalletAddress,
         assetAddress: packAssetAddress,
-        mintSignature: packMintSignature,
+        mintSignature: input.paymentSignature,
         metadataUri: packMetadataUri,
       };
     });
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/quote",
-      cookie: "rh_session=solana-server-mint-paid",
+      cookie: "rh_session=solana-wallet-mint-paid",
       body: { productId: "card-pack-3", ownerWalletAddress },
     }), deps());
     const reference = lastResponse?.body.reference;
@@ -903,7 +914,7 @@ describe("Solana Hall Pass billing", () => {
         },
         transaction: {
           signatures: [signature],
-          message: { accountKeys: [{ pubkey: reference }] },
+          message: { accountKeys: [{ pubkey: reference }, { pubkey: packAssetAddress }] },
         },
       },
     }), {
@@ -914,11 +925,13 @@ describe("Solana Hall Pass billing", () => {
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
-      cookie: "rh_session=solana-server-mint-paid",
+      cookie: "rh_session=solana-wallet-mint-paid",
       body: {
         productId: "card-pack-3",
         signature,
         ownerWalletAddress,
+        packAssetAddress,
+        packMetadataUri,
       },
     }), deps());
 
@@ -934,7 +947,7 @@ describe("Solana Hall Pass billing", () => {
         cardCount: 15,
         packSerial: 456789,
         packAssetAddress,
-        packMintSignature,
+        packMintSignature: signature,
         packMetadataUri,
         packRevealVersion: "ruby-high-pack-reveal-v1.1",
         catalogHash: expect.any(String),
@@ -948,7 +961,7 @@ describe("Solana Hall Pass billing", () => {
       source: "solana",
       metadata: {
         packAssetAddress,
-        packMintSignature,
+        packMintSignature: signature,
         packMetadataUri,
         packSerial: 456789,
         packRevealVersion: "ruby-high-pack-reveal-v1.1",
@@ -962,11 +975,13 @@ describe("Solana Hall Pass billing", () => {
     await handleBillingRoutes(makeCtx({
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
-      cookie: "rh_session=solana-server-mint-paid",
+      cookie: "rh_session=solana-wallet-mint-paid",
       body: {
         productId: "card-pack-3",
         signature,
         ownerWalletAddress,
+        packAssetAddress,
+        packMetadataUri,
       },
     }), deps());
 
@@ -979,6 +994,7 @@ describe("Solana Hall Pass billing", () => {
   it("rejects a transaction that is missing the quoted payment reference", async () => {
     signInUser("solana-wrong-ref");
     const signature = "3".repeat(88);
+    const packMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-5/123456.json?packs=5&cards=25";
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({
       jsonrpc: "2.0",
       id: "ruby-high-solana-billing",
@@ -1002,7 +1018,13 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/confirm",
       cookie: "rh_session=solana-wrong-ref",
-      body: { productId: "card-pack-5", signature, ownerWalletAddress: TEST_SOLANA_OWNER },
+      body: {
+        productId: "card-pack-5",
+        signature,
+        ownerWalletAddress: TEST_SOLANA_OWNER,
+        packAssetAddress: TEST_PACK_ASSET,
+        packMetadataUri,
+      },
     }), deps());
 
     expect(lastResponse?.status).toBe(400);

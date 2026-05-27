@@ -204,11 +204,18 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         if (result.pack) imported.push(result.pack);
         existingAssets.add(owned.assetAddress);
       }
+      const reconciliation = deps.ruby.reconcileHallPassPacksForOwner(
+        stateKey,
+        ownerWalletAddress,
+        ownedPacks.map((pack) => pack.assetAddress),
+      );
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
         ownerWalletAddress,
         imported: imported.map(packPayload),
+        removed: reconciliation.removed.map(packPayload),
+        restored: reconciliation.restored.map(packPayload),
         known: known.map((pack) => ({
           productId: pack.productId,
           packCount: pack.packCount,
@@ -219,6 +226,8 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         })),
         onChainCount: ownedPacks.length,
         importedCount: imported.length,
+        removedCount: reconciliation.removed.length,
+        restoredCount: reconciliation.restored.length,
       });
     } catch (err) {
       log.error("nft.pack-sync-failed", err, {

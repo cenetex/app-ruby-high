@@ -4,6 +4,7 @@ import {
   assertIsFullySignedTransaction,
   address,
   appendTransactionMessageInstructions,
+  blockhash,
   compileTransaction,
   createKeyPairSignerFromBytes,
   createKeyPairSignerFromPrivateKeyBytes,
@@ -66,6 +67,8 @@ import {
 } from "./hall-pass-reveal-provenance.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
 import { durableNftMetadataUri } from "./nft-metadata-storage.js";
+
+type LatestBlockhash = Parameters<typeof setTransactionMessageLifetimeUsingBlockhash>[0];
 
 export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -560,6 +563,34 @@ export async function buildHallPassCardMintTransaction(
 ): Promise<HallPassCardMintTransaction> {
   if (mintTransactionBuilderOverride) return mintTransactionBuilderOverride(card, ownerWalletAddress);
   const config = readMintConfig();
+  const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card mint");
+  const { owner, mint, metadataUri, transaction: unsigned } = await compileHallPassCardMintTransaction(
+    card,
+    ownerWalletAddress,
+    latestBlockhash,
+    config,
+  );
+  const transactionBase64 = getBase64EncodedWireTransaction(unsigned);
+  await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
+  return {
+    cardId: card.id,
+    ownerWalletAddress: owner,
+    mintAddress: mint.address,
+    metadataUri,
+    transactionBase64,
+    transactionMessageHash: hashTransactionMessageBytes(unsigned.messageBytes),
+    transactionEncoding: "base64",
+    chain: "solana:mainnet",
+    rpcUrl: config.rpcUrl,
+  };
+}
+
+async function compileHallPassCardMintTransaction(
+  card: RubyHighHallPassCard,
+  ownerWalletAddress: string,
+  latestBlockhash: LatestBlockhash,
+  config: ReturnType<typeof readMintConfig>,
+) {
   const owner = address(cleanSolanaAddress(ownerWalletAddress, "Owner Solana wallet"));
   const ownerSigner = createNoopSigner(owner);
   const authority = await createKeyPairSignerFromBytes(config.authoritySecret);
@@ -594,27 +625,13 @@ export async function buildHallPassCardMintTransaction(
       mintAddress: mint.address,
     }));
   }
-  const latestBlockhash = await fetchLatestBlockhash(config.rpcUrl, "Card mint");
   const message = pipe(
     createTransactionMessage({ version: 0 }),
     (tx) => setTransactionMessageFeePayerSigner(ownerSigner, tx),
     (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
     (tx) => appendTransactionMessageInstructions(instructions, tx),
   );
-  const unsigned = compileTransaction(message);
-  const transactionBase64 = getBase64EncodedWireTransaction(unsigned);
-  await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
-  return {
-    cardId: card.id,
-    ownerWalletAddress: owner,
-    mintAddress: mint.address,
-    metadataUri,
-    transactionBase64,
-    transactionMessageHash: hashTransactionMessageBytes(unsigned.messageBytes),
-    transactionEncoding: "base64",
-    chain: "solana:mainnet",
-    rpcUrl: config.rpcUrl,
-  };
+  return { owner, mint, metadataUri, transaction: compileTransaction(message) };
 }
 
 export async function verifyHallPassCardMint(input: {
@@ -725,7 +742,12 @@ async function completeHallPassCardMintTransactionWithServerSigners(
 
   const transaction = decodeBase64Transaction(signedTransactionBase64, "Signed card mint transaction");
   const actualHash = hashTransactionMessageBytes(transaction.messageBytes);
-  if (actualHash !== expectedHash) {
+  if (actualHash !== expectedHash && !(await signedHallPassCardMintMatchesPreparedBlockhash(
+    signedTransactionBase64,
+    actualHash,
+    prepared,
+    config,
+  ))) {
     throw new Error("Signed card mint transaction does not match this Ruby High card.");
   }
   if (!transactionSignatureForAddress(transaction, ownerWalletAddress)) {
@@ -742,6 +764,28 @@ async function completeHallPassCardMintTransactionWithServerSigners(
   const transactionBase64 = getBase64EncodedWireTransaction(completed);
   await simulateBase64TransactionForSigning(config.rpcUrl, transactionBase64, "Card mint");
   return transactionBase64;
+}
+
+async function signedHallPassCardMintMatchesPreparedBlockhash(
+  signedTransactionBase64: string,
+  actualHash: string,
+  prepared: {
+    card: RubyHighHallPassCard;
+    ownerWalletAddress: string;
+    mintAddress: string;
+  },
+  config: ReturnType<typeof readMintConfig>,
+): Promise<boolean> {
+  const recentBlockhash = signedSolanaTransactionRecentBlockhash(signedTransactionBase64);
+  if (!recentBlockhash) return false;
+  const expected = await compileHallPassCardMintTransaction(
+    prepared.card,
+    prepared.ownerWalletAddress,
+    { blockhash: blockhash(recentBlockhash), lastValidBlockHeight: 0n },
+    config,
+  );
+  if (String(expected.mint.address) !== cleanSolanaAddress(prepared.mintAddress, "Card mint")) return false;
+  return hashTransactionMessageBytes(expected.transaction.messageBytes) === actualHash;
 }
 
 function decodeBase64Transaction(transactionBase64: string, label: string) {
@@ -767,6 +811,22 @@ function signedSolanaTransactionAccountKeys(transactionBase64: string): string[]
   } catch {
     const transaction = Transaction.from(bytes);
     return transaction.compileMessage().accountKeys.map((key) => key.toBase58());
+  }
+}
+
+function signedSolanaTransactionRecentBlockhash(transactionBase64: string): string {
+  const raw = transactionBase64.trim();
+  if (!raw) return "";
+  const bytes = Buffer.from(raw, "base64");
+  if (bytes.length <= 0 || bytes.length > 1232) return "";
+  try {
+    return VersionedTransaction.deserialize(bytes).message.recentBlockhash;
+  } catch {
+    try {
+      return Transaction.from(bytes).recentBlockhash || "";
+    } catch {
+      return "";
+    }
   }
 }
 

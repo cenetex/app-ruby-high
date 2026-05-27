@@ -753,8 +753,37 @@ export const VIEWER_CSS = `
   }
   .pack-library-actions {
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     justify-content: flex-end;
     margin: 8px 0 2px;
+  }
+  .pack-library-actions .pack-action,
+  .pack-search-row .pack-action {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    min-width: 0;
+    padding: 0 13px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--bg-elev-2);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 850;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .pack-library-actions .pack-action:not(:disabled):hover,
+  .pack-search-row .pack-action:not(:disabled):hover {
+    border-color: var(--accent);
+  }
+  .pack-library-actions .pack-action:disabled,
+  .pack-search-row .pack-action:disabled {
+    opacity: 0.68;
+    cursor: not-allowed;
   }
   .pack-search-row {
     display: grid;
@@ -841,11 +870,15 @@ export const VIEWER_CSS = `
     gap: 8px;
     align-items: center;
     justify-content: flex-end;
-    min-width: 90px;
+    min-width: 0;
   }
   .pack-card-actions .pack-action {
     appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-height: 32px;
+    min-width: 0;
     padding: 0 12px;
     border-radius: 8px;
     border: 1px solid var(--line);
@@ -853,6 +886,7 @@ export const VIEWER_CSS = `
     color: var(--text);
     font-size: 12px;
     font-weight: 850;
+    white-space: nowrap;
     cursor: pointer;
   }
   .pack-card-actions .pack-action:not(:disabled):hover {
@@ -866,6 +900,10 @@ export const VIEWER_CSS = `
     color: var(--text-soft);
     font-size: 12px;
     font-weight: 900;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
   .pack-card-item.is-active .pack-row-state {
@@ -878,6 +916,50 @@ export const VIEWER_CSS = `
   .pack-card-actions .pack-action.danger:not(:disabled):hover {
     background: rgba(210, 42, 42, 0.16);
     color: #fff;
+  }
+  @media (max-width: 560px) {
+    .pack-card-item {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        "head"
+        "meta"
+        "actions";
+      align-items: stretch;
+      gap: 10px;
+      padding: 12px;
+    }
+    .pack-card-name {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .pack-card-actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      justify-content: stretch;
+      width: 100%;
+    }
+    .pack-card-actions .pack-action {
+      width: 100%;
+      padding: 0 8px;
+    }
+    .pack-row-state {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+  }
+  @media (max-width: 380px) {
+    .pack-library-actions,
+    .pack-search-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .pack-library-actions {
+      display: grid;
+      justify-content: stretch;
+    }
+    .pack-library-actions .pack-action,
+    .pack-search-row .pack-action {
+      width: 100%;
+    }
   }
   .sheet-card.pack-edit-card {
     width: min(1100px, calc(100vw - 28px));

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, VersionedTransaction } from "@solana/web3.js";
 import {
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
@@ -132,7 +132,68 @@ describe("verifyHallPassCardBurn", () => {
     expect(isFullySignedTransaction(submitted)).toBe(true);
   });
 
-  it("rejects owner-signed mint transactions whose message hash changed", async () => {
+  it("accepts owner signatures returned by standard Solana browser wallets with refreshed blockhashes", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    const sentTransactions: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
+      if (request.method === "getLatestBlockhash") {
+        return rpcResponse(request.id, {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        });
+      }
+      if (request.method === "simulateTransaction") {
+        return rpcResponse(request.id, { err: null, logs: [] });
+      }
+      if (request.method === "sendTransaction") {
+        sentTransactions.push(String(request.params?.[0] ?? ""));
+        return rpcResponse(request.id, SUBMITTED_SIGNATURE);
+      }
+      if (request.method === "getTransaction") {
+        return rpcResponse(request.id, {
+          meta: { err: null },
+          transaction: { signatures: [SUBMITTED_SIGNATURE] },
+        });
+      }
+      throw new Error(`Unexpected Solana RPC method ${request.method}`);
+    }));
+
+    const owner = Keypair.generate();
+    const ownerAddress = owner.publicKey.toBase58();
+    const card = {
+      id: "unit-card-wallet-standard",
+      characterId: "ruby",
+      characterName: "Ruby",
+      serial: 19,
+    } as any;
+    const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
+    const transaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
+    const refreshedBlockhash = Keypair.generate().publicKey.toBase58();
+
+    transaction.message.recentBlockhash = refreshedBlockhash;
+    transaction.sign([owner]);
+    const signature = await submitSignedHallPassCardMintTransaction(
+      Buffer.from(transaction.serialize()).toString("base64"),
+      [ownerAddress, prepared.mintAddress],
+      {
+        card,
+        ownerWalletAddress: ownerAddress,
+        mintAddress: prepared.mintAddress,
+        transactionMessageHash: prepared.transactionMessageHash,
+      },
+    );
+
+    expect(signature).toBe(SUBMITTED_SIGNATURE);
+    expect(sentTransactions).toHaveLength(1);
+    const submitted = VersionedTransaction.deserialize(Buffer.from(sentTransactions[0]!, "base64"));
+    expect(submitted.message.recentBlockhash).toBe(refreshedBlockhash);
+  });
+
+  it("rejects owner-signed mint transactions whose mint instructions changed", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
@@ -151,25 +212,30 @@ describe("verifyHallPassCardBurn", () => {
       throw new Error(`Unexpected Solana RPC method ${request.method}`);
     }));
 
-    const owner = await generateKeyPairSigner();
+    const owner = Keypair.generate();
+    const ownerAddress = owner.publicKey.toBase58();
     const card = {
       id: "unit-card-hash-mismatch",
       characterId: "ruby",
       characterName: "Ruby",
       serial: 18,
     } as any;
-    const prepared = await buildHallPassCardMintTransaction(card, owner.address);
-    const unsigned = getTransactionDecoder().decode(Buffer.from(prepared.transactionBase64, "base64"));
-    const ownerSigned = await partiallySignTransaction([owner.keyPair], unsigned);
+    const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
+    const transaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
+    const instruction = transaction.message.compiledInstructions.find((ix) => ix.data.length > 0);
+    if (!instruction) throw new Error("prepared transaction has no instruction data");
+    instruction.data = new Uint8Array(instruction.data);
+    instruction.data[0] = instruction.data[0]! ^ 1;
+    transaction.sign([owner]);
 
     await expect(submitSignedHallPassCardMintTransaction(
-      getBase64EncodedWireTransaction(ownerSigned),
-      [owner.address, prepared.mintAddress],
+      Buffer.from(transaction.serialize()).toString("base64"),
+      [ownerAddress, prepared.mintAddress],
       {
         card,
-        ownerWalletAddress: owner.address,
+        ownerWalletAddress: ownerAddress,
         mintAddress: prepared.mintAddress,
-        transactionMessageHash: "not-the-prepared-message",
+        transactionMessageHash: prepared.transactionMessageHash,
       },
     )).rejects.toThrow(/does not match this Ruby High card/);
   });

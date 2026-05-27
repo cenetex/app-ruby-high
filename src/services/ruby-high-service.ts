@@ -1951,6 +1951,41 @@ export class RubyHighService extends Service {
     return normalizeHallPassPacks(state.wallet.hallPassPacks);
   }
 
+  reconcileHallPassPacksForOwner(
+    sessionId: string,
+    ownerWalletAddress: string,
+    ownedAssetAddresses: string[],
+  ): { removed: RubyHighHallPassPack[]; restored: RubyHighHallPassPack[]; packs: RubyHighHallPassPack[] } {
+    const owner = ownerWalletAddress.trim();
+    if (!owner) return { removed: [], restored: [], packs: [] };
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const owned = new Set(ownedAssetAddresses.map((asset) => asset.trim()).filter(Boolean));
+    const packs = normalizeHallPassPacks(state.wallet.hallPassPacks);
+    const removed: RubyHighHallPassPack[] = [];
+    const restored: RubyHighHallPassPack[] = [];
+    const at = Date.now();
+    for (const pack of packs) {
+      if (pack.ownerWalletAddress !== owner || pack.status === "opened") continue;
+      const isOwnedOnChain = owned.has(pack.assetAddress);
+      if (isOwnedOnChain && pack.status === "void") {
+        pack.status = "active";
+        pack.updatedAt = at;
+        restored.push(pack);
+      } else if (!isOwnedOnChain && pack.status === "active") {
+        pack.status = "void";
+        pack.updatedAt = at;
+        removed.push(pack);
+      }
+    }
+    if (removed.length > 0 || restored.length > 0) {
+      state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
+      state.updatedAt = at;
+      void this.persistSession(sessionId);
+    }
+    return { removed, restored, packs: state.wallet.hallPassPacks ?? [] };
+  }
+
   findHallPassCardById(cardId: string): RubyHighHallPassCard | null {
     const id = typeof cardId === "string" ? cardId.trim() : "";
     if (!id) return null;

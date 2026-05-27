@@ -22,8 +22,8 @@ import {
 import { publicHallPassNftStatus, verifyHallPassCardBurn } from "../services/hall-pass-nfts.js";
 import {
   buildCorePackPurchaseTransaction,
-  mintCorePackNft,
   publicCorePackNftStatus,
+  verifyCorePackNftMint,
 } from "../services/core-pack-nfts.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
@@ -1272,6 +1272,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         solana.recipient,
         solana.mint,
         reference,
+        packAssetAddress,
       ]);
       const signature = await submitSignedSolanaTransaction(solana, signedTransactionBase64);
       ctx.json(ctx.res, { ok: true, signature });
@@ -1319,6 +1320,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const packAssetAddress = typeof body.packAssetAddress === "string" && isBase58Address(body.packAssetAddress.trim())
       ? body.packAssetAddress.trim()
       : "";
+    const packMetadataUri = typeof body.packMetadataUri === "string" ? body.packMetadataUri.trim() : "";
     const product = solanaProductById(typeof body.productId === "string" ? body.productId : "");
     if (!product) {
       ctx.error(ctx.res, "Unknown Solana card pack.", 400);
@@ -1372,14 +1374,20 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       });
       return true;
     }
+    if (!packAssetAddress || !packMetadataUri) {
+      ctx.error(ctx.res, "Pack NFT checkout details are missing. Refresh Ruby High and try again.", 400);
+      return true;
+    }
     try {
-      const verification = await verifySolanaPayment(solana, product, stateKey, signature);
-      const packMint = await mintCorePackNft({
+      const verification = await verifySolanaPayment(solana, product, stateKey, signature, packAssetAddress);
+      const packMint = await verifyCorePackNftMint({
         productId: product.id,
         packCount: product.packCount,
         cardCount: product.cardCount,
         ownerWalletAddress,
+        assetAddress: packAssetAddress,
         paymentSignature: signature,
+        metadataUri: packMetadataUri,
       });
       const result = deps.ruby.recordHallPassPackMint(stateKey, {
         productId: product.id,

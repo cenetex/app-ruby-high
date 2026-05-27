@@ -571,6 +571,7 @@ function normalizeHallPassPacksForTelemetry(value: unknown): NonNullable<RubyHig
     const id = typeof pack.id === "string" ? pack.id.trim() : "";
     const assetAddress = typeof pack.assetAddress === "string" ? pack.assetAddress.trim() : "";
     const mintSignature = typeof pack.mintSignature === "string" ? pack.mintSignature.trim() : "";
+    if (pack.status === "void") continue;
     if (!id || !assetAddress || !mintSignature) continue;
     const key = assetAddress || id;
     const existing = byAsset.get(key);

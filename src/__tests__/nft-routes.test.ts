@@ -6,6 +6,7 @@ import { handleNftRoutes } from "../routes/nft.js";
 import type { RouteContext } from "../routes/context.js";
 import { getActivePack } from "../content/registry.js";
 import {
+  type OwnedCorePackNft,
   setCorePackNftOpenedUpdaterForTest,
   setOwnedCorePackNftFetcherForTest,
 } from "../services/core-pack-nfts.js";
@@ -572,16 +573,18 @@ describe("Hall Pass NFT routes", () => {
   it("imports transferred Core pack NFTs owned by the connected wallet", async () => {
     const stateKey = signInUser("sync-pack");
     const transferredAsset = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
-    restorePackFetcher = setOwnedCorePackNftFetcherForTest(async (ownerWalletAddress) => [{
+    let ownedPackNfts: Array<Omit<OwnedCorePackNft, "ownerWalletAddress">> = [{
       productId: "card-pack-1",
       packCount: 1,
       cardCount: 5,
-      ownerWalletAddress,
       assetAddress: transferredAsset,
       metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
       serial: 570329,
       name: "Ruby High Pack #570329",
-    }]);
+    }];
+    restorePackFetcher = setOwnedCorePackNftFetcherForTest(async (ownerWalletAddress) => (
+      ownedPackNfts.map((pack) => ({ ...pack, ownerWalletAddress }))
+    ));
 
     const handled = await handleNftRoutes(makeCtx({
       method: "POST",
@@ -632,6 +635,57 @@ describe("Hall Pass NFT routes", () => {
     });
     expect(lastResponse?.body.known).toHaveLength(1);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks).toHaveLength(1);
+
+    ownedPackNfts = [];
+    await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/sync-packs",
+      cookie: "rh_session=sync-pack",
+      body: { ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        importedCount: 0,
+        removedCount: 1,
+        onChainCount: 0,
+      },
+    });
+    expect(lastResponse?.body.removed).toHaveLength(1);
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
+      assetAddress: transferredAsset,
+      status: "void",
+    });
+
+    ownedPackNfts = [{
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      assetAddress: transferredAsset,
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
+      serial: 570329,
+      name: "Ruby High Pack #570329",
+    }];
+    await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/sync-packs",
+      cookie: "rh_session=sync-pack",
+      body: { ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        importedCount: 0,
+        restoredCount: 1,
+        onChainCount: 1,
+      },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
+      assetAddress: transferredAsset,
+      status: "active",
+    });
   });
 
   it("prepares one owner-paid card mint without recording the reveal", async () => {
