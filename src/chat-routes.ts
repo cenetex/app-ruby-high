@@ -10,6 +10,7 @@ import {
 } from "./services/ruby-high-service.js";
 import {
   type AvatarChatLineStreamEvent,
+  avatarChatLineStartsWithSpeakerLabel,
   avatarChatLineLooksTooThin,
   cleanAvatarChatLine,
   streamAvatarChatLine,
@@ -882,6 +883,30 @@ function sanitizePlayerLine(text: string, playerName: string): string {
   });
 }
 
+function speakerLabelVariants(name: string): string[] {
+  const cleaned = name.trim().replace(/\s+/g, " ");
+  if (!cleaned) return [];
+  const words = cleaned.split(" ").filter(Boolean);
+  const variants = [cleaned];
+  if (words.length >= 2) variants.push(words.slice(0, 2).join(" "));
+  return [...new Set(variants)];
+}
+
+function playerLineLooksUnusable(text: string, args: { state: QuizState; faculty: string; facultyName: string }): boolean {
+  if (avatarChatLineLooksTooThin(text, { minWords: 4, minChars: 16 })) return true;
+  const labels = [
+    "assistant",
+    "classmate",
+    "narrator",
+    "student",
+    "system",
+    "teacher",
+    ...speakerLabelVariants(args.facultyName),
+    ...roomStudentsForTurn(args.state, args.faculty).flatMap((student) => speakerLabelVariants(student.name)),
+  ];
+  return avatarChatLineStartsWithSpeakerLabel(text, labels);
+}
+
 function streamPlayerLine(args: {
   apiKey: string;
   state: QuizState;
@@ -934,7 +959,7 @@ function streamPlayerLine(args: {
     maxTokens: 140,
     temperature: 0.9,
     clean: (text) => sanitizePlayerLine(text, character.name),
-    unusable: (text) => avatarChatLineLooksTooThin(text, { minWords: 4, minChars: 16 }),
+    unusable: (text) => playerLineLooksUnusable(text, { state: args.state, faculty: args.faculty, facultyName }),
     fallback: () => fallbackPlayerLine({ intent: args.intent, state: args.state, bankStatus: args.bankStatus }),
   });
 }

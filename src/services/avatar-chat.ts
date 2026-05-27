@@ -72,7 +72,7 @@ export function cleanAvatarChatLine(
   const prefixes = (opts.speakerPrefixes ?? []).map((prefix) => prefix.trim()).filter(Boolean);
   if (prefixes.length > 0) {
     const escaped = prefixes.map((prefix) => prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const prefixRe = new RegExp(`^(${escaped.join("|")})\\s*:\\s*`, "i");
+    const prefixRe = new RegExp(`^[\\s"'*_~]*(${escaped.join("|")})[\\s"'*_~]*:\\s*`, "i");
     line = line.replace(prefixRe, "").trim();
   }
   const maxChars = opts.maxChars;
@@ -80,6 +80,18 @@ export function cleanAvatarChatLine(
     line = line.slice(0, maxChars - 1).trimEnd() + "...";
   }
   return line;
+}
+
+function normalizeSpeakerLabel(value: string): string {
+  return value.toLowerCase().replace(/[*_`"']/g, "").replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+}
+
+export function avatarChatLineStartsWithSpeakerLabel(text: string, labels: string[]): boolean {
+  const match = text.trim().match(/^[\s"'*_`~]*([^:\n]{1,60}?)[\s"'*_`~]*:/);
+  if (!match) return false;
+  const label = normalizeSpeakerLabel(match[1] ?? "");
+  if (!label) return false;
+  return labels.map(normalizeSpeakerLabel).filter(Boolean).some((candidate) => label === candidate);
 }
 
 export function avatarChatLineLooksTooThin(
