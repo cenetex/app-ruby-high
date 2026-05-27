@@ -835,7 +835,11 @@ async function signedHallPassCardMintMatchesPreparedTransaction(
   );
   if (!expectedShape) return false;
   const actualInstructions = withoutWalletOnlyInstructions(actual.instructions);
-  const matches = sameInstructionList(actualInstructions, expectedShape.instructions);
+  const matches = instructionListContainsExpectedSubsequence(
+    actualInstructions,
+    expectedShape.instructions,
+    new Set([addressFromPublicKeyBytes(config.authoritySecret), mintAddress]),
+  );
   if (!matches) {
     log.event("nft.card-mint-transaction-mismatch", {
       ownerWalletAddress,
@@ -949,16 +953,30 @@ function withoutWalletOnlyInstructions(instructions: ParsedInstructionShape[]): 
   return instructions.filter((ix) => ix.programId !== COMPUTE_BUDGET_PROGRAM_ID && !MEMO_PROGRAM_IDS.has(ix.programId));
 }
 
-function sameInstructionList(actual: ParsedInstructionShape[], expected: ParsedInstructionShape[]): boolean {
-  if (actual.length !== expected.length) return false;
-  return actual.every((ix, index) => {
-    const expectedIx = expected[index];
-    return !!expectedIx &&
-      ix.programId === expectedIx.programId &&
-      ix.dataBase64 === expectedIx.dataBase64 &&
-      ix.accounts.length === expectedIx.accounts.length &&
-      ix.accounts.every((account, accountIndex) => account === expectedIx.accounts[accountIndex]);
-  });
+function instructionListContainsExpectedSubsequence(
+  actual: ParsedInstructionShape[],
+  expected: ParsedInstructionShape[],
+  serverSignerAccounts: Set<string>,
+): boolean {
+  let expectedIndex = 0;
+  for (const ix of actual) {
+    if (expectedIndex < expected.length && instructionMatches(ix, expected[expectedIndex])) {
+      expectedIndex += 1;
+      continue;
+    }
+    if (ix.programId === CORE_PROGRAM_ID || ix.accounts.some((account) => serverSignerAccounts.has(account))) {
+      return false;
+    }
+  }
+  return expectedIndex === expected.length;
+}
+
+function instructionMatches(actual: ParsedInstructionShape, expected: ParsedInstructionShape | undefined): boolean {
+  return !!expected &&
+    actual.programId === expected.programId &&
+    actual.dataBase64 === expected.dataBase64 &&
+    actual.accounts.length === expected.accounts.length &&
+    actual.accounts.every((account, accountIndex) => account === expected.accounts[accountIndex]);
 }
 
 function previewSolanaAddress(address: string): string {

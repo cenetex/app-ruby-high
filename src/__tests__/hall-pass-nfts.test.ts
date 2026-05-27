@@ -3,6 +3,7 @@ import {
   ComputeBudgetProgram,
   Keypair,
   PublicKey,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
   VersionedTransaction,
@@ -335,6 +336,11 @@ describe("verifyHallPassCardBurn", () => {
       feePayer: feePayer.publicKey,
       recentBlockhash: Keypair.generate().publicKey.toBase58(),
     });
+    walletTransaction.add(SystemProgram.transfer({
+      fromPubkey: feePayer.publicKey,
+      toPubkey: owner.publicKey,
+      lamports: 1,
+    }));
     for (const ix of preparedTransaction.message.compiledInstructions) {
       walletTransaction.add(new TransactionInstruction({
         programId: accountKeys[ix.programIdIndex]!,
