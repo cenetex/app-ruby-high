@@ -91,6 +91,7 @@ export interface CorePackNftMintResult {
   assetAddress: string;
   mintSignature: string;
   metadataUri: string;
+  serial: number;
 }
 
 export interface CorePackNftOpenedUpdateInput extends HallPassRevealProvenance {
@@ -127,6 +128,7 @@ export interface CorePackPurchaseTransactionResult {
   ownerWalletAddress: string;
   assetAddress?: string;
   metadataUri?: string;
+  serial?: number;
   sourceTokenAccountAddress: string;
   destinationTokenAccountAddress: string;
   transactionBase64: string;
@@ -160,6 +162,13 @@ export interface OwnedCorePackNft {
   metadataUri: string;
   serial: number;
   name: string;
+}
+
+interface CorePackInfo {
+  productId: string;
+  packCount: number;
+  cardCount: number;
+  serial: number;
 }
 
 type CorePackNftMinter = (input: CorePackNftMintInput) => Promise<CorePackNftMintResult>;
@@ -556,6 +565,7 @@ export async function mintCorePackNft(input: CorePackNftMintInput): Promise<Core
     assetAddress: asset.publicKey,
     mintSignature: base58Encode(sent.signature),
     metadataUri,
+    serial: Number(serial),
   };
 }
 
@@ -681,6 +691,7 @@ export async function buildCorePackPurchaseTransaction(
     ownerWalletAddress,
     assetAddress: String(asset.publicKey),
     metadataUri,
+    serial: Number(serial),
     sourceTokenAccountAddress: source.tokenAccountAddress,
     destinationTokenAccountAddress,
     transactionBase64,
@@ -732,11 +743,17 @@ export async function verifyCorePackNftMint(input: CorePackNftVerifyInput): Prom
   if (collectionAddress !== config.collectionAddress) {
     throw new Error("Pack NFT is not in the Ruby High collection.");
   }
+  const parsed = await corePackInfoFromMetadataOrJson(
+    expectedUri,
+    typeof asset.name === "string" ? asset.name : undefined,
+    (asset as { attributes?: unknown }).attributes,
+  );
   return {
     ownerWalletAddress,
     assetAddress,
     mintSignature: input.paymentSignature,
     metadataUri: expectedUri,
+    serial: parsed?.serial ?? Number(packSerial(`${input.productId}:${assetAddress}`)),
   };
 }
 
@@ -766,21 +783,27 @@ async function fetchOwnedCorePackNftsViaGpa(
     .whereField("key", Key.AssetV1)
     .whereField("owner", owner)
     .getDeserialized({ commitment: "confirmed" });
-  return assets.flatMap((asset) => {
+  const items: OwnedCorePackNft[] = [];
+  for (const asset of assets) {
     const assetCollectionAddress = coreAssetCollectionAddress(asset.updateAuthority);
-    if (assetCollectionAddress !== collectionAddress) return [];
+    if (assetCollectionAddress !== collectionAddress) continue;
     const metadataUri = typeof asset.uri === "string" ? asset.uri.trim() : "";
-    if (!metadataUri) return [];
-    const parsed = corePackInfoFromMetadataUri(metadataUri, asset.name);
-    if (!parsed) return [];
-    return [{
+    if (!metadataUri) continue;
+    const parsed = await corePackInfoFromMetadataOrJson(
+      metadataUri,
+      asset.name,
+      (asset as { attributes?: unknown }).attributes,
+    );
+    if (!parsed) continue;
+    items.push({
       ...parsed,
       ownerWalletAddress: String(owner),
       assetAddress: String(asset.publicKey),
       metadataUri,
       name: typeof asset.name === "string" && asset.name.trim() ? asset.name.trim() : `${FIRST_BELL_SET_NAME} Pack`,
-    }];
-  });
+    });
+  }
+  return items;
 }
 
 async function tryFetchOwnedCorePackNftsViaDas(
@@ -840,7 +863,7 @@ async function fetchOwnedCorePackNftsViaDas(
       const item = raw as {
         id?: unknown;
         burnt?: boolean;
-        content?: { json_uri?: unknown; metadata?: { name?: unknown } };
+        content?: { json_uri?: unknown; metadata?: { name?: unknown; attributes?: unknown } };
         ownership?: { owner?: unknown };
         grouping?: Array<{ group_key?: unknown; group_value?: unknown }>;
       };
@@ -853,9 +876,10 @@ async function fetchOwnedCorePackNftsViaDas(
       if (!inCollection) continue;
       const metadataUri = typeof item?.content?.json_uri === "string" ? item.content.json_uri.trim() : "";
       if (!metadataUri) continue;
-      const parsed = corePackInfoFromMetadataUri(
+      const parsed = await corePackInfoFromMetadataOrJson(
         metadataUri,
         typeof item?.content?.metadata?.name === "string" ? item.content.metadata.name : undefined,
+        item?.content?.metadata?.attributes,
       );
       if (!parsed) continue;
       const assetAddress = typeof item?.id === "string" ? item.id.trim() : "";
@@ -951,12 +975,7 @@ function coreAssetCollectionAddress(updateAuthority: unknown): string {
   return "";
 }
 
-function corePackInfoFromMetadataUri(metadataUri: string, name?: string): {
-  productId: string;
-  packCount: number;
-  cardCount: number;
-  serial: number;
-} | null {
+function corePackInfoFromMetadataUri(metadataUri: string, name?: string): CorePackInfo | null {
   let url: URL;
   try {
     url = new URL(metadataUri);
@@ -979,6 +998,107 @@ function corePackInfoFromMetadataUri(metadataUri: string, name?: string): {
     cardCount,
     serial: Number.isFinite(serial) ? serial : 1,
   };
+}
+
+function corePackInfoFromMetadata(
+  metadataUri: string,
+  name?: string,
+  attributes?: unknown,
+): CorePackInfo | null {
+  const uriInfo = corePackInfoFromMetadataUri(metadataUri, name);
+  if (uriInfo) return uriInfo;
+  const productValue = metadataAttributeValue(attributes, "Product");
+  const packsValue = metadataAttributeValue(attributes, "Packs");
+  const cardsValue = metadataAttributeValue(attributes, "Cards Inside")
+    ?? metadataAttributeValue(attributes, "Cards");
+  const serialValue = metadataAttributeValue(attributes, "Serial");
+  const namedPackMatch = typeof name === "string" ? name.match(/Ruby High\s+(\d+)-Pack/i) : null;
+  const namedSerialMatch = typeof name === "string" ? name.match(/#\s*(\d+)/) : null;
+  const productId = productValue ? cleanProductId(productValue) : "";
+  const productPackMatch = productId.match(/^card-pack-(\d+)$/);
+  const packCount = Math.max(1, Math.floor(Number(
+    packsValue
+      ?? productPackMatch?.[1]
+      ?? namedPackMatch?.[1]
+      ?? 1,
+  )));
+  const serial = Math.max(1, Math.floor(Number(serialValue ?? namedSerialMatch?.[1] ?? 0)));
+  if (!Number.isFinite(serial) || serial <= 0) return null;
+  const requestedCardCount = Math.max(1, Math.floor(Number(cardsValue ?? packCount * CORE_PACK_CARDS_PER_PACK)));
+  return {
+    productId: productId || `card-pack-${packCount}`,
+    packCount,
+    cardCount: Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK),
+    serial,
+  };
+}
+
+async function corePackInfoFromMetadataOrJson(
+  metadataUri: string,
+  name?: string,
+  attributes?: unknown,
+): Promise<CorePackInfo | null> {
+  const inline = corePackInfoFromMetadata(metadataUri, name, attributes);
+  if (inline) return inline;
+  const json = await fetchMetadataJson(metadataUri);
+  if (!json) return null;
+  return corePackInfoFromMetadata(
+    metadataUri,
+    typeof json.name === "string" ? json.name : name,
+    json.attributes,
+  );
+}
+
+function metadataAttributeValue(attributes: unknown, label: string): string | null {
+  const list = metadataAttributeList(attributes);
+  const normalizedLabel = normalizeMetadataLabel(label);
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const record = raw as { key?: unknown; trait_type?: unknown; value?: unknown };
+    const key = typeof record.key === "string" && record.key.trim()
+      ? record.key
+      : typeof record.trait_type === "string" ? record.trait_type : "";
+    if (normalizeMetadataLabel(key) !== normalizedLabel) continue;
+    if (typeof record.value === "string" && record.value.trim()) return record.value.trim();
+    if (typeof record.value === "number" && Number.isFinite(record.value)) return String(record.value);
+  }
+  return null;
+}
+
+function metadataAttributeList(attributes: unknown): unknown[] {
+  if (Array.isArray(attributes)) return attributes;
+  if (attributes && typeof attributes === "object") {
+    const record = attributes as { attributeList?: unknown };
+    if (Array.isArray(record.attributeList)) return record.attributeList;
+  }
+  return [];
+}
+
+function normalizeMetadataLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+async function fetchMetadataJson(metadataUri: string): Promise<{ name?: unknown; attributes?: unknown } | null> {
+  let url: URL;
+  try {
+    url = new URL(metadataUri);
+  } catch (_err) {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  if (typeof timeout === "object" && "unref" in timeout) timeout.unref();
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return null;
+    const json = await response.json().catch(() => null) as { name?: unknown; attributes?: unknown } | null;
+    return json && typeof json === "object" ? json : null;
+  } catch (_err) {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function sendAndConfirmCoreTransaction(umi: Umi, builder: TransactionBuilder): ReturnType<TransactionBuilder["sendAndConfirm"]> {
@@ -1338,5 +1458,6 @@ export function deterministicCorePackMintForTest(input: CorePackNftMintInput): C
     assetAddress: base58Encode(Buffer.from(digest.slice(0, 64), "hex") as unknown as Uint8Array).padEnd(32, "1").slice(0, 32),
     mintSignature: base58Encode(Buffer.from(digest + digest, "hex") as unknown as Uint8Array).padEnd(64, "1").slice(0, 64),
     metadataUri: corePackNftMetadataUri(input),
+    serial: Number(packSerial(input.paymentSignature)),
   };
 }

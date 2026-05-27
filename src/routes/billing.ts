@@ -1397,6 +1397,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         assetAddress: packMint.assetAddress,
         mintSignature: packMint.mintSignature,
         metadataUri: packMint.metadataUri,
+        serial: packMint.serial,
         idempotencyKey,
         source: "solana",
         description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"} via ${solana.symbol}`,

@@ -15,6 +15,8 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_SOLANA_RPC_URL: process.env.RUBY_HIGH_SOLANA_RPC_URL,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
+  RUBY_HIGH_NFT_METADATA_STORAGE: process.env.RUBY_HIGH_NFT_METADATA_STORAGE,
+  RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK: process.env.RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK,
 };
 
 function restoreEnv(): void {
@@ -185,6 +187,55 @@ describe("Core pack NFT checkout transactions", () => {
       cardCount: 5,
       serial: 570329,
       metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
+    })]);
+  });
+
+  it("syncs owned Core packs whose metadata URI is durable Arweave JSON", async () => {
+    process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    process.env.RUBY_HIGH_SOLANA_RPC_URL = "https://beta.helius-rpc.com/?api-key=test";
+    const ownerWalletAddress = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-pack-sync",
+      result: {
+        items: [
+          {
+            id: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+            burnt: false,
+            content: {
+              json_uri: "https://arweave.net/ruby-high-pack-json",
+              metadata: {
+                name: "Ruby High: First Bell 3-Pack #456789",
+                attributes: [
+                  { trait_type: "Packs", value: 3 },
+                  { trait_type: "Cards Inside", value: 15 },
+                  { trait_type: "Serial", value: "456789" },
+                ],
+              },
+            },
+            ownership: { owner: ownerWalletAddress },
+            grouping: [
+              { group_key: "collection", group_value: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" },
+            ],
+          },
+        ],
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    const owned = await fetchOwnedCorePackNfts(ownerWalletAddress);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(owned).toEqual([expect.objectContaining({
+      ownerWalletAddress,
+      assetAddress: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+      productId: "card-pack-3",
+      packCount: 3,
+      cardCount: 15,
+      serial: 456789,
+      metadataUri: "https://arweave.net/ruby-high-pack-json",
     })]);
   });
 });

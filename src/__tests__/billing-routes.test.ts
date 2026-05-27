@@ -191,6 +191,7 @@ beforeEach(async () => {
     assetAddress: input.assetAddress,
     mintSignature: input.paymentSignature,
     metadataUri: input.metadataUri || deterministicCorePackMintForTest(input).metadataUri,
+    serial: deterministicCorePackMintForTest(input).serial,
   }));
   restoreHallPassBurnVerifier = setHallPassNftBurnVerifierForTest(async (burn) => ({
     signature: burn.burnSignature,
@@ -877,6 +878,7 @@ describe("Solana Hall Pass billing", () => {
         assetAddress: packAssetAddress,
         mintSignature: input.paymentSignature,
         metadataUri: packMetadataUri,
+        serial: 456789,
       };
     });
     await handleBillingRoutes(makeCtx({
