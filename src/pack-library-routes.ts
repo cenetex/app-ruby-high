@@ -71,8 +71,10 @@ const MAX_MATERIAL_CHARS = 80_000;
 const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY, 5);
 const COURSE_SLOT_HALL_PASS_COST = courseSlotCost();
 const QUESTION_GENERATION_HALL_PASS_COST = questionGenerationCost();
-const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 18);
+const COURSE_GENERATION_QUESTION_COUNT = readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT, 6);
 const COURSE_GENERATION_QUESTION_BATCH_SIZE = Math.max(2, Math.min(6, readPositiveInt(process.env.RUBY_HIGH_COURSE_GENERATION_QUESTION_BATCH_SIZE, 6)));
+const EMPTY_DRAFT_CLEANUP_AGE_MS = readPositiveInt(process.env.RUBY_HIGH_EMPTY_DRAFT_CLEANUP_AGE_MS, 10 * 60 * 1000);
+const EMPTY_DRAFT_CLEANUP_LIMIT = readPositiveInt(process.env.RUBY_HIGH_EMPTY_DRAFT_CLEANUP_LIMIT, 25);
 const MORE_QUESTIONS_COUNT = moreQuestionsCount();
 const PACK_SEARCH_LIMIT = 24;
 const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
@@ -662,8 +664,14 @@ async function libraryPayload(ruby: RubyHighService, record: AuthRecord, session
     ...ownedPersistedPacks,
     ...legacyOwnedPacks,
   ]);
-  const userDrafts = (await ruby.listDraftPackRecords())
-    .filter((draft) => draft.ownerUserId === record.userId)
+  const now = Date.now();
+  const allDrafts = await ruby.listDraftPackRecords();
+  const abandonedDrafts = allDrafts
+    .filter((draft) => draft.ownerUserId === record.userId && isAbandonedEmptyDraft(draft, now))
+    .slice(0, EMPTY_DRAFT_CLEANUP_LIMIT);
+  queueEmptyDraftCleanup(ruby, abandonedDrafts);
+  const userDrafts = allDrafts
+    .filter((draft) => draft.ownerUserId === record.userId && !isAbandonedEmptyDraft(draft, now))
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const publishedOwnedPackIds = new Set(
     teacherRecords
@@ -1152,6 +1160,24 @@ function draftSummary(draft: StoredDraftContentPackRecord) {
     questionCount: draft.teachers.reduce((sum, teacher) => sum + teacher.sourceCards.length + teacher.questions.length, 0),
     updatedAt: draft.updatedAt,
   };
+}
+
+function isAbandonedEmptyDraft(draft: StoredDraftContentPackRecord, now = Date.now()): boolean {
+  if (now - Math.max(draft.updatedAt || 0, draft.createdAt || 0) < EMPTY_DRAFT_CLEANUP_AGE_MS) return false;
+  if (draft.derivedFrom || draft.courseSlot) return false;
+  if (draft.visibility !== "private") return false;
+  if (draft.description && draft.description.trim()) return false;
+  if (!/^Untitled Content Pack$/i.test((draft.name || "").trim())) return false;
+  return draft.teachers.length === 0;
+}
+
+function queueEmptyDraftCleanup(ruby: RubyHighService, drafts: StoredDraftContentPackRecord[]): void {
+  if (drafts.length === 0) return;
+  void Promise.all(drafts.map((draft) => ruby.deleteDraftPackRecord(draft.id))).catch((err) => {
+    log.error("pack-library.empty-draft-cleanup-failed", err, {
+      draftIds: drafts.map((draft) => draft.id),
+    });
+  });
 }
 
 function draftDetail(draft: StoredDraftContentPackRecord) {

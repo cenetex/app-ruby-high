@@ -8698,6 +8698,7 @@ export function runViewerClient(bootstrap) {
     { key: "questions", pct: 78, label: "Write class questions" },
     { key: "saving", pct: 94, label: "Save the pack" },
   ];
+  const INITIAL_COURSE_QUESTION_COUNT = 6;
 
   const packStudioClient = {
     async listPacks() {
@@ -8712,11 +8713,11 @@ export function runViewerClient(bootstrap) {
       if (!r.ok) throw new Error(data.error || "pack search " + r.status);
       return data;
     },
-    async createDraftPack() {
+    async createDraftPack(payload) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Untitled Content Pack" }),
+        body: JSON.stringify(Object.assign({ name: "Untitled Content Pack" }, payload || {})),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "create draft " + r.status);
@@ -8927,6 +8928,7 @@ export function runViewerClient(bootstrap) {
       warnPackGenerationBlocks("closing");
       return;
     }
+    const shouldRefreshLibrary = currentDraft && !isLocalDraftPack(currentDraft);
     clearTimeout(packAutosaveTimer);
     clearTimeout(teacherAutosaveTimer);
     packEditEl.classList.remove("is-open");
@@ -8950,7 +8952,7 @@ export function runViewerClient(bootstrap) {
       courseGenerationStatusEl.classList.remove("is-invalid");
     }
     resetCourseGenerationProgress();
-    refreshPackLibrary();
+    if (shouldRefreshLibrary) refreshPackLibrary();
   }
   function setPackBusy(busy) {
     packImportBusy = !!busy;
@@ -9508,19 +9510,10 @@ export function runViewerClient(bootstrap) {
   }
 
   async function createDraftPack() {
-    setPackBusy(true);
-    packStatusEl.textContent = "Creating draft pack...";
+    if (packImportBusy) return;
+    packStatusEl.textContent = "";
     packStatusEl.classList.remove("is-invalid");
-    try {
-      const draft = await packStudioClient.createDraftPack();
-      packStatusEl.textContent = "";
-      openPackEditor(await packStudioClient.loadDraftPack(draft.id));
-    } catch (err) {
-      packStatusEl.textContent = "Could not create draft · " + (err && err.message ? err.message : "error");
-      packStatusEl.classList.add("is-invalid");
-    } finally {
-      setPackBusy(false);
-    }
+    openPackEditor(newLocalDraftPack());
   }
 
   async function editDraftPack(draftId) {
@@ -9582,6 +9575,50 @@ export function runViewerClient(bootstrap) {
   }
   function newPackClientRequestId(prefix) {
     return String(prefix || "request") + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+  function newLocalDraftPack() {
+    const now = Date.now();
+    return {
+      id: "",
+      localDraft: true,
+      name: "Untitled Content Pack",
+      description: "",
+      visibility: "private",
+      status: "draft",
+      owner: true,
+      enabled: false,
+      active: false,
+      canEdit: true,
+      canDelete: false,
+      readOnly: false,
+      teachers: [],
+      teacherCount: 0,
+      questionCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  function isLocalDraftPack(draft) {
+    return !!draft && (!draft.id || draft.localDraft === true);
+  }
+  function currentDraftCreatePayload() {
+    return {
+      name: currentDraft && currentDraft.name ? currentDraft.name : "Untitled Content Pack",
+      description: currentDraft && currentDraft.description ? currentDraft.description : "",
+      visibility: currentDraft && currentDraft.visibility ? currentDraft.visibility : "private",
+    };
+  }
+  async function ensureCurrentDraftSaved() {
+    if (!currentDraft) return null;
+    if (!isLocalDraftPack(currentDraft)) return currentDraft;
+    const localDraft = currentDraft;
+    const draft = await packStudioClient.createDraftPack(currentDraftCreatePayload());
+    currentDraft = Object.assign({}, draft, {
+      description: draft.description || localDraft.description || "",
+      teachers: Array.isArray(localDraft.teachers) ? localDraft.teachers : [],
+      localDraft: false,
+    });
+    return currentDraft;
   }
   function isLikelyFetchFailure(err) {
     const message = err && err.message ? String(err.message) : "";
@@ -9992,6 +10029,9 @@ export function runViewerClient(bootstrap) {
     const clientRequestId = pendingTeacherRoll.clientRequestId || newPackClientRequestId("teacher");
     pendingTeacherRoll = { ...pendingTeacherRoll, clientRequestId };
     try {
+      await saveDraftPackFields();
+      await ensureCurrentDraftSaved();
+      if (!currentDraft) return;
       currentDraft = await retryPackNetworkWrite("Adding teacher", () => packStudioClient.addTeacherToDraft(currentDraft.id, {
         clientRequestId,
         displayName: pendingTeacherRoll.displayName,
@@ -10223,7 +10263,7 @@ export function runViewerClient(bootstrap) {
     const payload = {
       requestId: newPackClientRequestId("course"),
       materials,
-      questionCount: 18,
+      questionCount: INITIAL_COURSE_QUESTION_COUNT,
     };
     if (teacher) {
       payload.teacherId = teacher.id;
@@ -10390,6 +10430,10 @@ export function runViewerClient(bootstrap) {
     if (packNameInputEl) patch.name = String(packNameInputEl.value || "").trim();
     if (packDescriptionInputEl) patch.description = String(packDescriptionInputEl.value || "").trim();
     if (Object.keys(patch).length === 0) return;
+    if (isLocalDraftPack(currentDraft)) {
+      currentDraft = Object.assign({}, currentDraft, patch, { updatedAt: Date.now() });
+      return;
+    }
     try {
       currentDraft = await packStudioClient.updateDraftPack(currentDraft.id, patch);
       if (packEditStatusEl) {
@@ -10594,6 +10638,9 @@ export function runViewerClient(bootstrap) {
       }
       return;
     }
+    await saveDraftPackFields();
+    await ensureCurrentDraftSaved();
+    if (!currentDraft) return;
     const runId = ++packQuestionGenerationRunId;
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     packQuestionGenerationAbortController = controller;
@@ -10736,6 +10783,13 @@ export function runViewerClient(bootstrap) {
       return;
     }
     await saveDraftPackFields();
+    if (isLocalDraftPack(currentDraft)) {
+      if (packEditStatusEl) {
+        packEditStatusEl.textContent = "Add course materials or a teacher before publishing.";
+        packEditStatusEl.classList.add("is-invalid");
+      }
+      return;
+    }
     await saveSelectedTeacher();
     setPackBusy(true);
     if (packEditStatusEl) packEditStatusEl.textContent = "Publishing pack...";

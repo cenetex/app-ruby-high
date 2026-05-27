@@ -577,6 +577,30 @@ describe("/pack-library", () => {
     expect((await ruby.listDraftPackRecords()).some((draft) => draft.id === draftId)).toBe(false);
   });
 
+  it("hides abandoned empty default drafts when listing the pack library", async () => {
+    signInUser("alice");
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts",
+      cookie: "rh_session=alice",
+      body: { name: "Untitled Content Pack" },
+    });
+    const draftId = response.body.draft.id as string;
+    const draft = (await ruby.listDraftPackRecords()).find((entry) => entry.id === draftId)!;
+    const old = Date.now() - 60 * 60 * 1000;
+    await ruby.saveDraftPackRecord({ ...draft, createdAt: old, updatedAt: old });
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library",
+      cookie: "rh_session=alice",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.drafts.some((entry: { id: string }) => entry.id === draftId)).toBe(false);
+  });
+
   it("generates a draft course teacher and questions without spending Hall Passes", async () => {
     const aliceSessionId = signInUser("alice");
     const fetchMock = stubCourseGeneratorFetch();
@@ -643,6 +667,7 @@ describe("/pack-library", () => {
     const questionRequest = fetchRequestJson(fetchMock, 1);
     expect(questionRequest.model).toBe(DEFAULT_COURSE_MODEL);
     const questionPrompt = questionRequest.messages[1].content as string;
+    expect(questionPrompt).toContain("Write exactly 6 multiple-choice study questions");
     expect(questionPrompt).toContain("Balance requirements");
     expect(questionPrompt).toContain("difficulty=easy, stat=head");
     expect(questionPrompt).toContain("difficulty=medium, stat=heart");

@@ -613,6 +613,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "async function deleteLibraryPack");
     expectScriptToContain(script, "deleteDraftPack");
     expectScriptToContain(script, "deletePublishedPack");
+    expectScriptToContain(script, "openPackEditor(newLocalDraftPack())");
+    expectScriptToContain(script, "function ensureCurrentDraftSaved()");
+    expectScriptToContain(script, "if (isLocalDraftPack(currentDraft))");
+    expect(script).not.toContain("openPackEditor(await packStudioClient.loadDraftPack(draft.id))");
     expectScriptToContain(script, "createEditDraftForPublishedPack");
     expectScriptToContain(script, "async function editPublishedPack(pack)");
     expectScriptToContain(script, "teacherFormVersion += 1");
@@ -666,6 +670,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"/course/generate"');
     expectScriptToContain(script, "function creatorPricing(t)");
     expectScriptToContain(script, "COURSE_GENERATION_STEPS");
+    expectScriptToContain(script, "INITIAL_COURSE_QUESTION_COUNT = 6");
+    expectScriptToContain(script, "questionCount: INITIAL_COURSE_QUESTION_COUNT");
     expectScriptToContain(script, "Generate teacher portrait");
     expectScriptToContain(script, "function startCourseGenerationProgress()");
     expectScriptToContain(script, "function finishCourseGenerationProgress()");
