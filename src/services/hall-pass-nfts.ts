@@ -65,6 +65,8 @@ export const HALL_PASS_NFT_PREFIX = "/api/apps/ruby-high/nft";
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BASE58_INDEX = new Map(BASE58_ALPHABET.split("").map((char, index) => [char, index]));
 const CORE_PROGRAM_ID = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d";
+// Phantom may add Lighthouse assertions while signing; compare the Core mint after removing them.
+const LIGHTHOUSE_WALLET_ASSERTION_PROGRAM_ID = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
 const DEFAULT_PUBLIC_BASE_URL = "https://ruby-high.ai";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SYMBOL = "RUBY";
@@ -81,6 +83,10 @@ const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
 const MEMO_PROGRAM_IDS = new Set([
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
   "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
+]);
+const WALLET_ONLY_PROGRAM_IDS = new Set([
+  COMPUTE_BUDGET_PROGRAM_ID,
+  LIGHTHOUSE_WALLET_ASSERTION_PROGRAM_ID,
 ]);
 const ESTIMATED_CARD_MINT_LAMPORTS = 20_000_000n;
 const MINT_AUTHORITY_RESERVE_LAMPORTS = 20_000_000n;
@@ -907,13 +913,19 @@ function signedSolanaTransactionAccountKeys(transactionBase64: string): string[]
 
 type ParsedInstructionShape = {
   programId: string;
-  accounts: string[];
+  accounts: ParsedInstructionAccount[];
   dataBase64: string;
 };
 
 type ParsedTransactionShape = {
   feePayer: string;
   instructions: ParsedInstructionShape[];
+};
+
+type ParsedInstructionAccount = {
+  address: string;
+  isSigner: boolean;
+  isWritable: boolean;
 };
 
 function parseSolanaTransactionForInstructionMatch(transactionBase64: string): ParsedTransactionShape | null {
@@ -928,7 +940,11 @@ function parseSolanaTransactionForInstructionMatch(transactionBase64: string): P
       feePayer: accountKeys[0] ?? "",
       instructions: transaction.message.compiledInstructions.map((ix) => ({
         programId: accountKeys[ix.programIdIndex] ?? "",
-        accounts: ix.accountKeyIndexes.map((index) => accountKeys[index] ?? ""),
+        accounts: ix.accountKeyIndexes.map((index) => ({
+          address: accountKeys[index] ?? "",
+          isSigner: transaction.message.isAccountSigner(index),
+          isWritable: transaction.message.isAccountWritable(index),
+        })),
         dataBase64: Buffer.from(ix.data).toString("base64"),
       })),
     };
@@ -939,7 +955,11 @@ function parseSolanaTransactionForInstructionMatch(transactionBase64: string): P
         feePayer: transaction.feePayer?.toBase58() ?? transaction.compileMessage().accountKeys[0]?.toBase58() ?? "",
         instructions: transaction.instructions.map((ix) => ({
           programId: ix.programId.toBase58(),
-          accounts: ix.keys.map((key) => key.pubkey.toBase58()),
+          accounts: ix.keys.map((key) => ({
+            address: key.pubkey.toBase58(),
+            isSigner: key.isSigner,
+            isWritable: key.isWritable,
+          })),
           dataBase64: Buffer.from(ix.data).toString("base64"),
         })),
       };
@@ -950,7 +970,7 @@ function parseSolanaTransactionForInstructionMatch(transactionBase64: string): P
 }
 
 function withoutWalletOnlyInstructions(instructions: ParsedInstructionShape[]): ParsedInstructionShape[] {
-  return instructions.filter((ix) => ix.programId !== COMPUTE_BUDGET_PROGRAM_ID && !MEMO_PROGRAM_IDS.has(ix.programId));
+  return instructions.filter((ix) => !WALLET_ONLY_PROGRAM_IDS.has(ix.programId) && !MEMO_PROGRAM_IDS.has(ix.programId));
 }
 
 function instructionListContainsExpectedSubsequence(
@@ -964,7 +984,7 @@ function instructionListContainsExpectedSubsequence(
       expectedIndex += 1;
       continue;
     }
-    if (ix.programId === CORE_PROGRAM_ID || ix.accounts.some((account) => serverSignerAccounts.has(account))) {
+    if (ix.programId === CORE_PROGRAM_ID || instructionRequiresServerSigner(ix, serverSignerAccounts)) {
       return false;
     }
   }
@@ -976,7 +996,24 @@ function instructionMatches(actual: ParsedInstructionShape, expected: ParsedInst
     actual.programId === expected.programId &&
     actual.dataBase64 === expected.dataBase64 &&
     actual.accounts.length === expected.accounts.length &&
-    actual.accounts.every((account, accountIndex) => account === expected.accounts[accountIndex]);
+    actual.accounts.every((account, accountIndex) => accountMatches(account, expected.accounts[accountIndex]));
+}
+
+function accountMatches(
+  actual: ParsedInstructionAccount,
+  expected: ParsedInstructionAccount | undefined,
+): boolean {
+  return !!expected &&
+    actual.address === expected.address &&
+    actual.isSigner === expected.isSigner &&
+    actual.isWritable === expected.isWritable;
+}
+
+function instructionRequiresServerSigner(
+  instruction: ParsedInstructionShape,
+  serverSignerAccounts: Set<string>,
+): boolean {
+  return instruction.accounts.some((account) => account.isSigner && serverSignerAccounts.has(account.address));
 }
 
 function previewSolanaAddress(address: string): string {

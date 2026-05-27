@@ -37,6 +37,7 @@ const OWNER = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
 const MINT = "BgVZqawE7eBunbwHh7r9NNtaftRo3FHeqcFFZoteBhSh";
 const SIGNATURE = "5UYZSy27Jo9Fca56cxga1ZqRiPMZYAFt5HeTT9qbmSWRxWqukQiEAJFKRpX9HzzPj1GAFih42hLSZJKynr9Z3MEr";
 const SUBMITTED_SIGNATURE = "5mSubmittedCardMintSignature222222222222222222222222222222222";
+const LIGHTHOUSE_PROGRAM = new PublicKey("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95");
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -341,6 +342,15 @@ describe("verifyHallPassCardBurn", () => {
       toPubkey: owner.publicKey,
       lamports: 1,
     }));
+    walletTransaction.add(new TransactionInstruction({
+      programId: LIGHTHOUSE_PROGRAM,
+      keys: [{
+        pubkey: new PublicKey(prepared.mintAddress),
+        isSigner: false,
+        isWritable: false,
+      }],
+      data: Buffer.from([1]),
+    }));
     for (const ix of preparedTransaction.message.compiledInstructions) {
       walletTransaction.add(new TransactionInstruction({
         programId: accountKeys[ix.programIdIndex]!,
@@ -369,6 +379,76 @@ describe("verifyHallPassCardBurn", () => {
     expect(sentTransactions).toHaveLength(1);
     const submitted = Transaction.from(Buffer.from(sentTransactions[0]!, "base64"));
     expect(submitted.feePayer?.toBase58()).toBe(feePayer.publicKey.toBase58());
+  });
+
+  it("rejects extra wallet instructions that require Ruby High signer accounts", async () => {
+    process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
+    process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const request = JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}"));
+      if (request.method === "getLatestBlockhash") {
+        return rpcResponse(request.id, {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        });
+      }
+      if (request.method === "simulateTransaction") {
+        return rpcResponse(request.id, { err: null, logs: [] });
+      }
+      throw new Error(`Unexpected Solana RPC method ${request.method}`);
+    }));
+
+    const owner = Keypair.generate();
+    const ownerAddress = owner.publicKey.toBase58();
+    const card = {
+      id: "unit-card-wallet-assertion-signer",
+      characterId: "ruby",
+      characterName: "Ruby",
+      serial: 23,
+    } as any;
+    const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
+    const preparedTransaction = VersionedTransaction.deserialize(Buffer.from(prepared.transactionBase64, "base64"));
+    const accountKeys = preparedTransaction.message.getAccountKeys().staticAccountKeys;
+    const message = preparedTransaction.message as any;
+    const walletTransaction = new Transaction({
+      feePayer: owner.publicKey,
+      recentBlockhash: Keypair.generate().publicKey.toBase58(),
+    });
+    walletTransaction.add(new TransactionInstruction({
+      programId: Keypair.generate().publicKey,
+      keys: [{
+        pubkey: new PublicKey(prepared.mintAddress),
+        isSigner: true,
+        isWritable: false,
+      }],
+      data: Buffer.from([1]),
+    }));
+    for (const ix of preparedTransaction.message.compiledInstructions) {
+      walletTransaction.add(new TransactionInstruction({
+        programId: accountKeys[ix.programIdIndex]!,
+        keys: ix.accountKeyIndexes.map((index) => ({
+          pubkey: accountKeys[index]!,
+          isSigner: Boolean(message.isAccountSigner(index)),
+          isWritable: Boolean(message.isAccountWritable(index)),
+        })),
+        data: Buffer.from(ix.data),
+      }));
+    }
+    walletTransaction.partialSign(owner);
+
+    await expect(submitSignedHallPassCardMintTransaction(
+      walletTransaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+      [ownerAddress, prepared.mintAddress],
+      {
+        card,
+        ownerWalletAddress: ownerAddress,
+        mintAddress: prepared.mintAddress,
+        transactionMessageHash: prepared.transactionMessageHash,
+      },
+    )).rejects.toThrow(/does not match this Ruby High card/);
   });
 
   it("reuses the prepared card metadata URI when matching refreshed wallet transactions", async () => {
