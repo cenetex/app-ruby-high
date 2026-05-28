@@ -535,7 +535,7 @@ async function check9GuestDailyGate() {
     if (!gatedText) {
       return fail(name, `expected signup gate within ${maxAttemptsBeforeGate} completed cards; seen=${seen.join(", ") || "none"}`);
     }
-    if (!/guest lesson complete|sign up to continue/i.test(gatedText)) {
+    if (!/sign up to keep your character/i.test(gatedText)) {
       return fail(name, `unexpected gate message: ${gatedText.slice(0, 200)}`);
     }
     ok(name, `direct cards only before gate: ${seen.join(", ")}; signup gate active`);

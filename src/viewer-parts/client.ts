@@ -6057,9 +6057,13 @@ export function runViewerClient(bootstrap) {
     applyViewMode(deriveViewMode(t));
     if (authed && !t.character && !firstRunCreationOpened) {
       firstRunCreationOpened = true;
-      // Show the onboarding intro instead of auto-opening character creation.
-      // The player clicks "Roll a student" to proceed.
-      showOnboarding();
+      // If a class is already live, jump straight to character creation
+      // so the teacher isn't hidden behind an intro screen.
+      if (t.current || t.active_round || (t.daily && t.daily.available)) {
+        setTimeout(() => openCharacterCreation(), 0);
+      } else {
+        showOnboarding();
+      }
     }
     // Always show account/pack buttons so a visitor can support immediately.
     if (els.packBtn) els.packBtn.hidden = false;

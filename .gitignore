@@ -22,3 +22,5 @@ ruby2/models/
 
 # Claude Code internal state
 .claude/
+gumroad/*.pdf
+gumroad/*.epub
