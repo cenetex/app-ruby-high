@@ -6787,6 +6787,162 @@ export const VIEWER_CSS = `
     }
   }
 
+  /* ── morning announcements (PA system) ───────────────────────────────── */
+  .announcements-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 22px;
+    background: rgba(8, 10, 16, 0.64);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: announcements-fade-in 0.24s ease;
+  }
+  @keyframes announcements-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .announcements-panel {
+    width: min(440px, 100%);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(30,34,44,0.98) 0%, rgba(22,25,34,0.99) 100%);
+    color: var(--text);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.48);
+    padding: 28px 24px 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .announcements-panel::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #fff), var(--accent));
+    opacity: 0.72;
+  }
+  .announcements-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .announcements-logo {
+    width: 36px;
+    height: 30px;
+    object-fit: contain;
+  }
+  .announcements-date {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .announcements-title {
+    margin: 0 0 16px;
+    font-size: 20px;
+    font-weight: 950;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .announcements-body {
+    text-align: left;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-soft);
+    margin-bottom: 12px;
+  }
+  .announcements-body p {
+    margin: 0 0 8px;
+  }
+  .announcements-body p:last-child {
+    margin-bottom: 0;
+  }
+  .announcements-body strong {
+    color: var(--text);
+    font-weight: 800;
+  }
+  .announcements-body .announcement-streak {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 8px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 900;
+  }
+  .announcements-notes {
+    text-align: left;
+    margin-bottom: 18px;
+  }
+  .announcements-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    font-size: 13px;
+    color: var(--text-soft);
+    line-height: 1.4;
+  }
+  .announcements-note + .announcements-note {
+    margin-top: 6px;
+  }
+  .announcements-note-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+    margin-top: 1px;
+  }
+  .announcements-note strong {
+    color: var(--text);
+    font-weight: 800;
+  }
+  .announcements-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .announcements-link {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.14s, border-color 0.14s;
+  }
+  .announcements-link:hover {
+    color: var(--text-soft);
+    border-color: var(--text-dim);
+  }
+  .announcements-dismiss {
+    appearance: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 56%, rgba(255,255,255,0.2));
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    min-height: 40px;
+    padding: 0 18px;
+    font-size: 14px;
+    font-weight: 850;
+    letter-spacing: 0;
+    cursor: pointer;
+  }
+  .announcements-dismiss:hover {
+    filter: brightness(1.08);
+  }
+  .announcements-dismiss:active {
+    filter: brightness(0.95);
+  }
+
   /* ── phone fit pass ─────────────────────────────────────────────────────
      Keep the active question playable on narrow screens: the board and
      answers each get their own scroll area, metadata/race chrome scrolls

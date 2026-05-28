@@ -184,6 +184,24 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
 <!-- Sign-in fallback. Normal boot creates a guest Ruby High session; this only
      opens if the app cannot establish even that local session. -->
+<!-- Morning Announcements — PA-system intro shown once per visit -->
+<div class="announcements-overlay" id="announcements-overlay" role="dialog" aria-modal="true" aria-label="Morning Announcements" hidden>
+  <div class="announcements-panel">
+    <div class="announcements-header">
+      <img class="announcements-logo" id="announcements-logo" src="" alt="Ruby High" />
+      <div class="announcements-date" id="announcements-date"></div>
+    </div>
+    <h2 class="announcements-title" id="announcements-title">Morning Announcements</h2>
+    <div class="announcements-body" id="announcements-body"></div>
+    <div class="announcements-notes" id="announcements-notes"></div>
+    <div class="announcements-actions">
+      <a class="announcements-link" id="announcements-about" href="https://annihilism.org" target="_blank" rel="noopener noreferrer">About</a>
+      <a class="announcements-link" id="announcements-books" href="https://gumroad.com" target="_blank" rel="noopener noreferrer">Books</a>
+      <button class="announcements-dismiss" id="announcements-dismiss" type="button">Take your seat</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>

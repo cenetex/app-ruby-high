@@ -385,6 +385,11 @@ export function runViewerClient(bootstrap) {
   const LAST_SEEN_KEY = "ruby-high:last-seen";
   const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
   const WELCOME_HALL_PASS_POPUP_KEY_PREFIX = "rh_welcome_hall_passes_seen:";
+  const ANNOUNCEMENTS_LAST_KEY = "ruby-high:announcements-last-date";
+  const ANNOUNCEMENTS_LOGO_URL = apiBase + "/assets/logo.png?v=baby-blue-20260504";
+  let announcementsOverlay = null;
+  let morningAnnouncementsShown = false;
+
   const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png";
   const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
   const PACK_OPENED_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack-opened.png?v=opened-v2";
@@ -6031,6 +6036,109 @@ export function runViewerClient(bootstrap) {
     if (mode !== "round-live" && els.raceRow) els.raceRow.innerHTML = "";
   }
 
+  // ── morning announcements (PA system) ──────────────────────────────────
+  function getTodayDateKey() {
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function shouldShowMorningAnnouncements() {
+    try {
+      const last = localStorage.getItem(ANNOUNCEMENTS_LAST_KEY);
+      return last !== getTodayDateKey();
+    } catch (_e) { return true; }
+  }
+
+  function markAnnouncementsSeen() {
+    try { localStorage.setItem(ANNOUNCEMENTS_LAST_KEY, getTodayDateKey()); } catch (_e) {}
+  }
+
+  function showMorningAnnouncements(t) {
+    if (morningAnnouncementsShown) return;
+    if (!shouldShowMorningAnnouncements()) return;
+    morningAnnouncementsShown = true;
+
+    const overlay = document.getElementById("announcements-overlay");
+    if (!overlay) return;
+    announcementsOverlay = overlay;
+
+    // Logo
+    const logo = document.getElementById("announcements-logo");
+    if (logo) logo.src = ANNOUNCEMENTS_LOGO_URL;
+
+    // Date
+    const dateEl = document.getElementById("announcements-date");
+    if (dateEl) {
+      const now = new Date();
+      const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      dateEl.textContent = days[now.getDay()] + ", " + months[now.getMonth()] + " " + now.getDate();
+    }
+
+    // Title
+    const titleEl = document.getElementById("announcements-title");
+    const bodyEl = document.getElementById("announcements-body");
+    const notesEl = document.getElementById("announcements-notes");
+
+    const hasCharacter = !!(t && t.character);
+    const streak = (t && t.streak) || 0;
+    const todayFaculty = t && t.faculty_roster && Array.isArray(t.faculty_roster)
+      ? t.faculty_roster.find(function(f) { return f.id === t.faculty; })
+      : null;
+    const facultyName = todayFaculty ? (todayFaculty.name || "Ruby") : "Ruby";
+    const grade = t && t.current_grade;
+    const gradeLabel = grade ? ("Grade " + grade) : "";
+
+    // Notes: guest faculty, books, comic pages
+    var notes = [];
+    var guestPack = t && t.guest_pack && t.guest_pack.auto;
+    if (guestPack && guestPack.teacher_name) {
+      notes.push({ icon: "📚", text: "<strong>Guest Faculty:</strong> " + escapeHtml(guestPack.teacher_name) + " — " + escapeHtml(guestPack.name || guestPack.subject || "guest class") });
+    }
+    notes.push({ icon: "📖", text: "<strong>Books:</strong> <em>Qiao</em> and <em>Egregoregramming 101</em> on Gumroad" });
+
+    if (!hasCharacter) {
+      // First visit — welcome
+      if (titleEl) titleEl.textContent = "Welcome to Ruby High";
+      if (bodyEl) {
+        bodyEl.innerHTML =
+          "<p>A new question every day. Three teachers — Ruby, Sally Science, and Professor Edward — grade what you actually say.</p>" +
+          "<p>Six classmates run their own arcs beside you. Every grade you finish goes in the yearbook. It takes four years to graduate.</p>" +
+          "<p>Class starts at <strong>17:00 UTC</strong>. Today's teacher is <strong>" + escapeHtml(facultyName) + "</strong>. Roll a student and take your seat.</p>";
+      }
+      if (notesEl) notesEl.innerHTML = notes.map(function(n) {
+        return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
+      }).join("");
+    } else {
+      // Returning student — daily briefing
+      if (titleEl) titleEl.textContent = "Morning Announcements";
+      var bodyParts = [];
+      bodyParts.push("<p>Good morning, <strong>" + escapeHtml(t.character.name || "student") + "</strong>. Welcome back to Ruby High.</p>");
+      if (facultyName) {
+        bodyParts.push("<p>Today's class: <strong>" + escapeHtml(facultyName) + "</strong>" + (gradeLabel ? " · " + escapeHtml(gradeLabel) : "") + "</p>");
+      }
+      if (streak > 0) {
+        bodyParts.push("<p>Your streak: <span class=\"announcement-streak\">" + streak + " day" + (streak !== 1 ? "s" : "") + "</span></p>");
+      } else {
+        bodyParts.push("<p>No active streak yet — today is a fresh start.</p>");
+      }
+      if (bodyEl) bodyEl.innerHTML = bodyParts.join("");
+      if (notesEl) notesEl.innerHTML = notes.map(function(n) {
+        return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
+      }).join("");
+    }
+
+    overlay.hidden = false;
+  }
+
+  function dismissAnnouncements() {
+    markAnnouncementsSeen();
+    if (announcementsOverlay) {
+      announcementsOverlay.hidden = true;
+    }
+  }
+
+
   // ── onboarding / first-visit intro ──────────────────────────────────────
   let onboardingShown = false;
   function showOnboarding() {
@@ -6055,6 +6163,10 @@ export function runViewerClient(bootstrap) {
       loadHistory(t.faculty);
     }
     applyViewMode(deriveViewMode(t));
+    // Morning announcements — shown once per day on first visit.
+    // Fires after the first telemetry tick, before class content renders.
+    showMorningAnnouncements(t);
+
     if (authed && !t.character && !firstRunCreationOpened) {
       firstRunCreationOpened = true;
       // If a class is already live, jump straight to character creation
@@ -12182,6 +12294,21 @@ export function runViewerClient(bootstrap) {
   // Click your name/avatar to open the character sheet.
   const youCardBlock = document.querySelector(".channels-footer .you-meta");
   // ── onboarding button handlers ──────────────────────────────────────────
+  // ── morning announcements dismiss ───────────────────────────────────────
+  const announcementsDismiss = document.getElementById("announcements-dismiss");
+  if (announcementsDismiss) announcementsDismiss.addEventListener("click", dismissAnnouncements);
+  // Allow Escape key to dismiss
+  document.addEventListener("keydown", function(ev) {
+    if (ev.key === "Escape" && announcementsOverlay && !announcementsOverlay.hidden) {
+      dismissAnnouncements();
+    }
+  });
+  // Click outside panel to dismiss
+  var announcementsOverlayEl = document.getElementById("announcements-overlay");
+  if (announcementsOverlayEl) announcementsOverlayEl.addEventListener("click", function(ev) {
+    if (ev.target === announcementsOverlayEl) dismissAnnouncements();
+  });
+
   const onboardingCreateBtn = document.getElementById("onboarding-create-btn");
   const onboardingBooksBtn = document.getElementById("onboarding-books-btn");
   if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", () => {
