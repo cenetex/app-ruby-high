@@ -1892,6 +1892,55 @@ export const VIEWER_CSS = `
     max-width: 720px;
   }
   .blackboard-empty-extras:empty { display: none; }
+/* ── onboarding / first-visit intro ──────────────────────────────────────── */
+  .onboarding-title {
+    font-size: 22px;
+    font-weight: 950;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+  .onboarding-sub {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--text-soft);
+    line-height: 1.4;
+    margin-bottom: 10px;
+  }
+  .onboarding-detail {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    line-height: 1.55;
+    max-width: 460px;
+    margin: 0 auto 16px;
+  }
+  .onboarding-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+  }
+  .onboarding-actions .blackboard-empty-action {
+    min-width: 200px;
+  }
+  .onboarding-alt {
+    background: var(--bg-elev-2) !important;
+    color: var(--text-soft) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+  }
+  .onboarding-alt:hover {
+    color: var(--text) !important;
+    border-color: rgba(255,255,255,0.28) !important;
+  }
+  /* Stack links vertically in the channels footer */
+  .channels-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .board-subject-grades {
     display: flex;
     flex-direction: column;
@@ -4322,7 +4371,24 @@ export const VIEWER_CSS = `
     color: var(--text);
     letter-spacing: 0.04em;
   }
-  .creation-loading-sub {
+  .creation-explanation {
+    padding: 0 16px 18px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-soft);
+    line-height: 1.55;
+  }
+  .creation-explanation p {
+    margin: 0 0 8px;
+  }
+  .creation-explanation p:last-child {
+    margin-bottom: 0;
+  }
+  .creation-explanation strong {
+    color: var(--text);
+    font-weight: 800;
+  }
+.creation-loading-sub {
     font-size: 13px;
     color: var(--text-mute);
   }

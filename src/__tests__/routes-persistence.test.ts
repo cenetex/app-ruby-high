@@ -587,7 +587,7 @@ describe("command route persistence and scheduler misses", () => {
 
       expect(handled).toBe(true);
       expect(harness.response?.status).toBe(403);
-      expect(harness.response?.body.error).toMatch(/Sign up to continue/i);
+      expect(harness.response?.body.error).toMatch(/Sign up to keep your character/i);
     } finally {
       await auth.stop();
     }
@@ -643,7 +643,7 @@ describe("command route persistence and scheduler misses", () => {
       expect(response?.status).toBe(200);
       expect(response?.body.telemetry.guest_access).toMatchObject({
         requiresSignup: true,
-        message: "Guest lesson complete. Sign up to continue past today's class.",
+        message: "Today's class is done. Sign up to keep your character, earn Merit Stars, and unlock all classrooms. It just takes a moment.",
       });
     } finally {
       await auth.stop();

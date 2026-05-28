@@ -63,6 +63,20 @@ export function runViewerClient(bootstrap) {
     const progress = subjectProgressForFaculty(fid);
     return earnedCourseGrade(progress) || "—";
   }
+  // Return the name of the faculty teaching tomorrow, if known.
+  function getNextFacultyName(t) {
+    if (!t || !t.faculty_rotation) return null;
+    const rotation = t.faculty_rotation;
+    const tomorrow = rotation.tomorrow;
+    if (tomorrow && tomorrow.name) {
+      if (tomorrow.name === "Ruby") return "Ruby";
+      if (tomorrow.name === "Sally Science" || tomorrow.name === "sally-science") return "Sally Science";
+      if (tomorrow.name === "Professor Edward" || tomorrow.name === "professor-edward") return "Professor Edward";
+      return tomorrow.name;
+    }
+    return null;
+  }
+
   function postClassState(t) {
     const progress = t && t.active_course_progress;
     const report = !!(t && activeDailyClassIsComplete(t) && !t.current && !t.graduation_ready);
@@ -85,7 +99,7 @@ export function runViewerClient(bootstrap) {
     const access = t && t.guest_access;
     return access && access.message
       ? access.message
-      : "Guest lesson complete. Sign up to continue past today's class.";
+      : "Today's class is done. Sign up to keep your character, earn Merit Stars, and unlock all classrooms. It just takes a moment.";
   }
   function nextQuestionButtonLabel(t) {
     t = t || lastTelemetry;
@@ -734,6 +748,7 @@ export function runViewerClient(bootstrap) {
   const guestSpotlightSeenKeys = new Set();
   let showWelcomeBackCopy = false;
   let firstRunCreationOpened = false;
+  let lastPostClassToastShown = false;
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // Browser/local/hosted text AI + Ruby High session present
   let localAiEnabled = false;
@@ -6016,6 +6031,19 @@ export function runViewerClient(bootstrap) {
     if (mode !== "round-live" && els.raceRow) els.raceRow.innerHTML = "";
   }
 
+  // ── onboarding / first-visit intro ──────────────────────────────────────
+  let onboardingShown = false;
+  function showOnboarding() {
+    if (onboardingShown) return;
+    onboardingShown = true;
+    const actions = document.getElementById("onboarding-actions");
+    if (actions) actions.hidden = false;
+    // Hide the create-character fallback button — the onboarding
+    // "Roll a student" button replaces it.
+    const emptyAction = document.getElementById("blackboard-empty-action");
+    if (emptyAction) emptyAction.hidden = true;
+  }
+
   function render(s) {
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
@@ -6029,10 +6057,13 @@ export function runViewerClient(bootstrap) {
     applyViewMode(deriveViewMode(t));
     if (authed && !t.character && !firstRunCreationOpened) {
       firstRunCreationOpened = true;
-      setTimeout(() => openCharacterCreation(), 0);
+      // Show the onboarding intro instead of auto-opening character creation.
+      // The player clicks "Roll a student" to proceed.
+      showOnboarding();
     }
-    if (els.packBtn) els.packBtn.hidden = !packStoreUnlocked(t);
-    if (els.hallPassBtn) els.hallPassBtn.hidden = !secondarySurfacesUnlocked(t);
+    // Always show account/pack buttons so a visitor can support immediately.
+    if (els.packBtn) els.packBtn.hidden = false;
+    if (els.hallPassBtn) els.hallPassBtn.hidden = false;
 
     setAccent(t.facultyAccent);
     rebuildServersRail();
@@ -6074,6 +6105,29 @@ export function runViewerClient(bootstrap) {
       showCongrats("You graduated.", true);
       setTimeout(() => { if (!sheetOverlayOpen) openSheet(); }, 900);
     }
+
+    // Post-class continuation: if the player just completed their first daily
+    // class and has no prior streak, show a "what now?" toast.
+    if (
+      t.character
+      && t.post_class
+      && t.post_class.report
+      && t.post_class.report.score !== undefined
+      && !lastPostClassToastShown
+    ) {
+      const streak = t.streak || 0;
+      const facultyName = (t.faculty_roster || []).find((f) => f.id === t.faculty)?.name || "your teacher";
+      const nextFaculty = getNextFacultyName(t);
+      if (streak <= 1) {
+        // First completed class — guide them.
+        lastPostClassToastShown = true;
+        const msg = nextFaculty
+          ? "Class dismissed. " + facultyName + " graded your work. " + nextFaculty + " teaches tomorrow at 17:00 UTC. Come back for your streak."
+          : "Class dismissed. " + facultyName + " graded your work. Come back tomorrow at 17:00 UTC.";
+        showCongrats(msg, true, 9000);
+      }
+    }
+
     lastYearbookLen = t.character && Array.isArray(t.character.yearbook) ? t.character.yearbook.length : 0;
 
     // Header
@@ -8176,10 +8230,18 @@ export function runViewerClient(bootstrap) {
     // payload lands; re-shown if the player triggers a full reroll later.
     const loading = document.createElement("div");
     loading.className = "creation-loading";
+    const explanation = document.createElement("div");
+    explanation.className = "creation-explanation";
+    explanation.innerHTML =
+      '<p>You are about to enroll at Ruby High as a student.</p>'
+      + '<p>Your character gets a <strong>playbook</strong> — a personality template with stats (HEAD, HEART, HUSTLE, HONOR) and a unique move. Think of it as your role in the school story.</p>'
+      + '<p>You can reroll anything you don\'t like. Your character sticks with you for all four years.</p>';
+    sheetCard.appendChild(explanation);
+
     loading.innerHTML =
       '<div class="creation-loading-spinner" aria-hidden="true"></div>'
-      + '<div class="creation-loading-title">Rolling…</div>'
-      + '<div class="creation-loading-sub">Drawing your character. Please wait.</div>';
+      + '<div class="creation-loading-title">Rolling your student…</div>'
+      + '<div class="creation-loading-sub">Ruby is looking up your file. One moment.</div>';
     sheetCard.appendChild(loading);
 
     // Creation now uses the same two-card deck surface as profile sheets:
@@ -11038,14 +11100,14 @@ export function runViewerClient(bootstrap) {
 
   // ── congrats toast ───────────────────────────────────────────────────────
   let toastHideTimer = null;
-  function showCongrats(text, wasCorrect) {
+  function showCongrats(text, wasCorrect, durationMs) {
     if (!text) return;
     els.congrats.textContent = text;
     els.congrats.classList.remove("is-correct", "is-wrong", "is-visible");
     void els.congrats.offsetWidth;
     els.congrats.classList.add(wasCorrect ? "is-correct" : "is-wrong", "is-visible");
     clearTimeout(toastHideTimer);
-    toastHideTimer = setTimeout(() => els.congrats.classList.remove("is-visible"), 2400);
+    toastHideTimer = setTimeout(() => els.congrats.classList.remove("is-visible"), Number.isFinite(durationMs) ? durationMs : 2400);
   }
 
   // ── auth ─────────────────────────────────────────────────────────────────
@@ -11487,7 +11549,7 @@ export function runViewerClient(bootstrap) {
         els.privyAction.textContent = "Account";
         els.privyAction.hidden = false;
       }
-      if (els.hallPassBtn) els.hallPassBtn.hidden = lastTelemetry ? !secondarySurfacesUnlocked(lastTelemetry) : true;
+      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
     } else {
@@ -11496,7 +11558,7 @@ export function runViewerClient(bootstrap) {
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
       if (els.privyAction) els.privyAction.hidden = true;
-      if (els.hallPassBtn) els.hallPassBtn.hidden = true;
+      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
       if (els.nextBtn) els.nextBtn.hidden = true;
@@ -12115,6 +12177,17 @@ export function runViewerClient(bootstrap) {
 
   // Click your name/avatar to open the character sheet.
   const youCardBlock = document.querySelector(".channels-footer .you-meta");
+  // ── onboarding button handlers ──────────────────────────────────────────
+  const onboardingCreateBtn = document.getElementById("onboarding-create-btn");
+  const onboardingBooksBtn = document.getElementById("onboarding-books-btn");
+  if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", () => {
+    onboardingCreateBtn.disabled = true;
+    openCharacterCreation();
+  });
+  if (onboardingBooksBtn) onboardingBooksBtn.addEventListener("click", () => {
+    window.open("https://gumroad.com", "_blank", "noopener,noreferrer");
+  });
+
   if (youCardBlock) youCardBlock.addEventListener("click", () => { if (authed) openSheet(); });
   const youAvatarEl = document.querySelector(".channels-footer .you-avatar");
   if (youAvatarEl) youAvatarEl.addEventListener("click", () => { if (authed) openSheet(); });

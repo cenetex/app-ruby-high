@@ -5,7 +5,7 @@ import { resolveFacultyIdForSession } from "../content/registry.js";
 const HOMEROOM_FACULTY_ID = "ruby";
 
 export const GUEST_SIGNUP_REQUIRED_MESSAGE =
-  "Guest lesson complete. Sign up to continue past today's class.";
+  "Today's class is done. Sign up to keep your character, earn Merit Stars, and unlock all classrooms. It just takes a moment.";
 
 export interface GuestAccessState {
   dailyFacultyId: string;

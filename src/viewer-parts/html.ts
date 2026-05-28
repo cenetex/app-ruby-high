@@ -47,7 +47,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <button class="footer-action" id="footer-action" type="button" hidden></button>
       <button class="footer-action account-action" id="privy-action" type="button" hidden>Account</button>
     </div>
-    <a class="report-bug-link" id="report-bug-link" href="https://discord.gg/uTXaBVfY" target="_blank" rel="noopener noreferrer" data-discord-link="true" title="Bugs or questions? Join the Ruby High Discord.">Bugs / questions</a>
+    <div class="channels-links">
+      <a class="report-bug-link" id="report-bug-link" href="https://discord.gg/uTXaBVfY" target="_blank" rel="noopener noreferrer" data-discord-link="true" title="Bugs or questions? Join the Ruby High Discord.">Bugs / questions</a>
+      <a class="report-bug-link" id="about-link" href="https://annihilism.org" target="_blank" rel="noopener noreferrer" title="The philosophy behind Ruby High.">About</a>
+      <a class="report-bug-link" id="books-link" href="https://gumroad.com" target="_blank" rel="noopener noreferrer" title="Books by the Ruby High author.">Books</a>
+    </div>
   </aside>
 
   <!-- workspace -->
@@ -71,13 +75,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">0 Merit Stars · 0 Hall Passes</span>
       </div>
-      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Account" aria-label="Open account" hidden>
+      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Account" aria-label="Open account">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 9a3 3 0 0 0 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
           <path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>
         </svg>
       </button>
-      <button class="pack-btn" id="pack-btn" type="button" title="Edit pack" aria-label="Edit pack" hidden>
+      <button class="pack-btn" id="pack-btn" type="button" title="Packs & collectibles" aria-label="Packs &amp; collectibles">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>
         </svg>
@@ -95,8 +99,16 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
-        <div id="blackboard-empty-text">Starting Ruby High…</div>
+        <div id="blackboard-empty-text">
+          <div class="onboarding-title">Ruby High</div>
+          <div class="onboarding-sub">A daily AI school. Three teachers. Six classmates. Four years to graduate.</div>
+          <div class="onboarding-detail">Class starts at 17:00 UTC. Your teachers — Ruby, Sally Science, and Professor Edward — grade what you actually say. Your classmates run their own arcs beside you. Every grade you finish goes in the yearbook.</div>
+        </div>
         <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
+        <div class="onboarding-actions" id="onboarding-actions" hidden>
+          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Roll a student</button>
+          <button class="blackboard-empty-action onboarding-alt" id="onboarding-books-btn" type="button">Browse books</button>
+        </div>
       </div>
 
       <div class="blackboard-meta" id="blackboard-meta" hidden></div>

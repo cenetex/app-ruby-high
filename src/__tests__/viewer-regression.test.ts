@@ -443,8 +443,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function guestSignupRequired");
     expectScriptToContain(script, 'if (postClass.report && guestSignupRequired(t)) return "Sign up";');
     expectScriptToContain(script, "function promptGuestSignup");
-    expectScriptToContain(script, "guest lesson complete|sign up to continue");
-    expectScriptToContain(script, "Sign up to continue");
+    expectScriptToContain(script, "Sign up to keep your character");
+    expectScriptToContain(script, "Sign up to keep your character");
   });
 
   it("labels offline classroom advance as Continue instead of Chat", () => {

@@ -2291,6 +2291,6 @@ describe("guest access gates", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(403);
-    expect(res.body).toContain("Sign up to continue");
+    expect(res.body).toContain("Sign up to keep your character");
   });
 });
