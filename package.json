@@ -81,6 +81,7 @@
     "vitest": "^4.1.5"
   },
   "overrides": {
+    "tmp": "^0.2.7",
     "@reown/appkit": "1.8.19",
     "@reown/appkit-controllers": "1.8.19",
     "@reown/appkit-pay": "1.8.19",
