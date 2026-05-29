@@ -23,7 +23,7 @@ describe("llm-provider", () => {
     expect(llmChatCompletionsUrl()).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(llmProviderInfo().defaultModel).toBe(DEFAULT_OPENROUTER_MODEL);
     expect(resolveLlmModel("")).toBe(DEFAULT_OPENROUTER_MODEL);
-    expect(resolveStudentModel()).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(resolveStudentModel()).toBe("google/gemini-3.5-flash");
     expect(resolveCourseModel()).toBe(DEFAULT_COURSE_MODEL);
     expect(resolveLlmModel("custom/model")).toBe("custom/model");
     expect(resolveLlmApiKey("sk-user")).toBe("sk-user");
@@ -33,7 +33,7 @@ describe("llm-provider", () => {
     vi.stubEnv("RUBY_HIGH_COURSE_MODEL", "custom/course-model");
 
     expect(resolveCourseModel()).toBe("custom/course-model");
-    expect(resolveStudentModel()).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(resolveStudentModel()).toBe("google/gemini-3.5-flash");
   });
 
   it("normalizes a local OpenAI-compatible base URL", () => {
