@@ -12316,7 +12316,7 @@ export function runViewerClient(bootstrap) {
     openCharacterCreation();
   });
   if (onboardingBooksBtn) onboardingBooksBtn.addEventListener("click", () => {
-    window.open("https://gumroad.com", "_blank", "noopener,noreferrer");
+    window.open("https://ratimics.gumroad.com", "_blank", "noopener,noreferrer");
   });
 
   if (youCardBlock) youCardBlock.addEventListener("click", () => { if (authed) openSheet(); });

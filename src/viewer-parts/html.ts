@@ -50,7 +50,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div class="channels-links">
       <a class="report-bug-link" id="report-bug-link" href="https://discord.gg/uTXaBVfY" target="_blank" rel="noopener noreferrer" data-discord-link="true" title="Bugs or questions? Join the Ruby High Discord.">Bugs / questions</a>
       <a class="report-bug-link" id="about-link" href="https://annihilism.org" target="_blank" rel="noopener noreferrer" title="The philosophy behind Ruby High.">About</a>
-      <a class="report-bug-link" id="books-link" href="https://gumroad.com" target="_blank" rel="noopener noreferrer" title="Books by the Ruby High author.">Books</a>
+      <a class="report-bug-link" id="books-link" href="https://ratimics.gumroad.com" target="_blank" rel="noopener noreferrer" title="Books by the Ruby High author.">Books</a>
     </div>
   </aside>
 
@@ -196,7 +196,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div class="announcements-notes" id="announcements-notes"></div>
     <div class="announcements-actions">
       <a class="announcements-link" id="announcements-about" href="https://annihilism.org" target="_blank" rel="noopener noreferrer">About</a>
-      <a class="announcements-link" id="announcements-books" href="https://gumroad.com" target="_blank" rel="noopener noreferrer">Books</a>
+      <a class="announcements-link" id="announcements-books" href="https://ratimics.gumroad.com" target="_blank" rel="noopener noreferrer">Books</a>
       <button class="announcements-dismiss" id="announcements-dismiss" type="button">Take your seat</button>
     </div>
   </div>

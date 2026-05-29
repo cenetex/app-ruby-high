@@ -59,7 +59,7 @@ If you've ever wanted to build an AI that feels like a person instead of a custo
 
 ## Setup checklist
 
-- [ ] Create Gumroad account at https://gumroad.com
+- [ ] Create Gumroad account at https://ratimics.gumroad.com
 - [ ] Set up payout method (Stripe or PayPal)
 - [ ] Create product: Qiao — pay-what-you-want, suggested $9, upload PDF + EPUB
 - [ ] Create product: Egregoregramming 101 — $19, upload PDF
