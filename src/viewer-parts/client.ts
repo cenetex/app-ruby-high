@@ -1731,9 +1731,9 @@ export function runViewerClient(bootstrap) {
     els.arcIndicator.classList.toggle("is-graduated", graduated);
     if (graduated) {
       els.arcYear.textContent = "Graduated";
-      els.arcStreak.textContent = "diploma earned";
+      els.arcStreak.textContent = "🎓";
       els.arcStreak.classList.remove("is-met");
-      els.arcXp.textContent = "subjects cleared";
+      els.arcXp.textContent = "✅";
       els.arcXp.classList.remove("is-met");
       els.arcScore.textContent = walletSummaryText(t);
       return;
@@ -1742,17 +1742,17 @@ export function runViewerClient(bootstrap) {
     els.arcYear.textContent = yearLabel;
     const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
     const streakReq   = STREAK_REQUIRED[grade] || 1;
-    els.arcStreak.textContent = streakCount + "/" + streakReq + " daily classes";
+    els.arcStreak.textContent = "📚 " + streakCount + "/" + streakReq;
     els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
     const subjects = subjectClearSummary();
-    els.arcXp.textContent = subjects.met + "/" + subjects.total + " subjects cleared";
+    els.arcXp.textContent = "✅ " + subjects.met + "/" + subjects.total;
     els.arcXp.classList.toggle("is-met", subjects.met >= subjects.total);
     els.arcScore.textContent = walletSummaryText(t);
   }
 
   function walletSummaryText(t) {
     const wallet = walletNumbers(t);
-    return formatWholeNumber(wallet.meritStars) + " Merit Stars · " + formatWholeNumber(wallet.hallPasses) + " Hall Pass" + (wallet.hallPasses === 1 ? "" : "es");
+    return "⭐ " + formatWholeNumber(wallet.meritStars) + " · 🎫 " + formatWholeNumber(wallet.hallPasses);
   }
 
   function walletCardCount(t) {
@@ -1956,8 +1956,8 @@ export function runViewerClient(bootstrap) {
     const spendKind = usePhotoDayCredit ? "photo-day credit" : "Hall Pass";
     const isCharacterPortrait = action === "Custom character portrait";
     const detail = isCharacterPortrait
-      ? "You can keep editing while it runs. Lock it in unlocks after the request finishes."
-      : "You can keep editing while it runs. Save and Close unlock after it finishes or you cancel.";
+      ? "Keep editing while it runs. “Lock it in” unlocks once the request finishes."
+      : "Keep editing while it runs. Save and Close unlock once it finishes or you cancel.";
     const confirmText = isCharacterPortrait ? "Generate portrait" : "Generate image";
     if (usePhotoDayCredit) {
       return confirmInApp({

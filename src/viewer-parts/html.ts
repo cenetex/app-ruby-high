@@ -69,11 +69,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="arc-indicator" id="arc-indicator" hidden>
         <span class="arc-year" id="arc-year">—</span>
         <span class="arc-sep">·</span>
-        <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">— daily classes</span>
+        <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">📚 —</span>
         <span class="arc-sep">·</span>
-        <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">— subjects cleared</span>
+        <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
         <span class="arc-sep">·</span>
-        <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">0 Merit Stars · 0 Hall Passes</span>
+        <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">⭐ 0 · 🎫 0</span>
       </div>
       <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Account" aria-label="Open account">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -102,7 +102,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <div id="blackboard-empty-text">
           <div class="onboarding-title">Ruby High</div>
           <div class="onboarding-sub">A daily AI school. Three teachers. Six classmates. Four years to graduate.</div>
-          <div class="onboarding-detail">Class starts at 17:00 UTC. Your teachers — Ruby, Sally Science, and Professor Edward — grade what you actually say. Your classmates run their own arcs beside you. Every grade you finish goes in the yearbook.</div>
+          <div class="onboarding-detail">Class starts 17:00 UTC. Ruby, Sally Science, and Professor Edward grade what you actually say — and every grade goes in the yearbook.</div>
         </div>
         <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
         <div class="onboarding-actions" id="onboarding-actions" hidden>
@@ -370,7 +370,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay" id="pack-overlay">
   <div class="sheet-card" id="pack-card">
     <h2>Guest Faculty</h2>
-    <p class="sub">Ruby High is always on. Pick this week's guest teacher automatically or set your own from creator packs.</p>
+    <p class="sub">Pick this week's guest teacher automatically, or set your own from creator packs.</p>
     <div class="pack-library-actions">
       <button type="button" class="pack-action" id="pack-auto-btn">Auto Guest</button>
       <button type="button" class="pack-action" id="pack-create-btn">+ Create New Content Pack</button>

@@ -524,16 +524,17 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart");
   });
 
-  it("uses explicit top status labels instead of ambiguous streak/classes copy", () => {
+  it("uses emoji-only top status indicators with explanatory tooltips", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
+    // Tooltips carry the meaning the emoji compresses.
     expect(html).toContain('title="Passed daily classes needed for this year"');
     expect(html).toContain('title="Subjects cleared with a C or better this year"');
-    expectScriptToContain(script, 'streakCount + "/" + streakReq + " daily classes"');
-    expectScriptToContain(script, 'subjects.met + "/" + subjects.total + " subjects cleared"');
+    expectScriptToContain(script, '"📚 " + streakCount + "/" + streakReq');
+    expectScriptToContain(script, '"✅ " + subjects.met + "/" + subjects.total');
     expectScriptToContain(script, 'walletSummaryText(t)');
-    expectScriptToContain(script, '" Merit Stars · "');
+    expectScriptToContain(script, '" · 🎫 "');
   });
 
   it("keeps weekly guest spotlight in the lounge and collapses class-start copy behind info", () => {
@@ -595,7 +596,7 @@ describe("viewer regression guardrails", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
-    expect(html).toContain("Ruby High is always on. Pick this week's guest teacher automatically or set your own from creator packs.");
+    expect(html).toContain("Pick this week's guest teacher automatically, or set your own from creator packs.");
     expect(html).toContain('id="pack-search-input"');
     expect(html).toContain('id="pack-search-btn"');
     expect(html).toContain('id="pack-search-list"');

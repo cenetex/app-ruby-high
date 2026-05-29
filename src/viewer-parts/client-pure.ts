@@ -139,7 +139,7 @@ export function subjectProgressShortLabel(progress: NullableRecord): string {
 export function subjectProgressLongLabel(progress: NullableRecord): string {
   if (!progress) return "course pending";
   const required = Math.max(0, Math.floor(Number(progress.requiredClasses || 0)));
-  if (required > 0) return subjectProgressShortLabel(progress) + " daily classes";
+  if (required > 0) return "📚 " + subjectProgressShortLabel(progress);
   return "course pending";
 }
 export function subjectStandingLabel(progress: NullableRecord): string {
@@ -152,12 +152,12 @@ export function subjectStatusText(progress: NullableRecord): string {
   const required = Number(progress.requiredClasses || 0);
   const today = progress.today || {};
   if (today.status === "complete") {
-    return "daily class complete" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + standing;
+    return "✅ done" + (today.letterGrade ? " · " + today.letterGrade : "") + " · " + standing;
   }
   if (today.status === "active") {
     return questionsLeftText(today) + " · " + standing;
   }
-  if (required > 0) return Math.min(done, required) + "/" + required + " daily classes";
+  if (required > 0) return "📚 " + Math.min(done, required) + "/" + required;
   return standing;
 }
 export function questionsLeftInClass(today: NullableRecord): number {
@@ -167,7 +167,7 @@ export function questionsLeftInClass(today: NullableRecord): number {
 }
 export function questionsLeftText(today: NullableRecord): string {
   const left = questionsLeftInClass(today);
-  if (left <= 0) return "daily class complete";
+  if (left <= 0) return "✅ done";
   return left + " " + (left === 1 ? "question" : "questions") + " left";
 }
 export function questionsLeftSentence(today: NullableRecord): string {
