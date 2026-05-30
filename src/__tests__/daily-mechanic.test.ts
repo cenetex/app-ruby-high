@@ -707,6 +707,9 @@ describe("Streak + grade advancement", () => {
     expect(ruby.getOrCreate(sid).studentPool?.[0]?.diplomaImageDataUrl).toBeUndefined();
 
     ruby.setDiplomaImage(sid, "https://cdn.example.test/diploma.png");
+    const pendingPhotos = ruby.getOrCreate(sid).character?.pendingPhotos;
+    if (pendingPhotos?.length) ruby.revealPhoto(sid, pendingPhotos[pendingPhotos.length - 1]!.photoId);
+
     expect(ruby.getOrCreate(sid).studentPool?.[0]?.diplomaImageDataUrl)
       .toBe("https://cdn.example.test/diploma.png");
   });

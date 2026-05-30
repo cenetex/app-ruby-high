@@ -10,6 +10,30 @@ import { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import type { BankedQuestion } from "../types.js";
+// Mock DNS resolution so material-URL host checks work without network access.
+// Every hostname resolves to a safe public IP, allowing tests to proceed past
+// DNS checks and exercise the real fetch/redirect/size-validation logic.
+const { lookup: _dnsLookup } = vi.hoisted(() => {
+  const safeIp = "185.199.108.133";
+  return {
+    lookup: vi.fn((hostname: string, options?: any): any => {
+      // IP addresses pass through without DNS lookup.
+      if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) {
+        const family = hostname.includes(":") ? 6 : 4;
+        if (options?.all) return Promise.resolve([{ address: hostname, family }]);
+        return Promise.resolve({ address: hostname, family });
+      }
+      // Hostnames resolve to a safe public IP.
+      if (options?.all) return Promise.resolve([{ address: safeIp, family: 4 }]);
+      return Promise.resolve({ address: safeIp, family: 4 });
+    }),
+  };
+});
+
+vi.mock("node:dns/promises", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:dns/promises")>();
+  return { ...real, lookup: _dnsLookup as any };
+});
 
 let tmpDir: string;
 let auth: AuthService;

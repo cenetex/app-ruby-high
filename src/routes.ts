@@ -43,6 +43,9 @@ import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import { handleMetricsEventRoute, METRICS_EVENT_PATH } from "./routes/metrics-events.js";
 import { handleNftRoutes } from "./routes/nft.js";
+import { XSocialService } from "./services/x-social-service.js";
+import { handleXSocialRoutes } from "./routes/x-social.js";
+import { X_SOCIAL_PREFIX } from "./routes/constants.js";
 import type { RouteContext } from "./routes/context.js";
 import { getPrivyPublicConfigFromEnv } from "./services/privy-auth.js";
 
@@ -266,6 +269,17 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         sessionIdFor: (cookieHeader) => getSessionId(runtime, cookieHeader),
       },
     );
+  }
+
+
+  // X (Twitter) social integration — per-teacher OAuth and milestone posting.
+  if (ctx.pathname.startsWith(X_SOCIAL_PREFIX)) {
+    const xSocial = tryGetService<XSocialService>(runtime, XSocialService.serviceType);
+    if (!xSocial) {
+      ctx.error(ctx.res, "XSocialService unavailable", 503);
+      return true;
+    }
+    return handleXSocialRoutes(ctx, xSocial);
   }
 
   // Pack endpoints: per-session ownership, auth required.

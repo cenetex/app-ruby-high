@@ -1,4 +1,5 @@
 import type { IAgentRuntime, RubyHighAppModule } from "./runtime.js";
+import { XSocialService } from "./services/x-social-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { FacultyService } from "./services/faculty-service.js";
 import { AuthService } from "./services/auth-service.js";
@@ -48,7 +49,7 @@ export const rubyHighApp: RubyHighAppModule = {
   name: "@cenetex/app-ruby-high",
   description:
     "Ruby High educational app. Ruby hosts the school; specialist faculty teach their domains with persistence, AI key login, and per-teacher chat with tool-driven blackboard control.",
-  services: [FacultyService, BoundRubyHighService, AuthService, BoundChatService],
+  services: [FacultyService, BoundRubyHighService, AuthService, BoundChatService, XSocialService],
   actions: [
     poseQuestionAction,
     pickQuestionAction,
@@ -95,6 +96,7 @@ export { DynamoStateStore, type DynamoStateStoreOptions } from "./services/dynam
 export { createStateStore, type CreateStateStoreOptions } from "./services/state-store-factory.js";
 export { AuthService } from "./services/auth-service.js";
 export { ChatService } from "./services/chat-service.js";
+export { XSocialService } from "./services/x-social-service.js";
 export { TEACHERS, teacherById, listTeachers } from "./characters/teachers.js";
 export { poseQuestionAction } from "./actions/pose-question.js";
 export { pickQuestionAction } from "./actions/pick-question.js";

@@ -966,18 +966,35 @@ describe("RubyHighService Phase 1", () => {
       stats: { head: 1, heart: 0, hustle: 0, honor: 0 },
       arcAnswer: "keeps receipts",
       personality: "careful",
-      portraitDataUrl: "https://cdn.example.test/portrait.png",
     });
 
-    expect(ruby.getOrCreate(sid).character?.portraitDataUrl).toBe("https://cdn.example.test/portrait.png");
+    // createCharacter no portrait passed — starts undefined.
+
+    // setPortrait validates and enqueues — rejects invalid URLs.
     expect(() => ruby.setPortrait(sid, "not-an-image")).toThrow(/portraitDataUrl must be an image data URL/i);
     expect(() => ruby.setPortrait(sid, `data:image/png;base64,${"a".repeat(280_000)}`)).toThrow(/portraitDataUrl too large/i);
 
+    // Valid portrait is enqueued, not set directly.
     const state = ruby.setPortrait(sid, "/api/apps/ruby-high/assets/portrait/test.png");
-    expect(state.character?.portraitDataUrl).toBe("/api/apps/ruby-high/assets/portrait/test.png");
+    expect(state.character?.portraitDataUrl).toBeUndefined();
+    expect(state.character?.pendingPhotos).toHaveLength(1);
+    expect(state.character?.pendingPhotos![0]!.kind).toBe("portrait");
+    expect(state.character?.pendingPhotos![0]!.imageUrl).toBe("/api/apps/ruby-high/assets/portrait/test.png");
+
+    // setDiplomaImage validates size.
     expect(() => ruby.setDiplomaImage(sid, `data:image/png;base64,${"a".repeat(280_000)}`)).toThrow(/diplomaImageDataUrl too large/i);
-    expect(ruby.setDiplomaImage(sid, "https://cdn.example.test/diploma.png").character?.diplomaImageDataUrl)
-      .toBe("https://cdn.example.test/diploma.png");
+
+    // Valid diploma is enqueued, not set directly.
+    const diplomaState = ruby.setDiplomaImage(sid, "https://cdn.example.test/diploma.png");
+    expect(diplomaState.character?.diplomaImageDataUrl).toBeUndefined();
+    expect(diplomaState.character?.pendingPhotos).toHaveLength(2);
+
+    // revealPhoto moves a photo from queue to permanent fields.
+    const photoId = diplomaState.character!.pendingPhotos![1]!.photoId;
+    ruby.revealPhoto(sid, photoId, "tweet-123");
+    const revealed = ruby.getOrCreate(sid);
+    expect(revealed.character?.diplomaImageDataUrl).toBe("https://cdn.example.test/diploma.png");
+    expect(revealed.character?.pendingPhotos).toHaveLength(1);
   });
 
   it("persists session state across a 'restart'", async () => {

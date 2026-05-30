@@ -7,7 +7,7 @@ import {
 import { log, logMetricsSnapshot } from "../services/logger.js";
 import type { AuthAnalyticsSnapshot, AuthService } from "../services/auth-service.js";
 import type { RubyHighAnalyticsSnapshot, RubyHighService } from "../services/ruby-high-service.js";
-import { APP_ROUTE_PREFIX } from "./constants.js";
+import { APP_ROUTE_PREFIX, X_SOCIAL_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
 export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
@@ -994,11 +994,18 @@ export function renderAdminDashboardHtml(): string {
       <div class="grid" id="creator-grid"></div>
     </section>
     <section class="section">
+      <h2>X Social</h2>
+      <div id="x-social-panel" style="margin-top:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+        <div class="empty" style="grid-column:1/-1;">Loading teacher connections…</div>
+      </div>
+    </section>
+    <section class="section">
       <h2>Logs</h2>
       <div class="tables" id="tables"></div>
     </section>
   </main>
   <script>
+    const xSocialPrefix = ${JSON.stringify(X_SOCIAL_PREFIX)};
     const metricsPath = ${metricsPath};
     const schemaPath = ${schemaPath};
     const overviewPath = ${overviewPath};
@@ -1329,6 +1336,73 @@ export function renderAdminDashboardHtml(): string {
       statusEl.textContent = text;
       statusEl.className = "status " + (className || "");
     }
+
+    // ── X Social ──────────────────────────────────────────────────────────
+    const xPanel = document.getElementById("x-social-panel");
+    const FACULTY_IDS = ["ruby", "sally-science", "professor-edward"];
+
+    async function refreshXSocial() {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) { xPanel.innerHTML = '<div class="empty" style="grid-column:1/-1;">Unlock to manage X connections.</div>'; return; }
+      try {
+        const res = await fetch(xSocialPrefix + "/connected", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (!res.ok) throw new Error(res.status);
+        const data = await res.json();
+        const connected = new Map(data.teachers.map(t => [t.teacherId, t]));
+        xPanel.innerHTML = FACULTY_IDS.map(id => {
+          const c = connected.get(id);
+          if (c) {
+            return '<div class="metric"><div class="label">' + id + '</div><div class="value good" style="font-size:18px;">\u2714 Connected</div><div class="sub">@' + escHtml(c.xScreenName || "") + '</div><button class="secondary x-social-btn" style="margin-top:8px;width:100%;" data-action="disconnect" data-teacher="' + id + '">Disconnect</button></div>';
+          }
+          return '<div class="metric"><div class="label">' + id + '</div><div class="value" style="font-size:18px;color:var(--muted);">\u2014</div><div class="sub">Not connected</div><button style="margin-top:8px;width:100%;" class="x-social-btn" data-action="connect" data-teacher="' + id + '">Connect</button></div>';
+        }).join("");
+      } catch {
+        xPanel.innerHTML = '<div class="empty" style="grid-column:1/-1;">Failed to load X connection status.</div>';
+      }
+    }
+
+    async function connectX(teacherId) {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      try {
+        const res = await fetch(xSocialPrefix + "/connect/" + teacherId, {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (!res.ok) throw new Error(res.status);
+        const data = await res.json();
+        if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
+      } catch { /* best effort */ }
+    }
+
+    async function disconnectX(teacherId) {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      try {
+        await fetch(xSocialPrefix + "/disconnect/" + teacherId, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token },
+        });
+        refreshXSocial();
+      } catch { /* best effort */ }
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    refreshXSocial();
+
+    // Delegated click handler for X Social connect/disconnect buttons.
+    xPanel.addEventListener("click", (e) => {
+      const btn = e.target.closest(".x-social-btn");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const teacherId = btn.dataset.teacher;
+      if (action === "connect") connectX(teacherId);
+      else if (action === "disconnect") disconnectX(teacherId);
+    });
   </script>
 </body>
 </html>`;

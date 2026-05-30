@@ -893,6 +893,23 @@ export interface CharacterStats {
   honor: number;    // discipline / integrity
 }
 
+/** A photo that has been generated but waits for a teacher to tweet it
+ *  before appearing in the student's yearbook. The tweet is the reveal. */
+export interface PendingPhotoReveal {
+  photoId: string;
+  kind: "portrait" | "diploma" | "graduation";
+  /** Public URL of the already-uploaded image. */
+  imageUrl: string;
+  /** Which teacher faculty will tweet this photo. */
+  teacherFacultyId: string;
+  /** When the milestone that earned this photo occurred. */
+  earnedAt: number;
+  /** X tweet ID, set after the teacher posts it. */
+  tweetId?: string;
+  /** When the tweet was posted, set alongside tweetId. */
+  tweetedAt?: number;
+}
+
 /** The player's character sheet. Generated once at character creation. The
  *  player inhabits this AI-rolled student — they don't manually build it. */
 export interface PlayerCharacter {
@@ -908,6 +925,17 @@ export interface PlayerCharacter {
    *  moment, not their backstory. Optional for characters created before
    *  this field existed; the card falls back to arcAnswer when absent. */
   flavorQuote?: string;
+  /** When true, allows teacher X posts about this character's milestones.
+   *  Defaults to true for new characters; can be toggled via command. */
+  socialConsent?: boolean;
+  /** UTC date (YYYY-MM-DD) of the last text-only X post for this character.
+   *  Enforces one text post per student per day. */
+  lastTextTweetDate?: string;
+  /** Photos earned but waiting for a teacher to tweet them before they
+   *  appear in the yearbook. When a teacher posts the tweet, the photo
+   *  is moved from this queue to the character's permanent fields. If no
+   *  teacher is connected to X, photos reveal immediately. */
+  pendingPhotos?: PendingPhotoReveal[];
   /** A 2-3 sentence personality blurb that teachers see in their context
    *  when interacting with the player. */
   personality: string;
@@ -1025,6 +1053,17 @@ export interface StudentPoolEntry {
   stats: CharacterStats;
   arcAnswer: string;
   flavorQuote?: string;
+  /** When true, allows teacher X posts about this character's milestones.
+   *  Defaults to true for new characters; can be toggled via command. */
+  socialConsent?: boolean;
+  /** UTC date (YYYY-MM-DD) of the last text-only X post for this character.
+   *  Enforces one text post per student per day. */
+  lastTextTweetDate?: string;
+  /** Photos earned but waiting for a teacher to tweet them before they
+   *  appear in the yearbook. When a teacher posts the tweet, the photo
+   *  is moved from this queue to the character's permanent fields. If no
+   *  teacher is connected to X, photos reveal immediately. */
+  pendingPhotos?: PendingPhotoReveal[];
   personality: string;
   portraitDataUrl?: string;
   diplomaImageDataUrl?: string;

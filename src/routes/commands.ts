@@ -65,6 +65,7 @@ type CommandBody = {
   mentorAccepted?: boolean;
   grade?: string;
   requestId?: string;
+  socialConsent?: boolean;
 } | null;
 
 async function sendPersistedCommandState(
@@ -310,7 +311,17 @@ export async function handleCommandRoute(args: {
       const state = ruby.markIntroSeen(stateKey);
       return await persist(state, "Intro acknowledged");
     },
+    "set-social-consent": async () => {
+      const consent = body?.socialConsent ?? true;
+      const state = ruby.getOrCreate(stateKey);
+      if (!state.character) throw new Error("No character to update.");
+      state.character.socialConsent = !!consent;
+      state.updatedAt = Date.now();
+      void ruby.flushSession(stateKey);
+      return await persist(state, consent ? "Social posting enabled" : "Social posting disabled");
+    },
   };
+
 
   try {
     const commandType = typeof type === "string" ? type : undefined;

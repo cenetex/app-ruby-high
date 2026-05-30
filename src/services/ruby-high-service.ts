@@ -1,4 +1,6 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { XSocialService, type XMilestoneContext } from "./x-social-service.js";
+import { teacherById } from "../characters/teachers.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
@@ -58,6 +60,7 @@ import {
   type NpcStudentState,
   type OpinionGrade,
   type Phase,
+  type PendingPhotoReveal,
   type PlayerCharacter,
   type Question,
   type QuestionMediaAsset,
@@ -3437,6 +3440,15 @@ export class RubyHighService extends Service {
         total: record.questionCount,
       });
       if (letterGradePasses(record.letterGrade)) {
+      this.maybePostXMilestone({
+        kind: "class-passed",
+        characterName: state.character?.name ?? "A student",
+        grade: session.grade,
+        teacherFacultyId: session.facultyId,
+        teacherName: teacherById(session.facultyId)?.displayName,
+        letterGrade: record.letterGrade,
+      }, state);
+
         this.recordFunnelStep(state, "first_daily_class_passed", {
           faculty: session.facultyId,
           grade: session.grade,
@@ -4235,11 +4247,23 @@ export class RubyHighService extends Service {
       log.event("player.grade-advanced", {
         sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, reward: normalizedReward.kind,
       });
+      this.maybePostXMilestone({
+        kind: "grade-advanced",
+        characterName: ch.name,
+        fromGrade: grade,
+        toGrade: advance,
+      }, state);
     } else {
       this.archiveCompletedCharacter(state, ch);
       log.event("player.graduated", {
         sessionId: state.sessionId, character: ch.name, reward: normalizedReward.kind,
       });
+      this.maybePostXMilestone({
+        kind: "graduated",
+        characterName: ch.name,
+        grade,
+        arcAnswer: ch.arcAnswer,
+      }, state);
     }
 
     this.transition(state, { kind: "clear-board" });
@@ -5463,6 +5487,8 @@ export class RubyHighService extends Service {
       yearbook: [],
       ...(inheritedFrom ? { inheritedFrom } : {}),
       mashCard,
+      socialConsent: true,
+
       createdAt: Date.now(),
     };
     state.updatedAt = Date.now();
@@ -5470,6 +5496,11 @@ export class RubyHighService extends Service {
     log.event("character.created", {
       sessionId, characterName: name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
     });
+    this.maybePostXMilestone({
+      kind: "character-created",
+      characterName: name,
+      flavorQuote: flavorQuote ?? undefined,
+    }, state);
     this.recordFunnelStep(state, "first_character_created", {
       characterName: name,
       playbookId: input.playbookId,
@@ -5485,8 +5516,11 @@ export class RubyHighService extends Service {
     if (!state.character) throw new Error("No character to attach portrait to.");
     const stored = normalizeStoredImageRef(portraitDataUrl, "portraitDataUrl");
     if (!stored) throw new Error("portraitDataUrl is required.");
-    state.character.portraitDataUrl = stored;
-    this.archiveCompletedCharacter(state, state.character);
+    // Enqueue for daily photo reveal lottery (Ruby tweets it, then it appears).
+    // The portrait is NOT visible in the yearbook until the photo is revealed.
+    this.enqueuePhotoReveal(sessionId, "portrait", stored, "ruby");
+    // Check if we should post a daily photo right now.
+    queueMicrotask(() => this.maybePostDailyPhoto());
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -5497,8 +5531,12 @@ export class RubyHighService extends Service {
     if (!state.character) throw new Error("No character to attach diploma to.");
     const stored = normalizeStoredImageRef(diplomaImageDataUrl, "diplomaImageDataUrl");
     if (!stored) throw new Error("diplomaImageDataUrl is required.");
-    state.character.diplomaImageDataUrl = stored;
-    this.archiveCompletedCharacter(state, state.character);
+    // Determine which teacher gets the diploma tweet: the one whose class
+    // the student scored highest in, or Ruby as fallback.
+    const topTeacher = this.topGraduationTeacherFor(state, state.currentGrade ?? "9");
+    const teacherId = topTeacher?.id ?? "ruby";
+    this.enqueuePhotoReveal(sessionId, "diploma", stored, teacherId);
+    queueMicrotask(() => this.maybePostDailyPhoto());
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -5697,6 +5735,194 @@ export class RubyHighService extends Service {
     void this.persistSession(sessionId);
     return state;
   }
+
+  // ── Photo reveal queue ────────────────────────────────────────────────
+
+  /** Enqueue a photo for later reveal via teacher X post.
+   *  The photo is already uploaded to S3; this just stages it for the
+   *  daily photo lottery. Returns the photoId. */
+  enqueuePhotoReveal(
+    sessionId: string,
+    kind: PendingPhotoReveal["kind"],
+    imageUrl: string,
+    teacherFacultyId: string,
+  ): string {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) throw new Error("No character to enqueue photo for.");
+    const photoId = `photo:${state.sessionId}:${kind}:${Date.now().toString(36)}`;
+    const photo: PendingPhotoReveal = {
+      photoId,
+      kind,
+      imageUrl,
+      teacherFacultyId,
+      earnedAt: Date.now(),
+    };
+    ch.pendingPhotos = ch.pendingPhotos ?? [];
+    ch.pendingPhotos.push(photo);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return photoId;
+  }
+
+  /** Reveal a photo after the teacher tweeted it (or as an immediate
+   *  fallback when no teacher is connected). Moves the image into the
+   *  character's permanent fields and updates the yearbook. */
+  revealPhoto(sessionId: string, photoId: string, tweetId?: string): void {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch?.pendingPhotos) return;
+    const idx = ch.pendingPhotos.findIndex((p) => p.photoId === photoId);
+    if (idx === -1) return;
+    const photo = ch.pendingPhotos[idx]!;
+    ch.pendingPhotos.splice(idx, 1);
+    if (tweetId) {
+      photo.tweetId = tweetId;
+      photo.tweetedAt = Date.now();
+    }
+    // Write the image to the character's permanent fields.
+    switch (photo.kind) {
+      case "portrait":
+        ch.portraitDataUrl = photo.imageUrl;
+        break;
+      case "diploma":
+        ch.diplomaImageDataUrl = photo.imageUrl;
+        break;
+      case "graduation":
+        ch.diplomaImageDataUrl = photo.imageUrl;
+        break;
+    }
+    this.archiveCompletedCharacter(state, ch);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("photo.revealed", {
+      sessionId,
+      character: ch.name,
+      photoId,
+      kind: photo.kind,
+      ...(tweetId ? { tweetId } : { fallback: true }),
+    });
+  }
+
+  /** Called on viewer loads and milestone events. If the configured photo
+   *  teacher hasn't posted a photo today and there are pending photos in
+   *  the pool, picks one at random and posts it. Non-blocking. */
+  maybePostDailyPhoto(): void {
+    if (!this.runtime || typeof (this.runtime as any).getService !== "function") return;
+    const xSocial = (this.runtime as any).getService(XSocialService.serviceType) as XSocialService | undefined;
+    if (!xSocial) return;
+    // Gather ALL pending photos across all sessions (unfiltered — we need
+    // the full pool for the fallback path below).
+    const allPhotos: { sessionId: string; photo: PendingPhotoReveal }[] = [];
+    for (const [sid, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch?.pendingPhotos?.length) continue;
+      for (const p of ch.pendingPhotos) {
+        allPhotos.push({ sessionId: sid, photo: p });
+      }
+    }
+    if (allPhotos.length === 0) return;
+
+    // Fallback: if no teacher is connected to X at all, auto-reveal all
+    // pending photos immediately so the yearbook still works.
+    const anyConnected = xSocial.listConnected().length > 0;
+    if (!anyConnected) {
+      for (const { sessionId: sid, photo: p } of allPhotos) {
+        this.revealPhoto(sid, p.photoId);
+      }
+      return;
+    }
+
+    // One or more teachers are connected. Filter to photos whose teacher
+    // is connected, then pick one at random.
+    const eligible = allPhotos.filter((e) => xSocial.getStatus(e.photo.teacherFacultyId).connected);
+    if (eligible.length === 0) return;
+    const pick = eligible[Math.floor(Math.random() * eligible.length)]!;
+    const teacher = teacherById(pick.photo.teacherFacultyId);
+    if (!teacher) return;
+    const ctx: XMilestoneContext = {
+      kind: pick.photo.kind === "portrait" ? "portrait-set"
+          : pick.photo.kind === "diploma" ? "diploma-earned"
+          : "graduated",
+      characterName: this.sessions.get(pick.sessionId)?.character?.name ?? "A student",
+      portraitUrl: pick.photo.kind === "portrait" ? pick.photo.imageUrl : undefined,
+      diplomaUrl: pick.photo.kind === "diploma" ? pick.photo.imageUrl : undefined,
+    };
+    xSocial.maybePostMilestone(teacher, ctx).then((tweetId) => {
+      if (tweetId) {
+        this.revealPhoto(pick.sessionId, pick.photo.photoId, tweetId);
+      }
+    }).catch(() => {});
+  }
+
+  /** Total number of pending photos across all sessions. Used by the
+   *  viewer to show queue depth without exposing individual photos. */
+  pendingPhotoPoolSize(): number {
+    let count = 0;
+    for (const [, state] of this.sessions) {
+      count += state.character?.pendingPhotos?.length ?? 0;
+    }
+    return count;
+  }
+
+  /** Reassign pending photos from one teacher to another. Used when a
+   *  non-Ruby teacher disconnects from X — their photos move to Ruby
+   *  so nothing gets orphaned. Returns the count of reassigned photos. */
+  reassignPendingPhotos(fromTeacherId: string, toTeacherId: string): number {
+    let count = 0;
+    for (const [, state] of this.sessions) {
+      const photos = state.character?.pendingPhotos;
+      if (!photos) continue;
+      for (const p of photos) {
+        if (p.teacherFacultyId === fromTeacherId) {
+          p.teacherFacultyId = toTeacherId;
+          count += 1;
+        }
+      }
+      if (count > 0) {
+        state.updatedAt = Date.now();
+        void this.persistSession(state.sessionId);
+      }
+    }
+    return count;
+  }
+
+  /** Fire an X (Twitter) milestone post from the relevant teacher's account.
+   *  Enforces per-student daily text budget (one text post per student per day,
+   *  except character-created and graduated which always post). */
+  private maybePostXMilestone(ctx: XMilestoneContext, state: QuizState): void {
+    if (!this.runtime || typeof (this.runtime as any).getService !== "function") return;
+    const xSocial = (this.runtime as any).getService(XSocialService.serviceType) as XSocialService | undefined;
+    if (!xSocial) return;
+
+    // Per-student daily text budget: skip if this student already had a text
+    // post today. Character-created and graduated are one-time events — always post.
+    const ch = state.character;
+    if (ch && ctx.kind !== "character-created" && ctx.kind !== "graduated") {
+      const today = new Date().toISOString().slice(0, 10);
+      ch.lastTextTweetDate = ch.lastTextTweetDate ?? "";
+      if (ch.lastTextTweetDate === today) return;
+    }
+
+    // Teacher routing:
+    // - class-passed: the faculty who taught the class (already in ctx.teacherFacultyId)
+    // - grade-advanced / graduated: Ruby (homeroom teacher)
+    // - character-created: Ruby
+    // - Fallback to Ruby for anything else.
+    let teacher = ctx.teacherFacultyId ? teacherById(ctx.teacherFacultyId) : null;
+    if (!teacher) teacher = teacherById("ruby");
+    if (!teacher) return;
+
+    // Post the tweet. On success, record the date for the daily budget.
+    xSocial.maybePostMilestone(teacher, ctx).then((tweetId) => {
+      if (tweetId && ch && ctx.kind !== "character-created" && ctx.kind !== "graduated") {
+        ch.lastTextTweetDate = new Date().toISOString().slice(0, 10);
+        state.updatedAt = Date.now();
+        void this.persistSession(state.sessionId);
+      }
+    }).catch(() => {});
+  }
+
 }
 
 // ── transition action space ─────────────────────────────────────────────────

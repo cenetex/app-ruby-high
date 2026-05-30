@@ -11,6 +11,7 @@ import {
   ChatService,
   FacultyService,
   RubyHighService,
+  XSocialService,
   createStateStore,
   handleAppRoutes,
 } from "../dist/index.js";
@@ -37,10 +38,18 @@ const fakeRuntime = {
     if (type === RubyHighService.serviceType) return rubySvc;
     if (type === AuthService.serviceType) return authSvc;
     if (type === ChatService.serviceType) return chatSvc;
+    if (type === XSocialService.serviceType) return xSocialSvc;
     return null;
   },
   getSetting: (k) => process.env[k] ?? null,
 };
+
+let xSocialSvc = null;
+try {
+  xSocialSvc = await XSocialService.start(fakeRuntime);
+} catch (err) {
+  console.error("XSocialService failed to start:", err.message);
+}
 
 const rubySvc = await (async () => {
   const svc = new RubyHighService(fakeRuntime, stateStore);

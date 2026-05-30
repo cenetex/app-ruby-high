@@ -25,6 +25,7 @@ let facultySvc = null;
 let authSvc = null;
 let chatSvc = null;
 let rubySvc = null;
+let xSocialSvc = null;
 let bootReady = false;
 let bootError = null;
 
@@ -36,6 +37,7 @@ const fakeRuntime = {
     if (type === "ruby-high") return rubySvc;
     if (type === "ruby-high-auth") return authSvc;
     if (type === "ruby-high-chat") return chatSvc;
+    if (type === "x-social") return xSocialSvc;
     return null;
   },
   getSetting: (k) => process.env[k] ?? null,
@@ -48,6 +50,7 @@ async function bootServices() {
     ChatService,
     FacultyService,
     RubyHighService,
+    XSocialService,
     createStateStore,
     handleAppRoutes: appRoutes,
   } = mod;
@@ -64,6 +67,12 @@ async function bootServices() {
   svc.setFacultyService(facultySvc);
   chatSvc.setRubyHighService(svc);
   rubySvc = svc;
+  try {
+    xSocialSvc = await XSocialService.start(fakeRuntime);
+  } catch (err) {
+    console.error("XSocialService failed to start:", err.message);
+    xSocialSvc = null;
+  }
   bootReady = true;
 }
 
