@@ -897,7 +897,7 @@ export interface CharacterStats {
  *  before appearing in the student's yearbook. The tweet is the reveal. */
 export interface PendingPhotoReveal {
   photoId: string;
-  kind: "portrait" | "diploma" | "graduation";
+  kind: "portrait" | "diploma" | "graduation" | "class-photo";
   /** Public URL of the already-uploaded image. */
   imageUrl: string;
   /** Which teacher faculty will tweet this photo. */
@@ -1178,6 +1178,10 @@ export interface NpcStudentState {
    *  was part of the legacy free-play loop. */
   currentRoom: TeachingRoomId | null;
   stats: CharacterStats;
+  /** Display name. Pre-defined NPCs leave this undefined (name comes from
+   *  the student roster lookup). Player-created characters set this so
+   *  their real name appears in the classroom. */
+  name?: string;
 }
 
 /** Per-NPC arc state — tracks each classmate's independent progression

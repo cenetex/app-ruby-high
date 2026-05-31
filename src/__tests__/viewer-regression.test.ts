@@ -469,14 +469,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "opinionGradeFired = true");
   });
 
-  it("wires sealed yearbook share controls in the character sheet", () => {
+  it("renders yearbook portrait elements in the character sheet", () => {
     const script = inlineScript(renderedViewer());
 
-    expectScriptToContain(script, "function buildYearbookShareActions");
-    expectScriptToContain(script, "yearbook_shares");
-    expectScriptToContain(script, "Open yearbook card");
-    expectScriptToContain(script, "Copy yearbook card link");
-    expect(VIEWER_CSS).toContain(".paper-archive-action");
+    expectScriptToContain(script, "paper-archive-portrait");
   });
 
   it("keeps stream refreshes from holding the Chat/Practice busy lock", () => {

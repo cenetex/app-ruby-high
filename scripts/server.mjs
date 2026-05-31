@@ -26,6 +26,7 @@ let authSvc = null;
 let chatSvc = null;
 let rubySvc = null;
 let xSocialSvc = null;
+let telegramSvc = null;
 let bootReady = false;
 let bootError = null;
 
@@ -38,6 +39,7 @@ const fakeRuntime = {
     if (type === "ruby-high-auth") return authSvc;
     if (type === "ruby-high-chat") return chatSvc;
     if (type === "x-social") return xSocialSvc;
+    if (type === "telegram") return telegramSvc;
     return null;
   },
   getSetting: (k) => process.env[k] ?? null,
@@ -50,6 +52,7 @@ async function bootServices() {
     ChatService,
     FacultyService,
     RubyHighService,
+    TelegramService,
     XSocialService,
     createStateStore,
     handleAppRoutes: appRoutes,
@@ -72,6 +75,12 @@ async function bootServices() {
   } catch (err) {
     console.error("XSocialService failed to start:", err.message);
     xSocialSvc = null;
+  }
+  try {
+    telegramSvc = await TelegramService.start(fakeRuntime);
+  } catch (err) {
+    console.error("TelegramService failed to start:", err.message);
+    telegramSvc = null;
   }
   bootReady = true;
 }

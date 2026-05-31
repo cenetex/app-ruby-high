@@ -1000,12 +1000,80 @@ export function renderAdminDashboardHtml(): string {
       </div>
     </section>
     <section class="section">
+      <h2>Telegram</h2>
+      <div id="telegram-panel" style="margin-top:12px;">
+        <div class="metric" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <div class="label">Bot Token</div>
+            <input id="tg-token" type="password" placeholder="123:abc..." style="width:100%;height:38px;border:1px solid var(--line);border-radius:6px;padding:0 12px;font:inherit;background:var(--panel);color:var(--ink);">
+          </div>
+          <div style="flex:1;min-width:200px;">
+            <div class="label">Chat ID</div>
+            <input id="tg-chat" type="text" placeholder="-100123..." style="width:100%;height:38px;border:1px solid var(--line);border-radius:6px;padding:0 12px;font:inherit;background:var(--panel);color:var(--ink);">
+          </div>
+          <button id="tg-save" class="x-social-btn" style="height:38px;" data-action="telegram-save">Save</button>
+          <button id="tg-post" class="secondary x-social-btn" style="height:38px;" data-action="telegram-post">Post Snapshot</button>
+        </div>
+        <div id="tg-status" class="sub" style="margin-top:8px;"></div>
+      </div>
+    </section>
+    <section class="section">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <h2>Students</h2>
+        <button class="secondary x-social-btn" data-action="class-photo" style="font-size:13px;">Class Photo</button>
+        <button class="secondary x-social-btn" data-action="class-photo-history" style="font-size:13px;margin-left:6px;">History</button>
+      </div>
+      <div id="students-panel" style="margin-top:12px;">
+        <div class="empty">Loading recently active students…</div>
+      </div>
+    </section>
+    <section class="section">
       <h2>Logs</h2>
       <div class="tables" id="tables"></div>
     </section>
   </main>
   <script>
     const xSocialPrefix = ${JSON.stringify(X_SOCIAL_PREFIX)};
+    async function saveTelegramConfig() {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      tgSave.disabled = true;
+      tgSave.textContent = "Saving…";
+      try {
+        const res = await fetch(xSocialPrefix + "/telegram", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ botToken: tgToken.value.trim(), chatId: tgChat.value.trim() }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          if (data.chatId) tgChat.value = data.chatId;
+          tgStatus.textContent = data.chatId ? "Connected to " + data.chatId : "Connected";
+        } else {
+          tgStatus.textContent = "Error: " + (data.error || "unknown");
+        }
+      } catch { tgStatus.textContent = "Failed to save"; }
+      tgSave.disabled = false;
+      tgSave.textContent = "Save";
+    };
+
+async function postTelegramSnapshot() {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      tgPost.disabled = true;
+      tgPost.textContent = "Posting…";
+      try {
+        const res = await fetch(xSocialPrefix + "/telegram/post", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token },
+        });
+        const data = await res.json();
+        tgStatus.textContent = data.ok ? "Snapshot posted!" : "Failed to post";
+      } catch { tgStatus.textContent = "Post failed"; }
+      tgPost.disabled = false;
+      tgPost.textContent = "Post Snapshot";
+    };
+
     const metricsPath = ${metricsPath};
     const schemaPath = ${schemaPath};
     const overviewPath = ${overviewPath};
@@ -1354,7 +1422,7 @@ export function renderAdminDashboardHtml(): string {
         xPanel.innerHTML = FACULTY_IDS.map(id => {
           const c = connected.get(id);
           if (c) {
-            return '<div class="metric"><div class="label">' + id + '</div><div class="value good" style="font-size:18px;">\u2714 Connected</div><div class="sub">@' + escHtml(c.xScreenName || "") + '</div><button class="secondary x-social-btn" style="margin-top:8px;width:100%;" data-action="disconnect" data-teacher="' + id + '">Disconnect</button></div>';
+            return '<div class="metric"><div class="label">' + id + '</div><div class="value good" style="font-size:18px;">\u2714 Connected</div><div class="sub">@' + escHtml(c.xScreenName || "") + '</div><div style="display:flex;gap:6px;margin-top:8px;"><button class="x-social-btn" style="flex:1;" data-action="post" data-teacher="' + id + '">Post</button><button class="secondary x-social-btn" style="flex:1;" data-action="disconnect" data-teacher="' + id + '">Disconnect</button></div></div>';
           }
           return '<div class="metric"><div class="label">' + id + '</div><div class="value" style="font-size:18px;color:var(--muted);">\u2014</div><div class="sub">Not connected</div><button style="margin-top:8px;width:100%;" class="x-social-btn" data-action="connect" data-teacher="' + id + '">Connect</button></div>';
         }).join("");
@@ -1388,22 +1456,205 @@ export function renderAdminDashboardHtml(): string {
       } catch { /* best effort */ }
     }
 
+
+    // ── Student Report Cards ────────────────────────────────────────────
+    const studentsPanel = document.getElementById("students-panel");
+
+    async function refreshStudents() {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) { studentsPanel.innerHTML = '<div class="empty">Unlock to see students.</div>'; return; }
+      try {
+        const res = await fetch(xSocialPrefix + "/students", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (!res.ok) throw new Error(res.status);
+        const data = await res.json();
+        if (!data.students || data.students.length === 0) {
+          studentsPanel.innerHTML = '<div class="empty">No recently active students.</div>';
+          return;
+        }
+        const gradeLabels = { "9":"Freshman","10":"Sophomore","11":"Junior","12":"Senior" };
+        const shortGrade = { "9":"FR","10":"SO","11":"JR","12":"SR" };
+        let lastGrade = "";
+        let html = "";
+        for (const s of data.students) {
+          const gl = gradeLabels[s.grade] || ("Grade " + s.grade);
+          if (gl !== lastGrade) {
+            lastGrade = gl;
+            html += '<div class="label" style="margin-top:16px;margin-bottom:6px;font-size:14px;">' + gl + ' — top 3</div>';
+          }
+          const sg = shortGrade[s.grade] || s.grade;
+          const grades = Object.entries(s.classGrades || {}).map(([f,g]) => f + ":" + g).join(" ") || "no grades";
+          const stats = ["head","heart","hustle","honor"].map(k => k + ":" + (s.stats && s.stats[k] >= 0 ? "+" : "") + (s.stats ? s.stats[k] : 0)).join(" ");
+          const portraitImg = s.portraitUrl ? '<span style="width:40px;height:40px;border-radius:50%;overflow:hidden;border:2px solid var(--line);flex-shrink:0;display:block;"><img src="' + escHtml(s.portraitUrl) + '" style="width:40px;height:40px;object-fit:cover;object-position:50% 15%;transform:scale(2.5);transform-origin:top center;display:block;" alt=""></span>' : '<span style="width:40px;height:40px;border-radius:50%;background:var(--line);flex-shrink:0;display:flex;border:2px solid var(--line);align-items:center;justify-content:center;font-size:16px;color:var(--muted);">' + escHtml(s.name.charAt(0).toUpperCase()) + '</span>';
+          html += '<div class="metric" style="display:flex;align-items:center;gap:12px;"><div>' + portraitImg + '</div><div style="flex:1;min-width:0;"><div class="label">' + escHtml(s.name) + ' <span style="color:var(--muted);font-weight:400;">' + sg + ' · ' + escHtml(s.playbookId) + '</span></div><div class="sub">' + escHtml(stats) + '</div><div class="sub">' + escHtml(grades) + ' · ' + (s.yearbookCount||0) + '/4 sealed</div></div><button class="x-social-btn" style="white-space:nowrap;flex-shrink:0;" data-action="post-report" data-session="' + s.sessionId + '">Post Report</button></div>';
+        }
+        studentsPanel.innerHTML = html;
+      } catch {
+        studentsPanel.innerHTML = '<div class="empty">Failed to load students.</div>';
+      }
+    }
+
+    async function postReportCard(sessionId, btn) {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      btn.disabled = true;
+      const origText = btn.textContent;
+      btn.textContent = "Posting…";
+      try {
+        // Get the first connected teacher to post from.
+        const connRes = await fetch(xSocialPrefix + "/connected", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        const connData = await connRes.json();
+        const connected = connData.teachers && connData.teachers.length > 0 ? connData.teachers[0] : null;
+        if (!connected) { btn.textContent = "No teacher"; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); return; }
+
+        const res = await fetch(xSocialPrefix + "/post-report/" + connected.teacherId, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          btn.textContent = "Posted!";
+          setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+        } else {
+          btn.textContent = "Failed";
+          setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+        }
+      } catch {
+        btn.textContent = "Error";
+        setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+      }
+    }
+
+    async function postClassPhoto(btn) {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      btn.disabled = true;
+      const origText = btn.textContent;
+      btn.textContent = "Generating…";
+      try {
+        const connRes = await fetch(xSocialPrefix + "/connected", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        const connData = await connRes.json();
+        const connected = connData.teachers && connData.teachers.length > 0 ? connData.teachers[0] : null;
+        if (!connected) { btn.textContent = "No teacher"; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); return; }
+        const res = await fetch(xSocialPrefix + "/class-photo/" + connected.teacherId, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token },
+        });
+        const data = await res.json();
+        btn.textContent = data.ok ? "Posted!" : "Failed";
+      } catch {
+        btn.textContent = "Error";
+      }
+      setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+    }
+
+    // ── Telegram ───────────────────────────────────────────────────────
+    const tgToken = document.getElementById("tg-token");
+    const tgChat = document.getElementById("tg-chat");
+    const tgSave = document.getElementById("tg-save");
+    const tgPost = document.getElementById("tg-post");
+    const tgStatus = document.getElementById("tg-status");
+
+    // Find chat ID from recent updates
+    async function refreshTelegram() {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      try {
+        const res = await fetch(xSocialPrefix + "/telegram", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        tgToken.value = data.hasToken ? "(already set)" : "";
+        tgChat.value = data.chatId || "";
+        tgStatus.textContent = data.enabled ? "Connected" : "Not configured";
+      } catch { tgStatus.textContent = "Failed to load"; }
+    }
+
+    // Save handler via document delegation
+    
+    
+    async function showClassPhotoHistory() {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      const panel = document.getElementById("students-panel");
+      panel.innerHTML = '<div class="empty">Loading class photos…</div>';
+      try {
+        const res = await fetch(xSocialPrefix + "/snapshot", {
+          headers: { Authorization: "Bearer " + token },
+        });
+        const data = await res.json();
+        const photos = (data.photoPool || []).filter(p => p.kind === "class-photo");
+        if (photos.length === 0) {
+          panel.innerHTML = '<div class="empty">No class photos yet. Generate one first.</div>';
+          return;
+        }
+        panel.innerHTML = photos.map(p => {
+          const date = new Date(p.earnedAt).toLocaleDateString();
+          return '<div class="metric" style="display:flex;align-items:center;justify-content:space-between;"><div><div class="label">Class Photo</div><div class="sub">' + date + ' · ' + p.studentName + '</div></div><span class="sub" style="color:var(--muted);">queued</span></div>';
+        }).join("");
+        panel.innerHTML += '<div style="margin-top:8px;"><button class="secondary x-social-btn" data-action="refresh-students" style="font-size:12px;">Back to Students</button></div>';
+      } catch { panel.innerHTML = '<div class="empty">Failed to load class photos.</div>'; }
+    }
+    refreshTelegram();
+    refreshStudents();
+      } catch { /* best effort */ }
+    async function postX(teacherId, btn) {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      btn.disabled = true;
+      const origText = btn.textContent;
+      btn.textContent = "Posting…";
+      try {
+        const res = await fetch(xSocialPrefix + "/post/" + teacherId, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token },
+        });
+        const data = await res.json();
+        if (data.ok) {
+          btn.textContent = "Posted!";
+          setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+        } else {
+          btn.textContent = "Failed";
+          setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+        }
+      } catch {
+        btn.textContent = "Error";
+        setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+      }
+    }
+
     function escHtml(s) {
       return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     }
 
     refreshXSocial();
 
-    // Delegated click handler for X Social connect/disconnect buttons.
-    xPanel.addEventListener("click", (e) => {
+    // Delegated click handler for X Social and Students buttons.
+    document.addEventListener("click", (e) => {
       const btn = e.target.closest(".x-social-btn");
       if (!btn) return;
       const action = btn.dataset.action;
       const teacherId = btn.dataset.teacher;
       if (action === "connect") connectX(teacherId);
       else if (action === "disconnect") disconnectX(teacherId);
+      else if (action === "post") postX(teacherId, btn);
+      else if (action === "telegram-save") saveTelegramConfig();
+      else if (action === "telegram-post") postTelegramSnapshot();
+      else if (action === "class-photo") postClassPhoto(btn);
+      else if (action === "class-photo-history") showClassPhotoHistory();
+      else if (action === "refresh-students") refreshStudents();
+      if (e.target.id === "tg-save") saveTelegramConfig();
+      if (e.target.id === "tg-post") postTelegramSnapshot();
     });
   </script>
 </body>
 </html>`;
 }
+// cache bust 1780230737

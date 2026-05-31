@@ -6024,6 +6024,29 @@ export const VIEWER_CSS = `
     height: 100%;
     object-fit: cover;
   }
+  .paper-archive-portrait {
+    margin-top: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-card);
+  }
+  .paper-archive-portrait img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .paper-archive-pending {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .paper-archive-pending b {
+    color: var(--accent);
+  }
   .paper-archive-actions {
     display: flex;
     flex-wrap: wrap;

@@ -8045,8 +8045,6 @@ export function runViewerClient(bootstrap) {
     const summary = entry.summary || { correct: 0, total: 0 };
     const gradeIdx = GRADE_ORDER.indexOf(String(entry.grade));
     const diamondCount = Math.max(1, gradeIdx + 1);
-    const share = yearbookShareForEntry(entry, liveChar);
-
     const item = document.createElement("div");
     item.className = "paper-archive-entry";
     if (pb && pb.accent) item.style.setProperty("--paper-accent", pb.accent);
@@ -8094,8 +8092,17 @@ export function runViewerClient(bootstrap) {
     if (entry.photo) {
       item.appendChild(buildGraduationPhotoCollectible(entry.photo));
     }
-    if (share && share.url) {
-      item.appendChild(buildYearbookShareActions(share));
+    // Show the character's portrait or diploma photo inline in the yearbook.
+    const entryImgUrl = entry.diplomaImageDataUrl || entry.portraitDataUrl;
+    if (entryImgUrl) {
+      const photoWrap = document.createElement("div");
+      photoWrap.className = "paper-archive-portrait";
+      const img = document.createElement("img");
+      img.alt = (entry.name || "Student") + " photo";
+      img.loading = "lazy";
+      img.src = entryImgUrl;
+      photoWrap.appendChild(img);
+      item.appendChild(photoWrap);
     }
     return item;
   }
@@ -8160,21 +8167,6 @@ export function runViewerClient(bootstrap) {
     return wrap;
   }
 
-  function yearbookShareForEntry(entry, liveChar) {
-    const shares = lastTelemetry && Array.isArray(lastTelemetry.yearbook_shares) ? lastTelemetry.yearbook_shares : [];
-    if (!shares.length || !entry) return null;
-    const grade = String(entry.grade || "");
-    const completedAt = Number(entry.completedAt || 0);
-    const name = String(entry.name || liveChar?.name || "");
-    return shares.find((share) =>
-      String(share.grade || "") === grade
-      && Number(share.completedAt || 0) === completedAt
-      && (!name || share.characterName === name)
-    ) || shares.find((share) =>
-      String(share.grade || "") === grade
-      && Number(share.completedAt || 0) === completedAt
-    ) || null;
-  }
 
   function buildYearbookShareActions(share) {
     const actions = document.createElement("div");

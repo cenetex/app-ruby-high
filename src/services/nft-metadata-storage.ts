@@ -46,6 +46,42 @@ export function setNftMetadataUploaderForTest(
   };
 }
 
+/** Upload raw image bytes to Arweave via Irys. Returns the gateway URL.
+ *  Uses the same Irys/Solana infrastructure as NFT metadata storage. */
+export async function uploadImageToArweave(
+  imageBytes: Buffer,
+  contentType: string,
+  opts: { tags?: Array<{ name: string; value: string }>; env?: NodeJS.ProcessEnv } = {},
+): Promise<string> {
+  const env = opts.env ?? process.env;
+  const tags = [
+    { name: "Content-Type", value: contentType },
+    { name: "App-Name", value: "Ruby-High" },
+    ...(opts.tags ?? []),
+  ];
+  const data = Buffer.from(imageBytes);
+  if (uploaderOverride) {
+    const uri = await uploaderOverride({
+      assetKey: `class-photo-${Date.now()}`,
+      fallbackUri: "",
+      metadata: { size: data.length, contentType },
+      metadataJson: "",
+      metadataHash: createHash("sha256").update(data).digest("hex"),
+    });
+    return uri;
+  }
+  const irys = await irysSolanaClient(env);
+  await ensureIrysBalance(irys, data.length, tags, env);
+  const receipt = await irys.upload(data, { tags });
+  const gateway = env.RUBY_HIGH_NFT_METADATA_ARWEAVE_GATEWAY
+    ?? env.RUBY_HIGH_NFT_ARWEAVE_GATEWAY
+    ?? DEFAULT_IRYS_GATEWAY;
+  const id = typeof receipt.id === "string" ? receipt.id : "";
+  const uri = id ? `${gateway.replace(/\/+$/, "")}/${id}` : gateway;
+  log.event("nft.arweave-image-uploaded", { bytes: data.length, contentType, uri });
+  return uri;
+}
+
 export function nftMetadataStorageEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return supportedMetadataStorageMode(metadataStorageMode(env));
 }

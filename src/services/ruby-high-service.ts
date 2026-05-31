@@ -649,6 +649,49 @@ export interface RubyHighMetricEventsSnapshot {
   };
 }
 
+export interface DailyMemoryEntry {
+  studentName: string;
+  facultyId?: string;
+  letterGrade?: string;
+  fromGrade?: string;
+  toGrade?: string;
+}
+
+export interface SchoolSnapshotPhoto {
+  studentName: string;
+  kind: "portrait" | "diploma" | "graduation" | "class-photo";
+  teacherFacultyId: string;
+  earnedAt: number;
+}
+
+export interface SchoolSnapshot {
+  topByYear: Record<string, RecentlyActiveStudent[]>;
+  photoPool: SchoolSnapshotPhoto[];
+  dailyMemories: DailyMemories;
+}
+
+export interface RecentlyActiveStudent {
+  sessionId: string;
+  name: string;
+  playbookId: string;
+  grade: string;
+  stats: CharacterStats;
+  classGrades: Record<string, string>;
+  yearbookCount: number;
+  lastActive: number;
+  portraitUrl?: string;
+}
+
+export interface DailyMemories {
+  date: string;
+  charactersCreated: string[];
+  classesPassed: DailyMemoryEntry[];
+  gradesAdvanced: DailyMemoryEntry[];
+  graduations: string[];
+  totalStudents: number;
+  totalQuestionsAnswered: number;
+}
+
 export interface YearbookShareCard {
   shareId: string;
   grade: Grade;
@@ -1567,7 +1610,7 @@ export class RubyHighService extends Service {
         cardGrant: true,
       },
     };
-    const cards = issueHallPassCardsForTransaction(state, transaction, cardCount);
+    const cards = issueHallPassCardsForTransaction(state, transaction, cardCount, this.sessions);
     attachHallPassCardMetadata(transaction, cards);
     recordWalletTransaction(state, transaction);
     this.recordMetricEvent("commerce", {
@@ -1753,7 +1796,7 @@ export class RubyHighService extends Service {
         ...(openSignature ? { openSignature } : {}),
       },
     };
-    const cards = issueHallPassCardsForTransaction(state, transaction, pack.cardCount);
+    const cards = issueHallPassCardsForTransaction(state, transaction, pack.cardCount, this.sessions);
     attachHallPassCardMetadata(transaction, cards);
     pack.status = "opened";
     pack.openedAt = at;
@@ -4520,6 +4563,57 @@ export class RubyHighService extends Service {
    *
    *  The day-key dedupe prevents double-tick if the player passes multiple
    *  questions on the same day after the streak has already ticked. */
+  /** Replace a graduated NPC with a random player-created character.
+   *  The new student enters as a Freshman (grade 9) with stats derived
+   *  from their playbook. Over time, the classroom fills with real players. */
+  private replaceGraduatedNpc(state: QuizState, graduatedNpcId: string): void {
+    if (!state.npcCohort) return;
+    const existingIds = new Set(state.npcCohort.map((n) => n.id));
+    const candidates: Array<{ name: string; playbookId: string; stats: CharacterStats; sessionId: string }> = [];
+    for (const [, s] of this.sessions) {
+      const ch = s.character;
+      if (!ch?.portraitDataUrl) continue;
+      if (existingIds.has(ch.name)) continue;
+      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+      candidates.push({
+        name: ch.name,
+        playbookId: ch.playbookId,
+        stats: { ...ch.stats },
+        sessionId: s.sessionId,
+      });
+    }
+    if (candidates.length === 0) return;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
+    const newId = `player:${pick.sessionId}`;
+    // Add cohort arc entry.
+    state.npcCohort.push({
+      id: newId,
+      grade: "9",
+      streak: { grade: "9", count: 0 },
+      completedGrades: [],
+      graduated: false,
+    });
+    // Add roster entry for Freshman classrooms.
+    let roster = state.npcRosters["9"];
+    if (!roster) {
+      roster = initialNpcRoster("9");
+      state.npcRosters["9"] = roster;
+    }
+    roster.push({
+      id: newId,
+      name: pick.name,
+      currentRoom: null,
+      stats: pick.stats,
+      grade: "9",
+    });
+    log.event("npc.replaced", {
+      sessionId: state.sessionId,
+      graduatedNpcId,
+      newStudentId: newId,
+      newStudentName: pick.name,
+    });
+  }
+
   private applyCohortDaily(state: QuizState, correctAnswer: Choice, key: string): void {
     if (!state.npcCohort) state.npcCohort = initialNpcCohort();
     const cohort = state.npcCohort;
@@ -4549,6 +4643,8 @@ export class RubyHighService extends Service {
         npc.streak = { grade: advance, count: 0 };
       } else {
         npc.graduated = true;
+        // Replace graduated NPC with a random player character as a freshman.
+        this.replaceGraduatedNpc(state, npc.id);
       }
     }
   }
@@ -5791,6 +5887,10 @@ export class RubyHighService extends Service {
       case "graduation":
         ch.diplomaImageDataUrl = photo.imageUrl;
         break;
+      case "class-photo":
+        // Class photos don't map to a single character's field.
+        // They're revealed by being tweeted — that's the artifact.
+        break;
     }
     this.archiveCompletedCharacter(state, ch);
     state.updatedAt = Date.now();
@@ -5817,6 +5917,13 @@ export class RubyHighService extends Service {
     for (const [sid, state] of this.sessions) {
       const ch = state.character;
       if (!ch?.pendingPhotos?.length) continue;
+      // Skip smoke-test/auto-generated characters.
+      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+      // Skip test/smoke characters that haven't completed any classes.
+      const hasClasses = Object.values(ch.dailyClasses ?? {}).some(
+        (r) => r.status === "complete",
+      );
+      if (!hasClasses && ch.pendingPhotos.every((p) => p.kind !== "class-photo")) continue;
       for (const p of ch.pendingPhotos) {
         allPhotos.push({ sessionId: sid, photo: p });
       }
@@ -5843,6 +5950,7 @@ export class RubyHighService extends Service {
     const ctx: XMilestoneContext = {
       kind: pick.photo.kind === "portrait" ? "portrait-set"
           : pick.photo.kind === "diploma" ? "diploma-earned"
+          : pick.photo.kind === "class-photo" ? "class-photo"
           : "graduated",
       characterName: this.sessions.get(pick.sessionId)?.character?.name ?? "A student",
       portraitUrl: pick.photo.kind === "portrait" ? pick.photo.imageUrl : undefined,
@@ -5855,6 +5963,66 @@ export class RubyHighService extends Service {
     }).catch(() => {});
   }
 
+  /** Collect today's school memories across all sessions. Returns a
+   *  summary suitable for a teacher to compose a reflective post from. */
+  getDailyMemories(): DailyMemories {
+    const today = new Date().toISOString().slice(0, 10);
+    const memories: DailyMemories = {
+      date: today,
+      charactersCreated: [],
+      classesPassed: [],
+      gradesAdvanced: [],
+      graduations: [],
+      totalStudents: 0,
+      totalQuestionsAnswered: 0,
+    };
+    for (const [, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch) continue;
+      memories.totalStudents += 1;
+      // Characters created today.
+      if (ch.createdAt) {
+        const createdDate = new Date(ch.createdAt).toISOString().slice(0, 10);
+        if (createdDate === today) {
+          memories.charactersCreated.push(ch.name);
+        }
+      }
+      // Daily classes passed today.
+      for (const record of Object.values(ch.dailyClasses ?? {})) {
+        if (record.status === "complete" && record.completedAt) {
+          const completedDate = new Date(record.completedAt).toISOString().slice(0, 10);
+          if (completedDate === today && letterGradePasses(record.letterGrade ?? "")) {
+            memories.classesPassed.push({
+              studentName: ch.name,
+              facultyId: record.facultyId,
+              letterGrade: record.letterGrade ?? "?",
+            });
+          }
+        }
+        memories.totalQuestionsAnswered += record.questionCount ?? 0;
+      }
+      // Grade advancements today (check levelUps).
+      for (const lu of ch.levelUps ?? []) {
+        const awardedDate = new Date(lu.awardedAt).toISOString().slice(0, 10);
+        if (awardedDate === today) {
+          memories.gradesAdvanced.push({
+            studentName: ch.name,
+            fromGrade: lu.completedGrade,
+            toGrade: lu.targetGrade ?? "graduated",
+          });
+        }
+      }
+      // Graduations today (yearbook entries with today's date).
+      for (const entry of ch.yearbook ?? []) {
+        const completedDate = new Date(entry.completedAt).toISOString().slice(0, 10);
+        if (completedDate === today && entry.grade === "12") {
+          memories.graduations.push(ch.name);
+        }
+      }
+    }
+    return memories;
+  }
+
   /** Total number of pending photos across all sessions. Used by the
    *  viewer to show queue depth without exposing individual photos. */
   pendingPhotoPoolSize(): number {
@@ -5863,6 +6031,126 @@ export class RubyHighService extends Service {
       count += state.character?.pendingPhotos?.length ?? 0;
     }
     return count;
+  }
+
+  /** Recently active students, ranked by grade performance.
+   *  Returns top 3 per year (Freshman/Sophomore/Junior/Senior). */
+  getRecentlyActiveStudents(): RecentlyActiveStudent[] {
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const byGrade = new Map<string, RecentlyActiveStudent[]>();
+
+    for (const [, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch) continue;
+      const lastActivity = this.lastActivityFor(ch, state);
+      if (now - lastActivity > weekMs) continue;
+      // Skip smoke-test and auto-generated characters.
+      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+      // Skip students who haven't completed any classes.
+      const hasGrades = Object.values(ch.dailyClasses ?? {}).some(
+        (r) => r.status === "complete",
+      );
+      if (!hasGrades) continue;
+      const classGrades: Record<string, string> = {};
+      for (const record of Object.values(ch.dailyClasses ?? {})) {
+        if (record.status === "complete" && record.letterGrade) {
+          classGrades[record.facultyId] = record.letterGrade;
+        }
+      }
+      const student: RecentlyActiveStudent = {
+        sessionId: state.sessionId,
+        name: ch.name,
+        playbookId: ch.playbookId,
+        grade: state.currentGrade ?? "9",
+        stats: { ...ch.stats },
+        classGrades,
+        yearbookCount: ch.yearbook?.length ?? 0,
+        lastActive: lastActivity,
+        portraitUrl: ch.portraitDataUrl ?? undefined,
+      };
+      const g = student.grade;
+      if (!byGrade.has(g)) byGrade.set(g, []);
+      byGrade.get(g)!.push(student);
+    }
+
+    // Take top 3 per year, sorted: portraits first, then grade score.
+    const results: RecentlyActiveStudent[] = [];
+    for (const [grade, students] of byGrade) {
+      students.sort((a, b) => {
+        const aPortrait = a.portraitUrl ? 1 : 0;
+        const bPortrait = b.portraitUrl ? 1 : 0;
+        if (aPortrait !== bPortrait) return bPortrait - aPortrait;
+        return this.gradeScore(b) - this.gradeScore(a);
+      });
+      results.push(...students.slice(0, 3));
+    }
+    // Sort results by grade, then by score within grade.
+    results.sort((a, b) => {
+      const gd = Number(a.grade) - Number(b.grade);
+      if (gd !== 0) return gd;
+      return this.gradeScore(b) - this.gradeScore(a);
+    });
+    return results;
+  }
+
+  /** Full school snapshot — the data feed for bots (X, Telegram, etc.).
+   *  Returns top students per year, photo queue, student of the day, and
+   *  daily memories in a single call. */
+  getSchoolSnapshot(): SchoolSnapshot {
+    const top = this.getRecentlyActiveStudents();
+    const byYear: Record<string, RecentlyActiveStudent[]> = {};
+    for (const s of top) {
+      if (!byYear[s.grade]) byYear[s.grade] = [];
+      byYear[s.grade]!.push(s);
+    }
+    // Photo pool: all pending photos across all sessions.
+    const photoPool: SchoolSnapshotPhoto[] = [];
+    for (const [, state] of this.sessions) {
+      for (const p of state.character?.pendingPhotos ?? []) {
+        photoPool.push({
+          studentName: state.character!.name,
+          kind: p.kind,
+          teacherFacultyId: p.teacherFacultyId,
+          earnedAt: p.earnedAt,
+        });
+      }
+    }
+    photoPool.sort((a, b) => a.earnedAt - b.earnedAt);
+    return {
+      topByYear: byYear,
+      photoPool,
+      dailyMemories: this.getDailyMemories(),
+    };
+  }
+
+  /** Composite score from class grades. Higher = better. No grades = 0. */
+  private gradeScore(student: RecentlyActiveStudent): number {
+    const grades = Object.values(student.classGrades);
+    if (grades.length === 0) return 0;
+    const letterMap: Record<string, number> = { A: 5, B: 4, C: 3, D: 2, F: 1 };
+    let sum = 0;
+    for (const g of grades) {
+      const firstChar = g.charAt(0).toUpperCase();
+      const letter = letterMap[firstChar];
+      if (letter === undefined) continue;
+      const mod = g.includes("+") ? 0.3 : g.includes("-") ? -0.3 : 0;
+      sum += letter + mod;
+    }
+    return sum / grades.length;
+  }
+
+  private lastActivityFor(ch: PlayerCharacter, state: QuizState): number {
+    let latest = ch.createdAt ?? 0;
+    for (const record of Object.values(ch.dailyClasses ?? {})) {
+      const t = Number(record.updatedAt ?? record.completedAt ?? 0);
+      if (t > latest) latest = t;
+    }
+    for (const lu of ch.levelUps ?? []) {
+      if (lu.awardedAt > latest) latest = lu.awardedAt;
+    }
+    if (state.updatedAt > latest) latest = state.updatedAt;
+    return latest;
   }
 
   /** Reassign pending photos from one teacher to another. Used when a
@@ -6359,22 +6647,60 @@ function pickCatalogEntry(
   return entries[seedInteger(seed) % entries.length] ?? entries[0]!;
 }
 
+function pickPlayerStudentCard(
+  seed: string,
+  sessions: Map<string, QuizState>,
+  seedInteger: SeedIntegerFn = secretHashInteger,
+): HallPassCardCatalogEntry | null {
+  // Collect all player characters with portraits.
+  const candidates: Array<{ name: string; playbookId: string; portraitUrl?: string; sessionId: string }> = [];
+  for (const [sid, state] of sessions) {
+    const ch = state.character;
+    if (!ch?.portraitDataUrl) continue;
+    // Skip smoke test characters.
+    if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+    candidates.push({
+      name: ch.name,
+      playbookId: ch.playbookId,
+      portraitUrl: ch.portraitDataUrl,
+      sessionId: sid,
+    });
+  }
+  if (candidates.length === 0) return null;
+  const idx = Math.abs(seedInteger(`${seed}:player-student`)) % candidates.length;
+  const pick = candidates[idx]!;
+  return {
+    characterId: `player:${pick.sessionId}`,
+    characterName: pick.name,
+    title: `${pick.name} · ${pick.playbookId}`,
+    role: "student",
+    rarity: "common",
+    blurb: `A real student at Ruby High. ${pick.playbookId}.`,
+    color: "#4a6fa5",
+    artSheet: "students",
+    artPosition: String(idx),
+  };
+}
+
 function hallPassCardPackEntries(
   seed: string,
-  options: { forceSpecialCard?: boolean } = {},
+  options: { forceSpecialCard?: boolean; sessions?: Map<string, QuizState> } = {},
   seedInteger: SeedIntegerFn = secretHashInteger,
 ): HallPassCardCatalogEntry[] {
   const teacher = seedInteger(`${seed}:super-rare-teacher`) % 64 === 0 && HALL_PASS_CARD_SUPER_RARE_TEACHERS.length > 0
     ? pickCatalogEntry(HALL_PASS_CARD_SUPER_RARE_TEACHERS, `${seed}:super-teacher`, seedInteger)
     : pickCatalogEntry(HALL_PASS_CARD_TEACHERS, `${seed}:teacher`, seedInteger);
-  const students = HALL_PASS_CARD_STUDENTS
+  const npcStudents = HALL_PASS_CARD_STUDENTS
     .slice()
     .sort((a, b) => seedInteger(`${seed}:student:${a.characterId}`) - seedInteger(`${seed}:student:${b.characterId}`))
-    .slice(0, 3);
+    .slice(0, 2);
+  const playerStudent = pickPlayerStudentCard(`${seed}:player-student`, options.sessions ?? new Map(), seedInteger);
+  const students = playerStudent ? [...npcStudents, playerStudent] : [...npcStudents, ...HALL_PASS_CARD_STUDENTS.slice(2, 3)];
   const specialCard = (options.forceSpecialCard || seedInteger(`${seed}:special-card`) % 64 === 0) && HALL_PASS_CARD_SPECIALS.length > 0
     ? pickCatalogEntry(HALL_PASS_CARD_SPECIALS, `${seed}:special`, seedInteger)
     : null;
-  const finalSlot = specialCard ?? pickCatalogEntry(HALL_PASS_CARD_ITEM_LOCATIONS, `${seed}:utility`, seedInteger);
+  const locationCard = pickCatalogEntry(HALL_PASS_CARD_ITEM_LOCATIONS, `${seed}:utility`, seedInteger);
+  const finalSlot = specialCard ?? locationCard;
   return [teacher, ...students, finalSlot];
 }
 
@@ -6390,6 +6716,7 @@ function issueHallPassCardsForTransaction(
   state: QuizState,
   transaction: RubyHighWalletTransaction,
   amount: number,
+  sessions?: Map<string, QuizState>,
 ): RubyHighHallPassCard[] {
   const cards = normalizeHallPassCards(state.wallet.hallPassCards);
   const existingIds = new Set(cards.map((card) => card.id));
@@ -6431,6 +6758,7 @@ function issueHallPassCardsForTransaction(
         : packIndex === 0 ? transaction.id : `${transaction.id}:pack:${packIndex}`;
       packEntries = hallPassCardPackEntries(packSeed, {
         forceSpecialCard: packIndex === guaranteedSpecialPackIndex,
+        sessions: sessions,
       }, seedInteger);
       packCache.set(packIndex, packEntries);
     }

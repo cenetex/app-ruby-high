@@ -11,6 +11,7 @@ import {
   ChatService,
   FacultyService,
   RubyHighService,
+  TelegramService,
   XSocialService,
   createStateStore,
   handleAppRoutes,
@@ -39,6 +40,7 @@ const fakeRuntime = {
     if (type === AuthService.serviceType) return authSvc;
     if (type === ChatService.serviceType) return chatSvc;
     if (type === XSocialService.serviceType) return xSocialSvc;
+    if (type === TelegramService.serviceType) return telegramSvc;
     return null;
   },
   getSetting: (k) => process.env[k] ?? null,
@@ -49,6 +51,12 @@ try {
   xSocialSvc = await XSocialService.start(fakeRuntime);
 } catch (err) {
   console.error("XSocialService failed to start:", err.message);
+}
+let telegramSvc = null;
+try {
+  telegramSvc = await TelegramService.start(fakeRuntime);
+} catch (err) {
+  console.error("TelegramService failed to start:", err.message);
 }
 
 const rubySvc = await (async () => {

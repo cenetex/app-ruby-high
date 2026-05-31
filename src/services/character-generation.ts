@@ -167,6 +167,46 @@ export async function renderDiplomaImage(args: {
   }
 }
 
+export async function renderClassPhoto(args: {
+  apiKey: string;
+  studentImages: Array<{ name: string; imageUrl: string }>;
+}): Promise<string> {
+  const { apiKey, studentImages } = args;
+  if (studentImages.length === 0) throw new Error("No student images provided.");
+  // Build a content array with all student images + prompt.
+  const contentParts: Array<Record<string, unknown>> = [];
+  for (const s of studentImages) {
+    contentParts.push({
+      type: "image_url",
+      image_url: { url: s.imageUrl },
+    });
+  }
+  const nameList = studentImages.map((s) => s.name).join(", ");
+  contentParts.push({
+    type: "text",
+    text: [
+      `Arrange these ${studentImages.length} students (${nameList}) into a CLASS PHOTO.`,
+      "STYLE: JRPG-style group photo — a single wide horizontal image. Students stand together in 1-2 rows against a SOLID FLAT pale lavender background (#ece6f5). Each student keeps their original appearance, outfit, and art style. 5px bold black outlines. Vibrant flat colors. Everyone visible, no one cut off. Natural group arrangement — some in front, some behind, like a real class photo.",
+      "OUTPUT: a single wide image containing all students together. Solid pale lavender background. No text, no names, no labels.",
+    ].join("\n"),
+  });
+
+  const body = await openRouterJson<PortraitResponse>({
+    apiKey,
+    label: "class-photo",
+    timeoutMs: PORTRAIT_TIMEOUT_MS * 2, // composite takes longer
+    body: {
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: contentParts }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    },
+  });
+  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!url) throw new Error("Class photo generation returned no image.");
+  return url;
+}
+
 export function highestScoringFaculty(scores: Record<string, { correct: number; total: number }> | undefined): string {
   if (!scores) return "ruby";
   let best: { id: string; ratio: number; total: number } | null = null;

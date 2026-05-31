@@ -1,5 +1,6 @@
-import { createHash, randomBytes } from "node:crypto";
-import { readFile, writeFile, mkdir, unlink } from "node:fs/promises";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import { isIP } from "node:net";
+import { readFile, writeFile, mkdir, unlink, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -15,7 +16,6 @@ import { log } from "./logger.js";
 import {
   fetchLlmChatCompletions,
   hasConfiguredLlmCredential,
-  llmProviderName,
 } from "./llm-provider.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
 
@@ -39,7 +39,8 @@ export type XMilestoneKind =
   | "grade-advanced"
   | "graduated"
   | "portrait-set"
-  | "diploma-earned";
+  | "diploma-earned"
+  | "class-photo";
 
 export interface XMilestoneContext {
   kind: XMilestoneKind;
@@ -80,6 +81,7 @@ const X_MEDIA_UPLOAD = "https://upload.x.com/1.1/media/upload.json";
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024; // X limit: 5 MB for images
 const X_POSTS_PER_24H = 50;
 const TOKEN_REFRESH_WINDOW_SEC = 300;
+const X_FETCH_TIMEOUT_MS = 15_000;
 function xClientId(): string { return process.env.RUBY_HIGH_X_CLIENT_ID ?? ""; }
 function xClientSecret(): string { return process.env.RUBY_HIGH_X_CLIENT_SECRET ?? ""; }
 
@@ -88,7 +90,7 @@ function xRedirectUri(): string {
   return `${base}/api/apps/ruby-high/x/callback`;
 }
 
-const X_OAUTH_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"].join(" ");
+const X_OAUTH_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access", "media.write"].join(" ");
 
 // ── Token Store Implementations ─────────────────────────────────────────────
 
@@ -121,8 +123,7 @@ class JsonXTokenStore implements XTokenStore {
     await mkdir(dirname(this.filePath), { recursive: true });
     const tmp = `${this.filePath}.tmp`;
     await writeFile(tmp, JSON.stringify(data), "utf-8");
-    await writeFile(this.filePath, JSON.stringify(data), "utf-8");
-    try { await unlink(tmp); } catch { /* ignore */ }
+    await rename(tmp, this.filePath);
   }
 
   async loadAll(): Promise<XTokenRecord[]> {
@@ -214,6 +215,61 @@ export function generatePkce(): { verifier: string; challenge: string } {
 
 // ── XSocialService ──────────────────────────────────────────────────────────
 
+
+// ── OAuth 1.0a helpers ─────────────────────────────────────────────────────
+// Used for media upload via X API v1.1 which requires OAuth 1.0a.
+
+
+function oauth1Nonce(): string {
+  return Math.random().toString(36).substring(2, 17);
+}
+
+function oauth1Signature(
+  method: string,
+  url: string,
+  params: Record<string, string>,
+  consumerSecret: string,
+  tokenSecret: string,
+): string {
+  const allParams = { ...params };
+  const paramString = Object.keys(allParams)
+    .sort()
+    .map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(allParams[k]!))
+    .join("&");
+  const base = method.toUpperCase() + "&" + encodeURIComponent(url) + "&" + encodeURIComponent(paramString);
+  const key = encodeURIComponent(consumerSecret) + "&" + encodeURIComponent(tokenSecret);
+  return createHmac("sha1", key).update(base).digest("base64");
+}
+
+function oauth1AuthHeader(
+  method: string,
+  url: string,
+  consumerKey: string,
+  consumerSecret: string,
+  accessToken: string,
+  accessSecret: string,
+): string {
+  const oauthParams: Record<string, string> = {
+    oauth_consumer_key: consumerKey,
+    oauth_nonce: oauth1Nonce(),
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+    oauth_token: accessToken,
+    oauth_version: "1.0",
+  };
+  const sig = oauth1Signature(method, url, oauthParams, consumerSecret, accessSecret);
+  oauthParams["oauth_signature"] = sig;
+  const header = "OAuth " + Object.keys(oauthParams)
+    .sort()
+    .map((k) => encodeURIComponent(k) + '="' + encodeURIComponent(oauthParams[k]!) + '"')
+    .join(", ");
+  return header;
+}
+
+function hasOAuth1Credentials(): boolean {
+  return !!(process.env.RUBY_HIGH_X_CONSUMER_KEY && process.env.RUBY_HIGH_X_ACCESS_TOKEN);
+}
+
 export class XSocialService extends Service {
   static override readonly serviceType = "x-social";
 
@@ -268,7 +324,7 @@ export class XSocialService extends Service {
       throw new Error("RUBY_HIGH_X_CLIENT_ID is not configured.");
     }
     const { verifier, challenge } = generatePkce();
-    const state = `rh-x-${++this.stateCounter}-${teacherId}`;
+    const state = `rh-x-${base64UrlEncode(randomBytes(16))}-${teacherId}`;
     this.pendingVerifiers.set(state, { verifier, teacherId, createdAt: Date.now() });
     for (const [k, v] of this.pendingVerifiers) {
       if (Date.now() - v.createdAt > 600_000) this.pendingVerifiers.delete(k);
@@ -282,6 +338,10 @@ export class XSocialService extends Service {
       state,
       code_challenge: challenge,
       code_challenge_method: "S256",
+      // Force consent so X always returns a refresh token. Without this,
+      // re-authorizing the same app returns an access token without a
+      // refresh token, causing the connection to die after ~2 hours.
+      prompt: "consent",
     });
     return { url: `${X_OAUTH_AUTHORIZE}?${params.toString()}`, state };
   }
@@ -310,6 +370,7 @@ export class XSocialService extends Service {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", ...authHeader },
         body: body.toString(),
+        signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
       });
     } catch (err) {
       log.error("x-social.token-exchange-failed", err, { teacherId: pending.teacherId });
@@ -363,6 +424,7 @@ export class XSocialService extends Service {
             token: token.accessToken,
             client_id: xClientId(),
           }).toString(),
+          signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
         });
       } catch { /* best-effort */ }
     }
@@ -385,6 +447,39 @@ export class XSocialService extends Service {
       } catch { /* reassignment is best-effort */ }
     }
     log.event("x-social.disconnected", { teacherId });
+  }
+
+  /** Import pre-existing tokens (admin debug; bypasses OAuth/PKCE flow). */
+  async importToken(params: {
+    teacherId: string;
+    accessToken: string;
+    refreshToken: string;
+    xUserId?: string;
+    xScreenName?: string;
+  }): Promise<{ xUserId: string; xScreenName: string }> {
+    if (!params.accessToken || !params.refreshToken || !params.teacherId) {
+      throw new Error("teacherId, accessToken, and refreshToken are required.");
+    }
+    const record: XTokenRecord = {
+      teacherId: params.teacherId,
+      accessToken: params.accessToken,
+      refreshToken: params.refreshToken,
+      expiresAt: Date.now() + 7200 * 1000,
+      scope: "tweet.read tweet.write users.read offline.access media.write",
+      xUserId: params.xUserId ?? "imported",
+      xScreenName: params.xScreenName ?? "imported",
+      connectedAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await this.tokenStore.save(record);
+    this.tokens.set(params.teacherId, record);
+    try {
+      const user = await this.fetchXUser(params.accessToken);
+      record.xUserId = user.id;
+      record.xScreenName = user.username;
+      await this.tokenStore.save(record);
+    } catch { /* keep fallback values */ }
+    return { xUserId: record.xUserId, xScreenName: record.xScreenName };
   }
 
   getStatus(teacherId: string): XSocialStatus {
@@ -447,19 +542,21 @@ export class XSocialService extends Service {
     // Resolve and upload an image if the milestone carries one.
     // One photo-reveal tweet per teacher per UTC day.
     const imageUrl = ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    let mediaId: string | null = null;
     if (imageUrl) {
       const today = new Date().toISOString().slice(0, 10);
       if (this.lastPhotoDate.get(teacher.id) === today) {
         log.event("x-social.photo-already-today", { teacherId: teacher.id, kind: ctx.kind });
         return null;
       }
-    }
-    let mediaId: string | null = null;
-    if (imageUrl) {
+      // Reserve the photo slot optimistically to prevent concurrent posts.
+      this.lastPhotoDate.set(teacher.id, today);
       try {
         const imageBytes = await this.resolveImageToBuffer(imageUrl);
         mediaId = await this.uploadMedia(freshToken.accessToken, imageBytes);
       } catch (err) {
+        // Release the reserved slot on failure so another attempt can retry.
+        this.lastPhotoDate.delete(teacher.id);
         log.error("x-social.media-upload-failed", err, { kind: ctx.kind });
         // Fall through — post text-only.
       }
@@ -480,9 +577,7 @@ export class XSocialService extends Service {
 
     if (tweetId) {
       this.recordPost(teacher.id);
-      if (mediaId) {
-        this.lastPhotoDate.set(teacher.id, new Date().toISOString().slice(0, 10));
-      }
+      // lastPhotoDate was already set optimistically above.
       log.event("x-social.posted", {
         teacherId: teacher.id,
         xScreenName: token.xScreenName,
@@ -523,13 +618,27 @@ export class XSocialService extends Service {
     const body = Buffer.concat([headerBytes, imageBytes, footerBytes]);
 
     try {
+      // Use OAuth 1.0a for media upload if credentials are available.
+      // OAuth 2.0 bearer tokens often get 403 on the v1.1 media endpoint.
+      let headers: Record<string, string> = {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      };
+      if (hasOAuth1Credentials()) {
+        headers["Authorization"] = oauth1AuthHeader(
+          "POST", X_MEDIA_UPLOAD,
+          process.env.RUBY_HIGH_X_CONSUMER_KEY!,
+          process.env.RUBY_HIGH_X_CONSUMER_SECRET!,
+          process.env.RUBY_HIGH_X_ACCESS_TOKEN!,
+          process.env.RUBY_HIGH_X_ACCESS_SECRET!,
+        );
+      } else {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
       const res = await fetch(X_MEDIA_UPLOAD, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": `multipart/form-data; boundary=${boundary}`,
-        },
+        headers,
         body,
+        signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
@@ -561,17 +670,44 @@ export class XSocialService extends Service {
       url = `${base}${url}`;
     }
 
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch image: ${res.status}`);
+    // Validate URL safety to prevent SSRF.
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") {
+      throw new Error("Image URL must use https");
     }
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    const hostname = parsed.hostname.toLowerCase();
+    if (!hostname) throw new Error("Image URL has no hostname");
+    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+      throw new Error("Image URL host not allowed: localhost");
+    }
+    if (isIP(hostname)) {
+      if (this.isBlockedAddress(hostname)) {
+        throw new Error("Image URL resolves to a private/reserved address");
+      }
+    } else {
+      // For hostnames, check known blocked suffixes as a coarse filter.
+      if (hostname.endsWith(".local") || hostname.endsWith(".internal")) {
+        throw new Error("Image URL host not allowed: " + hostname);
+      }
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) {
+        throw new Error(`Failed to fetch image: ${res.status}`);
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /** Detect image MIME type from magic bytes. Defaults to image/png. */
   private detectImageMime(bytes: Buffer): string {
-    if (bytes.length < 4) return "image/png";
+    if (bytes.length < 12) return "image/png";
     // PNG: 89 50 4E 47
     if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return "image/png";
     // JPEG: FF D8 FF
@@ -586,9 +722,45 @@ export class XSocialService extends Service {
 
   // ── Internal helpers ────────────────────────────────────────────────────
 
+  /** Block private, link-local, loopback, and reserved IPv4/IPv6 addresses. */
+  private isBlockedAddress(address: string): boolean {
+    const v = isIP(address);
+    if (v === 4) {
+      const parts = address.split(".").map((p) => Number(p));
+      const [a = 0, b = 0, c = 0] = parts;
+      return (
+        a === 0 || a === 10 || a === 127 ||
+        (a === 100 && b >= 64 && b <= 127) ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+        (a === 192 && b === 168) ||
+        (a === 198 && (b === 18 || b === 19)) ||
+        (a === 198 && b === 51 && c === 100) ||
+        (a === 203 && b === 0 && c === 113) ||
+        a >= 224
+      );
+    }
+    if (v === 6) {
+      const normalized = address.toLowerCase();
+      const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+      if (mapped?.[1]) return this.isBlockedAddress(mapped[1]);
+      return (
+        normalized === "::" || normalized === "::1" ||
+        normalized.startsWith("fc") || normalized.startsWith("fd") ||
+        /^fe[89ab]/.test(normalized) ||
+        normalized.startsWith("ff") ||
+        normalized === "2001:db8::" ||
+        normalized.startsWith("2001:db8:")
+      );
+    }
+    return false;
+  }
+
   private async fetchXUser(accessToken: string): Promise<{ id: string; username: string }> {
     const res = await fetch(`${X_API_BASE}/users/me`, {
       headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -620,9 +792,13 @@ export class XSocialService extends Service {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", ...authHeader },
         body: body.toString(),
+        signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
-        await this.disconnect(record.teacherId);
+        // Only disconnect on auth failures (400/401); retry on transient errors.
+        if (res.status === 400 || res.status === 401) {
+          await this.disconnect(record.teacherId);
+        }
         return null;
       }
       const data = (await res.json()) as {
@@ -659,6 +835,7 @@ export class XSocialService extends Service {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
@@ -677,15 +854,16 @@ export class XSocialService extends Service {
     const now = Date.now();
     let entry = this.postCounts.get(teacherId);
     if (!entry || now >= entry.resetAt) {
-      this.postCounts.set(teacherId, { count: 0, resetAt: now + 24 * 60 * 60 * 1000 });
+      this.postCounts.set(teacherId, { count: 1, resetAt: now + 24 * 60 * 60 * 1000 });
       return true;
     }
-    return entry.count < X_POSTS_PER_24H;
+    if (entry.count >= X_POSTS_PER_24H) return false;
+    entry.count += 1;
+    return true;
   }
 
   private recordPost(teacherId: string): void {
-    const entry = this.postCounts.get(teacherId);
-    if (entry) entry.count += 1;
+    // Slot was pre-reserved in checkPostRateLimit; no-op here.
   }
 
   private async generatePostText(teacher: TeacherCharacter, ctx: XMilestoneContext): Promise<string> {
@@ -752,8 +930,226 @@ export class XSocialService extends Service {
         return `${name} is officially on the Ruby High roster — school photo day complete! #RubyHigh`;
       case "diploma-earned":
         return `${name} just earned their diploma from Ruby High. Another milestone! #RubyHigh`;
+      case "class-photo":
+        return `Class photo day at Ruby High! #RubyHigh`;
       default:
         return `${name} hit a new milestone at Ruby High! #RubyHigh`;
+    }
+  }
+
+  /** Post a teacher's reflection on today's school memories. Admin-triggered
+   *  via the admin panel "Post" button. Generates a tweet in the teacher's
+   *  voice based on what happened at school today. */
+  async postReflection(
+    teacher: TeacherCharacter,
+    memories: { date: string; charactersCreated: string[]; classesPassed: Array<{ studentName: string; facultyId?: string; letterGrade?: string }>; gradesAdvanced: Array<{ studentName: string; fromGrade?: string; toGrade?: string }>; graduations: string[]; totalStudents: number; totalQuestionsAnswered: number },
+    opts?: { dryRun?: boolean },
+  ): Promise<string | null> {
+    const token = this.tokens.get(teacher.id);
+    if (!token) return null;
+    const freshToken = await this.ensureFreshToken(token);
+    if (!freshToken) return null;
+
+    const isDryRun = opts?.dryRun ?? process.env.RUBY_HIGH_X_DRY_RUN === "1";
+    const text = await this.generateReflectionText(teacher, memories);
+
+    if (!text || text.trim().length === 0) {
+      log.event("x-social.text-rejected", { reason: "empty" });
+      return null;
+    }
+    if (text.length > 280) {
+      log.event("x-social.text-rejected", { reason: "too-long", length: text.length });
+      return null;
+    }
+
+    if (isDryRun) {
+      log.event("x-social.dry-run", { teacherId: teacher.id, kind: "reflection", text: text.slice(0, 200) });
+      return "dry-run:reflection";
+    }
+
+    const tweetId = await this.postTweet(freshToken.accessToken, text);
+    if (tweetId) {
+      log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "reflection", tweetId });
+    }
+    return tweetId;
+  }
+
+  private async generateReflectionText(
+    teacher: TeacherCharacter,
+    memories: { date: string; charactersCreated: string[]; classesPassed: Array<{ studentName: string; facultyId?: string; letterGrade?: string }>; gradesAdvanced: Array<{ studentName: string; fromGrade?: string; toGrade?: string }>; graduations: string[]; totalStudents: number; totalQuestionsAnswered: number },
+  ): Promise<string> {
+    const lines: string[] = [
+      `You are ${teacher.displayName}, a teacher at Ruby High. Here's what happened at school today:`,
+      "",
+    ];
+    if (memories.charactersCreated.length > 0) {
+      lines.push(`New students: ${memories.charactersCreated.join(", ")}`);
+    }
+    if (memories.classesPassed.length > 0) {
+      const classLines = memories.classesPassed.map((c) => `${c.studentName} passed ${c.facultyId ?? "class"} (${c.letterGrade})`);
+      lines.push(`Classes passed: ${classLines.join("; ")}`);
+    }
+    if (memories.gradesAdvanced.length > 0) {
+      const advLines = memories.gradesAdvanced.map((g) => `${g.studentName} advanced to ${g.toGrade}`);
+      lines.push(`Grade advancements: ${advLines.join("; ")}`);
+    }
+    if (memories.graduations.length > 0) {
+      lines.push(`Graduations: ${memories.graduations.join(", ")}`);
+    }
+    if (memories.totalQuestionsAnswered > 0) {
+      lines.push(`Total questions answered: ${memories.totalQuestionsAnswered}`);
+    }
+    lines.push(`${memories.totalStudents} students enrolled.`);
+    lines.push("");
+    lines.push(`Write a single tweet (max 270 chars) reflecting on today at Ruby High. Sound like yourself — warm, in character. Mention standout students by name if any. End with #RubyHigh.`);
+    lines.push("");
+    lines.push("Tweet:");
+
+    const prompt = lines.join("\n");
+
+    if (hasConfiguredLlmCredential()) {
+      try {
+        const response = await fetchLlmChatCompletions({
+          body: {
+            model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 200,
+            temperature: 0.7,
+          },
+          timeoutMs: 15_000,
+          label: "x-social-reflection",
+        });
+        if (response.ok) {
+          const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+          const text = data?.choices?.[0]?.message?.content?.trim() ?? "";
+          if (text && text.length <= 280) return text;
+          if (text) return text.slice(0, 277) + "...";
+        }
+      } catch (err) {
+        log.error("x-social.llm-failed", err, { kind: "reflection" });
+      }
+    }
+
+    // Fallback
+    const parts: string[] = [];
+    if (memories.charactersCreated.length > 0) {
+      parts.push(`Welcome to our new student${memories.charactersCreated.length > 1 ? "s" : ""}, ${memories.charactersCreated.join(", ")}!`);
+    }
+    if (memories.classesPassed.length > 0) {
+      const names = [...new Set(memories.classesPassed.map((c) => c.studentName))];
+      parts.push(`${names.join(", ")} put in solid work today.`);
+    }
+    if (memories.graduations.length > 0) {
+      parts.push(`Congratulations to our graduate${memories.graduations.length > 1 ? "s" : ""}, ${memories.graduations.join(", ")}!`);
+    }
+    if (parts.length === 0) {
+      parts.push(`Another day at Ruby High. ${memories.totalStudents} students, ${memories.totalQuestionsAnswered} questions answered.`);
+    }
+    parts.push("#RubyHigh");
+    return parts.join(" ");
+  }
+
+  /** Post a student's report card in the teacher's voice. Includes stats,
+   *  class grades, and yearbook progress. */
+  async postReportCard(
+    teacher: TeacherCharacter,
+    student: { name: string; playbookId: string; grade: string; stats: Record<string, number>; classGrades: Record<string, string>; yearbookCount: number },
+  ): Promise<string | null> {
+    const token = this.tokens.get(teacher.id);
+    if (!token) return null;
+    const freshToken = await this.ensureFreshToken(token);
+    if (!freshToken) return null;
+
+    const gradeLabel: Record<string, string> = { "9": "Freshman", "10": "Sophomore", "11": "Junior", "12": "Senior" };
+    const gradeName = gradeLabel[student.grade] ?? `Grade ${student.grade}`;
+    const statsLine = Object.entries(student.stats)
+      .map(([k, v]) => `${k}: ${v >= 0 ? "+" : ""}${v}`)
+      .join(" · ");
+    const gradesLine = Object.entries(student.classGrades)
+      .map(([fac, g]) => `${fac}: ${g}`)
+      .join(" · ") || "no classes yet";
+
+    const prompt = [
+      `You are ${teacher.displayName}, a teacher at Ruby High. Post a single tweet (max 270 chars) about this student's report card. Sound like yourself — warm, in character. Use their name.`,
+      "",
+      `Student: ${student.name}`,
+      `${gradeName} · ${student.playbookId}`,
+      `Stats: ${statsLine}`,
+      `Class grades: ${gradesLine}`,
+      `Yearbook: ${student.yearbookCount}/4 years sealed`,
+      "",
+      "Tweet:",
+    ].join("\n");
+
+    let text = "";
+    if (hasConfiguredLlmCredential()) {
+      try {
+        const response = await fetchLlmChatCompletions({
+          body: {
+            model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 200,
+            temperature: 0.6,
+          },
+          timeoutMs: 15_000,
+          label: "x-social-report-card",
+        });
+        if (response.ok) {
+          const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+          text = data?.choices?.[0]?.message?.content?.trim() ?? "";
+        }
+      } catch (err) {
+        log.error("x-social.llm-failed", err, { kind: "report-card" });
+      }
+    }
+
+    if (!text || text.length > 280) {
+      // Fallback
+      text = `${student.name}'s ${gradeName} report — ${gradesLine || "just getting started"}. ${statsLine}. ${student.yearbookCount}/4 years sealed. #RubyHigh`;
+      if (text.length > 280) text = text.slice(0, 277) + "...";
+    }
+
+    const tweetId = await this.postTweet(freshToken.accessToken, text);
+    if (tweetId) {
+      log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "report-card", tweetId });
+    }
+    return tweetId;
+  }
+
+  /** Generate a class photo composite image. Returns the image URL.
+   *  The caller enqueues it into the daily photo pool — Ruby posts it
+   *  on her one-per-day rhythm. */
+  async generateClassPhoto(
+    teacher: TeacherCharacter,
+    studentImages: Array<{ name: string; imageUrl: string }>,
+  ): Promise<string | null> {
+    const token = this.tokens.get(teacher.id);
+    if (!token) return null;
+    const freshToken = await this.ensureFreshToken(token);
+    if (!freshToken) return null;
+
+    // Check and reserve one-photo-per-day limit.
+    const today = new Date().toISOString().slice(0, 10);
+    if (this.lastPhotoDate.get(teacher.id) === today) {
+      log.event("x-social.photo-already-today", { teacherId: teacher.id, kind: "class-photo" });
+      return null;
+    }
+    this.lastPhotoDate.set(teacher.id, today);
+
+    const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
+    if (!apiKey) {
+      log.event("x-social.class-photo-no-key", { teacherId: teacher.id });
+      return null;
+    }
+
+    const { renderClassPhoto } = await import("./character-generation.js");
+    try {
+      const imageUrl = await renderClassPhoto({ apiKey, studentImages });
+      log.event("x-social.class-photo-generated", { teacherId: teacher.id, count: studentImages.length });
+      return imageUrl;
+    } catch (err) {
+      log.error("x-social.class-photo-failed", err, { teacherId: teacher.id });
+      return null;
     }
   }
 }
