@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { isBlockedAddress } from "./services/safe-url.js";
 import { DEFAULT_CREATOR_MODEL } from "./model-defaults.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { RubyHighService } from "./services/ruby-high-service.js";
@@ -2886,43 +2887,6 @@ async function assertSafeMaterialsUrl(raw: string): Promise<void> {
   }
 }
 
-function isBlockedAddress(address: string): boolean {
-  const v = isIP(address);
-  if (v === 4) {
-    const parts = address.split(".").map((part) => Number(part));
-    const [a = 0, b = 0, c = 0] = parts;
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-      (a === 192 && b === 168) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      (a === 198 && b === 51 && c === 100) ||
-      (a === 203 && b === 0 && c === 113) ||
-      a >= 224
-    );
-  }
-  if (v === 6) {
-    const normalized = address.toLowerCase();
-    const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped?.[1]) return isBlockedAddress(mapped[1]);
-    return (
-      normalized === "::" ||
-      normalized === "::1" ||
-      normalized.startsWith("fc") ||
-      normalized.startsWith("fd") ||
-      /^fe[89ab]/.test(normalized) ||
-      normalized.startsWith("ff") ||
-      normalized === "2001:db8::" ||
-      normalized.startsWith("2001:db8:")
-    );
-  }
-  return true;
-}
 
 async function readLimitedResponseText(response: Response, maxChars: number): Promise<string> {
   const body = response.body;

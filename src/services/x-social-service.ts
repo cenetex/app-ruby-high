@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { isIP } from "node:net";
+import { assertSafeImageUrl } from "./safe-url.js";
 import { readFile, writeFile, mkdir, unlink, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
@@ -670,26 +670,8 @@ export class XSocialService extends Service {
       url = `${base}${url}`;
     }
 
-    // Validate URL safety to prevent SSRF.
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:") {
-      throw new Error("Image URL must use https");
-    }
-    const hostname = parsed.hostname.toLowerCase();
-    if (!hostname) throw new Error("Image URL has no hostname");
-    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-      throw new Error("Image URL host not allowed: localhost");
-    }
-    if (isIP(hostname)) {
-      if (this.isBlockedAddress(hostname)) {
-        throw new Error("Image URL resolves to a private/reserved address");
-      }
-    } else {
-      // For hostnames, check known blocked suffixes as a coarse filter.
-      if (hostname.endsWith(".local") || hostname.endsWith(".internal")) {
-        throw new Error("Image URL host not allowed: " + hostname);
-      }
-    }
+    // Validate URL safety to prevent SSRF (DNS-resolving guard).
+    await assertSafeImageUrl(url);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -722,40 +704,6 @@ export class XSocialService extends Service {
 
   // ── Internal helpers ────────────────────────────────────────────────────
 
-  /** Block private, link-local, loopback, and reserved IPv4/IPv6 addresses. */
-  private isBlockedAddress(address: string): boolean {
-    const v = isIP(address);
-    if (v === 4) {
-      const parts = address.split(".").map((p) => Number(p));
-      const [a = 0, b = 0, c = 0] = parts;
-      return (
-        a === 0 || a === 10 || a === 127 ||
-        (a === 100 && b >= 64 && b <= 127) ||
-        (a === 169 && b === 254) ||
-        (a === 172 && b >= 16 && b <= 31) ||
-        (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-        (a === 192 && b === 168) ||
-        (a === 198 && (b === 18 || b === 19)) ||
-        (a === 198 && b === 51 && c === 100) ||
-        (a === 203 && b === 0 && c === 113) ||
-        a >= 224
-      );
-    }
-    if (v === 6) {
-      const normalized = address.toLowerCase();
-      const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-      if (mapped?.[1]) return this.isBlockedAddress(mapped[1]);
-      return (
-        normalized === "::" || normalized === "::1" ||
-        normalized.startsWith("fc") || normalized.startsWith("fd") ||
-        /^fe[89ab]/.test(normalized) ||
-        normalized.startsWith("ff") ||
-        normalized === "2001:db8::" ||
-        normalized.startsWith("2001:db8:")
-      );
-    }
-    return false;
-  }
 
   private async fetchXUser(accessToken: string): Promise<{ id: string; username: string }> {
     const res = await fetch(`${X_API_BASE}/users/me`, {
