@@ -8,6 +8,7 @@ export default defineConfig([
     clean: true,
     splitting: false,
     target: "es2022",
+    external: ["node:sqlite"],
   },
   {
     entry: ["src/viewer-privy-client.ts"],
