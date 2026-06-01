@@ -117,6 +117,7 @@ export class SqliteStateStore implements StateStoreLike {
   }
 
   async load(): Promise<Map<string, QuizState>> {
+    this.purgeExpired();
     const map = new Map<string, QuizState>();
     for (const value of this.rowsOfKind("session")) {
       const state = value as QuizState;

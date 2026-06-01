@@ -127,6 +127,10 @@ function expiresFor(kind, item, expiry) {
 // ── main ────────────────────────────────────────────────────────────────────
 
 async function main() {
+  return migrate();
+}
+
+export async function migrate() {
   console.error("DynamoDB → SQLite migration");
   console.error(`  source:  dynamodb://${AWS_REGION}/${DYNAMO_TABLE}`);
   console.error(`  target:  ${DRY_RUN ? "(dry run)" : `sqlite://${SQLITE_PATH}`}`);
