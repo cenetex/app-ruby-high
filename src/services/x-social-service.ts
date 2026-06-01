@@ -106,11 +106,13 @@ class JsonXTokenStore implements XTokenStore {
   private filePath: string;
 
   constructor() {
-    // RUBY_HIGH_STATE_PATH may be a file (SQLite) or a directory (JSON).
-    // Use RUBY_HIGH_DATA_DIR when set, otherwise derive the parent directory.
+    // RUBY_HIGH_STATE_PATH may be a file (SQLite .db) or a directory.
+    // Use RUBY_HIGH_DATA_DIR when set, otherwise check if the path has a
+    // file extension (e.g. .db, .json) — if so, take the parent directory.
+    const rawPath = process.env.RUBY_HIGH_STATE_PATH;
     const dir = process.env.RUBY_HIGH_DATA_DIR
-      ?? (process.env.RUBY_HIGH_STATE_PATH
-        ? dirname(process.env.RUBY_HIGH_STATE_PATH)
+      ?? (rawPath
+        ? (/\.[a-z]{2,6}$/i.test(rawPath) ? dirname(rawPath) : rawPath)
         : resolve(homedir(), ".ruby-high"));
     this.filePath = resolve(dir, "x-tokens.json");
   }

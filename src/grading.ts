@@ -79,3 +79,33 @@ function clampScore(n: number): number {
   if (n > 10) return 10;
   return n;
 }
+/** Generic-praise patterns that should never appear in a grading verdict.
+ *  A verdict containing any of these is a regression — the teacher is
+ *  handing out participation credit instead of judging. */
+const GENERIC_PRAISE_PATTERNS = [
+  /\bgood job\b/i,
+  /\bnice (try|effort|work|one)\b/i,
+  /\bgreat (job|work|effort|answer)\b/i,
+  /\bwell done\b/i,
+  /\bkeep (it )?up\b/i,
+  /\bgood (effort|thinking|point|start)\b/i,
+  /\bexcellent (job|work|answer)\b/i,
+  /\bamazing (job|work|answer)\b/i,
+  /\bkeep up the good work\b/i,
+  /\bproud of you\b/i,
+];
+
+/** Check every comment and the narrative text for generic praise. Returns
+ *  the first matched pattern or null if the verdict has real substance. */
+export function detectGenericPraise(verdict: ParsedTeacherGrades): string | null {
+  const texts = [
+    verdict.narrativeText,
+    ...verdict.grades.map((g) => g.comment),
+  ];
+  for (const text of texts) {
+    for (const pattern of GENERIC_PRAISE_PATTERNS) {
+      if (pattern.test(text)) return pattern.source;
+    }
+  }
+  return null;
+}

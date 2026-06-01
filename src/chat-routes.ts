@@ -611,17 +611,19 @@ async function gradeOpinionResponses(args: {
   ).join("\n");
   const directive = [
     `You posed: "${args.question}"`,
-    args.rubric ? `Rubric: ${args.rubric}` : "",
+    args.rubric ? `What a strong answer looks like: ${args.rubric}` : "",
     "",
-    "Below are the student responses (the player + your AI students). Grade each one 0-10 based on how much they actually thought about the question and showed it in the writing — depth, specificity, engagement, originality.",
+    "Below are the student responses (the player + your AI students). You have taste and a worldview, and you do not hand out participation credit. Grade each one 0-10. A 5 means the student showed up. A 7 means they actually thought. A 9 means they saw something the others missed.",
+    "",
+    "For each grade: name the specific thing they got right or wrong. Never say 'good job' or 'nice effort' — say what they DID. If the take is mid, say why it's mid and what a stronger answer would have done. Be precise. Be the teacher whose approval is worth chasing.",
     "",
     responseList,
     "",
     "Output strictly the following format on its own line for each responder, then a final BEST: line:",
-    "GRADE responder=<id> score=<0-10> comment=<one short sentence in your voice>",
+    "GRADE responder=<id> score=<0-10> comment=<one pointed sentence naming the specific strength or weakness>",
     "BEST: <responder id>",
     "",
-    "After the grade lines, write 2-3 short sentences in your voice as the teacher delivering the verdict to the class. Reference at least one student by name. Plain and direct, in your voice.",
+    "After the grade lines, deliver 2-3 short sentences as the verdict to the class. Reference at least one student by name. If nobody earned above a 7, say so — disappointment is earned. If someone crushed it, say that too. No generic wrap-up. The verdict should be worth screenshotting.",
   ].filter(Boolean).join("\n");
 
   const body = await llmJson<OpenRouterChatCompletion>({
@@ -2308,7 +2310,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         agentSessionId: sessionId,
         faculty,
         disableTools: plan.disableToolsForTurn,
-        allowOpinionTool: intent !== "advance",
+        allowOpinionTool: true,  // opinion rounds are the spine now
         systemEventNote: plan.directive,
         isStale: isStaleChatEvent,
         toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
@@ -2357,7 +2359,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             agentSessionId: sessionId,
             faculty,
             systemEventNote: noQuestionDirective,
-            allowOpinionTool: false,
+            allowOpinionTool: true,
             isStale: isStaleChatEvent,
             toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
           })) {
@@ -2645,7 +2647,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       send("speaker", { facultyId: faculty });
       let questionPosted = false;
       let handoffFired = false;
-      const allowOpinionTool = !(trigger === "manual" && contextIntent === "advance");
+      const allowOpinionTool = true;  // opinion rounds are the spine now
       for await (const ev of streamTeacherAvatarTurn(chat, {
         apiKey,
         sessionToken: token,
@@ -2709,7 +2711,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             agentSessionId,
             faculty,
             systemEventNote: noQuestionDirective,
-            allowOpinionTool: false,
+            allowOpinionTool: true,
             isStale: isStaleChatEvent,
             toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
           })) {
