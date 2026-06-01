@@ -1,5 +1,6 @@
 import { StateStore, type StateStoreLike } from "./state-store.js";
 import { DynamoStateStore } from "./dynamo-state-store.js";
+import { SqliteStateStore } from "./sqlite-state-store.js";
 
 /**
  * Pick a state-store backend based on env vars (or explicit opts in tests).
@@ -7,31 +8,45 @@ import { DynamoStateStore } from "./dynamo-state-store.js";
  * Default: JSON file at ~/.ruby-high/state.json — preserves existing local
  * dev behavior.
  *
- * To opt in to DynamoDB:
- *   RUBY_HIGH_STORE_BACKEND=dynamodb
- *   RUBY_HIGH_DYNAMO_TABLE=ruby-high-state   (or whatever you provisioned)
- *   AWS_REGION=us-east-1                      (or set as a Fly env/secret)
+ * To use SQLite (recommended for Fly; no AWS):
+ *   RUBY_HIGH_STORE_BACKEND=sqlite
+ *   RUBY_HIGH_STATE_PATH=/data/ruby-high.db   (MUST be on a mounted Fly Volume)
  *   RUBY_HIGH_STATE_TTL_SECONDS=7776000       (optional; default 90 days)
  *
- * Required IAM permissions for the AWS principal used by the app:
- *   dynamodb:Scan, dynamodb:GetItem, dynamodb:PutItem, dynamodb:BatchWriteItem,
- *   dynamodb:DeleteItem
+ * To use DynamoDB (legacy; being retired — see docs/aws-exit-migration.md):
+ *   RUBY_HIGH_STORE_BACKEND=dynamodb
+ *   RUBY_HIGH_DYNAMO_TABLE=ruby-high-state
+ *   AWS_REGION=us-east-1
  */
 export interface CreateStateStoreOptions {
-  /** Override env-var detection. "json" or "dynamodb". */
-  backend?: "json" | "dynamodb";
+  /** Override env-var detection. "json" | "sqlite" | "dynamodb". */
+  backend?: "json" | "sqlite" | "dynamodb";
   /** JSON-file backend: state.json path. */
   jsonPath?: string;
+  /** SQLite backend: database file path. */
+  sqlitePath?: string;
   /** DynamoDB backend: table name. */
   dynamoTable?: string;
   /** DynamoDB backend: region. */
   region?: string;
-  /** DynamoDB backend: TTL seconds. 0 disables. */
+  /** TTL seconds (SQLite + DynamoDB). 0 disables. */
   ttlSeconds?: number;
 }
 
 export function createStateStore(opts: CreateStateStoreOptions = {}): StateStoreLike {
   const backend = opts.backend ?? readBackend(process.env.RUBY_HIGH_STORE_BACKEND);
+  if (backend === "sqlite") {
+    const path = opts.sqlitePath ?? process.env.RUBY_HIGH_STATE_PATH;
+    if (!path) {
+      throw new Error(
+        "RUBY_HIGH_STORE_BACKEND=sqlite requires RUBY_HIGH_STATE_PATH (e.g. /data/ruby-high.db on a Fly Volume).",
+      );
+    }
+    return new SqliteStateStore({
+      path,
+      ttlSeconds: opts.ttlSeconds ?? readTtl(process.env.RUBY_HIGH_STATE_TTL_SECONDS),
+    });
+  }
   if (backend === "dynamodb") {
     const tableName = opts.dynamoTable ?? process.env.RUBY_HIGH_DYNAMO_TABLE;
     if (!tableName) {
@@ -48,10 +63,11 @@ export function createStateStore(opts: CreateStateStoreOptions = {}): StateStore
   return new StateStore(opts.jsonPath);
 }
 
-function readBackend(raw: string | undefined): "json" | "dynamodb" {
+function readBackend(raw: string | undefined): "json" | "sqlite" | "dynamodb" {
   if (!raw) return "json";
   const v = raw.trim().toLowerCase();
   if (v === "dynamodb" || v === "dynamo" || v === "ddb") return "dynamodb";
+  if (v === "sqlite" || v === "sqlite3") return "sqlite";
   if (v === "json" || v === "file") return "json";
   // Unknown values fall back to json so misconfiguration doesn't take down
   // the host. Log so operators can spot the typo.

@@ -6756,9 +6756,11 @@ function issueHallPassCardsForTransaction(
           slotIndex: packIndex * HALL_PASS_CARDS_PER_PACK,
         })
         : packIndex === 0 ? transaction.id : `${transaction.id}:pack:${packIndex}`;
+      // Provably-fair packs must only use the static catalog — live
+      // session state (player cards) would break verifiable commitment.
       packEntries = hallPassCardPackEntries(packSeed, {
         forceSpecialCard: packIndex === guaranteedSpecialPackIndex,
-        sessions: sessions,
+        sessions: usesPackReveal ? undefined : sessions,
       }, seedInteger);
       packCache.set(packIndex, packEntries);
     }

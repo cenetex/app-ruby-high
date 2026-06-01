@@ -1,4 +1,7 @@
-FROM node:22-slim AS build
+# node:24 ships node:sqlite as a first-class builtin (no --experimental-sqlite
+# flag, unlike node:22). The SQLite state store relies on it. See
+# docs/aws-exit-migration.md.
+FROM node:24-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --include=dev
@@ -9,7 +12,7 @@ COPY src ./src
 COPY assets ./assets
 RUN npm run build
 
-FROM node:22-slim AS runtime
+FROM node:24-slim AS runtime
 WORKDIR /app
 ARG RUBY_HIGH_BUILD=dev
 ENV NODE_ENV=production
