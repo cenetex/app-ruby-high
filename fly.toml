@@ -32,7 +32,8 @@ primary_region = "iad"
   PORT = "8080"
   HOST = "0.0.0.0"
   NODE_ENV = "production"
-  RUBY_HIGH_STORE_BACKEND = "dynamodb"
+  RUBY_HIGH_STORE_BACKEND = "sqlite"
+  RUBY_HIGH_STATE_PATH = "/data/ruby-high.db"
   AWS_REGION = "us-east-1"
   # AI portraits + diplomas are stored in S3 — the bytes are too big to
   # live inline in the DynamoDB character record. Set
@@ -59,6 +60,10 @@ primary_region = "iad"
     grace_period = "30s"
     method = "GET"
     path = "/health"
+
+[[mounts]]
+  source = "ruby_high_data"
+  destination = "/data"
 
 [[vm]]
   size = "shared-cpu-1x"
