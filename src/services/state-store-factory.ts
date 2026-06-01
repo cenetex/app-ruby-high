@@ -1,6 +1,5 @@
 import { StateStore, type StateStoreLike } from "./state-store.js";
 import { DynamoStateStore } from "./dynamo-state-store.js";
-import { SqliteStateStore } from "./sqlite-state-store.js";
 
 /**
  * Pick a state-store backend based on env vars (or explicit opts in tests).
@@ -33,7 +32,7 @@ export interface CreateStateStoreOptions {
   ttlSeconds?: number;
 }
 
-export function createStateStore(opts: CreateStateStoreOptions = {}): StateStoreLike {
+export async function createStateStore(opts: CreateStateStoreOptions = {}): Promise<StateStoreLike> {
   const backend = opts.backend ?? readBackend(process.env.RUBY_HIGH_STORE_BACKEND);
   if (backend === "sqlite") {
     const path = opts.sqlitePath ?? process.env.RUBY_HIGH_STATE_PATH;
@@ -42,6 +41,7 @@ export function createStateStore(opts: CreateStateStoreOptions = {}): StateStore
         "RUBY_HIGH_STORE_BACKEND=sqlite requires RUBY_HIGH_STATE_PATH (e.g. /data/ruby-high.db on a Fly Volume).",
       );
     }
+    const { SqliteStateStore } = await import("./sqlite-state-store.js");
     return new SqliteStateStore({
       path,
       ttlSeconds: opts.ttlSeconds ?? readTtl(process.env.RUBY_HIGH_STATE_TTL_SECONDS),

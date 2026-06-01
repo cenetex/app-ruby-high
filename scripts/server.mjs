@@ -61,7 +61,7 @@ async function bootServices() {
   // State backend: defaults to a JSON file. Set
   // RUBY_HIGH_STORE_BACKEND=dynamodb + RUBY_HIGH_DYNAMO_TABLE to persist
   // across container restarts.
-  stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
+  stateStore = await createStateStore({ jsonPath: STATE_PATH ?? undefined });
   facultySvc = await FacultyService.start(fakeRuntime);
   authSvc = await AuthService.start(fakeRuntime, stateStore);
   chatSvc = await ChatService.start(fakeRuntime);

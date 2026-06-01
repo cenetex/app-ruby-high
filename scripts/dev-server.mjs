@@ -24,7 +24,7 @@ const HOST = process.env.HOST ?? "localhost";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
 const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE) ?? `http://${HOST}:${PORT}`;
 
-const stateStore = createStateStore({ jsonPath: STATE_PATH ?? undefined });
+const stateStore = await createStateStore({ jsonPath: STATE_PATH ?? undefined });
 console.log(`[ruby-high] state store: ${stateStore.describe()}`);
 
 const facultySvc = await FacultyService.start({});
