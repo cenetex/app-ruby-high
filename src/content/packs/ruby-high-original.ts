@@ -39,7 +39,7 @@ const FACULTY_META: Array<Omit<PackFaculty, "questions" | "systemPrompt" | "defa
     displayName: "Ruby",
     shortName: "Ruby",
     subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"],
-    bio: "Host of Ruby High. Greets students, picks the right teacher for the subject, runs the quiz floor.",
+    bio: "Host of Ruby High. Annihilist. Believes meaning is made, not found, and judges accordingly. Warm blade, real standards.",
     accent: "#d22a2a",
   },
   {

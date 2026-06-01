@@ -289,8 +289,12 @@ function gradeDiplomaCollectibleFor(parts: {
   characterCreatedAt: number;
   grade: Grade;
   completedAt: number;
+  verdictQuote?: string | null;
 }): GradeDiplomaCollectible {
   const label = DIPLOMA_GRADE_LABELS[parts.grade] ?? `Grade ${parts.grade}`;
+  const verdictLine = parts.verdictQuote
+    ? `\n\n"${parts.verdictQuote}"`
+    : "";
   return {
     kind: "grade-diploma",
     id: graduationCollectibleId("diploma", {
@@ -298,10 +302,11 @@ function gradeDiplomaCollectibleFor(parts: {
       createdAt: parts.characterCreatedAt,
       grade: parts.grade,
       completedAt: parts.completedAt,
+      extra: parts.verdictQuote ?? undefined,
     }),
     grade: parts.grade,
     title: `Ruby High ${label} Diploma`,
-    description: `${parts.characterName} made it through ${label} at Ruby High.`,
+    description: `${parts.characterName} completed ${label} at Ruby High.${verdictLine}`,
     imageUrl: DIPLOMA_IMAGE_URL_BY_GRADE[parts.grade],
     issuedAt: parts.completedAt,
     assetVersion: DIPLOMA_ASSET_VERSION,
@@ -4216,11 +4221,19 @@ export class RubyHighService extends Service {
     // entries see fewer lines, the Senior entry sees all of them.
     const newResolutions = this.resolveMashAxesForGrade(ch, grade);
     const superlatives = this.buildMashSuperlativesFor(ch);
+    // Find the player's best opinion verdict for this grade to quote on the diploma.
+    const essayReports = Array.isArray(state.essayReports) ? state.essayReports : [];
+    const playerReports = essayReports.filter((r) => r.grade === grade && r.passed && r.comment);
+    const bestVerdict = playerReports.length > 0
+      ? playerReports.reduce((best, r) => (r.score ?? 0) > (best.score ?? 0) ? r : best).comment
+      : null;
+
     const diploma = gradeDiplomaCollectibleFor({
       characterName: ch.name,
       characterCreatedAt: ch.createdAt,
       grade,
       completedAt,
+      verdictQuote: bestVerdict,
     });
     const photo = normalizedReward.kind === "photo"
       ? this.graduationPhotoCollectibleFor(state, ch, grade, completedAt)
