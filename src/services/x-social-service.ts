@@ -106,7 +106,12 @@ class JsonXTokenStore implements XTokenStore {
   private filePath: string;
 
   constructor() {
-    const dir = process.env.RUBY_HIGH_STATE_PATH ?? resolve(homedir(), ".ruby-high");
+    // RUBY_HIGH_STATE_PATH may be a file (SQLite) or a directory (JSON).
+    // Use RUBY_HIGH_DATA_DIR when set, otherwise derive the parent directory.
+    const dir = process.env.RUBY_HIGH_DATA_DIR
+      ?? (process.env.RUBY_HIGH_STATE_PATH
+        ? dirname(process.env.RUBY_HIGH_STATE_PATH)
+        : resolve(homedir(), ".ruby-high"));
     this.filePath = resolve(dir, "x-tokens.json");
   }
 
@@ -221,7 +226,7 @@ export function generatePkce(): { verifier: string; challenge: string } {
 
 
 function oauth1Nonce(): string {
-  return Math.random().toString(36).substring(2, 17);
+  return randomBytes(12).toString("hex");
 }
 
 function oauth1Signature(

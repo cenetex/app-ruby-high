@@ -52,6 +52,7 @@ function getPortraitS3Client(): S3Client | null {
   if (portraitS3Client) return portraitS3Client;
   portraitS3Client = new S3Client({
     region: process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1",
+    ...(process.env.AWS_ENDPOINT_URL_S3 ? { endpoint: process.env.AWS_ENDPOINT_URL_S3, forcePathStyle: true } : {}),
   });
   return portraitS3Client;
 }
@@ -81,8 +82,11 @@ export async function maybeUploadPortrait(dataUrl: string, kind: "portrait" | "d
     log.error("portrait.s3-upload-failed", err, { kind, bucket, key, bytes: bytes.length });
     throw new Error("portrait upload failed: " + (err instanceof Error ? err.message : String(err)));
   }
-  const base = process.env.RUBY_HIGH_PORTRAITS_PUBLIC_BASE
-    ?? `https://${bucket}.s3.${process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1"}.amazonaws.com`;
+  const s3Endpoint = process.env.AWS_ENDPOINT_URL_S3;
+  const defaultBase = s3Endpoint
+    ? s3Endpoint.replace(/\/+$/, '') + '/' + bucket
+    : `https://${bucket}.s3.${process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1"}.amazonaws.com`;
+  const base = process.env.RUBY_HIGH_PORTRAITS_PUBLIC_BASE ?? defaultBase;
   return base.replace(/\/+$/, "") + "/" + key;
 }
 
