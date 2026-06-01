@@ -54,7 +54,7 @@ import {
   type CharacterComponent,
   type RolledCharacter,
 } from "./services/character-generation.js";
-import { parseTeacherGrades } from "./grading.js";
+import { detectGenericPraise, parseTeacherGrades } from "./grading.js";
 import {
   GRADE_LABELS,
   PLAYER_CHAT_INTENTS,
@@ -2983,6 +2983,38 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           grades = verdict.grades;
           bestResponder = verdict.bestResponder;
           narrativeText = verdict.narrativeText;
+
+          // Praise-gate: if the verdict contains generic praise ("good job",
+          // "nice effort", etc.), retry once with a stricter instruction.
+          // A single retry is cheap (<1s) and almost always fixes it.
+          const platitudeHit = detectGenericPraise(verdict);
+          if (platitudeHit) {
+            log.event("opinion.platitude-detected", { facultyId, pattern: platitudeHit, sessionId });
+            try {
+              const retryVerdict = await gradeOpinionResponses({
+                apiKey,
+                facultyId,
+                question: state.current.prompt,
+                rubric: state.current.rubric,
+                responses,
+                playerName: "the player",
+              });
+              if (!detectGenericPraise(retryVerdict)) {
+                grades = retryVerdict.grades;
+                bestResponder = retryVerdict.bestResponder;
+                narrativeText = retryVerdict.narrativeText;
+                log.event("opinion.platitude-corrected", { facultyId, sessionId });
+              } else {
+                // Second strike — log it but don't retry again. The model
+                // is in a platitude loop; better to ship the imperfect verdict
+                // than burn more tokens.
+                log.event("opinion.platitude-persisted", { facultyId, sessionId });
+              }
+            } catch {
+              // Retry failed; keep the original.
+              log.event("opinion.platitude-retry-failed", { facultyId, sessionId });
+            }
+          }
         } catch (err) {
           log.error("opinion.grade-ai-failed", err, { sessionId, facultyId, questionId: state.current.id });
           useOfflineVerdict();
