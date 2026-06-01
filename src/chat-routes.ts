@@ -890,6 +890,12 @@ function streamPlayerLine(args: {
   if (!character) throw new Error("Create a character before using AI Chat.");
   const playbook = PLAYBOOKS.find((p) => p.id === character.playbookId);
   const stats = character.stats;
+
+  // Skip auto-generated (smoke-test) characters so their suffixed
+  // names never appear in LLM prompts.
+  if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(character.name)) {
+    throw new Error("Create a character before using AI Chat.");
+  }
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
   const facultyName = facultyDisplayNameForState(args.state, args.faculty);
   const roomLine = args.faculty === "lounge"

@@ -6196,6 +6196,10 @@ export class RubyHighService extends Service {
     const xSocial = (this.runtime as any).getService(XSocialService.serviceType) as XSocialService | undefined;
     if (!xSocial) return;
 
+    // Skip smoke-test / auto-generated characters so their suffixed
+    // names never reach an LLM prompt for social posting.
+    if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ctx.characterName)) return;
+
     // Per-student daily text budget: skip if this student already had a text
     // post today. Character-created and graduated are one-time events — always post.
     const ch = state.character;
