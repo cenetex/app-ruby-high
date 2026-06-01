@@ -185,6 +185,7 @@ class FailingSaveSessionStore implements StateStoreLike {
   async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
 
   async deleteTeacher(_teacherId: string): Promise<void> {}
+  async saveTeacher(_record: any): Promise<void> {}
 
   async deleteDraftPack(_draftId: string): Promise<void> {}
 

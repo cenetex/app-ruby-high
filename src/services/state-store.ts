@@ -201,6 +201,7 @@ export interface StateStoreLike {
   savePack(record: StoredContentPackRecord): Promise<void>;
   saveDraftPack(record: StoredDraftContentPackRecord): Promise<void>;
   savePackInstallation(record: StoredPackInstallationRecord): Promise<void>;
+  saveTeacher(record: StoredTeacherRecord): Promise<void>;
   saveMetricEvent?(record: StoredMetricEventRecord): Promise<void>;
   deletePack(ownerSessionId: string | null, packId: string): Promise<void>;
   deleteTeacher(teacherId: string): Promise<void>;
@@ -515,6 +516,10 @@ export class StateStore implements StateStoreLike {
 
   savePackInstallation(record: StoredPackInstallationRecord): Promise<void> {
     this.packInstallations.set(packInstallationKey(record.userId, record.packId), record);
+    return this.scheduleWrite();
+  }
+  saveTeacher(record: StoredTeacherRecord): Promise<void> {
+    this.teachers.set(record.id, record);
     return this.scheduleWrite();
   }
 

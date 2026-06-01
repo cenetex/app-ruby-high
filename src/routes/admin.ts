@@ -1604,7 +1604,6 @@ async function postTelegramSnapshot() {
     }
     refreshTelegram();
     refreshStudents();
-      } catch { /* best effort */ }
     async function postX(teacherId, btn) {
       const token = localStorage.getItem(tokenKey);
       if (!token) return;

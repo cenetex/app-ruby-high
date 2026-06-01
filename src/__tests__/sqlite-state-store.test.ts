@@ -5,6 +5,7 @@ import type {
   AuthSessionRecord,
   AuthUserRecord,
   StoredContentPackRecord,
+  StoredTeacherRecord,
   StoredDraftContentPackRecord,
   StoredMetricEventRecord,
   StoredPackInstallationRecord,
@@ -111,6 +112,36 @@ describe("SqliteStateStore", () => {
     } as AuthSessionRecord);
     expect((await s.load()).size).toBe(1);
     expect((await s.loadAuth()).sessions).toHaveLength(0);
+  });
+
+  
+  it("round-trips teacher records", async () => {
+    const s = store();
+    const teacher: StoredTeacherRecord = {
+      id: "t1",
+      creatorUserId: "u1",
+      creatorSessionId: "s1",
+      displayName: "Prof. Test",
+      description: "A test teacher",
+      materials: "Some materials",
+      subjects: ["math"],
+      questionCount: 5,
+      packId: "p1",
+      visibility: "public",
+      status: "published",
+      createdAt: 1,
+      updatedAt: 1,
+      pack: { id: "p1", teachers: [] },
+    } as unknown as StoredTeacherRecord;
+
+    await s.saveTeacher(teacher);
+    const teachers = await s.loadTeachers();
+    expect(teachers).toHaveLength(1);
+    expect(teachers[0]?.id).toBe("t1");
+    expect(teachers[0]?.displayName).toBe("Prof. Test");
+
+    await s.deleteTeacher("t1");
+    expect(await s.loadTeachers()).toHaveLength(0);
   });
 
   it("bulk save() writes all sessions in one transaction", async () => {

@@ -434,6 +434,21 @@ export class DynamoStateStore implements StateStoreLike {
       },
     }));
   }
+  async saveTeacher(record: StoredTeacherRecord): Promise<void> {
+    this.invalidateScanCache();
+    const item: Record<string, unknown> = {
+      pk: "teacher:" + encodeURIComponent(record.id),
+      teacherRecord: record,
+      updatedAt: record.updatedAt,
+    };
+    if (this.ttlSeconds > 0) {
+      item.expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+    }
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
+    }));
+  }
 
   async saveMetricEvent(record: StoredMetricEventRecord): Promise<void> {
     this.invalidateScanCache();

@@ -64,6 +64,7 @@ export class SqliteStateStore implements StateStoreLike {
   private readonly db: DatabaseSync;
   private readonly path: string;
   private readonly ttlSeconds: number;
+  private purgeInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(opts: SqliteStateStoreOptions) {
     if (!opts.path) throw new Error("SqliteStateStore: path is required");
@@ -94,6 +95,7 @@ export class SqliteStateStore implements StateStoreLike {
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_kind ON kv(kind);");
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_expires ON kv(expires_at);");
     this.purgeExpired();
+    this.startPeriodicPurge();
   }
 
   // ── reads ──────────────────────────────────────────────────────────────────
@@ -284,6 +286,9 @@ export class SqliteStateStore implements StateStoreLike {
   async savePackInstallation(record: StoredPackInstallationRecord): Promise<void> {
     this.put(this.packInstallationPk(record.userId, record.packId), "packInstallation", record, record.updatedAt, null);
   }
+  async saveTeacher(record: StoredTeacherRecord): Promise<void> {
+    this.put("teacher:" + encodeURIComponent(record.id), "teacherRecord", record, record.updatedAt, this.defaultExpiry());
+  }
 
   async saveMetricEvent(record: StoredMetricEventRecord): Promise<void> {
     this.put(`metric-event:${record.day}:${encodeURIComponent(record.id)}`, "metricEvent", record, record.occurredAt, this.defaultExpiry());
@@ -347,8 +352,22 @@ export class SqliteStateStore implements StateStoreLike {
       .prepare("DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?")
       .run(Math.floor(Date.now() / 1000));
   }
+  /** Run purgeExpired on a periodic interval so rows don't accumulate over
+   *  long-lived process runs. Every 15 minutes is frequent enough to keep
+   *  the table lean without material overhead (the kv_expires index makes
+   *  the query cheap). Skipped for :memory: databases (tests). */
+  private startPeriodicPurge(): void {
+    if (this.path === ":memory:") return;
+    const FIFTEEN_MINUTES = 15 * 60 * 1000;
+    this.purgeInterval = setInterval(() => this.purgeExpired(), FIFTEEN_MINUTES);
+    if (typeof this.purgeInterval.unref === "function") this.purgeInterval.unref();
+  }
 
   close(): void {
+    if (this.purgeInterval) {
+      clearInterval(this.purgeInterval);
+      this.purgeInterval = null;
+    }
     this.db.close();
   }
 
