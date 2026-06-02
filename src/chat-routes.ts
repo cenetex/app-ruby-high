@@ -54,7 +54,7 @@ import {
   type CharacterComponent,
   type RolledCharacter,
 } from "./services/character-generation.js";
-import { detectGenericPraise, parseTeacherGrades } from "./grading.js";
+import { detectGenericPraise, parseTeacherGrades, verdictHasSubstance } from "./grading.js";
 import {
   GRADE_LABELS,
   PLAYER_CHAT_INTENTS,
@@ -212,6 +212,17 @@ function gradeLabel(grade: string | undefined | null): string {
   if (!grade) return "";
   return (GRADE_LABELS as Record<string, string>)[grade] ?? grade;
 }
+
+function buildEssayContext(state: { character?: { essayPrompt?: string; essayCompleted?: boolean; pendingGraduation?: unknown } | null }): string | null {
+  const ch = state.character;
+  if (!ch?.essayPrompt || ch.essayCompleted) return null;
+  const ready = !!ch.pendingGraduation;
+  if (ready) {
+    return `ESSAY TIME. The student has completed their class requirements and is ready to write their graded essay. The essay question you assigned is: "${ch.essayPrompt}". Tell them it's time, then pose the essay with pose_opinion. Do not put another MCQ on the board — this is the moment.`;
+  }
+  return `REMINDER: The student's essay question for this grade is: "${ch.essayPrompt}". They have not written it yet. Reference it naturally during lessons — it's due before graduation. Do NOT pose it yet — wait until the student has completed their class work.`;
+}
+
 
 function toolPlacedFreshQuestion(ev: ChatStreamEvent): boolean {
   if (ev.type !== "tool" || !ev.result.ok) return false;
@@ -613,19 +624,27 @@ async function gradeOpinionResponses(args: {
     `You posed: "${args.question}"`,
     args.rubric ? `What a strong answer looks like: ${args.rubric}` : "",
     "",
-    "Below are the student responses (the player + your AI students). You have taste and a worldview, and you do not hand out participation credit. Grade each one 0-10. A 5 means the student showed up. A 7 means they actually thought. A 9 means they saw something the others missed.",
+    "Below are the student responses (the player + your AI students).",
     "",
-    "For each grade: name the specific thing they got right or wrong. Never say 'good job' or 'nice effort' — say what they DID. If the take is mid, say why it's mid and what a stronger answer would have done. Be precise. Be the teacher whose approval is worth chasing.",
+    "This is the grade essay — the milestone the student must pass to advance. Judge them. Not grade them — JUDGE them. In your voice. Through your worldview. You are not a rubric. You are a teacher whose approval is worth chasing precisely because you do not hand it out.",
+    "",
+    "Scale: 5 = showed up. 7 = actually thought. 9 = saw something the others missed. 10 = made you reconsider the question.",
+    "",
+    "For each grade comment:",
+    "- Name the specific thing they did right or wrong. Reference their actual words or argument.",
+    "- Never say 'good job,' 'nice effort,' 'well done,' or any variant. Those are participation trophies.",
+    "- If the take is mid, say WHY it's mid and what a stronger answer would have done.",
+    "- Be so specific that the comment could only apply to THIS response, not any other.",
     "",
     responseList,
     "",
-    "Output strictly the following format on its own line for each responder, then a final BEST: line:",
-    "GRADE responder=<id> score=<0-10> comment=<one pointed sentence naming the specific strength or weakness>",
+    "Output strictly:",
+    "GRADE responder=<id> score=<0-10> comment=<one pointed sentence>",
+    "(repeat for each responder)",
     "BEST: <responder id>",
     "",
-    "After the grade lines, deliver 2-3 short sentences as the verdict to the class. Reference at least one student by name. If nobody earned above a 7, say so — disappointment is earned. If someone crushed it, say that too. No generic wrap-up. The verdict should be worth screenshotting.",
+    "Then 2-3 sentences as the verdict. Reference at least one student by name. Disappointment is earned. Approval is earned. No generic wrap-up. The verdict should be worth screenshotting.",
   ].filter(Boolean).join("\n");
-
   const body = await llmJson<OpenRouterChatCompletion>({
     apiKey: args.apiKey,
     label: "chat",
@@ -2555,6 +2574,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
+      extraSystemContext = buildEssayContext(state) ?? undefined;
       chat.appendEvent(
         { sessionToken: token, faculty },
         {
@@ -2580,6 +2600,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const resolved = buildResolvedAnswerBriefing({ state, context: c, playerName });
       const correctAns = resolved.correctChoice;
       extraSystemContext = resolved.extraSystemContext;
+      // Layer essay context on top.
+      const essayCtx2 = buildEssayContext(state);
+      if (essayCtx2) extraSystemContext = extraSystemContext
+        ? extraSystemContext + "\n" + essayCtx2
+        : essayCtx2;
       // Build the round summary as a structured event line. Synopsised
       // exactly once into the model's RECENT EVENTS block — never
       // re-quoted in subsequent directives.
@@ -2630,6 +2655,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const resolvedState = ruby.getOrCreate(sessionId);
       const resolved = buildResolvedAnswerBriefing({ state: resolvedState, playerName });
       extraSystemContext = resolved.extraSystemContext;
+      // Layer essay context on top.
+      const essayCtx2 = buildEssayContext(state);
+      if (essayCtx2) extraSystemContext = extraSystemContext
+        ? extraSystemContext + "\n" + essayCtx2
+        : essayCtx2;
       chat.appendEvent(
         { sessionToken: token, faculty },
         { kind: "answer-resolved", text: `Nobody answered in time. ${resolved.eventText}` },
@@ -3015,6 +3045,32 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
                 // is in a platitude loop; better to ship the imperfect verdict
                 // than burn more tokens.
                 log.event("opinion.platitude-persisted", { facultyId, sessionId });
+              }
+            } catch {
+              // Retry failed; keep the original.
+            }
+          }
+
+          // Substance gate: if no grade comment references anything specific
+          // to the student's actual response (all comments are vague templates),
+          // retry once. Vague verdicts are just as bad as platitudes — they
+          // mean the teacher didn't actually read the responses.
+          if (!verdictHasSubstance({ grades, bestResponder, narrativeText })) {
+            log.event("opinion.vague-verdict-detected", { facultyId, sessionId });
+            try {
+              const retryVerdict = await gradeOpinionResponses({
+                apiKey,
+                facultyId,
+                question: state.current.prompt,
+                rubric: state.current.rubric,
+                responses,
+                playerName: "the player",
+              });
+              if (verdictHasSubstance(retryVerdict) && !detectGenericPraise(retryVerdict)) {
+                grades = retryVerdict.grades;
+                bestResponder = retryVerdict.bestResponder;
+                narrativeText = retryVerdict.narrativeText;
+                log.event("opinion.vague-verdict-corrected", { facultyId, sessionId });
               }
             } catch {
               // Retry failed; keep the original.

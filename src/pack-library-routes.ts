@@ -67,6 +67,7 @@ export interface PackLibraryRouteDeps {
 }
 
 const PREFIX = "/api/apps/ruby-high/pack-library";
+const PACK_SHARE_PREFIX = "/api/apps/ruby-high/pack";
 const DRAFT_PREFIX = "/api/apps/ruby-high/pack-drafts";
 const MAX_MATERIAL_CHARS = 80_000;
 const MAX_GENERATIONS_PER_DAY = readPositiveInt(process.env.RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY, 5);
@@ -134,6 +135,20 @@ export async function handlePackLibraryRoutes(
 ): Promise<boolean> {
   const isLibrary = ctx.pathname.startsWith(PREFIX);
   const isDraft = ctx.pathname.startsWith(DRAFT_PREFIX);
+  // Pack share pages: handled before library routes since /pack is a prefix of /pack-library
+  if (ctx.pathname.startsWith(PACK_SHARE_PREFIX) && !ctx.pathname.startsWith(PREFIX) && !ctx.pathname.startsWith(DRAFT_PREFIX)) {
+    const shareSub = ctx.pathname.slice(PACK_SHARE_PREFIX.length) || "/";
+    const shareMatch = shareSub.match(/^\/([^/]+)$/);
+    const reviewMatch = shareSub.match(/^\/([^/]+)\/review$/);
+    if (ctx.method === "GET" && shareMatch?.[1]) {
+      return await handlePackSharePage(ctx, deps, shareMatch[1]);
+    }
+    if (ctx.method === "POST" && reviewMatch?.[1]) {
+      return await handlePackReview(ctx, deps, reviewMatch[1]);
+    }
+    return false;
+  }
+
   if (!isLibrary && !isDraft) return false;
 
   const token = deps.auth.parseSessionToken(ctx.cookieHeader);
@@ -3083,4 +3098,158 @@ function clientErrorStatus(err: unknown): number {
   ) return 400;
   if ((message.startsWith("Need ") && (message.includes("Hall Pass") || message.includes("Card"))) || message.startsWith("Not enough Hall Passes") || message.startsWith("Not enough Cards")) return 402;
   return 500;
+}
+
+
+async function handlePackSharePage(
+  ctx: PackLibraryRouteContext,
+  deps: PackLibraryRouteDeps,
+  packId: string,
+): Promise<boolean> {
+  const format = ctx.url?.searchParams.get("format") ?? "";
+  const pack = deps.ruby.getPack(packId);
+  if (!pack) {
+    ctx.error(ctx.res, "Pack not found.", 404);
+    return true;
+  }
+  const p = pack.pack;
+  const reviews = (pack.reviews ?? []).filter((r) => r.rating >= 1 && r.rating <= 5);
+  const avg = reviews.length > 0
+    ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
+    : null;
+  const questionCount = p.faculty.reduce((sum, f) => sum + (f.questions?.length ?? 0), 0);
+  const subjects = [...new Set(p.faculty.flatMap((f) => f.subjects ?? []))];
+
+  if (format === "json") {
+    ctx.json(ctx.res, {
+      ok: true,
+      pack: {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        version: p.version,
+        faculty: p.faculty.map((f) => ({
+          id: f.id,
+          displayName: f.displayName,
+          shortName: f.shortName,
+          subjects: f.subjects,
+          questionCount: f.questions?.length ?? 0,
+        })),
+        questionCount,
+        subjects,
+      },
+      reviews: reviews.map((r) => ({ rating: r.rating, comment: r.comment, createdAt: r.createdAt })),
+      averageRating: avg ? parseFloat(avg) : null,
+      reviewCount: reviews.length,
+    });
+    return true;
+  }
+
+  const avgStars = avg ? renderStars(Math.round(parseFloat(avg))) : "No ratings yet";
+  const reviewCountText = reviews.length === 1 ? "1 review" : `${reviews.length} reviews`;
+  const facultyPills = subjects.slice(0, 6).map((s) => `<span class="pill">${escAttr(s)}</span>`).join(" ");
+  const playUrl = `/api/apps/ruby-high/viewer?pack=${encodeURIComponent(packId)}`;
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escAttr(p.name)} — Ruby High</title>
+  <meta name="description" content="${escAttr(p.description.slice(0, 160))}">
+  <meta property="og:title" content="${escAttr(p.name)} — Ruby High">
+  <meta property="og:description" content="${escAttr(p.description.slice(0, 200))}">
+  <meta property="og:type" content="website">
+  <style>
+    :root { color-scheme: light; --ink: #1c1721; --muted: #665c6d; --line: #ded7e5; --surface: #fffaf6; --panel: #ffffff; --accent: #9f2338; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    * { box-sizing: border-box; margin: 0; }
+    body { color: var(--ink); background: var(--surface); min-height: 100vh; }
+    main { max-width: 640px; margin: 0 auto; padding: 40px 20px 60px; }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
+    .brand h2 { font-size: 14px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; font-weight: 600; }
+    h1 { font-size: 28px; line-height: 1.2; margin-bottom: 8px; }
+    .desc { color: var(--muted); font-size: 15px; line-height: 1.5; margin-bottom: 20px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; align-items: center; }
+    .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .pill { background: var(--line); color: var(--ink); padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+    .rating { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .stars { color: #d4a017; letter-spacing: 2px; }
+    .play-btn { display: inline-block; background: var(--accent); color: #fff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: 600; margin-top: 8px; }
+    .play-btn:hover { opacity: 0.92; }
+    .faculty-list { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 20px; }
+    .faculty-list h3 { font-size: 14px; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+    .faculty-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .faculty-item:last-child { border-bottom: none; }
+    .faculty-name { font-weight: 600; font-size: 15px; }
+    .faculty-count { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#9f2338"/><text x="12" y="17" text-anchor="middle" fill="white" font-size="14" font-weight="700">R</text></svg>
+      <h2>Ruby High</h2>
+    </div>
+    <h1>${escAttr(p.name)}</h1>
+    <p class="desc">${escAttr(p.description)}</p>
+    <div class="meta">
+      <div class="rating">${avgStars} <span style="color:var(--muted)">${reviewCountText}</span></div>
+      <span style="color:var(--muted)">·</span>
+      <span style="color:var(--muted);font-size:14px">${questionCount} questions · ${p.faculty.length} teacher${p.faculty.length !== 1 ? "s" : ""}</span>
+    </div>
+    <div class="pills">${facultyPills}</div>
+    <a class="play-btn" href="${playUrl}">Play this class</a>
+    <div class="faculty-list">
+      <h3>Teachers</h3>
+      ${p.faculty.map((f) => `<div class="faculty-item"><span class="faculty-name">${escAttr(f.displayName)}</span><span class="faculty-count">${f.questions?.length ?? 0} questions</span></div>`).join("")}
+    </div>
+  </main>
+</body>
+</html>`;
+
+  const res = ctx.res as { writeHead: (code: number, headers: Record<string, string>) => void; end: (body: string) => void };
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(html);
+  return true;
+}
+
+async function handlePackReview(
+  ctx: PackLibraryRouteContext,
+  deps: PackLibraryRouteDeps,
+  packId: string,
+): Promise<boolean> {
+  const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+  const record = deps.auth.resolve(token);
+  if (!record || !token) {
+    ctx.error(ctx.res, "Sign in to review packs.", 401);
+    return true;
+  }
+  const body = await readBody(ctx);
+  const rating = Math.round(Number(body?.rating ?? 0));
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+    ctx.error(ctx.res, "Rating must be 1-5.", 400);
+    return true;
+  }
+  const comment = typeof body?.comment === "string" ? body.comment.slice(0, 500).trim() || undefined : undefined;
+  try {
+    const review = deps.ruby.addPackReview(packId, {
+      userId: record.userId,
+      rating,
+      comment,
+    });
+    ctx.json(ctx.res, { ok: true, review });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = message.includes("not found") ? 404 : 400;
+    ctx.error(ctx.res, message, status);
+  }
+  return true;
+}
+
+function escAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderStars(rating: number): string {
+  return '<span class="stars">' + "★".repeat(rating) + "☆".repeat(5 - rating) + "</span>";
 }

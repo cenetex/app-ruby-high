@@ -1623,7 +1623,7 @@ function buildToolDefs(opts: { includePickFromBank?: boolean; includePoseOpinion
       function: {
         name: "pose_opinion",
         description:
-          "Pose an OPINION question — this is the main event. No A/B/C/D: the student writes a free-form response and the AI students do too, then you judge them all comparatively. Opinion rounds are the spine of your classroom — pose one whenever the board is empty or you want a real verdict. MCQ is the break, opinion is the rhythm. After this fires, the round opens; you don't grade until later (the system will call you back to grade). Use freely — don't ration this.",
+          "Pose the graded essay question — the milestone for this grade. No A/B/C/D: the student writes a free-form response and the AI students do too, then you judge them all comparatively. Use this once per grade, when the student has built up enough daily class credits. After this fires, the round opens; you don't grade until later (the system calls you back).",
         parameters: {
           type: "object",
           required: ["prompt"],

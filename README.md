@@ -2,12 +2,11 @@
 
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
-Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, and graduate after Senior year.
+Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, track your standing on the classroom cohort leaderboard, and graduate after Senior year.
 
-**For the product story, the mechanics, the cast, and the roadmap, see [`DESIGN.md`](./DESIGN.md).** This file is the runbook.
+**For the product story, mechanics, cast, and roadmap, see [`DESIGN.md`](./DESIGN.md).** For the revenue plan and distribution pipeline, see [`ROADMAP.md`](./ROADMAP.md). This file is the runbook.
 
-Production is on **Fly.io**; see [`infra/fly-deploy.md`](./infra/fly-deploy.md).
-AWS App Runner is legacy / manual-only; see [`infra/README.md`](./infra/README.md).
+Production is on **Fly.io** with SQLite on a Fly Volume; see [`infra/fly-deploy.md`](./infra/fly-deploy.md). The legacy DynamoDB backend and App Runner deployment are archived in [`infra/README.md`](./infra/README.md); the AWS exit migration is documented in [`docs/aws-exit-migration.md`](./docs/aws-exit-migration.md).
 
 ## Run it locally
 
@@ -17,7 +16,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is still available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys default to sessionStorage, can opt into localStorage persistence with `rh_openrouter_persist=1`, and are never held by the server. Game state, auth sessions, and session-scoped packs persist through the configured store; teacher chat transcripts are process-local and reset on server restart/deploy.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys default to sessionStorage, can opt into localStorage persistence with `rh_openrouter_persist=1`, and are never held by the server. Game state, auth sessions, and session-scoped packs persist through the configured store (SQLite in production, JSON file in local dev); teacher chat transcripts are process-local and reset on server restart/deploy. Requires Node ≥24 for the built-in `node:sqlite` module.
 
 ## Ruby High 2.0 C wedge
 
@@ -97,6 +96,7 @@ No hosted account or OpenRouter key is needed for these:
 - `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v4`): field semantics, reliability levels, caveats, and the durable event streams for traffic, retention, funnel, commerce, LLM, and errors.
 - `GET /api/apps/ruby-high/admin/overview` returns a token-gated LLM-generated operator overview built only from aggregate metrics. It requires the normal server LLM credential.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data and `?format=svg` returns the social image. `?format=png` is intentionally 501 until server-side raster rendering is configured.
+- `GET /api/apps/ruby-high/cohort/:grade` renders the classroom cohort leaderboard for the current grade, scoped to active sessions at that year level.
 
 ## Service Wiring
 
@@ -114,11 +114,11 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_PRIVY_LOGIN_METHODS` | `email,wallet,google,twitter,passkey` | Comma-separated Privy login methods shown in the viewer. Use `google` for Gmail sign-in. Each method must also be enabled in the Privy dashboard. |
 | `RUBY_HIGH_PRIVY_APP_SECRET` | — | Preferred server-side Privy secret for verifying tokens and fetching linked wallet/user details. Set via secrets only. |
 | `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | — | Optional JWT verification-key fallback for deployments that do not use `RUBY_HIGH_PRIVY_APP_SECRET`. |
-| `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `dynamodb` for production. |
-| `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | JSON-backend file path. |
-| `RUBY_HIGH_DYNAMO_TABLE` | — | Required when backend is `dynamodb`. |
-| `AWS_REGION` | — | Required when backend is `dynamodb`. |
-| `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | DynamoDB TTL for idle sessions. |
+| `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `sqlite` for production (Fly Volume at `/data/ruby-high.db`). The legacy `dynamodb` backend is archived. |
+| `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | State file path. For the `sqlite` backend this is the db file path (e.g. `/data/ruby-high.db`). |
+| `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | TTL for idle sessions (SQLite `kv_expires` index). |
+| `RUBY_HIGH_DYNAMO_TABLE` | — | Legacy: required when backend is `dynamodb`. Ignored for `sqlite`/`json`. |
+| `AWS_REGION` | — | Legacy state-store region. Still used for Tigris portrait storage when `RUBY_HIGH_PORTRAITS_BUCKET` is set. |
 | `RUBY_HIGH_ADMIN_TOKEN` | — | Enables `/api/apps/ruby-high/admin/metrics`. Keep this in secrets only. |
 | `RUBY_HIGH_METRICS_TRUST_START` | — | Optional ISO date/time shown in admin metric quality notes after a metrics reset or schema migration. |
 | `RUBY_HIGH_LLM_PROVIDER` | `openrouter` | Set to `local` to use a local OpenAI-compatible `/v1/chat/completions` endpoint. Also inferred as `local` when `RUBY_HIGH_LLM_BASE_URL` is set. |
@@ -146,7 +146,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |
 | `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High: First Bell card NFTs. Create once with `npm run nft:create-card-collection`, then set this value. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_MINT` | `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump` | SPL-token mint accepted for crypto pack purchases. |
-| `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY` | Treasury wallet owner that must receive the SPL-token transfer. |
+| `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j` | Treasury wallet owner that must receive the SPL-token transfer. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL` | `RUBY` | Display symbol for the Solana token. |
 | `RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS` | `6` | SPL-token decimal places used when converting quoted token amounts to base units. |
 | `RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS` | `1000000` | `$RUBY` price for the 1-pack / 5 Hall Pass tier. |
@@ -171,6 +171,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_ALLOWED_MATERIAL_HOSTS` | `raw.githubusercontent.com,gist.githubusercontent.com` | Comma-separated list of additional trusted hosts for remote course-material imports. GitHub blob URLs are normalized to `raw.githubusercontent.com`. |
 | `RUBY_HIGH_EVAL_MODEL` | `openai/gpt-4.1-mini` | LLM-judge model for `npm run eval:voice` when an OpenRouter key is available. |
 | `RUBY_HIGH_EVAL_REQUIRE_API` | — | Set to `1` to make `npm run eval:voice` fail when no `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
+
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
 No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on AI Access, and enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
@@ -180,7 +181,7 @@ No OpenRouter key is required on the server for normal play: each user can authe
 Ruby High now has two currencies:
 
 - **Merit Stars** are earned by play and mirror the visible session-score payout.
-- **Hall Passes** are paid/entitlement currency for hosted AI windows, creator course slots, extra student slots, and hosted image generation.
+- **Hall Passes** are paid/entitlement currency for hosted AI windows, creator course slots, extra student slots, and hosted image generation. Stripe Checkout, Solana pack purchase + card burn, and RevenueCat in-app purchases all credit Hall Passes.
 
 Web purchases use Stripe Checkout for Hall Passes only:
 
@@ -198,7 +199,7 @@ Stripe webhook events to send: `checkout.session.completed` and, if using asynch
 Solana purchases are separate from Stripe and use the configured SPL token to mint a Metaplex Core pack NFT:
 
 - The default token is `$RUBY` mint `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump`.
-- The default treasury wallet is `1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY`.
+- The default treasury wallet is `AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j`.
 - Every built-in pack defaults to `100000` `$RUBY`.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
 - Create the Core card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` to the printed address.
@@ -234,7 +235,7 @@ npm run eval:voice
 
 `check:full` runs typecheck, the Vitest suite, and the offline SPA build. `test:browser` is the opt-in Playwright smoke target; it builds and launches the dev server, boots the viewer in Chromium, exercises guest play, account tabs, responsive framing, and the Privy bundle load path. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
 
-The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, yearbook/admin routes, and the content-pack registry.
+The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading with praise-gate detection, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, yearbook/admin/cohort routes, and the content-pack registry.
 
 ## Deploy
 
@@ -244,10 +245,8 @@ The current production deploy is **Fly.io**, driven locally by `npm run deploy`:
 npm run deploy
 ```
 
-The App Runner workflow is retained as a legacy manual fallback only. The container itself is host-agnostic — anywhere that speaks Docker, sets `PORT`, and populates `x-forwarded-*` works.
-
-For the IAM trust policies, the DynamoDB bootstrap, and the manual deploy fallback, see [`infra/README.md`](./infra/README.md).
+The container itself is host-agnostic — anywhere that speaks Docker, sets `PORT`, and populates `x-forwarded-*` works. The legacy App Runner workflow and DynamoDB bootstrap are archived in [`infra/README.md`](./infra/README.md).
 
 ## License
 
-MIT for the code. The mechanics layer is **CC BY 4.0** — see [`DESIGN.md`](./DESIGN.md) §6 and §12.
+MIT for the code, copyright RATi Open Software Foundation. The Ruby High characters (Ruby, Sally Science, Professor Edward, and the six student cast) and their artwork are dedicated to the public domain under **CC0 1.0** — see [`CC0-CHARACTERS.md`](./CC0-CHARACTERS.md). The mechanics layer is **CC BY 4.0** — see [`DESIGN.md`](./DESIGN.md) §6 and §12.

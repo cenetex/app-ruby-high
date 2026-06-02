@@ -257,6 +257,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   if (
     ctx.pathname.startsWith("/api/apps/ruby-high/pack-library") ||
+    ctx.pathname.startsWith("/api/apps/ruby-high/pack/") ||
     ctx.pathname.startsWith("/api/apps/ruby-high/pack-drafts")
   ) {
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);

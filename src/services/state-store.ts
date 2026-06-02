@@ -40,7 +40,18 @@ export interface StoredContentPackRecord {
   /** Durable creator slot backing an authored pack, when the pack was
    *  published through the draft studio. */
   courseSlot?: StoredCourseSlotRecord;
+  /** Player reviews for this pack. */
+  reviews?: StoredPackReview[];
   touchedAt: number;
+}
+
+export interface StoredPackReview {
+  id: string;
+  packId: string;
+  userId: string;
+  rating: number; // 1-5
+  comment?: string;
+  createdAt: number;
 }
 
 export type StoredTeacherVisibility = "private" | "unlisted" | "public";

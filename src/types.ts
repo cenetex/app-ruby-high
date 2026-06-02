@@ -596,6 +596,8 @@ export interface RubyHighWalletTransaction {
   photoDayCredits?: number;
   source?: "stripe" | "solana" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "hall-pass-pack" | "hall-pass-card" | "admin" | "system";
   description?: string;
+  /** Revenue amount in cents (USD). Set by billing routes at grant time. */
+  amountCents?: number;
   metadata?: Record<string, string | number | boolean | null>;
 }
 
@@ -976,6 +978,14 @@ export interface PlayerCharacter {
    *  The ceremony writes the Paper Card, applies the level-up reward, and
    *  advances the grade. */
   pendingGraduation?: GraduationReady | null;
+  /** The essay question for the current grade. Set when the grade begins.
+   *  The teacher gives this as an assignment early in the grade, references
+   *  it during daily lessons, then poses it as a graded opinion round when
+   *  the student has met all other graduation requirements. */
+  essayPrompt?: string;
+  /** Whether the student has completed their essay for the current grade.
+   *  Set when the essay round is graded. Required for graduation. */
+  essayCompleted?: boolean;
   /** Chosen rewards, one per completed year. */
   levelUps?: Array<{
     completedGrade: Grade;

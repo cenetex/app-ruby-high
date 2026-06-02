@@ -244,7 +244,7 @@ describe("billing products", () => {
     expect(lastResponse?.body.solana).toMatchObject({
       configured: true,
       mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-      recipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      recipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
       symbol: "RUBY",
       decimals: 6,
     });
@@ -649,7 +649,7 @@ describe("Solana Hall Pass billing", () => {
       method: "POST",
       path: "/api/apps/ruby-high/billing/solana/quote",
       cookie: "rh_session=solana-quote-treasury-wallet",
-      body: { productId: "card-pack-1", ownerWalletAddress: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY" },
+      body: { productId: "card-pack-1", ownerWalletAddress: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j" },
     }), deps());
 
     expect(lastResponse?.status).toBe(400);
@@ -677,7 +677,7 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body).toMatchObject({
       ok: true,
-      recipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      recipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
       mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       symbol: "RUBY",
       decimals: 6,
@@ -695,7 +695,7 @@ describe("Solana Hall Pass billing", () => {
     });
     expect(lastResponse?.body.reference).toEqual(expect.any(String));
     expect(lastResponse?.body.reference).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
-    expect(lastResponse?.body.solanaPayUrl).toContain("solana:1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY?");
+    expect(lastResponse?.body.solanaPayUrl).toContain("solana:AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j?");
     expect(lastResponse?.body.solanaPayUrl).toContain("spl-token=ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump");
     expect(lastResponse?.body.solanaPayUrl).toContain(`reference=${lastResponse?.body.reference}`);
     expect(lastResponse?.body.transactionBase64).toBe("AQID");
@@ -737,7 +737,7 @@ describe("Solana Hall Pass billing", () => {
         cardCount: 5,
         ownerWalletAddress,
         tokenMint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-        tokenRecipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+        tokenRecipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
         tokenAmount: "1000000",
         tokenAmountBaseUnits: "1000000000000",
         tokenDecimals: 6,
@@ -787,7 +787,7 @@ describe("Solana Hall Pass billing", () => {
     const signature = "4".repeat(88);
     const signedTransactionBase64 = signedCheckoutTransactionForTest({
       ownerWalletAddress: TEST_SOLANA_OWNER,
-      recipient: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      recipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
       mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       reference,
     });
@@ -903,7 +903,7 @@ describe("Solana Hall Pass billing", () => {
             {
               accountIndex: 3,
               mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-              owner: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+              owner: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
               uiTokenAmount: { amount: "0", decimals: 6 },
             },
           ],
@@ -911,7 +911,7 @@ describe("Solana Hall Pass billing", () => {
             {
               accountIndex: 3,
               mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-              owner: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+              owner: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
               uiTokenAmount: { amount: "2800000000000", decimals: 6 },
             },
           ],

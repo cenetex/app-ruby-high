@@ -1194,23 +1194,32 @@ async function postTelegramSnapshot() {
       ].join("");
       playGrid.innerHTML = [
         metric("Saved sessions", n(ruby.sessions), n(ruby.updatedLast24h) + " updated in 24h"),
-        metric("Character D1", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
+        metric("Character D1 / D7", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate) + " / " + pct(ruby.retention && ruby.retention.characterD7 && ruby.retention.characterD7.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
       ].join("");
+      const commerce = events.commerce || {};
+      const funnel = events.conversionFunnel || {};
+      const revenueStr = commerce.amountCents != null ? "\$" + (commerce.amountCents / 100).toFixed(2) : "n/a";
       creatorGrid.innerHTML = [
-        metric("Store", ruby.store || "unknown", ruby.loaded ? "loaded" : "not loaded"),
+        metric("Revenue", revenueStr, n(commerce.payingSessions) + " payers - " + n(commerce.events) + " txns"),
+        metric("Funnel V→C→P", n(funnel.totalVisitors) + "→" + n(funnel.charactersCreated) + "→" + n(funnel.payers), pct(funnel.visitorToCharacterRate) + " / " + pct(funnel.characterToPayerRate)),
         metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
         metric("LLM calls", n(events.llm && events.llm.calls), n(events.llm && events.llm.errors) + " errors"),
         metric("Durable errors", n(events.errors && events.errors.total), n((logs.counters || []).length) + " process counters"),
-        metric("Health", data.ok ? "OK" : "Check", "metrics route"),
       ].join("");
+      const commerceTbl = events.commerce || {};
+      const revenueBySource = commerceTbl.revenueBySource || {};
+      const revenueTable = Object.keys(revenueBySource).length > 0
+        ? table("Revenue by Source", revenueBySource)
+        : "";
       tablesEl.innerHTML = [
+        revenueTable,
         table("Provider Records", auth.providers || {}),
         table("Durable Events", events.byName || {}),
         logTable(logs.counters || []),
-      ].join("");
+      ].filter(Boolean).join("");
     }
 
     function renderQuick(data) {
@@ -1242,8 +1251,14 @@ async function postTelegramSnapshot() {
       const retention = ruby.retention || {};
       const characterD1 = retention.characterD1 || ruby.characterD1Retention || {};
       const visitorD1 = retention.visitorD1 || {};
+      const characterD7 = retention.characterD7 || {};
+      const visitorD7 = retention.visitorD7 || {};
       const d1 = characterD1.rate != null ? pct(characterD1.rate) : "n/a";
+      const d7 = characterD7.rate != null ? pct(characterD7.rate) : "n/a";
       const activeShare = ruby.sessions ? Math.round((Number(ruby.updatedLast24h || 0) / Number(ruby.sessions || 1)) * 100) : 0;
+      const commerce = events.commerce || {};
+      const funnel = events.conversionFunnel || {};
+      const revenue = commerce.amountCents != null ? "\$" + (commerce.amountCents / 100).toFixed(2) : "n/a";
       return {
         headline: n(auth.visitors && auth.visitors.total) + " visitor ids recorded",
         summary: "The current loop has " + n(ruby.characters) + " characters, " + n(ruby.completedGrades) + " sealed grades, and " + pct(ruby.questions && ruby.questions.accuracy) + " answer accuracy.",
@@ -1253,16 +1268,18 @@ async function postTelegramSnapshot() {
           n(auth.visitors && auth.visitors.returningLast24h) + " returning visitors in 24h",
           n(ruby.updatedLast24h) + " saved sessions updated in 24h",
           n(ruby.essayReports) + " essay reports generated",
+          revenue + " total revenue from " + n(commerce.payingSessions) + " payers",
         ],
         risks: [
           d1 + " character-session D1 retention",
-          (visitorD1.rate == null ? "n/a" : pct(visitorD1.rate)) + " visitor D1 retention",
+          d7 + " character-session D7 retention",
+          (visitorD1.rate == null ? "n/a" : pct(visitorD1.rate)) + " visitor D1 (" + (visitorD7.rate == null ? "n/a" : pct(visitorD7.rate)) + " D7)",
           n(auth.providers && auth.providers.guest) + " guest identity records are not unique people",
           activeShare + "% of saved sessions were active in 24h",
         ],
         actions: [
-          "Use v4 visitor events after the trust-start date",
-          "Watch grade completion rate",
+          "Visitor→character: " + (funnel.visitorToCharacterRate != null ? pct(funnel.visitorToCharacterRate) : "n/a") + " (" + n(funnel.charactersCreated) + "/" + n(funnel.totalVisitors) + ")",
+          "Character→payer: " + (funnel.characterToPayerRate != null ? pct(funnel.characterToPayerRate) : "n/a") + " (" + n(funnel.payers) + "/" + n(funnel.charactersCreated) + ")",
         ],
       };
     }

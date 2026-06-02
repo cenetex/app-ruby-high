@@ -109,3 +109,42 @@ export function detectGenericPraise(verdict: ParsedTeacherGrades): string | null
   }
   return null;
 }
+
+/** Lazy-signal patterns that suggest the teacher is generating generic
+ *  commentary without actually reading the student's response. A verdict
+ *  where EVERY grade comment hits one of these is likely a hallucinated
+ *  grade — it doesn't reference anything specific to what the student wrote. */
+const VAGUE_COMMENT_PATTERNS = [
+  /^you (made|raised|brought up|offered|presented|shared|gave) (a |an |some )?(good |solid |strong |interesting |compelling |nice |fair )?(point|argument|take|idea|perspective|response|answer|thought)/i,
+  /^you (clearly |obviously |really )?(understood|understand|get|grasped) the (question|prompt|topic|material|concept)/i,
+  /^you (could|should|need to|must) (have )?(gone|go|dive|dig|push|think) (deeper|further|more)/i,
+  /^you (tried|attempted)/i,
+  /^(solid|strong|decent|fair|ok|okay|fine|good) (start|effort|attempt|try|response|answer|take)/i,
+  /^(needs|needed|lacks|lacked) (more |some )?(depth|detail|specificity|development|support|evidence|examples)/i,
+  /^you (articulated|expressed|communicated|conveyed) (your|the) (point|idea|thought|argument)/i,
+  /^you (could|should|might) (have )?(benefit|benefited) from/i,
+  /^I (would have|wanted to|expected to) (see|hear)/i,
+];
+
+/** Check whether every grade comment is vague — none reference anything specific
+ *  to the student's actual response. Returns true if the verdict has real
+ *  substance (at least one comment is specific). Returns false if all comments
+ *  could apply to any response. */
+export function verdictHasSubstance(verdict: ParsedTeacherGrades): boolean {
+  if (verdict.grades.length === 0) return false;
+  return verdict.grades.some((g) => {
+    const comment = g.comment;
+    if (!comment || comment.length < 15) return false;
+    return !VAGUE_COMMENT_PATTERNS.some((p) => p.test(comment));
+  });
+}
+
+/** Returns all grade comments that are too vague to be meaningful. */
+export function vagueComments(verdict: ParsedTeacherGrades): string[] {
+  return verdict.grades
+    .filter((g) => {
+      if (!g.comment || g.comment.length < 15) return true;
+      return VAGUE_COMMENT_PATTERNS.some((p) => p.test(g.comment));
+    })
+    .map((g) => g.comment);
+}

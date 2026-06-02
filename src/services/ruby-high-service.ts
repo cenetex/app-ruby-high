@@ -90,6 +90,7 @@ import {
   type StoredMetricEventName,
   type StoredMetricEventRecord,
   type StoredPackInstallationRecord,
+  type StoredPackReview,
   type StoredTeacherRecord,
 } from "./state-store.js";
 import { log, setLogSink, type LogSinkRecord } from "./logger.js";
@@ -402,6 +403,7 @@ export interface HallPassMutationInput {
   description?: string;
   metadata?: RubyHighWalletTransaction["metadata"];
   at?: number;
+  amountCents?: number;
 }
 
 export interface HallPassCardGrantInput {
@@ -522,6 +524,16 @@ export interface RubyHighAnalyticsSnapshot {
       rate: number | null;
     };
     visitorD1: {
+      eligibleVisitors: number;
+      returnedVisitors: number;
+      rate: number | null;
+    };
+    characterD7: {
+      eligibleSessions: number;
+      returnedSessions: number;
+      rate: number | null;
+    };
+    visitorD7: {
       eligibleVisitors: number;
       returnedVisitors: number;
       rate: number | null;
@@ -647,6 +659,16 @@ export interface RubyHighMetricEventsSnapshot {
     meritStarsDelta: number;
     photoDayCreditsDelta: number;
     amountCents: number;
+    revenueBySource: Record<string, number>;
+    payingSessions: number;
+  };
+  conversionFunnel: {
+    totalVisitors: number;
+    charactersCreated: number;
+    payers: number;
+    visitorToCharacterRate: number | null;
+    characterToPayerRate: number | null;
+    visitorToPayerRate: number | null;
   };
   llm: {
     calls: number;
@@ -742,6 +764,7 @@ export interface PhotoDayCreditMutationInput {
   description?: string;
   metadata?: RubyHighWalletTransaction["metadata"];
   at?: number;
+  amountCents?: number;
 }
 
 export interface PhotoDayCreditMutationResult {
@@ -815,6 +838,39 @@ export function dailyStatusForState(state: QuizState, now: Date = new Date()): D
     return { available: false, reason: "completed", facultyId: fac, dailyKey: key };
   }
   return { available: true, facultyId: fac, dailyKey: key };
+}
+
+/** Generate the essay question for a grade. Each grade has one essay the
+ *  student must complete before graduating. The prompt is deterministic
+ *  per character (seeded by name + grade) so reloads preserve the question. */
+function gradeEssayPrompt(grade: Grade, ch: { name: string; playbookId?: string }): string {
+  const prompts: Record<Grade, string[]> = {
+    "9": [
+      "What does 'intelligence' mean to you — and is it something a machine could ever genuinely have, or only something it could fake well?",
+      "Think of a rule you follow that nobody actually checks. Why do you still follow it?",
+      "If you could redesign school from scratch, what would you keep and what would you burn?",
+    ],
+    "10": [
+      "Describe a time you changed your mind about something important. What made the difference — a person, an experience, a fact you couldn't ignore?",
+      "Is honesty always the best policy? Give a real example where you think it isn't.",
+      "Someone says 'AI should never be allowed to make decisions that affect human lives.' Agree or disagree — and give me the strongest counterargument to your own position.",
+    ],
+    "11": [
+      "Pick a belief you hold that most people you know disagree with. Defend it. Then tell me the best argument against it.",
+      "What would it mean for a machine to 'understand' something, rather than just process it? Where's the line?",
+      "Is there a difference between something being 'real' and something being 'meaningful'? Give me an example.",
+    ],
+    "12": [
+      "You're about to leave Ruby High. What did you actually learn here that you couldn't have gotten from a textbook or a YouTube video?",
+      "If annihilism is the belief that meaning is made, not found — what have you made? Be specific. No abstracts.",
+    ],
+  };
+  const pool = prompts[grade] ?? prompts["9"]!;
+  // Deterministic per character: same name + grade = same question
+  let seed = 0;
+  const key = `${ch.name}:${grade}`;
+  for (let i = 0; i < key.length; i++) seed = ((seed << 5) - seed + key.charCodeAt(i)) | 0;
+  return pool[Math.abs(seed) % pool.length]!;
 }
 
 export class RubyHighService extends Service {
@@ -1407,6 +1463,8 @@ export class RubyHighService extends Service {
               rate: eligibleCharacterSessions > 0 ? returnedCharacterSessions / eligibleCharacterSessions : null,
             },
         visitorD1: eventRetention.visitorD1,
+        characterD7: eventRetention.characterD7,
+        visitorD7: eventRetention.visitorD7,
       },
       characters,
       graduatedCharacters,
@@ -1506,6 +1564,7 @@ export class RubyHighService extends Service {
       source?: RubyHighWalletTransaction["source"];
       description?: string;
       metadata?: RubyHighWalletTransaction["metadata"];
+      amountCents?: number;
       at?: number;
       display?: boolean;
     },
@@ -1533,6 +1592,9 @@ export class RubyHighService extends Service {
       ...(input.source ? { source: input.source } : {}),
       ...(input.description ? { description: input.description } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
+      ...(typeof input.amountCents === "number" && Number.isFinite(input.amountCents)
+        ? { amountCents: Math.floor(input.amountCents) }
+        : {}),
     };
     if (input.display === false) {
       const ledger = state.wallet.operationLedger ?? {};
@@ -1549,6 +1611,7 @@ export class RubyHighService extends Service {
       hallPassesDelta: Math.floor(Number(transaction.hallPasses ?? 0)),
       meritStarsDelta: Math.floor(Number(transaction.meritStars ?? 0)),
       photoDayCreditsDelta: Math.floor(Number(transaction.photoDayCredits ?? 0)),
+      amountCents: typeof transaction.amountCents === "number" && Number.isFinite(transaction.amountCents) ? Math.floor(transaction.amountCents) : undefined,
       metadata: { transactionId: transaction.id },
     });
     state.updatedAt = Date.now();
@@ -1985,6 +2048,7 @@ export class RubyHighService extends Service {
       feature: "hall-pass-card-burn",
       status: "success",
       hallPassesDelta: transaction.hallPasses ?? 0,
+      amountCents: typeof transaction.amountCents === "number" && Number.isFinite(transaction.amountCents) ? Math.floor(transaction.amountCents) : undefined,
       metadata: { transactionId: transaction.id, cardCount: burns.length },
     });
     state.updatedAt = Date.now();
@@ -2055,6 +2119,7 @@ export class RubyHighService extends Service {
       feature: "hall-pass-card-burn",
       status: "success",
       hallPassesDelta: transaction.hallPasses ?? 0,
+      amountCents: typeof transaction.amountCents === "number" && Number.isFinite(transaction.amountCents) ? Math.floor(transaction.amountCents) : undefined,
       metadata: { transactionId: transaction.id, cardCount: burns.length },
     });
     state.updatedAt = Date.now();
@@ -2300,6 +2365,9 @@ export class RubyHighService extends Service {
       ...(input.source ? { source: input.source } : {}),
       ...(input.description ? { description: input.description } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
+      ...(typeof input.amountCents === "number" && Number.isFinite(input.amountCents)
+        ? { amountCents: Math.floor(input.amountCents) }
+        : {}),
     };
     state.wallet.hallPasses = kind === "hall-pass-spend" || kind === "hall-pass-revoke"
       ? current - appliedAmount
@@ -2311,6 +2379,7 @@ export class RubyHighService extends Service {
       feature: transaction.kind,
       status: "success",
       hallPassesDelta: transaction.hallPasses ?? 0,
+      amountCents: typeof transaction.amountCents === "number" && Number.isFinite(transaction.amountCents) ? Math.floor(transaction.amountCents) : undefined,
       metadata: { transactionId: transaction.id },
     });
     state.updatedAt = Date.now();
@@ -2351,6 +2420,9 @@ export class RubyHighService extends Service {
       source: input.source ?? "photo-day",
       ...(input.description ? { description: input.description } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
+      ...(typeof input.amountCents === "number" && Number.isFinite(input.amountCents)
+        ? { amountCents: Math.floor(input.amountCents) }
+        : {}),
     };
     state.characterSlots.photoDayCredits = kind === "photo-day-spend"
       ? current - amount
@@ -2632,6 +2704,39 @@ export class RubyHighService extends Service {
   async listPersistedPackRecords(): Promise<StoredContentPackRecord[]> {
     if (!this.persistedPackRecords) this.persistedPackRecords = await this.store.loadPacks();
     return this.persistedPackRecords.slice();
+  }
+
+  async getPack(packId: string): Promise<StoredContentPackRecord | null> {
+    const records = await this.listPersistedPackRecords();
+    return records.find((r) => r.pack.id === packId) ?? null;
+  }
+
+  addPackReview(packId: string, input: { userId: string; rating: number; comment?: string }): StoredPackReview {
+    if (!this.persistedPackRecords) throw new Error("Packs not loaded yet.");
+    const record = this.persistedPackRecords.find((r) => r.pack.id === packId);
+    if (!record) throw new Error("Pack not found.");
+    if (input.rating < 1 || input.rating > 5) throw new Error("Rating must be 1-5.");
+    const review: StoredPackReview = {
+      id: `${packId}:${input.userId}:${Date.now().toString(36)}`,
+      packId,
+      userId: input.userId,
+      rating: input.rating,
+      ...(input.comment ? { comment: input.comment } : {}),
+      createdAt: Date.now(),
+    };
+    // Replace existing review from same user, or append new one.
+    record.reviews = record.reviews ?? [];
+    const existing = record.reviews.findIndex((r) => r.userId === input.userId);
+    if (existing >= 0) {
+      record.reviews[existing] = review;
+    } else {
+      record.reviews.push(review);
+    }
+    record.touchedAt = Date.now();
+    void this.store.savePack(record).catch((err) => {
+      log.error("ruby-high.persist-pack-review-failed", err, { packId });
+    });
+    return review;
   }
 
   async listTeacherRecords(): Promise<StoredTeacherRecord[]> {
@@ -4260,7 +4365,7 @@ export class RubyHighService extends Service {
       classCount,
       classesMetAll,
       classGrades,
-      ready: streakMet && classesMetAll,
+      ready: streakMet && classesMetAll && (ch.essayCompleted !== false || !ch.essayPrompt),
     };
   }
 
@@ -4404,6 +4509,10 @@ export class RubyHighService extends Service {
       state.currentGrade = advance;
       this.ensureRoster(state, advance);
       ch.streak = { grade: advance, count: 0 };
+      // Assign the essay question for the new grade. The teacher will
+      // give it as an assignment and reference it during lessons.
+      ch.essayPrompt = gradeEssayPrompt(advance, ch);
+      ch.essayCompleted = false;
       log.event("player.grade-advanced", {
         sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, reward: normalizedReward.kind,
       });
@@ -5129,6 +5238,7 @@ export class RubyHighService extends Service {
             ...(typeof round.classSession.total === "number" ? { totalQuestions: round.classSession.total } : {}),
           }
         : undefined;
+      state.character && (state.character.essayCompleted = true);
       this.appendEssayReport(state, {
         id: `essay_${q.id}_${reviewAt.toString(36)}`,
         questionId: q.id,
@@ -7467,6 +7577,8 @@ function buildMetricEventsSnapshot(
     photoDayCreditsDelta: 0,
     amountCents: 0,
   };
+  const payingSessions = new Set<string>();
+  const revenueBySource: Record<string, number> = {};
   const llm = {
     calls: 0,
     successes: 0,
@@ -7545,10 +7657,14 @@ function buildMetricEventsSnapshot(
       if (day) day.balanceSamples += 1;
     } else if (event.name === "commerce") {
       commerce.events += 1;
-      commerce.hallPassesDelta += metricIntegerOrZero(event.hallPassesDelta);
+      const hpDelta = metricIntegerOrZero(event.hallPassesDelta);
+      commerce.hallPassesDelta += hpDelta;
       commerce.meritStarsDelta += metricIntegerOrZero(event.meritStarsDelta);
       commerce.photoDayCreditsDelta += metricIntegerOrZero(event.photoDayCreditsDelta);
       commerce.amountCents += metricIntegerOrZero(event.amountCents);
+      if (hpDelta > 0 && event.sessionId) payingSessions.add(event.sessionId);
+      const src = event.source || "unknown";
+      revenueBySource[src] = (revenueBySource[src] ?? 0) + metricIntegerOrZero(event.amountCents);
       if (day) day.commerceEvents += 1;
     } else if (event.name === "llm_usage") {
       llm.calls += 1;
@@ -7570,6 +7686,14 @@ function buildMetricEventsSnapshot(
   first10m.appOpenSessions = firstAppOpenBySession.size;
   yearbook.uniqueVisitors = yearbookVisitors.size;
   referral.uniqueReferredVisitors = referredVisitors.size;
+  const conversionFunnel = {
+    totalVisitors: visitorHashes.size,
+    charactersCreated: funnel.firstCharacterCreated,
+    payers: payingSessions.size,
+    visitorToCharacterRate: visitorHashes.size > 0 ? funnel.firstCharacterCreated / visitorHashes.size : null,
+    characterToPayerRate: funnel.firstCharacterCreated > 0 ? payingSessions.size / funnel.firstCharacterCreated : null,
+    visitorToPayerRate: visitorHashes.size > 0 ? payingSessions.size / visitorHashes.size : null,
+  };
   return {
     total,
     byName,
@@ -7593,7 +7717,16 @@ function buildMetricEventsSnapshot(
     referral,
     guestSpotlight,
     balance,
-    commerce,
+    commerce: {
+      events: commerce.events,
+      hallPassesDelta: commerce.hallPassesDelta,
+      meritStarsDelta: commerce.meritStarsDelta,
+      photoDayCreditsDelta: commerce.photoDayCreditsDelta,
+      amountCents: commerce.amountCents,
+      revenueBySource,
+      payingSessions: payingSessions.size,
+    },
+    conversionFunnel,
     llm,
     errors,
   };
@@ -7610,13 +7743,26 @@ function buildEventRetentionSnapshot(events: Iterable<StoredMetricEventRecord>, 
     returnedVisitors: number;
     rate: number | null;
   };
+  characterD7: {
+    eligibleSessions: number;
+    returnedSessions: number;
+    rate: number | null;
+  };
+  visitorD7: {
+    eligibleVisitors: number;
+    returnedVisitors: number;
+    rate: number | null;
+  };
 } {
   const dayMs = 24 * 60 * 60 * 1000;
+  const weekMs = 7 * dayMs;
   const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
   const characterCreatedBySession = new Map<string, number>();
   const returnedCharacterSessions = new Set<string>();
   const visitorFirstSeen = new Map<string, number>();
   const returnedVisitors = new Set<string>();
+  const latestReturnBySession = new Map<string, number>();
+  const latestReturnByVisitor = new Map<string, number>();
 
   for (const event of orderedEvents) {
     if (event.name === "funnel_step" && event.step === "first_character_created" && event.sessionId) {
@@ -7626,6 +7772,8 @@ function buildEventRetentionSnapshot(events: Iterable<StoredMetricEventRecord>, 
     if ((event.name === "app_open" || event.name === "session_resume") && event.sessionId) {
       const createdAt = characterCreatedBySession.get(event.sessionId);
       if (createdAt != null && event.occurredAt - createdAt >= dayMs) returnedCharacterSessions.add(event.sessionId);
+      const prevReturn = latestReturnBySession.get(event.sessionId);
+      if (prevReturn == null || event.occurredAt > prevReturn) latestReturnBySession.set(event.sessionId, event.occurredAt);
     }
     if (
       event.visitorHash &&
@@ -7637,6 +7785,8 @@ function buildEventRetentionSnapshot(events: Iterable<StoredMetricEventRecord>, 
       } else if (event.occurredAt - firstSeenAt >= dayMs) {
         returnedVisitors.add(event.visitorHash);
       }
+      const prevReturn = latestReturnByVisitor.get(event.visitorHash);
+      if (prevReturn == null || event.occurredAt > prevReturn) latestReturnByVisitor.set(event.visitorHash, event.occurredAt);
     }
   }
 
@@ -7657,6 +7807,30 @@ function buildEventRetentionSnapshot(events: Iterable<StoredMetricEventRecord>, 
     return firstSeenAt != null && now - firstSeenAt >= dayMs;
   }).length;
 
+  // D7: characters created >= 7 days ago who returned >= 7 days after creation
+  let eligibleSessionsD7 = 0;
+  let returnedEligibleSessionsD7 = 0;
+  for (const [sessionId, createdAt] of characterCreatedBySession) {
+    if (now - createdAt >= weekMs) {
+      eligibleSessionsD7 += 1;
+      if (returnedCharacterSessions.has(sessionId)) {
+        const latestReturn = latestReturnBySession.get(sessionId);
+        if (latestReturn != null && latestReturn - createdAt >= weekMs) returnedEligibleSessionsD7 += 1;
+      }
+    }
+  }
+  // D7: visitors first seen >= 7 days ago who returned >= 7 days after first seen
+  let eligibleVisitorsD7 = 0;
+  let returnedEligibleVisitorsD7 = 0;
+  for (const [visitorHash, firstSeenAt] of visitorFirstSeen) {
+    if (now - firstSeenAt >= weekMs) {
+      eligibleVisitorsD7 += 1;
+      if (returnedVisitors.has(visitorHash)) {
+        const latestReturn = latestReturnByVisitor.get(visitorHash);
+        if (latestReturn != null && latestReturn - firstSeenAt >= weekMs) returnedEligibleVisitorsD7 += 1;
+      }
+    }
+  }
   return {
     characterD1: {
       eligibleSessions,
@@ -7667,6 +7841,16 @@ function buildEventRetentionSnapshot(events: Iterable<StoredMetricEventRecord>, 
       eligibleVisitors,
       returnedVisitors: returnedEligibleVisitors,
       rate: eligibleVisitors > 0 ? returnedEligibleVisitors / eligibleVisitors : null,
+    },
+    characterD7: {
+      eligibleSessions: eligibleSessionsD7,
+      returnedSessions: returnedEligibleSessionsD7,
+      rate: eligibleSessionsD7 > 0 ? returnedEligibleSessionsD7 / eligibleSessionsD7 : null,
+    },
+    visitorD7: {
+      eligibleVisitors: eligibleVisitorsD7,
+      returnedVisitors: returnedEligibleVisitorsD7,
+      rate: eligibleVisitorsD7 > 0 ? returnedEligibleVisitorsD7 / eligibleVisitorsD7 : null,
     },
   };
 }
