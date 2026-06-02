@@ -156,14 +156,18 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
 
-  if (ctx.method === "GET" && ctx.pathname === `${APP_ROUTE_PREFIX}/leaderboard`) {
+  if (ctx.method === "GET" && ctx.pathname === `${APP_ROUTE_PREFIX}/cohort`) {
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!ruby) {
       ctx.error(ctx.res, "RubyHighService unavailable", 503);
       return true;
     }
+    const sessionId = getSessionId(runtime, ctx.cookieHeader);
+    const state = ruby.getOrCreate(sessionId);
+    const currentGrade = state.currentGrade ?? "9";
     const snapshot = ruby.getSchoolSnapshot();
-    ctx.json(ctx.res, { ok: true, topByYear: snapshot.topByYear });
+    const students = snapshot.topByYear[currentGrade] || [];
+    ctx.json(ctx.res, { ok: true, grade: currentGrade, students });
     return true;
   }
   if (ctx.pathname === ADMIN_METRICS_PATH) {

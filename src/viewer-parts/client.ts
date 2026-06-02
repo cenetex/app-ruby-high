@@ -5756,7 +5756,7 @@ export function runViewerClient(bootstrap) {
     els.leaderboardPanel.hidden = false;
     els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
     try {
-      const r = await apiFetch(apiBase + "/leaderboard");
+      const r = await apiFetch(apiBase + "/cohort");
       if (!r.ok) throw new Error("leaderboard " + r.status);
       const data = await r.json();
       renderLeaderboard(data);
@@ -5771,23 +5771,22 @@ export function runViewerClient(bootstrap) {
   }
 
   function renderLeaderboard(data) {
-    const topByYear = (data && data.topByYear) || {};
-    const years = ["9","10","11","12"];
+    const students = (data && data.students) || [];
+    const grade = (data && data.grade) || "9";
     const labels = {"9":"Freshman","10":"Sophomore","11":"Junior","12":"Senior"};
     const body = els.leaderboardBody;
     body.innerHTML = "";
-    let any = false;
-    years.forEach((year) => {
-      const students = topByYear[year] || [];
-      if (!students.length) return;
-      any = true;
-      const group = document.createElement("div");
-      group.className = "leaderboard-year-group";
-      const header = document.createElement("div");
-      header.className = "leaderboard-year-header";
-      header.innerHTML = labels[year] + ' <span class="leaderboard-year-count">' + students.length + "</span>";
-      group.appendChild(header);
-      students.forEach((s, i) => {
+    if (!students.length) {
+      body.innerHTML = '<div class="leaderboard-empty">No classmates yet. Complete daily classes with other players to see them here.</div>';
+      return;
+    }
+    const group = document.createElement("div");
+    group.className = "leaderboard-year-group";
+    const header = document.createElement("div");
+    header.className = "leaderboard-year-header";
+    header.innerHTML = labels[grade] + ' Classroom <span class="leaderboard-year-count">' + students.length + '</span>';
+    group.appendChild(header);
+    students.forEach((s, i) => {
         const row = document.createElement("div");
         row.className = "leaderboard-row";
         const rank = document.createElement("div");
@@ -5832,10 +5831,6 @@ export function runViewerClient(bootstrap) {
         group.appendChild(row);
       });
       body.appendChild(group);
-    });
-    if (!any) {
-      body.innerHTML = '<div class="leaderboard-empty">No students on the Honor Roll yet. Complete daily classes to appear here.</div>';
-    }
   }
 
   }
