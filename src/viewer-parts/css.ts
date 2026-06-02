@@ -7484,8 +7484,8 @@ export const VIEWER_CSS = `
     }
   }
 
-  /* ── Honor Roll leaderboard ────────────────────────────────────────────── */
-  .leaderboard-panel {
+  /* ── Classroom leaderboard ────────────────────────────────────────────── */
+  .cohort-panel {
     grid-row: 2;
     background: var(--bg);
     display: flex;
@@ -7493,48 +7493,48 @@ export const VIEWER_CSS = `
     overflow: hidden;
     min-height: 0;
   }
-  .leaderboard-header {
+  .cohort-header {
     display: flex;
     align-items: center;
     gap: 14px;
     padding: 18px 20px 14px;
     border-bottom: 1px solid var(--line);
   }
-  .leaderboard-header-icon {
+  .cohort-header-icon {
     font-size: 32px;
     line-height: 1;
   }
-  .leaderboard-header-text {
+  .cohort-header-text {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
-  .leaderboard-title {
+  .cohort-title {
     margin: 0;
     font-size: 18px;
     font-weight: 700;
     color: var(--text);
   }
-  .leaderboard-sub {
+  .cohort-sub {
     margin: 0;
     font-size: 12px;
     color: var(--text-mute);
   }
-  .leaderboard-body {
+  .cohort-body {
     flex: 1;
     overflow-y: auto;
     padding: 6px 0;
   }
-  .leaderboard-loading {
+  .cohort-loading {
     padding: 40px 20px;
     text-align: center;
     color: var(--text-mute);
     font-size: 14px;
   }
-  .leaderboard-year-group {
+  .cohort-year-group {
     margin: 0 16px 6px;
   }
-  .leaderboard-year-header {
+  .cohort-year-header {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -7545,23 +7545,23 @@ export const VIEWER_CSS = `
     text-transform: uppercase;
     border-bottom: 1px solid var(--line);
   }
-  .leaderboard-year-count {
+  .cohort-year-count {
     font-size: 10px;
     color: var(--text-fade);
     font-weight: 400;
     letter-spacing: 0;
   }
-  .leaderboard-row {
+  .cohort-row {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 10px 4px;
     border-bottom: 1px solid var(--line);
   }
-  .leaderboard-row:last-child {
+  .cohort-row:last-child {
     border-bottom: none;
   }
-  .leaderboard-rank {
+  .cohort-rank {
     width: 28px;
     height: 28px;
     border-radius: 999px;
@@ -7571,23 +7571,23 @@ export const VIEWER_CSS = `
     font-weight: 800;
     flex: 0 0 auto;
   }
-  .leaderboard-rank.rank-1 {
+  .cohort-rank.rank-1 {
     background: #ffd700;
     color: #5c3d00;
   }
-  .leaderboard-rank.rank-2 {
+  .cohort-rank.rank-2 {
     background: #c0c0c0;
     color: #2a2a2a;
   }
-  .leaderboard-rank.rank-3 {
+  .cohort-rank.rank-3 {
     background: #cd7f32;
     color: #2a1500;
   }
-  .leaderboard-rank.rank-n {
+  .cohort-rank.rank-n {
     background: var(--bg-elev);
     color: var(--text-mute);
   }
-  .leaderboard-portrait {
+  .cohort-portrait {
     width: 32px;
     height: 32px;
     border-radius: 999px;
@@ -7601,35 +7601,35 @@ export const VIEWER_CSS = `
     font-size: 11px;
     font-weight: 700;
   }
-  .leaderboard-portrait img {
+  .cohort-portrait img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center top;
     display: block;
   }
-  .leaderboard-info {
+  .cohort-info {
     flex: 1;
     min-width: 0;
   }
-  .leaderboard-name {
+  .cohort-name {
     font-size: 14px;
     font-weight: 600;
     color: var(--text);
     line-height: 1.3;
   }
-  .leaderboard-playbook {
+  .cohort-playbook {
     font-size: 11px;
     color: var(--text-mute);
     line-height: 1.3;
   }
-  .leaderboard-grades {
+  .cohort-grades {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
     margin-top: 3px;
   }
-  .leaderboard-grade-chip {
+  .cohort-grade-chip {
     font-size: 10px;
     padding: 1px 6px;
     border-radius: 4px;
@@ -7638,15 +7638,15 @@ export const VIEWER_CSS = `
     font-weight: 600;
     letter-spacing: 0.02em;
   }
-  .leaderboard-grade-chip.is-A {
+  .cohort-grade-chip.is-A {
     background: #1b3a1b;
     color: #7cff7c;
   }
-  .leaderboard-grade-chip.is-B {
+  .cohort-grade-chip.is-B {
     background: #1b2a3a;
     color: #7cc8ff;
   }
-  .leaderboard-empty {
+  .cohort-empty {
     padding: 40px 20px;
     text-align: center;
     color: var(--text-mute);

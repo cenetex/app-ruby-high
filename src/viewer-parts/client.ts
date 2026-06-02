@@ -659,8 +659,8 @@ export function runViewerClient(bootstrap) {
     appConfirmCopy: $("app-confirm-copy"),
     appConfirmDetail: $("app-confirm-detail"),
     appConfirmCancel: $("app-confirm-cancel"),
-    leaderboardPanel: $("leaderboard-panel"),
-    leaderboardBody: $("leaderboard-body"),
+    cohortPanel: $("cohort-panel"),
+    cohortBody: $("cohort-body"),
 
     appConfirmOk: $("app-confirm-ok"),
   };
@@ -1485,7 +1485,7 @@ export function runViewerClient(bootstrap) {
   function showBlackboardEmpty(reset) {
     els.blackboardPanel.classList.add("is-empty");
     els.blackboardEmpty.hidden = false;
-    els.leaderboardPanel.hidden = true;
+    els.cohortPanel.hidden = true;
     els.blackboardMeta.hidden = true;
     els.boardFrameHost.hidden = true;
     els.answersHost.hidden = true;
@@ -5452,7 +5452,7 @@ export function runViewerClient(bootstrap) {
     if (!grade) {
       const empty = document.createElement("div");
       empty.className = "channel-section-title";
-      empty.textContent = "Loading…";
+      empty.textContent = "Loading classroom…";
       els.channelsList.appendChild(empty);
       return;
     }
@@ -5654,10 +5654,10 @@ export function runViewerClient(bootstrap) {
         els.channelsList.appendChild(group);
       });
 
-    // Honor Roll — school-wide leaderboard.
+    // Classroom — your current grade cohort.
     const honorTitle = document.createElement("div");
     honorTitle.className = "channel-section-title";
-    honorTitle.textContent = "Honor Roll";
+    honorTitle.textContent = "Classroom";
     els.channelsList.appendChild(honorTitle);
     const honorRow = document.createElement("button");
     honorRow.className = "channel-row";
@@ -5675,9 +5675,9 @@ export function runViewerClient(bootstrap) {
     honorMeta.style.flex = "1 1 auto";
     honorMeta.style.fontWeight = "600";
     honorMeta.style.fontSize = "15px";
-    honorMeta.textContent = "View Honor Roll";
+    honorMeta.textContent = "View Classroom";
     honorRow.appendChild(honorMeta);
-    honorRow.addEventListener("click", () => showLeaderboard());
+    honorRow.addEventListener("click", () => showCohort());
     els.channelsList.appendChild(honorRow);
 
   }
@@ -5748,54 +5748,53 @@ export function runViewerClient(bootstrap) {
     }
     closeRails();
 
-  async function showLeaderboard() {
+  async function showCohort() {
     closeRails();
-    hideBlackboard();
+    hideCohort();
     els.loungeStage.hidden = true;
     els.stream.hidden = true;
-    els.leaderboardPanel.hidden = false;
-    els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
+    els.cohortPanel.hidden = false;
+    els.cohortBody.innerHTML = '<div class="cohort-loading">Loading classroom…</div>';
     try {
-      const r = await apiFetch(apiBase + "/leaderboard");
-      if (!r.ok) throw new Error("leaderboard " + r.status);
+      const r = await apiFetch(apiBase + "/cohort");
+      if (!r.ok) throw new Error("cohort " + r.status);
       const data = await r.json();
-      renderLeaderboard(data);
+      renderCohort(data);
     } catch (err) {
-      els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Could not load Honor Roll — try again later.</div>';
+      els.cohortBody.innerHTML = '<div class="cohort-loading">Could not load Classroom — try again later.</div>';
     }
   }
 
-  function hideBlackboard() {
+  function hideCohort() {
     els.blackboardPanel.hidden = true;
     els.composerZone.hidden = true;
   }
 
-  function renderLeaderboard(data) {
-    const topByYear = (data && data.topByYear) || {};
-    const years = ["9","10","11","12"];
+  function renderCohort(data) {
+    const students = (data && data.students) || [];
+    const grade = data && data.grade || "9";
     const labels = {"9":"Freshman","10":"Sophomore","11":"Junior","12":"Senior"};
-    const body = els.leaderboardBody;
+    const body = els.cohortBody;
     body.innerHTML = "";
-    let any = false;
-    years.forEach((year) => {
-      const students = topByYear[year] || [];
-      if (!students.length) return;
-      any = true;
-      const group = document.createElement("div");
-      group.className = "leaderboard-year-group";
-      const header = document.createElement("div");
-      header.className = "leaderboard-year-header";
-      header.innerHTML = labels[year] + ' <span class="leaderboard-year-count">' + students.length + "</span>";
-      group.appendChild(header);
-      students.forEach((s, i) => {
+    if (!students.length) {
+      body.innerHTML = '<div class="cohort-empty">No classmates yet. Complete daily classes with other players to appear here.</div>';
+      return;
+    }
+    const group = document.createElement("div");
+    group.className = "cohort-year-group";
+    const header = document.createElement("div");
+    header.className = "cohort-year-header";
+    header.innerHTML = labels[grade] + ' Classroom <span class="cohort-year-count">' + students.length + '</span>';
+    group.appendChild(header);
+    students.forEach((s, i) => {
         const row = document.createElement("div");
-        row.className = "leaderboard-row";
+        row.className = "cohort-row";
         const rank = document.createElement("div");
-        rank.className = "leaderboard-rank rank-" + (i < 3 ? i + 1 : "n");
+        rank.className = "cohort-rank rank-" + (i < 3 ? i + 1 : "n");
         rank.textContent = String(i + 1);
         row.appendChild(rank);
         const thumb = document.createElement("div");
-        thumb.className = "leaderboard-portrait";
+        thumb.className = "cohort-portrait";
         if (s.portraitUrl) {
           const img = document.createElement("img");
           img.src = s.portraitUrl;
@@ -5807,21 +5806,21 @@ export function runViewerClient(bootstrap) {
         }
         row.appendChild(thumb);
         const info = document.createElement("div");
-        info.className = "leaderboard-info";
+        info.className = "cohort-info";
         const nameEl = document.createElement("div");
-        nameEl.className = "leaderboard-name";
+        nameEl.className = "cohort-name";
         nameEl.textContent = s.name || "—";
         info.appendChild(nameEl);
         const pbEl = document.createElement("div");
-        pbEl.className = "leaderboard-playbook";
+        pbEl.className = "cohort-playbook";
         const playbooks = (lastTelemetry && Array.isArray(lastTelemetry.playbooks)) ? lastTelemetry.playbooks : []; pbEl.textContent = (playbooks.find(p => p.id === s.playbookId) || {}).name || s.playbookId || "—";
         info.appendChild(pbEl);
         if (s.classGrades && typeof s.classGrades === "object") {
           const grades = document.createElement("div");
-          grades.className = "leaderboard-grades";
+          grades.className = "cohort-grades";
           Object.entries(s.classGrades).slice(0, 3).forEach(([fac, gl]) => {
             const chip = document.createElement("span");
-            chip.className = "leaderboard-grade-chip is-" + String(gl).charAt(0);
+            chip.className = "cohort-grade-chip is-" + String(gl).charAt(0);
             const fn = {"ruby":"Ruby","sally-science":"Sally","professor-edward":"Edward"}[fac] || fac;
             chip.textContent = fn + " " + gl;
             grades.appendChild(chip);
@@ -5832,12 +5831,6 @@ export function runViewerClient(bootstrap) {
         group.appendChild(row);
       });
       body.appendChild(group);
-    });
-    if (!any) {
-      body.innerHTML = '<div class="leaderboard-empty">No students on the Honor Roll yet. Complete daily classes to appear here.</div>';
-    }
-  }
-
   }
   async function startPostClassPractice(postClass) {
     if (!postClass || !postClass.report) return false;
@@ -12543,4 +12536,5 @@ export function runViewerClient(bootstrap) {
     }, fast ? 750 : 4000);
   }
   adaptiveSchedule();
+}
 }

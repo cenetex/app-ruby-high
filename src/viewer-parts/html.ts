@@ -148,16 +148,16 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
-    <section class="leaderboard-panel" id="leaderboard-panel" hidden>
-      <div class="leaderboard-header">
-        <div class="leaderboard-header-icon">🏆</div>
-        <div class="leaderboard-header-text">
-          <h2 class="leaderboard-title">Honor Roll</h2>
-          <p class="leaderboard-sub">Top students by year — updated live.</p>
+    <section class="cohort-panel" id="cohort-panel" hidden>
+      <div class="cohort-header">
+        <div class="cohort-header-icon">🏆</div>
+        <div class="cohort-header-text">
+          <h2 class="cohort-title">Classroom</h2>
+          <p class="cohort-sub">Your classmates — latest by grade.</p>
         </div>
       </div>
-      <div class="leaderboard-body" id="leaderboard-body">
-        <div class="leaderboard-loading">Loading…</div>
+      <div class="cohort-body" id="cohort-body">
+        <div class="cohort-loading">Loading classroom…</div>
       </div>
     </section>
 
