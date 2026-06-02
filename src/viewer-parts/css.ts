@@ -7483,4 +7483,174 @@ export const VIEWER_CSS = `
       justify-self: center;
     }
   }
+
+  /* ── Honor Roll leaderboard ────────────────────────────────────────────── */
+  .leaderboard-panel {
+    grid-row: 2;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .leaderboard-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .leaderboard-header-icon {
+    font-size: 32px;
+    line-height: 1;
+  }
+  .leaderboard-header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .leaderboard-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .leaderboard-sub {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-mute);
+  }
+  .leaderboard-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .leaderboard-loading {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-mute);
+    font-size: 14px;
+  }
+  .leaderboard-year-group {
+    margin: 0 16px 6px;
+  }
+  .leaderboard-year-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 4px 8px;
+    color: var(--text-mute);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--line);
+  }
+  .leaderboard-year-count {
+    font-size: 10px;
+    color: var(--text-fade);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  .leaderboard-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  .leaderboard-row:last-child {
+    border-bottom: none;
+  }
+  .leaderboard-rank {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 800;
+    flex: 0 0 auto;
+  }
+  .leaderboard-rank.rank-1 {
+    background: #ffd700;
+    color: #5c3d00;
+  }
+  .leaderboard-rank.rank-2 {
+    background: #c0c0c0;
+    color: #2a2a2a;
+  }
+  .leaderboard-rank.rank-3 {
+    background: #cd7f32;
+    color: #2a1500;
+  }
+  .leaderboard-rank.rank-n {
+    background: var(--bg-elev);
+    color: var(--text-mute);
+  }
+  .leaderboard-portrait {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: var(--bg-elev);
+    border: 1.5px solid var(--line);
+    overflow: hidden;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    color: var(--text-mute);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .leaderboard-portrait img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+  }
+  .leaderboard-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .leaderboard-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .leaderboard-playbook {
+    font-size: 11px;
+    color: var(--text-mute);
+    line-height: 1.3;
+  }
+  .leaderboard-grades {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 3px;
+  }
+  .leaderboard-grade-chip {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--bg-elev);
+    color: var(--text-soft);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .leaderboard-grade-chip.is-A {
+    background: #1b3a1b;
+    color: #7cff7c;
+  }
+  .leaderboard-grade-chip.is-B {
+    background: #1b2a3a;
+    color: #7cc8ff;
+  }
+  .leaderboard-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-mute);
+    font-size: 14px;
+  }
+
 `;

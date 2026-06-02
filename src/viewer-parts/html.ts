@@ -148,6 +148,20 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
+    <section class="leaderboard-panel" id="leaderboard-panel" hidden>
+      <div class="leaderboard-header">
+        <div class="leaderboard-header-icon">🏆</div>
+        <div class="leaderboard-header-text">
+          <h2 class="leaderboard-title">Honor Roll</h2>
+          <p class="leaderboard-sub">Top students by year — updated live.</p>
+        </div>
+      </div>
+      <div class="leaderboard-body" id="leaderboard-body">
+        <div class="leaderboard-loading">Loading…</div>
+      </div>
+    </section>
+
+
     <section class="stream" id="stream"></section>
 
     <section class="composer-zone" id="composer-zone">

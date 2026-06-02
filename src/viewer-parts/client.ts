@@ -659,6 +659,9 @@ export function runViewerClient(bootstrap) {
     appConfirmCopy: $("app-confirm-copy"),
     appConfirmDetail: $("app-confirm-detail"),
     appConfirmCancel: $("app-confirm-cancel"),
+    leaderboardPanel: $("leaderboard-panel"),
+    leaderboardBody: $("leaderboard-body"),
+
     appConfirmOk: $("app-confirm-ok"),
   };
 
@@ -1482,6 +1485,7 @@ export function runViewerClient(bootstrap) {
   function showBlackboardEmpty(reset) {
     els.blackboardPanel.classList.add("is-empty");
     els.blackboardEmpty.hidden = false;
+    els.leaderboardPanel.hidden = true;
     els.blackboardMeta.hidden = true;
     els.boardFrameHost.hidden = true;
     els.answersHost.hidden = true;
@@ -5649,6 +5653,33 @@ export function runViewerClient(bootstrap) {
 
         els.channelsList.appendChild(group);
       });
+
+    // Honor Roll — school-wide leaderboard.
+    const honorTitle = document.createElement("div");
+    honorTitle.className = "channel-section-title";
+    honorTitle.textContent = "Honor Roll";
+    els.channelsList.appendChild(honorTitle);
+    const honorRow = document.createElement("button");
+    honorRow.className = "channel-row";
+    honorRow.type = "button";
+    const honorThumb = document.createElement("span");
+    honorThumb.className = "teacher-thumb";
+    honorThumb.style.background = "#222";
+    honorThumb.style.display = "grid";
+    honorThumb.style.placeItems = "center";
+    honorThumb.style.color = "#ffd700";
+    honorThumb.style.fontSize = "16px";
+    honorThumb.textContent = "🏆";
+    honorRow.appendChild(honorThumb);
+    const honorMeta = document.createElement("span");
+    honorMeta.style.flex = "1 1 auto";
+    honorMeta.style.fontWeight = "600";
+    honorMeta.style.fontSize = "15px";
+    honorMeta.textContent = "View Honor Roll";
+    honorRow.appendChild(honorMeta);
+    honorRow.addEventListener("click", () => showLeaderboard());
+    els.channelsList.appendChild(honorRow);
+
   }
   function channelNameFor(f) {
     if (!f) return "channel";
@@ -5716,6 +5747,97 @@ export function runViewerClient(bootstrap) {
       }
     }
     closeRails();
+
+  async function showLeaderboard() {
+    closeRails();
+    hideBlackboard();
+    els.loungeStage.hidden = true;
+    els.stream.hidden = true;
+    els.leaderboardPanel.hidden = false;
+    els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
+    try {
+      const r = await apiFetch(apiBase + "/leaderboard");
+      if (!r.ok) throw new Error("leaderboard " + r.status);
+      const data = await r.json();
+      renderLeaderboard(data);
+    } catch (err) {
+      els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Could not load Honor Roll — try again later.</div>';
+    }
+  }
+
+  function hideBlackboard() {
+    els.blackboardPanel.hidden = true;
+    els.composerZone.hidden = true;
+  }
+
+  function renderLeaderboard(data) {
+    const topByYear = (data && data.topByYear) || {};
+    const years = ["9","10","11","12"];
+    const labels = {"9":"Freshman","10":"Sophomore","11":"Junior","12":"Senior"};
+    const body = els.leaderboardBody;
+    body.innerHTML = "";
+    let any = false;
+    years.forEach((year) => {
+      const students = topByYear[year] || [];
+      if (!students.length) return;
+      any = true;
+      const group = document.createElement("div");
+      group.className = "leaderboard-year-group";
+      const header = document.createElement("div");
+      header.className = "leaderboard-year-header";
+      header.innerHTML = labels[year] + ' <span class="leaderboard-year-count">' + students.length + "</span>";
+      group.appendChild(header);
+      students.forEach((s, i) => {
+        const row = document.createElement("div");
+        row.className = "leaderboard-row";
+        const rank = document.createElement("div");
+        rank.className = "leaderboard-rank rank-" + (i < 3 ? i + 1 : "n");
+        rank.textContent = String(i + 1);
+        row.appendChild(rank);
+        const thumb = document.createElement("div");
+        thumb.className = "leaderboard-portrait";
+        if (s.portraitUrl) {
+          const img = document.createElement("img");
+          img.src = s.portraitUrl;
+          img.alt = "";
+          img.onerror = () => { thumb.textContent = String(s.name || "?").slice(0,1).toUpperCase(); };
+          thumb.appendChild(img);
+        } else {
+          thumb.textContent = String(s.name || "?").slice(0,1).toUpperCase();
+        }
+        row.appendChild(thumb);
+        const info = document.createElement("div");
+        info.className = "leaderboard-info";
+        const nameEl = document.createElement("div");
+        nameEl.className = "leaderboard-name";
+        nameEl.textContent = s.name || "—";
+        info.appendChild(nameEl);
+        const pbEl = document.createElement("div");
+        pbEl.className = "leaderboard-playbook";
+        pbEl.textContent = (PLAYBOOKS.find(p => p.id === s.playbookId) || {}).name || s.playbookId || "—";
+        info.appendChild(pbEl);
+        if (s.classGrades && typeof s.classGrades === "object") {
+          const grades = document.createElement("div");
+          grades.className = "leaderboard-grades";
+          Object.entries(s.classGrades).slice(0, 3).forEach(([fac, gl]) => {
+            const chip = document.createElement("span");
+            chip.className = "leaderboard-grade-chip is-" + String(gl).charAt(0);
+            const fn = {"ruby":"Ruby","sally-science":"Sally","professor-edward":"Edward"}[fac] || fac;
+            chip.textContent = fn + " " + gl;
+            grades.appendChild(chip);
+          });
+          info.appendChild(grades);
+        }
+        row.appendChild(info);
+        group.appendChild(row);
+      });
+      body.appendChild(group);
+    });
+    if (!any) {
+      body.innerHTML = '<div class="leaderboard-empty">No students on the Honor Roll yet. Complete daily classes to appear here.</div>';
+    }
+  }
+
   }
   async function startPostClassPractice(postClass) {
     if (!postClass || !postClass.report) return false;

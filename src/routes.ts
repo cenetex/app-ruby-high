@@ -155,6 +155,17 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return handleYearbookRoutes(ctx, ruby);
   }
 
+
+  if (ctx.method === "GET" && ctx.pathname === `${APP_ROUTE_PREFIX}/leaderboard`) {
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!ruby) {
+      ctx.error(ctx.res, "RubyHighService unavailable", 503);
+      return true;
+    }
+    const snapshot = ruby.getSchoolSnapshot();
+    ctx.json(ctx.res, { ok: true, topByYear: snapshot.topByYear });
+    return true;
+  }
   if (ctx.pathname === ADMIN_METRICS_PATH) {
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
