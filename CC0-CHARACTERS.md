@@ -23,3 +23,9 @@ games, write stories, train models, print stickers — go ahead.
 
 For the full license text, see https://creativecommons.org/publicdomain/zero/1.0/
 
+
+
+## Foundation Addresses
+
+- RATi token: `Ci6Y1UX8bY4jxn6YiogJmdCxFEu2jmZhCcG65PStpump`
+- SOL donations: `3ttTwAt9RpoACUQrnxuUGfqfBgPJ4BFUxHd49AqxTjz2`
