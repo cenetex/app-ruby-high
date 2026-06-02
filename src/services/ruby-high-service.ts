@@ -5992,6 +5992,9 @@ export class RubyHighService extends Service {
     for (const [, state] of this.sessions) {
       const ch = state.character;
       if (!ch) continue;
+
+      // Skip smoke-test / auto-generated characters.
+      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
       memories.totalStudents += 1;
       // Characters created today.
       if (ch.createdAt) {
