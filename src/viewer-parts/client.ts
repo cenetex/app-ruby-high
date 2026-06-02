@@ -5814,7 +5814,7 @@ export function runViewerClient(bootstrap) {
         info.appendChild(nameEl);
         const pbEl = document.createElement("div");
         pbEl.className = "leaderboard-playbook";
-        pbEl.textContent = (PLAYBOOKS.find(p => p.id === s.playbookId) || {}).name || s.playbookId || "—";
+        const playbooks = (lastTelemetry && Array.isArray(lastTelemetry.playbooks)) ? lastTelemetry.playbooks : []; pbEl.textContent = (playbooks.find(p => p.id === s.playbookId) || {}).name || s.playbookId || "—";
         info.appendChild(pbEl);
         if (s.classGrades && typeof s.classGrades === "object") {
           const grades = document.createElement("div");

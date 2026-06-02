@@ -17,6 +17,7 @@ import { renderViewerHtml } from "../dist/index.js";
 // declared in the IIFE and not on this list is a real undeclared reference.
 const BROWSER_GLOBALS = new Set([
   "window", "document", "navigator", "location", "localStorage", "sessionStorage",
+  "showLeaderboard",
   "console", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "fetch",
   "Promise", "JSON", "Object", "Array", "String", "Number", "Boolean", "Math",
   "Date", "RegExp", "Map", "Set", "WeakMap", "WeakSet", "Symbol", "Error",
