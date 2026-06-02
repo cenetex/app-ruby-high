@@ -4495,6 +4495,24 @@ export function runViewerClient(bootstrap) {
     }
   }
 
+  // Inbound half of the share loop: a `?ref=` param means this visit arrived
+  // from a shared artifact. Record the click, stash the ref so the app_open
+  // event can attribute the session, then strip it from the URL.
+  let referralRef = "";
+  function consumeReferralFlag() {
+    try {
+      const url = new URL(window.location.href);
+      const ref = url.searchParams.get("ref");
+      if (!ref) return;
+      referralRef = ref.slice(0, 120);
+      postViewerMetricEvent("share_link_visited", { ref: referralRef, landing: url.pathname });
+      url.searchParams.delete("ref");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch (_e) {
+      // Ignore URL cleanup failures.
+    }
+  }
+
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
   function renderRaceStrip(t) {
     const round = t.active_round;
@@ -8198,6 +8216,7 @@ export function runViewerClient(bootstrap) {
       try {
         await copyTextToClipboard(url);
         postViewerMetricEvent("yearbook_copy", { shareId: share.shareId || "", grade: share.grade || "" });
+        postViewerMetricEvent("share_initiated", { shareId: share.shareId || "", destination: "copy", kind: "yearbook_card" });
         copy.textContent = "Copied";
       } catch {
         copy.textContent = "Failed";
@@ -12332,6 +12351,7 @@ export function runViewerClient(bootstrap) {
 
   applyAuthUI();
   consumeBillingReturnFlag();
+  consumeReferralFlag();
   // The session is born already enrolled at Freshman year (server-side
   // default). The player progresses Freshman → Sophomore → Junior → Senior
   // → graduate as they clear per-grade daily-class and subject-grade gates. There is no year
@@ -12346,6 +12366,7 @@ export function runViewerClient(bootstrap) {
     postViewerMetricEvent("app_open", {
       path: window.location.pathname,
       referrer: document.referrer || "",
+      ref: referralRef || "",
     });
     await fetchSession();
   }

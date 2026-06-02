@@ -626,6 +626,12 @@ export interface RubyHighMetricEventsSnapshot {
     copies: number;
     uniqueVisitors: number;
   };
+  referral: {
+    artifactsCreated: number;
+    sharesInitiated: number;
+    linkVisits: number;
+    uniqueReferredVisitors: number;
+  };
   guestSpotlight: {
     seen: number;
     started: number;
@@ -870,7 +876,7 @@ export class RubyHighService extends Service {
 
   recordAppOpen(
     sessionId: string,
-    input: { source?: string; userAgent?: string; referrer?: string; path?: string; visitorHash?: string | null } = {},
+    input: { source?: string; userAgent?: string; referrer?: string; path?: string; ref?: string; visitorHash?: string | null } = {},
   ): void {
     if (input.visitorHash) {
       this.recordMetricEvent("visitor_seen", {
@@ -888,6 +894,7 @@ export class RubyHighService extends Service {
       metadata: {
         ...(input.path ? { path: clippedMetricValue(input.path, 180) } : {}),
         ...(input.referrer ? { referrer: clippedMetricValue(input.referrer, 180) } : {}),
+        ...(input.ref ? { ref: clippedMetricValue(input.ref, 120) } : {}),
         ...(input.userAgent ? { userAgent: clippedMetricValue(input.userAgent, 180) } : {}),
       },
     });
@@ -895,7 +902,7 @@ export class RubyHighService extends Service {
 
   async recordAppOpenDurably(
     sessionId: string,
-    input: { source?: string; userAgent?: string; referrer?: string; path?: string; visitorHash?: string | null } = {},
+    input: { source?: string; userAgent?: string; referrer?: string; path?: string; ref?: string; visitorHash?: string | null } = {},
   ): Promise<void> {
     if (input.visitorHash) {
       await this.recordMetricEventDurably("visitor_seen", {
@@ -913,6 +920,7 @@ export class RubyHighService extends Service {
       metadata: {
         ...(input.path ? { path: clippedMetricValue(input.path, 180) } : {}),
         ...(input.referrer ? { referrer: clippedMetricValue(input.referrer, 180) } : {}),
+        ...(input.ref ? { ref: clippedMetricValue(input.ref, 120) } : {}),
         ...(input.userAgent ? { userAgent: clippedMetricValue(input.userAgent, 180) } : {}),
       },
     });
@@ -1008,6 +1016,92 @@ export class RubyHighService extends Service {
       metadata: {
         ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
         ...(input.grade ? { grade: clippedMetricValue(input.grade, 12) } : {}),
+      },
+    });
+  }
+
+  recordShareArtifactCreated(sessionId: string, input: { shareId?: string; grade?: string; kind?: string } = {}): void {
+    this.recordMetricEvent("share_artifact_created", {
+      sessionId,
+      source: "viewer",
+      feature: "referral",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.grade ? { grade: clippedMetricValue(input.grade, 12) } : {}),
+        ...(input.kind ? { kind: clippedMetricValue(input.kind, 40) } : {}),
+      },
+    });
+  }
+
+  async recordShareArtifactCreatedDurably(sessionId: string, input: { shareId?: string; grade?: string; kind?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("share_artifact_created", {
+      sessionId,
+      source: "viewer",
+      feature: "referral",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.grade ? { grade: clippedMetricValue(input.grade, 12) } : {}),
+        ...(input.kind ? { kind: clippedMetricValue(input.kind, 40) } : {}),
+      },
+    });
+  }
+
+  recordShareInitiated(sessionId: string, input: { visitorHash?: string | null; shareId?: string; destination?: string; kind?: string } = {}): void {
+    this.recordMetricEvent("share_initiated", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "referral",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.destination ? { destination: clippedMetricValue(input.destination, 40) } : {}),
+        ...(input.kind ? { kind: clippedMetricValue(input.kind, 40) } : {}),
+      },
+    });
+  }
+
+  async recordShareInitiatedDurably(sessionId: string, input: { visitorHash?: string | null; shareId?: string; destination?: string; kind?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("share_initiated", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "referral",
+      status: "success",
+      metadata: {
+        ...(input.shareId ? { shareId: clippedMetricValue(input.shareId, 120) } : {}),
+        ...(input.destination ? { destination: clippedMetricValue(input.destination, 40) } : {}),
+        ...(input.kind ? { kind: clippedMetricValue(input.kind, 40) } : {}),
+      },
+    });
+  }
+
+  recordShareLinkVisited(sessionId: string, input: { visitorHash?: string | null; ref?: string; landing?: string } = {}): void {
+    this.recordMetricEvent("share_link_visited", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "referral",
+      status: "success",
+      metadata: {
+        ...(input.ref ? { ref: clippedMetricValue(input.ref, 120) } : {}),
+        ...(input.landing ? { landing: clippedMetricValue(input.landing, 180) } : {}),
+      },
+    });
+  }
+
+  async recordShareLinkVisitedDurably(sessionId: string, input: { visitorHash?: string | null; ref?: string; landing?: string } = {}): Promise<void> {
+    await this.recordMetricEventDurably("share_link_visited", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      source: "viewer",
+      feature: "referral",
+      status: "success",
+      metadata: {
+        ...(input.ref ? { ref: clippedMetricValue(input.ref, 120) } : {}),
+        ...(input.landing ? { landing: clippedMetricValue(input.landing, 180) } : {}),
       },
     });
   }
@@ -4285,6 +4379,16 @@ export class RubyHighService extends Service {
       grade,
       reward: normalizedReward.kind,
     });
+    this.recordShareArtifactCreated(state.sessionId, {
+      shareId: yearbookShareId({
+        sessionId: state.sessionId,
+        source: "current-character",
+        name: ch.name,
+        createdAt: ch.createdAt,
+      }),
+      grade,
+      kind: "yearbook_card",
+    });
 
     this.applyGraduationReward(ch, normalizedReward, targetGrade);
     ch.levelUps = ch.levelUps ?? [];
@@ -7302,6 +7406,9 @@ function buildMetricEventsSnapshot(
     funnel_step: 0,
     yearbook_open: 0,
     yearbook_copy: 0,
+    share_artifact_created: 0,
+    share_initiated: 0,
+    share_link_visited: 0,
     guest_spotlight_seen: 0,
     guest_spotlight_started: 0,
     guest_pack_override_set: 0,
@@ -7336,6 +7443,13 @@ function buildMetricEventsSnapshot(
     opens: 0,
     copies: 0,
     uniqueVisitors: 0,
+  };
+  const referredVisitors = new Set<string>();
+  const referral = {
+    artifactsCreated: 0,
+    sharesInitiated: 0,
+    linkVisits: 0,
+    uniqueReferredVisitors: 0,
   };
   const guestSpotlight = {
     seen: 0,
@@ -7409,6 +7523,13 @@ function buildMetricEventsSnapshot(
       yearbook.copies += 1;
       if (event.visitorHash) yearbookVisitors.add(event.visitorHash);
       if (day) day.yearbookCopies += 1;
+    } else if (event.name === "share_artifact_created") {
+      referral.artifactsCreated += 1;
+    } else if (event.name === "share_initiated") {
+      referral.sharesInitiated += 1;
+    } else if (event.name === "share_link_visited") {
+      referral.linkVisits += 1;
+      if (event.visitorHash) referredVisitors.add(event.visitorHash);
     } else if (event.name === "guest_spotlight_seen") {
       guestSpotlight.seen += 1;
       if (day) day.guestSpotlightSeen += 1;
@@ -7448,6 +7569,7 @@ function buildMetricEventsSnapshot(
   }
   first10m.appOpenSessions = firstAppOpenBySession.size;
   yearbook.uniqueVisitors = yearbookVisitors.size;
+  referral.uniqueReferredVisitors = referredVisitors.size;
   return {
     total,
     byName,
@@ -7468,6 +7590,7 @@ function buildMetricEventsSnapshot(
     funnel,
     first10m,
     yearbook,
+    referral,
     guestSpotlight,
     balance,
     commerce,
