@@ -47,7 +47,7 @@ function attachTestCharacter(ruby: RubyHighService, sid: string, streakCount = 0
   const state = ruby.getOrCreate(sid);
   state.character = {
     name: "Test",
-    playbookId: "overachiever",
+    playbookId: "lifer",
     stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
     arcAnswer: "—",
     personality: "—",
@@ -962,7 +962,7 @@ describe("RubyHighService Phase 1", () => {
     const sid = "test:image-ref-guard";
     ruby.createCharacter(sid, {
       name: "Test",
-      playbookId: "overachiever",
+      playbookId: "lifer",
       stats: { head: 1, heart: 0, hustle: 0, honor: 0 },
       arcAnswer: "keeps receipts",
       personality: "careful",

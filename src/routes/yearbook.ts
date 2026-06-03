@@ -58,7 +58,7 @@ function subjectRows(card: YearbookShareCard): string[] {
 
 function renderHtml(ctx: RouteContext, card: YearbookShareCard): string {
   const title = cardTitle(card);
-  const svgUrl = absoluteUrl(ctx, `${YEARBOOK_PREFIX}/${card.shareId}/${card.grade}?format=svg`);
+  const svgUrl = absoluteUrl(ctx, `${YEARBOOK_PREFIX}/${card.shareId}/${card.grade}?format=png`);
   const completed = new Date(card.completedAt).toISOString().slice(0, 10);
   const superlatives = card.superlatives.length > 0
     ? card.superlatives.map((line) => `<li>${escapeHtml(line)}</li>`).join("")
@@ -169,7 +169,16 @@ export async function handleYearbookRoutes(ctx: RouteContext, ruby: RubyHighServ
     return true;
   }
   if (format === "png") {
-    ctx.error(ctx.res, "PNG yearbook rendering is not configured in this build. Use format=svg.", 501);
+    if (card.yearbookImageUrl) {
+      const res = ctx.res as { statusCode?: number; setHeader?: (name: string, value: string) => void; end?: (body?: string) => void };
+      res.statusCode = 302;
+      res.setHeader?.("Location", card.yearbookImageUrl);
+      res.setHeader?.("Cache-Control", "public, max-age=86400");
+      res.end?.("");
+      return true;
+    }
+    // No AI image yet — fall back to SVG.
+    setTextResponse(ctx, 200, "image/svg+xml; charset=utf-8", renderSvg(card));
     return true;
   }
   setTextResponse(ctx, 200, "text/html; charset=utf-8", renderHtml(ctx, card));

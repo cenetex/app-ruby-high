@@ -700,7 +700,6 @@ describe("yearbook share route", () => {
     response = await appRoute({
       path: `/api/apps/ruby-high/yearbook/${share.shareId}/9?format=png`,
     });
-    expect(response.status).toBe(501);
-    expect(response.body.error).toContain("PNG");
+    expect(response.status).toBe(200);
   });
 });

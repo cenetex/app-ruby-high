@@ -54,6 +54,7 @@ import {
   type CharacterComponent,
   type RolledCharacter,
 } from "./services/character-generation.js";
+import { renderYearbookCard } from "./services/yearbook-image.js";
 import { detectGenericPraise, parseTeacherGrades, verdictHasSubstance } from "./grading.js";
 import {
   GRADE_LABELS,
@@ -1287,7 +1288,7 @@ function readApiKey(ctx: ChatRouteContext, ruby: RubyHighService, sessionId: str
   }).apiKey;
 }
 
-type HostedImageChargeRoute = "character-portrait" | "teacher-portrait" | "diploma";
+type HostedImageChargeRoute = "character-portrait" | "teacher-portrait" | "diploma" | "yearbook-card";
 
 class HostedImageChargeError extends Error {
   constructor(message: string, readonly status: number) {
@@ -3421,6 +3422,160 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ok: true,
       diplomaImageDataUrl: url,
       bestSubject: highestScoringFaculty(ch.subjectScores),
+      ...(imageCredential.hosted ? {
+        hallPassCost: charge.hallPassCost,
+        hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      } : {}),
+    });
+    return true;
+  }
+
+  // ── Yearbook card image generation ──────────────────────────────────────
+
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/yearbook-card`) {
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    const imageCredential = resolveOpenRouterImageCredential({
+      apiKeyHeader: ctx.apiKeyHeader,
+    });
+    const apiKey = imageCredential.apiKey;
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    if (!apiKey) {
+      ctx.error(
+        ctx.res,
+        isLocalLlmProvider()
+          ? "Local text AI is enabled, but yearbook card generation still requires a hosted image model."
+          : "Connect AI first.",
+        isLocalLlmProvider() ? 501 : 401,
+      );
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!PORTRAIT_LIMITER.take(rlKey)) {
+      reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
+    const sessionId = auth.stateKeyForRecord(record);
+    const state = ruby.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) {
+      ctx.error(ctx.res, "No character on this session.", 400);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as { grade?: string } | null;
+    const grade = String(body?.grade ?? "").trim();
+    if (!["9", "10", "11", "12"].includes(grade)) {
+      ctx.error(ctx.res, "Grade must be 9, 10, 11, or 12.", 400);
+      return true;
+    }
+    const yearbookEntry = ch.yearbook.find((y) => y.grade === grade);
+    if (!yearbookEntry) {
+      ctx.error(ctx.res, "No completed yearbook entry for grade " + grade + ".", 400);
+      return true;
+    }
+    if (yearbookEntry.yearbookImageUrl) {
+      // Already generated — return the cached URL.
+      ctx.json(ctx.res, {
+        ok: true,
+        yearbookImageUrl: yearbookEntry.yearbookImageUrl,
+        grade,
+      });
+      return true;
+    }
+    let charge: HostedImageCharge;
+    try {
+      charge = await prepareHostedImageCharge({
+        ruby,
+        sessionId,
+        hosted: imageCredential.hosted,
+        route: "yearbook-card",
+        costKind: "portrait",
+        body: body as Record<string, unknown> | null,
+        description: "Yearbook card image",
+        fingerprintPayload: {
+          name: yearbookEntry.name || ch.name,
+          grade,
+          playbookId: yearbookEntry.playbookId || ch.playbookId,
+        },
+      });
+    } catch (err) {
+      rejectHostedImageChargeError(ctx, err);
+      return true;
+    }
+    if (charge.replayUrl) {
+      ruby.setYearbookImage(sessionId, grade, charge.replayUrl);
+      await ruby.flushSession(sessionId);
+      ctx.json(ctx.res, {
+        ok: true,
+        yearbookImageUrl: charge.replayUrl,
+        grade,
+        hallPassCost: charge.hallPassCost,
+        hallPasses: charge.hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      });
+      return true;
+    }
+    // Build the card input for AI generation.
+    const playbookName = (yearbookEntry.playbookId || ch.playbookId)
+      .replace(/-/g, " ").split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    const subjectScores: Record<string, { correct: number; total: number }> = {};
+    if (yearbookEntry.subjectScores) {
+      for (const [k, v] of Object.entries(yearbookEntry.subjectScores)) {
+        subjectScores[k] = { correct: v.correct, total: v.total };
+      }
+    }
+    // Collect reference images for the AI composition.
+    const publicBase = (process.env.RUBY_HIGH_PUBLIC_BASE || "http://localhost:3000").replace(/\/$/, "");
+    const assetBase = publicBase + "/api/apps/ruby-high/assets/";
+    const topTeacherId = highestScoringFaculty(yearbookEntry.subjectScores || ch.subjectScores);
+    const teacherNames: Record<string, string> = {
+      ruby: "Ruby", "sally-science": "Sally Science", "professor-edward": "Professor Edward",
+    };
+    const teacherName = teacherNames[topTeacherId] || topTeacherId;
+    const teacherImageUrl = assetBase + "teachers/" + topTeacherId + "-full-sticker.png";
+    // Pick a classmate from the NPC roster.
+    const gradeKey = grade as "9" | "10" | "11" | "12";
+    const roster = state.npcRosters?.[gradeKey] || [];
+    const classmate = roster.length > 0 ? roster[Math.floor(Math.random() * roster.length)] : null;
+    const classmateName = classmate?.name || null;
+    const classmateImageUrl = classmateName
+      ? assetBase + "students/" + classmateName.toLowerCase() + "-full.png"
+      : null;
+    const locationImageUrl = assetBase + "assets/ruby-classroom.png";
+    let url: string;
+    try {
+      url = await renderYearbookCard({
+        apiKey,
+        card: {
+          characterName: yearbookEntry.name || ch.name,
+          grade: grade,
+          playbookName,
+          portraitDataUrl: yearbookEntry.portraitDataUrl || ch.portraitDataUrl,
+          teacherImageUrl,
+          teacherName,
+          ...(classmateImageUrl ? { classmateImageUrl, classmateName: classmateName! } : {}),
+        },
+      });
+      ruby.setYearbookImage(sessionId, grade, url);
+    } catch (err) {
+      await refundHostedImageCharge({
+        ruby,
+        sessionId,
+        charge,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      return true;
+    }
+    const hallPasses = await completeHostedImageCharge({ ruby, sessionId, charge, imageUrl: url });
+    ctx.json(ctx.res, {
+      ok: true,
+      yearbookImageUrl: url,
+      grade,
       ...(imageCredential.hosted ? {
         hallPassCost: charge.hallPassCost,
         hallPasses,

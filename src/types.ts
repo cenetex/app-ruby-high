@@ -352,6 +352,8 @@ export interface LastReveal {
   } | null;
   /** A class-affinity reward converted a miss into a one-time pass. */
   affinitySave?: { facultyId: string } | null;
+  /** Playbook move that activated during this round, if any. The UI shows flavor text. */
+  playbookMove?: string | null;
   /** NPCs in the active room also answered — for UI animation. */
   npcEvents?: Array<{
     studentId: string;
@@ -973,6 +975,8 @@ export interface PlayerCharacter {
      *  years carry just the axis they resolved. Optional for legacy
      *  entries written before this field existed. */
     superlatives?: string[];
+    /** AI-generated yearbook card image URL. Generated once on player request. */
+    yearbookImageUrl?: string;
   }>;
   /** Gates are complete, but the player has not attended the ceremony yet.
    *  The ceremony writes the Paper Card, applies the level-up reward, and
@@ -1053,6 +1057,15 @@ export interface PlayerCharacter {
    *  legacy characters created before this field existed (the service
    *  backfills with `ensureMashCard` on hydrate). */
   mashCard?: MashCard;
+  /** Playbook move usage tracking. Initialized on first use per move.
+   *  Overachiever: retake one missed question per year.
+   *  Outsider: see one explanation per period.
+   *  Lifer: one mood read per day. */
+  playbookMoves?: {
+    overachieverRetakeUsed?: Partial<Record<Grade, boolean>>;
+    outsiderPeriodUsed?: boolean;
+    liferMoodReadDate?: string;
+  };
   createdAt: number;
 }
 

@@ -741,6 +741,7 @@ export interface YearbookShareCard {
   diploma?: GradeDiplomaCollectible;
   photo?: GraduationPhotoCollectible;
   superlatives: string[];
+  yearbookImageUrl?: string;
   source: "current-character" | "student-pool";
 }
 
@@ -4178,7 +4179,29 @@ export class RubyHighService extends Service {
         affinitySave = { facultyId };
       }
     }
-    const wasCorrect = rawCorrect || !!affinitySave;
+    // ── Playbook moves: correctness overrides ───────────────────────────────
+    let playbookMoveOverride: string | null = null;
+    let classClownVoid = false;
+    if (!rawCorrect && !forfeit && picked != null && state.character && state.currentGrade) {
+      const ch = state.character;
+      const grade = state.currentGrade;
+      ch.playbookMoves ??= {};
+      // Overachiever: retake one missed question per year.
+      if (ch.playbookId === "overachiever") {
+        ch.playbookMoves.overachieverRetakeUsed ??= {};
+        if (!ch.playbookMoves.overachieverRetakeUsed[grade]) {
+          ch.playbookMoves.overachieverRetakeUsed[grade] = true;
+          playbookMoveOverride = "overachiever";
+        }
+      }
+      // Outsider: once per period, see explanation and correct answer.
+      if (!playbookMoveOverride && ch.playbookId === "outsider" && !ch.playbookMoves.outsiderPeriodUsed) {
+        ch.playbookMoves.outsiderPeriodUsed = true;
+        playbookMoveOverride = "outsider";
+      }
+    }
+    const moveWasCorrect = !!playbookMoveOverride;
+    let wasCorrect = rawCorrect || !!affinitySave || moveWasCorrect;
     const reviewAt = round.player.answeredAt ?? Date.now();
     const scoreMultiplier = scoreMultiplierForPass(state, wasCorrect, reviewAt);
     if (picked != null) {
@@ -4206,7 +4229,49 @@ export class RubyHighService extends Service {
       const outcome = classifyTotal(total);
       playerRoll = { stat, dice: r.dice, total, outcome };
     }
-    const rawQuestionScore = picked == null || forfeit ? 0 : classQuestionScore(wasCorrect, playerRoll);
+    // ── Playbook moves: dice re-rolls ────────────────────────────────────────
+    if (playerRoll && playerRoll.outcome === "miss" && state.character && picked != null) {
+      const ch = state.character;
+      // Slacker: when you'd fail a HEAD roll, swap it for HUSTLE.
+      if (ch.playbookId === "slacker" && playerRoll.stat === "head") {
+        const r2 = roll2d6();
+        const hustleTotal = r2.total + ch.stats.hustle;
+        playerRoll = { stat: "hustle", dice: r2.dice, total: hustleTotal, outcome: classifyTotal(hustleTotal) };
+        if (!playbookMoveOverride) playbookMoveOverride = "slacker";
+      }
+      // Class Clown: when you'd miss, roll HEART instead of HEAD.
+      if (ch.playbookId === "class-clown" && !playbookMoveOverride) {
+        const r2 = roll2d6();
+        const heartTotal = r2.total + ch.stats.heart;
+        const heartOutcome = classifyTotal(heartTotal);
+        playerRoll = { stat: "heart", dice: r2.dice, total: heartTotal, outcome: heartOutcome };
+        if (heartOutcome === "hit") {
+          classClownVoid = true;
+          playbookMoveOverride = "class-clown";
+        } else {
+          playbookMoveOverride = "class-clown";
+        }
+      }
+    }
+    // Class Clown void: retroactively fix NPCs, history, and score.
+    if (classClownVoid) {
+      for (const entry of round.npcs) {
+        if (entry.plannedPick !== q.correct && entry.answeredAt != null) {
+          entry.plannedPick = q.correct;
+          entry.outcome = "mixed";
+          entry.rolledTotal = Math.max(0, entry.rolledTotal);
+        }
+      }
+      if (picked != null && !wasCorrect) {
+        const lastRecord = state.history[state.history.length - 1];
+        if (lastRecord && lastRecord.questionId === q.id) {
+          lastRecord.wasCorrect = true;
+        }
+        state.score.correct += 1;
+      }
+      wasCorrect = true;
+    }
+    const rawQuestionScore = picked == null || forfeit ? 0 : classQuestionScore(wasCorrect || classClownVoid, playerRoll);
     const scoreAward = awardSessionScore(state, rawQuestionScore, scoreMultiplier);
     this.recordCardReview(
       state,
@@ -4247,14 +4312,19 @@ export class RubyHighService extends Service {
       wasCorrect,
       forfeit,
       explanation: q.explanation ?? null,
-      encouragement: affinitySave
+      encouragement: playbookMoveOverride === "overachiever" ? "Margins are sacred — retake applied."
+        : playbookMoveOverride === "slacker" ? "Wing it — swapped HUSTLE for HEAD."
+        : playbookMoveOverride === "class-clown" ? "Crack the room — question voided for everyone!"
+        : playbookMoveOverride === "outsider" ? "Outside eyes — saw what others missed."
+        : affinitySave
         ? "Class affinity kicked in — second chance counted."
-        : forfeit ? "Time's up. Take a breath." : pickEncouragement(wasCorrect),
+        : forfeit ? "Time\'s up. Take a breath." : pickEncouragement(wasCorrect || classClownVoid),
       scoreMultiplier,
       scoreAward,
       classProgress,
       playerRoll,
       affinitySave,
+      ...(playbookMoveOverride ? { playbookMove: playbookMoveOverride } : {}),
       ...(isTypedQuestion ? {
         answerText,
         expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] ?? null,
@@ -4318,6 +4388,10 @@ export class RubyHighService extends Service {
     if (!classProgress?.completed || !classProgress.passedClass) {
       this.maybeMarkGradeReady(state);
       return { dailyTicked };
+    }
+    // Reset Outsider period move when a new daily class starts.
+    if (ch.playbookId === "outsider" && ch.playbookMoves) {
+      ch.playbookMoves.outsiderPeriodUsed = false;
     }
 
     const prevLastDate = ch.streak && ch.streak.grade === grade ? ch.streak.lastDate : undefined;
@@ -5050,6 +5124,9 @@ export class RubyHighService extends Service {
       const roster = this.ensureRoster(state, state.currentGrade);
       const inRoom = npcsInRoom(roster, teachingRoom)
         .filter((npc) => this.npcIsSeatedWithPlayer(state, npc.id));
+      // Heart playbook: at most one NPC per round gets a pep-talk re-roll.
+      let pepTalkUsed = false;
+      const isHeart = state.character?.playbookId === "heart";
       entries = inRoom.map((npc) => {
         if (isOpinion) {
           // Opinion round — accuracy doesn't apply, only commit timing matters.
@@ -5065,7 +5142,20 @@ export class RubyHighService extends Service {
             answeredAt: null,
           };
         }
-        const r = rollNpcAnswer(npc.stats, question.correct ?? "A", statForQuestion(question));
+        const correctAnswer = question.correct ?? "A";
+        const questionStat = statForQuestion(question);
+        let r = rollNpcAnswer(npc.stats, correctAnswer, questionStat);
+        // Heart: pep talk — give one classmate per round a re-roll on a miss.
+        if (isHeart && !pepTalkUsed && (r.outcome === "miss" || r.pick !== correctAnswer)) {
+          const r2 = rollNpcAnswer(npc.stats, correctAnswer, questionStat);
+          // Take the better of the two rolls (prefer the one with the correct pick).
+          if (r2.pick === correctAnswer && r.pick !== correctAnswer) {
+            r = r2;
+          } else if (r2.outcome !== "miss" && r.outcome === "miss") {
+            r = r2;
+          }
+          pepTalkUsed = true;
+        }
         return {
           studentId: npc.id,
           delayMs: r.delayMs,
@@ -5811,6 +5901,10 @@ export class RubyHighService extends Service {
       ...(inheritedFrom ? { inheritedFrom } : {}),
       mashCard,
       socialConsent: true,
+      // Lifer: starts ahead with one bonus advantage roll per grade.
+      ...(input.playbookId === "lifer" ? {
+        advantageRollBonuses: { "9": 1, "10": 1, "11": 1, "12": 1 } as Partial<Record<Grade, number>>,
+      } : {}),
 
       createdAt: Date.now(),
     };
@@ -5860,6 +5954,18 @@ export class RubyHighService extends Service {
     const teacherId = topTeacher?.id ?? "ruby";
     this.enqueuePhotoReveal(sessionId, "diploma", stored, teacherId);
     queueMicrotask(() => this.maybePostDailyPhoto());
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  /** Store an AI-generated yearbook card image URL on a completed grade. */
+  setYearbookImage(sessionId: string, grade: string, imageUrl: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (!state.character) throw new Error("No character on this session.");
+    const entry = state.character.yearbook.find((y) => y.grade === grade);
+    if (!entry) throw new Error("No yearbook entry for grade " + grade + ".");
+    entry.yearbookImageUrl = imageUrl;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -6550,6 +6656,7 @@ function yearbookShareCardsForState(state: QuizState): YearbookShareCard[] {
         ...(entry.diploma ? { diploma: entry.diploma } : {}),
         ...(entry.photo ? { photo: entry.photo } : {}),
         superlatives: Array.isArray(entry.superlatives) ? [...entry.superlatives] : [],
+        ...(entry.yearbookImageUrl ? { yearbookImageUrl: entry.yearbookImageUrl } : {}),
         source,
       });
     }
