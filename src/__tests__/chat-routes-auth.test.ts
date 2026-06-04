@@ -1978,7 +1978,7 @@ describe("chat event context", () => {
     const sessionId = auth.stateKeyForToken(token);
     ruby.createCharacter(sessionId, {
       name: "Vince",
-      playbookId: "outsider",
+      playbookId: "lifer",
       stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
       arcAnswer: "I want the room to notice when I am actually trying.",
       personality: "Restless, social, and eager to keep the room moving.",
