@@ -4257,7 +4257,7 @@ export class RubyHighService extends Service {
     if (classClownVoid) {
       for (const entry of round.npcs) {
         if (entry.plannedPick !== q.correct && entry.answeredAt != null) {
-          entry.plannedPick = q.correct;
+          entry.plannedPick = q.correct ?? "A";
           entry.outcome = "mixed";
           entry.rolledTotal = Math.max(0, entry.rolledTotal);
         }
