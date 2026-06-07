@@ -760,6 +760,8 @@ export function runViewerClient(bootstrap) {
   let showWelcomeBackCopy = false;
   let firstRunCreationOpened = false;
   let lastPostClassToastShown = false;
+  let firstBellStartInFlight = false;
+  let firstBellLastCardId = null;
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // Browser/local/hosted text AI + Ruby High session present
   let localAiEnabled = false;
@@ -976,6 +978,8 @@ export function runViewerClient(bootstrap) {
   // for the AI in offline mode.
   function shouldAutoStartClass(t) {
     if (!t || !t.character) return false;
+    if (t.first_bell && t.first_bell.status !== "complete") return false;
+    if (firstBellArtifact(t) && !hasCompletedAnyClass(t)) return false;
     if (graduatedFor(t.character)) return false;
     if (t.character.pendingGraduation) return false;
     if (t.graduation_ready) return false;
@@ -985,6 +989,93 @@ export function runViewerClient(bootstrap) {
     const today = t.active_course_progress && t.active_course_progress.today;
     if (today && today.status === "complete") return false;
     return true;
+  }
+  function shouldPromptFirstBell(t) {
+    return !!(t && t.character && (!t.first_bell || t.first_bell.status === "new"));
+  }
+  async function startFirstBell() {
+    if (firstBellStartInFlight) return;
+    firstBellStartInFlight = true;
+    try {
+      await command({ type: "start-first-bell" });
+    } finally {
+      firstBellStartInFlight = false;
+    }
+  }
+  function firstBellArtifact(t) {
+    return t && t.first_bell && t.first_bell.artifact ? t.first_bell.artifact : null;
+  }
+  function firstBellScoreText(score) {
+    const n = Number(score);
+    return Number.isFinite(n) ? n.toFixed(1).replace(/\.0$/, "") + "/10" : "verdict filed";
+  }
+  async function copyFirstBellArtifact(artifact, btn) {
+    if (!artifact) return;
+    const original = btn && btn.textContent;
+    try {
+      await copyTextToClipboard(artifact.copyText || "Ruby High First Bell: " + (artifact.characterName || "A student") + " got graded. Attend class: ruby-high.ai");
+      postViewerMetricEvent("first_bell_card_copied", { shareId: artifact.id || "" });
+      postViewerMetricEvent("share_initiated", { shareId: artifact.id || "", destination: "copy", kind: "first_bell_card" });
+      if (btn) btn.textContent = "Copied";
+    } catch (_err) {
+      if (btn) btn.textContent = "Failed";
+    } finally {
+      if (btn) setTimeout(() => { btn.textContent = original || "Copy card"; }, 1200);
+    }
+  }
+  function renderFirstBellCard(t, options) {
+    const artifact = firstBellArtifact(t);
+    if (!artifact) return null;
+    const card = document.createElement("div");
+    card.className = "first-bell-card";
+    const kicker = document.createElement("div");
+    kicker.className = "first-bell-kicker";
+    kicker.textContent = "First Bell Card unlocked";
+    card.appendChild(kicker);
+    const title = document.createElement("div");
+    title.className = "first-bell-title";
+    title.textContent = artifact.characterName || "Ruby High student";
+    card.appendChild(title);
+    const score = document.createElement("div");
+    score.className = "first-bell-score";
+    score.textContent = firstBellScoreText(artifact.score);
+    card.appendChild(score);
+    const comment = document.createElement("blockquote");
+    comment.className = "first-bell-comment";
+    comment.textContent = artifact.teacherComment || "Ruby filed the first note.";
+    card.appendChild(comment);
+    const meta = document.createElement("div");
+    meta.className = "first-bell-meta";
+    meta.textContent = artifact.classmateLine || (artifact.bestResponderName ? artifact.bestResponderName + " took best response." : "The class had opinions.");
+    card.appendChild(meta);
+    const actions = document.createElement("div");
+    actions.className = "first-bell-actions";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "primary";
+    copy.textContent = "Copy card";
+    copy.addEventListener("click", () => copyFirstBellArtifact(artifact, copy));
+    actions.appendChild(copy);
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "secondary";
+    next.textContent = options && options.compact ? "Keep playing" : "Start today's class";
+    next.addEventListener("click", () => { void pickNext(); });
+    actions.appendChild(next);
+    card.appendChild(actions);
+    return card;
+  }
+  function appendFirstBellCardToStream(t) {
+    const artifact = firstBellArtifact(t);
+    if (!artifact || artifact.id === firstBellLastCardId) return;
+    firstBellLastCardId = artifact.id;
+    const wrap = document.createElement("div");
+    wrap.className = "msg first-bell-summary";
+    const card = renderFirstBellCard(t, { compact: false });
+    if (card) wrap.appendChild(card);
+    els.stream.appendChild(wrap);
+    scrollIfPinned();
+    showCongrats("First Bell Card unlocked.", true, 7000);
   }
   function hasCompletedAnyClass(t) {
     if (!t || !t.character) return false;
@@ -4830,9 +4921,32 @@ export function runViewerClient(bootstrap) {
         els.blackboardEmptyText.textContent = "Starting Ruby High…";
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (!lastTelemetry?.character) {
-        els.blackboardEmptyText.textContent = "Create your first Ruby High student.";
+        els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(
+          "Attend First Bell",
+          "Roll a student, answer in your own words, see two classmates answer beside you, and keep Ruby's verdict card.",
+        ));
         if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = "Lock it in";
+          els.blackboardEmptyAction.textContent = "Attend First Bell";
+          els.blackboardEmptyAction.hidden = false;
+        }
+      } else if (shouldPromptFirstBell(lastTelemetry)) {
+        els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(
+          "First Bell ready",
+          "One short opinion prompt. Ruby grades the room. Noor and Mika answer beside you. Then you get a card.",
+        ));
+        if (els.blackboardEmptyAction) {
+          els.blackboardEmptyAction.textContent = firstBellStartInFlight ? "Starting…" : "Start First Bell";
+          els.blackboardEmptyAction.disabled = !!firstBellStartInFlight;
+          els.blackboardEmptyAction.hidden = false;
+        }
+      } else if (firstBellArtifact(lastTelemetry)) {
+        els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(
+          "First Bell complete",
+          "Ruby filed your first verdict. Copy the card or keep playing into today's class.",
+        ));
+        if (els.blackboardEmptyAction) {
+          els.blackboardEmptyAction.textContent = "Start today's class";
+          els.blackboardEmptyAction.disabled = false;
           els.blackboardEmptyAction.hidden = false;
         }
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -4877,6 +4991,8 @@ export function runViewerClient(bootstrap) {
       // the compact header above the start button.
       const extras = ensureBlackboardEmptyExtras();
       extras.replaceChildren();
+      const card = firstBellArtifact(lastTelemetry) ? renderFirstBellCard(lastTelemetry, { compact: true }) : null;
+      if (card) extras.appendChild(card);
       return;
     }
 
@@ -6053,6 +6169,10 @@ export function runViewerClient(bootstrap) {
       void promptGuestSignup();
       return;
     }
+    if (shouldPromptFirstBell(lastTelemetry)) {
+      void startFirstBell();
+      return;
+    }
     void pickNext();
   }
   async function pickAnswer(choice, btn) {
@@ -6303,9 +6423,9 @@ export function runViewerClient(bootstrap) {
       if (titleEl) titleEl.textContent = "Welcome to Ruby High";
       if (bodyEl) {
         bodyEl.innerHTML =
-          "<p>A new question every day. Three teachers — Ruby, Sally Science, and Professor Edward — grade what you actually say.</p>" +
-          "<p>Six classmates run their own arcs beside you. Every grade you finish goes in the yearbook. It takes four years to graduate.</p>" +
-          "<p>Class starts at <strong>17:00 UTC</strong>. Today's teacher is <strong>" + escapeHtml(facultyName) + "</strong>. Roll a student and take your seat.</p>";
+          "<p><strong>First Bell is the demo.</strong> Answer one short prompt in your own words, then Ruby grades you beside two classmates.</p>" +
+          "<p>If the verdict lands, keep the card. If it doesn't, blame Ruby. She can take it.</p>" +
+          "<p>Roll a student and take your seat — the first class starts immediately.</p>";
       }
       if (notesEl) notesEl.innerHTML = notes.map(function(n) {
         return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
@@ -6469,6 +6589,7 @@ export function runViewerClient(bootstrap) {
       renderOpinionsIntoChat(t.active_round);
       maybeAutoTriggerGrading(t);
     }
+    appendFirstBellCardToStream(t);
 
     // Reveal — apply to blackboard + log a result chip in the chat once.
     // ALSO fire the teacher's reaction here (not in pickAnswer) so they
@@ -8593,7 +8714,7 @@ export function runViewerClient(bootstrap) {
     candidateBody.appendChild(candidateMove);
     const candidateHint = document.createElement("div");
     candidateHint.className = "ccg-next-step";
-    candidateHint.textContent = "Lock this student in to start today's class.";
+    candidateHint.textContent = "Auto-enrolling… tune your rolls before the bell.";
     candidateBody.appendChild(candidateHint);
     const portraitStatus = document.createElement("div");
     portraitStatus.className = "creation-portrait-status";
@@ -8604,13 +8725,14 @@ export function runViewerClient(bootstrap) {
     portraitBtn.type = "button";
     portraitBtn.className = "secondary";
     portraitBtn.textContent = "✨ Generate AI portrait";
-    const acceptBtn = document.createElement("button");
-    acceptBtn.type = "button";
-    acceptBtn.className = "primary";
-    acceptBtn.textContent = "Lock it in";
-    acceptBtn.disabled = true;
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "primary teacher-save-button";
+    saveBtn.textContent = "Save Character";
+    saveBtn.title = "Re-save your character if the auto-enroll didn't stick.";
+    saveBtn.hidden = true;
     candidateActions.appendChild(portraitBtn);
-    candidateActions.appendChild(acceptBtn);
+    candidateActions.appendChild(saveBtn);
     candidateBody.appendChild(candidateActions);
 
     const controlsCard = document.createElement("div");
@@ -8757,7 +8879,7 @@ export function runViewerClient(bootstrap) {
       status.classList.toggle("is-invalid", !!invalid);
     }
     function applyDisabled() {
-      acceptBtn.disabled = !rolled || inFlight.all;
+      saveBtn.hidden = !rolled || inFlight.all;
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
@@ -8853,6 +8975,7 @@ export function runViewerClient(bootstrap) {
           renderRolled(rolled);
           revealForm();
           setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
+          if (isFullRoll) void commitCharacter();
           return;
         }
         const body = isFullRoll
@@ -8873,10 +8996,13 @@ export function runViewerClient(bootstrap) {
         // First roll lands → swap from loading-state to form.
         revealForm();
         setStatus("");
+        // Auto-commit on initial roll so the character is saved immediately.
+        if (isFullRoll) void commitCharacter();
       } catch (err) {
         if (status.isConnected) {
           setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
         }
+        revealForm();
       } finally {
         if (isFullRoll) {
           inFlight.all = false;
@@ -8956,14 +9082,39 @@ export function runViewerClient(bootstrap) {
       }
     });
 
-    acceptBtn.addEventListener("click", async () => {
+    async function commitCharacter() {
       if (!rolled || inFlight.all) return;
-      acceptBtn.disabled = true;
+      saveBtn.hidden = true;
+      saveBtn.disabled = true;
       setStatus("Saving character…");
-      // Lock-in shape: ship the rolled character + whichever portrait
-      // is currently visible (AI if generated, default otherwise). The
-      // post-acceptance background portrait gen path that used to live
-      // here is GONE — what you see is what you get.
+      const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
+      try {
+        const data = await command({
+          type: "create-character",
+          ...rolled,
+          portraitDataUrl: portraitUrl,
+        });
+        if (data && data.session) {
+          closeSheet();
+          setTimeout(() => {
+            if (lastTelemetry && shouldPromptFirstBell(lastTelemetry)) void startFirstBell();
+            else if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+          }, 0);
+          return;
+        }
+      } catch {
+        // Fall through to the retry path.
+      }
+      // Auto-enroll failed — show the fallback so the player can retry.
+      setStatus("Auto-enroll didn't take — try saving manually.", true);
+      saveBtn.hidden = false;
+      saveBtn.disabled = false;
+    }
+
+    saveBtn.addEventListener("click", async () => {
+      if (!rolled || inFlight.all) return;
+      saveBtn.disabled = true;
+      setStatus("Saving character…");
       const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
       const data = await command({
         type: "create-character",
@@ -8973,10 +9124,11 @@ export function runViewerClient(bootstrap) {
       if (data && data.session) {
         closeSheet();
         setTimeout(() => {
-          if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+          if (lastTelemetry && shouldPromptFirstBell(lastTelemetry)) void startFirstBell();
+          else if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
         }, 0);
       } else {
-        applyDisabled();
+        saveBtn.disabled = false;
         setStatus("Save failed — try again.", true);
       }
     });

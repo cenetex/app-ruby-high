@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FacultyService } from "../services/faculty-service.js";
 import {
+  FIRST_BELL_QUESTION_ID,
   HALL_PASS_CARDS_PER_PACK,
   RubyHighService,
   WELCOME_HALL_PASS_GRANT,
@@ -79,6 +80,45 @@ function completedClassRecord(
     updatedAt: Date.now(),
   };
 }
+
+describe("First Bell onboarding", () => {
+  it("poses the guided Ruby opinion card and creates a shareable artifact on grading", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:first-bell";
+    ruby.createCharacter(sid, {
+      name: "Pip",
+      playbookId: "overachiever",
+      stats: { head: 2, honor: 1, heart: 0, hustle: -1 },
+      arcAnswer: "Cs are not enough.",
+      personality: "Specific under pressure.",
+    });
+
+    const started = ruby.startFirstBell(sid);
+    expect(started.current?.id).toBe(FIRST_BELL_QUESTION_ID);
+    expect(started.current?.type).toBe("opinion");
+    expect(started.activeRound?.npcs.map((npc) => npc.studentId)).toEqual(["noor", "mika"]);
+    expect(started.firstBell?.status).toBe("started");
+
+    ruby.recordOpinion(sid, "player", "I trust them when they can explain the source and what would change their mind. I check when confidence replaces evidence.");
+    ruby.recordOpinion(sid, "noor", "Confidence is not evidence. I trust someone more when they can show what would change their mind.");
+    ruby.recordOpinion(sid, "mika", "I trust the answer if they can explain it simply. I check it when the source is just trust me.");
+    const graded = ruby.recordGrades(sid, [
+      { responder: "player", score: 8, comment: "Pip separated confidence from evidence." },
+      { responder: "noor", score: 8.5, comment: "Noor refused to confuse posture with proof." },
+      { responder: "mika", score: 8, comment: "Mika made the standard practical." },
+    ], "noor");
+
+    expect(graded.firstBell?.status).toBe("complete");
+    expect(graded.firstBell?.artifact).toMatchObject({
+      questionId: FIRST_BELL_QUESTION_ID,
+      characterName: "Pip",
+      score: 8,
+      bestResponder: "noor",
+      bestResponderName: "Noor",
+    });
+    expect(graded.firstBell?.artifact?.copyText).toContain("Ruby High First Bell");
+  });
+});
 
 describe("Hall Pass wallet", () => {
   it("starts accounts without Hall Passes and claims the welcome grant once", async () => {
@@ -914,7 +954,7 @@ describe("RubyHighService Phase 1", () => {
     const correct = s.current!.correct!;
     s = ruby.submitAnswer(sid, correct);
     expect(s.score).toMatchObject({ correct: 1, total: 1, points: 80, possible: 100 });
-    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
+    expect(s.wallet).toMatchObject({ meritStars: 0, meritPoints: 80, hallPasses: 0 });
     expect(s.lastReveal?.scoreAward).toMatchObject({ base: 80, multiplier: 1, points: 80, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(true);
 
@@ -925,7 +965,7 @@ describe("RubyHighService Phase 1", () => {
     // Wrong answers earn no points (the dice can't pile on a miss).
     // session.points stays at the previous correct's value; possible still ticks.
     expect(s.score).toMatchObject({ correct: 1, total: 2, points: 80, possible: 200 });
-    expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
+    expect(s.wallet).toMatchObject({ meritStars: 0, meritPoints: 80, hallPasses: 0 });
     expect(s.lastReveal?.scoreAward).toMatchObject({ base: 0, multiplier: 1, points: 0, possible: 100 });
     expect(s.lastReveal?.wasCorrect).toBe(false);
   });
@@ -1014,7 +1054,7 @@ describe("RubyHighService Phase 1", () => {
     const restored = rubyB.getOrCreate(sid);
     expect(restored.score.correct).toBe(1);
     expect(restored.score.total).toBe(1);
-    expect(restored.wallet.meritStars).toBe(restored.score.points);
+    expect(restored.wallet.meritPoints).toBe(restored.score.points);
     expect(restored.wallet.hallPasses).toBe(0);
     expect(restored.askedQuestionIds.length).toBe(1);
     expect(restored.faculty).toBe("sally-science");

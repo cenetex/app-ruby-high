@@ -3,6 +3,7 @@ import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type AvatarPromptContext, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
 import {
+  FIRST_BELL_QUESTION_ID,
   HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
   RubyHighService,
   type HallPassCardBurnInput,
@@ -132,6 +133,24 @@ function fillMissingOpinionResponders(
     ruby.recordOpinion(sessionId, "player", "(no response — ran out the clock)");
     present.add("player");
     mutated = true;
+  }
+  if (round.questionId === FIRST_BELL_QUESTION_ID) {
+    const firstBellLines: Record<string, string> = {
+      noor: "Confidence is not evidence. I trust someone more when they can show what would change their mind.",
+      mika: "I trust the answer if they can explain it simply. I check it when the source is just 'trust me.'",
+      lyra: "I trust details that match the source. I check anything that sounds certain but skips the steps.",
+      sami: "If they can name the limit, I trust them more. If they sell it too hard, I check.",
+      ravi: "I trust the person who brings receipts. I check the person who brings only volume.",
+      indra: "Trust the answer that survives a question. Check the answer that needs applause.",
+    };
+    for (const npc of round.npcs) {
+      if (present.has(npc.studentId)) continue;
+      const line = firstBellLines[npc.studentId] ?? "Confidence is a signal, not proof. I would check the source.";
+      ruby.recordOpinion(sessionId, npc.studentId, line);
+      present.add(npc.studentId);
+      mutated = true;
+    }
+    return mutated;
   }
   for (const npc of round.npcs) {
     if (present.has(npc.studentId)) continue;
@@ -561,6 +580,50 @@ function buildOfflineOpinionVerdict(args: {
     };
   }
   const playerName = character?.name ?? "the player";
+  if (q.id === FIRST_BELL_QUESTION_ID) {
+    const playerText = round.opinionResponses.find((r) => r.responder === "player")?.text ?? "";
+    const lower = playerText.toLowerCase();
+    let score = playerText.trim().length >= 40 ? 6 : 4.5;
+    if (/trust|confidence|confident|evidence|receipt|explain|source/.test(lower)) score += 1;
+    if (/check|verify|source|proof|wrong|change their mind|receipt/.test(lower)) score += 1;
+    if (playerText.trim().length >= 120) score += 0.5;
+    score = Math.min(9, Math.max(3, score));
+    const playerComment = score >= 8
+      ? `${playerName} separated confidence from evidence instead of worshipping volume.`
+      : score >= 7
+      ? `${playerName} found the line: trust the explanation, check the claim.`
+      : `${playerName} named the problem, but the trust/check split needs sharper edges.`;
+    const grades: Array<{ responder: string; score: number; comment: string }> = [
+      { responder: "player", score, comment: playerComment },
+    ];
+    for (const entry of round.npcs) {
+      const name = STUDENTS[entry.studentId]?.name ?? entry.studentId;
+      const npcScore = entry.studentId === "noor" ? 8.5 : entry.studentId === "mika" ? 8 : 7.5;
+      grades.push({
+        responder: entry.studentId,
+        score: npcScore,
+        comment: entry.studentId === "noor"
+          ? `${name} refused to confuse confidence with evidence.`
+          : `${name} kept the standard practical: explain it, then verify it.`,
+      });
+    }
+    const ranked = [...grades].sort((a, b) => b.score - a.score);
+    const bestResponder = ranked[0]?.responder ?? null;
+    const stat = round.stat ?? statForQuestion(q);
+    const playerDice = roll2d6();
+    const playerStatMod = character?.stats?.[stat] ?? 0;
+    const playerTotal = playerDice.total + playerStatMod;
+    const playerOutcome = classifyTotal(playerTotal);
+    const bestName = bestResponder === "player"
+      ? playerName
+      : bestResponder ? (STUDENTS[bestResponder]?.name ?? bestResponder) : "the room";
+    return {
+      grades,
+      bestResponder,
+      narrativeText: `Ruby marks First Bell without ceremony. ${playerComment} Best response: ${bestName}.`,
+      playerRoll: { stat, dice: playerDice.dice, total: playerTotal, outcome: playerOutcome },
+    };
+  }
   // Prefer the stat already stamped on the round (set when openRound ran)
   // so offline grading rolls against the same modifier the NPCs did.
   const stat = round.stat ?? statForQuestion(q);
@@ -3034,7 +3097,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         narrativeText = verdict.narrativeText;
         offlinePlayerRoll = verdict.playerRoll;
       };
-      if (apiKey) {
+      if (state.current.id === FIRST_BELL_QUESTION_ID) {
+        useOfflineVerdict();
+      } else if (apiKey) {
         try {
           const verdict = await gradeOpinionResponses({
             apiKey,

@@ -148,6 +148,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   comic_collection: QuizState["comicCollection"];
   school_events: QuizState["schoolEvents"];
   essay_reports: EssayReport[];
+  first_bell: NonNullable<QuizState["firstBell"]>;
   yearbook_shares: Array<{ shareId: string; grade: Grade; characterName: string; completedAt: number; url: string }>;
   playbooks: typeof PLAYBOOKS;
   npc_cohort: Array<{
@@ -485,6 +486,7 @@ export function buildSessionState(args: {
       : null,
     school_events: (state.schoolEvents ?? []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
+    first_bell: state.firstBell ?? { status: "new" },
     yearbook_shares: ruby
       ? ruby.yearbookSharesForSession(sessionId).map((entry) => ({
           shareId: entry.shareId,
@@ -550,6 +552,7 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
     .map((card) => card.mintAddress && card.mintSignature ? card : hiddenHallPassCardForTelemetry(card));
   return {
     meritStars: Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0))),
+    meritPoints: Math.max(0, Math.floor(Number(state.wallet?.meritPoints ?? state.score.points ?? 0))),
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
     ...(Number.isFinite(Number(state.wallet?.welcomeHallPassesGrantedAt)) && Number(state.wallet?.welcomeHallPassesGrantedAt) > 0
       ? { welcomeHallPassesGrantedAt: Math.floor(Number(state.wallet?.welcomeHallPassesGrantedAt)) }

@@ -757,6 +757,9 @@ export interface QuizState {
   /** Durable graded-essay artifacts. Each report snapshots the player's essay,
    *  the teacher score/comment, and the classroom winner for later display. */
   essayReports: EssayReport[];
+  /** Guided first-session aha: one Ruby opinion card, two classmates, one
+   *  teacher verdict, and a small shareable artifact. */
+  firstBell?: FirstBellState;
   /** Per-grade NPC student rosters. Keyed by grade so progress persists when
    *  the player switches grades and comes back. */
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
@@ -1351,6 +1354,34 @@ export interface EssayReport {
     questionCount?: number;
     totalQuestions?: number;
   };
+}
+
+export interface FirstBellArtifact {
+  id: string;
+  createdAt: number;
+  questionId: string;
+  teacherFacultyId: string;
+  characterName: string;
+  prompt: string;
+  response: string;
+  score: number | null;
+  teacherComment: string;
+  bestResponder: string | null;
+  bestResponderName?: string;
+  bestResponderScore?: number;
+  bestResponderComment?: string;
+  classmateLine?: string;
+  copyText: string;
+}
+
+export interface FirstBellState {
+  status: "new" | "started" | "submitted" | "complete";
+  startedAt?: number;
+  submittedAt?: number;
+  completedAt?: number;
+  questionId?: string;
+  teacherFacultyId?: string;
+  artifact?: FirstBellArtifact;
 }
 
 export interface ActiveRound {

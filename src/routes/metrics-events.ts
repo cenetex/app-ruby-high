@@ -114,6 +114,12 @@ export async function handleMetricsEventRoute(
       grade: typeof body.grade === "string" ? body.grade : undefined,
     }));
   }
+  if (type === "first_bell_card_copied") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordFirstBellCardCopiedDurably(deps.sessionId, {
+      visitorHash,
+      artifactId: typeof body.shareId === "string" ? body.shareId : undefined,
+    }));
+  }
   if (type === "guest_spotlight_seen") {
     return await respondAfterMetricPersist(ctx, () => deps.ruby.recordGuestSpotlightSeenDurably(deps.sessionId, {
       visitorHash,
