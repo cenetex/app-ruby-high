@@ -5647,6 +5647,10 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     const ch = state.character;
     if (!ch) throw new Error("No character");
+    const grade = state.currentGrade ?? "9";
+    const gradeItems = (ch.gradeItems as any)?.[grade];
+    if (!Array.isArray(gradeItems) || !gradeItems.includes(itemId)) throw new Error("Item not available this grade.");
+    if (ch.itemCollection?.[itemId]) throw new Error("Item already collected.");
     const def = ({"item-hall-pass":3,"item-lunch-tray":3,"item-lab-flask":5,"item-flashcards":5,"item-notebook":8,"item-library-card":8} as Record<string,number>)[itemId];
     if (!def) throw new Error("Unknown item");
     const wallet = state.wallet ?? { meritStars: 0, meritPoints: 0, hallPasses: 0 };
