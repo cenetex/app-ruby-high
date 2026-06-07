@@ -5670,7 +5670,10 @@ export class RubyHighService extends Service {
 
   equipItem(sessionId: string, itemId: string | null): QuizState {
     const state = this.getOrCreate(sessionId);
-    if (state.character) state.character.equippedItem = (itemId as any) ?? null;
+    const ch = state.character;
+    if (!ch) throw new Error("No character");
+    if (itemId && !ch.itemCollection?.[itemId]) throw new Error("Item not in collection: " + itemId);
+    ch.equippedItem = (itemId as any) ?? null;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
