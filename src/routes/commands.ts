@@ -66,6 +66,7 @@ type CommandBody = {
   grade?: string;
   requestId?: string;
   socialConsent?: boolean;
+  item?: string;
 } | null;
 
 async function sendPersistedCommandState(
@@ -310,6 +311,17 @@ export async function handleCommandRoute(args: {
     "mark-intro-seen": async () => {
       const state = ruby.markIntroSeen(stateKey);
       return await persist(state, "Intro acknowledged");
+    },
+    "claim-item": async () => {
+      const itemId = String(body?.item ?? "");
+      if (!itemId) throw new Error("Missing item id.");
+      const state = ruby.claimItem(stateKey, itemId);
+      return await persist(state, `Claimed ${itemId}`);
+    },
+    "equip-item": async () => {
+      const itemId = typeof body?.item === "string" ? body.item : null;
+      const state = ruby.equipItem(stateKey, itemId);
+      return await persist(state, itemId ? `Equipped ${itemId}` : "Unequipped item");
     },
     "set-social-consent": async () => {
       const consent = body?.socialConsent ?? true;

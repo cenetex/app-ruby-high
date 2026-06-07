@@ -48,7 +48,7 @@ export const VIEWER_CONSTANTS = {
 // ── grading + score formatting ─────────────────────────────────────
 export function statLabel(stat: unknown): string {
   const meta = (VIEWER_CONSTANTS.STAT_META as Record<string, { emoji: string; label: string }>)[String(stat || "").toLowerCase()];
-  return meta ? meta.emoji + " " + meta.label : "🧠 Head";
+  return meta ? meta.emoji : "🧠";
 }
 export function scoreAwardLabel(award: NullableRecord): string {
   if (!award) return "";

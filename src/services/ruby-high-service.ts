@@ -79,6 +79,7 @@ import {
   type RubyHighHallPassPackStatus,
   type RubyHighWalletTransaction,
   type RubyHighWalletTransactionKind,
+  ITEM_DEFINITIONS,
 } from "../types.js";
 import { FacultyService, toFacultyMember } from "./faculty-service.js";
 import {
@@ -2481,7 +2482,7 @@ export class RubyHighService extends Service {
     }
     const stat: keyof CharacterStats = state.current ? statForQuestion(state.current) : "head";
     const r = roll2d6();
-    const mod = state.character?.stats[stat] ?? 0;
+    const mod = this.effectiveStat(state, stat);
     const total = r.total + mod;
     const outcome = classifyTotal(total);
     const correct = (state.current?.correct ?? "A") as Choice;
@@ -2540,7 +2541,7 @@ export class RubyHighService extends Service {
     const pr = state.pendingRoll;
     if (!pr || !state.character) return { state, result: null };
     const r = roll2d6();
-    const total = r.total + state.character.stats[pr.stat];
+    const total = r.total + this.effectiveStat(state, pr.stat);
     const outcome: RoundOutcome = total >= pr.dc + 3 ? "hit" : total >= pr.dc ? "mixed" : "miss";
     state.pendingRoll = null;
     state.updatedAt = Date.now();
@@ -2947,7 +2948,7 @@ export class RubyHighService extends Service {
         current: null,
         history: [],
         score: { correct: 0, total: 0, points: 0, possible: 0 },
-        wallet: { meritStars: 0, hallPasses: 0 },
+        wallet: { meritStars: 0, meritPoints: 0, hallPasses: 0 },
         lastReveal: null,
         status: statusForPhase("in-room"),
         askedQuestionIds: [],
@@ -4225,7 +4226,7 @@ export class RubyHighService extends Service {
     if (state.character && picked != null) {
       const stat: keyof CharacterStats = statForQuestion(q);
       const r = roll2d6();
-      const total = r.total + state.character.stats[stat];
+      const total = r.total + this.effectiveStat(state, stat);
       const outcome = classifyTotal(total);
       playerRoll = { stat, dice: r.dice, total, outcome };
     }
@@ -4586,6 +4587,7 @@ export class RubyHighService extends Service {
       // Assign the essay question for the new grade. The teacher will
       // give it as an assignment and reference it during lessons.
       ch.essayPrompt = gradeEssayPrompt(advance, ch);
+      this.assignGradeItems(sessionId);
       ch.essayCompleted = false;
       log.event("player.grade-advanced", {
         sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, reward: normalizedReward.kind,
@@ -5600,6 +5602,85 @@ export class RubyHighService extends Service {
     return next;
   }
 
+
+  assignGradeItems(sessionId: string): string[] {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    const grade = state.currentGrade;
+    if (!ch || !grade) return [];
+    ch.gradeItems = (ch.gradeItems ?? {}) as any;
+    if ((ch.gradeItems as any)[grade]) return (ch.gradeItems as any)[grade]!;
+    const all = ["item-hall-pass","item-lunch-tray","item-lab-flask","item-flashcards","item-notebook","item-library-card"];
+    const seed = this.hashString(ch.name) ^ this.hashForGrade(grade);
+    const shuffled = this.seededShuffle([...all], seed);
+    const items: string[] = [];
+    const rarities: Record<string,string[]> = {common:[],uncommon:[],rare:[]};
+    for (const id of shuffled) {
+      const def = ({"item-hall-pass":"common","item-lunch-tray":"common","item-lab-flask":"uncommon","item-flashcards":"uncommon","item-notebook":"rare","item-library-card":"rare"} as Record<string,string>)[id] || "common";
+      if (rarities[def].length < 1) { rarities[def].push(id); items.push(id); }
+      if (items.length >= 3) break;
+    }
+    (ch.gradeItems as any)[grade] = items;
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return items;
+  }
+
+  availableItems(sessionId: string): string[] {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    const grade = state.currentGrade;
+    if (!ch || !grade) return [];
+    const gradeItems = (ch.gradeItems as any)?.[grade];
+    if (!Array.isArray(gradeItems)) return [];
+    const collected = new Set(Object.keys(ch.itemCollection ?? {}));
+    return gradeItems.filter((id: string) => !collected.has(id));
+  }
+
+  claimItem(sessionId: string, itemId: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) throw new Error("No character");
+    const def = ({"item-hall-pass":3,"item-lunch-tray":3,"item-lab-flask":5,"item-flashcards":5,"item-notebook":8,"item-library-card":8} as Record<string,number>)[itemId];
+    if (!def) throw new Error("Unknown item");
+    const wallet = state.wallet ?? { meritStars: 0, meritPoints: 0, hallPasses: 0 };
+    const stars = Math.max(0, Math.floor(Number(wallet.meritStars ?? 0)));
+    if (stars < def) throw new Error(`Need ${def} stars. You have ${stars}.`);
+    wallet.meritStars = stars - def;
+    state.wallet = wallet;
+    ch.itemCollection = ch.itemCollection ?? {};
+    ch.itemCollection[itemId] = { itemId: itemId as any, collectedAt: Date.now(), grade: state.currentGrade ?? "9", cost: def };
+    if (!ch.equippedItem) ch.equippedItem = itemId as any;
+    state.schoolEvents = state.schoolEvents ?? [];
+    state.schoolEvents.push({ kind: "item.collected", id: `item-${itemId}-${Date.now()}`, at: Date.now(), grade: state.currentGrade ?? "9", itemId, itemName: itemId, cost: def });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  equipItem(sessionId: string, itemId: string | null): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (state.character) state.character.equippedItem = (itemId as any) ?? null;
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  private effectiveStat(state: any, stat: string): number {
+    const base = state.character?.stats?.[stat] ?? 0;
+    const equippedId = state.character?.equippedItem;
+    if (!equippedId) return base;
+    const def = (ITEM_DEFINITIONS as any)[equippedId];
+    if (!def) return base;
+    const bonus = def.stats[stat] ?? 0;
+    return base + bonus;
+  }
+
+  private hashString(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; } return Math.abs(h); }
+  private hashForGrade(g: string): number { return this.hashString("grade-" + g); }
+  private seededShuffle<T>(arr: T[], seed: number): T[] { const r = [...arr]; let s = seed; for (let i = r.length - 1; i > 0; i--) { s = (s * 16807 + 0) % 2147483647; const j = s % (i + 1); [r[i], r[j]] = [r[j]!, r[i]!]; } return r; }
+
+
   /** Back-compat alias. Older route handlers and tests call playDaily.
    *  Internally identical to playBonus now. */
   playDaily(sessionId: string, now: Date = new Date()): QuizState {
@@ -5910,6 +5991,7 @@ export class RubyHighService extends Service {
     };
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
+    this.assignGradeItems(sessionId);
     log.event("character.created", {
       sessionId, characterName: name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
     });
@@ -7268,6 +7350,7 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
   const welcomeHallPassesGrantedAt = Math.floor(Number(src.welcomeHallPassesGrantedAt ?? 0));
   return {
     meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
+    meritPoints: Math.max(0, Math.floor(Number(src.meritPoints ?? 0))),
     hallPasses,
     ...(Number.isFinite(welcomeHallPassesGrantedAt) && welcomeHallPassesGrantedAt > 0
       ? { welcomeHallPassesGrantedAt }

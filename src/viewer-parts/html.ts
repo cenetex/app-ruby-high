@@ -320,6 +320,15 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </div>
           <div id="account-comics"></div>
         </section>
+        <section class="account-section account-items-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Items</div>
+              <div class="account-section-sub" id="account-item-summary"></div>
+            </div>
+          </div>
+          <div id="account-items"></div>
+        </section>
       </div>
       <div class="account-panel" id="account-panel-receipts" data-account-panel="receipts" role="tabpanel" aria-labelledby="account-tab-receipts" hidden>
         <section class="account-section account-receipts-section">

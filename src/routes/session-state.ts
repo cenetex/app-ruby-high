@@ -350,6 +350,7 @@ export function buildSessionState(args: {
     scorePoints: state.score.points ?? 0,
     scorePossible: state.score.possible ?? 0,
     meritStars: wallet.meritStars,
+    meritPoints: wallet.meritPoints ?? 0,
     hallPasses: wallet.hallPasses,
     wallet,
     hosted_ai: entitlements.hosted_ai,
@@ -444,6 +445,44 @@ export function buildSessionState(args: {
     student_pool: state.studentPool ?? [],
     character_slots: characterSlots,
     comic_collection: state.comicCollection,
+    item_collection: state.character?.itemCollection
+      ? Object.values(state.character.itemCollection).map((entry) => ({
+          itemId: entry.itemId,
+          name: entry.itemId,
+          rarity: "common",
+          subtitle: "",
+          quote: "",
+          cost: entry.cost,
+          grade: entry.grade,
+          collectedAt: entry.collectedAt,
+        }))
+      : [],
+    equipped_item: state.character?.equippedItem ?? null,
+    grade_items: state.character?.gradeItems
+      ? Object.fromEntries(
+          Object.entries(state.character.gradeItems).map(([g, ids]) => [
+            g,
+            (ids as string[]).map((id) => ({
+              itemId: id,
+              name: id,
+              rarity: "common",
+              cost: 5,
+              collected: !!(state.character?.itemCollection?.[id]),
+            })),
+          ]),
+        )
+      : {},
+    active_item_offer: state.character?.activeItemOffer
+      ? {
+          itemId: state.character.activeItemOffer.itemId,
+          name: state.character.activeItemOffer.itemId,
+          rarity: "common",
+          subtitle: "",
+          quote: "",
+          cost: state.character.activeItemOffer.cost,
+          expiresAt: state.character.activeItemOffer.expiresAt,
+        }
+      : null,
     school_events: (state.schoolEvents ?? []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
     yearbook_shares: ruby

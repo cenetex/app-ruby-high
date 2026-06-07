@@ -1172,7 +1172,13 @@ function formatSchoolEventForTeacher(event: NonNullable<QuizState["schoolEvents"
   if (event.kind === "mash.axis-resolved") {
     return `${event.axis} resolved through ${studentNameFor(event.studentId)}: ${event.value}.`;
   }
-  return `Comic page ${event.pageNumber} unlocked: ${event.label || event.reason}.`;
+  if (event.kind === "comic.page-unlocked") {
+    return `Comic page ${event.pageNumber} unlocked: ${event.label || event.reason}.`;
+  }
+  if (event.kind === "item.collected") {
+    return `Collected ${event.itemName} for ${event.cost} Merit Stars.`;
+  }
+  return "Unknown school event.";
 }
 
 function studentNameFor(id: string): string {

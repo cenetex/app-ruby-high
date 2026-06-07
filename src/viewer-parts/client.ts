@@ -640,6 +640,9 @@ export function runViewerClient(bootstrap) {
     accountUnlockSlot: $("account-unlock-slot"),
     accountComicSummary: $("account-comic-summary"),
     accountComics: $("account-comics"),
+    accountItemSummary: $("account-item-summary"),
+    accountItems: $("account-items"),
+    itemOfferHost: $("item-offer-host"),
     accountHistoryList: $("account-history-list"),
     accountTrustList: $("account-trust-list"),
     checking: $("checking"),
@@ -1218,13 +1221,12 @@ export function runViewerClient(bootstrap) {
     });
   }
 
-  function isNearBottom() {
-    const { scrollTop, scrollHeight, clientHeight } = els.stream;
-    return scrollHeight - (scrollTop + clientHeight) < 80;
-  }
+  var lastManualScroll = 0;
+
   function scrollIfPinned(force) {
-    if (force || isNearBottom()) {
-      requestAnimationFrame(() => {
+    var sinceScroll = Date.now() - lastManualScroll;
+    if (force || sinceScroll > 400) {
+      requestAnimationFrame(function() {
         els.stream.scrollTop = els.stream.scrollHeight;
       });
     }
@@ -2190,7 +2192,9 @@ export function runViewerClient(bootstrap) {
     renderAccountHallPassCards();
     renderAccountCharacters();
     renderAccountComics();
+    renderAccountItems();
     renderAccountHistory();
+    renderItemOffer();
     renderAccountTrust();
   }
 
@@ -3159,6 +3163,68 @@ export function runViewerClient(bootstrap) {
 
   function openCharacterCreationFromAccount() {
     openCharacterSheetFromAccount();
+  }
+
+  function renderAccountItems() {
+    if (!els.accountItems || !els.accountItemSummary) return;
+    var t = lastTelemetry;
+    var items = Array.isArray(t && t.item_collection) ? t.item_collection : [];
+    var gradeItems = (t && t.grade_items) || {};
+    var eqId = (t && t.equipped_item) || null;
+    els.accountItemSummary.textContent = items.length + " collected";
+    var grid = document.createElement("div");
+    grid.className = "account-item-grid";
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var card = document.createElement("div");
+      card.className = "account-item-card" + (item.itemId === eqId ? " is-equipped" : "");
+      card.title = item.itemId === eqId ? "Equipped" : "Click to equip";
+      var art = document.createElement("img");
+      art.className = "item-art";
+      art.src = apiBase + "/assets/nft/ruby-high-item-cards.png";
+      art.alt = item.name; card.appendChild(art);
+      var nm = document.createElement("div"); nm.className = "item-name"; nm.textContent = item.name; card.appendChild(nm);
+      var sub = document.createElement("div"); sub.className = "item-subtitle"; sub.textContent = item.subtitle || ""; card.appendChild(sub);
+      if (item.quote) { var q = document.createElement("div"); q.className = "item-quote"; q.textContent = "\u201C" + item.quote + "\u201D"; card.appendChild(q); }
+      var gd = document.createElement("div"); gd.className = "item-grade"; gd.textContent = "Grade " + item.grade; card.appendChild(gd);
+      var badge = document.createElement("div"); badge.className = "item-equip-badge"; badge.textContent = "Equipped"; card.appendChild(badge);
+      (function(id, eid) { card.addEventListener("click", function() { command({ type: "equip-item", item: id === eid ? null : id }); }); })(item.itemId, eqId);
+      grid.appendChild(card);
+    }
+    var cg = (t && t.current_grade) || "9"; var gItems = gradeItems[cg];
+    if (Array.isArray(gItems)) {
+      for (var j = 0; j < gItems.length; j++) {
+        var gi = gItems[j]; if (gi.collected) continue;
+        var lc = document.createElement("div"); lc.className = "account-item-card is-locked";
+        var la = document.createElement("img"); la.className = "item-art"; la.src = apiBase + "/assets/nft/ruby-high-item-cards.png"; la.alt = "Locked"; lc.appendChild(la);
+        var ln = document.createElement("div"); ln.className = "item-name"; ln.textContent = "???"; lc.appendChild(ln);
+        var ls = document.createElement("div"); ls.className = "item-subtitle"; ls.textContent = (gi.rarity || "?") + " \u00B7 " + (gi.cost || 5) + " \u2605"; lc.appendChild(ls);
+        grid.appendChild(lc);
+      }
+    }
+    els.accountItems.replaceChildren(grid);
+  }
+  function renderItemOffer() {
+    if (!els.itemOfferHost) return;
+    els.itemOfferHost.innerHTML = "";
+    var t = lastTelemetry; var offer = t && t.active_item_offer;
+    if (!offer || Date.now() > offer.expiresAt) return;
+    var stars = (t && t.wallet) ? (t.wallet.meritStars || 0) : 0;
+    var can = stars >= offer.cost;
+    var card = document.createElement("div"); card.className = "item-offer-card";
+    var art = document.createElement("img"); art.className = "item-offer-art"; art.src = apiBase + "/assets/nft/ruby-high-item-cards.png"; art.alt = offer.name; card.appendChild(art);
+    var body = document.createElement("div"); body.className = "item-offer-body";
+    var nm = document.createElement("div"); nm.className = "item-offer-name"; nm.textContent = offer.name; body.appendChild(nm);
+    if (offer.subtitle) { var sub = document.createElement("div"); sub.className = "item-offer-subtitle"; sub.textContent = offer.subtitle; body.appendChild(sub); }
+    if (offer.quote) { var q = document.createElement("div"); q.className = "item-offer-quote"; q.textContent = "\u201C" + offer.quote + "\u201D"; body.appendChild(q); }
+    var cost = document.createElement("div"); cost.className = "item-offer-cost"; cost.textContent = offer.cost + "\u2605 \u2014 you have " + stars + " Merit"; body.appendChild(cost);
+    card.appendChild(body);
+    var btn = document.createElement("button"); btn.className = "item-offer-btn";
+    btn.textContent = can ? ("Claim " + offer.cost + " \u2605") : ("Need " + offer.cost + " \u2605");
+    btn.disabled = !can;
+    btn.addEventListener("click", function() { if (!can) return; btn.disabled = true; btn.textContent = "Claiming\u2026"; command({ type: "claim-item", item: offer.itemId }); });
+    card.appendChild(btn);
+    els.itemOfferHost.appendChild(card);
   }
 
   function renderAccountComics() {
@@ -5037,7 +5103,7 @@ export function runViewerClient(bootstrap) {
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Daily Class Bonus ×5" : "◆ ×" + scoreMult + " Merit Stars");
+        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult);
       els.boardReveal.appendChild(mult);
     }
     if (reveal.explanation) {
@@ -5258,7 +5324,7 @@ export function runViewerClient(bootstrap) {
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult + " Merit Stars");
+        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult);
       body.appendChild(mult);
     }
     appendMashTickChips(body, reveal);
@@ -11301,7 +11367,21 @@ export function runViewerClient(bootstrap) {
             } else if (finalLine && chimeStillCurrent()) {
               appendMsg({ kind: "student", name: who.name, body: finalLine, color: who.color, studentId: who.id });
             }
-          } else if (event === "error") {
+          } else if (event === "item-offer") {
+          // Update telemetry with the item offer and render it.
+          if (parsed && lastTelemetry) {
+            lastTelemetry.active_item_offer = {
+              itemId: parsed.itemId,
+              name: parsed.name,
+              rarity: parsed.rarity,
+              subtitle: parsed.subtitle,
+              quote: parsed.quote,
+              cost: parsed.cost,
+              expiresAt: parsed.expiresAt,
+            };
+            renderItemOffer();
+          }
+        } else if (event === "error") {
             throw new Error(parsed && parsed.message ? parsed.message : "student chime failed");
           }
         },
@@ -12000,6 +12080,20 @@ export function runViewerClient(bootstrap) {
           appendTool(toolSummary(parsed, teacherName));
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
+        } else if (event === "item-offer") {
+          // Update telemetry with the item offer and render it.
+          if (parsed && lastTelemetry) {
+            lastTelemetry.active_item_offer = {
+              itemId: parsed.itemId,
+              name: parsed.name,
+              rarity: parsed.rarity,
+              subtitle: parsed.subtitle,
+              quote: parsed.quote,
+              cost: parsed.cost,
+              expiresAt: parsed.expiresAt,
+            };
+            renderItemOffer();
+          }
         } else if (event === "error") {
           appendSystem("error · " + (parsed.message || "unknown"));
           refreshSessionAfterStreamEvent();
@@ -12534,8 +12628,20 @@ export function runViewerClient(bootstrap) {
     const fast = round && !round.resolved;
     sessionPollHandle = setTimeout(async () => {
       await fetchSession();
-      adaptiveSchedule();
+      // Track manual scrolling to suppress auto-scroll temporarily.
+  if (els.stream) {
+    els.stream.addEventListener("scroll", function() {
+      lastManualScroll = Date.now();
+    }, { passive: true });
+  }
+  adaptiveSchedule();
     }, fast ? 750 : 4000);
+  }
+  // Track manual scrolling to suppress auto-scroll temporarily.
+  if (els.stream) {
+    els.stream.addEventListener("scroll", function() {
+      lastManualScroll = Date.now();
+    }, { passive: true });
   }
   adaptiveSchedule();
 }

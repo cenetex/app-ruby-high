@@ -1,4 +1,5 @@
 import {
+  awardStars,
   dailyIndex,
   dailyKey,
   daysBetween,
@@ -225,13 +226,16 @@ export function awardSessionScore(
   const base = clamp(Math.round(baseScore), 0, 100);
   const points = base * multiplier;
   const possible = 100 * multiplier;
-  const currentScorePoints = Math.max(0, Math.floor(Number(state.score.points ?? 0)));
-  const currentMeritStars = Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? currentScorePoints)));
-  state.score.points = currentScorePoints + points;
+  const currentPoints = Math.max(0, Math.floor(Number(state.wallet?.meritPoints ?? state.score.points ?? 0)));
+  const currentStars = Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? 0)));
+  const grade = state.currentGrade ?? "9";
+  const result = awardStars(currentPoints, currentStars, points, grade);
+  state.score.points = (state.score.points ?? 0) + points;
   state.score.possible = Math.max(0, Math.floor(Number(state.score.possible ?? 0))) + possible;
   state.wallet = {
     ...(state.wallet ?? {}),
-    meritStars: currentMeritStars + points,
+    meritStars: result.stars,
+    meritPoints: result.points,
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
   };
   return { base, multiplier, points, possible };

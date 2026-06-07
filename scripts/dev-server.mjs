@@ -250,6 +250,20 @@ const server = createServer(async (req, res) => {
       const coreFaculty = ["ruby", "sally-science", "professor-edward"].slice(0, roomCount);
       ch.graduationClassrooms = ch.graduationClassrooms ?? {};
       ch.graduationClassrooms[grade] = coreFaculty;
+      // Assign 3 random items for this grade (one per rarity tier).
+      ch.gradeItems = ch.gradeItems || {};
+      if (!ch.gradeItems[grade]) {
+        const allItems = ["item-hall-pass","item-lunch-tray","item-lab-flask","item-flashcards","item-notebook","item-library-card"];
+        const rarities = { "item-hall-pass":"common","item-lunch-tray":"common","item-lab-flask":"uncommon","item-flashcards":"uncommon","item-notebook":"rare","item-library-card":"rare" };
+        const items = [];
+        const byRarity = { common: [], uncommon: [], rare: [] };
+        for (const id of allItems) {
+          const r = rarities[id] || "common";
+          if (byRarity[r].length < 1) { byRarity[r].push(id); items.push(id); }
+          if (items.length >= 3) break;
+        }
+        ch.gradeItems[grade] = items;
+      }
       ch.dailyClasses = ch.dailyClasses ?? {};
       for (const facultyId of coreFaculty) {
         for (let d = 0; d < reqDays; d++) {

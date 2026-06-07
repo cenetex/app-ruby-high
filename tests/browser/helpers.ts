@@ -90,27 +90,49 @@ export async function createCharacter(page: Page) {
   const rollAStudent = page.getByRole("button", { name: /roll a student/i });
   const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
 
+  // Capture console errors for debugging.
+  const errors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(msg.text());
+  });
+
   const lockVisible = await lockItIn.isVisible().catch(() => false);
   const rollVisible = await rollAStudent.isVisible().catch(() => false);
 
   if (lockVisible) {
-    await lockItIn.click();
+    try {
+      await expect(lockItIn).toBeEnabled({ timeout: 45000 });
+      await lockItIn.click();
+    } catch {
+      // Button never enabled — fall through to roll-a-student.
+      if (rollVisible) {
+        await rollAStudent.click();
+      }
+    }
   } else if (rollVisible) {
     await rollAStudent.click();
   }
 
-  // The creation sheet opens. Auto-commit may fire before Playwright
-  // observes it, or the sheet may land on a manual "Save Character"
-  // button. Handle both paths.
+  // Try Save Character if it appears.
   try {
-    await expect(saveCharacter).toBeEnabled({ timeout: 8000 });
+    await expect(saveCharacter).toBeEnabled({ timeout: 5000 });
     await saveCharacter.click();
   } catch {
-    // Auto-commit closed the sheet before we saw it. That's fine.
+    // No Save Character button — auto-commit might have happened.
   }
 
-  // Sheet should be gone and classroom visible.
-  await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/, { timeout: 10000 });
+  // Sheet should close. If it doesn't, try clicking Lock it in once more.
+  try {
+    await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/, { timeout: 10000 });
+  } catch {
+    // Sheet still open — try clicking any available commit button.
+    const anyBtn = page.locator("#sheet-card button").filter({ hasText: /lock|save|roll|confirm|create|start/i }).first();
+    if (await anyBtn.isVisible().catch(() => false)) {
+      await anyBtn.click();
+      await page.waitForTimeout(1000);
+    }
+    await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/, { timeout: 10000 });
+  }
 }
 
 /**

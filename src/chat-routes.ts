@@ -2390,6 +2390,36 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
           })) {
             send(ev.type, ev);
+        }
+      }
+
+      // Maybe offer an uncollected item after the teacher responds.
+      if (faculty !== "lounge" && state.character) {
+        const available = ruby.availableItems(sessionId);
+        if (available.length > 0 && Math.random() < 0.15) {
+          const itemId = available[Math.floor(Math.random() * available.length)]!;
+          
+          const costs = ({"item-hall-pass":3,"item-lunch-tray":3,"item-lab-flask":5,"item-flashcards":5,"item-notebook":8,"item-library-card":8} as Record<string,number>);
+          const names = ({"item-hall-pass":"Hall Pass","item-lunch-tray":"Lunch Tray","item-lab-flask":"Lab Flask","item-flashcards":"Flashcards","item-notebook":"Notebook","item-library-card":"Library Card"} as Record<string,string>);
+          const subs = ({"item-hall-pass":"Front Office","item-lunch-tray":"Commons","item-lab-flask":"Science Lab","item-flashcards":"Study Kit","item-notebook":"Daily Carry","item-library-card":"Quiet Wing"} as Record<string,string>);
+          const quotes = ({"item-hall-pass":"Sometimes the smartest move is stepping out and coming back better.","item-lunch-tray":"Half the social game happens between bites.","item-lab-flask":"Observe first. Guess later.","item-flashcards":"Shuffle. Repeat. Survive.","item-notebook":"Messy notes still count as evidence of life.","item-library-card":"If the answer exists, this helps you find it."} as Record<string,string>);
+          const rarities = ({"item-hall-pass":"common","item-lunch-tray":"common","item-lab-flask":"uncommon","item-flashcards":"uncommon","item-notebook":"rare","item-library-card":"rare"} as Record<string,string>);
+          const cost = costs[itemId] || 5;
+          const name = names[itemId] || itemId;
+          const offer: any = { itemId, cost, offeredAt: Date.now(), expiresAt: Date.now() + 45000 };
+          state.character.activeItemOffer = offer;
+            state.updatedAt = Date.now();
+            void ruby.flushSession(sessionId);
+            send("item-offer", {
+              type: "item-offer",
+              itemId: offer.itemId,
+              name: name,
+              rarity: rarities[itemId] || "common",
+              subtitle: subs[itemId] || "",
+              quote: quotes[itemId] || "",
+              cost: offer.cost,
+              expiresAt: offer.expiresAt,
+            });
           }
         }
       }

@@ -9,9 +9,14 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "Who wrote *Beloved*?",
-      "options": { "A": "Toni Morrison", "B": "James Baldwin", "C": "Zadie Smith", "D": "Alice Walker" },
+      "options": {
+        "A": "Toni Morrison",
+        "B": "James Baldwin",
+        "C": "Zadie Smith",
+        "D": "Alice Walker"
+      },
       "correct": "A",
-      "explanation": "Beloved (1987) — Pulitzer 1988. Morrison won the Nobel in 1993."
+      "explanation": "Beloved (1987) \u2014 Pulitzer 1988. Morrison won the Nobel in 1993."
     },
     {
       "id": "edward-002",
@@ -19,7 +24,12 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "Which novel opens with 'Call me Ishmael.'?",
-      "options": { "A": "*The Old Man and the Sea*", "B": "*Moby-Dick*", "C": "*Heart of Darkness*", "D": "*Lord Jim*" },
+      "options": {
+        "A": "*The Old Man and the Sea*",
+        "B": "*Moby-Dick*",
+        "C": "*Heart of Darkness*",
+        "D": "*Lord Jim*"
+      },
       "correct": "B",
       "explanation": "Melville, 1851. One of the most famous opening lines in English fiction."
     },
@@ -28,8 +38,13 @@
       "subject": "literature",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "*Invisible Man* (1952) was written by…",
-      "options": { "A": "Richard Wright", "B": "James Baldwin", "C": "Ralph Ellison", "D": "Langston Hughes" },
+      "prompt": "*Invisible Man* (1952) was written by\u2026",
+      "options": {
+        "A": "Richard Wright",
+        "B": "James Baldwin",
+        "C": "Ralph Ellison",
+        "D": "Langston Hughes"
+      },
       "correct": "C",
       "explanation": "Ellison's only novel published in his lifetime. Won the National Book Award 1953."
     },
@@ -39,9 +54,14 @@
       "difficulty": "medium",
       "stat": "heart",
       "prompt": "Which critic is most associated with the 'death of the author' essay (1967)?",
-      "options": { "A": "Jacques Derrida", "B": "Roland Barthes", "C": "Michel Foucault", "D": "Northrop Frye" },
+      "options": {
+        "A": "Jacques Derrida",
+        "B": "Roland Barthes",
+        "C": "Michel Foucault",
+        "D": "Northrop Frye"
+      },
       "correct": "B",
-      "explanation": "Barthes argued that a text's unity lies in its destination — the reader — not its origin."
+      "explanation": "Barthes argued that a text's unity lies in its destination \u2014 the reader \u2014 not its origin."
     },
     {
       "id": "edward-005",
@@ -49,7 +69,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "*Catch-22* satirizes which institution most directly?",
-      "options": { "A": "Catholic Church", "B": "U.S. military bureaucracy", "C": "British monarchy", "D": "Wall Street" },
+      "options": {
+        "A": "Catholic Church",
+        "B": "U.S. military bureaucracy",
+        "C": "British monarchy",
+        "D": "Wall Street"
+      },
       "correct": "B",
       "explanation": "Heller's novel is set in World War II, but its sharpest target is bureaucratic absurdity."
     },
@@ -59,9 +84,14 @@
       "difficulty": "medium",
       "stat": "head",
       "prompt": "The term 'New Criticism' is most associated with which decade?",
-      "options": { "A": "1900s", "B": "1930s-1940s", "C": "1960s", "D": "1980s" },
+      "options": {
+        "A": "1900s",
+        "B": "1930s-1940s",
+        "C": "1960s",
+        "D": "1980s"
+      },
       "correct": "B",
-      "explanation": "Brooks, Warren, Wimsatt — close reading of the text as autonomous object. Later eclipsed by post-structuralism."
+      "explanation": "Brooks, Warren, Wimsatt \u2014 close reading of the text as autonomous object. Later eclipsed by post-structuralism."
     },
     {
       "id": "edward-007",
@@ -69,7 +99,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "Which 1955 novel by Vladimir Nabokov was first published in Paris because U.S. publishers refused?",
-      "options": { "A": "*Pale Fire*", "B": "*Lolita*", "C": "*Pnin*", "D": "*Ada*" },
+      "options": {
+        "A": "*Pale Fire*",
+        "B": "*Lolita*",
+        "C": "*Pnin*",
+        "D": "*Ada*"
+      },
       "correct": "B",
       "explanation": "Olympia Press, 1955. U.S. publication followed in 1958 once the obscenity questions were tested."
     },
@@ -79,19 +114,29 @@
       "difficulty": "medium",
       "stat": "heart",
       "prompt": "Which writer coined the term 'iceberg theory' for prose?",
-      "options": { "A": "F. Scott Fitzgerald", "B": "Ernest Hemingway", "C": "John Steinbeck", "D": "William Faulkner" },
+      "options": {
+        "A": "F. Scott Fitzgerald",
+        "B": "Ernest Hemingway",
+        "C": "John Steinbeck",
+        "D": "William Faulkner"
+      },
       "correct": "B",
-      "explanation": "Hemingway: most of the meaning sits below the waterline — implication over statement."
+      "explanation": "Hemingway: most of the meaning sits below the waterline \u2014 implication over statement."
     },
     {
       "id": "edward-009",
       "subject": "literary-theory",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Mikhail Bakhtin's central concept describing the multiplicity of voices within a novel is…",
-      "options": { "A": "Heteroglossia", "B": "Catachresis", "C": "Synecdoche", "D": "Anagnorisis" },
+      "prompt": "Mikhail Bakhtin's central concept describing the multiplicity of voices within a novel is\u2026",
+      "options": {
+        "A": "Heteroglossia",
+        "B": "Catachresis",
+        "C": "Synecdoche",
+        "D": "Anagnorisis"
+      },
       "correct": "A",
-      "explanation": "Heteroglossia — many social voices coexisting in one work, especially the novel as a polyphonic form."
+      "explanation": "Heteroglossia \u2014 many social voices coexisting in one work, especially the novel as a polyphonic form."
     },
     {
       "id": "edward-010",
@@ -99,7 +144,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "Which post-war movement is *Howl* (1956) most often associated with?",
-      "options": { "A": "Beat Generation", "B": "Black Mountain School", "C": "New York School", "D": "Confessional poets" },
+      "options": {
+        "A": "Beat Generation",
+        "B": "Black Mountain School",
+        "C": "New York School",
+        "D": "Confessional poets"
+      },
       "correct": "A",
       "explanation": "Ginsberg's *Howl* is the defining Beat work; the obscenity trial in 1957 was a free-speech landmark."
     },
@@ -109,7 +159,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "In Pynchon's *Gravity's Rainbow*, which feature of the V-2 rocket matters most to the novel's obsession with cause and effect?",
-      "options": { "A": "Its painted insignia", "B": "Its impact can arrive before its sound", "C": "Its crew has a narrator", "D": "Its fuel is fictional" },
+      "options": {
+        "A": "Its painted insignia",
+        "B": "Its impact can arrive before its sound",
+        "C": "Its crew has a narrator",
+        "D": "Its fuel is fictional"
+      },
       "correct": "B",
       "explanation": "Because the V-2 traveled faster than sound, impact could be perceived before the sound arrived."
     },
@@ -118,8 +173,13 @@
       "subject": "literary-theory",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Harold Bloom's 'anxiety of influence' (1973) describes…",
-      "options": { "A": "Writers misreading their precursors to make space for themselves", "B": "Critics inventing new terms to escape their advisors", "C": "Readers projecting biography onto text", "D": "Editors over-revising poems" },
+      "prompt": "Harold Bloom's 'anxiety of influence' (1973) describes\u2026",
+      "options": {
+        "A": "Writers misreading their precursors to make space for themselves",
+        "B": "Critics inventing new terms to escape their advisors",
+        "C": "Readers projecting biography onto text",
+        "D": "Editors over-revising poems"
+      },
       "correct": "A",
       "explanation": "Bloom's idea is that writers transform earlier works through creative misreading, making room for their own voice."
     },
@@ -129,7 +189,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "Who wrote *On the Road* (1957)?",
-      "options": { "A": "William S. Burroughs", "B": "Jack Kerouac", "C": "Allen Ginsberg", "D": "Ken Kesey" },
+      "options": {
+        "A": "William S. Burroughs",
+        "B": "Jack Kerouac",
+        "C": "Allen Ginsberg",
+        "D": "Ken Kesey"
+      },
       "correct": "B",
       "explanation": "Kerouac. Famously typed on a 120-foot scroll across three weeks in 1951."
     },
@@ -139,7 +204,12 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "Which novel ends with 'So we beat on, boats against the current, borne back ceaselessly into the past.'?",
-      "options": { "A": "*Tender Is the Night*", "B": "*The Great Gatsby*", "C": "*This Side of Paradise*", "D": "*The Beautiful and Damned*" },
+      "options": {
+        "A": "*Tender Is the Night*",
+        "B": "*The Great Gatsby*",
+        "C": "*This Side of Paradise*",
+        "D": "*The Beautiful and Damned*"
+      },
       "correct": "B",
       "explanation": "Fitzgerald, 1925. One of the most-quoted closing lines in American literature."
     },
@@ -149,7 +219,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "Edward Said's *Orientalism* (1978) is foundational to which critical school?",
-      "options": { "A": "Reader-response", "B": "Postcolonial criticism", "C": "Russian formalism", "D": "Eco-criticism" },
+      "options": {
+        "A": "Reader-response",
+        "B": "Postcolonial criticism",
+        "C": "Russian formalism",
+        "D": "Eco-criticism"
+      },
       "correct": "B",
       "explanation": "Said showed how European scholarship constructed 'the Orient' as a discursive object that justified imperial power."
     },
@@ -159,7 +234,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "In narratology, what is free indirect discourse?",
-      "options": { "A": "Dialogue without quotation marks only", "B": "A narrator blending third-person narration with a character's thoughts or idiom", "C": "A poem with no fixed meter", "D": "A plot told strictly backward" },
+      "options": {
+        "A": "Dialogue without quotation marks only",
+        "B": "A narrator blending third-person narration with a character's thoughts or idiom",
+        "C": "A poem with no fixed meter",
+        "D": "A plot told strictly backward"
+      },
       "correct": "B",
       "explanation": "Free indirect discourse lets narration carry a character's interior voice without switching fully into first person or direct quotation."
     },
@@ -169,7 +249,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "Which idea best describes the Theater of the Absurd associated with Beckett and Ionesco?",
-      "options": { "A": "Comedy based only on mistaken identity", "B": "Drama exposing meaninglessness through repetition, breakdown, and circular action", "C": "Historical drama written in blank verse", "D": "Realist domestic plots with strict causality" },
+      "options": {
+        "A": "Comedy based only on mistaken identity",
+        "B": "Drama exposing meaninglessness through repetition, breakdown, and circular action",
+        "C": "Historical drama written in blank verse",
+        "D": "Realist domestic plots with strict causality"
+      },
       "correct": "B",
       "explanation": "Absurdist drama stages the collapse of stable meaning and conventional plot logic, often through repetition and stalled action."
     },
@@ -179,9 +264,1162 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "In fiction, who is the narrator?",
-      "options": { "A": "The voice that tells the story", "B": "The company that prints the book", "C": "The list of chapter titles", "D": "The oldest character" },
+      "options": {
+        "A": "The voice that tells the story",
+        "B": "The company that prints the book",
+        "C": "The list of chapter titles",
+        "D": "The oldest character"
+      },
       "correct": "A",
       "explanation": "The narrator is the telling voice, which shapes what the reader knows and feels."
+    },
+    {
+      "id": "edward-019",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "Who wrote *The Great Gatsby*?",
+      "options": {
+        "A": "Ernest Hemingway",
+        "B": "F. Scott Fitzgerald",
+        "C": "John Steinbeck",
+        "D": "William Faulkner"
+      },
+      "correct": "B",
+      "explanation": "1925. The green light, the valley of ashes, the eyes of Doctor T.J. Eckleburg. Fitzgerald's Jazz Age elegy."
+    },
+    {
+      "id": "edward-020",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "What is a protagonist?",
+      "options": {
+        "A": "The villain of a story",
+        "B": "The main character around whom the story revolves",
+        "C": "The narrator",
+        "D": "A supporting character"
+      },
+      "correct": "B",
+      "explanation": "From Greek 'protagonistes' \u2014 first actor. The character whose choices drive the plot."
+    },
+    {
+      "id": "edward-021",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "In *To Kill a Mockingbird*, what does Atticus Finch tell Scout about understanding others?",
+      "options": {
+        "A": "Always trust your instincts",
+        "B": "You never really understand a person until you climb into his skin and walk around in it",
+        "C": "Justice always prevails",
+        "D": "Never talk to strangers"
+      },
+      "correct": "B",
+      "explanation": "Harper Lee's core moral instruction. Empathy as epistemology."
+    },
+    {
+      "id": "edward-022",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is an unreliable narrator?",
+      "options": {
+        "A": "A narrator who speaks a different language",
+        "B": "A narrator whose credibility is compromised \u2014 they may be lying, mistaken, or mad",
+        "C": "A narrator who tells the story out of order",
+        "D": "A narrator who uses too many adjectives"
+      },
+      "correct": "B",
+      "explanation": "Think Humbert Humbert, think Holden Caulfield, think the narrator of 'The Tell-Tale Heart.' The gap between what's told and what's true is the point."
+    },
+    {
+      "id": "edward-023",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is magical realism?",
+      "options": {
+        "A": "A genre where everything is explained by science",
+        "B": "A literary mode where fantastical elements are treated as ordinary within an otherwise realistic world",
+        "C": "Stories about magicians",
+        "D": "Science fiction set in the present"
+      },
+      "correct": "B",
+      "explanation": "Gabriel Garc\u00eda M\u00e1rquez, Salman Rushdie, Toni Morrison. The supernatural doesn't break the world \u2014 it's already there."
+    },
+    {
+      "id": "edward-024",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is the significance of the title *Things Fall Apart*?",
+      "options": {
+        "A": "It's about a building collapse",
+        "B": "It's from Yeats' 'The Second Coming' \u2014 the center cannot hold \u2014 reflecting the collapse of Igbo society under colonialism",
+        "C": "It refers to a character's mental breakdown",
+        "D": "It describes a failed business"
+      },
+      "correct": "B",
+      "explanation": "Chinua Achebe's 1958 novel. The title poem: 'Things fall apart; the centre cannot hold; Mere anarchy is loosed upon the world.'"
+    },
+    {
+      "id": "edward-025",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "In *One Hundred Years of Solitude*, what literary technique does the opening line employ?",
+      "options": {
+        "A": "Stream of consciousness",
+        "B": "Prolepsis \u2014 the narrator recounts a future event (the firing squad) from the perspective of memory",
+        "C": "Second-person address",
+        "D": "Epistolary form"
+      },
+      "correct": "B",
+      "explanation": "'Many years later, as he faced the firing squad, Colonel Aureliano Buend\u00eda was to remember that distant afternoon when his father took him to discover ice.' The entire novel exists in that temporal fold."
+    },
+    {
+      "id": "edward-026",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "What distinguishes 'show, don't tell' as a narrative technique?",
+      "options": {
+        "A": "Using illustrations instead of text",
+        "B": "Revealing character and emotion through action, dialogue, and sensory detail rather than explicit exposition",
+        "C": "Writing in present tense",
+        "D": "Using only dialogue"
+      },
+      "correct": "B",
+      "explanation": "Chekhov: 'Don't tell me the moon is shining; show me the glint of light on broken glass.' The reader infers; the writer arranges evidence."
+    },
+    {
+      "id": "edward-027",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "In Kafka's *The Metamorphosis*, what does Gregor Samsa transform into?",
+      "options": {
+        "A": "A giant cockroach or 'ungeheueres Ungeziefer' \u2014 a monstrous vermin",
+        "B": "A butterfly",
+        "C": "A wolf",
+        "D": "A stone"
+      },
+      "correct": "A",
+      "explanation": "Kafka famously insisted the creature never be illustrated. The German 'Ungeziefer' is deliberately vague \u2014 unclean animal, pest, vermin. The ambiguity is the point."
+    },
+    {
+      "id": "edward-028",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "What is a 'Bildungsroman'?",
+      "options": {
+        "A": "A German travel guide",
+        "B": "A novel of formation or education \u2014 a coming-of-age story tracking the protagonist's moral and psychological development",
+        "C": "A type of poetry",
+        "D": "A historical document"
+      },
+      "correct": "B",
+      "explanation": "From Goethe's *Wilhelm Meister's Apprenticeship* to *Jane Eyre* to *The Catcher in the Rye*. The self is not discovered \u2014 it's built through experience."
+    },
+    {
+      "id": "edward-029",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is foreshadowing?",
+      "options": {
+        "A": "Describing the weather",
+        "B": "A literary device where the author hints at future plot developments",
+        "C": "Writing in past tense",
+        "D": "Introducing a character late in the story"
+      },
+      "correct": "B",
+      "explanation": "The gun on the mantle in Act I. The offhand remark that lands differently on a second read. Foreshadowing is the author's contract with an attentive reader."
+    },
+    {
+      "id": "edward-030",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "Who wrote *1984*?",
+      "options": {
+        "A": "Aldous Huxley",
+        "B": "George Orwell",
+        "C": "Ray Bradbury",
+        "D": "H.G. Wells"
+      },
+      "correct": "B",
+      "explanation": "1949. Big Brother, doublethink, Room 101. Orwell's dystopia was a warning, not a manual."
+    },
+    {
+      "id": "edward-031",
+      "subject": "literary-theory",
+      "difficulty": "easy",
+      "prompt": "What is a 'close reading'?",
+      "options": {
+        "A": "Reading with the book very close to your face",
+        "B": "Careful, sustained analysis of a text's language, structure, and detail without relying on external context",
+        "C": "Reading quickly to finish",
+        "D": "Reading only the first and last chapters"
+      },
+      "correct": "B",
+      "explanation": "The New Critics' method: the text itself contains everything needed for interpretation. Authorial intent and historical context are set aside."
+    },
+    {
+      "id": "edward-032",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What does 'deconstruction' mean in Derrida's work?",
+      "options": {
+        "A": "Destroying books",
+        "B": "Analyzing texts to reveal the instability of meaning and the hidden hierarchies within binary oppositions",
+        "C": "Simplifying complex ideas",
+        "D": "Removing difficult passages"
+      },
+      "correct": "B",
+      "explanation": "Derrida didn't destroy texts \u2014 he showed they were already undoing themselves. Speech/writing, presence/absence, nature/culture: the privileged term depends on the one it excludes."
+    },
+    {
+      "id": "edward-033",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is 'reader-response criticism'?",
+      "options": {
+        "A": "Criticism written by readers on Amazon",
+        "B": "A school that focuses on the reader's experience and interpretation as essential to a text's meaning",
+        "C": "Criticism that ignores the text",
+        "D": "A method of speed reading"
+      },
+      "correct": "B",
+      "explanation": "Stanley Fish, Wolfgang Iser. A text isn't complete until someone reads it. Meaning happens in the encounter between reader and page."
+    },
+    {
+      "id": "edward-034",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is 'the canon' in literary studies?",
+      "options": {
+        "A": "A type of camera",
+        "B": "A body of works traditionally considered authoritative, important, or representative \u2014 and the debate about who put them there",
+        "C": "A religious text",
+        "D": "A set of grammar rules"
+      },
+      "correct": "B",
+      "explanation": "The canon question: who decides what's great? What voices were excluded? Every syllabus is an argument about value."
+    },
+    {
+      "id": "edward-035",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is 'intertextuality'?",
+      "options": {
+        "A": "Texting between characters",
+        "B": "Julia Kristeva's concept that every text is a mosaic of quotations \u2014 shaped by and responding to other texts",
+        "C": "Writing in multiple languages",
+        "D": "A formatting technique"
+      },
+      "correct": "B",
+      "explanation": "No text is an island. Every work absorbs and transforms earlier works. Bakhtin's dialogism, Kristeva's coinage, Barthes' 'the text is a tissue of quotations.'"
+    },
+    {
+      "id": "edward-036",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What does Barthes mean by 'the death of the author'?",
+      "options": {
+        "A": "Authors should not be alive when their books are published",
+        "B": "The author's intentions and biography should not constrain interpretation \u2014 meaning is born in the reader",
+        "C": "Authors should use pseudonyms",
+        "D": "Books write themselves"
+      },
+      "correct": "B",
+      "explanation": "1967. 'The birth of the reader must be at the cost of the death of the Author.' The text belongs to those who read it, not to the person who wrote it."
+    },
+    {
+      "id": "edward-037",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is '\u00e9criture f\u00e9minine'?",
+      "options": {
+        "A": "Women's handwriting",
+        "B": "H\u00e9l\u00e8ne Cixous' concept of a feminine mode of writing that disrupts patriarchal language structures",
+        "C": "Female authors only",
+        "D": "Calligraphy by women"
+      },
+      "correct": "B",
+      "explanation": "Cixous, Irigaray, Kristeva. Not 'women's writing' but writing that escapes the binary logic of phallocentric discourse. The body writes back."
+    },
+    {
+      "id": "edward-038",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is New Historicism's key methodological move?",
+      "options": {
+        "A": "Ignoring history entirely",
+        "B": "Reading literary and non-literary texts from the same period as participants in a shared cultural conversation",
+        "C": "Only studying ancient texts",
+        "D": "Focusing exclusively on author biographies"
+      },
+      "correct": "B",
+      "explanation": "Stephen Greenblatt. A Renaissance play and a legal document from the same year are read side by side. Both are 'texts' that circulate social energy."
+    },
+    {
+      "id": "edward-039",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is a 'signifier' and 'signified' in Saussure's linguistics?",
+      "options": {
+        "A": "The author and the reader",
+        "B": "The signifier is the word or sound-image; the signified is the concept it represents \u2014 linked arbitrarily",
+        "C": "The beginning and end of a sentence",
+        "D": "Two types of punctuation"
+      },
+      "correct": "B",
+      "explanation": "The word 'tree' (signifier) has no natural connection to the concept of a tree (signified). The relationship is arbitrary and conventional. This insight launched structuralism."
+    },
+    {
+      "id": "edward-040",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What does 'hegemony' mean in Gramsci's cultural theory?",
+      "options": {
+        "A": "Military conquest",
+        "B": "Dominance achieved through consent and cultural leadership, not just force \u2014 the ruling ideas become 'common sense'",
+        "C": "Economic control only",
+        "D": "A type of government"
+      },
+      "correct": "B",
+      "explanation": "Gramsci: the ruling class maintains power not just through coercion but through cultural institutions that make their worldview seem natural and inevitable."
+    },
+    {
+      "id": "edward-041",
+      "subject": "mid-century",
+      "difficulty": "easy",
+      "prompt": "Who wrote *The Catcher in the Rye*?",
+      "options": {
+        "A": "J.D. Salinger",
+        "B": "Jack Kerouac",
+        "C": "Kurt Vonnegut",
+        "D": "Joseph Heller"
+      },
+      "correct": "A",
+      "explanation": "1951. Holden Caulfield. 'All that David Copperfield kind of crap.' The voice that made teenage alienation literary."
+    },
+    {
+      "id": "edward-042",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What is the central conceit of *Slaughterhouse-Five*?",
+      "options": {
+        "A": "A soldier's diary",
+        "B": "Billy Pilgrim has become 'unstuck in time' \u2014 experiencing moments of his life non-linearly, including the firebombing of Dresden",
+        "C": "A cooking competition",
+        "D": "A detective story"
+      },
+      "correct": "B",
+      "explanation": "Vonnegut, 1969. 'So it goes.' The structure mirrors the trauma: chronological narrative would be a lie."
+    },
+    {
+      "id": "edward-043",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What literary movement is *The Waste Land* (1922) most associated with?",
+      "options": {
+        "A": "Romanticism",
+        "B": "Modernism \u2014 fragmentation, allusion, mythic structure, and a polyphony of voices",
+        "C": "Victorian realism",
+        "D": "Postmodernism"
+      },
+      "correct": "B",
+      "explanation": "Eliot's poem is a modernist collage: Sanskrit, Dante, nursery rhymes, pub gossip. Meaning doesn't arrive intact \u2014 it's assembled by the reader from the wreckage."
+    },
+    {
+      "id": "edward-044",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What is the 'Beat Generation'?",
+      "options": {
+        "A": "A musical genre",
+        "B": "A literary movement of the 1950s \u2014 Kerouac, Ginsberg, Burroughs \u2014 rejecting conformity and seeking spiritual and artistic liberation",
+        "C": "A type of rhythm in poetry",
+        "D": "A group of British writers"
+      },
+      "correct": "B",
+      "explanation": "Spontaneous prose, jazz rhythms, Buddhist seeking, cross-country wandering, and a howl against the clean-plated 1950s."
+    },
+    {
+      "id": "edward-045",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What structural feature defines *Pale Fire* (1962)?",
+      "options": {
+        "A": "It's written in verse only",
+        "B": "It's a 999-line poem with a sprawling, delusional commentary by a character who may have invented the whole thing",
+        "C": "It has no characters",
+        "D": "It's written entirely in footnotes"
+      },
+      "correct": "B",
+      "explanation": "Nabokov's novel-as-commentary. Charles Kinbote annotates John Shade's poem, and in doing so, tells a completely different story. The novel happens in the gap between text and annotation."
+    },
+    {
+      "id": "edward-046",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What does McLuhan mean by 'the medium is the message'?",
+      "options": {
+        "A": "The content is more important than how it's delivered",
+        "B": "The form of a medium embeds itself in the message, shaping how we perceive and understand \u2014 the medium itself is the primary content",
+        "C": "All messages are the same",
+        "D": "Media has no effect on content"
+      },
+      "correct": "B",
+      "explanation": "1964. A light bulb has no 'content' but creates space by its presence. TV, print, radio \u2014 each medium restructures human association and perception regardless of what's being said."
+    },
+    {
+      "id": "edward-047",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What is the Theatre of the Absurd's relationship to meaning?",
+      "options": {
+        "A": "Plays with clear morals",
+        "B": "It presents a universe where rational meaning has collapsed \u2014 language fails, logic breaks, and characters wait for what never arrives",
+        "C": "Musicals about nothing",
+        "D": "Realist drama about ordinary life"
+      },
+      "correct": "B",
+      "explanation": "Beckett's *Waiting for Godot*, Ionesco's *The Bald Soprano*. Plot is circular or absent. Dialogue fractures. The form enacts the philosophy."
+    },
+    {
+      "id": "edward-048",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "Who wrote *The Feminine Mystique* (1963)?",
+      "options": {
+        "A": "Simone de Beauvoir",
+        "B": "Betty Friedan",
+        "C": "Gloria Steinem",
+        "D": "Susan Sontag"
+      },
+      "correct": "B",
+      "explanation": "'The problem that has no name.' Friedan documented the quiet desperation of suburban housewives and kickstarted second-wave feminism in America."
+    },
+    {
+      "id": "edward-049",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What is distinctive about *In Cold Blood* (1966) as a literary form?",
+      "options": {
+        "A": "It's a traditional novel",
+        "B": "Truman Capote called it a 'nonfiction novel' \u2014 reporting with the immersive techniques of fiction, blurring the line between journalism and literature",
+        "C": "It's written in verse",
+        "D": "It's a collection of essays"
+      },
+      "correct": "B",
+      "explanation": "Capote spent six years researching the Clutter family murders. The result is reportage with the pacing, scene construction, and psychological depth of a novel. A genre was born."
+    },
+    {
+      "id": "edward-050",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What is the central theme of Ralph Ellison's *Invisible Man*?",
+      "options": {
+        "A": "A literal invisibility cloak",
+        "B": "The narrator is socially invisible \u2014 Black identity is refused recognition by a society that sees only its own projections",
+        "C": "A spy thriller",
+        "D": "The benefits of being unseen"
+      },
+      "correct": "B",
+      "explanation": "1952. 'I am invisible, understand, simply because people refuse to see me.' Ellison's novel is about identity, race, and the violence of being defined by others."
+    },
+    {
+      "id": "edward-051",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "Who wrote *Pride and Prejudice*?",
+      "options": {
+        "A": "Charlotte Bront\u00eb",
+        "B": "Jane Austen",
+        "C": "George Eliot",
+        "D": "Emily Bront\u00eb"
+      },
+      "correct": "B",
+      "explanation": "1813. 'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.' The sentence that taught English fiction what irony could do."
+    },
+    {
+      "id": "edward-052",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "What is a metaphor?",
+      "options": {
+        "A": "A type of rhyme scheme",
+        "B": "A figure of speech that directly equates one thing with another for rhetorical effect",
+        "C": "A long narrative poem",
+        "D": "A character's backstory"
+      },
+      "correct": "B",
+      "explanation": "'All the world's a stage.' Not 'like' a stage (that's a simile). The world IS a stage. Metaphor collapses distance between concepts."
+    },
+    {
+      "id": "edward-053",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is the significance of the green light in *The Great Gatsby*?",
+      "options": {
+        "A": "It signals that it's safe to cross the street",
+        "B": "It symbolizes Gatsby's unreachable dream \u2014 Daisy, the past, the American promise that recedes even as you stretch toward it",
+        "C": "It represents money",
+        "D": "It's a literal traffic signal"
+      },
+      "correct": "B",
+      "explanation": "'Gatsby believed in the green light, the orgastic future that year by year recedes before us.' The light is always across the water. You can see it but you cannot reach it."
+    },
+    {
+      "id": "edward-054",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is a 'tragic flaw' (hamartia)?",
+      "options": {
+        "A": "A physical deformity",
+        "B": "A character trait that leads to the protagonist's downfall \u2014 pride, ambition, jealousy, indecision",
+        "C": "A plot hole",
+        "D": "A minor character's mistake"
+      },
+      "correct": "B",
+      "explanation": "Aristotle's term. Oedipus's pride, Hamlet's indecision, Macbeth's ambition. The flaw is not a moral failing per se \u2014 it's often a virtue taken too far or applied in the wrong context."
+    },
+    {
+      "id": "edward-055",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "What is the narrative structure of *Wuthering Heights*?",
+      "options": {
+        "A": "Linear first-person",
+        "B": "A frame narrative \u2014 Lockwood's diary contains Nelly Dean's story, which contains other characters' accounts, creating layers of unreliable narration",
+        "C": "Omniscient third-person",
+        "D": "Epistolary only"
+      },
+      "correct": "B",
+      "explanation": "Emily Bront\u00eb built a Chinese box of narrators. Lockwood tells us what Nelly told him, and Nelly heard some of it from others. Every layer adds distance and doubt. Who really knows what happened at Wuthering Heights?"
+    },
+    {
+      "id": "edward-056",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "In *Beloved*, what does the character Beloved represent?",
+      "options": {
+        "A": "A literal ghost only",
+        "B": "The embodied return of repressed trauma \u2014 both the specific murdered child and the sixty million and more of the Middle Passage",
+        "C": "A neighbor",
+        "D": "A figment of Sethe's imagination with no symbolic weight"
+      },
+      "correct": "B",
+      "explanation": "Toni Morrison dedicates the novel to 'Sixty Million and more.' Beloved is a specific ghost and a collective haunting. The past is not past \u2014 it walks into the house and demands to be fed."
+    },
+    {
+      "id": "edward-057",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is 'stream of consciousness' as a narrative technique?",
+      "options": {
+        "A": "Writing about rivers",
+        "B": "A narrative mode that attempts to depict the flow of thoughts, feelings, and memories passing through a character's mind",
+        "C": "Writing very quickly",
+        "D": "A type of dialogue"
+      },
+      "correct": "B",
+      "explanation": "Joyce, Woolf, Faulkner. The sentence follows thought \u2014 associative, fragmented, looping. Molly Bloom's soliloquy in *Ulysses* is the canonical example: eight enormous unpunctuated sentences that feel like thinking actually feels."
+    },
+    {
+      "id": "edward-058",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "What does the title *The Sound and the Fury* reference?",
+      "options": {
+        "A": "A battle cry",
+        "B": "Macbeth's soliloquy: 'It is a tale told by an idiot, full of sound and fury, signifying nothing'",
+        "C": "A musical composition",
+        "D": "A legal term"
+      },
+      "correct": "B",
+      "explanation": "Faulkner, 1929. The title announces the novel's thesis: the Compson family's decline, narrated first by a cognitively disabled man, is Shakespeare's 'tale told by an idiot.' But Faulkner's idiot sees truths the others miss."
+    },
+    {
+      "id": "edward-059",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "What is the setting of *Of Mice and Men*?",
+      "options": {
+        "A": "New York City",
+        "B": "California during the Great Depression \u2014 migrant ranch workers chasing an impossible dream",
+        "C": "Victorian London",
+        "D": "Ancient Rome"
+      },
+      "correct": "B",
+      "explanation": "Steinbeck, 1937. 'Guys like us, that work on ranches, are the loneliest guys in the world.' The American Dream reduced to two men, a patch of land, and rabbits."
+    },
+    {
+      "id": "edward-060",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is the difference between 'tone' and 'mood' in literary analysis?",
+      "options": {
+        "A": "They are the same",
+        "B": "Tone is the author's attitude toward the subject; mood is the emotional atmosphere the reader experiences",
+        "C": "Mood is the author's attitude; tone is the reader's feeling",
+        "D": "Tone only applies to poetry"
+      },
+      "correct": "B",
+      "explanation": "A story about a funeral can have a sarcastic tone (the author is mocking the proceedings) while creating a somber mood (the reader feels the weight). Tone is authorial stance; mood is reader affect."
+    },
+    {
+      "id": "edward-061",
+      "subject": "literary-theory",
+      "difficulty": "easy",
+      "prompt": "What is 'genre' in literature?",
+      "options": {
+        "A": "A type of book binding",
+        "B": "A category of literary composition characterized by particular conventions \u2014 tragedy, comedy, epic, novel, lyric",
+        "C": "The author's nationality",
+        "D": "The length of a book"
+      },
+      "correct": "B",
+      "explanation": "Genre is a contract with the reader. A tragedy promises a fall. A romance promises a union. Genre conventions are constraints that enable meaning."
+    },
+    {
+      "id": "edward-062",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is 'postcolonial theory' concerned with?",
+      "options": {
+        "A": "Literature written after colonization ended",
+        "B": "Analyzing the cultural legacy of colonialism \u2014 how literature both reflects and resists imperial power structures",
+        "C": "Literature from former colonies only",
+        "D": "Medieval literature"
+      },
+      "correct": "B",
+      "explanation": "Said, Spivak, Bhabha. How does the English novel imagine the colonies? Whose voice is heard and whose is ventriloquized? Postcolonial criticism reads the canon against its imperial grain."
+    },
+    {
+      "id": "edward-063",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is 'defamiliarization' (ostranenie)?",
+      "options": {
+        "A": "Making familiar things seem strange",
+        "B": "The Russian Formalist concept that art's purpose is to make the familiar strange \u2014 to disrupt habitual perception so we actually see",
+        "C": "Introducing unfamiliar characters",
+        "D": "Writing in a foreign language"
+      },
+      "correct": "B",
+      "explanation": "Viktor Shklovsky, 1917. After the hundredth time, you stop seeing your own front door. Art makes the stone stony again. The technique, not the content, produces the effect."
+    },
+    {
+      "id": "edward-064",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is 'the intentional fallacy'?",
+      "options": {
+        "A": "Authors always lie about their intentions",
+        "B": "W.K. Wimsatt and Monroe Beardsley's argument that an author's intended meaning is neither available nor desirable as a standard for judging a literary work",
+        "C": "Intending to write but never starting",
+        "D": "Misinterpreting a text deliberately"
+      },
+      "correct": "B",
+      "explanation": "1946. The poem belongs to the public. What Wordsworth meant to do is interesting biography; what the poem actually does is literary criticism. The text, not the author's diary, is the evidence."
+    },
+    {
+      "id": "edward-065",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is the difference between 'story' and 'discourse' in narratology?",
+      "options": {
+        "A": "They are synonyms",
+        "B": "Story (fabula) is the chronological sequence of events; discourse (sjuzhet) is how those events are arranged and presented in the narrative",
+        "C": "Story is written; discourse is spoken",
+        "D": "Discourse is always longer"
+      },
+      "correct": "B",
+      "explanation": "The Russian Formalist distinction. A murder happens, then an investigation. The story order. The novel might start with the body and flash back. That's discourse. The gap between the two is where narrative art lives."
+    },
+    {
+      "id": "edward-066",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is 'hegemony' in cultural studies?",
+      "options": {
+        "A": "Military dominance",
+        "B": "Gramsci's concept of domination by consent \u2014 where the ruling ideas become 'common sense' through cultural institutions rather than force",
+        "C": "Economic control only",
+        "D": "A type of government structure"
+      },
+      "correct": "B",
+      "explanation": "Why do the oppressed sometimes support the system that oppresses them? Because the system's values have become 'just how things are.' Hegemony explains why cultural change is harder than regime change."
+    },
+    {
+      "id": "edward-067",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is a 'foil' in character analysis?",
+      "options": {
+        "A": "A type of sword",
+        "B": "A character who contrasts with another character (usually the protagonist) to highlight particular qualities",
+        "C": "A minor plot point",
+        "D": "A narrative framing device"
+      },
+      "correct": "B",
+      "explanation": "Laertes is Hamlet's foil: both seek revenge for a murdered father, but Laertes acts immediately while Hamlet deliberates. The contrast illuminates both characters."
+    },
+    {
+      "id": "edward-068",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is 'negative capability'?",
+      "options": {
+        "A": "The inability to write well",
+        "B": "Keats' concept of the poet's capacity to remain in 'uncertainties, Mysteries, doubts, without any irritable reaching after fact and reason'",
+        "C": "A critical review",
+        "D": "Writer's block"
+      },
+      "correct": "B",
+      "explanation": "Keats, 1817 letter. Shakespeare had it; Coleridge lacked it. The ability to hold contradictory ideas without forcing a resolution. To sit in the question and let it be a question."
+    },
+    {
+      "id": "edward-069",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is 'the canon debate'?",
+      "options": {
+        "A": "A debate about religious texts",
+        "B": "The argument over which works constitute the essential literary tradition \u2014 and who gets excluded by that selection",
+        "C": "A debate about grammar rules",
+        "D": "An argument about book pricing"
+      },
+      "correct": "B",
+      "explanation": "Every reading list is an argument. 'The Western Canon' is not a natural feature \u2014 it was built by specific people with specific values. The debate is about who gets to build it going forward."
+    },
+    {
+      "id": "edward-070",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What does Derrida mean by 'there is nothing outside the text' (il n'y a pas de hors-texte)?",
+      "options": {
+        "A": "Literature is the only reality",
+        "B": "Not that reality doesn't exist, but that our access to it is always mediated through systems of signs \u2014 there is no pure, unmediated experience",
+        "C": "Books are more important than life",
+        "D": "Texting is the only form of communication"
+      },
+      "correct": "B",
+      "explanation": "Wildly misinterpreted. Derrida is not denying the world. He's saying we can't step outside language to verify language. Every 'fact' arrives already interpreted. The frame is part of the picture."
+    },
+    {
+      "id": "edward-071",
+      "subject": "mid-century",
+      "difficulty": "easy",
+      "prompt": "Who wrote *Fahrenheit 451*?",
+      "options": {
+        "A": "George Orwell",
+        "B": "Ray Bradbury",
+        "C": "Aldous Huxley",
+        "D": "Kurt Vonnegut"
+      },
+      "correct": "B",
+      "explanation": "1953. The temperature at which book paper catches fire. A dystopia where firemen burn books and wall-sized TVs keep people distracted. Bradbury wrote it in nine days on a rented typewriter in a library basement."
+    },
+    {
+      "id": "edward-072",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What makes *Lolita* (1955) a controversial masterpiece?",
+      "options": {
+        "A": "Its length",
+        "B": "Nabokov's use of a repellent narrator (Humbert Humbert) whose gorgeous prose seduces the reader into complicity \u2014 forcing a confrontation with how language can aestheticize horror",
+        "C": "Its happy ending",
+        "D": "Its simple vocabulary"
+      },
+      "correct": "B",
+      "explanation": "The trap: Humbert's English is so beautiful you forget what he's describing. Then you remember. The novel is about the danger of eloquence \u2014 how style can make the monstrous seem lyrical."
+    },
+    {
+      "id": "edward-073",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What is the setting of *One Flew Over the Cuckoo's Nest*?",
+      "options": {
+        "A": "A military base",
+        "B": "A psychiatric hospital where Randle McMurphy battles Nurse Ratched's system of institutional control",
+        "C": "A high school",
+        "D": "A prison"
+      },
+      "correct": "B",
+      "explanation": "Kesey, 1962. Narrated by Chief Bromden, a patient pretending to be deaf and mute. The Combine vs. the individual. The question the novel asks: who is really sick here?"
+    },
+    {
+      "id": "edward-074",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What structural innovation defines *If on a winter's night a traveler* (1979)?",
+      "options": {
+        "A": "It's written in verse",
+        "B": "It alternates between second-person chapters addressing 'you, the Reader' and the openings of ten different novels \u2014 each interrupted, each in a different genre",
+        "C": "It's entirely dialogue",
+        "D": "It uses no punctuation"
+      },
+      "correct": "B",
+      "explanation": "Italo Calvino. You are the protagonist. You try to read a book, but it's defective. You go to get another copy, but it's a different book. Each chapter starts a new novel that never finishes. The pleasure of beginnings, the frustration of interruption \u2014 reading itself is the subject."
+    },
+    {
+      "id": "edward-075",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What is the central argument of Susan Sontag's *Against Interpretation* (1966)?",
+      "options": {
+        "A": "All art should be interpreted",
+        "B": "Interpretation domesticates art \u2014 it translates the sensory into the intellectual, and in doing so, impoverishes the experience. We need an 'erotics of art' instead",
+        "C": "Art shouldn't be analyzed",
+        "D": "Critics should be silent"
+      },
+      "correct": "B",
+      "explanation": "'In place of a hermeneutics we need an erotics of art.' Sontag argues that the modern obsession with content over form \u2014 what does it MEAN \u2014 drains art of its sensuous, immediate power. Feel it first. Think about it later."
+    },
+    {
+      "id": "edward-076",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What is *The Lottery* (1948) by Shirley Jackson about?",
+      "options": {
+        "A": "A lucky drawing",
+        "B": "A small town's annual ritual of stoning a randomly selected resident to death \u2014 a chilling examination of conformity, tradition, and communal violence",
+        "C": "A gambling story",
+        "D": "A romance"
+      },
+      "correct": "B",
+      "explanation": "Published in The New Yorker, it generated more reader mail than anything they'd printed before. 'Lottery in June, corn be heavy soon.' The horror is how ordinary it feels. Everyone knows the rules. Nobody questions why."
+    },
+    {
+      "id": "edward-077",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What distinguishes *The Crying of Lot 49* (1966) as a postmodern novel?",
+      "options": {
+        "A": "It's a straightforward detective story",
+        "B": "Pynchon's paranoid structure \u2014 Oedipa Maas may be uncovering a centuries-old conspiracy or she may be hallucinating, and the novel refuses to resolve the question",
+        "C": "It's written in the future tense",
+        "D": "It has a traditional happy ending"
+      },
+      "correct": "B",
+      "explanation": "The Tristero. W.A.S.T.E. The muted post horn. Every clue connects to more clues but never to certainty. Postmodern fiction's defining move: the pattern is visible but the meaning is withheld. You finish the book mid-sentence."
+    },
+    {
+      "id": "edward-078",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "Who wrote *A Good Man Is Hard to Find*?",
+      "options": {
+        "A": "Eudora Welty",
+        "B": "Flannery O'Connor",
+        "C": "Carson McCullers",
+        "D": "Katherine Anne Porter"
+      },
+      "correct": "B",
+      "explanation": "1953. A family road trip ends with the Misfit. O'Connor's Southern Gothic: violence as grace, the grotesque as revelation. 'She would of been a good woman if it had been somebody there to shoot her every minute of her life.'"
+    },
+    {
+      "id": "edward-079",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What does *The Fire Next Time* (1963) argue?",
+      "options": {
+        "A": "That racial progress is inevitable",
+        "B": "James Baldwin's searing analysis of race in America \u2014 intertwining personal experience with a prophetic warning that the country must confront its racial nightmare or be consumed by it",
+        "C": "That integration has failed",
+        "D": "A call for violent revolution only"
+      },
+      "correct": "B",
+      "explanation": "Two essays: a letter to Baldwin's nephew and a meditation on race and religion. 'God gave Noah the rainbow sign, No more water, the fire next time!' The title comes from a slave spiritual. Baldwin is saying: we had the flood. The fire is coming if we don't change."
+    },
+    {
+      "id": "edward-080",
+      "subject": "mid-century",
+      "difficulty": "easy",
+      "prompt": "Who wrote *The Old Man and the Sea*?",
+      "options": {
+        "A": "Ernest Hemingway",
+        "B": "F. Scott Fitzgerald",
+        "C": "John Steinbeck",
+        "D": "William Faulkner"
+      },
+      "correct": "A",
+      "explanation": "1952. Won the Pulitzer. Cited when Hemingway got the Nobel. 'A man can be destroyed but not defeated.' 27,000 words of an old Cuban fisherman, a giant marlin, and the sharks that take everything."
+    },
+    {
+      "id": "edward-081",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is the theme of *The Handmaid's Tale*?",
+      "options": {
+        "A": "A utopian vision of the future",
+        "B": "A theocratic dystopia where women are reduced to reproductive vessels \u2014 an exploration of power, bodily autonomy, and the speed at which rights can vanish",
+        "C": "A romance set in New England",
+        "D": "A comedy about politics"
+      },
+      "correct": "B",
+      "explanation": "Atwood, 1985. Every horror in the book has a historical precedent. 'Nothing changes instantaneously: in a gradually heating bathtub you'd be boiled to death before you knew it.'"
+    },
+    {
+      "id": "edward-082",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "What is 'magical realism' in the Latin American tradition?",
+      "options": {
+        "A": "Fantasy without rules",
+        "B": "A mode where the supernatural is treated as mundane \u2014 ghosts, prophecies, and miracles coexist with the everyday without narrative surprise",
+        "C": "Science fiction set in Latin America",
+        "D": "Realistic stories with happy endings"
+      },
+      "correct": "B",
+      "explanation": "Garc\u00eda M\u00e1rquez: a woman ascends to heaven while folding sheets, and the narrator reports it like the weather. The magic is not the point \u2014 it's the lens through which history, trauma, and memory become tellable."
+    },
+    {
+      "id": "edward-083",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "What does *Heart of Darkness* reveal about colonial narrative?",
+      "options": {
+        "A": "Colonialism was beneficial",
+        "B": "Conrad's novella exposes the hypocrisy of European 'civilizing missions' in Africa while being itself entangled in the racist discourse it critiques",
+        "C": "Africa had no culture before colonization",
+        "D": "The Congo was a peaceful place"
+      },
+      "correct": "B",
+      "explanation": "Achebe's famous critique: Conrad depicts Africans as limbs and sounds, not people. Yet Marlow's journey reveals the lie at the heart of empire. The novella is both indictment and symptom. That tension is why we still read it."
+    },
+    {
+      "id": "edward-084",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "What is a sonnet?",
+      "options": {
+        "A": "A type of novel",
+        "B": "A 14-line poem, typically in iambic pentameter, with a specific rhyme scheme",
+        "C": "A short story",
+        "D": "A character's speech"
+      },
+      "correct": "B",
+      "explanation": "Petrarchan (octave + sestet) or Shakespearean (three quatrains + couplet). The form is a container \u2014 tight, demanding, capable of holding immense pressure in a small space."
+    },
+    {
+      "id": "edward-085",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is the function of a 'chorus' in Greek tragedy?",
+      "options": {
+        "A": "Musical entertainment",
+        "B": "A group that comments on the action, represents the community's voice, and provides moral and narrative context",
+        "C": "The main character's sidekick",
+        "D": "Comic relief"
+      },
+      "correct": "B",
+      "explanation": "The chorus stands between the audience and the actors. They interpret, warn, mourn, and judge. In Sophocles, the chorus is the conscience of Thebes. In Euripides, they're often wrong. The device evolves."
+    },
+    {
+      "id": "edward-086",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What is 'ecocriticism'?",
+      "options": {
+        "A": "Criticism of ecological policies",
+        "B": "A literary approach that examines the relationship between literature and the physical environment",
+        "C": "Criticism of nature writing only",
+        "D": "A type of book review"
+      },
+      "correct": "B",
+      "explanation": "How does a novel imagine nature? Is the landscape a character or a backdrop? Ecocriticism reads the non-human world not as setting but as agent \u2014 entangled with human stories in ways that text often obscures."
+    },
+    {
+      "id": "edward-087",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is 'the sublime' in aesthetic theory?",
+      "options": {
+        "A": "Something that is merely beautiful",
+        "B": "An experience of awe, terror, or overwhelming magnitude that transcends the merely beautiful \u2014 Burke's 'delightful horror,' Kant's mathematical and dynamical sublime",
+        "C": "A type of painting",
+        "D": "A small, delicate object"
+      },
+      "correct": "B",
+      "explanation": "Standing at the edge of a cliff. Reading *King Lear*. The sublime overwhelms the senses and reason. It's beauty plus danger plus scale. Romantic poetry is built on it."
+    },
+    {
+      "id": "edward-088",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What is distinctive about *The Autobiography of Malcolm X* (1965)?",
+      "options": {
+        "A": "It's a conventional autobiography",
+        "B": "It's a collaborative text \u2014 Alex Haley shaped Malcolm X's oral narration into prose, creating a genre-defining work that is simultaneously autobiography, jeremiad, and political manifesto",
+        "C": "It's entirely fictional",
+        "D": "It was written in prison"
+      },
+      "correct": "B",
+      "explanation": "The voice is unmistakably Malcolm's. The structure is Haley's. The book chronicles a life of constant transformation \u2014 Malcolm Little to Detroit Red to Malcolm X to El-Hajj Malik El-Shabazz. Identity as process, not destination."
+    },
+    {
+      "id": "edward-089",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "What is the setting of *A Streetcar Named Desire*?",
+      "options": {
+        "A": "A wealthy suburb",
+        "B": "A working-class New Orleans apartment where Blanche DuBois's illusions collide with Stanley Kowalski's brutal reality",
+        "C": "A New York penthouse",
+        "D": "A farm in the Midwest"
+      },
+      "correct": "B",
+      "explanation": "Tennessee Williams, 1947. 'I have always depended on the kindness of strangers.' Blanche's genteel Southern fantasies cannot survive in Stanley's world. The streetcar named Desire takes you to the streetcar named Cemeteries."
+    },
+    {
+      "id": "edward-090",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What does *The Electric Kool-Aid Acid Test* (1968) document?",
+      "options": {
+        "A": "A scientific experiment",
+        "B": "Tom Wolfe's New Journalism account of Ken Kesey and the Merry Pranksters' cross-country acid-fueled bus trip \u2014 the birth of the 1960s counterculture as lived performance",
+        "C": "A cooking competition",
+        "D": "A political campaign"
+      },
+      "correct": "B",
+      "explanation": "Wolfe embedded with the Pranksters. The prose itself trips: exclamation points, ellipses, onomatopoeia. The book is New Journalism's manifesto \u2014 the reporter as novelist, the event as text, the bus as metaphor."
+    },
+    {
+      "id": "edward-091",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "What is alliteration?",
+      "options": {
+        "A": "A type of metaphor",
+        "B": "The repetition of initial consonant sounds in neighboring words",
+        "C": "A rhyme at the end of lines",
+        "D": "A long poem"
+      },
+      "correct": "B",
+      "explanation": "'Peter Piper picked a peck of pickled peppers.' Old English poetry was built on alliteration, not rhyme. Beowulf's opening: 'Hw\u00e6t! We Gardena in geardagum...'"
+    },
+    {
+      "id": "edward-092",
+      "subject": "literature",
+      "difficulty": "hard",
+      "prompt": "What is the significance of the title *Their Eyes Were Watching God*?",
+      "options": {
+        "A": "It's about literal watching",
+        "B": "Hurston's title comes from the novel's hurricane scene \u2014 'They seemed to be staring at the dark, but their eyes were watching God' \u2014 suggesting that in moments of ultimate crisis, people look beyond the material",
+        "C": "It's about surveillance",
+        "D": "It references a biblical passage directly"
+      },
+      "correct": "B",
+      "explanation": "1937. Janie Crawford's journey to selfhood through three marriages. The title moment: the hurricane strips away everything, and what remains is the gaze upward. Not passive \u2014 attentive."
+    },
+    {
+      "id": "edward-093",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "prompt": "What is 'affect theory' in literary studies?",
+      "options": {
+        "A": "The study of affection in novels",
+        "B": "An approach that examines how texts produce and circulate emotion \u2014 not just represent feelings but actually transmit affective states to readers",
+        "C": "The study of effective writing",
+        "D": "A theory about love stories"
+      },
+      "correct": "B",
+      "explanation": "Drawing on Spinoza, Deleuze, Sedgwick. Affect is pre-cognitive \u2014 the gut reaction before you name it. How does a sentence make you feel something before you understand why? That's affect."
+    },
+    {
+      "id": "edward-094",
+      "subject": "mid-century",
+      "difficulty": "easy",
+      "prompt": "Who wrote *Charlotte's Web*?",
+      "options": {
+        "A": "E.B. White",
+        "B": "Roald Dahl",
+        "C": "C.S. Lewis",
+        "D": "Dr. Seuss"
+      },
+      "correct": "A",
+      "explanation": "1952. 'Some Pig.' A spider, a pig, and the word 'humble.' White was also the co-author of *The Elements of Style*. The clarity of his children's prose comes from a lifetime of editing."
+    },
+    {
+      "id": "edward-095",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What is the key formal feature of *Waiting for Godot*?",
+      "options": {
+        "A": "Fast-paced action",
+        "B": "Nothing happens, twice \u2014 Beckett's play in two acts where two characters wait for someone who never arrives, using vaudeville routines and circular dialogue to dramatize existential waiting",
+        "C": "A complex murder mystery",
+        "D": "Musical numbers throughout"
+      },
+      "correct": "B",
+      "explanation": "'Let's go.' 'We can't.' 'Why not?' 'We're waiting for Godot.' The play refuses the traditional dramatic arc. There is no climax, no resolution. The form is the meaning: we fill the waiting with words, but the waiting continues."
+    },
+    {
+      "id": "edward-096",
+      "subject": "literature",
+      "difficulty": "medium",
+      "prompt": "What is a 'euphemism'?",
+      "options": {
+        "A": "A harsh insult",
+        "B": "A mild or indirect word substituted for one considered too harsh or blunt",
+        "C": "A type of poem",
+        "D": "A foreign phrase"
+      },
+      "correct": "B",
+      "explanation": "'Passed away' for 'died.' 'Let go' for 'fired.' Euphemism reveals what a culture is uncomfortable naming directly. Orwell's 'Politics and the English Language' argues that euphemism is political \u2014 it hides what it names."
+    },
+    {
+      "id": "edward-097",
+      "subject": "literary-theory",
+      "difficulty": "medium",
+      "prompt": "What distinguishes 'modernism' from 'postmodernism' in literature?",
+      "options": {
+        "A": "Modernism seeks order amid chaos; postmodernism accepts chaos as the condition and plays with it",
+        "B": "They are the same movement",
+        "C": "Postmodernism came first",
+        "D": "Modernism only exists in poetry"
+      },
+      "correct": "A",
+      "explanation": "Modernism (Joyce, Woolf, Eliot): fragmentation as crisis, myth as structure, the artist as hero ordering the rubble. Postmodernism (Pynchon, Barthelme, Calvino): fragmentation as play, structure as game, the artist as trickster. The shift is from anxiety to irony."
+    },
+    {
+      "id": "edward-098",
+      "subject": "mid-century",
+      "difficulty": "medium",
+      "prompt": "Who wrote *I Know Why the Caged Bird Sings*?",
+      "options": {
+        "A": "Toni Morrison",
+        "B": "Maya Angelou",
+        "C": "Alice Walker",
+        "D": "Zora Neale Hurston"
+      },
+      "correct": "B",
+      "explanation": "1969. The first of Angelou's seven autobiographies. Childhood trauma, racism in the Jim Crow South, and the discovery that language can restore what violence takes. The caged bird sings because it must."
+    },
+    {
+      "id": "edward-099",
+      "subject": "literature",
+      "difficulty": "easy",
+      "prompt": "What is a 'climax' in narrative structure?",
+      "options": {
+        "A": "The beginning of the story",
+        "B": "The point of highest tension or the turning point in a narrative \u2014 after which the conflict moves toward resolution",
+        "C": "A description of the setting",
+        "D": "The final sentence"
+      },
+      "correct": "B",
+      "explanation": "Freytag's pyramid: exposition \u2192 rising action \u2192 climax \u2192 falling action \u2192 d\u00e9nouement. The climax is the moment the protagonist's fate is decided. Everything before builds toward it; everything after is consequence."
+    },
+    {
+      "id": "edward-100",
+      "subject": "mid-century",
+      "difficulty": "hard",
+      "prompt": "What does *The Wretched of the Earth* (1961) argue about violence?",
+      "options": {
+        "A": "Violence should always be avoided",
+        "B": "Frantz Fanon's analysis of decolonization \u2014 arguing that colonial violence creates a counter-violence that is both psychologically necessary for the colonized and politically transformative",
+        "C": "Violence is never justified",
+        "D": "Only non-violent protest works"
+      },
+      "correct": "B",
+      "explanation": "Fanon, a psychiatrist, wrote this as he was dying of leukemia. The book is a clinical diagnosis of colonialism's psychological damage and a prescription for liberation. Sartre's preface amplified its reach. Still fiercely debated, still urgently read."
     }
   ]
 }

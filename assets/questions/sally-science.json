@@ -8,10 +8,15 @@
       "subject": "physics",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "Speed of light in vacuum is approximately…",
-      "options": { "A": "3 × 10^6 m/s", "B": "3 × 10^8 m/s", "C": "3 × 10^10 m/s", "D": "3 × 10^4 m/s" },
+      "prompt": "Speed of light in vacuum is approximately\u2026",
+      "options": {
+        "A": "3 \u00d7 10^6 m/s",
+        "B": "3 \u00d7 10^8 m/s",
+        "C": "3 \u00d7 10^10 m/s",
+        "D": "3 \u00d7 10^4 m/s"
+      },
       "correct": "B",
-      "explanation": "299,792,458 m/s exactly — the universal speed limit, c."
+      "explanation": "299,792,458 m/s exactly \u2014 the universal speed limit, c."
     },
     {
       "id": "sally-002",
@@ -19,7 +24,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "What's the chemical symbol for gold?",
-      "options": { "A": "Go", "B": "Ag", "C": "Au", "D": "Gd" },
+      "options": {
+        "A": "Go",
+        "B": "Ag",
+        "C": "Au",
+        "D": "Gd"
+      },
       "correct": "C",
       "explanation": "Au, from Latin 'aurum'. Ag is silver, Gd is gadolinium."
     },
@@ -29,9 +39,14 @@
       "difficulty": "easy",
       "stat": "hustle",
       "prompt": "Which organelle is known as the powerhouse of the cell?",
-      "options": { "A": "Nucleus", "B": "Mitochondrion", "C": "Ribosome", "D": "Lysosome" },
+      "options": {
+        "A": "Nucleus",
+        "B": "Mitochondrion",
+        "C": "Ribosome",
+        "D": "Lysosome"
+      },
       "correct": "B",
-      "explanation": "Mitochondria run oxidative phosphorylation to make ATP — energy currency of the cell."
+      "explanation": "Mitochondria run oxidative phosphorylation to make ATP \u2014 energy currency of the cell."
     },
     {
       "id": "sally-004",
@@ -39,7 +54,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "Which layer of the Earth is liquid?",
-      "options": { "A": "Crust", "B": "Mantle", "C": "Outer core", "D": "Inner core" },
+      "options": {
+        "A": "Crust",
+        "B": "Mantle",
+        "C": "Outer core",
+        "D": "Inner core"
+      },
       "correct": "C",
       "explanation": "The outer core is liquid iron-nickel; the inner core is solid despite being hotter, because of pressure."
     },
@@ -48,20 +68,30 @@
       "subject": "physics",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "What's Planck's constant in J·s, to two significant figures?",
-      "options": { "A": "6.6 × 10^-34", "B": "1.6 × 10^-19", "C": "9.1 × 10^-31", "D": "8.3 × 10^-23" },
+      "prompt": "What's Planck's constant in J\u00b7s, to two significant figures?",
+      "options": {
+        "A": "6.6 \u00d7 10^-34",
+        "B": "1.6 \u00d7 10^-19",
+        "C": "9.1 \u00d7 10^-31",
+        "D": "8.3 \u00d7 10^-23"
+      },
       "correct": "A",
-      "explanation": "h ≈ 6.626 × 10^-34 J·s. (B is the elementary charge, C is the electron mass.)"
+      "explanation": "h \u2248 6.626 \u00d7 10^-34 J\u00b7s. (B is the elementary charge, C is the electron mass.)"
     },
     {
       "id": "sally-006",
       "subject": "chemistry",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "What's the pH of pure water at 25°C?",
-      "options": { "A": "0", "B": "5.6", "C": "7", "D": "14" },
+      "prompt": "What's the pH of pure water at 25\u00b0C?",
+      "options": {
+        "A": "0",
+        "B": "5.6",
+        "C": "7",
+        "D": "14"
+      },
       "correct": "C",
-      "explanation": "Neutral by definition. Acid rain is ~5.6 because dissolved CO₂ acidifies water."
+      "explanation": "Neutral by definition. Acid rain is ~5.6 because dissolved CO\u2082 acidifies water."
     },
     {
       "id": "sally-007",
@@ -69,7 +99,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "Which DNA base pairs with thymine in normal DNA?",
-      "options": { "A": "Adenine", "B": "Guanine", "C": "Cytosine", "D": "Uracil" },
+      "options": {
+        "A": "Adenine",
+        "B": "Guanine",
+        "C": "Cytosine",
+        "D": "Uracil"
+      },
       "correct": "A",
       "explanation": "Adenine pairs with thymine in normal DNA; guanine pairs with cytosine."
     },
@@ -79,7 +114,12 @@
       "difficulty": "medium",
       "stat": "head",
       "prompt": "Which of these is NOT a fundamental force of nature?",
-      "options": { "A": "Gravity", "B": "Electromagnetism", "C": "Strong nuclear", "D": "Centrifugal" },
+      "options": {
+        "A": "Gravity",
+        "B": "Electromagnetism",
+        "C": "Strong nuclear",
+        "D": "Centrifugal"
+      },
       "correct": "D",
       "explanation": "Centrifugal is a pseudo-force in rotating frames. The four fundamental forces are gravity, EM, strong, and weak."
     },
@@ -89,9 +129,14 @@
       "difficulty": "hard",
       "stat": "head",
       "prompt": "How many d electrons does neutral chromium (Z=24) have in its ground state?",
-      "options": { "A": "4", "B": "5", "C": "6", "D": "9" },
+      "options": {
+        "A": "4",
+        "B": "5",
+        "C": "6",
+        "D": "9"
+      },
       "correct": "B",
-      "explanation": "Cr is [Ar] 3d⁵ 4s¹ — half-filled d shell stabilizes the configuration over the expected 3d⁴ 4s²."
+      "explanation": "Cr is [Ar] 3d\u2075 4s\u00b9 \u2014 half-filled d shell stabilizes the configuration over the expected 3d\u2074 4s\u00b2."
     },
     {
       "id": "sally-010",
@@ -99,7 +144,12 @@
       "difficulty": "hard",
       "stat": "head",
       "prompt": "Which enzyme unwinds the DNA double helix during replication?",
-      "options": { "A": "Polymerase", "B": "Ligase", "C": "Helicase", "D": "Topoisomerase" },
+      "options": {
+        "A": "Polymerase",
+        "B": "Ligase",
+        "C": "Helicase",
+        "D": "Topoisomerase"
+      },
       "correct": "C",
       "explanation": "Helicase breaks H-bonds between complementary bases; topoisomerase relieves the torsional strain ahead of it."
     },
@@ -108,10 +158,15 @@
       "subject": "physics",
       "difficulty": "hard",
       "stat": "hustle",
-      "prompt": "In special relativity, what's the Lorentz factor γ for v = 0.6c?",
-      "options": { "A": "1.00", "B": "1.25", "C": "1.67", "D": "2.00" },
+      "prompt": "In special relativity, what's the Lorentz factor \u03b3 for v = 0.6c?",
+      "options": {
+        "A": "1.00",
+        "B": "1.25",
+        "C": "1.67",
+        "D": "2.00"
+      },
       "correct": "B",
-      "explanation": "γ = 1/√(1 - v²/c²) = 1/√(1 - 0.36) = 1/√0.64 = 1/0.8 = 1.25."
+      "explanation": "\u03b3 = 1/\u221a(1 - v\u00b2/c\u00b2) = 1/\u221a(1 - 0.36) = 1/\u221a0.64 = 1/0.8 = 1.25."
     },
     {
       "id": "sally-012",
@@ -119,9 +174,14 @@
       "difficulty": "medium",
       "stat": "head",
       "prompt": "Which gas makes up the largest share of Earth's atmosphere?",
-      "options": { "A": "Oxygen", "B": "Nitrogen", "C": "Carbon dioxide", "D": "Argon" },
+      "options": {
+        "A": "Oxygen",
+        "B": "Nitrogen",
+        "C": "Carbon dioxide",
+        "D": "Argon"
+      },
       "correct": "B",
-      "explanation": "N₂ ≈ 78%, O₂ ≈ 21%, Ar ≈ 0.9%, CO₂ ≈ 0.04%."
+      "explanation": "N\u2082 \u2248 78%, O\u2082 \u2248 21%, Ar \u2248 0.9%, CO\u2082 \u2248 0.04%."
     },
     {
       "id": "sally-013",
@@ -129,9 +189,14 @@
       "difficulty": "easy",
       "stat": "honor",
       "prompt": "What's the SI unit of electrical resistance?",
-      "options": { "A": "Volt", "B": "Ohm", "C": "Watt", "D": "Farad" },
+      "options": {
+        "A": "Volt",
+        "B": "Ohm",
+        "C": "Watt",
+        "D": "Farad"
+      },
       "correct": "B",
-      "explanation": "Ohm (Ω). Volt is potential, watt is power, farad is capacitance."
+      "explanation": "Ohm (\u03a9). Volt is potential, watt is power, farad is capacitance."
     },
     {
       "id": "sally-014",
@@ -139,7 +204,12 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "How many chambers does a typical mammalian heart have?",
-      "options": { "A": "2", "B": "3", "C": "4", "D": "5" },
+      "options": {
+        "A": "2",
+        "B": "3",
+        "C": "4",
+        "D": "5"
+      },
       "correct": "C",
       "explanation": "Two atria + two ventricles. Fish have 2; amphibians have 3."
     },
@@ -148,10 +218,15 @@
       "subject": "chemistry",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "Avogadro's number is approximately…",
-      "options": { "A": "6.02 × 10^21", "B": "6.02 × 10^23", "C": "6.02 × 10^25", "D": "9.11 × 10^23" },
+      "prompt": "Avogadro's number is approximately\u2026",
+      "options": {
+        "A": "6.02 \u00d7 10^21",
+        "B": "6.02 \u00d7 10^23",
+        "C": "6.02 \u00d7 10^25",
+        "D": "9.11 \u00d7 10^23"
+      },
       "correct": "B",
-      "explanation": "6.022 × 10²³ — particles in one mole of substance."
+      "explanation": "6.022 \u00d7 10\u00b2\u00b3 \u2014 particles in one mole of substance."
     },
     {
       "id": "sally-016",
@@ -159,7 +234,12 @@
       "difficulty": "hard",
       "stat": "hustle",
       "prompt": "Which seismic wave type cannot travel through Earth's liquid outer core?",
-      "options": { "A": "P-waves", "B": "S-waves", "C": "Surface waves", "D": "Infrasound" },
+      "options": {
+        "A": "P-waves",
+        "B": "S-waves",
+        "C": "Surface waves",
+        "D": "Infrasound"
+      },
       "correct": "B",
       "explanation": "S-waves are shear waves, and liquids cannot support shear stress. Their shadow zone helped reveal the liquid outer core."
     },
@@ -169,7 +249,12 @@
       "difficulty": "hard",
       "stat": "hustle",
       "prompt": "For an exothermic equilibrium reaction, what does increasing temperature usually do to the equilibrium constant K?",
-      "options": { "A": "Increases K", "B": "Decreases K", "C": "Leaves K unchanged", "D": "Makes K negative" },
+      "options": {
+        "A": "Increases K",
+        "B": "Decreases K",
+        "C": "Leaves K unchanged",
+        "D": "Makes K negative"
+      },
       "correct": "B",
       "explanation": "Heat behaves like a product in an exothermic reaction. Adding heat shifts equilibrium toward reactants, decreasing K."
     },
@@ -179,7 +264,12 @@
       "difficulty": "hard",
       "stat": "hustle",
       "prompt": "During cellular respiration, which process directly generates the largest share of ATP?",
-      "options": { "A": "Glycolysis", "B": "Pyruvate oxidation", "C": "Citric acid cycle substrate-level phosphorylation", "D": "Oxidative phosphorylation" },
+      "options": {
+        "A": "Glycolysis",
+        "B": "Pyruvate oxidation",
+        "C": "Citric acid cycle substrate-level phosphorylation",
+        "D": "Oxidative phosphorylation"
+      },
       "correct": "D",
       "explanation": "The electron transport chain and chemiosmosis drive oxidative phosphorylation, which produces most ATP in aerobic respiration."
     },
@@ -189,9 +279,1148 @@
       "difficulty": "easy",
       "stat": "honor",
       "prompt": "What should you wear before mixing chemicals in a lab?",
-      "options": { "A": "Safety goggles", "B": "Loose scarf", "C": "Open sandals", "D": "Headphones only" },
+      "options": {
+        "A": "Safety goggles",
+        "B": "Loose scarf",
+        "C": "Open sandals",
+        "D": "Headphones only"
+      },
       "correct": "A",
       "explanation": "Goggles protect your eyes from splashes; basic safety comes before the experiment."
+    },
+    {
+      "id": "sally-020",
+      "subject": "physics",
+      "difficulty": "easy",
+      "prompt": "What does Newton's First Law state?",
+      "options": {
+        "A": "Force equals mass times acceleration",
+        "B": "An object at rest stays at rest unless acted upon by an external force",
+        "C": "Energy cannot be created or destroyed",
+        "D": "Every action has an equal and opposite reaction"
+      },
+      "correct": "B",
+      "explanation": "Inertia: objects resist changes to their state of motion."
+    },
+    {
+      "id": "sally-021",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "What is the photoelectric effect?",
+      "options": {
+        "A": "Light bending around corners",
+        "B": "Electron emission from a material when light hits it, which Einstein explained using photons",
+        "C": "The heating of metal by electric current",
+        "D": "Magnetic field generation by moving charges"
+      },
+      "correct": "B",
+      "explanation": "Einstein's 1905 paper showed light behaves as particles (photons) with energy proportional to frequency. This won him the Nobel."
+    },
+    {
+      "id": "sally-022",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "What does Heisenberg's uncertainty principle state?",
+      "options": {
+        "A": "Energy is always conserved",
+        "B": "You cannot simultaneously know both the exact position and exact momentum of a particle",
+        "C": "Light always travels at the same speed",
+        "D": "All particles have wave properties"
+      },
+      "correct": "B",
+      "explanation": "The more precisely you measure position, the less precisely you can know momentum, and vice versa. Not a measurement flaw \u2014 a fundamental limit."
+    },
+    {
+      "id": "sally-023",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "What is the significance of Maxwell's equations?",
+      "options": {
+        "A": "They describe planetary motion",
+        "B": "They unify electricity and magnetism and predict electromagnetic waves",
+        "C": "They explain nuclear decay",
+        "D": "They define thermodynamic entropy"
+      },
+      "correct": "B",
+      "explanation": "Maxwell's four equations showed that light is an electromagnetic wave. They're arguably the most important unification in classical physics."
+    },
+    {
+      "id": "sally-024",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "In quantum mechanics, what does the wave function \u03a8 represent?",
+      "options": {
+        "A": "The exact position of a particle",
+        "B": "A probability amplitude whose squared magnitude gives the likelihood of finding a particle in a state",
+        "C": "The speed of light in a medium",
+        "D": "The energy of a photon"
+      },
+      "correct": "B",
+      "explanation": "|\u03a8|\u00b2 gives the probability density. The wave function itself is a complex-valued mathematical object, not directly observable."
+    },
+    {
+      "id": "sally-025",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "What is the Doppler effect?",
+      "options": {
+        "A": "The bending of light by gravity",
+        "B": "The change in frequency of a wave relative to an observer moving relative to the source",
+        "C": "The splitting of spectral lines in a magnetic field",
+        "D": "The reflection of sound off surfaces"
+      },
+      "correct": "B",
+      "explanation": "Redshift/blueshift in astronomy. The pitch drop of a passing siren. Same principle across all wave types."
+    },
+    {
+      "id": "sally-026",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "prompt": "What is the chemical formula for water?",
+      "options": {
+        "A": "CO\u2082",
+        "B": "H\u2082O",
+        "C": "NaCl",
+        "D": "CH\u2084"
+      },
+      "correct": "B",
+      "explanation": "Two hydrogen atoms covalently bonded to one oxygen. The angle is about 104.5\u00b0."
+    },
+    {
+      "id": "sally-027",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "prompt": "What defines an isotope?",
+      "options": {
+        "A": "Same number of protons, different number of electrons",
+        "B": "Same number of protons, different number of neutrons",
+        "C": "Different number of protons, same number of neutrons",
+        "D": "Same atomic mass, different chemical properties"
+      },
+      "correct": "B",
+      "explanation": "Carbon-12 and Carbon-14 are isotopes: both have 6 protons, but 6 vs. 8 neutrons."
+    },
+    {
+      "id": "sally-028",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "prompt": "What does a catalyst do in a chemical reaction?",
+      "options": {
+        "A": "Increases the equilibrium yield",
+        "B": "Lowers the activation energy without being consumed",
+        "C": "Changes the products formed",
+        "D": "Increases the temperature of the reaction"
+      },
+      "correct": "B",
+      "explanation": "Catalysts provide an alternative reaction pathway with lower activation energy. They're not consumed \u2014 enzymes are biological catalysts."
+    },
+    {
+      "id": "sally-029",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "What is an enantiomer?",
+      "options": {
+        "A": "An atom with extra neutrons",
+        "B": "A molecule that is a non-superimposable mirror image of another",
+        "C": "A charged ion in solution",
+        "D": "A molecule with only single bonds"
+      },
+      "correct": "B",
+      "explanation": "Like left and right hands. Enantiomers have identical physical properties except how they rotate polarized light and interact with other chiral molecules."
+    },
+    {
+      "id": "sally-030",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "What is the Haber process used for?",
+      "options": {
+        "A": "Refining crude oil",
+        "B": "Industrial synthesis of ammonia from nitrogen and hydrogen",
+        "C": "Producing sulfuric acid",
+        "D": "Extracting aluminum from ore"
+      },
+      "correct": "B",
+      "explanation": "N\u2082 + 3H\u2082 \u21cc 2NH\u2083, typically with an iron catalyst at high pressure and temperature. It feeds roughly half the world's population through fertilizers."
+    },
+    {
+      "id": "sally-031",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "What does Le Chatelier's principle predict?",
+      "options": {
+        "A": "The rate of radioactive decay",
+        "B": "How a system at equilibrium responds to changes in concentration, temperature, or pressure",
+        "C": "The color of transition metal complexes",
+        "D": "The boiling point of mixtures"
+      },
+      "correct": "B",
+      "explanation": "If you stress a system at equilibrium, it shifts to relieve that stress. Add reactant \u2192 more product. Increase temperature for exothermic \u2192 less product."
+    },
+    {
+      "id": "sally-032",
+      "subject": "biology",
+      "difficulty": "easy",
+      "prompt": "What is the basic unit of life?",
+      "options": {
+        "A": "The atom",
+        "B": "The cell",
+        "C": "The molecule",
+        "D": "The tissue"
+      },
+      "correct": "B",
+      "explanation": "Cells are the smallest unit that can independently carry out life processes. Everything alive is made of cells."
+    },
+    {
+      "id": "sally-033",
+      "subject": "biology",
+      "difficulty": "medium",
+      "prompt": "What is CRISPR-Cas9 primarily used for?",
+      "options": {
+        "A": "Measuring blood pressure",
+        "B": "Gene editing \u2014 cutting DNA at specific sequences",
+        "C": "Imaging proteins in cells",
+        "D": "Amplifying RNA"
+      },
+      "correct": "B",
+      "explanation": "CRISPR is a bacterial immune system repurposed for precision gene editing. Jennifer Doudna and Emmanuelle Charpentier won the 2020 Nobel for it."
+    },
+    {
+      "id": "sally-034",
+      "subject": "biology",
+      "difficulty": "medium",
+      "prompt": "What is the central dogma of molecular biology?",
+      "options": {
+        "A": "DNA \u2192 RNA \u2192 Protein",
+        "B": "Protein \u2192 RNA \u2192 DNA",
+        "C": "RNA \u2192 DNA \u2192 Protein",
+        "D": "DNA \u2192 Protein \u2192 RNA"
+      },
+      "correct": "A",
+      "explanation": "Information flows from DNA (transcription) to RNA (translation) to protein. Crick proposed this in 1958."
+    },
+    {
+      "id": "sally-035",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is apoptosis?",
+      "options": {
+        "A": "Rapid cell division",
+        "B": "Programmed cell death \u2014 a controlled, energy-dependent process",
+        "C": "Cellular respiration",
+        "D": "Protein synthesis"
+      },
+      "correct": "B",
+      "explanation": "Apoptosis is cellular suicide \u2014 tidy, regulated, and essential for development and cancer prevention. Unlike necrosis, it doesn't cause inflammation."
+    },
+    {
+      "id": "sally-036",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is the function of the sodium-potassium pump (Na\u207a/K\u207a-ATPase)?",
+      "options": {
+        "A": "Synthesizing ATP",
+        "B": "Moving 3 Na\u207a out and 2 K\u207a into the cell against their concentration gradients using ATP",
+        "C": "Breaking down glucose",
+        "D": "Replicating DNA"
+      },
+      "correct": "B",
+      "explanation": "This pump maintains the resting membrane potential. It uses ~30% of a cell's ATP. Every neuron depends on it."
+    },
+    {
+      "id": "sally-037",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is horizontal gene transfer?",
+      "options": {
+        "A": "Inheritance from parent to offspring",
+        "B": "Transfer of genetic material between organisms other than by reproduction",
+        "C": "Gene duplication within a chromosome",
+        "D": "DNA repair after UV damage"
+      },
+      "correct": "B",
+      "explanation": "Bacteria swap plasmids across species lines. It's how antibiotic resistance spreads so fast. Not vertical inheritance."
+    },
+    {
+      "id": "sally-038",
+      "subject": "earth-science",
+      "difficulty": "easy",
+      "prompt": "What are the three main types of rock?",
+      "options": {
+        "A": "Hard, soft, and medium",
+        "B": "Igneous, sedimentary, and metamorphic",
+        "C": "Crystal, powder, and liquid",
+        "D": "Surface, deep, and core"
+      },
+      "correct": "B",
+      "explanation": "Igneous: cooled from magma. Sedimentary: compressed particles. Metamorphic: transformed by heat and pressure."
+    },
+    {
+      "id": "sally-039",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "What causes the seasons on Earth?",
+      "options": {
+        "A": "Earth's distance from the Sun varies",
+        "B": "Earth's axial tilt of about 23.5\u00b0 relative to its orbital plane",
+        "C": "Changes in the Sun's output",
+        "D": "The Moon's gravitational pull"
+      },
+      "correct": "B",
+      "explanation": "Tilt, not distance. When the Northern Hemisphere tilts toward the Sun, it's summer there and winter in the Southern Hemisphere."
+    },
+    {
+      "id": "sally-040",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "What is the greenhouse effect?",
+      "options": {
+        "A": "Plants growing faster in greenhouses",
+        "B": "Atmospheric gases trapping heat that would otherwise radiate into space",
+        "C": "The ozone layer blocking UV radiation",
+        "D": "Ocean currents warming coastlines"
+      },
+      "correct": "B",
+      "explanation": "CO\u2082, methane, and water vapor absorb and re-emit infrared radiation. Without the greenhouse effect, Earth's average temperature would be about -18\u00b0C."
+    },
+    {
+      "id": "sally-041",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "What is plate tectonics?",
+      "options": {
+        "A": "The study of dinner plates",
+        "B": "The theory that Earth's lithosphere is divided into plates that move over the asthenosphere",
+        "C": "The measurement of atmospheric pressure",
+        "D": "The formation of caves"
+      },
+      "correct": "B",
+      "explanation": "Plates move a few centimeters per year. Their collisions build mountains; their separations create oceans."
+    },
+    {
+      "id": "sally-042",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "What is the Mohorovi\u010di\u0107 discontinuity (Moho)?",
+      "options": {
+        "A": "The boundary between the troposphere and stratosphere",
+        "B": "The boundary between Earth's crust and mantle",
+        "C": "The center of Earth's core",
+        "D": "The deepest point in the ocean"
+      },
+      "correct": "B",
+      "explanation": "Seismic waves change velocity sharply at the Moho, revealing the transition from lighter crustal rocks to denser mantle peridotite."
+    },
+    {
+      "id": "sally-043",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "What drives the Earth's magnetic field?",
+      "options": {
+        "A": "Permanent magnets in the crust",
+        "B": "Convection of molten iron in the outer core (the geodynamo)",
+        "C": "Solar wind interaction with the atmosphere",
+        "D": "Radioactive decay in the mantle"
+      },
+      "correct": "B",
+      "explanation": "The geodynamo: electrically conducting fluid in the outer core moves through existing magnetic fields, generating currents that sustain the field."
+    },
+    {
+      "id": "sally-044",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "What is the carbon-silicate cycle?",
+      "options": {
+        "A": "The formation of diamonds",
+        "B": "A long-term geological process controlling atmospheric CO\u2082 through weathering, subduction, and volcanism",
+        "C": "The carbon cycle in plants",
+        "D": "Silicon chip manufacturing"
+      },
+      "correct": "B",
+      "explanation": "CO\u2082 + rainwater \u2192 carbonic acid \u2192 weathers silicate rocks \u2192 carbonates wash to ocean \u2192 subducted \u2192 CO\u2082 released by volcanoes. Earth's thermostat over millions of years."
+    },
+    {
+      "id": "sally-045",
+      "subject": "lab-safety",
+      "difficulty": "easy",
+      "prompt": "What should you do if a chemical splashes in your eye?",
+      "options": {
+        "A": "Rub your eye vigorously",
+        "B": "Flush with water at an eyewash station for at least 15 minutes",
+        "C": "Apply eye drops",
+        "D": "Wait for it to evaporate"
+      },
+      "correct": "B",
+      "explanation": "Immediate, sustained flushing. Every second matters. Know where the eyewash station is before you start."
+    },
+    {
+      "id": "sally-046",
+      "subject": "lab-safety",
+      "difficulty": "medium",
+      "prompt": "Why should you never pipette by mouth?",
+      "options": {
+        "A": "It's slower than mechanical pipettes",
+        "B": "Risk of ingesting hazardous chemicals or biological material",
+        "C": "It damages the pipette",
+        "D": "It's less accurate"
+      },
+      "correct": "B",
+      "explanation": "Mouth pipetting was common until the 1970s. It's now banned in virtually all labs. Use a pipette bulb or mechanical pipettor."
+    },
+    {
+      "id": "sally-047",
+      "subject": "lab-safety",
+      "difficulty": "medium",
+      "prompt": "What does the NFPA 704 diamond indicate?",
+      "options": {
+        "A": "The purity of a chemical",
+        "B": "Health, flammability, reactivity, and special hazard warnings for a substance",
+        "C": "The cost of a chemical",
+        "D": "The shelf life of a reagent"
+      },
+      "correct": "B",
+      "explanation": "Blue = health, red = fire, yellow = reactivity, white = special. Scale of 0\u20134. Know how to read it before handling anything."
+    },
+    {
+      "id": "sally-048",
+      "subject": "lab-safety",
+      "difficulty": "hard",
+      "prompt": "What is the purpose of a fume hood in a chemistry lab?",
+      "options": {
+        "A": "To cool down reactions",
+        "B": "To contain and exhaust hazardous vapors, protecting the user from inhalation",
+        "C": "To amplify sounds in the lab",
+        "D": "To store chemicals"
+      },
+      "correct": "B",
+      "explanation": "Fume hoods pull air away from the user and out of the building. Never work with volatile toxins outside one."
+    },
+    {
+      "id": "sally-049",
+      "subject": "lab-safety",
+      "difficulty": "hard",
+      "prompt": "Why should you add acid to water, not water to acid?",
+      "options": {
+        "A": "It's faster",
+        "B": "Adding water to concentrated acid can cause violent boiling and splashing due to the exothermic reaction",
+        "C": "Acid is cheaper than water",
+        "D": "It produces a better mixture"
+      },
+      "correct": "B",
+      "explanation": "The hydration reaction releases tremendous heat. Adding water to acid creates a concentrated hot spot that can boil instantly. Always acid into water, slowly, while stirring."
+    },
+    {
+      "id": "sally-050",
+      "subject": "lab-safety",
+      "difficulty": "hard",
+      "prompt": "What does SDS stand for and what information does it provide?",
+      "options": {
+        "A": "Standard Disposal System \u2014 how to throw things away",
+        "B": "Safety Data Sheet \u2014 hazards, handling, storage, and emergency procedures for a chemical",
+        "C": "Solution Density Scale \u2014 concentration measurement",
+        "D": "Sterile Disinfection Standard \u2014 cleaning protocol"
+      },
+      "correct": "B",
+      "explanation": "Every chemical in a lab must have an accessible SDS. It's the legal document that tells you exactly what you're working with and what to do if something goes wrong."
+    },
+    {
+      "id": "sally-051",
+      "subject": "physics",
+      "difficulty": "easy",
+      "prompt": "What is the SI unit of force?",
+      "options": {
+        "A": "Joule",
+        "B": "Newton",
+        "C": "Watt",
+        "D": "Pascal"
+      },
+      "correct": "B",
+      "explanation": "F = ma. One Newton accelerates 1 kg at 1 m/s\u00b2. Named for Isaac Newton, naturally."
+    },
+    {
+      "id": "sally-052",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "What does the second law of thermodynamics state?",
+      "options": {
+        "A": "Energy is always conserved",
+        "B": "The total entropy of an isolated system always increases over time",
+        "C": "Every action has an equal and opposite reaction",
+        "D": "Heat flows from cold to hot"
+      },
+      "correct": "B",
+      "explanation": "Entropy always wins. You can't unmix cream from coffee. The arrow of time points in the direction of increasing disorder."
+    },
+    {
+      "id": "sally-053",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "What is the difference between speed and velocity?",
+      "options": {
+        "A": "They are identical",
+        "B": "Speed is scalar (magnitude only); velocity is a vector (magnitude and direction)",
+        "C": "Velocity is always higher",
+        "D": "Speed only applies to cars"
+      },
+      "correct": "B",
+      "explanation": "30 mph is a speed. 30 mph north is a velocity. The distinction matters when direction changes \u2014 going in a circle at constant speed involves changing velocity."
+    },
+    {
+      "id": "sally-054",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "What does E = mc\u00b2 actually mean?",
+      "options": {
+        "A": "Energy and matter are interchangeable",
+        "B": "Mass and energy are equivalent \u2014 a small amount of mass contains enormous energy (multiplied by c\u00b2 \u2248 9\u00d710\u00b9\u2076)",
+        "C": "Light has no mass",
+        "D": "Energy equals speed"
+      },
+      "correct": "B",
+      "explanation": "The 'm' is rest mass. A single gram of matter, if fully converted, would release ~90 trillion joules. Nuclear reactions convert tiny fractions of mass; the equation tells you how much energy that yields."
+    },
+    {
+      "id": "sally-055",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "What is the Pauli exclusion principle?",
+      "options": {
+        "A": "No two particles can occupy the same space",
+        "B": "No two fermions (like electrons) can occupy the same quantum state simultaneously",
+        "C": "Particles must have opposite spins",
+        "D": "Electrons always orbit in pairs"
+      },
+      "correct": "B",
+      "explanation": "This is why electrons fill distinct orbitals instead of all collapsing into the lowest energy state. It's why atoms have structure, why chemistry works, why matter doesn't implode."
+    },
+    {
+      "id": "sally-056",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "What is 'wave-particle duality'?",
+      "options": {
+        "A": "Waves and particles are the same thing",
+        "B": "Quantum entities exhibit both wave-like and particle-like behavior depending on how they're measured",
+        "C": "Particles can turn into waves",
+        "D": "All waves eventually become particles"
+      },
+      "correct": "B",
+      "explanation": "Light acts like a wave (interference, diffraction) and like a particle (photoelectric effect). Electrons do too. The double-slit experiment with single electrons produces an interference pattern. Reality is weirder than classical intuition."
+    },
+    {
+      "id": "sally-057",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "What does Ohm's Law state?",
+      "options": {
+        "A": "P = IV",
+        "B": "V = IR \u2014 voltage equals current times resistance",
+        "C": "F = ma",
+        "D": "E = hf"
+      },
+      "correct": "B",
+      "explanation": "Georg Ohm, 1827. For a given resistance, doubling the voltage doubles the current. It's linear for ohmic materials; semiconductors and diodes are non-ohmic."
+    },
+    {
+      "id": "sally-058",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "prompt": "What is the periodic table organized by?",
+      "options": {
+        "A": "Alphabetical order",
+        "B": "Increasing atomic number (number of protons)",
+        "C": "Discovery date",
+        "D": "Atomic weight only"
+      },
+      "correct": "B",
+      "explanation": "Mendeleev's genius was leaving gaps for undiscovered elements and predicting their properties. Modern tables use atomic number, which resolves the few cases where atomic weight ordering was wrong."
+    },
+    {
+      "id": "sally-059",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "prompt": "What are the three main types of chemical bonds?",
+      "options": {
+        "A": "Strong, weak, and medium",
+        "B": "Ionic, covalent, and metallic",
+        "C": "Alpha, beta, and gamma",
+        "D": "Solid, liquid, and gas"
+      },
+      "correct": "B",
+      "explanation": "Ionic: electron transfer (NaCl). Covalent: electron sharing (H\u2082O). Metallic: electron sea (copper wire). Each gives materials radically different properties."
+    },
+    {
+      "id": "sally-060",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "prompt": "What is a mole in chemistry?",
+      "options": {
+        "A": "A small burrowing animal",
+        "B": "6.022 \u00d7 10\u00b2\u00b3 of something \u2014 Avogadro's number of particles",
+        "C": "A unit of pressure",
+        "D": "A type of chemical reaction"
+      },
+      "correct": "B",
+      "explanation": "One mole of carbon-12 weighs exactly 12 grams and contains Avogadro's number of atoms. The mole bridges the atomic scale to the human scale. Counting atoms by weighing them."
+    },
+    {
+      "id": "sally-061",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "What makes a carbon atom 'chiral'?",
+      "options": {
+        "A": "It has extra neutrons",
+        "B": "It's bonded to four different groups, creating non-superimposable mirror images",
+        "C": "It's radioactive",
+        "D": "It has more than four bonds"
+      },
+      "correct": "B",
+      "explanation": "A chiral center is tetrahedral carbon with four distinct substituents. The two mirror-image forms (enantiomers) can have dramatically different biological effects \u2014 one form of thalidomide treated morning sickness; the other caused birth defects."
+    },
+    {
+      "id": "sally-062",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "What is an azeotrope?",
+      "options": {
+        "A": "A type of isotope",
+        "B": "A mixture of liquids that boils at a constant temperature and cannot be separated by simple distillation",
+        "C": "A radioactive compound",
+        "D": "A catalyst for polymerization"
+      },
+      "correct": "B",
+      "explanation": "Ethanol and water form an azeotrope at ~95.6% ethanol. You can't get purer ethanol by distillation alone \u2014 you need molecular sieves or chemical drying. The vapor has the same composition as the liquid."
+    },
+    {
+      "id": "sally-063",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "What is the difference between an exothermic and endothermic reaction?",
+      "options": {
+        "A": "Exothermic releases heat; endothermic absorbs heat",
+        "B": "Exothermic absorbs heat; endothermic releases heat",
+        "C": "They are the same",
+        "D": "Exothermic only occurs in the cold"
+      },
+      "correct": "A",
+      "explanation": "Exothermic: products have lower energy than reactants, difference released as heat. Endothermic: products have higher energy, heat absorbed from surroundings. Combustion is exothermic; photosynthesis is endothermic."
+    },
+    {
+      "id": "sally-064",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "prompt": "What does pH measure?",
+      "options": {
+        "A": "Pressure in hectopascals",
+        "B": "The concentration of hydrogen ions in a solution \u2014 acidity or alkalinity",
+        "C": "The purity of a chemical",
+        "D": "The temperature of a reaction"
+      },
+      "correct": "B",
+      "explanation": "pH = -log\u2081\u2080[H\u207a]. pH 7 is neutral. Below 7 is acidic (more H\u207a). Above 7 is basic/alkaline (less H\u207a). The scale is logarithmic: pH 4 is ten times more acidic than pH 5."
+    },
+    {
+      "id": "sally-065",
+      "subject": "biology",
+      "difficulty": "easy",
+      "prompt": "What carries genetic information in most organisms?",
+      "options": {
+        "A": "Proteins",
+        "B": "DNA (deoxyribonucleic acid)",
+        "C": "Carbohydrates",
+        "D": "Lipids"
+      },
+      "correct": "B",
+      "explanation": "DNA's double helix stores the instructions for building and operating an organism. RNA viruses are the notable exception."
+    },
+    {
+      "id": "sally-066",
+      "subject": "biology",
+      "difficulty": "medium",
+      "prompt": "What is the difference between mitosis and meiosis?",
+      "options": {
+        "A": "Mitosis produces gametes; meiosis produces body cells",
+        "B": "Mitosis produces two identical diploid cells; meiosis produces four genetically diverse haploid cells",
+        "C": "They are the same process",
+        "D": "Mitosis only happens in plants"
+      },
+      "correct": "B",
+      "explanation": "Mitosis: growth and repair, clone cells (2n \u2192 2n). Meiosis: sexual reproduction, genetic diversity through crossing over (2n \u2192 n). Mistakes in meiosis cause trisomies like Down syndrome."
+    },
+    {
+      "id": "sally-067",
+      "subject": "biology",
+      "difficulty": "medium",
+      "prompt": "What is the function of ribosomes?",
+      "options": {
+        "A": "Energy production",
+        "B": "Protein synthesis \u2014 translating mRNA into amino acid chains",
+        "C": "DNA replication",
+        "D": "Cell division"
+      },
+      "correct": "B",
+      "explanation": "Ribosomes read mRNA codons and assemble the corresponding amino acids into proteins. They're found in all living cells. Some antibiotics target bacterial ribosomes while sparing human ones."
+    },
+    {
+      "id": "sally-068",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is epigenetics?",
+      "options": {
+        "A": "The study of epidemics",
+        "B": "Heritable changes in gene expression that don't involve changes to the underlying DNA sequence",
+        "C": "Genetic engineering",
+        "D": "The study of skin cells"
+      },
+      "correct": "B",
+      "explanation": "DNA methylation and histone modification can silence or activate genes. These patterns can be influenced by environment, diet, stress \u2014 and some can be passed to offspring. Same genes, different expression."
+    },
+    {
+      "id": "sally-069",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is the endosymbiotic theory?",
+      "options": {
+        "A": "How organisms form symbiotic relationships",
+        "B": "Mitochondria and chloroplasts were once free-living bacteria that were engulfed by ancestral eukaryotic cells",
+        "C": "How cells divide",
+        "D": "How viruses infect cells"
+      },
+      "correct": "B",
+      "explanation": "Lynn Margulis, 1967. Mitochondria have their own DNA, their own ribosomes, and divide independently. They look like bacteria because they were bacteria. One of the most important mergers in the history of life."
+    },
+    {
+      "id": "sally-070",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is the blood-brain barrier?",
+      "options": {
+        "A": "A psychological concept",
+        "B": "A selective semipermeable border of endothelial cells that prevents most substances in the blood from entering the brain",
+        "C": "A type of skull bone",
+        "D": "The barrier between arteries and veins"
+      },
+      "correct": "B",
+      "explanation": "It protects the brain from pathogens and toxins but also makes drug delivery to the brain extremely difficult. Designing drugs that cross the BBB is a major challenge in neurology."
+    },
+    {
+      "id": "sally-071",
+      "subject": "biology",
+      "difficulty": "easy",
+      "prompt": "How many chromosomes do humans typically have?",
+      "options": {
+        "A": "23",
+        "B": "46 (23 pairs)",
+        "C": "48",
+        "D": "44"
+      },
+      "correct": "B",
+      "explanation": "22 pairs of autosomes plus one pair of sex chromosomes (XX or XY). Gametes (sperm and egg) have 23 single chromosomes so fertilization restores the diploid number."
+    },
+    {
+      "id": "sally-072",
+      "subject": "earth-science",
+      "difficulty": "easy",
+      "prompt": "What is the water cycle?",
+      "options": {
+        "A": "How water gets to your house",
+        "B": "The continuous movement of water through evaporation, condensation, precipitation, and collection",
+        "C": "The cycling of water in a washing machine",
+        "D": "How oceans form"
+      },
+      "correct": "B",
+      "explanation": "Solar energy drives evaporation. Gravity drives precipitation and runoff. The same water molecules have been cycling for billions of years."
+    },
+    {
+      "id": "sally-073",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "What causes earthquakes?",
+      "options": {
+        "A": "Volcanic eruptions only",
+        "B": "The sudden release of stress accumulated along fault lines as tectonic plates move",
+        "C": "Underground explosions",
+        "D": "Changes in atmospheric pressure"
+      },
+      "correct": "B",
+      "explanation": "Plates don't slide smoothly \u2014 friction locks them. Stress builds until it exceeds the friction, and the sudden slip releases seismic waves. The Richter scale is logarithmic: a 7.0 is ten times stronger than a 6.0."
+    },
+    {
+      "id": "sally-074",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "What is the difference between weather and climate?",
+      "options": {
+        "A": "They are the same",
+        "B": "Weather is short-term atmospheric conditions; climate is the long-term average pattern over decades",
+        "C": "Climate only applies to tropical regions",
+        "D": "Weather is always more accurate"
+      },
+      "correct": "B",
+      "explanation": "'Climate is what you expect; weather is what you get.' A cold day doesn't disprove global warming \u2014 it's a data point, not a trend."
+    },
+    {
+      "id": "sally-075",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "What is the Coriolis effect?",
+      "options": {
+        "A": "The bending of light by gravity",
+        "B": "The apparent deflection of moving objects (wind, ocean currents) caused by Earth's rotation",
+        "C": "A type of magnetic field",
+        "D": "The heating of the atmosphere by the sun"
+      },
+      "correct": "B",
+      "explanation": "In the Northern Hemisphere, moving air deflects to the right. In the Southern Hemisphere, to the left. This is why hurricanes spin counterclockwise north of the equator and clockwise south of it."
+    },
+    {
+      "id": "sally-076",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "What are Milankovitch cycles?",
+      "options": {
+        "A": "Economic cycles",
+        "B": "Periodic changes in Earth's orbit and axial tilt that affect long-term climate patterns over tens of thousands of years",
+        "C": "Volcanic eruption cycles",
+        "D": "Ocean tide cycles"
+      },
+      "correct": "B",
+      "explanation": "Eccentricity (100K years), obliquity (41K years), precession (26K years). These orbital variations change how much solar radiation reaches Earth and are primary drivers of ice age cycles."
+    },
+    {
+      "id": "sally-077",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "What is the Great Oxygenation Event?",
+      "options": {
+        "A": "The invention of oxygen tanks",
+        "B": "The period ~2.4 billion years ago when cyanobacteria produced enough oxygen through photosynthesis to permanently change Earth's atmosphere",
+        "C": "A modern environmental program",
+        "D": "The discovery of oxygen as an element"
+      },
+      "correct": "B",
+      "explanation": "It was likely the largest extinction event in Earth's history \u2014 oxygen was toxic to most anaerobic life. It also enabled the ozone layer and complex aerobic life. Sometimes progress is catastrophic."
+    },
+    {
+      "id": "sally-078",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "What is the difference between magma and lava?",
+      "options": {
+        "A": "They are chemically different",
+        "B": "Magma is molten rock underground; lava is molten rock that reaches the surface",
+        "C": "Lava is hotter",
+        "D": "Magma only exists in Hawaii"
+      },
+      "correct": "B",
+      "explanation": "Same stuff, different location. The distinction matters because surface eruption changes cooling rate, crystal size, and gas release. Underground, it's magma. Above ground, it's lava."
+    },
+    {
+      "id": "sally-079",
+      "subject": "lab-safety",
+      "difficulty": "easy",
+      "prompt": "What should you do before starting any lab experiment?",
+      "options": {
+        "A": "Start immediately to save time",
+        "B": "Read the procedure thoroughly and locate safety equipment",
+        "C": "Ask a friend to do it for you",
+        "D": "Skip to the interesting parts"
+      },
+      "correct": "B",
+      "explanation": "Know where the fire extinguisher, eyewash station, and emergency exits are. Read the protocol twice. Most lab accidents happen because someone rushed."
+    },
+    {
+      "id": "sally-080",
+      "subject": "lab-safety",
+      "difficulty": "medium",
+      "prompt": "Why should long hair be tied back in a lab?",
+      "options": {
+        "A": "It's a fashion requirement",
+        "B": "To prevent it from catching fire, getting caught in equipment, or dipping into chemicals",
+        "C": "It improves concentration",
+        "D": "It's required for photographs"
+      },
+      "correct": "B",
+      "explanation": "Loose hair near a Bunsen burner or a centrifuge is a hazard. Same goes for loose sleeves, dangling jewelry, and scarves. Tie it back, roll it up, take it off."
+    },
+    {
+      "id": "sally-081",
+      "subject": "lab-safety",
+      "difficulty": "medium",
+      "prompt": "What is the correct way to smell a chemical in the lab?",
+      "options": {
+        "A": "Put your nose directly over the container",
+        "B": "Waft \u2014 gently fan the vapors toward your nose with your hand",
+        "C": "Take a deep breath from the bottle",
+        "D": "Chemicals have no smell"
+      },
+      "correct": "B",
+      "explanation": "Never inhale directly. Wafting brings a tiny, diluted sample to your nose. Some chemicals can damage olfactory nerves or cause immediate respiratory harm."
+    },
+    {
+      "id": "sally-082",
+      "subject": "lab-safety",
+      "difficulty": "hard",
+      "prompt": "What should you do if a lab fire starts in a beaker?",
+      "options": {
+        "A": "Throw water on it",
+        "B": "If small and contained, cover it with a watch glass to smother it. Otherwise, use the appropriate fire extinguisher and evacuate if needed",
+        "C": "Blow on it",
+        "D": "Wait for it to burn out"
+      },
+      "correct": "B",
+      "explanation": "Water on a chemical fire can spread it or cause explosions. Removing oxygen is the first line of defense for small contained fires. Know your extinguisher types: CO\u2082 for electrical, dry chemical for solvents."
+    },
+    {
+      "id": "sally-083",
+      "subject": "lab-safety",
+      "difficulty": "hard",
+      "prompt": "Why should you never eat or drink in a laboratory?",
+      "options": {
+        "A": "It's impolite",
+        "B": "Risk of ingesting hazardous substances \u2014 surfaces may be contaminated, and airborne particles can settle on food",
+        "C": "Food attracts pests",
+        "D": "It slows down experiments"
+      },
+      "correct": "B",
+      "explanation": "This is possibly the most violated lab rule and the most dangerous to violate. Contamination is invisible. A sandwich on the bench next to an experiment is a sandwich that may have absorbed something toxic."
+    },
+    {
+      "id": "sally-084",
+      "subject": "physics",
+      "difficulty": "easy",
+      "prompt": "What is gravity?",
+      "options": {
+        "A": "A magnetic force",
+        "B": "The attractive force between objects with mass",
+        "C": "Air pressure pushing down",
+        "D": "The rotation of the Earth"
+      },
+      "correct": "B",
+      "explanation": "Newton described it; Einstein explained it as the curvature of spacetime. Every mass attracts every other mass. It's the weakest fundamental force but dominates at cosmic scales."
+    },
+    {
+      "id": "sally-085",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "What is quantum entanglement?",
+      "options": {
+        "A": "Particles that are physically connected",
+        "B": "A phenomenon where particles become correlated such that measuring one instantly determines the state of the other, regardless of distance",
+        "C": "Particles that orbit each other",
+        "D": "A type of chemical bond"
+      },
+      "correct": "B",
+      "explanation": "Einstein called it 'spooky action at a distance.' It doesn't transmit information faster than light (no signaling), but the correlations are experimentally verified. It's the basis for quantum computing and quantum cryptography."
+    },
+    {
+      "id": "sally-086",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "prompt": "What is the most abundant element in the universe?",
+      "options": {
+        "A": "Oxygen",
+        "B": "Hydrogen",
+        "C": "Carbon",
+        "D": "Iron"
+      },
+      "correct": "B",
+      "explanation": "About 75% of the baryonic mass of the universe is hydrogen. Helium is most of the rest. Everything heavier was forged in stars."
+    },
+    {
+      "id": "sally-087",
+      "subject": "chemistry",
+      "difficulty": "hard",
+      "prompt": "What is a buffer solution?",
+      "options": {
+        "A": "A solution that cleans surfaces",
+        "B": "A solution that resists changes in pH when small amounts of acid or base are added",
+        "C": "A very concentrated acid",
+        "D": "A solution used for storage"
+      },
+      "correct": "B",
+      "explanation": "Buffers contain a weak acid and its conjugate base (or vice versa). Blood is buffered at pH ~7.4 by carbonic acid/bicarbonate. Without buffers, metabolism would be impossible."
+    },
+    {
+      "id": "sally-088",
+      "subject": "biology",
+      "difficulty": "medium",
+      "prompt": "What is an ecosystem?",
+      "options": {
+        "A": "A computer system for ecology",
+        "B": "A community of living organisms interacting with each other and their physical environment",
+        "C": "A type of greenhouse",
+        "D": "A scientific instrument"
+      },
+      "correct": "B",
+      "explanation": "An ecosystem includes both biotic (living) and abiotic (non-living) components. Energy flows through; nutrients cycle within. A rotting log is an ecosystem. So is the Amazon."
+    },
+    {
+      "id": "sally-089",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is the difference between a virus and a bacterium?",
+      "options": {
+        "A": "They are the same size",
+        "B": "Viruses are not cellular \u2014 they require a host to replicate. Bacteria are single-celled organisms that can reproduce independently",
+        "C": "Bacteria are always harmful; viruses are not",
+        "D": "Viruses are larger"
+      },
+      "correct": "B",
+      "explanation": "Viruses are essentially genetic material in a protein coat. They hijack host cellular machinery. Antibiotics kill bacteria but do nothing to viruses. This distinction is why your doctor won't prescribe antibiotics for a cold."
+    },
+    {
+      "id": "sally-090",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "prompt": "What is the difference between P-waves and S-waves?",
+      "options": {
+        "A": "P-waves are slower",
+        "B": "P-waves are compressional (push-pull) and travel through solids and liquids; S-waves are shear (side-to-side) and only travel through solids",
+        "C": "S-waves always arrive first",
+        "D": "They are the same wave at different frequencies"
+      },
+      "correct": "B",
+      "explanation": "P-waves arrive first (Primary). S-waves arrive second (Secondary). The fact that S-waves don't travel through Earth's outer core is how we know the outer core is liquid."
+    },
+    {
+      "id": "sally-091",
+      "subject": "physics",
+      "difficulty": "medium",
+      "prompt": "What is the law of conservation of energy?",
+      "options": {
+        "A": "Energy is created when work is done",
+        "B": "Energy cannot be created or destroyed \u2014 only transformed from one form to another",
+        "C": "Energy always increases",
+        "D": "Energy only exists in potential form"
+      },
+      "correct": "B",
+      "explanation": "The First Law of Thermodynamics. The total energy of an isolated system is constant. Chemical \u2192 thermal \u2192 mechanical \u2192 electrical. The transformations continue; the total stays the same."
+    },
+    {
+      "id": "sally-092",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "prompt": "What determines an atom's chemical properties?",
+      "options": {
+        "A": "The number of neutrons",
+        "B": "The arrangement of electrons, particularly the outermost (valence) electrons",
+        "C": "The atomic mass",
+        "D": "The color of the element"
+      },
+      "correct": "B",
+      "explanation": "Chemistry is electron configuration. Elements in the same column of the periodic table have similar valence electron arrangements and thus similar chemical behavior. Sodium and potassium are both explosive in water for the same electronic reason."
+    },
+    {
+      "id": "sally-093",
+      "subject": "biology",
+      "difficulty": "hard",
+      "prompt": "What is the function of the myelin sheath?",
+      "options": {
+        "A": "To produce neurotransmitters",
+        "B": "To insulate axons and dramatically increase the speed of nerve impulse conduction",
+        "C": "To connect neurons to muscles",
+        "D": "To store memories"
+      },
+      "correct": "B",
+      "explanation": "Myelin is like the plastic coating on a wire. Saltatory conduction \u2014 signals jump between gaps (nodes of Ranvier) \u2014 can be 100x faster than unmyelinated conduction. Multiple sclerosis is the immune system attacking myelin."
+    },
+    {
+      "id": "sally-094",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "prompt": "What is El Ni\u00f1o?",
+      "options": {
+        "A": "A type of storm",
+        "B": "A climate pattern involving unusual warming of surface waters in the eastern Pacific, affecting weather globally",
+        "C": "A Spanish holiday",
+        "D": "A type of earthquake"
+      },
+      "correct": "B",
+      "explanation": "Trade winds weaken, warm water sloshes eastward. Result: droughts in Australia and Indonesia, floods in Peru and California, disrupted fisheries. La Ni\u00f1a is the opposite phase."
+    },
+    {
+      "id": "sally-095",
+      "subject": "lab-safety",
+      "difficulty": "hard",
+      "prompt": "What is the proper way to dispose of chemical waste?",
+      "options": {
+        "A": "Pour it down the sink",
+        "B": "Follow the specific disposal protocol for that chemical \u2014 never mix unknown wastes, use labeled waste containers, and consult the SDS",
+        "C": "Leave it in the fume hood",
+        "D": "Evaporate it"
+      },
+      "correct": "B",
+      "explanation": "'Down the sink' is how aquifers get contaminated. Each chemical class has disposal requirements. Mixing wastes can create toxic gases, explosions, or heat. When in doubt, ask. When not in doubt, still ask."
+    },
+    {
+      "id": "sally-096",
+      "subject": "physics",
+      "difficulty": "easy",
+      "prompt": "What is an electric current?",
+      "options": {
+        "A": "Static electricity",
+        "B": "The flow of electric charge, typically electrons through a conductor",
+        "C": "A magnetic field",
+        "D": "Light traveling through space"
+      },
+      "correct": "B",
+      "explanation": "Measured in amperes (coulombs per second). In metals, electrons drift slowly but the electric field propagates near the speed of light. That's why the light turns on instantly."
+    },
+    {
+      "id": "sally-097",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "prompt": "What is an element?",
+      "options": {
+        "A": "A mixture of substances",
+        "B": "A pure substance consisting of atoms with the same number of protons",
+        "C": "A compound made of two or more elements",
+        "D": "A type of solution"
+      },
+      "correct": "B",
+      "explanation": "118 known elements, 94 occur naturally. Gold (79 protons) is always gold. Change the proton count and you've changed the element."
+    },
+    {
+      "id": "sally-098",
+      "subject": "biology",
+      "difficulty": "medium",
+      "prompt": "What is natural selection?",
+      "options": {
+        "A": "Choosing the strongest animal",
+        "B": "The process where organisms better adapted to their environment tend to survive and produce more offspring",
+        "C": "Artificial breeding by humans",
+        "D": "Random genetic changes"
+      },
+      "correct": "B",
+      "explanation": "Darwin's insight: variation exists, some variations are advantageous, those organisms reproduce more, and over generations the population shifts. It's not 'survival of the strongest' \u2014 it's differential reproduction."
+    },
+    {
+      "id": "sally-099",
+      "subject": "earth-science",
+      "difficulty": "easy",
+      "prompt": "What causes tides on Earth?",
+      "options": {
+        "A": "Wind",
+        "B": "Primarily the gravitational pull of the Moon (and secondarily the Sun) on Earth's oceans",
+        "C": "Earth's rotation",
+        "D": "Underwater volcanoes"
+      },
+      "correct": "B",
+      "explanation": "The Moon pulls the ocean toward it, creating a bulge. The opposite side also bulges due to inertia. Two high tides and two low tides per day in most locations."
+    },
+    {
+      "id": "sally-100",
+      "subject": "physics",
+      "difficulty": "hard",
+      "prompt": "What is the significance of the double-slit experiment?",
+      "options": {
+        "A": "It proves light is a wave",
+        "B": "It demonstrates that quantum particles behave differently when observed \u2014 the act of measurement affects the outcome",
+        "C": "It measures the speed of light",
+        "D": "It shows that electrons are larger than photons"
+      },
+      "correct": "B",
+      "explanation": "Fire electrons one at a time through two slits. With no detector at the slits: interference pattern (wave behavior). With a detector: two bands (particle behavior). The observer effect is real, and it's deeply strange."
     }
   ]
 }
