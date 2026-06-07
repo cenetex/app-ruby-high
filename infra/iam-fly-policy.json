@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RubyHighStateAccess",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:Scan",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:DeleteItem"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:*:table/ruby-high-state"
+    },
+    {
+      "Sid": "RubyHighPortraitsAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::ruby-high-portraits/*"
+    }
+  ]
+}

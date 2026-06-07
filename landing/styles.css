@@ -1,0 +1,1025 @@
+@font-face {
+  font-display: swap;
+  font-family: "Schoolbell";
+  src: url("/assets/fonts/schoolbell-regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-display: swap;
+  font-family: "Caveat";
+  src: url("/assets/fonts/caveat-regular.ttf") format("truetype");
+}
+
+:root {
+  color-scheme: light;
+  --ink: #191612;
+  --paper: #fff1bd;
+  --cream: #fff9df;
+  --ruby: #b51f2f;
+  --blue: #1d5593;
+  --sky: #9cd7e4;
+  --yellow: #ffd447;
+  --mint: #d8f2e9;
+  --rose: #fde3e2;
+  --parchment: #eee3c7;
+  --blackline: 3px solid var(--ink);
+  --shadow: 9px 9px 0 rgba(25, 22, 18, 0.9);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(25, 22, 18, 0.04) 1px, transparent 1px) 0 0 / 22px 22px,
+    linear-gradient(rgba(25, 22, 18, 0.04) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--paper);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+}
+
+.site-header {
+  align-items: center;
+  background: var(--cream);
+  border-bottom: var(--blackline);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  min-height: 70px;
+  padding: 10px clamp(18px, 4vw, 56px);
+}
+
+.brand {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.45rem;
+  text-decoration: none;
+}
+
+.brand img {
+  height: 44px;
+  object-fit: contain;
+  width: 52px;
+}
+
+nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: flex-end;
+}
+
+nav a {
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.nav-play,
+.primary-action,
+.secondary-action {
+  border: var(--blackline);
+  box-shadow: 4px 4px 0 var(--ink);
+  font-weight: 900;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.nav-play {
+  background: var(--yellow);
+  min-width: 92px;
+  padding: 7px 14px;
+  text-align: center;
+}
+
+.hero {
+  display: grid;
+  isolation: isolate;
+  min-height: calc(82svh - 70px);
+  overflow: hidden;
+  place-items: center start;
+  position: relative;
+}
+
+.hero-bg,
+.hero-bg img,
+.halftone {
+  inset: 0;
+  position: absolute;
+}
+
+.hero-bg {
+  z-index: -4;
+}
+
+.hero-bg img {
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  width: 100%;
+}
+
+.halftone {
+  background:
+    radial-gradient(circle, rgba(255, 212, 71, 0.34) 0 1.5px, transparent 1.8px) 0 0 / 10px 10px,
+    linear-gradient(90deg, rgba(181, 31, 47, 0.94) 0%, rgba(29, 85, 147, 0.82) 47%, rgba(255, 212, 71, 0.35) 100%),
+    linear-gradient(180deg, rgba(25, 22, 18, 0.15), rgba(25, 22, 18, 0.64));
+  mix-blend-mode: multiply;
+  z-index: -3;
+}
+
+.hero-content {
+  color: #fff;
+  max-width: 760px;
+  padding: clamp(42px, 7vw, 86px) clamp(22px, 6vw, 76px);
+  text-shadow: 3px 3px 0 rgba(25, 22, 18, 0.86);
+}
+
+.eyebrow,
+.section-kicker {
+  color: var(--ruby);
+  font-size: 0.82rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.hero .eyebrow {
+  background: var(--yellow);
+  border: var(--blackline);
+  box-shadow: 5px 5px 0 var(--ink);
+  color: var(--ink);
+  display: inline-block;
+  padding: 8px 12px;
+  transform: rotate(-1.4deg);
+}
+
+.hero h1 {
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(5.2rem, 12vw, 10rem);
+  font-weight: 400;
+  line-height: 0.82;
+  margin: 16px 0 0;
+  max-width: 720px;
+}
+
+.hero-copy {
+  background: rgba(25, 22, 18, 0.7);
+  border: var(--blackline);
+  box-shadow: 6px 6px 0 var(--ink);
+  color: #fff9df;
+  font-size: clamp(1.08rem, 1.8vw, 1.38rem);
+  font-weight: 760;
+  margin: 24px 0 0;
+  max-width: 680px;
+  padding: 14px 16px;
+  text-shadow: none;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 28px;
+  text-shadow: none;
+}
+
+.primary-action,
+.secondary-action {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 48px;
+  padding: 11px 18px;
+}
+
+.primary-action {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+.secondary-action {
+  background: var(--cream);
+  color: var(--ink);
+}
+
+.ad-burst {
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--yellow);
+  border: var(--blackline);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px;
+  position: absolute;
+  right: clamp(24px, 6vw, 88px);
+  text-align: center;
+  top: clamp(28px, 7vw, 92px);
+  transform: rotate(7deg);
+  width: min(25vw, 250px);
+  z-index: 2;
+}
+
+.ad-burst span,
+.ad-burst em {
+  font-size: clamp(0.78rem, 1.2vw, 1rem);
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.ad-burst strong {
+  color: var(--ruby);
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(2rem, 4vw, 4rem);
+  font-weight: 400;
+  line-height: 0.9;
+  margin: 6px 0;
+}
+
+.hero-faculty {
+  align-items: end;
+  bottom: 0;
+  display: flex;
+  gap: clamp(16px, 2.4vw, 34px);
+  justify-content: flex-end;
+  max-height: 82%;
+  pointer-events: none;
+  position: absolute;
+  right: clamp(16px, 5vw, 76px);
+  width: min(32vw, 420px);
+  z-index: -1;
+}
+
+.hero-faculty img {
+  filter: drop-shadow(8px 10px 0 rgba(25, 22, 18, 0.88));
+  height: min(54svh, 540px);
+  object-fit: contain;
+  object-position: bottom;
+  width: auto;
+}
+
+.faculty-ruby {
+  transform: translateY(1%) scale(1.04);
+}
+
+.faculty-sally {
+  transform: translateY(3%);
+}
+
+.section {
+  padding: clamp(46px, 7vw, 82px) clamp(18px, 5vw, 72px);
+}
+
+.section-copy {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 0.72fr) minmax(260px, 1fr);
+  margin: 0 auto 26px;
+  max-width: 1120px;
+}
+
+.section-copy h2,
+.collect-copy h2 {
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  font-weight: 400;
+  line-height: 0.94;
+  margin: 0;
+}
+
+.board-section {
+  background:
+    radial-gradient(circle, rgba(29, 85, 147, 0.12) 0 1px, transparent 1.6px) 0 0 / 10px 10px,
+    var(--mint);
+  border-top: var(--blackline);
+  overflow: hidden;
+  position: relative;
+}
+
+.yearbook-section {
+  background:
+    linear-gradient(90deg, rgba(25, 22, 18, 0.055) 1px, transparent 1px) 0 0 / 34px 34px,
+    var(--parchment);
+  border-top: var(--blackline);
+  overflow: hidden;
+  position: relative;
+}
+
+.comic-heading {
+  align-items: end;
+  display: grid;
+  gap: 10px 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0 auto;
+  max-width: 1120px;
+  position: relative;
+  z-index: 2;
+}
+
+.comic-heading .section-kicker {
+  background: var(--ruby);
+  border: var(--blackline);
+  box-shadow: 5px 5px 0 var(--ink);
+  color: #fff;
+  display: inline-block;
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin: 0;
+  padding: 8px 12px;
+  transform: rotate(-1.5deg);
+}
+
+.comic-heading h2 {
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(2.7rem, 6.8vw, 5.8rem);
+  font-weight: 400;
+  line-height: 0.9;
+  margin: 0;
+}
+
+.comic-heading > span {
+  background: var(--yellow);
+  border: var(--blackline);
+  box-shadow: 4px 4px 0 var(--ink);
+  font-weight: 950;
+  padding: 8px 12px;
+  text-transform: uppercase;
+  transform: rotate(2.5deg);
+}
+
+.board-page {
+  align-items: end;
+  background: linear-gradient(135deg, rgba(255, 249, 223, 0.8), rgba(216, 242, 233, 0.72));
+  border: var(--blackline);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(210px, 0.34fr) minmax(0, 1fr);
+  margin: 28px auto 0;
+  max-width: 1120px;
+  overflow: hidden;
+  padding: 24px 28px 0 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.board-page::after {
+  background: var(--yellow);
+  border: var(--blackline);
+  bottom: 22px;
+  content: "A B C D";
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(3.2rem, 8vw, 7.4rem);
+  line-height: 0.8;
+  opacity: 0.2;
+  padding: 10px 24px;
+  position: absolute;
+  right: -16px;
+  transform: rotate(-3deg);
+  z-index: 0;
+}
+
+.teacher-cutout {
+  align-self: end;
+  position: relative;
+  z-index: 2;
+}
+
+.teacher-cutout img {
+  filter: drop-shadow(7px 8px 0 rgba(25, 22, 18, 0.78));
+  height: clamp(300px, 34vw, 450px);
+  margin: 0 auto;
+  object-fit: contain;
+  object-position: bottom center;
+}
+
+.chalk-card {
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.12) 0 1px, transparent 1.5px) 0 0 / 12px 12px,
+    #1f4e43;
+  border: var(--blackline);
+  box-shadow: 7px 7px 0 var(--ink);
+  color: #fff9df;
+  margin: 0 0 28px;
+  min-width: 0;
+  padding: clamp(22px, 4vw, 36px);
+  position: relative;
+  transform: rotate(-0.7deg);
+  z-index: 1;
+}
+
+.quiz-burst {
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--yellow);
+  border: var(--blackline);
+  border-radius: 50%;
+  box-shadow: 5px 5px 0 var(--ink);
+  color: var(--ruby);
+  display: flex;
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.7rem, 3vw, 2.7rem);
+  justify-content: center;
+  position: absolute;
+  right: -22px;
+  top: -28px;
+  transform: rotate(12deg);
+  width: clamp(86px, 11vw, 132px);
+}
+
+.chalk-card h3 {
+  font-size: clamp(1.35rem, 2.4vw, 2.2rem);
+  line-height: 1.12;
+  margin: 0 0 20px;
+  max-width: 760px;
+}
+
+.exchange {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+}
+
+.exchange p,
+.yearbook-spread blockquote,
+.mark-stamps span,
+.collect-copy p {
+  background: rgba(255, 249, 223, 0.94);
+  border: 2px solid var(--ink);
+  color: var(--ink);
+  margin: 0;
+  padding: 14px 16px;
+}
+
+.exchange strong {
+  color: var(--ruby);
+}
+
+.yearbook-spread {
+  align-items: center;
+  background:
+    linear-gradient(90deg, rgba(181, 31, 47, 0.1), transparent 36%),
+    #f7e4af;
+  border: var(--blackline);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(210px, 0.34fr) minmax(0, 1fr);
+  margin: 28px auto 0;
+  max-width: 1120px;
+  min-height: 430px;
+  overflow: hidden;
+  padding: clamp(24px, 4vw, 42px);
+  position: relative;
+}
+
+.edward-photo {
+  background: var(--cream);
+  border: var(--blackline);
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 18px 18px 12px;
+  position: relative;
+  transform: rotate(-4deg);
+  z-index: 1;
+}
+
+.edward-photo img {
+  background: var(--parchment);
+  height: clamp(260px, 30vw, 370px);
+  margin: 0 auto;
+  object-fit: contain;
+  object-position: bottom center;
+}
+
+.edward-photo span {
+  display: block;
+  font-family: Caveat, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.5rem, 2.5vw, 2.2rem);
+  line-height: 1;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.note-page {
+  background:
+    linear-gradient(rgba(29, 85, 147, 0.12) 1px, transparent 1px) 0 42px / 100% 34px,
+    var(--cream);
+  border: var(--blackline);
+  box-shadow: 6px 6px 0 var(--ink);
+  min-width: 0;
+  padding: clamp(22px, 3.6vw, 38px);
+  position: relative;
+  transform: rotate(1deg);
+  z-index: 1;
+}
+
+.page-tape {
+  background: rgba(255, 212, 71, 0.72);
+  border: 2px solid rgba(25, 22, 18, 0.5);
+  height: 34px;
+  left: 45%;
+  position: absolute;
+  top: -18px;
+  transform: rotate(-3deg);
+  width: 120px;
+}
+
+.note-page h3 {
+  color: var(--ruby);
+  font-size: clamp(1.28rem, 2.3vw, 1.9rem);
+  margin: 0 0 14px;
+}
+
+.yearbook-spread blockquote {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.08rem, 1.8vw, 1.36rem);
+  line-height: 1.46;
+}
+
+.mark-stamps {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.mark-stamps span {
+  color: var(--ruby);
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.2rem, 2.4vw, 2rem);
+  line-height: 0.9;
+  text-align: center;
+  transform: rotate(-1deg);
+}
+
+.mark-stamps span:nth-child(2) {
+  transform: rotate(2deg);
+}
+
+.mark-stamps span:nth-child(3) {
+  transform: rotate(-2deg);
+}
+
+.mark-stamps b {
+  display: block;
+  font-size: 1.8em;
+  margin-top: 6px;
+}
+
+.yearbook-corner {
+  align-items: center;
+  background: var(--ruby);
+  border: var(--blackline);
+  border-radius: 50%;
+  box-shadow: 5px 5px 0 var(--ink);
+  color: #fff;
+  display: flex;
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(2rem, 4vw, 3.7rem);
+  height: clamp(82px, 10vw, 126px);
+  justify-content: center;
+  position: absolute;
+  right: 26px;
+  top: 24px;
+  transform: rotate(10deg);
+  width: clamp(82px, 10vw, 126px);
+  z-index: 2;
+}
+
+.collect-section {
+  align-items: center;
+  background:
+    radial-gradient(circle, rgba(25, 22, 18, 0.14) 0 1px, transparent 1.5px) 0 0 / 9px 9px,
+    var(--paper);
+  border-top: var(--blackline);
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 0.96fr) minmax(320px, 0.84fr);
+}
+
+.collect-copy {
+  max-width: 710px;
+}
+
+.collect-copy p {
+  font-size: clamp(1.02rem, 1.6vw, 1.22rem);
+  font-weight: 760;
+  margin-top: 20px;
+}
+
+.comic-stack {
+  min-height: 470px;
+  position: relative;
+}
+
+.comic-stack img {
+  border: var(--blackline);
+  box-shadow: var(--shadow);
+  height: clamp(260px, 38vw, 420px);
+  object-fit: cover;
+  object-position: top center;
+  position: absolute;
+  width: min(58%, 320px);
+}
+
+.comic-stack img:first-child {
+  left: 0;
+  top: 28px;
+  transform: rotate(-7deg);
+}
+
+.comic-stack img:nth-child(2) {
+  right: 0;
+  top: 0;
+  transform: rotate(6deg);
+}
+
+.comic-callout {
+  background: var(--yellow);
+  border: var(--blackline);
+  bottom: 18px;
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 14px 16px;
+  position: absolute;
+  right: 20px;
+  transform: rotate(-2deg);
+  width: min(260px, 70%);
+}
+
+.comic-callout span {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.comic-callout strong {
+  color: var(--ruby);
+  display: block;
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.faculty-section {
+  background: var(--cream);
+  border-top: var(--blackline);
+}
+
+.faculty-list {
+  display: grid;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 960px;
+}
+
+.faculty-list article {
+  --faculty-bg: var(--rose);
+  align-items: center;
+  background: var(--faculty-bg);
+  border: var(--blackline);
+  box-shadow: 7px 7px 0 var(--ink);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 130px minmax(0, 1fr);
+  min-width: 0;
+  padding: 14px 18px 14px 10px;
+}
+
+.faculty-list article:nth-child(2) {
+  --faculty-bg: var(--mint);
+}
+
+.faculty-list article:nth-child(3) {
+  --faculty-bg: var(--parchment);
+}
+
+.faculty-list img {
+  align-self: end;
+  height: 138px;
+  object-fit: contain;
+  object-position: bottom center;
+  width: 130px;
+}
+
+.faculty-list h3 {
+  color: var(--ruby);
+  font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+  margin: 0 0 4px;
+}
+
+.faculty-list p {
+  font-weight: 760;
+  margin: 0;
+}
+
+.site-footer {
+  background: var(--ink);
+  border-top: var(--blackline);
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 28px;
+  padding: 24px clamp(22px, 6vw, 76px);
+}
+
+.site-footer p {
+  font-size: 1.05rem;
+  font-weight: 820;
+  margin: 0;
+}
+
+.site-footer a {
+  color: var(--yellow);
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.site-socials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-socials a {
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.site-socials a:hover,
+.site-socials a:focus-visible {
+  text-decoration: underline;
+}
+
+@media (max-width: 1020px) {
+  .ad-burst {
+    right: 22px;
+    top: auto;
+    bottom: 28px;
+    width: 210px;
+  }
+
+  .hero-faculty {
+    opacity: 0.52;
+    right: -6vw;
+    width: 48vw;
+  }
+}
+
+@media (max-width: 900px) {
+  .site-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  nav {
+    justify-content: flex-start;
+  }
+
+  .hero {
+    min-height: calc(84svh - 118px);
+    place-items: start;
+  }
+
+  .hero-content {
+    padding-top: clamp(36px, 10vw, 68px);
+  }
+
+  .hero h1 {
+    font-size: clamp(4.5rem, 22vw, 8rem);
+  }
+
+  .hero-faculty {
+    opacity: 0.34;
+    right: -10vw;
+    width: 64vw;
+  }
+
+  .hero-faculty img {
+    height: min(46svh, 410px);
+  }
+
+  .section-copy,
+  .collect-section,
+  .yearbook-spread {
+    grid-template-columns: 1fr;
+  }
+
+  .board-page {
+    grid-template-columns: minmax(180px, 0.32fr) minmax(0, 1fr);
+  }
+
+  .comic-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .comic-heading > span {
+    justify-self: start;
+  }
+
+  .board-page {
+    padding: 20px 20px 0;
+  }
+
+  .teacher-cutout img {
+    height: min(44svh, 360px);
+  }
+
+  .chalk-card {
+    margin-bottom: 24px;
+  }
+
+  .exchange,
+  .mark-stamps {
+    grid-template-columns: 1fr;
+  }
+
+  .yearbook-spread {
+    min-height: 0;
+  }
+
+  .edward-photo {
+    justify-self: start;
+    max-width: 280px;
+  }
+
+  .yearbook-corner {
+    right: 18px;
+    top: 18px;
+  }
+
+  .comic-stack {
+    min-height: 430px;
+  }
+}
+
+@media (max-width: 620px) {
+  body {
+    font-size: 15px;
+  }
+
+  .brand span {
+    font-size: 1.25rem;
+  }
+
+  nav {
+    gap: 8px 12px;
+  }
+
+  nav a {
+    font-size: 0.92rem;
+  }
+
+  .hero {
+    min-height: 78svh;
+  }
+
+  .hero-content {
+    padding-inline: 18px;
+  }
+
+  .hero-copy {
+    font-size: 1rem;
+  }
+
+  .hero-actions a {
+    width: 100%;
+  }
+
+  .ad-burst {
+    margin: 0 18px 24px;
+    position: relative;
+    right: auto;
+    top: auto;
+    transform: rotate(-2deg);
+    width: min(220px, calc(100vw - 36px));
+  }
+
+  .hero-faculty {
+    display: none;
+  }
+
+  .section {
+    padding-inline: 18px;
+  }
+
+  .comic-heading h2 {
+    font-size: clamp(2.55rem, 15vw, 4.4rem);
+  }
+
+  .board-page,
+  .yearbook-spread {
+    margin-top: 20px;
+  }
+
+  .board-page {
+    grid-template-columns: minmax(132px, 0.36fr) minmax(0, 1fr);
+    padding: 14px 14px 0;
+  }
+
+  .teacher-cutout {
+    margin-bottom: 0;
+  }
+
+  .teacher-cutout img {
+    height: 230px;
+  }
+
+  .chalk-card {
+    padding: 22px 14px 16px;
+    transform: rotate(-0.3deg);
+  }
+
+  .quiz-burst {
+    right: -10px;
+    top: -24px;
+    width: 86px;
+  }
+
+  .edward-photo {
+    max-width: 230px;
+    padding: 12px 12px 10px;
+  }
+
+  .edward-photo img {
+    height: 260px;
+  }
+
+  .note-page {
+    padding: 28px 14px 16px;
+  }
+
+  .yearbook-corner {
+    height: 74px;
+    width: 74px;
+  }
+
+  .comic-stack {
+    min-height: 620px;
+  }
+
+  .comic-stack img {
+    height: 330px;
+    width: min(72%, 280px);
+  }
+
+  .comic-stack img:first-child {
+    left: 0;
+    top: 20px;
+  }
+
+  .comic-stack img:nth-child(2) {
+    right: 0;
+    top: 210px;
+  }
+
+  .comic-callout {
+    bottom: 0;
+    left: 12px;
+    right: auto;
+    width: min(260px, calc(100% - 24px));
+  }
+
+  .faculty-list article {
+    grid-template-columns: 92px minmax(0, 1fr);
+    padding: 10px 12px 10px 6px;
+  }
+
+  .faculty-list img {
+    height: 112px;
+    width: 92px;
+  }
+}

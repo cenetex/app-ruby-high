@@ -1,0 +1,184 @@
+{
+  "version": 2,
+  "composition": "dialogue-closeup",
+  "defaultScene": "homeroom",
+  "scenes": [
+    {
+      "id": "homeroom",
+      "title": "Homeroom",
+      "kicker": "First Bell",
+      "status": ["Arrival", "Bell 0", "Signal quiet"],
+      "background": {
+        "src": "../../assets/nft/grok-sources/location-homeroom.jpg",
+        "alt": "Ruby High homeroom"
+      },
+      "cast": {
+        "speaker": {
+          "id": "ruby",
+          "name": "Ruby",
+          "role": "teacher",
+          "src": "./generated/ruby-cutout.png",
+          "side": "left"
+        },
+        "witnesses": [
+          {
+            "id": "lyra",
+            "name": "Lyra",
+            "role": "student",
+            "src": "./generated/lyra-cutout.png",
+            "read": "checking the stamp twice"
+          },
+          {
+            "id": "ravi",
+            "name": "Ravi",
+            "role": "student",
+            "src": "./generated/ravi-cutout.png",
+            "read": "ready to prove something"
+          }
+        ]
+      },
+      "itemSlots": [
+        {
+          "id": "notebook",
+          "label": "Notebook",
+          "src": "../../assets/nft/cards/item-notebook.png",
+          "active": true
+        },
+        {
+          "id": "flashcards",
+          "label": "Flashcards",
+          "src": "../../assets/nft/cards/item-flashcards.png"
+        }
+      ],
+      "speech": {
+        "speaker": "Ruby",
+          "text": "The answer card gives the final answer. The work order shows the step that has to support it."
+      },
+      "notebookLine": "Room steady. Ruby present. Two class items need to agree before the question is done.",
+      "actions": [
+        "Compare the answer card with the work-order step.",
+        "Ask what revised changes in the answer.",
+        "Circle the mismatch between answer card and work order.",
+        "Ask Ravi and Lyra what each can verify."
+      ]
+    },
+    {
+      "id": "cafeteria",
+      "title": "Cafeteria",
+      "kicker": "Lunch Bell",
+      "status": ["Midday", "Table 3", "Rumor loud"],
+      "background": {
+        "src": "../../assets/nft/grok-sources/location-cafeteria.jpg",
+        "alt": "Ruby High cafeteria"
+      },
+      "cast": {
+        "speaker": {
+          "id": "mika",
+          "name": "Mika",
+          "role": "student",
+          "src": "./generated/mika-cutout.png",
+          "side": "right"
+        },
+        "witnesses": [
+          {
+            "id": "sami",
+            "name": "Sami",
+            "role": "student",
+            "src": "./generated/sami-cutout.png",
+            "read": "watching the rumor spread"
+          },
+          {
+            "id": "noor",
+            "name": "Noor",
+            "role": "student",
+            "src": "./generated/noor-cutout.png",
+            "read": "already unimpressed"
+          }
+        ]
+      },
+      "itemSlots": [
+        {
+          "id": "lunch-tray",
+          "label": "Lunch Tray",
+          "src": "../../assets/nft/cards/item-lunch-tray.png",
+          "active": true
+        },
+        {
+          "id": "hall-pass",
+          "label": "Hall Pass",
+          "src": "../../assets/nft/cards/item-hall-pass.png"
+        }
+      ],
+      "speech": {
+        "speaker": "Mika",
+        "text": "Everyone heard the same announcement, but three tables copied three different versions."
+      },
+      "notebookLine": "Cafeteria pressure: source order matters before popularity does.",
+      "actions": [
+        "Ask who heard the announcement directly.",
+        "Compare the tray note with the hallway copy.",
+        "Separate repeats from first-hand details.",
+        "Use the hall pass to check the posted notice."
+      ]
+    },
+    {
+      "id": "library",
+      "title": "Library",
+      "kicker": "Quiet Period",
+      "status": ["After class", "Stack B", "Text unstable"],
+      "background": {
+        "src": "../../assets/nft/grok-sources/location-library.jpg",
+        "alt": "Ruby High library"
+      },
+      "cast": {
+        "speaker": {
+          "id": "professor-edward",
+          "name": "Professor Edward",
+          "role": "teacher",
+          "src": "./generated/professor-edward-cutout.png",
+          "side": "left"
+        },
+        "witnesses": [
+          {
+            "id": "indra",
+            "name": "Indra",
+            "role": "student",
+            "src": "./generated/indra-cutout.png",
+            "read": "not touching the margin"
+          },
+          {
+            "id": "sally",
+            "name": "Sally Science",
+            "role": "teacher",
+            "src": "./generated/sally-science-cutout.png",
+            "read": "checking for a testable change"
+          }
+        ]
+      },
+      "itemSlots": [
+        {
+          "id": "library-card",
+          "label": "Library Card",
+          "src": "../../assets/nft/cards/item-library-card.png",
+          "active": true
+        },
+        {
+          "id": "notebook",
+          "label": "Notebook",
+          "src": "../../assets/nft/cards/item-notebook.png"
+        }
+      ],
+      "speech": {
+        "speaker": "Professor Edward",
+        "text": "The catalog agrees with the spine label. The margin note is the thing pretending to be older than it is."
+      },
+      "notebookLine": "Library clue: stable sources agree, but the handwritten margin arrived late.",
+      "actions": [
+        "Check the catalog card against the shelf label.",
+        "Ask Indra which copy moved last.",
+        "Mark the margin note as a later claim.",
+        "Have Sally test whether the text changed."
+      ]
+    }
+  ]
+}

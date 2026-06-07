@@ -1,0 +1,354 @@
+#!/usr/bin/env node
+// Local Ruby High harness with AI key login + per-teacher chat.
+
+import { createServer } from "node:http";
+import { URL } from "node:url";
+import { bodyLimitForPath } from "./http-limits.mjs";
+import { serveLandingRequest } from "./landing.mjs";
+import { normalizePublicOrigin } from "./public-base.mjs";
+import {
+  AuthService,
+  ChatService,
+  FacultyService,
+  RubyHighService,
+  TelegramService,
+  XSocialService,
+  createStateStore,
+  handleAppRoutes,
+} from "../dist/index.js";
+
+// The AI key callback accepts http://localhost:3000 for local dev callbacks.
+// Production callback bases should be HTTPS. Default accordingly.
+const PORT = Number(process.env.PORT ?? 3000);
+const HOST = process.env.HOST ?? "localhost";
+const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
+const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE) ?? `http://${HOST}:${PORT}`;
+
+const stateStore = await createStateStore({ jsonPath: STATE_PATH ?? undefined });
+console.log(`[ruby-high] state store: ${stateStore.describe()}`);
+
+const facultySvc = await FacultyService.start({});
+const authSvc = await AuthService.start({}, stateStore);
+const chatSvc = await ChatService.start({});
+
+const fakeRuntime = {
+  agentId: "local-ruby",
+  character: { name: "Ruby" },
+  getService: (type) => {
+    if (type === FacultyService.serviceType) return facultySvc;
+    if (type === RubyHighService.serviceType) return rubySvc;
+    if (type === AuthService.serviceType) return authSvc;
+    if (type === ChatService.serviceType) return chatSvc;
+    if (type === XSocialService.serviceType) return xSocialSvc;
+    if (type === TelegramService.serviceType) return telegramSvc;
+    return null;
+  },
+  getSetting: (k) => process.env[k] ?? null,
+};
+
+let xSocialSvc = null;
+try {
+  xSocialSvc = await XSocialService.start(fakeRuntime);
+} catch (err) {
+  console.error("XSocialService failed to start:", err.message);
+}
+let telegramSvc = null;
+try {
+  telegramSvc = await TelegramService.start(fakeRuntime);
+} catch (err) {
+  console.error("TelegramService failed to start:", err.message);
+}
+
+const rubySvc = await (async () => {
+  const svc = new RubyHighService(fakeRuntime, stateStore);
+  await svc["hydrate"]();
+  svc.setFacultyService(facultySvc);
+  return svc;
+})();
+chatSvc.setRubyHighService(rubySvc);
+
+function readRawBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let bytes = 0;
+    let rejected = false;
+    req.on("data", (c) => {
+      if (rejected) return;
+      bytes += c.length;
+      if (bytes > maxBytes) {
+        rejected = true;
+        const err = new Error("Request body too large");
+        err.statusCode = 413;
+        req.destroy();
+        reject(err);
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      if (rejected) return;
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (err) => { if (!rejected) reject(err); });
+  });
+}
+
+async function readJsonBody(req, maxBytes) {
+  const buf = await readRawBody(req, maxBytes);
+  return buf ? JSON.parse(buf) : {};
+}
+
+function deriveClientIp(req) {
+  // Local dev usually surfaces socket.remoteAddress; if you're behind a proxy
+  // for testing, x-forwarded-for wins.
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length > 0) {
+    return xff.split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress ?? null;
+}
+
+function makeRouteContext(req, res, url) {
+  const cookieHeader = req.headers.cookie ?? null;
+  const apiKeyRaw = req.headers["x-openrouter-key"];
+  const apiKeyHeader = Array.isArray(apiKeyRaw) ? (apiKeyRaw[0] ?? null) : (apiKeyRaw ?? null);
+  return {
+    method: req.method ?? "GET",
+    pathname: url.pathname,
+    url,
+    runtime: fakeRuntime,
+    res,
+    cookieHeader,
+    userAgentHeader: req.headers["user-agent"] ?? null,
+    visitorHeader: req.headers["x-ruby-high-visitor"] ?? null,
+    apiKeyHeader,
+    isSecure: false,
+    clientIp: deriveClientIp(req),
+    contentTypeHeader: req.headers["content-type"] ?? null,
+    originHeader: req.headers.origin ?? null,
+    authorizationHeader: req.headers.authorization ?? null,
+    stripeSignatureHeader: req.headers["stripe-signature"] ?? null,
+    ifNoneMatch: req.headers["if-none-match"] ?? null,
+    acceptEncoding: req.headers["accept-encoding"] ?? null,
+    callbackUrlBuilder: (path) => {
+      const base = new URL(PUBLIC_BASE);
+      return base.origin + path;
+    },
+    error(_r, message, status = 500) {
+      if (res.headersSent) return;
+      res.statusCode = status;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: message }));
+    },
+    json(_r, data, status = 200) {
+      if (res.headersSent) return;
+      res.statusCode = status;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(data));
+    },
+    readRawBody: () => readRawBody(req, bodyLimitForPath(url.pathname)),
+    readJsonBody: () => readJsonBody(req, bodyLimitForPath(url.pathname)),
+  };
+}
+
+function healthPayload() {
+  return {
+    ok: true,
+    app: "ruby-high",
+    build: process.env.RUBY_HIGH_BUILD ?? "dev",
+    state: stateStore?.describe?.() ?? "starting",
+    t: Date.now(),
+  };
+}
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? HOST}`);
+
+  if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(healthPayload()));
+    return;
+  }
+
+  if (await serveLandingRequest(req, res, url)) {
+    return;
+  }
+
+  // Convenience dev endpoints (no auth needed) for poking at the bank.
+  if (req.method === "GET" && url.pathname === "/dev/pick") {
+    try {
+      const state = rubySvc.pickAndPose("ruby-high:local-ruby", {
+        faculty: url.searchParams.get("faculty") ?? undefined,
+        subject: url.searchParams.get("subject") ?? undefined,
+        difficulty: url.searchParams.get("difficulty") ?? undefined,
+      });
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({
+        ok: true,
+        question: state.current?.prompt,
+        faculty: state.faculty,
+        subject: state.current?.subject,
+        difficulty: state.current?.difficulty,
+        asked: state.askedQuestionIds.length,
+      }));
+    } catch (err) {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/dev/clear") {
+    rubySvc.clearBoard("ruby-high:local-ruby");
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/dev/reset") {
+    rubySvc.resetSession("ruby-high:local-ruby");
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/dev/faculty") {
+    const roster = facultySvc.faculty().map((f) => ({
+      ...f,
+      subjects: facultySvc.subjects(f.id),
+      questionCount: facultySvc.bank(f.id)?.questions.length ?? 0,
+    }));
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true, roster }));
+    return;
+  }
+
+  // Test-only: force-complete the current grade and advance to the next.
+  // Used by the student journey E2E test.
+  if (req.method === "POST" && url.pathname === "/dev/tick-grade") {
+    try {
+      const cookieHeader = req.headers.cookie ?? null;
+      const sessionId = authSvc ? authSvc.stateKeyForCookie(cookieHeader) : "rh:anonymous";
+      const state = rubySvc.getOrCreate(sessionId);
+      const ch = state.character;
+      const grade = state.currentGrade;
+      if (!ch || !grade) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ ok: false, error: "No character or grade" }));
+        return;
+      }
+      const reqDays = { "9": 1, "10": 1, "11": 2, "12": 3 }[grade] || 1;
+      const roomTargets = { "9": 1, "10": 2, "11": 3, "12": 3 };
+      const roomCount = roomTargets[grade] || 1;
+      const coreFaculty = ["ruby", "sally-science", "professor-edward"].slice(0, roomCount);
+      ch.graduationClassrooms = ch.graduationClassrooms ?? {};
+      ch.graduationClassrooms[grade] = coreFaculty;
+      // Assign 3 random items for this grade (one per rarity tier).
+      ch.gradeItems = ch.gradeItems || {};
+      if (!ch.gradeItems[grade]) {
+        const allItems = ["item-hall-pass","item-lunch-tray","item-lab-flask","item-flashcards","item-notebook","item-library-card"];
+        const rarities = { "item-hall-pass":"common","item-lunch-tray":"common","item-lab-flask":"uncommon","item-flashcards":"uncommon","item-notebook":"rare","item-library-card":"rare" };
+        const items = [];
+        const byRarity = { common: [], uncommon: [], rare: [] };
+        for (const id of allItems) {
+          const r = rarities[id] || "common";
+          if (byRarity[r].length < 1) { byRarity[r].push(id); items.push(id); }
+          if (items.length >= 3) break;
+        }
+        ch.gradeItems[grade] = items;
+      }
+      ch.dailyClasses = ch.dailyClasses ?? {};
+      for (const facultyId of coreFaculty) {
+        for (let d = 0; d < reqDays; d++) {
+          const date = new Date(Date.now() - (d + 1) * 86400000).toISOString().slice(0, 10);
+          const key = grade + ":" + facultyId + ":" + date;
+          if (!ch.dailyClasses[key]) {
+            ch.dailyClasses[key] = {
+              grade, facultyId, date,
+              status: "complete", questionCount: 3, correctCount: 3,
+              letterGrade: "A", scoreTotal: 270, scoreMax: 300,
+              updatedAt: Date.now(),
+            };
+          }
+        }
+      }
+      const realToday = new Date().toISOString().slice(0, 10);
+      for (const facultyId of coreFaculty) {
+        const todayKey = grade + ":" + facultyId + ":" + realToday;
+        if (ch.dailyClasses[todayKey]) delete ch.dailyClasses[todayKey];
+      }
+      ch.streak = {
+        grade,
+        count: reqDays,
+        lastDate: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+      };
+      ch.pendingGraduation = { grade, readyAt: Date.now(), summary: { correct: reqDays, total: reqDays } };
+      const advance = { "9": "10", "10": "11", "11": "12", "12": null }[grade];
+      if (!state.completedGrades.includes(grade)) state.completedGrades.push(grade);
+      ch.yearbook = ch.yearbook || [];
+      if (!ch.yearbook.some(y => y.grade === grade)) {
+        ch.yearbook.push({ grade, completedAt: Date.now(), superlatives: [], reward: { kind: "photo" }, diplomaUrl: null });
+      }
+      if (advance) { state.currentGrade = advance; ch.streak = { grade: advance, count: 0 }; }
+      ch.pendingGraduation = null;
+      await rubySvc.flushSession(sessionId);
+      const nextState = rubySvc.getOrCreate(sessionId);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: true, grade, nextGrade: nextState.currentGrade, completedGrades: nextState.completedGrades }));
+    } catch (err) {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    }
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/apps/ruby-high")) {
+    const ctx = makeRouteContext(req, res, url);
+    try {
+      const handled = await handleAppRoutes(ctx);
+      if (handled) return;
+    } catch (err) {
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      }
+      return;
+    }
+  }
+
+  if (!res.headersSent) {
+    res.statusCode = 404;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Not found", path: url.pathname }));
+  }
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`Ruby High dev server listening at ${PUBLIC_BASE}`);
+  console.log(`  Open:               ${PUBLIC_BASE}/api/apps/ruby-high/viewer`);
+  console.log(`  Sign in:            ${PUBLIC_BASE}/api/apps/ruby-high/auth/start`);
+  console.log(`  Auth status:        ${PUBLIC_BASE}/api/apps/ruby-high/auth/me`);
+  console.log(`  Pick (current):     ${PUBLIC_BASE}/dev/pick`);
+  console.log(`  Pick (Sally hard):  ${PUBLIC_BASE}/dev/pick?faculty=sally-science&difficulty=hard`);
+  console.log(`  Faculty roster:     ${PUBLIC_BASE}/dev/faculty`);
+  console.log(`  Session API:        ${PUBLIC_BASE}/api/apps/ruby-high/session/ruby-high%3Alocal-ruby`);
+  console.log("");
+  console.log("AI key callback URL is", new URL(PUBLIC_BASE).origin + "/api/apps/ruby-high/auth/callback");
+  console.log("If the AI key callback is rejected, set RUBY_HIGH_PUBLIC_BASE to a URL it allows.");
+});
+
+const stop = () => {
+  server.close(() => process.exit(0));
+};
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);

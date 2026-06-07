@@ -1,0 +1,228 @@
+import { RubyHighService } from "../services/ruby-high-service.js";
+import { TokenBucket } from "../services/rate-limit.js";
+import { visitorHashFromHeader } from "../services/auth-service.js";
+import type { RouteContext } from "./context.js";
+import { APP_ROUTE_PREFIX } from "./constants.js";
+
+export const METRICS_EVENT_PATH = `${APP_ROUTE_PREFIX}/metrics/event`;
+
+const METRICS_EVENT_LIMITER = new TokenBucket(60, 1);
+
+type MetricsEventBody = {
+  type?: unknown;
+  inactiveMs?: unknown;
+  reason?: unknown;
+  path?: unknown;
+  referrer?: unknown;
+  ref?: unknown;
+  destination?: unknown;
+  kind?: unknown;
+  landing?: unknown;
+  shareId?: unknown;
+  grade?: unknown;
+  packId?: unknown;
+  repeatRate?: unknown;
+  diagnosticType?: unknown;
+  level?: unknown;
+  stage?: unknown;
+  errorMessage?: unknown;
+  errorName?: unknown;
+  errorCode?: unknown;
+  dataError?: unknown;
+  dataMessage?: unknown;
+  causeMessage?: unknown;
+  privyErrorCode?: unknown;
+  walletClientType?: unknown;
+  connectorType?: unknown;
+  provider?: unknown;
+  addressPreview?: unknown;
+  phantomAvailable?: unknown;
+  hasWindowPhantom?: unknown;
+  hasWindowSolana?: unknown;
+  providerIsPhantom?: unknown;
+  hasConnect?: unknown;
+  hasSignMessage?: unknown;
+};
+
+export async function handleMetricsEventRoute(
+  ctx: RouteContext,
+  deps: {
+    ruby: RubyHighService;
+    sessionId: string;
+  },
+): Promise<boolean> {
+  if (ctx.pathname !== METRICS_EVENT_PATH) return false;
+  if (ctx.method !== "POST") {
+    ctx.error(ctx.res, "Method not allowed", 405);
+    return true;
+  }
+  const limitKey = metricsRateLimitKey(ctx.clientIp, deps.sessionId);
+  if (!METRICS_EVENT_LIMITER.take(limitKey)) {
+    const retryAfter = METRICS_EVENT_LIMITER.retryAfterSeconds(limitKey);
+    const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+    res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
+    ctx.error(ctx.res, "Too many metrics events.", 429);
+    return true;
+  }
+  const body = (await ctx.readJsonBody().catch(() => ({}))) as MetricsEventBody;
+  const type = typeof body?.type === "string" ? body.type : "";
+  const visitorHash = visitorHashFromHeader(ctx.visitorHeader);
+  if (type === "app_open") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordAppOpenDurably(deps.sessionId, {
+      source: "viewer",
+      visitorHash,
+      path: typeof body.path === "string" ? body.path : undefined,
+      referrer: typeof body.referrer === "string" ? body.referrer : undefined,
+      ref: typeof body.ref === "string" ? body.ref : undefined,
+      userAgent: requestHeaderString(ctx.userAgentHeader),
+    }));
+  }
+  if (type === "share_initiated") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordShareInitiatedDurably(deps.sessionId, {
+      visitorHash,
+      shareId: typeof body.shareId === "string" ? body.shareId : undefined,
+      destination: typeof body.destination === "string" ? body.destination : undefined,
+      kind: typeof body.kind === "string" ? body.kind : undefined,
+    }));
+  }
+  if (type === "share_link_visited") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordShareLinkVisitedDurably(deps.sessionId, {
+      visitorHash,
+      ref: typeof body.ref === "string" ? body.ref : undefined,
+      landing: typeof body.landing === "string" ? body.landing : undefined,
+    }));
+  }
+  if (type === "session_resume") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordSessionResumeDurably(deps.sessionId, {
+      source: "viewer",
+      visitorHash,
+      inactiveMs: typeof body.inactiveMs === "number" ? body.inactiveMs : Number(body.inactiveMs),
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+    }));
+  }
+  if (type === "yearbook_open") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordYearbookOpenDurably(deps.sessionId, {
+      visitorHash,
+      shareId: typeof body.shareId === "string" ? body.shareId : undefined,
+      grade: typeof body.grade === "string" ? body.grade : undefined,
+    }));
+  }
+  if (type === "yearbook_copy") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordYearbookCopyDurably(deps.sessionId, {
+      visitorHash,
+      shareId: typeof body.shareId === "string" ? body.shareId : undefined,
+      grade: typeof body.grade === "string" ? body.grade : undefined,
+    }));
+  }
+  if (type === "first_bell_card_copied") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordFirstBellCardCopiedDurably(deps.sessionId, {
+      visitorHash,
+      artifactId: typeof body.shareId === "string" ? body.shareId : undefined,
+    }));
+  }
+  if (type === "guest_spotlight_seen") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordGuestSpotlightSeenDurably(deps.sessionId, {
+      visitorHash,
+      packId: typeof body.packId === "string" ? body.packId : undefined,
+    }));
+  }
+  if (type === "guest_spotlight_started") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordGuestSpotlightStartedDurably(deps.sessionId, {
+      visitorHash,
+      packId: typeof body.packId === "string" ? body.packId : undefined,
+    }));
+  }
+  if (type === "balance_sample") {
+    return await respondAfterMetricPersist(ctx, () => deps.ruby.recordBalanceSampleDurably({
+      source: "viewer",
+      metadata: {
+        ...(Number.isFinite(Number(body.repeatRate)) ? { repeatRate: Number(body.repeatRate) } : {}),
+      },
+    }));
+  }
+  if (type === "privy_auth_error") {
+    return await respondAfterMetricPersist(ctx, async () => {
+      await deps.ruby.recordMetricEventDurably("error", {
+        sessionId: deps.sessionId,
+        ...(visitorHash ? { visitorHash } : {}),
+        source: "viewer",
+        feature: "privy_wallet_auth",
+        step: requestString(body.diagnosticType) || requestString(body.stage) || "privy_auth_error",
+        status: "error",
+        metadata: privyAuthErrorMetadata(body),
+      });
+    });
+  }
+  ctx.error(ctx.res, "Unknown metrics event type.", 400);
+  return true;
+}
+
+function metricsRateLimitKey(clientIp: string | null | undefined, sessionId: string): string {
+  return `${clientIp || "no-ip"}:${sessionId || "anon"}`;
+}
+
+function requestHeaderString(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return undefined;
+}
+
+function requestString(value: unknown): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const text = String(value).replace(/\s+/g, " ").trim();
+  return text || undefined;
+}
+
+function requestBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+function privyAuthErrorMetadata(body: MetricsEventBody): Record<string, string | boolean> {
+  const metadata: Record<string, string | boolean> = {};
+  const stringFields: Array<keyof MetricsEventBody> = [
+    "diagnosticType",
+    "level",
+    "stage",
+    "errorMessage",
+    "errorName",
+    "errorCode",
+    "dataError",
+    "dataMessage",
+    "causeMessage",
+    "privyErrorCode",
+    "walletClientType",
+    "connectorType",
+    "provider",
+    "addressPreview",
+  ];
+  for (const field of stringFields) {
+    const value = requestString(body[field]);
+    if (value) metadata[field] = value;
+  }
+  const booleanFields: Array<keyof MetricsEventBody> = [
+    "phantomAvailable",
+    "hasWindowPhantom",
+    "hasWindowSolana",
+    "providerIsPhantom",
+    "hasConnect",
+    "hasSignMessage",
+  ];
+  for (const field of booleanFields) {
+    const value = requestBoolean(body[field]);
+    if (value != null) metadata[field] = value;
+  }
+  return metadata;
+}
+
+async function respondAfterMetricPersist(ctx: RouteContext, persist: () => Promise<void>): Promise<true> {
+  try {
+    await persist();
+    ctx.json(ctx.res, { ok: true });
+  } catch {
+    ctx.error(ctx.res, "Could not persist metrics event.", 503);
+  }
+  return true;
+}

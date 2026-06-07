@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ruby High Visual Scene Prototype</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="scene-shell" aria-label="Ruby High visual scene prototype">
+      <section class="stage" data-scene-stage data-room="homeroom" aria-label="Homeroom scene"></section>
+
+      <aside class="design-panel" aria-label="Visual language notes">
+        <h2>Engine Scene</h2>
+        <nav class="scene-picker" data-scene-tabs aria-label="Scene selection"></nav>
+        <ol>
+          <li>C UI snapshot as source of truth</li>
+          <li>featured speaker in close-up</li>
+          <li>witnesses lower in the room</li>
+          <li>small reaction bubbles</li>
+          <li>items in a quiet side rail</li>
+          <li>Notebook/action tray as equipment</li>
+        </ol>
+        <p>The prototype uses real snapshots from the C engine. The room tells place, the close-up tells emotion, and the choices carry the player verb.</p>
+      </aside>
+    </main>
+    <script src="./engine-scene-data.js"></script>
+    <script src="./scene-data.js"></script>
+  </body>
+</html>
