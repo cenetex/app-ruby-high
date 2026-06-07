@@ -38,7 +38,6 @@ class AuthOnlyStore implements StateStoreLike {
   async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
   async deleteTeacher(_teacherId: string): Promise<void> {}
   async saveTeacher(_record: any): Promise<void> {}
-  async saveTeacher(_record: any): Promise<void> {}
   async deleteDraftPack(_draftId: string): Promise<void> {}
   async deletePackInstallation(_userId: string, _packId: string): Promise<void> {}
   async deleteAuthSession(token: string): Promise<void> {

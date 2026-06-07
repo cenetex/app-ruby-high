@@ -3107,7 +3107,7 @@ async function handlePackSharePage(
   packId: string,
 ): Promise<boolean> {
   const format = ctx.url?.searchParams.get("format") ?? "";
-  const pack = deps.ruby.getPack(packId);
+  const pack = await deps.ruby.getPack(packId);
   if (!pack) {
     ctx.error(ctx.res, "Pack not found.", 404);
     return true;

@@ -559,6 +559,7 @@ describe("Hall Pass wallet", () => {
     const state = ruby.getOrCreate(sid);
     state.wallet = {
       meritStars: 0,
+      meritPoints: 0,
       hallPasses: 7,
       welcomeHallPassesGrantedAt: 123,
       transactions: [{

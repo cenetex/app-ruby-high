@@ -39,8 +39,7 @@ class FailingSessionStore implements StateStoreLike {
   async savePackInstallation(_record: StoredPackInstallationRecord): Promise<void> {}
   async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
   async deleteTeacher(_teacherId: string): Promise<void> {}
-  async saveTeacher(_record: any): Promise<void> {}
-  async saveTeacher(_record: any): Promise<void> {}
+  async saveTeacher(_record: StoredTeacherRecord): Promise<void> {}
   async deleteDraftPack(_draftId: string): Promise<void> {}
   async deletePackInstallation(_userId: string, _packId: string): Promise<void> {}
   async deleteAuthSession(_token: string): Promise<void> {}
@@ -64,6 +63,7 @@ class MemorySessionStore implements StateStoreLike {
   async savePackInstallation(_record: StoredPackInstallationRecord): Promise<void> {}
   async deletePack(_ownerSessionId: string | null, _packId: string): Promise<void> {}
   async deleteTeacher(_teacherId: string): Promise<void> {}
+  async saveTeacher(_record: StoredTeacherRecord): Promise<void> {}
   async deleteDraftPack(_draftId: string): Promise<void> {}
   async deletePackInstallation(_userId: string, _packId: string): Promise<void> {}
   async deleteAuthSession(_token: string): Promise<void> {}

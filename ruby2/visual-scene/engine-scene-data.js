@@ -1,1 +1,0 @@
-window.RUBY2_ENGINE_SNAPSHOTS = [];
