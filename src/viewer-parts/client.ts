@@ -12628,16 +12628,9 @@ export function runViewerClient(bootstrap) {
     const fast = round && !round.resolved;
     sessionPollHandle = setTimeout(async () => {
       await fetchSession();
-      // Track manual scrolling to suppress auto-scroll temporarily.
-  if (els.stream) {
-    els.stream.addEventListener("scroll", function() {
-      lastManualScroll = Date.now();
-    }, { passive: true });
-  }
   adaptiveSchedule();
     }, fast ? 750 : 4000);
   }
-  // Track manual scrolling to suppress auto-scroll temporarily.
   if (els.stream) {
     els.stream.addEventListener("scroll", function() {
       lastManualScroll = Date.now();

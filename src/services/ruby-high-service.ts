@@ -2980,6 +2980,12 @@ export class RubyHighService extends Service {
       this.ensureRoster(state, DEFAULT_GRADE);
       this.sessions.set(sessionId, state);
     }
+    // Clear expired item offers so stale offers don't linger.
+    if (state.character?.activeItemOffer && Date.now() > state.character.activeItemOffer.expiresAt) {
+      state.character.activeItemOffer = null;
+      state.updatedAt = Date.now();
+      void this.persistSession(sessionId);
+    }
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
     const repairedMemory = this.backfillCardMemory(state);

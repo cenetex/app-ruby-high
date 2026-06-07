@@ -162,7 +162,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </section>
 
 
-    <section class="stream" id="stream"></section>
+    <div class="item-offer-host" id="item-offer-host"></div>
+        <section class="stream" id="stream"></section>
 
     <section class="composer-zone" id="composer-zone">
       <button class="chat-action-btn" id="next-btn" type="button" hidden>Chat</button>
