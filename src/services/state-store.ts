@@ -625,8 +625,34 @@ export class StateStore implements StateStoreLike {
     this.pendingResolve = null;
     this.pendingReject = null;
 
+    // Snapshot all map state now so mutations that land during the
+    // (async) writeMapsSnapshot() call are not lost. If a concurrent
+    // scheduleWrite() created a new pendingPromise after we cleared the
+    // old one, we chain the next write after this one completes.
+    const sessionSnapshot = new Map(this.snapshot);
+    const authUsersSnap = new Map(this.authUsers);
+    const authSessionsSnap = new Map(this.authSessions);
+    const importedPacksSnap = new Map(this.importedPacks);
+    const teachersSnap = new Map(this.teachers);
+    const draftPacksSnap = new Map(this.draftPacks);
+    const packInstallationsSnap = new Map(this.packInstallations);
+    const metricEventsSnap = new Map(this.metricEvents);
+
     const next = this.writeChain.catch(() => {}).then(async () => {
-      await this.writeCurrentSnapshot();
+      await this.writeMapsSnapshot(
+        sessionSnapshot,
+        authUsersSnap,
+        authSessionsSnap,
+        importedPacksSnap,
+        teachersSnap,
+        draftPacksSnap,
+        packInstallationsSnap,
+        metricEventsSnap,
+      );
+      // If a new pending write was scheduled while we were flushing, chain it now.
+      if (this.pendingTimer) {
+        this.writeNow();
+      }
     });
     // Log + swallow on the chain so a fire-and-forget caller can't silently
     // accumulate unhandled rejections; return a fresh handle to the same
@@ -640,19 +666,41 @@ export class StateStore implements StateStoreLike {
   }
 
   private async writeCurrentSnapshot(): Promise<void> {
+    return this.writeMapsSnapshot(
+      this.snapshot,
+      this.authUsers,
+      this.authSessions,
+      this.importedPacks,
+      this.teachers,
+      this.draftPacks,
+      this.packInstallations,
+      this.metricEvents,
+    );
+  }
+
+  private async writeMapsSnapshot(
+    sessions: Map<string, QuizState>,
+    authUsers: Map<string, AuthUserRecord>,
+    authSessions: Map<string, AuthSessionRecord>,
+    importedPacks: Map<string, StoredContentPackRecord>,
+    teachers: Map<string, StoredTeacherRecord>,
+    draftPacks: Map<string, StoredDraftContentPackRecord>,
+    packInstallations: Map<string, StoredPackInstallationRecord>,
+    metricEvents: Map<string, StoredMetricEventRecord>,
+  ): Promise<void> {
     const dir = dirname(this.path);
     await mkdir(dir, { recursive: true });
     const tmp = resolve(dir, `.${basename(this.path)}.${process.pid}.${nextStateStoreWriteSeq()}.tmp`);
     try {
       await writeFile(tmp, JSON.stringify({
-        sessions: Array.from(this.snapshot.values()),
-        authUsers: Array.from(this.authUsers.values()),
-        authSessions: Array.from(this.authSessions.values()),
-        packs: Array.from(this.importedPacks.values()),
-        teachers: Array.from(this.teachers.values()),
-        draftPacks: Array.from(this.draftPacks.values()),
-        packInstallations: Array.from(this.packInstallations.values()),
-        metricEvents: Array.from(this.metricEvents.values()),
+        sessions: Array.from(sessions.values()),
+        authUsers: Array.from(authUsers.values()),
+        authSessions: Array.from(authSessions.values()),
+        packs: Array.from(importedPacks.values()),
+        teachers: Array.from(teachers.values()),
+        draftPacks: Array.from(draftPacks.values()),
+        packInstallations: Array.from(packInstallations.values()),
+        metricEvents: Array.from(metricEvents.values()),
       }, null, 2), "utf8");
       await rename(tmp, this.path);
     } catch (err) {

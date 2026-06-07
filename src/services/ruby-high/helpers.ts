@@ -230,13 +230,17 @@ export function awardSessionScore(
   const currentStars = Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? 0)));
   const grade = state.currentGrade ?? "9";
   const result = awardStars(currentPoints, currentStars, points, grade);
-  state.score.points = (state.score.points ?? 0) + points;
-  state.score.possible = Math.max(0, Math.floor(Number(state.score.possible ?? 0))) + possible;
+  const prevPossible = Math.max(0, Math.floor(Number(state.score.possible ?? 0)));
+  const newPoints = (state.score.points ?? 0) + points;
+  const newPossible = prevPossible + possible;
+  const newHallPasses = Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0)));
+  state.score.points = newPoints;
+  state.score.possible = newPossible;
   state.wallet = {
     ...(state.wallet ?? {}),
     meritStars: result.stars,
     meritPoints: result.points,
-    hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
+    hallPasses: newHallPasses,
   };
   return { base, multiplier, points, possible };
 }
