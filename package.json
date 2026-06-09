@@ -47,8 +47,7 @@
     "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
     "nft:crop-cards": "node scripts/generate-nft-card-crops.mjs",
     "deploy": "flyctl deploy --app ruby-high --remote-only --build-arg RUBY_HIGH_BUILD=$(git rev-parse --short=12 HEAD) && npm run smoke:prod",
-    "clean": "rm -rf dist dist-spa .turbo",
-    "catalog:fetch": "node scripts/fetch-model-catalog.mjs"
+    "clean": "rm -rf dist dist-spa .turbo"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1054.0",

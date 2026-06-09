@@ -640,9 +640,6 @@ export function runViewerClient(bootstrap) {
     accountUnlockSlot: $("account-unlock-slot"),
     accountComicSummary: $("account-comic-summary"),
     accountComics: $("account-comics"),
-    accountItemSummary: $("account-item-summary"),
-    accountItems: $("account-items"),
-    itemOfferHost: $("item-offer-host"),
     accountHistoryList: $("account-history-list"),
     accountTrustList: $("account-trust-list"),
     checking: $("checking"),
@@ -760,8 +757,6 @@ export function runViewerClient(bootstrap) {
   let showWelcomeBackCopy = false;
   let firstRunCreationOpened = false;
   let lastPostClassToastShown = false;
-  let firstBellStartInFlight = false;
-  let firstBellLastCardId = null;
   let authed = null; // app-owned Ruby High session ready
   let aiEnabled = false; // Browser/local/hosted text AI + Ruby High session present
   let localAiEnabled = false;
@@ -978,8 +973,6 @@ export function runViewerClient(bootstrap) {
   // for the AI in offline mode.
   function shouldAutoStartClass(t) {
     if (!t || !t.character) return false;
-    if (t.first_bell && t.first_bell.status !== "complete") return false;
-    if (firstBellArtifact(t) && !hasCompletedAnyClass(t)) return false;
     if (graduatedFor(t.character)) return false;
     if (t.character.pendingGraduation) return false;
     if (t.graduation_ready) return false;
@@ -989,93 +982,6 @@ export function runViewerClient(bootstrap) {
     const today = t.active_course_progress && t.active_course_progress.today;
     if (today && today.status === "complete") return false;
     return true;
-  }
-  function shouldPromptFirstBell(t) {
-    return !!(t && t.character && (!t.first_bell || t.first_bell.status === "new"));
-  }
-  async function startFirstBell() {
-    if (firstBellStartInFlight) return;
-    firstBellStartInFlight = true;
-    try {
-      await command({ type: "start-first-bell" });
-    } finally {
-      firstBellStartInFlight = false;
-    }
-  }
-  function firstBellArtifact(t) {
-    return t && t.first_bell && t.first_bell.artifact ? t.first_bell.artifact : null;
-  }
-  function firstBellScoreText(score) {
-    const n = Number(score);
-    return Number.isFinite(n) ? n.toFixed(1).replace(/\.0$/, "") + "/10" : "verdict filed";
-  }
-  async function copyFirstBellArtifact(artifact, btn) {
-    if (!artifact) return;
-    const original = btn && btn.textContent;
-    try {
-      await copyTextToClipboard(artifact.copyText || "Ruby High First Bell: " + (artifact.characterName || "A student") + " got graded. Attend class: ruby-high.ai");
-      postViewerMetricEvent("first_bell_card_copied", { shareId: artifact.id || "" });
-      postViewerMetricEvent("share_initiated", { shareId: artifact.id || "", destination: "copy", kind: "first_bell_card" });
-      if (btn) btn.textContent = "Copied";
-    } catch (_err) {
-      if (btn) btn.textContent = "Failed";
-    } finally {
-      if (btn) setTimeout(() => { btn.textContent = original || "Copy card"; }, 1200);
-    }
-  }
-  function renderFirstBellCard(t, options) {
-    const artifact = firstBellArtifact(t);
-    if (!artifact) return null;
-    const card = document.createElement("div");
-    card.className = "first-bell-card";
-    const kicker = document.createElement("div");
-    kicker.className = "first-bell-kicker";
-    kicker.textContent = "First Bell Card unlocked";
-    card.appendChild(kicker);
-    const title = document.createElement("div");
-    title.className = "first-bell-title";
-    title.textContent = artifact.characterName || "Ruby High student";
-    card.appendChild(title);
-    const score = document.createElement("div");
-    score.className = "first-bell-score";
-    score.textContent = firstBellScoreText(artifact.score);
-    card.appendChild(score);
-    const comment = document.createElement("blockquote");
-    comment.className = "first-bell-comment";
-    comment.textContent = artifact.teacherComment || "Ruby filed the first note.";
-    card.appendChild(comment);
-    const meta = document.createElement("div");
-    meta.className = "first-bell-meta";
-    meta.textContent = artifact.classmateLine || (artifact.bestResponderName ? artifact.bestResponderName + " took best response." : "The class had opinions.");
-    card.appendChild(meta);
-    const actions = document.createElement("div");
-    actions.className = "first-bell-actions";
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "primary";
-    copy.textContent = "Copy card";
-    copy.addEventListener("click", () => copyFirstBellArtifact(artifact, copy));
-    actions.appendChild(copy);
-    const next = document.createElement("button");
-    next.type = "button";
-    next.className = "secondary";
-    next.textContent = options && options.compact ? "Keep playing" : "Start today's class";
-    next.addEventListener("click", () => { void pickNext(); });
-    actions.appendChild(next);
-    card.appendChild(actions);
-    return card;
-  }
-  function appendFirstBellCardToStream(t) {
-    const artifact = firstBellArtifact(t);
-    if (!artifact || artifact.id === firstBellLastCardId) return;
-    firstBellLastCardId = artifact.id;
-    const wrap = document.createElement("div");
-    wrap.className = "msg first-bell-summary";
-    const card = renderFirstBellCard(t, { compact: false });
-    if (card) wrap.appendChild(card);
-    els.stream.appendChild(wrap);
-    scrollIfPinned();
-    showCongrats("First Bell Card unlocked.", true, 7000);
   }
   function hasCompletedAnyClass(t) {
     if (!t || !t.character) return false;
@@ -1312,12 +1218,13 @@ export function runViewerClient(bootstrap) {
     });
   }
 
-  var lastManualScroll = 0;
-
+  function isNearBottom() {
+    const { scrollTop, scrollHeight, clientHeight } = els.stream;
+    return scrollHeight - (scrollTop + clientHeight) < 80;
+  }
   function scrollIfPinned(force) {
-    var sinceScroll = Date.now() - lastManualScroll;
-    if (force || sinceScroll > 400) {
-      requestAnimationFrame(function() {
+    if (force || isNearBottom()) {
+      requestAnimationFrame(() => {
         els.stream.scrollTop = els.stream.scrollHeight;
       });
     }
@@ -2283,9 +2190,7 @@ export function runViewerClient(bootstrap) {
     renderAccountHallPassCards();
     renderAccountCharacters();
     renderAccountComics();
-    renderAccountItems();
     renderAccountHistory();
-    renderItemOffer();
     renderAccountTrust();
   }
 
@@ -3254,68 +3159,6 @@ export function runViewerClient(bootstrap) {
 
   function openCharacterCreationFromAccount() {
     openCharacterSheetFromAccount();
-  }
-
-  function renderAccountItems() {
-    if (!els.accountItems || !els.accountItemSummary) return;
-    var t = lastTelemetry;
-    var items = Array.isArray(t && t.item_collection) ? t.item_collection : [];
-    var gradeItems = (t && t.grade_items) || {};
-    var eqId = (t && t.equipped_item) || null;
-    els.accountItemSummary.textContent = items.length + " collected";
-    var grid = document.createElement("div");
-    grid.className = "account-item-grid";
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var card = document.createElement("div");
-      card.className = "account-item-card" + (item.itemId === eqId ? " is-equipped" : "");
-      card.title = item.itemId === eqId ? "Equipped" : "Click to equip";
-      var art = document.createElement("img");
-      art.className = "item-art";
-      art.src = apiBase + "/assets/nft/ruby-high-item-cards.png";
-      art.alt = item.name; card.appendChild(art);
-      var nm = document.createElement("div"); nm.className = "item-name"; nm.textContent = item.name; card.appendChild(nm);
-      var sub = document.createElement("div"); sub.className = "item-subtitle"; sub.textContent = item.subtitle || ""; card.appendChild(sub);
-      if (item.quote) { var q = document.createElement("div"); q.className = "item-quote"; q.textContent = "\u201C" + item.quote + "\u201D"; card.appendChild(q); }
-      var gd = document.createElement("div"); gd.className = "item-grade"; gd.textContent = "Grade " + item.grade; card.appendChild(gd);
-      var badge = document.createElement("div"); badge.className = "item-equip-badge"; badge.textContent = "Equipped"; card.appendChild(badge);
-      (function(id, eid) { card.addEventListener("click", function() { command({ type: "equip-item", item: id === eid ? null : id }); }); })(item.itemId, eqId);
-      grid.appendChild(card);
-    }
-    var cg = (t && t.current_grade) || "9"; var gItems = gradeItems[cg];
-    if (Array.isArray(gItems)) {
-      for (var j = 0; j < gItems.length; j++) {
-        var gi = gItems[j]; if (gi.collected) continue;
-        var lc = document.createElement("div"); lc.className = "account-item-card is-locked";
-        var la = document.createElement("img"); la.className = "item-art"; la.src = apiBase + "/assets/nft/ruby-high-item-cards.png"; la.alt = "Locked"; lc.appendChild(la);
-        var ln = document.createElement("div"); ln.className = "item-name"; ln.textContent = "???"; lc.appendChild(ln);
-        var ls = document.createElement("div"); ls.className = "item-subtitle"; ls.textContent = (gi.rarity || "?") + " \u00B7 " + (gi.cost || 5) + " \u2605"; lc.appendChild(ls);
-        grid.appendChild(lc);
-      }
-    }
-    els.accountItems.replaceChildren(grid);
-  }
-  function renderItemOffer() {
-    if (!els.itemOfferHost) return;
-    els.itemOfferHost.innerHTML = "";
-    var t = lastTelemetry; var offer = t && t.active_item_offer;
-    if (!offer || Date.now() > offer.expiresAt) return;
-    var stars = (t && t.wallet) ? (t.wallet.meritStars || 0) : 0;
-    var can = stars >= offer.cost;
-    var card = document.createElement("div"); card.className = "item-offer-card";
-    var art = document.createElement("img"); art.className = "item-offer-art"; art.src = apiBase + "/assets/nft/ruby-high-item-cards.png"; art.alt = offer.name; card.appendChild(art);
-    var body = document.createElement("div"); body.className = "item-offer-body";
-    var nm = document.createElement("div"); nm.className = "item-offer-name"; nm.textContent = offer.name; body.appendChild(nm);
-    if (offer.subtitle) { var sub = document.createElement("div"); sub.className = "item-offer-subtitle"; sub.textContent = offer.subtitle; body.appendChild(sub); }
-    if (offer.quote) { var q = document.createElement("div"); q.className = "item-offer-quote"; q.textContent = "\u201C" + offer.quote + "\u201D"; body.appendChild(q); }
-    var cost = document.createElement("div"); cost.className = "item-offer-cost"; cost.textContent = offer.cost + "\u2605 \u2014 you have " + stars + " Merit"; body.appendChild(cost);
-    card.appendChild(body);
-    var btn = document.createElement("button"); btn.className = "item-offer-btn";
-    btn.textContent = can ? ("Claim " + offer.cost + " \u2605") : ("Need " + offer.cost + " \u2605");
-    btn.disabled = !can;
-    btn.addEventListener("click", function() { if (!can) return; btn.disabled = true; btn.textContent = "Claiming\u2026"; command({ type: "claim-item", item: offer.itemId }); });
-    card.appendChild(btn);
-    els.itemOfferHost.appendChild(card);
   }
 
   function renderAccountComics() {
@@ -4921,32 +4764,9 @@ export function runViewerClient(bootstrap) {
         els.blackboardEmptyText.textContent = "Starting Ruby High…";
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (!lastTelemetry?.character) {
-        els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(
-          "Attend First Bell",
-          "Roll a student, answer in your own words, see two classmates answer beside you, and keep Ruby's verdict card.",
-        ));
+        els.blackboardEmptyText.textContent = "Create your first Ruby High student.";
         if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = "Attend First Bell";
-          els.blackboardEmptyAction.hidden = false;
-        }
-      } else if (shouldPromptFirstBell(lastTelemetry)) {
-        els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(
-          "First Bell ready",
-          "One short opinion prompt. Ruby grades the room. Noor and Mika answer beside you. Then you get a card.",
-        ));
-        if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = firstBellStartInFlight ? "Starting…" : "Start First Bell";
-          els.blackboardEmptyAction.disabled = !!firstBellStartInFlight;
-          els.blackboardEmptyAction.hidden = false;
-        }
-      } else if (firstBellArtifact(lastTelemetry)) {
-        els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(
-          "First Bell complete",
-          "Ruby filed your first verdict. Copy the card or keep playing into today's class.",
-        ));
-        if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = "Start today's class";
-          els.blackboardEmptyAction.disabled = false;
+          els.blackboardEmptyAction.textContent = "Lock it in";
           els.blackboardEmptyAction.hidden = false;
         }
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
@@ -4991,8 +4811,6 @@ export function runViewerClient(bootstrap) {
       // the compact header above the start button.
       const extras = ensureBlackboardEmptyExtras();
       extras.replaceChildren();
-      const card = firstBellArtifact(lastTelemetry) ? renderFirstBellCard(lastTelemetry, { compact: true }) : null;
-      if (card) extras.appendChild(card);
       return;
     }
 
@@ -5219,7 +5037,7 @@ export function runViewerClient(bootstrap) {
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult);
+        : (scoreMult >= 5 ? "◆ Daily Class Bonus ×5" : "◆ ×" + scoreMult + " Merit Stars");
       els.boardReveal.appendChild(mult);
     }
     if (reveal.explanation) {
@@ -5440,7 +5258,7 @@ export function runViewerClient(bootstrap) {
       const scoreMult = Number(reveal.scoreMultiplier || 1);
       mult.textContent = reveal.scoreAward
         ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult);
+        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult + " Merit Stars");
       body.appendChild(mult);
     }
     appendMashTickChips(body, reveal);
@@ -6169,10 +5987,6 @@ export function runViewerClient(bootstrap) {
       void promptGuestSignup();
       return;
     }
-    if (shouldPromptFirstBell(lastTelemetry)) {
-      void startFirstBell();
-      return;
-    }
     void pickNext();
   }
   async function pickAnswer(choice, btn) {
@@ -6423,9 +6237,9 @@ export function runViewerClient(bootstrap) {
       if (titleEl) titleEl.textContent = "Welcome to Ruby High";
       if (bodyEl) {
         bodyEl.innerHTML =
-          "<p><strong>First Bell is the demo.</strong> Answer one short prompt in your own words, then Ruby grades you beside two classmates.</p>" +
-          "<p>If the verdict lands, keep the card. If it doesn't, blame Ruby. She can take it.</p>" +
-          "<p>Roll a student and take your seat — the first class starts immediately.</p>";
+          "<p>A new question every day. Three teachers — Ruby, Sally Science, and Professor Edward — grade what you actually say.</p>" +
+          "<p>Six classmates run their own arcs beside you. Every grade you finish goes in the yearbook. It takes four years to graduate.</p>" +
+          "<p>Class starts at <strong>17:00 UTC</strong>. Today's teacher is <strong>" + escapeHtml(facultyName) + "</strong>. Roll a student and take your seat.</p>";
       }
       if (notesEl) notesEl.innerHTML = notes.map(function(n) {
         return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
@@ -6589,7 +6403,6 @@ export function runViewerClient(bootstrap) {
       renderOpinionsIntoChat(t.active_round);
       maybeAutoTriggerGrading(t);
     }
-    appendFirstBellCardToStream(t);
 
     // Reveal — apply to blackboard + log a result chip in the chat once.
     // ALSO fire the teacher's reaction here (not in pickAnswer) so they
@@ -8714,7 +8527,7 @@ export function runViewerClient(bootstrap) {
     candidateBody.appendChild(candidateMove);
     const candidateHint = document.createElement("div");
     candidateHint.className = "ccg-next-step";
-    candidateHint.textContent = "Auto-enrolling… tune your rolls before the bell.";
+    candidateHint.textContent = "Ruby will save this student and start today's class.";
     candidateBody.appendChild(candidateHint);
     const portraitStatus = document.createElement("div");
     portraitStatus.className = "creation-portrait-status";
@@ -8727,9 +8540,9 @@ export function runViewerClient(bootstrap) {
     portraitBtn.textContent = "✨ Generate AI portrait";
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
-    saveBtn.className = "primary teacher-save-button";
+    saveBtn.className = "primary";
     saveBtn.textContent = "Save Character";
-    saveBtn.title = "Re-save your character if the auto-enroll didn't stick.";
+    saveBtn.disabled = true;
     saveBtn.hidden = true;
     candidateActions.appendChild(portraitBtn);
     candidateActions.appendChild(saveBtn);
@@ -8815,8 +8628,9 @@ export function runViewerClient(bootstrap) {
     // Per-component in-flight flags so the user can mash multiple rerolls
     // and the buttons disable independently. Module-scope portraitInFlight
     // is gone in this PR.
-    const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false };
-    let aiPortraitDataUrl = null; // when set, replaces the default at accept-time
+    const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false, saving: false };
+    let aiPortraitDataUrl = null; // when set, replaces the default at save-time
+    let autoSaveAttempted = false;
 
     const OFFLINE_NAMES = ["Iris", "Nova", "Vee", "Mara", "Jules", "Theo", "Rin", "Cass", "Ari", "Nico", "Sol", "Mina"];
     const OFFLINE_VOICES = [
@@ -8879,7 +8693,7 @@ export function runViewerClient(bootstrap) {
       status.classList.toggle("is-invalid", !!invalid);
     }
     function applyDisabled() {
-      saveBtn.hidden = !rolled || inFlight.all;
+      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving;
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
@@ -8975,7 +8789,10 @@ export function runViewerClient(bootstrap) {
           renderRolled(rolled);
           revealForm();
           setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
-          if (isFullRoll) void commitCharacter();
+          if (isFullRoll && !autoSaveAttempted) {
+            autoSaveAttempted = true;
+            await saveCharacter({ auto: true });
+          }
           return;
         }
         const body = isFullRoll
@@ -8996,8 +8813,10 @@ export function runViewerClient(bootstrap) {
         // First roll lands → swap from loading-state to form.
         revealForm();
         setStatus("");
-        // Auto-commit on initial roll so the character is saved immediately.
-        if (isFullRoll) void commitCharacter();
+        if (isFullRoll && !autoSaveAttempted) {
+          autoSaveAttempted = true;
+          await saveCharacter({ auto: true });
+        }
       } catch (err) {
         if (status.isConnected) {
           setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
@@ -9082,11 +8901,15 @@ export function runViewerClient(bootstrap) {
       }
     });
 
-    async function commitCharacter() {
-      if (!rolled || inFlight.all) return;
-      saveBtn.hidden = true;
+    async function saveCharacter(opts) {
+      if (!rolled || inFlight.saving || (!opts?.auto && inFlight.all)) return;
+      inFlight.saving = true;
       saveBtn.disabled = true;
-      setStatus("Saving character…");
+      setStatus("Saving...");
+      // Lock-in shape: ship the rolled character + whichever portrait
+      // is currently visible (AI if generated, default otherwise). The
+      // post-save background portrait gen path that used to live
+      // here is GONE — what you see is what you get.
       const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
       try {
         const data = await command({
@@ -9097,41 +8920,21 @@ export function runViewerClient(bootstrap) {
         if (data && data.session) {
           closeSheet();
           setTimeout(() => {
-            if (lastTelemetry && shouldPromptFirstBell(lastTelemetry)) void startFirstBell();
-            else if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+            if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
           }, 0);
           return;
         }
-      } catch {
-        // Fall through to the retry path.
+        throw new Error("Save failed — try again.");
+      } catch (err) {
+        saveBtn.hidden = false;
+        setStatus(err && err.message ? err.message : "Save failed — try again.", true);
+      } finally {
+        inFlight.saving = false;
+        applyDisabled();
       }
-      // Auto-enroll failed — show the fallback so the player can retry.
-      setStatus("Auto-enroll didn't take — try saving manually.", true);
-      saveBtn.hidden = false;
-      saveBtn.disabled = false;
     }
 
-    saveBtn.addEventListener("click", async () => {
-      if (!rolled || inFlight.all) return;
-      saveBtn.disabled = true;
-      setStatus("Saving character…");
-      const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
-      const data = await command({
-        type: "create-character",
-        ...rolled,
-        portraitDataUrl: portraitUrl,
-      });
-      if (data && data.session) {
-        closeSheet();
-        setTimeout(() => {
-          if (lastTelemetry && shouldPromptFirstBell(lastTelemetry)) void startFirstBell();
-          else if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
-        }, 0);
-      } else {
-        saveBtn.disabled = false;
-        setStatus("Save failed — try again.", true);
-      }
-    });
+    saveBtn.addEventListener("click", () => { void saveCharacter(); });
 
     // Auto-roll on first open. A guest Ruby High session is enough; AI is
     // only needed for LLM-backed rerolls and custom portraits.
@@ -11519,21 +11322,7 @@ export function runViewerClient(bootstrap) {
             } else if (finalLine && chimeStillCurrent()) {
               appendMsg({ kind: "student", name: who.name, body: finalLine, color: who.color, studentId: who.id });
             }
-          } else if (event === "item-offer") {
-          // Update telemetry with the item offer and render it.
-          if (parsed && lastTelemetry) {
-            lastTelemetry.active_item_offer = {
-              itemId: parsed.itemId,
-              name: parsed.name,
-              rarity: parsed.rarity,
-              subtitle: parsed.subtitle,
-              quote: parsed.quote,
-              cost: parsed.cost,
-              expiresAt: parsed.expiresAt,
-            };
-            renderItemOffer();
-          }
-        } else if (event === "error") {
+          } else if (event === "error") {
             throw new Error(parsed && parsed.message ? parsed.message : "student chime failed");
           }
         },
@@ -12232,20 +12021,6 @@ export function runViewerClient(bootstrap) {
           appendTool(toolSummary(parsed, teacherName));
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
-        } else if (event === "item-offer") {
-          // Update telemetry with the item offer and render it.
-          if (parsed && lastTelemetry) {
-            lastTelemetry.active_item_offer = {
-              itemId: parsed.itemId,
-              name: parsed.name,
-              rarity: parsed.rarity,
-              subtitle: parsed.subtitle,
-              quote: parsed.quote,
-              cost: parsed.cost,
-              expiresAt: parsed.expiresAt,
-            };
-            renderItemOffer();
-          }
         } else if (event === "error") {
           appendSystem("error · " + (parsed.message || "unknown"));
           refreshSessionAfterStreamEvent();
@@ -12780,13 +12555,8 @@ export function runViewerClient(bootstrap) {
     const fast = round && !round.resolved;
     sessionPollHandle = setTimeout(async () => {
       await fetchSession();
-  adaptiveSchedule();
+      adaptiveSchedule();
     }, fast ? 750 : 4000);
-  }
-  if (els.stream) {
-    els.stream.addEventListener("scroll", function() {
-      lastManualScroll = Date.now();
-    }, { passive: true });
   }
   adaptiveSchedule();
 }

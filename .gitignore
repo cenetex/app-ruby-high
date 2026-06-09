@@ -10,6 +10,8 @@ src-tauri/gen/
 .vscode/
 .idea/
 test-outputs/
+.tmp/
+test-results/
 tmp/
 .ruby-high/
 *.tsbuildinfo

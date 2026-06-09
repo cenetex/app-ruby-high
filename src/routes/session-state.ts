@@ -148,7 +148,6 @@ interface SessionTelemetry extends Record<string, unknown> {
   comic_collection: QuizState["comicCollection"];
   school_events: QuizState["schoolEvents"];
   essay_reports: EssayReport[];
-  first_bell: NonNullable<QuizState["firstBell"]>;
   yearbook_shares: Array<{ shareId: string; grade: Grade; characterName: string; completedAt: number; url: string }>;
   playbooks: typeof PLAYBOOKS;
   npc_cohort: Array<{
@@ -351,7 +350,6 @@ export function buildSessionState(args: {
     scorePoints: state.score.points ?? 0,
     scorePossible: state.score.possible ?? 0,
     meritStars: wallet.meritStars,
-    meritPoints: wallet.meritPoints ?? 0,
     hallPasses: wallet.hallPasses,
     wallet,
     hosted_ai: entitlements.hosted_ai,
@@ -446,47 +444,8 @@ export function buildSessionState(args: {
     student_pool: state.studentPool ?? [],
     character_slots: characterSlots,
     comic_collection: state.comicCollection,
-    item_collection: state.character?.itemCollection
-      ? Object.values(state.character.itemCollection).map((entry) => ({
-          itemId: entry.itemId,
-          name: entry.itemId,
-          rarity: "common",
-          subtitle: "",
-          quote: "",
-          cost: entry.cost,
-          grade: entry.grade,
-          collectedAt: entry.collectedAt,
-        }))
-      : [],
-    equipped_item: state.character?.equippedItem ?? null,
-    grade_items: state.character?.gradeItems
-      ? Object.fromEntries(
-          Object.entries(state.character.gradeItems).map(([g, ids]) => [
-            g,
-            (ids as string[]).map((id) => ({
-              itemId: id,
-              name: id,
-              rarity: "common",
-              cost: 5,
-              collected: !!(state.character?.itemCollection?.[id]),
-            })),
-          ]),
-        )
-      : {},
-    active_item_offer: state.character?.activeItemOffer
-      ? {
-          itemId: state.character.activeItemOffer.itemId,
-          name: state.character.activeItemOffer.itemId,
-          rarity: "common",
-          subtitle: "",
-          quote: "",
-          cost: state.character.activeItemOffer.cost,
-          expiresAt: state.character.activeItemOffer.expiresAt,
-        }
-      : null,
     school_events: (state.schoolEvents ?? []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
-    first_bell: state.firstBell ?? { status: "new" },
     yearbook_shares: ruby
       ? ruby.yearbookSharesForSession(sessionId).map((entry) => ({
           shareId: entry.shareId,
@@ -552,7 +511,6 @@ function normalizeWalletForTelemetry(state: QuizState): RubyHighWallet {
     .map((card) => card.mintAddress && card.mintSignature ? card : hiddenHallPassCardForTelemetry(card));
   return {
     meritStars: Math.max(0, Math.floor(Number(state.wallet?.meritStars ?? state.score.points ?? 0))),
-    meritPoints: Math.max(0, Math.floor(Number(state.wallet?.meritPoints ?? state.score.points ?? 0))),
     hallPasses: Math.max(0, Math.floor(Number(state.wallet?.hallPasses ?? 0))),
     ...(Number.isFinite(Number(state.wallet?.welcomeHallPassesGrantedAt)) && Number(state.wallet?.welcomeHallPassesGrantedAt) > 0
       ? { welcomeHallPassesGrantedAt: Math.floor(Number(state.wallet?.welcomeHallPassesGrantedAt)) }

@@ -66,7 +66,6 @@ type CommandBody = {
   grade?: string;
   requestId?: string;
   socialConsent?: boolean;
-  item?: string;
 } | null;
 
 async function sendPersistedCommandState(
@@ -224,14 +223,9 @@ export async function handleCommandRoute(args: {
     },
     "play-bonus": playBonusCommand,
     "play-daily": playBonusCommand,
-    "start-first-bell": async () => {
-      const state = ruby.startFirstBell(stateKey);
-      return await persist(state, "First Bell is on the board.");
-    },
     "set-faculty": async () => {
-      const facultyId = typeof body?.faculty === "string" ? body.faculty.trim() : "";
-      if (!facultyId) throw new Error("Missing faculty id");
-      const state = ruby.setFaculty(stateKey, facultyId);
+      if (!body?.faculty) throw new Error("Missing faculty id");
+      const state = ruby.setFaculty(stateKey, body.faculty);
       return await persist(state, `Now teaching: ${state.faculty}`);
     },
     clear: async () => {
@@ -303,10 +297,7 @@ export async function handleCommandRoute(args: {
       return await persist(result.state, result.applied ? "Character slot unlocked" : "Character slot already unlocked");
     },
     "set-portrait": async () => {
-      const url = typeof body?.portraitDataUrl === "string" ? body.portraitDataUrl.trim() : "";
-      if (url && !/^(data:image\/|https?:\/\/|\/api\/apps\/ruby-high\/assets\/)/.test(url)) {
-        throw new Error("portraitDataUrl must be a data URL, http(s) URL, or Ruby High asset URL");
-      }
+      const url = String(body?.portraitDataUrl ?? "");
       const state = ruby.setPortrait(stateKey, url);
       return await persist(state, "Portrait updated");
     },
@@ -319,17 +310,6 @@ export async function handleCommandRoute(args: {
     "mark-intro-seen": async () => {
       const state = ruby.markIntroSeen(stateKey);
       return await persist(state, "Intro acknowledged");
-    },
-    "claim-item": async () => {
-      const itemId = typeof body?.item === "string" ? body.item.trim() : "";
-      if (!itemId) throw new Error("Missing item id.");
-      const state = ruby.claimItem(stateKey, itemId);
-      return await persist(state, `Claimed ${itemId}`);
-    },
-    "equip-item": async () => {
-      const itemId = typeof body?.item === "string" && body.item.trim() ? body.item.trim() : null;
-      const state = ruby.equipItem(stateKey, itemId);
-      return await persist(state, itemId ? `Equipped ${itemId}` : "Unequipped item");
     },
     "set-social-consent": async () => {
       const consent = body?.socialConsent ?? true;

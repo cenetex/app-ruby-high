@@ -162,8 +162,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </section>
 
 
-    <div class="item-offer-host" id="item-offer-host"></div>
-        <section class="stream" id="stream"></section>
+    <section class="stream" id="stream"></section>
 
     <section class="composer-zone" id="composer-zone">
       <button class="chat-action-btn" id="next-btn" type="button" hidden>Chat</button>
@@ -320,15 +319,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             </div>
           </div>
           <div id="account-comics"></div>
-        </section>
-        <section class="account-section account-items-section">
-          <div class="account-section-head">
-            <div>
-              <div class="account-section-title">Items</div>
-              <div class="account-section-sub" id="account-item-summary"></div>
-            </div>
-          </div>
-          <div id="account-items"></div>
         </section>
       </div>
       <div class="account-panel" id="account-panel-receipts" data-account-panel="receipts" role="tabpanel" aria-labelledby="account-tab-receipts" hidden>

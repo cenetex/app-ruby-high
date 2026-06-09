@@ -451,8 +451,7 @@ export interface ComicCollection {
 export type SchoolEvent =
   | RelationshipTickSchoolEvent
   | MashAxisResolvedSchoolEvent
-  | ComicPageUnlockedSchoolEvent
-  | ItemCollectedSchoolEvent;
+  | ComicPageUnlockedSchoolEvent;
 
 interface BaseSchoolEvent {
   id: string;
@@ -488,62 +487,6 @@ export interface ComicPageUnlockedSchoolEvent extends BaseSchoolEvent {
   sourceId: string;
   label: string;
 }
-
-export interface ItemCollectedSchoolEvent extends BaseSchoolEvent {
-  kind: "item.collected";
-  itemId: string;
-  itemName: string;
-  cost: number;
-}
-
-export type RubyHighItemId =
-  | "item-hall-pass"
-  | "item-lunch-tray"
-  | "item-lab-flask"
-  | "item-flashcards"
-  | "item-notebook"
-  | "item-library-card";
-
-export interface ItemDefinition {
-  id: RubyHighItemId;
-  name: string;
-  rarity: "common" | "uncommon" | "rare";
-  cost: number;
-  subtitle: string;
-  stats: Partial<CharacterStats>;
-  quote: string;
-}
-
-export const ITEM_DEFINITIONS: Record<RubyHighItemId, ItemDefinition> = {
-  "item-hall-pass": { id: "item-hall-pass", name: "Hall Pass", rarity: "common", cost: 3, subtitle: "Front Office", stats: { heart: 1, hustle: 2, honor: 1 }, quote: "Sometimes the smartest move is stepping out and coming back better." },
-  "item-lunch-tray": { id: "item-lunch-tray", name: "Lunch Tray", rarity: "common", cost: 3, subtitle: "Commons", stats: { heart: 2, hustle: 1, honor: -1 }, quote: "Half the social game happens between bites." },
-  "item-lab-flask": { id: "item-lab-flask", name: "Lab Flask", rarity: "uncommon", cost: 5, subtitle: "Science Lab", stats: { head: 1, hustle: 1 }, quote: "Observe first. Guess later." },
-  "item-flashcards": { id: "item-flashcards", name: "Flashcards", rarity: "uncommon", cost: 5, subtitle: "Study Kit", stats: { head: 2, hustle: 1 }, quote: "Shuffle. Repeat. Survive." },
-  "item-notebook": { id: "item-notebook", name: "Notebook", rarity: "rare", cost: 8, subtitle: "Daily Carry", stats: { head: 1, heart: 1, hustle: 2 }, quote: "Messy notes still count as evidence of life." },
-  "item-library-card": { id: "item-library-card", name: "Library Card", rarity: "rare", cost: 8, subtitle: "Quiet Wing", stats: { head: 2, heart: 1, honor: 1 }, quote: "If the answer exists, this helps you find it." },
-};
-
-export function gradeStarDivisor(grade: Grade): number {
-  switch (grade) {
-    case "9": return 1000;
-    case "10": return 3000;
-    case "11": return 5000;
-    case "12": return 8000;
-    default: return 1000;
-  }
-}
-
-export function awardStars(currentPoints: number, currentStars: number, additionalPoints: number, grade: Grade): { stars: number; points: number } {
-  const total = Math.max(0, currentPoints) + Math.max(0, additionalPoints);
-  const divisor = gradeStarDivisor(grade);
-  const newStars = Math.floor(total / divisor);
-  const remainder = total % divisor;
-  return { stars: currentStars + newStars, points: remainder };
-}
-
-export interface ItemCollectible { itemId: RubyHighItemId; collectedAt: number; grade: Grade; cost: number; }
-export interface ActiveItemOffer { itemId: RubyHighItemId; cost: number; offeredAt: number; expiresAt: number; }
-
 
 export type RubyHighWalletTransactionKind =
   | "hall-pass-grant"
@@ -661,8 +604,8 @@ export interface RubyHighWalletTransaction {
 }
 
 export interface RubyHighWallet {
+  /** Earned by play. Mirrors visible session score for now. */
   meritStars: number;
-  meritPoints: number;
   /** Paid/entitlement currency for hosted creative generation. */
   hallPasses: number;
   /** One-time account welcome grant marker. */
@@ -757,9 +700,6 @@ export interface QuizState {
   /** Durable graded-essay artifacts. Each report snapshots the player's essay,
    *  the teacher score/comment, and the classroom winner for later display. */
   essayReports: EssayReport[];
-  /** Guided first-session aha: one Ruby opinion card, two classmates, one
-   *  teacher verdict, and a small shareable artifact. */
-  firstBell?: FirstBellState;
   /** Per-grade NPC student rosters. Keyed by grade so progress persists when
    *  the player switches grades and comes back. */
   npcRosters: Partial<Record<Grade, NpcStudentState[]>>;
@@ -1068,10 +1008,6 @@ export interface PlayerCharacter {
    *
    *  Legacy characters carry this forward without shape migration. */
   streak?: { grade: Grade; count: number; lastDate?: string };
-  itemCollection?: Record<string, ItemCollectible>;
-  equippedItem?: RubyHighItemId | null;
-  gradeItems?: Record<Grade, RubyHighItemId[]>;
-  activeItemOffer?: ActiveItemOffer | null;
   /** UTC date of the last bonus question played. */
   lastBonusDate?: string;
   /** Per-faculty score record — {correct, total} keyed by faculty id.
@@ -1354,34 +1290,6 @@ export interface EssayReport {
     questionCount?: number;
     totalQuestions?: number;
   };
-}
-
-export interface FirstBellArtifact {
-  id: string;
-  createdAt: number;
-  questionId: string;
-  teacherFacultyId: string;
-  characterName: string;
-  prompt: string;
-  response: string;
-  score: number | null;
-  teacherComment: string;
-  bestResponder: string | null;
-  bestResponderName?: string;
-  bestResponderScore?: number;
-  bestResponderComment?: string;
-  classmateLine?: string;
-  copyText: string;
-}
-
-export interface FirstBellState {
-  status: "new" | "started" | "submitted" | "complete";
-  startedAt?: number;
-  submittedAt?: number;
-  completedAt?: number;
-  questionId?: string;
-  teacherFacultyId?: string;
-  artifact?: FirstBellArtifact;
 }
 
 export interface ActiveRound {

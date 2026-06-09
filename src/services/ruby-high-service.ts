@@ -48,7 +48,6 @@ import {
   type Difficulty,
   type DifficultyWeights,
   type EssayReport,
-  type FirstBellArtifact,
   type FacultyMember,
   type Grade,
   type GradeDiplomaCollectible,
@@ -80,7 +79,6 @@ import {
   type RubyHighHallPassPackStatus,
   type RubyHighWalletTransaction,
   type RubyHighWalletTransactionKind,
-  ITEM_DEFINITIONS,
 } from "../types.js";
 import { FacultyService, toFacultyMember } from "./faculty-service.js";
 import {
@@ -261,9 +259,6 @@ export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
 export const WELCOME_HALL_PASS_GRANT = 5;
 export const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
-export const FIRST_BELL_QUESTION_ID = "first-bell-signal-check";
-export const FIRST_BELL_PROMPT = "First Bell: A classmate gives a confident answer, but you suspect they might be wrong. What is one sign you should trust them, and one sign you should check the source?";
-export const FIRST_BELL_RUBRIC = "A strong answer separates confidence from evidence: name one concrete trust signal, one concrete reason to verify, and explain the difference in the player's own words.";
 const RUBY_HIGH_ASSET_PREFIX = "/api/apps/ruby-high/assets";
 const DIPLOMA_ASSET_VERSION = "ruby-high-grade-diplomas-v1";
 const DIPLOMA_GRADE_LABELS: Record<Grade, string> = {
@@ -288,25 +283,6 @@ function graduationCollectibleId(
     .digest("hex")
     .slice(0, 16);
   return `ruby-high-${kind}-${parts.grade}-${hash}`;
-}
-
-function firstBellArtifactId(parts: { sessionId: string; characterName: string; questionId: string; createdAt: number }): string {
-  const hash = createHash("sha256")
-    .update(`first-bell:${parts.sessionId}:${parts.characterName}:${parts.questionId}:${parts.createdAt}`)
-    .digest("hex")
-    .slice(0, 14);
-  return `first-bell-${hash}`;
-}
-
-function firstBellCopyText(artifact: Omit<FirstBellArtifact, "copyText">): string {
-  const score = artifact.score == null ? "a verdict" : `${Number(artifact.score).toFixed(1).replace(/\.0$/, "")}/10`;
-  const winner = artifact.bestResponderName
-    ? artifact.bestResponder === "player"
-      ? `${artifact.characterName} held the room.`
-      : `${artifact.bestResponderName} took best response.`
-    : "The class had opinions.";
-  const comment = artifact.teacherComment ? ` Ruby said: "${artifact.teacherComment}"` : "";
-  return `Ruby High First Bell: ${artifact.characterName} got ${score}. ${winner}${comment} Attend class: ruby-high.ai`;
 }
 
 function gradeDiplomaCollectibleFor(parts: {
@@ -583,8 +559,6 @@ export interface RubyHighAnalyticsSnapshot {
       appOpenSessions: number;
       firstCharacterCreated: number;
       firstQuestionAnswered: number;
-      firstBellStarted: number;
-      firstBellCardCreated: number;
       firstDailyClassPassed: number;
       firstGradeCompleted: number;
     };
@@ -649,11 +623,6 @@ export interface RubyHighMetricEventsSnapshot {
     firstCharacterCreated: number;
     firstQuestionAnswered: number;
     firstEssaySubmitted: number;
-    firstBellStarted: number;
-    firstBellAnswerSubmitted: number;
-    firstBellVerdictSeen: number;
-    firstBellCardCreated: number;
-    firstBellCardCopied: number;
     firstDailyClassPassed: number;
     firstGradeCompleted: number;
   };
@@ -661,8 +630,6 @@ export interface RubyHighMetricEventsSnapshot {
     appOpenSessions: number;
     firstCharacterCreated: number;
     firstQuestionAnswered: number;
-    firstBellStarted: number;
-    firstBellCardCreated: number;
     firstDailyClassPassed: number;
     firstGradeCompleted: number;
   };
@@ -2514,7 +2481,7 @@ export class RubyHighService extends Service {
     }
     const stat: keyof CharacterStats = state.current ? statForQuestion(state.current) : "head";
     const r = roll2d6();
-    const mod = this.effectiveStat(state, stat);
+    const mod = state.character?.stats[stat] ?? 0;
     const total = r.total + mod;
     const outcome = classifyTotal(total);
     const correct = (state.current?.correct ?? "A") as Choice;
@@ -2573,7 +2540,7 @@ export class RubyHighService extends Service {
     const pr = state.pendingRoll;
     if (!pr || !state.character) return { state, result: null };
     const r = roll2d6();
-    const total = r.total + this.effectiveStat(state, pr.stat);
+    const total = r.total + state.character.stats[pr.stat];
     const outcome: RoundOutcome = total >= pr.dc + 3 ? "hit" : total >= pr.dc ? "mixed" : "miss";
     state.pendingRoll = null;
     state.updatedAt = Date.now();
@@ -2980,7 +2947,7 @@ export class RubyHighService extends Service {
         current: null,
         history: [],
         score: { correct: 0, total: 0, points: 0, possible: 0 },
-        wallet: { meritStars: 0, meritPoints: 0, hallPasses: 0 },
+        wallet: { meritStars: 0, hallPasses: 0 },
         lastReveal: null,
         status: statusForPhase("in-room"),
         askedQuestionIds: [],
@@ -2992,17 +2959,16 @@ export class RubyHighService extends Service {
         activePackId: null,
         guestPackMode: "auto",
         guestPackOverrideId: null,
-      character: null,
-      studentPool: [],
+        character: null,
+        studentPool: [],
         characterSlots: {
           unlockedSlots: DEFAULT_CHARACTER_SLOT_COUNT,
           photoDayCredits: 0,
         },
-      comicCollection: normalizeComicCollection(null),
-      schoolEvents: [],
-      essayReports: [],
-      firstBell: { status: "new" },
-      npcRosters: {},
+        comicCollection: normalizeComicCollection(null),
+        schoolEvents: [],
+        essayReports: [],
+        npcRosters: {},
         npcCohort: initialNpcCohort(),
         activeRound: null,
         pendingRoll: null,
@@ -3012,12 +2978,6 @@ export class RubyHighService extends Service {
       };
       this.ensureRoster(state, DEFAULT_GRADE);
       this.sessions.set(sessionId, state);
-    }
-    // Clear expired item offers so stale offers don't linger.
-    if (state.character?.activeItemOffer && Date.now() > state.character.activeItemOffer.expiresAt) {
-      state.character.activeItemOffer = null;
-      state.updatedAt = Date.now();
-      void this.persistSession(sessionId);
     }
     // Tick any in-flight round so callers always see fresh elapsed state.
     this.tickRound(state);
@@ -3058,64 +3018,6 @@ export class RubyHighService extends Service {
     result.state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return result;
-  }
-
-  startFirstBell(sessionId: string): QuizState {
-    const existing = this.getOrCreate(sessionId);
-    if (!existing.character) throw new Error("Create a character before First Bell.");
-    if (existing.firstBell?.status === "complete") return existing;
-    if (existing.current?.id === FIRST_BELL_QUESTION_ID && existing.activeRound && !existing.activeRound.resolved) {
-      return existing;
-    }
-    if (existing.activeRound && !existing.activeRound.resolved) {
-      throw new Error("Finish the current board before First Bell.");
-    }
-    if (existing.faculty !== RUBY_FACULTY.id) this.setFaculty(sessionId, RUBY_FACULTY.id);
-    const state = this.poseOpinion(sessionId, {
-      faculty: RUBY_FACULTY.id,
-      subject: "first-bell",
-      questionId: FIRST_BELL_QUESTION_ID,
-      prompt: FIRST_BELL_PROMPT,
-      rubric: FIRST_BELL_RUBRIC,
-      mode: "practice",
-    });
-    if (state.activeRound?.type === "opinion") {
-      const classmates = ["noor", "mika"];
-      const now = Date.now();
-      state.activeRound.npcs = classmates.map((studentId, index) => ({
-        studentId,
-        delayMs: 9000 + index * 2500,
-        plannedPick: "A" as Choice,
-        rolledTotal: 0,
-        rolledDice: [0, 0] as [number, number],
-        outcome: "hit" as const,
-        answeredAt: null,
-      }));
-      state.firstBell = {
-        status: "started",
-        startedAt: state.firstBell?.startedAt ?? now,
-        questionId: FIRST_BELL_QUESTION_ID,
-        teacherFacultyId: RUBY_FACULTY.id,
-        ...(state.firstBell?.submittedAt ? { submittedAt: state.firstBell.submittedAt } : {}),
-      };
-      this.recordFunnelStep(state, "first_bell_started", { questionId: FIRST_BELL_QUESTION_ID });
-      log.event("first-bell.started", { sessionId, questionId: FIRST_BELL_QUESTION_ID });
-      state.updatedAt = now;
-      void this.persistSession(sessionId);
-    }
-    return state;
-  }
-
-  async recordFirstBellCardCopiedDurably(sessionId: string, input: { visitorHash?: string | null; artifactId?: string } = {}): Promise<void> {
-    await this.recordMetricEventDurably("funnel_step", {
-      sessionId,
-      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
-      source: "viewer",
-      feature: "activation",
-      step: "first_bell_card_copied",
-      status: "success",
-      metadata: input.artifactId ? { artifactId: clippedMetricValue(input.artifactId, 120) } : {},
-    });
   }
 
   private appendSchoolEvent(state: QuizState, event: SchoolEvent): void {
@@ -4323,7 +4225,7 @@ export class RubyHighService extends Service {
     if (state.character && picked != null) {
       const stat: keyof CharacterStats = statForQuestion(q);
       const r = roll2d6();
-      const total = r.total + this.effectiveStat(state, stat);
+      const total = r.total + state.character.stats[stat];
       const outcome = classifyTotal(total);
       playerRoll = { stat, dice: r.dice, total, outcome };
     }
@@ -4684,7 +4586,6 @@ export class RubyHighService extends Service {
       // Assign the essay question for the new grade. The teacher will
       // give it as an assignment and reference it during lessons.
       ch.essayPrompt = gradeEssayPrompt(advance, ch);
-      this.assignGradeItems(sessionId);
       ch.essayCompleted = false;
       log.event("player.grade-advanced", {
         sessionId: state.sessionId, character: ch.name, fromGrade: grade, toGrade: advance, reward: normalizedReward.kind,
@@ -5342,17 +5243,6 @@ export class RubyHighService extends Service {
     round.opinionResponses.push({ responder, text: bounded, submittedAt: now });
     if (responder === "player") {
       round.player.answeredAt = now;
-      if (round.questionId === FIRST_BELL_QUESTION_ID) {
-        state.firstBell = {
-          status: "submitted",
-          startedAt: state.firstBell?.startedAt ?? round.startedAt,
-          submittedAt: now,
-          questionId: FIRST_BELL_QUESTION_ID,
-          teacherFacultyId: state.faculty,
-          ...(state.firstBell?.artifact ? { artifact: state.firstBell.artifact } : {}),
-        };
-        this.recordFunnelStep(state, "first_bell_answer_submitted", { questionId: FIRST_BELL_QUESTION_ID });
-      }
     } else {
       const npc = round.npcs.find((n) => n.studentId === responder);
       if (npc) npc.answeredAt = now;
@@ -5457,16 +5347,6 @@ export class RubyHighService extends Service {
         gradedAt: reviewAt,
         ...(reportClassSession ? { classSession: reportClassSession } : {}),
       });
-      if (q.id === FIRST_BELL_QUESTION_ID) {
-        this.completeFirstBellArtifact(state, {
-          question: q,
-          playerResponse: playerResponse?.text ?? "",
-          playerGrade: playerGrade ?? null,
-          bestResponder,
-          bestGrade: bestGrade ?? null,
-          completedAt: reviewAt,
-        });
-      }
       // Same progression as MC rounds. Opinion rounds update card mastery
       // through the review rating above; no XP is awarded.
       const progress = this.applyPlayerProgress(state, passed, state.faculty, classProgress);
@@ -5550,74 +5430,6 @@ export class RubyHighService extends Service {
       prompt: "Social card: When a classmate gives an answer confidently, what is one sign you should trust it, and one sign you should check it?",
       rubric: "A strong response names one concrete trust signal and one concrete reason to verify, then explains the difference in the player's own words.",
     });
-  }
-
-  private completeFirstBellArtifact(state: QuizState, input: {
-    question: Question;
-    playerResponse: string;
-    playerGrade: OpinionGrade | null;
-    bestResponder: string | null;
-    bestGrade: OpinionGrade | null;
-    completedAt: number;
-  }): FirstBellArtifact | null {
-    const ch = state.character;
-    if (!ch) return null;
-    if (state.firstBell?.status === "complete" && state.firstBell.artifact) return state.firstBell.artifact;
-    const bestResponderName = input.bestResponder
-      ? input.bestResponder === "player"
-        ? ch.name
-        : studentById(input.bestResponder)?.shortName ?? input.bestResponder
-      : undefined;
-    const artifactBase = {
-      id: firstBellArtifactId({
-        sessionId: state.sessionId,
-        characterName: ch.name,
-        questionId: input.question.id,
-        createdAt: input.completedAt,
-      }),
-      createdAt: input.completedAt,
-      questionId: input.question.id,
-      teacherFacultyId: input.question.faculty ?? state.faculty,
-      characterName: ch.name,
-      prompt: input.question.prompt,
-      response: input.playerResponse,
-      score: input.playerGrade ? clamp(input.playerGrade.score, 0, 10) : null,
-      teacherComment: input.playerGrade?.comment ?? "Ruby filed the first note.",
-      bestResponder: input.bestResponder,
-      ...(bestResponderName ? { bestResponderName } : {}),
-      ...(input.bestGrade ? { bestResponderScore: clamp(input.bestGrade.score, 0, 10) } : {}),
-      ...(input.bestGrade?.comment ? { bestResponderComment: input.bestGrade.comment } : {}),
-      classmateLine: input.bestResponder && input.bestResponder !== "player"
-        ? `${bestResponderName ?? input.bestResponder} took best response.`
-        : "You held the room for First Bell.",
-    } satisfies Omit<FirstBellArtifact, "copyText">;
-    const artifact: FirstBellArtifact = {
-      ...artifactBase,
-      copyText: firstBellCopyText(artifactBase),
-    };
-    state.firstBell = {
-      status: "complete",
-      startedAt: state.firstBell?.startedAt,
-      submittedAt: state.firstBell?.submittedAt,
-      completedAt: input.completedAt,
-      questionId: input.question.id,
-      teacherFacultyId: artifact.teacherFacultyId,
-      artifact,
-    };
-    this.recordFunnelStep(state, "first_bell_verdict_seen", { artifactId: artifact.id });
-    this.recordFunnelStep(state, "first_bell_card_created", { artifactId: artifact.id });
-    this.recordShareArtifactCreated(state.sessionId, {
-      shareId: artifact.id,
-      grade: state.currentGrade ?? undefined,
-      kind: "first_bell_card",
-    });
-    log.event("first-bell.card-created", {
-      sessionId: state.sessionId,
-      artifactId: artifact.id,
-      score: artifact.score,
-      bestResponder: artifact.bestResponder,
-    });
-    return artifact;
   }
 
   private scheduledPickPlanForState(state: QuizState, filter: PickAndPoseInput = {}): ScheduledPickPlan {
@@ -5787,92 +5599,6 @@ export class RubyHighService extends Service {
     });
     return next;
   }
-
-
-  assignGradeItems(sessionId: string): string[] {
-    const state = this.getOrCreate(sessionId);
-    const ch = state.character;
-    const grade = state.currentGrade;
-    if (!ch || !grade) return [];
-    ch.gradeItems = (ch.gradeItems ?? {}) as any;
-    if ((ch.gradeItems as any)[grade]) return (ch.gradeItems as any)[grade]!;
-    const all = ["item-hall-pass","item-lunch-tray","item-lab-flask","item-flashcards","item-notebook","item-library-card"];
-    const seed = this.hashString(ch.name) ^ this.hashForGrade(grade);
-    const shuffled = this.seededShuffle([...all], seed);
-    const items: string[] = [];
-    const rarities: Record<string,string[]> = {common:[],uncommon:[],rare:[]};
-    for (const id of shuffled) {
-      const def = ({"item-hall-pass":"common","item-lunch-tray":"common","item-lab-flask":"uncommon","item-flashcards":"uncommon","item-notebook":"rare","item-library-card":"rare"} as Record<string,string>)[id] || "common";
-      if (rarities[def].length < 1) { rarities[def].push(id); items.push(id); }
-      if (items.length >= 3) break;
-    }
-    (ch.gradeItems as any)[grade] = items;
-    state.updatedAt = Date.now();
-    void this.persistSession(sessionId);
-    return items;
-  }
-
-  availableItems(sessionId: string): string[] {
-    const state = this.getOrCreate(sessionId);
-    const ch = state.character;
-    const grade = state.currentGrade;
-    if (!ch || !grade) return [];
-    const gradeItems = (ch.gradeItems as any)?.[grade];
-    if (!Array.isArray(gradeItems)) return [];
-    const collected = new Set(Object.keys(ch.itemCollection ?? {}));
-    return gradeItems.filter((id: string) => !collected.has(id));
-  }
-
-  claimItem(sessionId: string, itemId: string): QuizState {
-    const state = this.getOrCreate(sessionId);
-    const ch = state.character;
-    if (!ch) throw new Error("No character");
-    const grade = state.currentGrade ?? "9";
-    const gradeItems = (ch.gradeItems as any)?.[grade];
-    if (!Array.isArray(gradeItems) || !gradeItems.includes(itemId)) throw new Error("Item not available this grade.");
-    if (ch.itemCollection?.[itemId]) throw new Error("Item already collected.");
-    const def = ({"item-hall-pass":3,"item-lunch-tray":3,"item-lab-flask":5,"item-flashcards":5,"item-notebook":8,"item-library-card":8} as Record<string,number>)[itemId];
-    if (!def) throw new Error("Unknown item");
-    const wallet = state.wallet ?? { meritStars: 0, meritPoints: 0, hallPasses: 0 };
-    const stars = Math.max(0, Math.floor(Number(wallet.meritStars ?? 0)));
-    if (stars < def) throw new Error(`Need ${def} stars. You have ${stars}.`);
-    wallet.meritStars = stars - def;
-    state.wallet = wallet;
-    ch.itemCollection = ch.itemCollection ?? {};
-    ch.itemCollection[itemId] = { itemId: itemId as any, collectedAt: Date.now(), grade: state.currentGrade ?? "9", cost: def };
-    if (!ch.equippedItem) ch.equippedItem = itemId as any;
-    state.schoolEvents = state.schoolEvents ?? [];
-    state.schoolEvents.push({ kind: "item.collected", id: `item-${itemId}-${Date.now()}`, at: Date.now(), grade: state.currentGrade ?? "9", itemId, itemName: itemId, cost: def });
-    state.updatedAt = Date.now();
-    void this.persistSession(sessionId);
-    return state;
-  }
-
-  equipItem(sessionId: string, itemId: string | null): QuizState {
-    const state = this.getOrCreate(sessionId);
-    const ch = state.character;
-    if (!ch) throw new Error("No character");
-    if (itemId && !ch.itemCollection?.[itemId]) throw new Error("Item not in collection: " + itemId);
-    ch.equippedItem = (itemId as any) ?? null;
-    state.updatedAt = Date.now();
-    void this.persistSession(sessionId);
-    return state;
-  }
-
-  private effectiveStat(state: any, stat: string): number {
-    const base = state.character?.stats?.[stat] ?? 0;
-    const equippedId = state.character?.equippedItem;
-    if (!equippedId) return base;
-    const def = (ITEM_DEFINITIONS as any)[equippedId];
-    if (!def) return base;
-    const bonus = def.stats[stat] ?? 0;
-    return base + bonus;
-  }
-
-  private hashString(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; } return Math.abs(h); }
-  private hashForGrade(g: string): number { return this.hashString("grade-" + g); }
-  private seededShuffle<T>(arr: T[], seed: number): T[] { const r = [...arr]; let s = seed; for (let i = r.length - 1; i > 0; i--) { s = (s * 16807 + 0) % 2147483647; const j = s % (i + 1); [r[i], r[j]] = [r[j]!, r[i]!]; } return r; }
-
 
   /** Back-compat alias. Older route handlers and tests call playDaily.
    *  Internally identical to playBonus now. */
@@ -6184,7 +5910,6 @@ export class RubyHighService extends Service {
     };
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
-    this.assignGradeItems(sessionId);
     log.event("character.created", {
       sessionId, characterName: name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
     });
@@ -7543,7 +7268,6 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
   const welcomeHallPassesGrantedAt = Math.floor(Number(src.welcomeHallPassesGrantedAt ?? 0));
   return {
     meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
-    meritPoints: Math.max(0, Math.floor(Number(src.meritPoints ?? 0))),
     hallPasses,
     ...(Number.isFinite(welcomeHallPassesGrantedAt) && welcomeHallPassesGrantedAt > 0
       ? { welcomeHallPassesGrantedAt }
@@ -7728,55 +7452,6 @@ function normalizeEssayReports(value: unknown): EssayReport[] {
   return out.slice(-ESSAY_REPORT_LIMIT);
 }
 
-function normalizeFirstBell(value: unknown): NonNullable<QuizState["firstBell"]> {
-  if (!value || typeof value !== "object") return { status: "new" };
-  const src = value as Record<string, unknown>;
-  const status = src.status === "started" || src.status === "submitted" || src.status === "complete"
-    ? src.status
-    : "new";
-  const artifact = normalizeFirstBellArtifact(src.artifact);
-  return {
-    status: artifact ? "complete" : status,
-    ...(typeof src.startedAt === "number" && Number.isFinite(src.startedAt) ? { startedAt: src.startedAt } : {}),
-    ...(typeof src.submittedAt === "number" && Number.isFinite(src.submittedAt) ? { submittedAt: src.submittedAt } : {}),
-    ...(typeof src.completedAt === "number" && Number.isFinite(src.completedAt) ? { completedAt: src.completedAt } : {}),
-    ...(typeof src.questionId === "string" && src.questionId ? { questionId: src.questionId } : {}),
-    ...(typeof src.teacherFacultyId === "string" && src.teacherFacultyId ? { teacherFacultyId: src.teacherFacultyId } : {}),
-    ...(artifact ? { artifact } : {}),
-  };
-}
-
-function normalizeFirstBellArtifact(value: unknown): FirstBellArtifact | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const src = value as Record<string, unknown>;
-  const id = typeof src.id === "string" && src.id ? src.id : "";
-  const questionId = typeof src.questionId === "string" && src.questionId ? src.questionId : "";
-  const characterName = typeof src.characterName === "string" && src.characterName ? src.characterName : "Student";
-  if (!id || !questionId) return undefined;
-  const createdAt = typeof src.createdAt === "number" && Number.isFinite(src.createdAt) ? src.createdAt : Date.now();
-  const score = typeof src.score === "number" && Number.isFinite(src.score) ? clamp(src.score, 0, 10) : null;
-  const base = {
-    id,
-    createdAt,
-    questionId,
-    teacherFacultyId: typeof src.teacherFacultyId === "string" && src.teacherFacultyId ? src.teacherFacultyId : RUBY_FACULTY.id,
-    characterName,
-    prompt: typeof src.prompt === "string" ? src.prompt : FIRST_BELL_PROMPT,
-    response: typeof src.response === "string" ? src.response : "",
-    score,
-    teacherComment: typeof src.teacherComment === "string" ? src.teacherComment : "Ruby filed the first note.",
-    bestResponder: typeof src.bestResponder === "string" ? src.bestResponder : null,
-    ...(typeof src.bestResponderName === "string" && src.bestResponderName ? { bestResponderName: src.bestResponderName } : {}),
-    ...(typeof src.bestResponderScore === "number" && Number.isFinite(src.bestResponderScore) ? { bestResponderScore: clamp(src.bestResponderScore, 0, 10) } : {}),
-    ...(typeof src.bestResponderComment === "string" && src.bestResponderComment ? { bestResponderComment: src.bestResponderComment } : {}),
-    ...(typeof src.classmateLine === "string" && src.classmateLine ? { classmateLine: src.classmateLine } : {}),
-  } satisfies Omit<FirstBellArtifact, "copyText">;
-  return {
-    ...base,
-    copyText: typeof src.copyText === "string" && src.copyText ? src.copyText : firstBellCopyText(base),
-  };
-}
-
 function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
   if (!Array.isArray(value)) return [];
   const out: StudentPoolEntry[] = [];
@@ -7890,7 +7565,6 @@ function normalizeLoaded(s: QuizState): QuizState {
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),
-    firstBell: normalizeFirstBell((s as { firstBell?: unknown }).firstBell),
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     npcCohort: Array.isArray(s.npcCohort) ? s.npcCohort : initialNpcCohort(),
     activeRound: s.activeRound && typeof s.activeRound === "object" ? s.activeRound : null,
@@ -7971,8 +7645,6 @@ function buildMetricEventsSnapshot(
     appOpenSessions: 0,
     firstCharacterCreated: 0,
     firstQuestionAnswered: 0,
-    firstBellStarted: 0,
-    firstBellCardCreated: 0,
     firstDailyClassPassed: 0,
     firstGradeCompleted: 0,
   };
@@ -7980,11 +7652,6 @@ function buildMetricEventsSnapshot(
     firstCharacterCreated: 0,
     firstQuestionAnswered: 0,
     firstEssaySubmitted: 0,
-    firstBellStarted: 0,
-    firstBellAnswerSubmitted: 0,
-    firstBellVerdictSeen: 0,
-    firstBellCardCreated: 0,
-    firstBellCardCopied: 0,
     firstDailyClassPassed: 0,
     firstGradeCompleted: 0,
   };
@@ -8054,11 +7721,6 @@ function buildMetricEventsSnapshot(
       if (event.step === "first_character_created") funnel.firstCharacterCreated += 1;
       else if (event.step === "first_question_answered") funnel.firstQuestionAnswered += 1;
       else if (event.step === "first_essay_submitted") funnel.firstEssaySubmitted += 1;
-      else if (event.step === "first_bell_started") funnel.firstBellStarted += 1;
-      else if (event.step === "first_bell_answer_submitted") funnel.firstBellAnswerSubmitted += 1;
-      else if (event.step === "first_bell_verdict_seen") funnel.firstBellVerdictSeen += 1;
-      else if (event.step === "first_bell_card_created") funnel.firstBellCardCreated += 1;
-      else if (event.step === "first_bell_card_copied") funnel.firstBellCardCopied += 1;
       else if (event.step === "first_daily_class_passed") funnel.firstDailyClassPassed += 1;
       else if (event.step === "first_grade_completed") funnel.firstGradeCompleted += 1;
       const firstOpen = event.sessionId ? firstAppOpenBySession.get(event.sessionId) : undefined;
@@ -8068,8 +7730,6 @@ function buildMetricEventsSnapshot(
           seenFirst10mSteps.add(key);
           if (event.step === "first_character_created") first10m.firstCharacterCreated += 1;
           else if (event.step === "first_question_answered") first10m.firstQuestionAnswered += 1;
-          else if (event.step === "first_bell_started") first10m.firstBellStarted += 1;
-          else if (event.step === "first_bell_card_created") first10m.firstBellCardCreated += 1;
           else if (event.step === "first_daily_class_passed") first10m.firstDailyClassPassed += 1;
           else if (event.step === "first_grade_completed") first10m.firstGradeCompleted += 1;
         }

@@ -412,7 +412,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function openCharacterCreation()");
     expectScriptToContain(script, "function openCharacterCreationFromAccount()");
     expect(html).toContain('id="blackboard-empty-action"');
-    expectScriptToContain(script, "Attend First Bell");
+    expectScriptToContain(script, "Create your first Ruby High student.");
     expectScriptToContain(script, 'els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction)');
     expectScriptToContain(script, "function maybeShowWelcomeHallPassPopup");
     expectScriptToContain(script, "function claimWelcomeHallPassesFromBilling()");
@@ -478,7 +478,7 @@ describe("viewer regression guardrails", () => {
   it("keeps stream refreshes from holding the Chat/Practice busy lock", () => {
     const script = inlineScript(renderedViewer());
     const consumeStart = script.indexOf("async function consumeSseStream");
-    const consumeEnd = script.indexOf("async function runAgentTurn");
+    const consumeEnd = script.indexOf("async function sendChatMessage");
     const consumeBody = script.slice(consumeStart, consumeEnd);
 
     expectScriptToContain(script, "function withViewerTimeoutSignal");
@@ -490,10 +490,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "const turnController = createViewerTurnController");
     expectScriptToContain(script, "function syncNextButtonDisabled()");
     expectScriptToContain(script, "const manualTurn = turnController.beginManual()");
-    // chat removed — beginAgent only used in sendChatMessage
+    expectScriptToContain(script, "const agentTurn = turnController.beginAgent(false)");
     expectScriptToContain(script, "const buttonTurn = turnController.beginButtonAction()");
     expectScriptToContain(script, "turnController.syncControls()");
-    // chat input removed
+    expectScriptToContain(script, "if (!els.chatInput.disabled) els.chatInput.focus();");
     expect(script).not.toContain("els.chatInput.disabled = !teacherChatEnabled()");
     expectScriptToContain(consumeBody, "refreshSessionAfterStreamEvent();");
     expect(consumeBody).not.toContain("await fetchSession(");

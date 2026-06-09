@@ -69,11 +69,7 @@ export async function consumeViewerSseStream(response: ViewerSseResponse, handle
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
-  // Default 90s gives slow LLM grading turns room to finish. Configurable
-  // via the watchdogMs handler option for special cases (diploma gen, etc).
-  // Default 90s gives slow LLM grading turns room to finish. The
-  // server can override via handlers.watchdogMs at call sites.
-  const watchdogMs = Number(handlers.watchdogMs || 90000);
+  const watchdogMs = Number(handlers.watchdogMs || 45000);
   const watchdog = setTimeout(() => { try { void reader.cancel(); } catch { /* ignore */ } }, watchdogMs);
   try {
     while (true) {

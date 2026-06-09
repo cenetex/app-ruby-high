@@ -1,6 +1,5 @@
 import { log } from "./logger.js";
 import { DEFAULT_COURSE_MODEL, DEFAULT_OPENROUTER_MODEL, DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
-import { isKnownModel } from "../model-catalog.js";
 import {
   chatCompletionStream,
   OPENROUTER_STREAM_TIMEOUT_MS,

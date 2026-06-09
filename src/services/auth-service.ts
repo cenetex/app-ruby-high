@@ -106,9 +106,6 @@ export class AuthService extends Service {
   private readonly store: StateStoreLike;
   private readonly pending = new Map<string, PendingPkce>();
   private gcTimer: ReturnType<typeof setInterval> | null = null;
-  /** Serializes concurrent createGuestSession calls for the same visitor,
-   *  preventing duplicate user/session creation under race conditions. */
-  private readonly pendingCreations = new Map<string, Promise<{ token: string; record: AuthRecord }>>();
 
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
@@ -271,24 +268,6 @@ export class AuthService extends Service {
       return { token: existingToken!, record: touched };
     }
 
-    // Serialize per-visitor so concurrent requests from the same visitor
-    // don't race to create duplicate users/sessions.
-    const lockKey = visitorHash ?? `anon:${base64url(randomBytes(8))}`;
-    const pending = this.pendingCreations.get(lockKey);
-    if (pending) return await pending;
-
-    const creation = this.createGuestSessionInner(visitorHash);
-    this.pendingCreations.set(lockKey, creation);
-    try {
-      return await creation;
-    } finally {
-      this.pendingCreations.delete(lockKey);
-    }
-  }
-
-  /** Internal: performs the actual guest session creation. Called only from
-   *  createGuestSession (which manages the per-visitor lock). */
-  private async createGuestSessionInner(visitorHash: string | null): Promise<{ token: string; record: AuthRecord }> {
     const now = Date.now();
     const providerUserHash = visitorHash ?? providerIdentityHash(base64url(randomBytes(24)), "guest");
     const existingVisitorUser = visitorHash

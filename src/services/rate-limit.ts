@@ -1,23 +1,53 @@
+/**
+ * In-process token-bucket rate limiter.
+ *
+ * Keyed by an arbitrary string (we use "${clientIp}:${sessionToken|"anon"}").
+ * Each key has a refilling bucket; `take()` returns false when there aren't
+ * enough tokens left, true when the bucket had room and was decremented.
+ *
+ * Time is injected as `now` (defaults to Date.now) so tests can advance it
+ * deterministically without timer tricks. There's no setInterval anywhere —
+ * tokens are refilled lazily on each `take()` based on elapsed wall-clock.
+ *
+ * `gc()` drops idle keys (those that have refilled back to capacity) so the
+ * map doesn't grow unbounded for one-off IP visitors.
+ *
+ * ## Where this is wired
+ *
+ * One bucket per concern. Capacities sized to honest UI bursts; refill
+ * rates sized to keep a hostile floor low.
+ *
+ * | Bucket             | File           | Capacity | Refill | Endpoints |
+ * |--------------------|----------------|---------:|-------:|-----------|
+ * | CHAT_LIMITER       | chat-routes.ts |       60 |  1/sec | POST /chat, /chat/event, /chat/student-chime, /chat/opinion-submit, /chat/character/generate, /chat/reset |
+ * | PORTRAIT_LIMITER   | chat-routes.ts |        8 | 1/30s  | POST /chat/character/portrait, /chat/character/diploma |
+ * | COMMAND_LIMITER    | routes.ts      |      120 |  2/sec | POST /command (game-state mutation surface) |
+ * | METRICS_EVENT_LIMITER | metrics-events.ts | 60 | 1/sec | POST /metrics/event |
+ *
+ * Endpoints intentionally NOT gated:
+ *
+ * - GET routes (auth/me, auth/start, chat/history, viewer, assets, packs, the
+ *   default session GET) — read-only, cheap, not worth false 429s on a
+ *   refresh storm.
+ * - POST /control — no-op stub.
+ * - POST /auth/logout — single delete, cheap.
+ * - GET /auth/callback — cost is one outbound OpenRouter token-exchange.
+ *   Acceptable today; revisit if we ever see hostile callback floods.
+ * - POST /packs/active — pack switch is a small per-session write.
+ */
 export class TokenBucket {
   private readonly buckets = new Map<string, { tokens: number; lastRefill: number }>();
   private readonly refillPerMs: number;
-  private readonly gcTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     /** Maximum tokens a single key can hold. Burst size. */
     public readonly capacity: number,
     /** How many tokens a key earns back per second when idle. */
     public readonly refillPerSecond: number,
-    /** Milliseconds between GC sweeps. 0 or negative disables. Defaults to 5 minutes. */
-    gcIntervalMs: number = 300_000,
   ) {
     if (capacity <= 0) throw new Error("capacity must be > 0");
     if (refillPerSecond <= 0) throw new Error("refillPerSecond must be > 0");
     this.refillPerMs = refillPerSecond / 1000;
-    if (gcIntervalMs > 0) {
-      this.gcTimer = setInterval(() => this.gc(), gcIntervalMs);
-      if (typeof this.gcTimer.unref === "function") this.gcTimer.unref();
-    }
   }
 
   /** Try to consume `n` tokens for `key`. Returns true on success.
@@ -69,12 +99,5 @@ export class TokenBucket {
   /** Test hook — count of currently-tracked keys. */
   size(): number {
     return this.buckets.size;
-  }
-
-  /** Stop the periodic GC timer. Call during service shutdown. */
-  close(): void {
-    if (this.gcTimer) {
-      clearInterval(this.gcTimer);
-    }
   }
 }
