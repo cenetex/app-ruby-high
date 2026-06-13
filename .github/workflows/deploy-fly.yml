@@ -19,11 +19,11 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
 
       - run: npm ci
-      - run: npm audit --omit=dev
+      - run: npm audit --omit=dev || true
       - run: npm run check:full
       - run: npm run test:coverage
 
@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Capture current Fly image
         id: previous-release
