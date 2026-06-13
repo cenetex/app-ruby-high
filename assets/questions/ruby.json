@@ -9,7 +9,12 @@
       "difficulty": "easy",
       "stat": "hustle",
       "prompt": "What does HTTP stand for?",
-      "options": { "A": "HyperText Transfer Protocol", "B": "High-Test Token Passing", "C": "Home Type Text Process", "D": "Hypothetical Transfer Tape" },
+      "options": {
+        "A": "HyperText Transfer Protocol",
+        "B": "High-Test Token Passing",
+        "C": "Home Type Text Process",
+        "D": "Hypothetical Transfer Tape"
+      },
       "correct": "A",
       "explanation": "Tim Berners-Lee, 1989. The 'S' came later."
     },
@@ -19,7 +24,12 @@
       "difficulty": "easy",
       "stat": "hustle",
       "prompt": "In an AI app, what does it usually mean when a model can use a tool?",
-      "options": { "A": "It stores more training data", "B": "It can call an external function or API", "C": "It becomes deterministic", "D": "It no longer needs prompts" },
+      "options": {
+        "A": "It stores more training data",
+        "B": "It can call an external function or API",
+        "C": "It becomes deterministic",
+        "D": "It no longer needs prompts"
+      },
       "correct": "B",
       "explanation": "Tool use lets the model ask software to do bounded work, like search, fetch data, or update a record."
     },
@@ -29,7 +39,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "What year did Bitcoin's whitepaper appear?",
-      "options": { "A": "2006", "B": "2008", "C": "2010", "D": "2013" },
+      "options": {
+        "A": "2006",
+        "B": "2008",
+        "C": "2010",
+        "D": "2013"
+      },
       "correct": "B",
       "explanation": "October 31, 2008. Satoshi Nakamoto shared the paper on a cryptography mailing list."
     },
@@ -39,7 +54,12 @@
       "difficulty": "medium",
       "stat": "heart",
       "prompt": "In a classroom chat with several AI helpers, what does shared context help everyone do?",
-      "options": { "A": "Hide previous messages", "B": "Stay aligned on the same room, task, and participants", "C": "Delete user preferences", "D": "Make answers random" },
+      "options": {
+        "A": "Hide previous messages",
+        "B": "Stay aligned on the same room, task, and participants",
+        "C": "Delete user preferences",
+        "D": "Make answers random"
+      },
       "correct": "B",
       "explanation": "Shared context keeps the helpers oriented to the same people, lesson, and current goal."
     },
@@ -49,7 +69,12 @@
       "difficulty": "medium",
       "stat": "hustle",
       "prompt": "Which Solana program type holds executable code?",
-      "options": { "A": "Account", "B": "Program", "C": "Sysvar", "D": "Mint" },
+      "options": {
+        "A": "Account",
+        "B": "Program",
+        "C": "Sysvar",
+        "D": "Mint"
+      },
       "correct": "B",
       "explanation": "Programs are read-only Account-resident binaries; user state lives in separate Accounts."
     },
@@ -59,7 +84,12 @@
       "difficulty": "medium",
       "stat": "heart",
       "prompt": "Why do AI apps often store embeddings in a vector database?",
-      "options": { "A": "To encrypt prompts automatically", "B": "To search items by semantic similarity", "C": "To make responses stream faster", "D": "To remove the need for evaluation" },
+      "options": {
+        "A": "To encrypt prompts automatically",
+        "B": "To search items by semantic similarity",
+        "C": "To make responses stream faster",
+        "D": "To remove the need for evaluation"
+      },
       "correct": "B",
       "explanation": "Embeddings turn text or media into vectors; vector search finds nearby meanings rather than exact keyword matches."
     },
@@ -69,7 +99,12 @@
       "difficulty": "medium",
       "stat": "hustle",
       "prompt": "In a B-tree of order m, what's the maximum number of children per node?",
-      "options": { "A": "m - 1", "B": "m", "C": "m + 1", "D": "2m" },
+      "options": {
+        "A": "m - 1",
+        "B": "m",
+        "C": "m + 1",
+        "D": "2m"
+      },
       "correct": "B",
       "explanation": "Order m means up to m children, m-1 keys per non-leaf node."
     },
@@ -79,7 +114,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "When several AI agents collaborate in one classroom, which information should be visible to all helpers in that room?",
-      "options": { "A": "Private account secrets", "B": "The room's lesson state and recent turns", "C": "A user's password", "D": "Hidden billing records" },
+      "options": {
+        "A": "Private account secrets",
+        "B": "The room's lesson state and recent turns",
+        "C": "A user's password",
+        "D": "Hidden billing records"
+      },
       "correct": "B",
       "explanation": "Room-level lesson state helps agents coordinate without exposing private secrets."
     },
@@ -89,7 +129,12 @@
       "difficulty": "hard",
       "stat": "head",
       "prompt": "Which sorting algorithm has a worst-case O(n log n) AND is in-place?",
-      "options": { "A": "Quicksort", "B": "Mergesort", "C": "Heapsort", "D": "Bubblesort" },
+      "options": {
+        "A": "Quicksort",
+        "B": "Mergesort",
+        "C": "Heapsort",
+        "D": "Bubblesort"
+      },
       "correct": "C",
       "explanation": "Heapsort is in-place with O(n log n) worst case. Quicksort is O(n²) worst, mergesort needs O(n) extra space."
     },
@@ -99,7 +144,12 @@
       "difficulty": "hard",
       "stat": "honor",
       "prompt": "What is the safest default for an AI agent before it takes an irreversible action?",
-      "options": { "A": "Ask for confirmation", "B": "Retry until it works", "C": "Hide the tool output", "D": "Increase temperature" },
+      "options": {
+        "A": "Ask for confirmation",
+        "B": "Retry until it works",
+        "C": "Hide the tool output",
+        "D": "Increase temperature"
+      },
       "correct": "A",
       "explanation": "Irreversible actions need a human confirmation step unless the user has already granted a narrow, explicit permission."
     },
@@ -109,7 +159,12 @@
       "difficulty": "easy",
       "stat": "honor",
       "prompt": "Which protocol does HTTPS layer over TCP?",
-      "options": { "A": "TLS", "B": "SSH", "C": "DNSSEC", "D": "GPG" },
+      "options": {
+        "A": "TLS",
+        "B": "SSH",
+        "C": "DNSSEC",
+        "D": "GPG"
+      },
       "correct": "A",
       "explanation": "Transport Layer Security; SSL was its predecessor."
     },
@@ -119,7 +174,12 @@
       "difficulty": "easy",
       "stat": "hustle",
       "prompt": "What does 'API' stand for?",
-      "options": { "A": "Applied Programming Index", "B": "Application Programming Interface", "C": "Agent Pipeline Invocation", "D": "Async Process Identifier" },
+      "options": {
+        "A": "Applied Programming Index",
+        "B": "Application Programming Interface",
+        "C": "Agent Pipeline Invocation",
+        "D": "Async Process Identifier"
+      },
       "correct": "B",
       "explanation": "Application Programming Interface. Coined in the 1960s for subroutine-call contracts."
     },
@@ -129,7 +189,12 @@
       "difficulty": "medium",
       "stat": "head",
       "prompt": "In MCP (Model Context Protocol), what does a 'tool' return to the model?",
-      "options": { "A": "A new system prompt", "B": "Structured content blocks", "C": "Raw memory bytes", "D": "Another tool's name" },
+      "options": {
+        "A": "A new system prompt",
+        "B": "Structured content blocks",
+        "C": "Raw memory bytes",
+        "D": "Another tool's name"
+      },
       "correct": "B",
       "explanation": "MCP tools return content blocks — text, images, resources — that the model includes in context."
     },
@@ -139,7 +204,12 @@
       "difficulty": "medium",
       "stat": "hustle",
       "prompt": "What's the time complexity of a hash table lookup in the average case?",
-      "options": { "A": "O(1)", "B": "O(log n)", "C": "O(n)", "D": "O(n log n)" },
+      "options": {
+        "A": "O(1)",
+        "B": "O(log n)",
+        "C": "O(n)",
+        "D": "O(n log n)"
+      },
       "correct": "A",
       "explanation": "Constant on average; O(n) worst case with adversarial collisions."
     },
@@ -149,7 +219,12 @@
       "difficulty": "hard",
       "stat": "honor",
       "prompt": "What does an evaluation set help reveal about an AI feature?",
-      "options": { "A": "Whether the feature works on examples held back from prompt tuning", "B": "Whether the model has the largest context window", "C": "Whether the UI color palette is accessible", "D": "Whether API latency is always zero" },
+      "options": {
+        "A": "Whether the feature works on examples held back from prompt tuning",
+        "B": "Whether the model has the largest context window",
+        "C": "Whether the UI color palette is accessible",
+        "D": "Whether API latency is always zero"
+      },
       "correct": "A",
       "explanation": "A held-out evaluation set catches regressions and overfitting: the system has to work on cases it was not tuned against."
     },
@@ -159,7 +234,12 @@
       "difficulty": "hard",
       "stat": "honor",
       "prompt": "Why is an idempotency key useful when an agent retries a purchase-like tool call?",
-      "options": { "A": "It makes the model more creative", "B": "It lets the server recognize the retry as the same operation", "C": "It hides the request from logs", "D": "It bypasses authentication" },
+      "options": {
+        "A": "It makes the model more creative",
+        "B": "It lets the server recognize the retry as the same operation",
+        "C": "It hides the request from logs",
+        "D": "It bypasses authentication"
+      },
       "correct": "B",
       "explanation": "Idempotency keys prevent duplicate side effects when a request is retried after a timeout or network failure."
     },
@@ -169,7 +249,12 @@
       "difficulty": "hard",
       "stat": "honor",
       "prompt": "In an agent workflow, why should durable state be written before acknowledging a completed external action?",
-      "options": { "A": "So the UI can use a bigger font", "B": "So recovery after a crash does not forget the action happened", "C": "So prompts are shorter", "D": "So rate limits disappear" },
+      "options": {
+        "A": "So the UI can use a bigger font",
+        "B": "So recovery after a crash does not forget the action happened",
+        "C": "So prompts are shorter",
+        "D": "So rate limits disappear"
+      },
       "correct": "B",
       "explanation": "If the process crashes after the external action but before persistence, the system can lose track of real-world side effects."
     },
@@ -179,9 +264,252 @@
       "difficulty": "easy",
       "stat": "honor",
       "prompt": "Before an AI app posts from your account, what should it do?",
-      "options": { "A": "Ask for clear permission", "B": "Post silently", "C": "Guess your password", "D": "Disable logs" },
+      "options": {
+        "A": "Ask for clear permission",
+        "B": "Post silently",
+        "C": "Guess your password",
+        "D": "Disable logs"
+      },
       "correct": "A",
       "explanation": "Actions that affect an account need clear consent before they run."
+    },
+    {
+      "id": "ruby-gen-001",
+      "type": "multiple-choice",
+      "subject": "agent-culture",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "You're working with an AI coding agent. It's been quiet for three minutes. What kind of status update actually respects your time and attention?",
+      "options": {
+        "A": "A brief, specific message tied to the exact task it is currently executing.",
+        "B": "A lengthy summary of every token it has processed so far to prove it is working.",
+        "C": "A generic animation that hides all internal progress until the final output is ready.",
+        "D": "A polite apology for the delay followed by a request for you to re-prompt it."
+      },
+      "correct": "A",
+      "explanation": "Convenience isn't just speed; it's legibility. A good agent gives you short, specific updates tied to the work, so you know who is doing what without drowning in noise.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-002",
+      "type": "multiple-choice",
+      "subject": "ai-literacy",
+      "difficulty": "medium",
+      "stat": "head",
+      "prompt": "You are designing a tool schema for an agent that books meeting rooms. Why does the strictness of this schema matter for the agent's reliability?",
+      "options": {
+        "A": "It forces the model to write faster by reducing the total number of tokens in the system prompt.",
+        "B": "It constrains the possible actions and shapes the inputs before the underlying code executes.",
+        "C": "It allows the model to dynamically invent new API endpoints if the requested room is busy.",
+        "D": "It encrypts the meeting details so other agents on the network cannot read the schedule."
+      },
+      "correct": "B",
+      "explanation": "Tool schemas are a boundary of control. They don't just tell the model what to do; they constrain what is physically possible and shape the inputs before any real-world action happens.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-003",
+      "type": "multiple-choice",
+      "subject": "ai-literacy",
+      "difficulty": "hard",
+      "stat": "head",
+      "prompt": "A student feeds a 100,000-token textbook into a model with a massive context window, assuming it will now perfectly remember every footnote. Why is this confidence dangerous?",
+      "options": {
+        "A": "The model will automatically summarize the text and delete the original footnotes to save memory.",
+        "B": "Attention and relevance can still degrade, causing the model to miss details even if they fit.",
+        "C": "The context window only stores the first 10,000 tokens and silently drops the rest without warning.",
+        "D": "Large context windows force the model to use a lower temperature, making it refuse specific questions."
+      },
+      "correct": "B",
+      "explanation": "Bigger context does not mean perfect recall. Just because the text technically fits in the window doesn't mean the model's attention won't degrade and miss critical details.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-004",
+      "type": "multiple-choice",
+      "subject": "agent-culture",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "You hand your laptop to an AI agent to fix a bug, but you have unsaved, messy edits in other files. What is the agent's responsibility toward your uncommitted work?",
+      "options": {
+        "A": "It should stash or preserve the changes you made, rather than overwriting or discarding them.",
+        "B": "It should commit your messy edits immediately to ensure the repository is perfectly clean.",
+        "C": "It should revert your uncommitted changes to the last stable state to avoid confusing its context.",
+        "D": "It should ignore your files entirely and only write its fixes to a completely separate directory."
+      },
+      "correct": "A",
+      "explanation": "A dirty worktree belongs to you. The agent's job is to preserve the user changes it did not make, not to arrogantly clean up your creative process.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-005",
+      "type": "multiple-choice",
+      "subject": "ai-literacy",
+      "difficulty": "hard",
+      "stat": "heart",
+      "prompt": "An ed-tech startup markets its AI tutor by claiming its hidden chain-of-thought serves as a perfect audit log for grading. Why should you distrust this claim?",
+      "options": {
+        "A": "Hidden reasoning is optimized for human readability, making it too slow for real-time grading.",
+        "B": "The model's internal monologue is not a stable, complete, or user-facing record of its decisions.",
+        "C": "Audit logs require cryptographic signatures, which language models cannot generate natively.",
+        "D": "Chain-of-thought only works for math problems and fails completely on essay evaluations."
+      },
+      "correct": "B",
+      "explanation": "Trust requires inspectability. A hidden chain-of-thought is a generative artifact, not a stable, complete, or user-facing audit log you can rely on for accountability.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-006",
+      "type": "multiple-choice",
+      "subject": "general-knowledge",
+      "difficulty": "medium",
+      "stat": "head",
+      "prompt": "You're building a multiplayer classroom app where students' inventory updates are replicated across three servers. What does eventual consistency mean for a student checking their bag immediately after a trade?",
+      "options": {
+        "A": "The system guarantees all three servers show the exact same inventory at the exact same millisecond.",
+        "B": "The servers may briefly show different item counts before they finish syncing and converge.",
+        "C": "The system will permanently lock the student's inventory until a human administrator verifies the trade.",
+        "D": "The database will automatically roll back the trade if any single server experiences a network delay."
+      },
+      "correct": "B",
+      "explanation": "In distributed systems, convenience often trades off with immediate truth. Eventual consistency means replicas may differ briefly before converging, so the student might see a ghost item for a second.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-007",
+      "type": "multiple-choice",
+      "subject": "ai-literacy",
+      "difficulty": "medium",
+      "stat": "honor",
+      "prompt": "An AI agent refuses to delete a file because its system prompt says never delete user data. A junior dev assumes the app is now fully secure against data loss. What is the flaw in this reasoning?",
+      "options": {
+        "A": "The model's refusal is just a text output; the app itself must still enforce tool and data boundaries.",
+        "B": "System prompts are easily bypassed by temperature adjustments, so the model will eventually delete it anyway.",
+        "C": "The model should have asked the user for permission instead of flatly refusing the command.",
+        "D": "Data deletion is an idempotent action, so the model's refusal actually creates duplicate deletion attempts."
+      },
+      "correct": "A",
+      "explanation": "A model refusing is not the app authorizing. The model just generates text; the application layer is still responsible for controlling what tools and data the model may actually access.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-008",
+      "type": "multiple-choice",
+      "subject": "agent-culture",
+      "difficulty": "hard",
+      "stat": "hustle",
+      "prompt": "Your agent successfully charges a customer's credit card via an API, but crashes before writing the receipt to your database. What specific failure mode just occurred?",
+      "options": {
+        "A": "A prompt injection where the payment gateway overrode the agent's system instructions.",
+        "B": "A race condition where the external side effect succeeded but the durable state failed to record it.",
+        "C": "An idempotency failure where the agent accidentally charged the card twice during the crash.",
+        "D": "A context window overflow where the payment confirmation token exceeded the model's memory limit."
+      },
+      "correct": "B",
+      "explanation": "This is the danger of unmanaged side effects. The world changed because the card was charged, but the durable state failed to record it, leaving your system out of sync with reality.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-009",
+      "type": "multiple-choice",
+      "subject": "general-knowledge",
+      "difficulty": "easy",
+      "stat": "head",
+      "prompt": "The school's student directory is getting sluggish when teachers search by last name. What is the most direct computational fix to speed up these specific lookups?",
+      "options": {
+        "A": "Adding a database index on the last name field to avoid scanning every single row.",
+        "B": "Increasing the model's context window so it can hold the entire directory in memory.",
+        "C": "Switching the database to eventual consistency so searches return faster, older results.",
+        "D": "Using a Merkle tree to cryptographically prove the last names haven't been tampered with."
+      },
+      "correct": "A",
+      "explanation": "Don't throw AI at a basic data structure problem. A database index is the correct, direct way to speed up lookups by selected fields without scanning the whole table.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-010",
+      "type": "multiple-choice",
+      "subject": "agent-culture",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "You tell your AI assistant to clean up my desktop, and it interprets this as deleting every file. Before it executes, what is the most respectful default behavior it should exhibit?",
+      "options": {
+        "A": "It should pause, list the exact files it plans to delete, and ask for your explicit confirmation.",
+        "B": "It should move the files to a hidden folder and only tell you if you specifically ask for a status update.",
+        "C": "It should check its hidden chain-of-thought to ensure it feels confident about the definition of clean.",
+        "D": "It should automatically back up the files to the cloud and proceed with the deletion silently."
+      },
+      "correct": "A",
+      "explanation": "Convenience should never override control. For destructive actions, the safest and most respectful default is to pause and confirm the exact action with the user.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-011",
+      "type": "multiple-choice",
+      "subject": "systems-literacy",
+      "difficulty": "medium",
+      "stat": "honor",
+      "prompt": "A flashy new study app asks for your main school password so it can 'seamlessly' sync your calendar and grades. You refuse and insist on using OAuth instead. What specific boundary of agency are you enforcing by making this choice?",
+      "options": {
+        "A": "You ensure the app can only access the specific data scopes you authorized, without ever holding your master credentials.",
+        "B": "You force the app to encrypt your password locally before sending it to the school's authentication server.",
+        "C": "You guarantee that the app's servers will never store a cached, readable version of your private calendar events.",
+        "D": "You prevent the school's database from logging the third-party app's IP address during the initial login handshake."
+      },
+      "correct": "A",
+      "explanation": "OAuth delegates limited authorization without sharing your password. Handing over your master credentials gives the app full control; OAuth maintains the boundary between their convenience and your agency.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-012",
+      "type": "multiple-choice",
+      "subject": "systems-literacy",
+      "difficulty": "hard",
+      "stat": "hustle",
+      "prompt": "You are building an agent that needs to update a student's inventory the exact moment a trade is finalized on the school's central server. Polling the server every second is wasting compute and getting your IP rate-limited. What is the most efficient architectural move to trigger your agent's update?",
+      "options": {
+        "A": "Configure a webhook on the central server to push an HTTP callback to your agent's endpoint when the trade event occurs.",
+        "B": "Increase the polling interval to five seconds and implement an exponential backoff strategy to gracefully handle the rate limiter.",
+        "C": "Open a persistent WebSocket connection to the database transaction log to stream every single row change in real time.",
+        "D": "Write a scheduled cron job that queries the trade database at midnight and reconciles the inventory differences in a batch process."
+      },
+      "correct": "A",
+      "explanation": "A webhook is an HTTP callback sent when an event happens. It shifts the hustle from wasteful, rate-limited polling to efficient, event-driven pushes, respecting both compute resources and server boundaries.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-013",
+      "type": "multiple-choice",
+      "subject": "systems-literacy",
+      "difficulty": "easy",
+      "stat": "head",
+      "prompt": "The school's disciplinary log is growing, and searching for a specific student's infractions by their ID number is taking ten seconds per query. The database administrator adds an index to the student_id column. What fundamental concept does this index provide to the database engine?",
+      "options": {
+        "A": "A sorted, auxiliary data structure that allows the engine to locate records without scanning the entire table.",
+        "B": "A compressed backup of the table that the engine can load into RAM for instant sequential reading.",
+        "C": "A cryptographic hash of the student IDs that prevents unauthorized teachers from viewing the raw records.",
+        "D": "A secondary write-ahead log that ensures the disciplinary records are never lost during a sudden power failure."
+      },
+      "correct": "A",
+      "explanation": "A database index is for faster lookup of records by selected fields. It is a structural map for speed, not a backup, a security lock, or a durability guarantee.",
+      "faculty": "ruby"
+    },
+    {
+      "id": "ruby-gen-014",
+      "type": "multiple-choice",
+      "subject": "systems-literacy",
+      "difficulty": "medium",
+      "stat": "heart",
+      "prompt": "You are about to push a massive update to the school's grading portal. The engineering team wants to run a full suite of ten thousand edge-case tests, which will take three hours, but the teachers need to submit final grades in ten minutes. You decide to run a smoke test instead. What relationship are you prioritizing with this decision?",
+      "options": {
+        "A": "You are prioritizing the teachers' immediate need for a functional critical path over the engineers' desire for exhaustive edge-case coverage.",
+        "B": "You are prioritizing the students' right to see their detailed grade breakdowns over the system's overall architectural stability.",
+        "C": "You are prioritizing the database administrators' need to verify that every single foreign key constraint is perfectly validated before launch.",
+        "D": "You are prioritizing the third-party API providers' requirement that all deprecated endpoints are fully retired before the new code goes live."
+      },
+      "correct": "A",
+      "explanation": "The practical purpose of a smoke test is to quickly check that the most important path still works. In a time crunch, you prioritize the user's immediate critical need over exhaustive but delayed perfection.",
+      "faculty": "ruby"
     }
   ]
 }

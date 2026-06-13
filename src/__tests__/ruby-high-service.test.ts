@@ -851,7 +851,7 @@ describe("RubyHighService Phase 1", () => {
       ruby.submitAnswer(sid, s.current!.correct!);
     }
     expect(seen.size).toBeGreaterThan(0);
-    expect(ruby.questionBankStatus(sid, "ruby").total).toBe(total);
+    expect(ruby.questionBankStatus(sid, "ruby").total).toBeGreaterThanOrEqual(total);
   });
 
   it("weights automatic difficulty by grade instead of hard-locking one level", async () => {
@@ -890,6 +890,22 @@ describe("RubyHighService Phase 1", () => {
     expect(ruby.questionBankStatus(sid, "level-test-course").remainingByDifficulty).toEqual({
       easy: 1,
     });
+  });
+
+  it("keeps Freshman built-in banks curated before unlocking teacher corpora", async () => {
+    const { ruby, faculty } = await makeServices();
+    const sid = "test:freshman-curated-core";
+    ruby.selectGrade(sid, "9");
+
+    const rubyBankTotal = faculty.bank("ruby")!.questions.length;
+    const freshmanBankTotal = faculty.bank("ruby")!.questions.filter((q) => q.difficulty === "easy").length;
+    const freshmanStatus = ruby.questionBankStatus(sid, "ruby");
+    expect(freshmanStatus.total).toBe(freshmanBankTotal);
+
+    ruby.selectGrade(sid, "10");
+    const sophomoreStatus = ruby.questionBankStatus(sid, "ruby");
+    expect(sophomoreStatus.total).toBeGreaterThan(freshmanBankTotal);
+    expect(sophomoreStatus.total).toBeGreaterThan(rubyBankTotal);
   });
 
   it("does not replace or clear a live unresolved board", async () => {

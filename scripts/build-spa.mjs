@@ -14,6 +14,12 @@ const questionFiles = {
   "professor-edward": "professor-edward.json",
 };
 
+const corpusFiles = {
+  ruby: "ruby.md",
+  "sally-science": "sally-science.md",
+  "professor-edward": "professor-edward.md",
+};
+
 const playbooks = [
   {
     id: "overachiever",
@@ -84,7 +90,53 @@ async function readQuestions() {
     const parsed = JSON.parse(raw);
     out[facultyId] = Array.isArray(parsed.questions) ? parsed.questions : [];
   }
+  for (const [facultyId, fileName] of Object.entries(corpusFiles)) {
+    const raw = await readFile(resolve(root, "assets", "corpora", fileName), "utf8").catch(() => "");
+    if (!raw) continue;
+    out[facultyId] = [...(out[facultyId] || []), ...parseCorpusQuestions(raw, facultyId)];
+  }
   return out;
+}
+
+function parseCorpusQuestions(raw, facultyId) {
+  const rows = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .filter((line) => !/^\|\s*-+/.test(line))
+    .map((line) => line.slice(1, -1).split("|").map((cell) => cell.trim()));
+  if (!rows.length) return [];
+  const header = rows[0].map((cell) => cell.toLowerCase());
+  const col = (name) => header.indexOf(name);
+  const idIndex = col("id");
+  const subjectIndex = col("subject");
+  const difficultyIndex = col("difficulty");
+  const frontIndex = col("front");
+  const backIndex = col("back");
+  return rows.slice(1)
+    .map((row) => {
+      const id = row[idIndex] || "";
+      const subject = row[subjectIndex] || "open study";
+      const difficulty = row[difficultyIndex] || "medium";
+      const front = row[frontIndex] || "";
+      const back = row[backIndex] || "";
+      if (!id || !front || !back) return null;
+      return {
+        id,
+        prompt: front,
+        type: "typed-answer",
+        expectedAnswer: back,
+        acceptedAnswers: [back],
+        sourceCardId: id,
+        canGenerateMc: true,
+        subject,
+        difficulty,
+        minGrade: difficulty === "easy" ? "10" : difficulty === "medium" ? "11" : "12",
+        faculty: facultyId,
+        correct: "A",
+      };
+    })
+    .filter(Boolean);
 }
 
 function scriptJson(value) {
@@ -408,11 +460,19 @@ function offlineApiScript(data) {
     const grade = state.currentGrade || "9";
     const gradeDifficulty = difficultyForGrade(grade);
     const allowed = difficultiesForGrade(grade);
+    function gradeRank(g) {
+      var idx = GRADES.indexOf(g || "9");
+      return idx >= 0 ? idx : 0;
+    }
+    function unlocked(q) {
+      return !q.minGrade || gradeRank(grade) >= gradeRank(q.minGrade);
+    }
     const unseen = bank.filter(function(q) {
-      return state.askedQuestionIds.indexOf(q.id) === -1 && (!q.difficulty || allowed.indexOf(q.difficulty) !== -1);
+      return unlocked(q) && state.askedQuestionIds.indexOf(q.id) === -1 && (!q.difficulty || allowed.indexOf(q.difficulty) !== -1);
     });
-    const fallback = bank.filter(function(q) { return state.askedQuestionIds.indexOf(q.id) === -1; });
-    const basePool = unseen.length ? unseen : fallback.length ? fallback : bank;
+    const fallback = bank.filter(function(q) { return unlocked(q) && state.askedQuestionIds.indexOf(q.id) === -1; });
+    const unlockedBank = bank.filter(unlocked);
+    const basePool = unseen.length ? unseen : fallback.length ? fallback : unlockedBank.length ? unlockedBank : bank;
     const weighted = weightedDifficulty(basePool, difficultyWeightsForGrade(grade));
     const pool = weighted
       ? basePool.filter(function(q) { return q.difficulty === weighted; })

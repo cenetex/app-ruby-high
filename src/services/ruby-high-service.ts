@@ -274,6 +274,11 @@ const DIPLOMA_IMAGE_URL_BY_GRADE: Record<Grade, string> = {
   "12": `${RUBY_HIGH_ASSET_PREFIX}/diplomas/ruby-high-12.png?v=${DIPLOMA_ASSET_VERSION}`,
 };
 
+function gradeRank(grade: string): number {
+  const idx = GRADES.indexOf(grade as Grade);
+  return idx >= 0 ? idx : 0;
+}
+
 function graduationCollectibleId(
   kind: "diploma" | "photo",
   parts: { name: string; createdAt: number; grade: Grade; completedAt: number; extra?: string },
@@ -3806,13 +3811,23 @@ export class RubyHighService extends Service {
   private courseQuestionsFor(state: QuizState, facultyId: string): BankedQuestion[] {
     const faculty = packForSession(state).faculty.find((f) => f.id === facultyId);
     if (!faculty) return [];
+    const sourceCards = this.availableSourceCardsForGrade(faculty.sourceCards ?? [], state.currentGrade);
     const bankedQuestions = faculty.sourceCards?.length
       ? faculty.questions.filter((q) => !q.sourceCardId)
       : faculty.questions;
     return [
-      ...(faculty.sourceCards ?? []).map((card) => this.questionForSourceCard(card)),
+      ...sourceCards.map((card) => this.questionForSourceCard(card)),
       ...bankedQuestions,
     ];
+  }
+
+  private availableSourceCardsForGrade(cards: PackSourceCard[], grade: Grade | null): PackSourceCard[] {
+    return cards.filter((card) => this.sourceCardUnlockedForGrade(card, grade));
+  }
+
+  private sourceCardUnlockedForGrade(card: PackSourceCard, grade: Grade | null): boolean {
+    if (!card.minGrade) return true;
+    return gradeRank(grade ?? DEFAULT_GRADE) >= gradeRank(card.minGrade);
   }
 
   private eligibleCourseQuestions(
@@ -3902,6 +3917,12 @@ export class RubyHighService extends Service {
       (!filter.difficulty || q.difficulty === filter.difficulty)
     );
     const memory = this.ensureCardMemory(state);
+    const withoutSourceCards = (pool: BankedQuestion[]): BankedQuestion[] =>
+      pool.filter((q) => !q.sourceCardId);
+    const preferBankedQuestions = (pool: BankedQuestion[]): BankedQuestion[] => {
+      const banked = withoutSourceCards(pool);
+      return banked.length > 0 ? banked : pool;
+    };
     const choose = (pool: BankedQuestion[]): BankedQuestion | null => {
       const due: BankedQuestion[] = [];
       const legacyDue: BankedQuestion[] = [];
@@ -3934,22 +3955,25 @@ export class RubyHighService extends Service {
           || ma.consecutiveCorrect - mb.consecutiveCorrect
           || ma.dueAt - mb.dueAt;
       });
-      if (due.length > 0) return due[0]!;
-      if (fresh.length > 0) return fresh[Math.floor(Math.random() * fresh.length)] ?? null;
-      if (legacyDue.length > 0) return legacyDue[0]!;
+      if (due.length > 0) return preferBankedQuestions(due)[0]!;
+      if (fresh.length > 0) {
+        const freshPool = preferBankedQuestions(fresh);
+        return freshPool[Math.floor(Math.random() * freshPool.length)] ?? null;
+      }
+      if (legacyDue.length > 0) return preferBankedQuestions(legacyDue)[0]!;
       masteredDue.sort((a, b) => {
         const ma = memory[cardMemoryKey(facultyId, a.id)]!;
         const mb = memory[cardMemoryKey(facultyId, b.id)]!;
         return ma.dueAt - mb.dueAt;
       });
-      if (masteredDue.length > 0) return masteredDue[0]!;
+      if (masteredDue.length > 0) return preferBankedQuestions(masteredDue)[0]!;
       undue.sort((a, b) => {
         const ma = memory[cardMemoryKey(facultyId, a.id)]!;
         const mb = memory[cardMemoryKey(facultyId, b.id)]!;
         return (ma.lastReviewedAt ?? 0) - (mb.lastReviewedAt ?? 0)
           || ma.dueAt - mb.dueAt;
       });
-      return undue[0] ?? null;
+      return preferBankedQuestions(undue)[0] ?? null;
     };
 
     const chooseWithWeights = (pool: BankedQuestion[]): BankedQuestion | null => {
@@ -4969,6 +4993,42 @@ export class RubyHighService extends Service {
     return roster;
   }
 
+  /**
+   * Randomize A/B/C/D order every time a question is posed, so the correct
+   * slot is never a learnable tell. The stored bank order (and any author bias
+   * toward "B", or the LLM's habit of writing the right answer first) becomes
+   * irrelevant because the student sees a fresh permutation each view. Grading
+   * reads state.current.correct, which we remap here, so the shuffle stays
+   * self-consistent. The correct option is tracked by identity, not text, so it
+   * survives even if two options share wording. A new options object is built
+   * rather than mutating in place, so a question that still references the
+   * shared in-memory bank object is never corrupted.
+   *
+   * Gated by RUBY_HIGH_SHUFFLE_CHOICES (default on; set to "0" under test for a
+   * deterministic stored order — see vitest.config.ts and choice-shuffle.test.ts).
+   */
+  private shuffleQuestionChoices(question: Question): void {
+    if (process.env.RUBY_HIGH_SHUFFLE_CHOICES === "0") return;
+    if (question.type !== "multiple-choice" || !question.options || !question.correct) return;
+    const items = CHOICES.map((slot) => ({
+      text: question.options![slot] ?? "",
+      isCorrect: slot === question.correct,
+    }));
+    for (let i = items.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [items[i], items[j]] = [items[j], items[i]];
+    }
+    const options = {} as Record<Choice, string>;
+    let correct: Choice = question.correct;
+    items.forEach((item, index) => {
+      const slot = CHOICES[index]!;
+      options[slot] = item.text;
+      if (item.isCorrect) correct = slot;
+    });
+    question.options = options;
+    question.correct = correct;
+  }
+
   pose(sessionId: string, input: PoseInput): QuizState {
     const state = this.getOrCreate(sessionId);
     this.assertBoardMutationAllowed(state, "post");
@@ -5002,6 +5062,7 @@ export class RubyHighService extends Service {
       rarity: input.rarity,
     };
     question.stat = statForQuestion(question);
+    this.shuffleQuestionChoices(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
@@ -5057,6 +5118,7 @@ export class RubyHighService extends Service {
       question.canGenerateMc = q.canGenerateMc !== false;
     }
     question.stat = statForQuestion(question);
+    this.shuffleQuestionChoices(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;

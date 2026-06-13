@@ -9,7 +9,12 @@
       "difficulty": "easy",
       "stat": "hustle",
       "prompt": "Speed of light in vacuum is approximately…",
-      "options": { "A": "3 × 10^6 m/s", "B": "3 × 10^8 m/s", "C": "3 × 10^10 m/s", "D": "3 × 10^4 m/s" },
+      "options": {
+        "A": "3 × 10^6 m/s",
+        "B": "3 × 10^8 m/s",
+        "C": "3 × 10^10 m/s",
+        "D": "3 × 10^4 m/s"
+      },
       "correct": "B",
       "explanation": "299,792,458 m/s exactly — the universal speed limit, c."
     },
@@ -19,7 +24,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "What's the chemical symbol for gold?",
-      "options": { "A": "Go", "B": "Ag", "C": "Au", "D": "Gd" },
+      "options": {
+        "A": "Go",
+        "B": "Ag",
+        "C": "Au",
+        "D": "Gd"
+      },
       "correct": "C",
       "explanation": "Au, from Latin 'aurum'. Ag is silver, Gd is gadolinium."
     },
@@ -29,7 +39,12 @@
       "difficulty": "easy",
       "stat": "hustle",
       "prompt": "Which organelle is known as the powerhouse of the cell?",
-      "options": { "A": "Nucleus", "B": "Mitochondrion", "C": "Ribosome", "D": "Lysosome" },
+      "options": {
+        "A": "Nucleus",
+        "B": "Mitochondrion",
+        "C": "Ribosome",
+        "D": "Lysosome"
+      },
       "correct": "B",
       "explanation": "Mitochondria run oxidative phosphorylation to make ATP — energy currency of the cell."
     },
@@ -39,7 +54,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "Which layer of the Earth is liquid?",
-      "options": { "A": "Crust", "B": "Mantle", "C": "Outer core", "D": "Inner core" },
+      "options": {
+        "A": "Crust",
+        "B": "Mantle",
+        "C": "Outer core",
+        "D": "Inner core"
+      },
       "correct": "C",
       "explanation": "The outer core is liquid iron-nickel; the inner core is solid despite being hotter, because of pressure."
     },
@@ -49,7 +69,12 @@
       "difficulty": "medium",
       "stat": "hustle",
       "prompt": "What's Planck's constant in J·s, to two significant figures?",
-      "options": { "A": "6.6 × 10^-34", "B": "1.6 × 10^-19", "C": "9.1 × 10^-31", "D": "8.3 × 10^-23" },
+      "options": {
+        "A": "6.6 × 10^-34",
+        "B": "1.6 × 10^-19",
+        "C": "9.1 × 10^-31",
+        "D": "8.3 × 10^-23"
+      },
       "correct": "A",
       "explanation": "h ≈ 6.626 × 10^-34 J·s. (B is the elementary charge, C is the electron mass.)"
     },
@@ -59,7 +84,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "What's the pH of pure water at 25°C?",
-      "options": { "A": "0", "B": "5.6", "C": "7", "D": "14" },
+      "options": {
+        "A": "0",
+        "B": "5.6",
+        "C": "7",
+        "D": "14"
+      },
       "correct": "C",
       "explanation": "Neutral by definition. Acid rain is ~5.6 because dissolved CO₂ acidifies water."
     },
@@ -69,7 +99,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "Which DNA base pairs with thymine in normal DNA?",
-      "options": { "A": "Adenine", "B": "Guanine", "C": "Cytosine", "D": "Uracil" },
+      "options": {
+        "A": "Adenine",
+        "B": "Guanine",
+        "C": "Cytosine",
+        "D": "Uracil"
+      },
       "correct": "A",
       "explanation": "Adenine pairs with thymine in normal DNA; guanine pairs with cytosine."
     },
@@ -79,7 +114,12 @@
       "difficulty": "medium",
       "stat": "head",
       "prompt": "Which of these is NOT a fundamental force of nature?",
-      "options": { "A": "Gravity", "B": "Electromagnetism", "C": "Strong nuclear", "D": "Centrifugal" },
+      "options": {
+        "A": "Gravity",
+        "B": "Electromagnetism",
+        "C": "Strong nuclear",
+        "D": "Centrifugal"
+      },
       "correct": "D",
       "explanation": "Centrifugal is a pseudo-force in rotating frames. The four fundamental forces are gravity, EM, strong, and weak."
     },
@@ -89,7 +129,12 @@
       "difficulty": "hard",
       "stat": "head",
       "prompt": "How many d electrons does neutral chromium (Z=24) have in its ground state?",
-      "options": { "A": "4", "B": "5", "C": "6", "D": "9" },
+      "options": {
+        "A": "4",
+        "B": "5",
+        "C": "6",
+        "D": "9"
+      },
       "correct": "B",
       "explanation": "Cr is [Ar] 3d⁵ 4s¹ — half-filled d shell stabilizes the configuration over the expected 3d⁴ 4s²."
     },
@@ -99,7 +144,12 @@
       "difficulty": "hard",
       "stat": "head",
       "prompt": "Which enzyme unwinds the DNA double helix during replication?",
-      "options": { "A": "Polymerase", "B": "Ligase", "C": "Helicase", "D": "Topoisomerase" },
+      "options": {
+        "A": "Polymerase",
+        "B": "Ligase",
+        "C": "Helicase",
+        "D": "Topoisomerase"
+      },
       "correct": "C",
       "explanation": "Helicase breaks H-bonds between complementary bases; topoisomerase relieves the torsional strain ahead of it."
     },
@@ -109,7 +159,12 @@
       "difficulty": "hard",
       "stat": "hustle",
       "prompt": "In special relativity, what's the Lorentz factor γ for v = 0.6c?",
-      "options": { "A": "1.00", "B": "1.25", "C": "1.67", "D": "2.00" },
+      "options": {
+        "A": "1.00",
+        "B": "1.25",
+        "C": "1.67",
+        "D": "2.00"
+      },
       "correct": "B",
       "explanation": "γ = 1/√(1 - v²/c²) = 1/√(1 - 0.36) = 1/√0.64 = 1/0.8 = 1.25."
     },
@@ -119,7 +174,12 @@
       "difficulty": "medium",
       "stat": "head",
       "prompt": "Which gas makes up the largest share of Earth's atmosphere?",
-      "options": { "A": "Oxygen", "B": "Nitrogen", "C": "Carbon dioxide", "D": "Argon" },
+      "options": {
+        "A": "Oxygen",
+        "B": "Nitrogen",
+        "C": "Carbon dioxide",
+        "D": "Argon"
+      },
       "correct": "B",
       "explanation": "N₂ ≈ 78%, O₂ ≈ 21%, Ar ≈ 0.9%, CO₂ ≈ 0.04%."
     },
@@ -129,7 +189,12 @@
       "difficulty": "easy",
       "stat": "honor",
       "prompt": "What's the SI unit of electrical resistance?",
-      "options": { "A": "Volt", "B": "Ohm", "C": "Watt", "D": "Farad" },
+      "options": {
+        "A": "Volt",
+        "B": "Ohm",
+        "C": "Watt",
+        "D": "Farad"
+      },
       "correct": "B",
       "explanation": "Ohm (Ω). Volt is potential, watt is power, farad is capacitance."
     },
@@ -139,7 +204,12 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "How many chambers does a typical mammalian heart have?",
-      "options": { "A": "2", "B": "3", "C": "4", "D": "5" },
+      "options": {
+        "A": "2",
+        "B": "3",
+        "C": "4",
+        "D": "5"
+      },
       "correct": "C",
       "explanation": "Two atria + two ventricles. Fish have 2; amphibians have 3."
     },
@@ -149,7 +219,12 @@
       "difficulty": "medium",
       "stat": "hustle",
       "prompt": "Avogadro's number is approximately…",
-      "options": { "A": "6.02 × 10^21", "B": "6.02 × 10^23", "C": "6.02 × 10^25", "D": "9.11 × 10^23" },
+      "options": {
+        "A": "6.02 × 10^21",
+        "B": "6.02 × 10^23",
+        "C": "6.02 × 10^25",
+        "D": "9.11 × 10^23"
+      },
       "correct": "B",
       "explanation": "6.022 × 10²³ — particles in one mole of substance."
     },
@@ -159,7 +234,12 @@
       "difficulty": "hard",
       "stat": "hustle",
       "prompt": "Which seismic wave type cannot travel through Earth's liquid outer core?",
-      "options": { "A": "P-waves", "B": "S-waves", "C": "Surface waves", "D": "Infrasound" },
+      "options": {
+        "A": "P-waves",
+        "B": "S-waves",
+        "C": "Surface waves",
+        "D": "Infrasound"
+      },
       "correct": "B",
       "explanation": "S-waves are shear waves, and liquids cannot support shear stress. Their shadow zone helped reveal the liquid outer core."
     },
@@ -169,7 +249,12 @@
       "difficulty": "hard",
       "stat": "hustle",
       "prompt": "For an exothermic equilibrium reaction, what does increasing temperature usually do to the equilibrium constant K?",
-      "options": { "A": "Increases K", "B": "Decreases K", "C": "Leaves K unchanged", "D": "Makes K negative" },
+      "options": {
+        "A": "Increases K",
+        "B": "Decreases K",
+        "C": "Leaves K unchanged",
+        "D": "Makes K negative"
+      },
       "correct": "B",
       "explanation": "Heat behaves like a product in an exothermic reaction. Adding heat shifts equilibrium toward reactants, decreasing K."
     },
@@ -179,7 +264,12 @@
       "difficulty": "hard",
       "stat": "hustle",
       "prompt": "During cellular respiration, which process directly generates the largest share of ATP?",
-      "options": { "A": "Glycolysis", "B": "Pyruvate oxidation", "C": "Citric acid cycle substrate-level phosphorylation", "D": "Oxidative phosphorylation" },
+      "options": {
+        "A": "Glycolysis",
+        "B": "Pyruvate oxidation",
+        "C": "Citric acid cycle substrate-level phosphorylation",
+        "D": "Oxidative phosphorylation"
+      },
       "correct": "D",
       "explanation": "The electron transport chain and chemiosmosis drive oxidative phosphorylation, which produces most ATP in aerobic respiration."
     },
@@ -189,9 +279,235 @@
       "difficulty": "easy",
       "stat": "honor",
       "prompt": "What should you wear before mixing chemicals in a lab?",
-      "options": { "A": "Safety goggles", "B": "Loose scarf", "C": "Open sandals", "D": "Headphones only" },
+      "options": {
+        "A": "Safety goggles",
+        "B": "Loose scarf",
+        "C": "Open sandals",
+        "D": "Headphones only"
+      },
       "correct": "A",
       "explanation": "Goggles protect your eyes from splashes; basic safety comes before the experiment."
+    },
+    {
+      "id": "sally-gen-001",
+      "type": "multiple-choice",
+      "subject": "biology",
+      "difficulty": "medium",
+      "stat": "heart",
+      "prompt": "Ravi claims a polar bear evolved white fur because an individual bear 'decided' it needed camouflage and passed that acquired trait to its cubs. How do we correct his model of natural selection?",
+      "options": {
+        "A": "Natural selection acts on existing heritable variation in a population, not on individual choices or acquired traits.",
+        "B": "The environment directly mutates the bear's DNA to produce white fur exactly when the snow starts falling.",
+        "C": "Individual bears adapt to their environment during their lifetime and then rewrite their genetic code for their offspring.",
+        "D": "White fur is a dominant trait that automatically replaces brown fur in any cold climate within a single generation."
+      },
+      "correct": "A",
+      "explanation": "Natural selection is a population-level filter on existing heritable variation. Individuals don't evolve by choice, and acquired traits aren't written into the DNA passed to offspring.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-002",
+      "type": "multiple-choice",
+      "subject": "physics",
+      "difficulty": "hard",
+      "stat": "heart",
+      "prompt": "Lyra jokes that her messy bedroom proves the second law of thermodynamics, but she wonders how a living cell can build highly ordered proteins without violating this law. What is the cleanest explanation for her?",
+      "options": {
+        "A": "The cell is an isolated system, so its internal entropy can decrease as long as the temperature remains constant.",
+        "B": "Biological systems bypass thermodynamics by using enzymes to reverse the arrow of time at the molecular level.",
+        "C": "The cell is an open system that decreases its local entropy by increasing the entropy of its surroundings through heat release.",
+        "D": "The second law only applies to macroscopic physics, not to microscopic chemical reactions inside a living organism."
+      },
+      "correct": "C",
+      "explanation": "A cell is an open system. It maintains internal order by exporting entropy to its surroundings, usually as heat. The total entropy of the universe still increases.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-003",
+      "type": "multiple-choice",
+      "subject": "earth-science",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "Sami argues the atmospheric greenhouse effect works exactly like a glass greenhouse by physically trapping warm air from rising. How should we clarify the actual mechanism to him?",
+      "options": {
+        "A": "Greenhouse gases physically block convection currents, keeping warm air trapped near the surface just like glass.",
+        "B": "Greenhouse gases absorb and re-emit infrared radiation emitted by Earth, trapping heat energy rather than physical air.",
+        "C": "The atmosphere acts as a solid barrier that reflects all incoming solar radiation back to the surface to warm it.",
+        "D": "Greenhouse gases generate their own thermal energy through chemical reactions, heating the air directly."
+      },
+      "correct": "B",
+      "explanation": "The greenhouse effect is radiative, not convective. Greenhouse gases don't trap physical air; they absorb and re-emit infrared photons, slowing the escape of heat energy.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-004",
+      "type": "multiple-choice",
+      "subject": "earth-science",
+      "difficulty": "hard",
+      "stat": "honor",
+      "prompt": "Noor is analyzing an ice core to reconstruct past climate signals. She notices a sudden isotope spike but realizes the core section slightly melted and refrozen during transport. What is the most scientifically responsible next step?",
+      "options": {
+        "A": "Publish the spike as a definitive climate event since the isotope ratio is still mathematically calculable.",
+        "B": "Discard the compromised section and note the uncertainty, as phase changes alter the original trapped gas ratios.",
+        "C": "Adjust the data manually to smooth out the spike so it matches the expected historical climate models.",
+        "D": "Assume the melting process concentrated the isotopes and multiply the final values by a standard correction factor."
+      },
+      "correct": "B",
+      "explanation": "Phase changes like melting and refreezing alter the physical structure and gas ratios in ice. Good science requires discarding compromised evidence and reporting the uncertainty.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-005",
+      "type": "multiple-choice",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "stat": "heart",
+      "prompt": "Mika watches manganese dioxide speed up the decomposition of hydrogen peroxide. He assumes the manganese dioxide is 'fuel' because it makes the reaction go faster. How do we correct his mental model?",
+      "options": {
+        "A": "A catalyst provides the activation energy by being consumed in the first step and regenerated in the last.",
+        "B": "A catalyst lowers the activation energy pathway without being consumed, remaining chemically unchanged at the end.",
+        "C": "A catalyst increases the temperature of the solution, permanently altering its chemical structure to speed up the reaction.",
+        "D": "A catalyst acts as a reactant that is entirely converted into a gaseous byproduct, which is why it seems to disappear."
+      },
+      "correct": "B",
+      "explanation": "A catalyst provides an alternative pathway with lower activation energy. It participates in the mechanism but is regenerated, meaning it isn't consumed as fuel.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-006",
+      "type": "multiple-choice",
+      "subject": "biology",
+      "difficulty": "hard",
+      "stat": "heart",
+      "prompt": "Indra asks why we use the Hardy-Weinberg model when its strict assumptions—like no mutation and no natural selection—never actually exist in nature. What is the most accurate way to explain its value to her?",
+      "options": {
+        "A": "It provides a baseline of expected allele frequencies in a non-evolving population, allowing us to measure actual evolutionary forces.",
+        "B": "It proves that evolution is theoretically impossible in large populations, meaning most species are actually static over time.",
+        "C": "It calculates the exact number of mutations that must occur in a population to maintain genetic equilibrium in the wild.",
+        "D": "It serves as a historical record of allele frequencies before human intervention disrupted natural genetic drift."
+      },
+      "correct": "A",
+      "explanation": "Hardy-Weinberg is a null model. By defining a population that isn't evolving, it gives us a mathematical baseline to detect and measure real evolutionary forces.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-007",
+      "type": "multiple-choice",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "stat": "honor",
+      "prompt": "You find an unlabeled beaker of clear liquid on the lab bench. To responsibly identify if it is an acid before proceeding, what is the safest and most evidence-based first step?",
+      "options": {
+        "A": "Taste a tiny drop on the tip of your tongue to check for a characteristic sour flavor.",
+        "B": "Add a reactive metal like sodium to see if it produces a vigorous and highly exothermic reaction.",
+        "C": "Use pH paper or a calibrated pH meter to test a small sample and check if the value is below 7.",
+        "D": "Smell the liquid closely to see if it has the sharp, pungent odor typical of all acidic solutions."
+      },
+      "correct": "C",
+      "explanation": "Never taste or smell unknown chemicals. Using pH paper provides clean, quantitative evidence about the hydrogen ion concentration without risking exposure.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-008",
+      "type": "multiple-choice",
+      "subject": "earth-science",
+      "difficulty": "medium",
+      "stat": "head",
+      "prompt": "When examining a cross-section of sedimentary rock layers, you need to determine the sequence of geological events. What does relative dating actually allow you to conclude from this observation?",
+      "options": {
+        "A": "The exact numerical age of each rock layer in millions of years based on radioactive decay rates.",
+        "B": "The chronological order in which the layers were deposited, without determining their absolute ages.",
+        "C": "The specific climate conditions and atmospheric gases present during the formation of each layer.",
+        "D": "The precise depth at which each layer was originally buried before tectonic uplift exposed it."
+      },
+      "correct": "B",
+      "explanation": "Relative dating relies on principles like superposition to sequence events. It tells you what happened first, but you need radiometric dating for absolute numerical ages.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-009",
+      "type": "multiple-choice",
+      "subject": "physics",
+      "difficulty": "hard",
+      "stat": "honor",
+      "prompt": "Shining a very bright red light on a metal plate fails to eject any electrons, but a dim ultraviolet light immediately causes a current. What rule of evidence does this observation force us to accept about light?",
+      "options": {
+        "A": "Light intensity determines the energy of individual photons, meaning red light is inherently too weak to interact with matter.",
+        "B": "Light behaves as a continuous wave, but metals only absorb high-frequency wavelengths due to their atomic resonance.",
+        "C": "Light energy is delivered in quantized packets, and a single photon must meet a minimum frequency threshold to eject an electron.",
+        "D": "The metal plate requires a specific amount of total accumulated energy over time, which the dim ultraviolet light provides faster."
+      },
+      "correct": "C",
+      "explanation": "The photoelectric effect proves light energy is quantized. If it were a continuous wave, bright red light would eventually accumulate enough energy to eject an electron.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-010",
+      "type": "multiple-choice",
+      "subject": "biology",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "When Lyra looks at plant tissue under the microscope for the first time, she notices the repeating, box-like compartments and asks why we call them 'cells.' How do we connect her observation to the core biological concept?",
+      "options": {
+        "A": "They are the basic structural and functional units that make up all living organisms, not just empty spaces.",
+        "B": "They act like tiny prison cells, trapping the organelles so they cannot move around the plant tissue.",
+        "C": "They are hollow, empty spaces that allow water and nutrients to flow freely through the plant stem.",
+        "D": "They divide the plant into separate, independent organisms that live together in a cooperative colony."
+      },
+      "correct": "A",
+      "explanation": "Cells aren't just empty boxes or prison walls; they are the fundamental, living building blocks that carry out the functions required for an organism to survive.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-011",
+      "type": "multiple-choice",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "stat": "heart",
+      "prompt": "Lyra’s little brother is worried that drinking a fizzy, acidic soda will turn his blood into acid. Lyra wants to reassure him using real chemistry, not just 'your body handles it.' How should she explain the chemical mechanism that keeps his blood pH stable?",
+      "options": {
+        "A": "Her blood contains dissolved buffer systems that absorb excess hydrogen ions to resist drastic pH shifts.",
+        "B": "Her stomach lining chemically converts all acidic molecules into neutral water before they reach the blood.",
+        "C": "The high water content of her blood dilutes the soda until the hydrogen ion concentration reaches absolute zero.",
+        "D": "Her red blood cells use active transport to physically pump acid molecules out of her body through her skin."
+      },
+      "correct": "A",
+      "explanation": "Buffers are chemical systems that resist changes in pH by absorbing or releasing hydrogen ions. Lyra can reassure her brother that his blood contains natural buffers that neutralize the excess acid from the soda, maintaining homeostasis without needing to magically convert it to water or pump it through his skin.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-012",
+      "type": "multiple-choice",
+      "subject": "chemistry",
+      "difficulty": "easy",
+      "stat": "head",
+      "prompt": "Mika is tasked with mixing a 1.0 Molar (1.0 M) solution of sodium chloride for our titration lab. He grabs a 1-liter volumetric flask and a bottle of salt. To ensure his molarity is mathematically exact, how must he define the final volume of his mixture?",
+      "options": {
+        "A": "He must add one mole of salt directly into exactly one liter of pure water and stir it.",
+        "B": "He must dissolve one mole of salt in enough water to yield exactly one liter of total solution.",
+        "C": "He must mix one gram of salt with one liter of water to match the standard molar mass.",
+        "D": "He must dissolve one mole of salt and add water until the meniscus looks roughly level with the flask neck."
+      },
+      "correct": "B",
+      "explanation": "Molarity is defined as moles of solute per liter of total solution, not per liter of solvent. Adding a mole of salt to a liter of water would increase the total volume beyond one liter, dropping the concentration below 1.0 M. The solute must be dissolved first, then diluted to the exact final volume mark.",
+      "faculty": "sally-science"
+    },
+    {
+      "id": "sally-gen-013",
+      "type": "multiple-choice",
+      "subject": "chemistry",
+      "difficulty": "medium",
+      "stat": "honor",
+      "prompt": "Sami is analyzing a zinc-copper galvanic cell and notes the zinc electrode loses mass. He writes that the zinc is 'oxidizing' strictly because it is reacting with dissolved oxygen in the water. To enforce evidence discipline over sloppy naming assumptions, how must we correct his definition of oxidation?",
+      "options": {
+        "A": "Oxidation requires the zinc to physically bond with dissolved oxygen molecules to form a solid, insoluble oxide layer.",
+        "B": "Oxidation is the process where the zinc electrode absorbs hydrogen protons from the water to increase its positive charge.",
+        "C": "Oxidation is fundamentally the loss of electrons from the zinc atoms, which occurs even in the complete absence of oxygen.",
+        "D": "Oxidation happens when the zinc atoms gain extra neutrons from the copper solution, causing the electrode to degrade."
+      },
+      "correct": "C",
+      "explanation": "While the term 'oxidation' historically comes from reactions with oxygen, the strict chemical definition is the loss of electrons. In a galvanic cell, zinc oxidizes by losing electrons to the circuit, a mechanism that relies on electron transfer evidence, not the presence of oxygen gas.",
+      "faculty": "sally-science"
     }
   ]
 }

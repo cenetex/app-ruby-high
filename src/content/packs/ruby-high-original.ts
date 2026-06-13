@@ -22,12 +22,18 @@ import {
   type Difficulty,
 } from "../../types.js";
 import { classifyQuestionStat, normalizeQuestionStat } from "../../question-stats.js";
-import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "../types.js";
+import type { ContentPack, PackCourse, PackFaculty, PackRoom, PackSourceCard } from "../types.js";
 
 const PACK_FILES: Record<string, string> = {
   ruby: "ruby.json",
   "sally-science": "sally-science.json",
   "professor-edward": "professor-edward.json",
+};
+
+const CORPUS_FILES: Record<string, string> = {
+  ruby: "ruby.md",
+  "sally-science": "sally-science.md",
+  "professor-edward": "professor-edward.md",
 };
 
 // Static room + faculty metadata. Persona text + model preference live
@@ -96,6 +102,7 @@ export function getRubyHighOriginal(): Promise<ContentPack> {
 
 async function loadOnce(): Promise<ContentPack> {
   const banks = await loadAllBanks();
+  const corpora = await loadAllCorpora();
   const faculty: PackFaculty[] = FACULTY_META.map((meta) => {
     const t = TEACHERS[meta.id];
     if (!t) throw new Error(`No TEACHERS entry for faculty '${meta.id}'`);
@@ -106,6 +113,7 @@ async function loadOnce(): Promise<ContentPack> {
       systemPrompt: t.systemPrompt,
       defaultModel: t.defaultModel,
       questions,
+      sourceCards: corpora.get(meta.id) ?? [],
     };
   });
   const courses: PackCourse[] = faculty.map((f) => {
@@ -129,6 +137,32 @@ async function loadOnce(): Promise<ContentPack> {
     courses,
     rooms: ROOMS_META.map((r) => ({ ...r })),
   };
+}
+
+async function loadAllCorpora(): Promise<Map<string, PackSourceCard[]>> {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(here, "..", "..", "..", "assets", "corpora"),
+    resolve(here, "..", "..", "assets", "corpora"),
+    resolve(here, "..", "assets", "corpora"),
+    resolve(here, "assets", "corpora"),
+  ];
+  const out = new Map<string, PackSourceCard[]>();
+  for (const [facultyId, fileName] of Object.entries(CORPUS_FILES)) {
+    let raw: string | null = null;
+    for (const dir of candidates) {
+      try {
+        raw = await readFile(resolve(dir, fileName), "utf8");
+        break;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw err;
+      }
+    }
+    if (raw == null) continue;
+    out.set(facultyId, parseCorpus(raw, facultyId, fileName));
+  }
+  return out;
 }
 
 async function loadAllBanks(): Promise<Map<string, BankedQuestion[]>> {
@@ -213,4 +247,62 @@ function parseBank(raw: string, facultyId: string, fileName: string): BankedQues
       faculty: facultyId,
     };
   });
+}
+
+function parseCorpus(raw: string, facultyId: string, fileName: string): PackSourceCard[] {
+  const rows = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .filter((line) => !/^\|\s*-+/.test(line))
+    .map((line) => line.slice(1, -1).split("|").map((cell) => cell.trim()));
+  if (rows.length === 0) return [];
+  const header = rows[0]!.map((cell) => cell.toLowerCase());
+  const index = (name: string) => header.indexOf(name);
+  const idIndex = index("id");
+  const subjectIndex = index("subject");
+  const difficultyIndex = index("difficulty");
+  const frontIndex = index("front");
+  const backIndex = index("back");
+  const tagsIndex = index("tags");
+  for (const [name, idx] of Object.entries({ id: idIndex, subject: subjectIndex, difficulty: difficultyIndex, front: frontIndex, back: backIndex })) {
+    if (idx < 0) throw new Error(`${fileName} corpus table missing '${name}' column`);
+  }
+  return rows.slice(1).map((row, i) => {
+    const id = row[idIndex]?.trim();
+    const subject = row[subjectIndex]?.trim();
+    const front = row[frontIndex]?.trim();
+    const back = row[backIndex]?.trim();
+    const difficulty = row[difficultyIndex]?.trim() as Difficulty;
+    if (!id) throw new Error(`${fileName} corpus row ${i + 1}.id missing`);
+    if (!subject) throw new Error(`${fileName} corpus row ${i + 1}.subject missing`);
+    if (!front) throw new Error(`${fileName} corpus row ${i + 1}.front missing`);
+    if (!back) throw new Error(`${fileName} corpus row ${i + 1}.back missing`);
+    if (!DIFFICULTIES.includes(difficulty as never)) {
+      throw new Error(`${fileName} corpus row ${i + 1}.difficulty must be easy/medium/hard`);
+    }
+    const tags = (row[tagsIndex] ?? "")
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    return {
+      id,
+      kind: "basic",
+      front,
+      back,
+      acceptedAnswers: [back],
+      deckName: fileName.replace(/\.md$/i, ""),
+      tags,
+      subject,
+      difficulty,
+      minGrade: minimumGradeForCorpusDifficulty(difficulty),
+      faculty: facultyId,
+    };
+  });
+}
+
+function minimumGradeForCorpusDifficulty(difficulty: Difficulty): string {
+  if (difficulty === "easy") return "10";
+  if (difficulty === "medium") return "11";
+  return "12";
 }

@@ -812,6 +812,10 @@ export function runViewerClient(bootstrap) {
   let selectedBillingProductId = null;
   let activeAccountPane = "account";
   let accountHallPassCardsRenderSig = "";
+  let comicUnlockEventsPrimed = false;
+  let comicUnlockModalOpen = false;
+  const seenComicUnlockEventIds = new Set();
+  const pendingComicUnlocks = [];
   let packSyncBusy = false;
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
@@ -6294,6 +6298,7 @@ export function runViewerClient(bootstrap) {
     syncAiStateFromTelemetry(t);
     syncBillingWallet(t);
     renderAccountPage();
+    syncComicUnlockModals(t);
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
@@ -8042,6 +8047,62 @@ export function runViewerClient(bootstrap) {
     return FIRST_BELL_PAGE_TITLES[n] || "First Bell";
   }
 
+  function comicUnlockEventsForTelemetry(t) {
+    const events = t && Array.isArray(t.school_events) ? t.school_events : [];
+    return events.filter((event) => event && event.kind === "comic.page-unlocked" && event.id);
+  }
+
+  function comicUnlockFromEvent(event) {
+    if (!event) return null;
+    const pageNumber = Math.floor(Number(event.pageNumber || 0));
+    if (!Number.isFinite(pageNumber) || pageNumber < 1 || pageNumber > FIRST_BELL_PAGE_COUNT) return null;
+    return {
+      issueId: event.issueId || "first-bell",
+      pageId: event.pageId || "first-bell-page-" + String(pageNumber).padStart(2, "0"),
+      pageNumber,
+      unlockedAt: Number(event.at || Date.now()),
+      reason: event.reason || "legacy",
+      sourceId: event.sourceId || "",
+      label: event.label || comicPageTitle(pageNumber),
+    };
+  }
+
+  function maybeShowNextComicUnlockModal() {
+    if (comicUnlockModalOpen || pendingComicUnlocks.length === 0) return;
+    const unlock = pendingComicUnlocks.shift();
+    if (!unlock) return;
+    const collection = comicCollectionForTelemetry() || {
+      issueId: "first-bell",
+      title: "Ruby High: Book One - First Bell",
+      pageCount: FIRST_BELL_PAGE_COUNT,
+      unlockedPages: [unlock],
+    };
+    comicUnlockModalOpen = true;
+    showComicReader(collection, unlock, {
+      reward: true,
+      onClose: () => {
+        comicUnlockModalOpen = false;
+        maybeShowNextComicUnlockModal();
+      },
+    });
+  }
+
+  function syncComicUnlockModals(t) {
+    const events = comicUnlockEventsForTelemetry(t);
+    if (!comicUnlockEventsPrimed) {
+      events.forEach((event) => seenComicUnlockEventIds.add(event.id));
+      comicUnlockEventsPrimed = true;
+      return;
+    }
+    for (const event of events) {
+      if (seenComicUnlockEventIds.has(event.id)) continue;
+      seenComicUnlockEventIds.add(event.id);
+      const unlock = comicUnlockFromEvent(event);
+      if (unlock) pendingComicUnlocks.push(unlock);
+    }
+    maybeShowNextComicUnlockModal();
+  }
+
   function buildComicLocker() {
     const collection = comicCollectionForTelemetry();
     const pageCount = collection ? Math.min(FIRST_BELL_PAGE_COUNT, collection.pageCount) : FIRST_BELL_PAGE_COUNT;
@@ -8092,13 +8153,15 @@ export function runViewerClient(bootstrap) {
     return wrap;
   }
 
-  function showComicReader(collection, unlock) {
+  function showComicReader(collection, unlock, options) {
     if (!unlock) return;
+    options = options || {};
     const pageNumber = Math.floor(Number(unlock.pageNumber || 1));
     const overlay = document.createElement("div");
-    overlay.className = "comic-reader";
+    overlay.className = "comic-reader" + (options.reward ? " is-reward" : "");
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", options.reward ? "Comic page unlocked" : comicPageTitle(pageNumber));
 
     const panel = document.createElement("div");
     panel.className = "comic-reader-panel";
@@ -8106,7 +8169,13 @@ export function runViewerClient(bootstrap) {
     top.className = "comic-reader-top";
     const title = document.createElement("div");
     title.className = "comic-reader-title";
-    title.textContent = comicPageTitle(pageNumber);
+    title.textContent = options.reward ? "Comic Page Unlocked" : comicPageTitle(pageNumber);
+    if (options.reward) {
+      const detail = document.createElement("div");
+      detail.className = "comic-reader-detail";
+      detail.textContent = comicPageTitle(pageNumber);
+      title.appendChild(detail);
+    }
     const close = document.createElement("button");
     close.type = "button";
     close.className = "comic-reader-close";
@@ -8122,9 +8191,13 @@ export function runViewerClient(bootstrap) {
     panel.appendChild(img);
     overlay.appendChild(panel);
 
+    let closed = false;
     const remove = () => {
+      if (closed) return;
+      closed = true;
       document.removeEventListener("keydown", onKey);
       overlay.remove();
+      if (typeof options.onClose === "function") options.onClose();
     };
     const onKey = (event) => {
       if (event.key === "Escape") remove();

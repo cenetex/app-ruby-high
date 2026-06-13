@@ -73,6 +73,30 @@ describe("ContentPack registry", () => {
       }
     }
   });
+
+  it("ships hundreds of playable built-in curriculum cards with teacher corpora", async () => {
+    const pack = await getActivePack();
+    const counts = Object.fromEntries(pack.faculty.map((f) => [
+      f.id,
+      f.questions.length + (f.sourceCards?.length ?? 0),
+    ]));
+    expect(counts.ruby).toBeGreaterThanOrEqual(75);
+    expect(counts["sally-science"]).toBeGreaterThanOrEqual(75);
+    expect(counts["professor-edward"]).toBeGreaterThanOrEqual(75);
+    expect(Object.values(counts).reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(225);
+  });
+
+  it("keeps built-in teacher corpora gated behind upper-grade progression", async () => {
+    const pack = await getActivePack();
+    for (const faculty of pack.faculty) {
+      const sourceCards = faculty.sourceCards ?? [];
+      expect(sourceCards.length, `faculty ${faculty.id} should ship a research corpus`).toBeGreaterThan(0);
+      expect(sourceCards.every((card) => card.minGrade && ["10", "11", "12"].includes(card.minGrade))).toBe(true);
+      expect(sourceCards.some((card) => card.minGrade === "10")).toBe(true);
+      expect(sourceCards.some((card) => card.minGrade === "11")).toBe(true);
+      expect(sourceCards.some((card) => card.minGrade === "12")).toBe(true);
+    }
+  });
 });
 
 describe("FacultyService — pack-driven", () => {

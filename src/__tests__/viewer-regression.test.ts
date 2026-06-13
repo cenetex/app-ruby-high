@@ -404,8 +404,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "let accountHallPassCardsRenderSig = \"\";");
     expectScriptToContain(script, "function accountHallPassCardsRenderSignature(shownPacks, shown)");
     expectScriptToContain(script, "if (renderSig === accountHallPassCardsRenderSig && els.accountHallPassCards.childElementCount > 0) return;");
+    expectScriptToContain(script, "function syncComicUnlockModals(t)");
+    expectScriptToContain(script, "Comic Page Unlocked");
     expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
     expect(VIEWER_CSS).toContain(".account-tabs");
+    expect(VIEWER_CSS).toContain(".comic-reader.is-reward");
     expect(VIEWER_CSS).toContain(".account-workspace");
     expect(VIEWER_CSS).toContain("  .account-empty {\n    grid-column: 1 / -1;");
     expect(VIEWER_CSS).toContain(".account-trust-row");

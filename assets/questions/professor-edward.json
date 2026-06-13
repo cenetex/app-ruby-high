@@ -9,7 +9,12 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "Who wrote *Beloved*?",
-      "options": { "A": "Toni Morrison", "B": "James Baldwin", "C": "Zadie Smith", "D": "Alice Walker" },
+      "options": {
+        "A": "Toni Morrison",
+        "B": "James Baldwin",
+        "C": "Zadie Smith",
+        "D": "Alice Walker"
+      },
       "correct": "A",
       "explanation": "Beloved (1987) — Pulitzer 1988. Morrison won the Nobel in 1993."
     },
@@ -19,7 +24,12 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "Which novel opens with 'Call me Ishmael.'?",
-      "options": { "A": "*The Old Man and the Sea*", "B": "*Moby-Dick*", "C": "*Heart of Darkness*", "D": "*Lord Jim*" },
+      "options": {
+        "A": "*The Old Man and the Sea*",
+        "B": "*Moby-Dick*",
+        "C": "*Heart of Darkness*",
+        "D": "*Lord Jim*"
+      },
       "correct": "B",
       "explanation": "Melville, 1851. One of the most famous opening lines in English fiction."
     },
@@ -29,7 +39,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "*Invisible Man* (1952) was written by…",
-      "options": { "A": "Richard Wright", "B": "James Baldwin", "C": "Ralph Ellison", "D": "Langston Hughes" },
+      "options": {
+        "A": "Richard Wright",
+        "B": "James Baldwin",
+        "C": "Ralph Ellison",
+        "D": "Langston Hughes"
+      },
       "correct": "C",
       "explanation": "Ellison's only novel published in his lifetime. Won the National Book Award 1953."
     },
@@ -39,7 +54,12 @@
       "difficulty": "medium",
       "stat": "heart",
       "prompt": "Which critic is most associated with the 'death of the author' essay (1967)?",
-      "options": { "A": "Jacques Derrida", "B": "Roland Barthes", "C": "Michel Foucault", "D": "Northrop Frye" },
+      "options": {
+        "A": "Jacques Derrida",
+        "B": "Roland Barthes",
+        "C": "Michel Foucault",
+        "D": "Northrop Frye"
+      },
       "correct": "B",
       "explanation": "Barthes argued that a text's unity lies in its destination — the reader — not its origin."
     },
@@ -49,7 +69,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "*Catch-22* satirizes which institution most directly?",
-      "options": { "A": "Catholic Church", "B": "U.S. military bureaucracy", "C": "British monarchy", "D": "Wall Street" },
+      "options": {
+        "A": "Catholic Church",
+        "B": "U.S. military bureaucracy",
+        "C": "British monarchy",
+        "D": "Wall Street"
+      },
       "correct": "B",
       "explanation": "Heller's novel is set in World War II, but its sharpest target is bureaucratic absurdity."
     },
@@ -59,7 +84,12 @@
       "difficulty": "medium",
       "stat": "head",
       "prompt": "The term 'New Criticism' is most associated with which decade?",
-      "options": { "A": "1900s", "B": "1930s-1940s", "C": "1960s", "D": "1980s" },
+      "options": {
+        "A": "1900s",
+        "B": "1930s-1940s",
+        "C": "1960s",
+        "D": "1980s"
+      },
       "correct": "B",
       "explanation": "Brooks, Warren, Wimsatt — close reading of the text as autonomous object. Later eclipsed by post-structuralism."
     },
@@ -69,7 +99,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "Which 1955 novel by Vladimir Nabokov was first published in Paris because U.S. publishers refused?",
-      "options": { "A": "*Pale Fire*", "B": "*Lolita*", "C": "*Pnin*", "D": "*Ada*" },
+      "options": {
+        "A": "*Pale Fire*",
+        "B": "*Lolita*",
+        "C": "*Pnin*",
+        "D": "*Ada*"
+      },
       "correct": "B",
       "explanation": "Olympia Press, 1955. U.S. publication followed in 1958 once the obscenity questions were tested."
     },
@@ -79,7 +114,12 @@
       "difficulty": "medium",
       "stat": "heart",
       "prompt": "Which writer coined the term 'iceberg theory' for prose?",
-      "options": { "A": "F. Scott Fitzgerald", "B": "Ernest Hemingway", "C": "John Steinbeck", "D": "William Faulkner" },
+      "options": {
+        "A": "F. Scott Fitzgerald",
+        "B": "Ernest Hemingway",
+        "C": "John Steinbeck",
+        "D": "William Faulkner"
+      },
       "correct": "B",
       "explanation": "Hemingway: most of the meaning sits below the waterline — implication over statement."
     },
@@ -89,7 +129,12 @@
       "difficulty": "hard",
       "stat": "head",
       "prompt": "Mikhail Bakhtin's central concept describing the multiplicity of voices within a novel is…",
-      "options": { "A": "Heteroglossia", "B": "Catachresis", "C": "Synecdoche", "D": "Anagnorisis" },
+      "options": {
+        "A": "Heteroglossia",
+        "B": "Catachresis",
+        "C": "Synecdoche",
+        "D": "Anagnorisis"
+      },
       "correct": "A",
       "explanation": "Heteroglossia — many social voices coexisting in one work, especially the novel as a polyphonic form."
     },
@@ -99,7 +144,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "Which post-war movement is *Howl* (1956) most often associated with?",
-      "options": { "A": "Beat Generation", "B": "Black Mountain School", "C": "New York School", "D": "Confessional poets" },
+      "options": {
+        "A": "Beat Generation",
+        "B": "Black Mountain School",
+        "C": "New York School",
+        "D": "Confessional poets"
+      },
       "correct": "A",
       "explanation": "Ginsberg's *Howl* is the defining Beat work; the obscenity trial in 1957 was a free-speech landmark."
     },
@@ -109,7 +159,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "In Pynchon's *Gravity's Rainbow*, which feature of the V-2 rocket matters most to the novel's obsession with cause and effect?",
-      "options": { "A": "Its painted insignia", "B": "Its impact can arrive before its sound", "C": "Its crew has a narrator", "D": "Its fuel is fictional" },
+      "options": {
+        "A": "Its painted insignia",
+        "B": "Its impact can arrive before its sound",
+        "C": "Its crew has a narrator",
+        "D": "Its fuel is fictional"
+      },
       "correct": "B",
       "explanation": "Because the V-2 traveled faster than sound, impact could be perceived before the sound arrived."
     },
@@ -119,7 +174,12 @@
       "difficulty": "hard",
       "stat": "head",
       "prompt": "Harold Bloom's 'anxiety of influence' (1973) describes…",
-      "options": { "A": "Writers misreading their precursors to make space for themselves", "B": "Critics inventing new terms to escape their advisors", "C": "Readers projecting biography onto text", "D": "Editors over-revising poems" },
+      "options": {
+        "A": "Writers misreading their precursors to make space for themselves",
+        "B": "Critics inventing new terms to escape their advisors",
+        "C": "Readers projecting biography onto text",
+        "D": "Editors over-revising poems"
+      },
       "correct": "A",
       "explanation": "Bloom's idea is that writers transform earlier works through creative misreading, making room for their own voice."
     },
@@ -129,7 +189,12 @@
       "difficulty": "easy",
       "stat": "head",
       "prompt": "Who wrote *On the Road* (1957)?",
-      "options": { "A": "William S. Burroughs", "B": "Jack Kerouac", "C": "Allen Ginsberg", "D": "Ken Kesey" },
+      "options": {
+        "A": "William S. Burroughs",
+        "B": "Jack Kerouac",
+        "C": "Allen Ginsberg",
+        "D": "Ken Kesey"
+      },
       "correct": "B",
       "explanation": "Kerouac. Famously typed on a 120-foot scroll across three weeks in 1951."
     },
@@ -139,7 +204,12 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "Which novel ends with 'So we beat on, boats against the current, borne back ceaselessly into the past.'?",
-      "options": { "A": "*Tender Is the Night*", "B": "*The Great Gatsby*", "C": "*This Side of Paradise*", "D": "*The Beautiful and Damned*" },
+      "options": {
+        "A": "*Tender Is the Night*",
+        "B": "*The Great Gatsby*",
+        "C": "*This Side of Paradise*",
+        "D": "*The Beautiful and Damned*"
+      },
       "correct": "B",
       "explanation": "Fitzgerald, 1925. One of the most-quoted closing lines in American literature."
     },
@@ -149,7 +219,12 @@
       "difficulty": "medium",
       "stat": "honor",
       "prompt": "Edward Said's *Orientalism* (1978) is foundational to which critical school?",
-      "options": { "A": "Reader-response", "B": "Postcolonial criticism", "C": "Russian formalism", "D": "Eco-criticism" },
+      "options": {
+        "A": "Reader-response",
+        "B": "Postcolonial criticism",
+        "C": "Russian formalism",
+        "D": "Eco-criticism"
+      },
       "correct": "B",
       "explanation": "Said showed how European scholarship constructed 'the Orient' as a discursive object that justified imperial power."
     },
@@ -159,7 +234,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "In narratology, what is free indirect discourse?",
-      "options": { "A": "Dialogue without quotation marks only", "B": "A narrator blending third-person narration with a character's thoughts or idiom", "C": "A poem with no fixed meter", "D": "A plot told strictly backward" },
+      "options": {
+        "A": "Dialogue without quotation marks only",
+        "B": "A narrator blending third-person narration with a character's thoughts or idiom",
+        "C": "A poem with no fixed meter",
+        "D": "A plot told strictly backward"
+      },
       "correct": "B",
       "explanation": "Free indirect discourse lets narration carry a character's interior voice without switching fully into first person or direct quotation."
     },
@@ -169,7 +249,12 @@
       "difficulty": "hard",
       "stat": "heart",
       "prompt": "Which idea best describes the Theater of the Absurd associated with Beckett and Ionesco?",
-      "options": { "A": "Comedy based only on mistaken identity", "B": "Drama exposing meaninglessness through repetition, breakdown, and circular action", "C": "Historical drama written in blank verse", "D": "Realist domestic plots with strict causality" },
+      "options": {
+        "A": "Comedy based only on mistaken identity",
+        "B": "Drama exposing meaninglessness through repetition, breakdown, and circular action",
+        "C": "Historical drama written in blank verse",
+        "D": "Realist domestic plots with strict causality"
+      },
       "correct": "B",
       "explanation": "Absurdist drama stages the collapse of stable meaning and conventional plot logic, often through repetition and stalled action."
     },
@@ -179,9 +264,116 @@
       "difficulty": "easy",
       "stat": "heart",
       "prompt": "In fiction, who is the narrator?",
-      "options": { "A": "The voice that tells the story", "B": "The company that prints the book", "C": "The list of chapter titles", "D": "The oldest character" },
+      "options": {
+        "A": "The voice that tells the story",
+        "B": "The company that prints the book",
+        "C": "The list of chapter titles",
+        "D": "The oldest character"
+      },
       "correct": "A",
       "explanation": "The narrator is the telling voice, which shapes what the reader knows and feels."
+    },
+    {
+      "id": "edward-gen-001",
+      "type": "multiple-choice",
+      "subject": "literature",
+      "difficulty": "easy",
+      "stat": "hustle",
+      "prompt": "You are drafting a paper on The Catcher in the Rye and want to prove Holden is an unreliable narrator. Which procedural move actually builds a textual argument rather than just relying on vibes?",
+      "options": {
+        "A": "Pointing out specific passages where his stated judgments directly contradict the observable actions he describes.",
+        "B": "Researching J.D. Salinger's personal letters to find his true, private opinion of prep schools and teenage rebellion.",
+        "C": "Summarizing the plot to demonstrate that he ultimately fails to achieve his stated goal of running away out West.",
+        "D": "Arguing that his heavy use of mid-century slang proves he is too uneducated to accurately understand the adults around him."
+      },
+      "correct": "A",
+      "explanation": "Holden's unreliability isn't a vibe; it's a structural gap. We prove it by catching his narration contradicting the very events he's describing, not by psychoanalyzing Salinger or summarizing the plot.",
+      "faculty": "professor-edward"
+    },
+    {
+      "id": "edward-gen-002",
+      "type": "multiple-choice",
+      "subject": "literature",
+      "difficulty": "medium",
+      "stat": "hustle",
+      "prompt": "You suspect a mid-century novelist is deploying free indirect discourse, but your study group just sees 'regular third-person.' What specific textual procedure should you use to prove them wrong?",
+      "options": {
+        "A": "Highlighting sudden shifts into first-person pronouns whenever the protagonist experiences a traumatic memory.",
+        "B": "Isolating third-person grammar that subtly adopts the specific vocabulary, syntax, and emotional cadence of a focal character.",
+        "C": "Finding moments where an omniscient narrator pauses the plot to directly address the reader about the character's psychological flaws.",
+        "D": "Mapping a frame narrative where an older version of the character explicitly corrects the factual mistakes of their younger self."
+      },
+      "correct": "B",
+      "explanation": "Free indirect discourse doesn't change the grammatical person; it infects the third-person narration with the character's specific lexicon and emotional rhythm. It's a subtle bleed, not a pronoun shift or authorial intrusion.",
+      "faculty": "professor-edward"
+    },
+    {
+      "id": "edward-gen-003",
+      "type": "multiple-choice",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "stat": "hustle",
+      "prompt": "A classmate wants to 'deconstruct' the binary of nature and civilization in a postwar novel by simply listing examples of both. What analytical procedure must you teach them to actually perform a deconstructive reading?",
+      "options": {
+        "A": "Tracing how the author's biography influenced their personal preference for rural landscapes over urban centers.",
+        "B": "Mapping the underlying mythological structures that both concepts share across different global cultures.",
+        "C": "Demonstrating how the text's own internal logic inevitably destabilizes the hierarchy between these two supposedly opposed terms.",
+        "D": "Evaluating how the working-class characters are materially excluded from accessing the 'nature' reserved for the wealthy."
+      },
+      "correct": "C",
+      "explanation": "Deconstruction isn't just listing two sides of a binary or doing biography. The actual procedure is showing how the text's own internal logic unravels the hierarchy it tries to establish between the terms.",
+      "faculty": "professor-edward"
+    },
+    {
+      "id": "edward-gen-004",
+      "type": "multiple-choice",
+      "subject": "mid-century",
+      "difficulty": "easy",
+      "stat": "honor",
+      "prompt": "A classmate argues that because Sylvia Plath suffered from depression, the bleak tone of her confessional poetry is just a direct transcript of her clinical diagnosis. Which critical rule of evidence does this violate?",
+      "options": {
+        "A": "The rule of polyphony, which demands that every poem must contain multiple independent social voices to be valid.",
+        "B": "The rule against the intentional fallacy, which warns against reducing a text's meaning to the author's biography or psychology.",
+        "C": "The rule of defamiliarization, which requires poets to make their personal trauma entirely unrecognizable to the reader.",
+        "D": "The rule of the frame narrative, which insists that personal trauma must be mediated through a secondary storyteller."
+      },
+      "correct": "B",
+      "explanation": "Confessional poetry uses the 'I', but treating the poem as a mere medical transcript commits the intentional fallacy. The text is a crafted artifice, not a diary entry, and we have a responsibility to respect that boundary.",
+      "faculty": "professor-edward"
+    },
+    {
+      "id": "edward-gen-005",
+      "type": "multiple-choice",
+      "subject": "literature",
+      "difficulty": "medium",
+      "stat": "hustle",
+      "prompt": "Your study group is baffled: the narrator of their novel is an omniscient historian, yet the battle scenes are strictly filtered through a young soldier's panicked perception. How do you clarify this narrative mechanic for them?",
+      "options": {
+        "A": "Explain that the author is using an unreliable narrator who is deliberately lying about the historical facts of the war.",
+        "B": "Distinguish between the narrative voice telling the story and the focalization through which the events are actually perceived.",
+        "C": "Argue that the text is a frame narrative where the soldier is secretly writing the history book in his diary.",
+        "D": "Show that the historian is using free indirect discourse to mock the soldier's lack of formal military education."
+      },
+      "correct": "B",
+      "explanation": "Students constantly confuse the voice telling the story (narration) with the eyes seeing the scene (focalization). An omniscient historian can easily focalize through a panicked soldier without changing the narrative voice.",
+      "faculty": "professor-edward"
+    },
+    {
+      "id": "edward-gen-006",
+      "type": "multiple-choice",
+      "subject": "literary-theory",
+      "difficulty": "hard",
+      "stat": "honor",
+      "prompt": "You are researching mid-century paperback distribution, but you only consult the preserved marketing archives of major New York publishing houses. According to archive theory, what critical responsibility are you neglecting?",
+      "options": {
+        "A": "Acknowledging that archives are neutral repositories, meaning you must simply read the marketing copy more closely to find hidden meanings.",
+        "B": "Applying a formalist reading to the physical glue and paper quality of the surviving books to determine their true literary merit.",
+        "C": "Interrogating what voices, regional distributors, and marginalized readerships were systematically excluded from being preserved as institutional evidence.",
+        "D": "Proving that the publishers intentionally committed the intentional fallacy by trying to control how the public read the paperbacks."
+      },
+      "correct": "C",
+      "explanation": "Archive theory reminds us that the archive is not a neutral mirror of the past; it's an exercise of institutional power. If we only read the preserved New York marketing, we are complicit in the erasure of the margins.",
+      "faculty": "professor-edward"
     }
   ]
 }

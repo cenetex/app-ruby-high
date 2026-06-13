@@ -7343,6 +7343,19 @@ export const VIEWER_CSS = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .comic-reader.is-reward .comic-reader-title {
+    font-size: 18px;
+    line-height: 1.05;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+  .comic-reader-detail {
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: none;
+    color: rgba(255,255,255,0.72);
+  }
   .comic-reader-close {
     width: 34px;
     height: 34px;

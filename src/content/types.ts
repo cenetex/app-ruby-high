@@ -138,6 +138,9 @@ export interface PackSourceCard {
   tags: string[];
   subject: string;
   difficulty: Difficulty;
+  /** Optional school-year gate for built-in corpora. Omitted means the
+   *  card is available at any grade, preserving imported pack behavior. */
+  minGrade?: string;
   faculty: string;
   media?: PackMediaAsset[];
 }

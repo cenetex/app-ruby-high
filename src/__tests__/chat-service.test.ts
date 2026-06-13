@@ -17,7 +17,7 @@ import {
   type StoredPackInstallationRecord,
   type StoredTeacherRecord,
 } from "../services/state-store.js";
-import { registerPack } from "../content/registry.js";
+import { packForSession, registerPack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import type { QuizState } from "../types.js";
 
@@ -1017,7 +1017,13 @@ describe("ChatService.send — message composition", () => {
     const state = ruby.getOrCreate("session:1");
     state.cardMemory = {};
     const future = Date.now() + 60 * 60 * 1000;
-    for (const q of faculty.bank("ruby")!.questions) {
+    const pack = packForSession(state);
+    const rubyFaculty = pack.faculty.find((entry) => entry.id === "ruby");
+    const cards = [
+      ...faculty.bank("ruby")!.questions,
+      ...(rubyFaculty?.sourceCards ?? []).map((card) => ({ id: card.id })),
+    ];
+    for (const q of cards) {
       state.askedQuestionIds.push(q.id);
       state.cardMemory[`ruby::${q.id}`] = {
         courseId: "ruby",

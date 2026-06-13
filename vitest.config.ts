@@ -2,6 +2,13 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Answer choices are shuffled per-pose in production (see
+    // RubyHighService.shuffleQuestionChoices). Disable it under test so the
+    // stored A/B/C/D order is deterministic; choice-shuffle.test.ts opts back
+    // in to verify the behavior.
+    env: {
+      RUBY_HIGH_SHUFFLE_CHOICES: "0",
+    },
     coverage: {
       provider: "v8",
       all: true,
