@@ -730,7 +730,7 @@ export interface DailyMemories {
   totalQuestionsAnswered: number;
 }
 
-const SYNTHETIC_CHARACTER_NAME_RE = /\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i;
+const SYNTHETIC_CHARACTER_NAME_RE = /\b(Smoke|Pacing)\s+m[a-z0-9]{6,}\b/i;
 
 function isSyntheticCharacterName(name: string | null | undefined): boolean {
   return !!name && SYNTHETIC_CHARACTER_NAME_RE.test(name);

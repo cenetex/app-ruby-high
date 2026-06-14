@@ -1037,7 +1037,7 @@ describe("RubyHighService Phase 1", () => {
     const smoke = attachTestCharacter(ruby, "test:social-smoke");
     smoke.sessionId = "test:social-smoke";
     smoke.currentGrade = "9";
-    smoke.character!.name = "Smoke mpa1234";
+    smoke.character!.name = "Smoke mqe1pkx3";
     smoke.character!.createdAt = now;
     smoke.character!.dailyClasses = {
       ruby: completedClassRecord("9", "ruby", today, "A", 300),
@@ -1053,7 +1053,7 @@ describe("RubyHighService Phase 1", () => {
     const pacing = attachTestCharacter(ruby, "test:social-pacing");
     pacing.sessionId = "test:social-pacing";
     pacing.currentGrade = "9";
-    pacing.character!.name = "Pacing mpb5678";
+    pacing.character!.name = "Pacing mqe1pl4d";
     pacing.character!.createdAt = now;
     pacing.character!.dailyClasses = {
       ruby: completedClassRecord("9", "ruby", today, "A", 300),
