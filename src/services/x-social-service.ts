@@ -51,6 +51,7 @@ export interface XMilestoneContext {
   letterGrade?: string;
   arcAnswer?: string;
   flavorQuote?: string;
+  imageUrl?: string;
   portraitUrl?: string;
   diplomaUrl?: string;
   yearbookShareUrl?: string;
@@ -563,7 +564,7 @@ export class XSocialService extends Service {
 
     // Resolve and upload an image if the milestone carries one.
     // One photo-reveal tweet per teacher per UTC day.
-    const imageUrl = ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    const imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
     let mediaId: string | null = null;
     if (imageUrl) {
       const today = new Date().toISOString().slice(0, 10);

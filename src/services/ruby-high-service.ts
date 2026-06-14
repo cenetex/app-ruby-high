@@ -6354,6 +6354,7 @@ export class RubyHighService extends Service {
           : pick.photo.kind === "class-photo" ? "class-photo"
           : "graduated",
       characterName: this.sessions.get(pick.sessionId)?.character?.name ?? "A student",
+      imageUrl: pick.photo.kind === "class-photo" ? pick.photo.imageUrl : undefined,
       portraitUrl: pick.photo.kind === "portrait" ? pick.photo.imageUrl : undefined,
       diplomaUrl: pick.photo.kind === "diploma" ? pick.photo.imageUrl : undefined,
     };

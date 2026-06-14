@@ -368,6 +368,46 @@ describe("XSocialService", () => {
       expect(body.media.media_ids).toEqual(["media-abc-123"]);
     });
 
+    it("attaches generic imageUrl media for class-photo tweets", async () => {
+      const { state } = svc.beginConnect("ruby");
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            access_token: "tok", refresh_token: "ref", expires_in: 7200,
+            scope: "tweet.read tweet.write users.read offline.access media.write",
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "1", username: "ruby" } }),
+        });
+      await svc.handleCallback("code", state);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "media-class-photo" } }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-class-photo" } }),
+      });
+
+      const pngUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-photo",
+        characterName: "Homeroom",
+        imageUrl: pngUrl,
+      });
+
+      expect(result).toBe("tweet-class-photo");
+      const tweetCall = mockFetch.mock.calls.find(
+        (c: unknown[]) => String((c as string[])[0]).includes("/tweets"),
+      );
+      const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
+      expect(body.media.media_ids).toEqual(["media-class-photo"]);
+    });
+
     it("falls back to text-only tweet when media upload fails", async () => {
       const { state } = svc.beginConnect("ruby");
       mockFetch
