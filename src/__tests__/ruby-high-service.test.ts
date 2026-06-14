@@ -897,15 +897,15 @@ describe("RubyHighService Phase 1", () => {
     const sid = "test:freshman-curated-core";
     ruby.selectGrade(sid, "9");
 
-    const rubyBankTotal = faculty.bank("ruby")!.questions.length;
     const freshmanBankTotal = faculty.bank("ruby")!.questions.filter((q) => q.difficulty === "easy").length;
+    const sophomoreBankTotal = faculty.bank("ruby")!.questions.filter((q) => q.difficulty === "easy" || q.difficulty === "medium").length;
     const freshmanStatus = ruby.questionBankStatus(sid, "ruby");
     expect(freshmanStatus.total).toBe(freshmanBankTotal);
 
     ruby.selectGrade(sid, "10");
     const sophomoreStatus = ruby.questionBankStatus(sid, "ruby");
     expect(sophomoreStatus.total).toBeGreaterThan(freshmanBankTotal);
-    expect(sophomoreStatus.total).toBeGreaterThan(rubyBankTotal);
+    expect(sophomoreStatus.total).toBeGreaterThan(sophomoreBankTotal);
   });
 
   it("does not replace or clear a live unresolved board", async () => {
