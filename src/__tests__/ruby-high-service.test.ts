@@ -1013,6 +1013,73 @@ describe("RubyHighService Phase 1", () => {
     expect(revealed.character?.pendingPhotos).toHaveLength(1);
   });
 
+  it("keeps synthetic smoke and pacing students out of social feeds", async () => {
+    const { ruby } = await makeServices();
+    const today = dailyKey();
+    const now = Date.now();
+
+    const real = attachTestCharacter(ruby, "test:social-real");
+    real.sessionId = "test:social-real";
+    real.currentGrade = "9";
+    real.character!.name = "Noor";
+    real.character!.createdAt = now;
+    real.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    real.character!.pendingPhotos = [{
+      photoId: "photo:real",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/noor.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now,
+    }];
+
+    const smoke = attachTestCharacter(ruby, "test:social-smoke");
+    smoke.sessionId = "test:social-smoke";
+    smoke.currentGrade = "9";
+    smoke.character!.name = "Smoke mpa1234";
+    smoke.character!.createdAt = now;
+    smoke.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    smoke.character!.pendingPhotos = [{
+      photoId: "photo:smoke",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/smoke.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now - 1,
+    }];
+
+    const pacing = attachTestCharacter(ruby, "test:social-pacing");
+    pacing.sessionId = "test:social-pacing";
+    pacing.currentGrade = "9";
+    pacing.character!.name = "Pacing mpb5678";
+    pacing.character!.createdAt = now;
+    pacing.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    pacing.character!.pendingPhotos = [{
+      photoId: "photo:pacing",
+      kind: "class-photo",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/pacing.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now - 2,
+    }];
+
+    const memories = ruby.getDailyMemories();
+    expect(memories.charactersCreated).toEqual(["Noor"]);
+    expect(memories.classesPassed.map((entry) => entry.studentName)).toEqual(["Noor"]);
+    expect(memories.totalStudents).toBe(1);
+    expect(memories.totalQuestionsAnswered).toBe(3);
+
+    expect(ruby.getRecentlyActiveStudents().map((student) => student.name)).toEqual(["Noor"]);
+
+    const snapshot = ruby.getSchoolSnapshot();
+    expect(snapshot.photoPool.map((photo) => photo.studentName)).toEqual(["Noor"]);
+    expect(JSON.stringify(snapshot)).not.toContain("Smoke");
+    expect(JSON.stringify(snapshot)).not.toContain("Pacing");
+  });
+
   it("persists session state across a 'restart'", async () => {
     const { ruby } = await makeServices();
     const sid = "test:5";

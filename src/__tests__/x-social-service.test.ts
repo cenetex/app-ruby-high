@@ -25,6 +25,10 @@ beforeEach(async () => {
   vi.stubEnv("RUBY_HIGH_X_CLIENT_SECRET", "test-client-secret");
   vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "http://127.0.0.1:3000");
   vi.stubEnv("RUBY_HIGH_X_DRY_RUN", "0");
+  vi.stubEnv("RUBY_HIGH_X_CONSUMER_KEY", "");
+  vi.stubEnv("RUBY_HIGH_X_CONSUMER_SECRET", "");
+  vi.stubEnv("RUBY_HIGH_X_ACCESS_TOKEN", "");
+  vi.stubEnv("RUBY_HIGH_X_ACCESS_SECRET", "");
   vi.stubEnv("RUBY_HIGH_STATE_PATH", TEST_STATE_DIR);
   mockFetch.mockReset();
 });
@@ -77,6 +81,7 @@ describe("XSocialService", () => {
       expect(url).toContain("https://x.com/i/oauth2/authorize");
       expect(url).toContain("client_id=test-client-id");
       expect(url).toContain("code_challenge_method=S256");
+      expect(decodeURIComponent(url)).toContain("media.write");
       expect(state).toContain("ruby");
     });
 
@@ -104,7 +109,7 @@ describe("XSocialService", () => {
             access_token: "test-access-token",
             refresh_token: "test-refresh-token",
             expires_in: 7200,
-            scope: "tweet.read tweet.write users.read offline.access",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -121,6 +126,7 @@ describe("XSocialService", () => {
       expect(svc.getStatus("ruby")).toMatchObject({
         connected: true,
         xScreenName: "ruby_high_ruby",
+        hasMediaWrite: true,
       });
     });
 
@@ -146,7 +152,7 @@ describe("XSocialService", () => {
           ok: true,
           json: async () => ({
             access_token: "tok", refresh_token: "ref", expires_in: 7200,
-            scope: "tweet.read tweet.write users.read offline.access",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -182,7 +188,7 @@ describe("XSocialService", () => {
           ok: true,
           json: async () => ({
             access_token: "tok", refresh_token: "ref", expires_in: 7200,
-            scope: "tweet.read tweet.write users.read offline.access",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -205,7 +211,7 @@ describe("XSocialService", () => {
           ok: true,
           json: async () => ({
             access_token: "tok", refresh_token: "ref", expires_in: 7200,
-            scope: "tweet.read tweet.write users.read offline.access",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -309,7 +315,7 @@ describe("XSocialService", () => {
           ok: true,
           json: async () => ({
             access_token: "tok", refresh_token: "ref", expires_in: 7200,
-            scope: "tweet.read tweet.write users.read offline.access",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -321,7 +327,7 @@ describe("XSocialService", () => {
       // Mock the media upload response.
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ media_id_string: "media-abc-123" }),
+        json: async () => ({ data: { id: "media-abc-123" } }),
       });
       // Mock the tweet post response.
       mockFetch.mockResolvedValueOnce({
@@ -344,6 +350,14 @@ describe("XSocialService", () => {
         (c: unknown[]) => String((c as string[])[0]).includes("media/upload"),
       );
       expect(mediaCall).toBeDefined();
+      expect(String((mediaCall as unknown[])[0])).toBe("https://api.x.com/2/media/upload");
+      const uploadBody = JSON.parse((mediaCall![1] as RequestInit).body as string);
+      expect(uploadBody).toMatchObject({
+        media_category: "tweet_image",
+        media_type: "image/png",
+        shared: false,
+      });
+      expect(typeof uploadBody.media).toBe("string");
 
       // Verify tweet body includes media_ids.
       const tweetCall = mockFetch.mock.calls.find(
@@ -361,7 +375,7 @@ describe("XSocialService", () => {
           ok: true,
           json: async () => ({
             access_token: "tok", refresh_token: "ref", expires_in: 7200,
-            scope: "tweet.read tweet.write users.read offline.access",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -399,7 +413,7 @@ describe("XSocialService", () => {
       expect(body.media).toBeUndefined();
     });
 
-    it("skips media when no image URL is provided", async () => {
+    it("posts text-only and reports missing media scope for older OAuth tokens", async () => {
       const { state } = svc.beginConnect("ruby");
       mockFetch
         .mockResolvedValueOnce({
@@ -407,6 +421,47 @@ describe("XSocialService", () => {
           json: async () => ({
             access_token: "tok", refresh_token: "ref", expires_in: 7200,
             scope: "tweet.read tweet.write users.read offline.access",
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "1", username: "ruby" } }),
+        });
+      await svc.handleCallback("code", state);
+      expect(svc.getStatus("ruby")).toMatchObject({ connected: true, hasMediaWrite: false });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-without-media-scope" } }),
+      });
+
+      const pngUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "portrait-set",
+        characterName: "Old Token Kid",
+        portraitUrl: pngUrl,
+      });
+
+      expect(result).toBe("tweet-without-media-scope");
+      const mediaCalls = mockFetch.mock.calls.filter(
+        (c: unknown[]) => String((c as string[])[0]).includes("media/upload"),
+      );
+      expect(mediaCalls).toHaveLength(0);
+      const tweetCall = mockFetch.mock.calls.find(
+        (c: unknown[]) => String((c as string[])[0]).includes("/tweets"),
+      );
+      const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
+      expect(body.media).toBeUndefined();
+    });
+
+    it("skips media when no image URL is provided", async () => {
+      const { state } = svc.beginConnect("ruby");
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            access_token: "tok", refresh_token: "ref", expires_in: 7200,
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({

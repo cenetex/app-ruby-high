@@ -730,6 +730,12 @@ export interface DailyMemories {
   totalQuestionsAnswered: number;
 }
 
+const SYNTHETIC_CHARACTER_NAME_RE = /\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i;
+
+function isSyntheticCharacterName(name: string | null | undefined): boolean {
+  return !!name && SYNTHETIC_CHARACTER_NAME_RE.test(name);
+}
+
 export interface YearbookShareCard {
   shareId: string;
   grade: Grade;
@@ -4898,7 +4904,7 @@ export class RubyHighService extends Service {
       const ch = s.character;
       if (!ch?.portraitDataUrl) continue;
       if (existingIds.has(ch.name)) continue;
-      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+      if (isSyntheticCharacterName(ch.name)) continue;
       candidates.push({
         name: ch.name,
         playbookId: ch.playbookId,
@@ -6313,7 +6319,7 @@ export class RubyHighService extends Service {
       const ch = state.character;
       if (!ch?.pendingPhotos?.length) continue;
       // Skip smoke-test/auto-generated characters.
-      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+      if (isSyntheticCharacterName(ch.name)) continue;
       // Skip test/smoke characters that haven't completed any classes.
       const hasClasses = Object.values(ch.dailyClasses ?? {}).some(
         (r) => r.status === "complete",
@@ -6376,7 +6382,7 @@ export class RubyHighService extends Service {
       if (!ch) continue;
 
       // Skip smoke-test / auto-generated characters.
-      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+      if (isSyntheticCharacterName(ch.name)) continue;
       memories.totalStudents += 1;
       // Characters created today.
       if (ch.createdAt) {
@@ -6444,7 +6450,7 @@ export class RubyHighService extends Service {
       const lastActivity = this.lastActivityFor(ch, state);
       if (now - lastActivity > weekMs) continue;
       // Skip smoke-test and auto-generated characters.
-      if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+      if (isSyntheticCharacterName(ch.name)) continue;
       // Skip students who haven't completed any classes.
       const hasGrades = Object.values(ch.dailyClasses ?? {}).some(
         (r) => r.status === "complete",
@@ -6505,9 +6511,11 @@ export class RubyHighService extends Service {
     // Photo pool: all pending photos across all sessions.
     const photoPool: SchoolSnapshotPhoto[] = [];
     for (const [, state] of this.sessions) {
-      for (const p of state.character?.pendingPhotos ?? []) {
+      const ch = state.character;
+      if (!ch || isSyntheticCharacterName(ch.name)) continue;
+      for (const p of ch.pendingPhotos ?? []) {
         photoPool.push({
-          studentName: state.character!.name,
+          studentName: ch.name,
           kind: p.kind,
           teacherFacultyId: p.teacherFacultyId,
           earnedAt: p.earnedAt,
@@ -6583,7 +6591,7 @@ export class RubyHighService extends Service {
 
     // Skip smoke-test / auto-generated characters so their suffixed
     // names never reach an LLM prompt for social posting.
-    if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ctx.characterName)) return;
+    if (isSyntheticCharacterName(ctx.characterName)) return;
 
     // Per-student daily text budget: skip if this student already had a text
     // post today. Character-created and graduated are one-time events — always post.
@@ -7061,7 +7069,7 @@ function pickPlayerStudentCard(
     const ch = state.character;
     if (!ch?.portraitDataUrl) continue;
     // Skip smoke test characters.
-    if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(ch.name)) continue;
+    if (isSyntheticCharacterName(ch.name)) continue;
     candidates.push({
       name: ch.name,
       playbookId: ch.playbookId,

@@ -1145,6 +1145,7 @@ async function postTelegramSnapshot() {
         localStorage.setItem(tokenKey, token);
         latestMetrics = data;
         render(data);
+        refreshXSocial();
       } catch (err) {
         status(err && err.message ? err.message : String(err), "is-error");
       } finally {

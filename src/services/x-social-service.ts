@@ -63,6 +63,7 @@ export interface XSocialStatus {
   teacherId: string;
   xScreenName?: string;
   connectedAt?: number;
+  hasMediaWrite?: boolean;
 }
 
 interface XTokenStore {
@@ -77,7 +78,8 @@ const X_API_BASE = "https://api.x.com/2";
 const X_OAUTH_AUTHORIZE = "https://x.com/i/oauth2/authorize";
 const X_OAUTH_TOKEN = "https://api.x.com/2/oauth2/token";
 const X_REVOKE = "https://api.x.com/2/oauth2/revoke";
-const X_MEDIA_UPLOAD = "https://upload.x.com/1.1/media/upload.json";
+const X_MEDIA_UPLOAD = "https://api.x.com/2/media/upload";
+const X_LEGACY_MEDIA_UPLOAD = "https://upload.x.com/1.1/media/upload.json";
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024; // X limit: 5 MB for images
 const X_POSTS_PER_24H = 50;
 const TOKEN_REFRESH_WINDOW_SEC = 300;
@@ -274,7 +276,19 @@ function oauth1AuthHeader(
 }
 
 function hasOAuth1Credentials(): boolean {
-  return !!(process.env.RUBY_HIGH_X_CONSUMER_KEY && process.env.RUBY_HIGH_X_ACCESS_TOKEN);
+  return !!(
+    process.env.RUBY_HIGH_X_CONSUMER_KEY
+    && process.env.RUBY_HIGH_X_CONSUMER_SECRET
+    && process.env.RUBY_HIGH_X_ACCESS_TOKEN
+    && process.env.RUBY_HIGH_X_ACCESS_SECRET
+  );
+}
+
+function tokenHasScope(token: XTokenRecord, scope: string): boolean {
+  return (token.scope ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .includes(scope);
 }
 
 export class XSocialService extends Service {
@@ -496,6 +510,7 @@ export class XSocialService extends Service {
       teacherId,
       xScreenName: token?.xScreenName,
       connectedAt: token?.connectedAt,
+      ...(token ? { hasMediaWrite: tokenHasScope(token, "media.write") } : {}),
     };
   }
 
@@ -560,7 +575,7 @@ export class XSocialService extends Service {
       this.lastPhotoDate.set(teacher.id, today);
       try {
         const imageBytes = await this.resolveImageToBuffer(imageUrl);
-        mediaId = await this.uploadMedia(freshToken.accessToken, imageBytes);
+        mediaId = await this.uploadMedia(freshToken, imageBytes);
       } catch (err) {
         // Release the reserved slot on failure so another attempt can retry.
         this.lastPhotoDate.delete(teacher.id);
@@ -599,8 +614,8 @@ export class XSocialService extends Service {
 
   // ── Media upload ────────────────────────────────────────────────────────
 
-  /** Upload an image to X and return the media_id_string for tweet attachment. */
-  private async uploadMedia(accessToken: string, imageBytes: Buffer): Promise<string | null> {
+  /** Upload an image to X and return a media ID for tweet attachment. */
+  private async uploadMedia(token: XTokenRecord, imageBytes: Buffer): Promise<string | null> {
     if (imageBytes.length > MAX_MEDIA_BYTES) {
       log.event("x-social.media-too-large", { bytes: imageBytes.length });
       return null;
@@ -608,7 +623,56 @@ export class XSocialService extends Service {
 
     // Determine MIME type from magic bytes.
     const mimeType = this.detectImageMime(imageBytes);
+    const v2MediaId = await this.uploadMediaV2(token, imageBytes, mimeType);
+    if (v2MediaId) return v2MediaId;
+    return this.uploadMediaLegacy(imageBytes, mimeType);
+  }
 
+  private async uploadMediaV2(token: XTokenRecord, imageBytes: Buffer, mimeType: string): Promise<string | null> {
+    if (!tokenHasScope(token, "media.write")) {
+      log.event("x-social.media-upload-skipped", {
+        teacherId: token.teacherId,
+        reason: "missing-media-write-scope",
+      });
+      return null;
+    }
+    try {
+      const res = await fetch(X_MEDIA_UPLOAD, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          media: imageBytes.toString("base64"),
+          media_category: "tweet_image",
+          media_type: mimeType,
+          shared: false,
+        }),
+        signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        log.error("x-social.media-upload-rejected", new Error(errText), {
+          status: res.status,
+          endpoint: "v2",
+          teacherId: token.teacherId,
+        });
+        return null;
+      }
+      const data = (await res.json()) as { data?: { id?: string; media_id_string?: string } };
+      return data.data?.id ?? data.data?.media_id_string ?? null;
+    } catch (err) {
+      log.error("x-social.media-upload-failed", err, { endpoint: "v2", teacherId: token.teacherId });
+      return null;
+    }
+  }
+
+  private async uploadMediaLegacy(imageBytes: Buffer, mimeType: string): Promise<string | null> {
+    if (!hasOAuth1Credentials()) {
+      log.event("x-social.media-upload-skipped", { reason: "missing-oauth1-credentials" });
+      return null;
+    }
     // X media upload v1.1 uses multipart form data.
     const boundary = "----RubyHighXUpload" + Date.now();
     const header = [
@@ -625,23 +689,17 @@ export class XSocialService extends Service {
     const body = Buffer.concat([headerBytes, imageBytes, footerBytes]);
 
     try {
-      // Use OAuth 1.0a for media upload if credentials are available.
-      // OAuth 2.0 bearer tokens often get 403 on the v1.1 media endpoint.
-      let headers: Record<string, string> = {
+      const headers: Record<string, string> = {
         "Content-Type": `multipart/form-data; boundary=${boundary}`,
-      };
-      if (hasOAuth1Credentials()) {
-        headers["Authorization"] = oauth1AuthHeader(
-          "POST", X_MEDIA_UPLOAD,
+        "Authorization": oauth1AuthHeader(
+          "POST", X_LEGACY_MEDIA_UPLOAD,
           process.env.RUBY_HIGH_X_CONSUMER_KEY!,
           process.env.RUBY_HIGH_X_CONSUMER_SECRET!,
           process.env.RUBY_HIGH_X_ACCESS_TOKEN!,
           process.env.RUBY_HIGH_X_ACCESS_SECRET!,
-        );
-      } else {
-        headers["Authorization"] = `Bearer ${accessToken}`;
-      }
-      const res = await fetch(X_MEDIA_UPLOAD, {
+        ),
+      };
+      const res = await fetch(X_LEGACY_MEDIA_UPLOAD, {
         method: "POST",
         headers,
         body,
@@ -649,13 +707,13 @@ export class XSocialService extends Service {
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        log.error("x-social.media-upload-rejected", new Error(errText), { status: res.status });
+        log.error("x-social.media-upload-rejected", new Error(errText), { status: res.status, endpoint: "legacy" });
         return null;
       }
       const data = (await res.json()) as { media_id_string: string };
       return data.media_id_string;
     } catch (err) {
-      log.error("x-social.media-upload-failed", err, {});
+      log.error("x-social.media-upload-failed", err, { endpoint: "legacy" });
       return null;
     }
   }
