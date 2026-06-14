@@ -1142,13 +1142,13 @@ export class XSocialService extends Service {
     const freshToken = await this.ensureFreshToken(token);
     if (!freshToken) return null;
 
-    // Check and reserve one-photo-per-day limit.
+    // Check the one-photo-per-day limit, but do not reserve it here. The
+    // actual post path owns reservation so generated photos can still tweet.
     const today = new Date().toISOString().slice(0, 10);
     if (this.lastPhotoDate.get(teacher.id) === today) {
       log.event("x-social.photo-already-today", { teacherId: teacher.id, kind: "class-photo" });
       return null;
     }
-    this.lastPhotoDate.set(teacher.id, today);
 
     const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
     if (!apiKey) {

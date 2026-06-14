@@ -210,7 +210,7 @@ export async function handleXSocialRoutes(
     if (!teacherId) { ctx.error(ctx.res, "Teacher ID is required.", 400); return true; }
     try {
       const rt = (xSocial as any).runtime;
-      const rsvc = rt?.getService?.("ruby-high") as { getSchoolSnapshot?: () => any; enqueuePhotoReveal?: (sid: string, kind: string, url: string, tid: string) => string; sessions?: Map<string, any> } | null;
+      const rsvc = rt?.getService?.("ruby-high") as { getSchoolSnapshot?: () => any; enqueuePhotoReveal?: (sid: string, kind: string, url: string, tid: string) => string; maybePostDailyPhoto?: () => void; sessions?: Map<string, any> } | null;
       const snapshot = rsvc?.getSchoolSnapshot?.() ?? { topByYear: {}, photoPool: [] };
       // Collect student portraits from the top-3-per-year list.
       const studentImages: Array<{ name: string; imageUrl: string; sessionId: string }> = [];
@@ -249,6 +249,7 @@ export async function handleXSocialRoutes(
           break; // Just enqueue once
         }
       }
+      rsvc?.maybePostDailyPhoto?.();
       ctx.json(ctx.res, { ok: true, photoId, imageUrl, studentCount: selected.length });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : "Class photo failed", 500);

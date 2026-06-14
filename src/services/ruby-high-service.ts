@@ -895,6 +895,7 @@ export class RubyHighService extends Service {
   private readonly store: StateStoreLike;
   private readonly backgroundWrites = new Set<Promise<void>>();
   private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
+  private readonly pendingPhotoPosts = new Set<string>();
   private readonly disposeLogSink: () => void;
   private persistedPackRecords: StoredContentPackRecord[] | null = null;
   private teacherRecords: StoredTeacherRecord[] | null = null;
@@ -6345,9 +6346,12 @@ export class RubyHighService extends Service {
     // is connected, then pick one at random.
     const eligible = allPhotos.filter((e) => xSocial.getStatus(e.photo.teacherFacultyId).connected);
     if (eligible.length === 0) return;
-    const pick = eligible[Math.floor(Math.random() * eligible.length)]!;
+    const ready = eligible.filter((e) => !this.pendingPhotoPosts.has(e.photo.photoId));
+    if (ready.length === 0) return;
+    const pick = ready[Math.floor(Math.random() * ready.length)]!;
     const teacher = teacherById(pick.photo.teacherFacultyId);
     if (!teacher) return;
+    this.pendingPhotoPosts.add(pick.photo.photoId);
     const ctx: XMilestoneContext = {
       kind: pick.photo.kind === "portrait" ? "portrait-set"
           : pick.photo.kind === "diploma" ? "diploma-earned"
@@ -6362,7 +6366,9 @@ export class RubyHighService extends Service {
       if (tweetId) {
         this.revealPhoto(pick.sessionId, pick.photo.photoId, tweetId);
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      this.pendingPhotoPosts.delete(pick.photo.photoId);
+    });
   }
 
   /** Collect today's school memories across all sessions. Returns a

@@ -1080,6 +1080,47 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(snapshot)).not.toContain("Pacing");
   });
 
+  it("does not start duplicate X photo posts while a photo is in flight", async () => {
+    let resolvePost: (tweetId: string | null) => void = () => {};
+    const maybePostMilestone = vi.fn(
+      () => new Promise<string | null>((resolve) => { resolvePost = resolve; }),
+    );
+    const runtime = {
+      getService: (type: string) => {
+        if (type !== "x-social") return null;
+        return {
+          listConnected: () => [{ teacherId: "ruby" }],
+          getStatus: () => ({ connected: true }),
+          maybePostMilestone,
+        };
+      },
+    };
+    const { ruby } = await makeServices();
+    Object.defineProperty(ruby, "runtime", { value: runtime });
+
+    const state = attachTestCharacter(ruby, "test:photo-in-flight");
+    state.sessionId = "test:photo-in-flight";
+    state.character!.name = "Noor";
+    state.character!.pendingPhotos = [{
+      photoId: "photo:class",
+      kind: "class-photo",
+      imageUrl: "data:image/png;base64,aW1hZ2U=",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+    }];
+
+    ruby.maybePostDailyPhoto();
+    ruby.maybePostDailyPhoto();
+
+    expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+
+    resolvePost(null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    ruby.maybePostDailyPhoto();
+    expect(maybePostMilestone).toHaveBeenCalledTimes(2);
+  });
+
   it("persists session state across a 'restart'", async () => {
     const { ruby } = await makeServices();
     const sid = "test:5";
