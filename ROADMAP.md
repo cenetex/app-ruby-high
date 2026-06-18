@@ -42,8 +42,8 @@ Goal: get the issue tracker to tell the truth before inventing new MMO tickets.
 - Close or replace #65 after confirming the current `deploy-fly` failure is stale.
 - Land #119-#122 through PR/CI before adding new multiplayer commands; public
   multiplayer command and import surfaces should fail closed by default.
-- Open first-class MMO issues for the work below so this roadmap stays tied to
-  GitHub, not memory.
+- First-class MMO issues now exist for the work below so this roadmap stays tied
+  to GitHub, not memory.
 
 Acceptance gate: open issues distinguish stale/resolved work from active
 blockers, and the tracker contains explicit MMO milestone issues.
@@ -147,18 +147,19 @@ Goal: connect Hall Passes, NFTs, cards, and comics to the shared school world.
 Acceptance gate: multiplayer activity creates visible, collectible, shareable
 outcomes without requiring crypto participation.
 
-### Next GitHub issues to open
+### New MMO GitHub issues
 
-1. **MMO: live class rooms MVP** — shared room goal, room progress events,
-   two-client acceptance test.
-2. **MMO: typed public-world viewer module** — extract feed/client rendering from
-   `viewer-parts/client.ts` behind typed pure helpers.
-3. **MMO: teacher curriculum research loop** — corpora, coverage detection,
-   generation queue, validation/promote path.
-4. **MMO: public presence and moderation controls** — visibility settings,
-   report/hide/admin review.
-5. **MMO: durable room/world state model** — explicit room/term/goal records once
-   live class rooms prove the loop.
+1. [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139)
+   — shared room goal, room progress events, two-client acceptance test.
+2. [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140)
+   — extract feed/client rendering from `viewer-parts/client.ts` behind typed
+   pure helpers.
+3. [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141)
+   — corpora, coverage detection, generation queue, validation/promote path.
+4. [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142)
+   — visibility settings, report/hide/admin review.
+5. [#143 MMO: durable room/world state model](https://github.com/cenetex/app-ruby-high/issues/143)
+   — explicit room/term/goal records once live class rooms prove the loop.
 
 ---
 
