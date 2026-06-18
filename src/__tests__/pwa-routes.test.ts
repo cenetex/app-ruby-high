@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { assetCacheControlFor } from "../routes/assets.js";
@@ -46,6 +47,24 @@ function cspDirective(csp: string, name: string): string {
     .split(";")
     .map((part) => part.trim())
     .find((part) => part.toLowerCase().startsWith(`${name.toLowerCase()} `)) ?? "";
+}
+
+async function withPrivyBundleFixture(run: () => Promise<void>): Promise<void> {
+  const distDir = new URL("../../dist/", import.meta.url);
+  const bundleUrl = new URL("viewer-privy-client.global.js", distDir);
+  let createdFixture = false;
+  try {
+    await access(bundleUrl);
+  } catch {
+    await mkdir(distDir, { recursive: true });
+    await writeFile(bundleUrl, "globalThis.RubyHighPrivyClientModule = {};\n");
+    createdFixture = true;
+  }
+  try {
+    await run();
+  } finally {
+    if (createdFixture) await rm(bundleUrl, { force: true });
+  }
 }
 
 function makeCtx(
@@ -173,29 +192,31 @@ describe("PWA surface", () => {
     expect(assetCacheControlFor("privy-client.global.js", true)).toBe("public, max-age=31536000, immutable");
     expect(assetCacheControlFor("privy-client.js", true)).toBe("public, max-age=31536000, immutable");
 
-    const unversioned = makeResponse();
-    const unversionedHandled = await handleAppRoutes(makeCtx(
-      "/api/apps/ruby-high/assets/privy-client.global.js",
-      unversioned,
-      "HEAD",
-    ));
-    expect(unversionedHandled).toBe(true);
-    expect(unversioned.res.statusCode).toBe(200);
-    expect(unversioned.headers.get("cache-control")).toBe("no-cache");
-    expect(unversioned.headers.get("content-type")).toMatch(/text\/javascript/);
-    expect(unversioned.text).toBe("");
+    await withPrivyBundleFixture(async () => {
+      const unversioned = makeResponse();
+      const unversionedHandled = await handleAppRoutes(makeCtx(
+        "/api/apps/ruby-high/assets/privy-client.global.js",
+        unversioned,
+        "HEAD",
+      ));
+      expect(unversionedHandled).toBe(true);
+      expect(unversioned.res.statusCode).toBe(200);
+      expect(unversioned.headers.get("cache-control")).toBe("no-cache");
+      expect(unversioned.headers.get("content-type")).toMatch(/text\/javascript/);
+      expect(unversioned.text).toBe("");
 
-    const versioned = makeResponse();
-    const versionedHandled = await handleAppRoutes(makeCtx(
-      "/api/apps/ruby-high/assets/privy-client.global.js?v=build-123",
-      versioned,
-      "HEAD",
-    ));
-    expect(versionedHandled).toBe(true);
-    expect(versioned.res.statusCode).toBe(200);
-    expect(versioned.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
-    expect(versioned.headers.get("etag")).toMatch(/^".+"$/);
-    expect(versioned.text).toBe("");
+      const versioned = makeResponse();
+      const versionedHandled = await handleAppRoutes(makeCtx(
+        "/api/apps/ruby-high/assets/privy-client.global.js?v=build-123",
+        versioned,
+        "HEAD",
+      ));
+      expect(versionedHandled).toBe(true);
+      expect(versioned.res.statusCode).toBe(200);
+      expect(versioned.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(versioned.headers.get("etag")).toMatch(/^".+"$/);
+      expect(versioned.text).toBe("");
+    });
   });
 
   it("supports HEAD checks for PWA resources", async () => {
