@@ -26,17 +26,17 @@
     "assets"
   ],
   "scripts": {
-    "build": "tsup --config tsup.config.ts && node scripts/fix-node-sqlite-import.mjs && node scripts/check-privy-client-bundle.mjs && node scripts/check-viewer-bundle.mjs",
-    "build:spa": "npm run build && node scripts/build-spa.mjs",
+    "build": "tsup --config tsup.config.ts && node --disable-warning=ExperimentalWarning scripts/fix-node-sqlite-import.mjs && node --disable-warning=ExperimentalWarning scripts/check-privy-client-bundle.mjs && node --disable-warning=ExperimentalWarning scripts/check-viewer-bundle.mjs",
+    "build:spa": "npm run build && node --disable-warning=ExperimentalWarning scripts/build-spa.mjs",
     "spa:dev": "node scripts/serve-spa.mjs",
     "dev": "npm run build && node scripts/dev-server.mjs",
     "dev:server": "node scripts/dev-server.mjs",
     "start": "node scripts/server.mjs",
-    "typecheck": "tsc --noEmit && node scripts/check-viewer-script.mjs",
-    "test": "vitest",
-    "test:ci": "vitest --run --testTimeout=15000",
+    "typecheck": "tsc --noEmit && node scripts/check-question-bank.mjs && node scripts/check-viewer-script.mjs",
+    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest",
+    "test:ci": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest --run --testTimeout=15000",
     "test:browser": "playwright test",
-    "test:coverage": "vitest --run --coverage --testTimeout=15000",
+    "test:coverage": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest --run --coverage --testTimeout=15000",
     "check": "npm run typecheck && npm run test:ci && npm run build",
     "check:browser": "npm run test:browser",
     "check:full": "npm run typecheck && npm run test:ci && npm run build:spa",
@@ -49,7 +49,7 @@
     "smoke": "node scripts/smoke.mjs",
     "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
     "nft:crop-cards": "node scripts/generate-nft-card-crops.mjs",
-    "deploy": "flyctl deploy --app ruby-high --remote-only --build-arg RUBY_HIGH_BUILD=$(git rev-parse --short=12 HEAD) && npm run smoke:prod",
+    "deploy": "node scripts/deploy-fly.mjs",
     "clean": "rm -rf dist dist-spa .turbo"
   },
   "dependencies": {

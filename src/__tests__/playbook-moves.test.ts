@@ -8,13 +8,16 @@ import { StateStore } from "../services/state-store.js";
 import { registerPack } from "../content/registry.js";
 
 let testDir: string;
+let activeRuby: RubyHighService | null = null;
 
 beforeEach(() => {
   testDir = mkdtempSync(join(tmpdir(), "playbook-moves-"));
+  activeRuby = null;
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  if (activeRuby) await activeRuby.flush();
   const { rm } = await import("node:fs/promises");
   await rm(testDir, { recursive: true, force: true });
 });
@@ -26,6 +29,7 @@ async function makeServices() {
   await ruby["hydrate"]();
   const faculty = await FacultyService.start({} as never);
   ruby.setFacultyService(faculty);
+  activeRuby = ruby;
   return { ruby };
 }
 
@@ -161,8 +165,14 @@ describe("Heart", () => {
 
     expect(npcs.length).toBeGreaterThan(0);
     for (const npc of npcs) {
-      expect(npc.rolledTotal).toBeGreaterThanOrEqual(2);
-      expect(npc.plannedPick).toBeDefined();
+      expect(Number.isFinite(npc.rolledTotal)).toBe(true);
+      expect(npc.rolledTotal).toBeGreaterThanOrEqual(1);
+      expect(npc.rolledDice).toHaveLength(2);
+      for (const die of npc.rolledDice) {
+        expect(die).toBeGreaterThanOrEqual(1);
+        expect(die).toBeLessThanOrEqual(6);
+      }
+      expect(["A", "B", "C", "D"]).toContain(npc.plannedPick);
     }
   });
 });

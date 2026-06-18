@@ -17,9 +17,11 @@ import { TEACHERS } from "../../characters/teachers.js";
 import {
   CHOICES,
   DIFFICULTIES,
+  GRADES,
   type BankedQuestion,
   type Choice,
   type Difficulty,
+  type Grade,
 } from "../../types.js";
 import { classifyQuestionStat, normalizeQuestionStat } from "../../question-stats.js";
 import type { ContentPack, PackCourse, PackFaculty, PackRoom, PackSourceCard } from "../types.js";
@@ -228,6 +230,9 @@ function parseBank(raw: string, facultyId: string, fileName: string): BankedQues
     if (!DIFFICULTIES.includes(difficulty as never)) {
       throw new Error(`${fileName} questions[${i}].difficulty must be easy/medium/hard`);
     }
+    const minGrade = typeof r.minGrade === "string" && GRADES.includes(r.minGrade as Grade)
+      ? r.minGrade as Grade
+      : undefined;
     const options = { A: opts.A as string, B: opts.B as string, C: opts.C as string, D: opts.D as string };
     const typedCorrect = correct as Choice;
     return {
@@ -244,6 +249,7 @@ function parseBank(raw: string, facultyId: string, fileName: string): BankedQues
         correctAnswer: options[typedCorrect],
       }),
       difficulty: difficulty as Difficulty,
+      ...(minGrade ? { minGrade } : {}),
       faculty: facultyId,
     };
   });

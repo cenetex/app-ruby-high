@@ -4,6 +4,7 @@ import type {
   AppLaunchDiagnostic,
   AppSessionState,
 } from "./runtime.js";
+import { createHash } from "node:crypto";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { FacultyService } from "./services/faculty-service.js";
 import { renderViewerHtml } from "./viewer.js";
@@ -33,12 +34,15 @@ import {
   ADMIN_METRICS_PATH,
   ADMIN_METRICS_SCHEMA_PATH,
   ADMIN_OVERVIEW_PATH,
+  ADMIN_CURRICULUM_REPLENISHMENT_PATH,
   ADMIN_PATH,
+  handleAdminCurriculumReplenishmentRoute,
   handleAdminMetricsSchemaRoute,
   handleAdminOverviewRoute,
   handleAdminMetricsRoute,
   renderAdminDashboardHtml,
 } from "./routes/admin.js";
+import type { AdminOpsSnapshot } from "./routes/admin.js";
 import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import { handleMetricsEventRoute, METRICS_EVENT_PATH } from "./routes/metrics-events.js";
@@ -47,19 +51,330 @@ import { XSocialService } from "./services/x-social-service.js";
 import { handleXSocialRoutes } from "./routes/x-social.js";
 import { X_SOCIAL_PREFIX } from "./routes/constants.js";
 import type { RouteContext } from "./routes/context.js";
+import {
+  applyWorldReplaySelection,
+  firstHeaderValue,
+  formatSseFrame,
+  formatSseRetry,
+  initialWorldReplayCursorState,
+  parseBoundedWorldMs,
+  parseWorldCursorParam,
+  parseWorldLastCursor,
+  parseWorldLastEventId,
+  parseWorldLimit,
+  parseWorldLive,
+  parseWorldSince,
+  selectWorldReplayEvents,
+  WorldSnapshotPresenter,
+  worldCursorForEvent,
+} from "./routes/world-stream.js";
+import { LiveStreamPool } from "./routes/live-stream-pool.js";
+import { publicWorldStudentFromPresence } from "./services/ruby-high/world-projection.js";
 import { getPrivyPublicConfigFromEnv } from "./services/privy-auth.js";
+import { TokenBucket } from "./services/rate-limit.js";
+import { GRADES, type Grade } from "./types.js";
 
 export type { RouteContext } from "./routes/context.js";
 
+const PUBLIC_READ_LIMITER = new TokenBucket(120, 2);
+const PUBLIC_READ_LIMITER_GC_INTERVAL_MS = 60_000;
+const WORLD_LIVE_STREAM_LIMIT = 6;
+const WORLD_LIVE_STREAM_POOL = new LiveStreamPool(WORLD_LIVE_STREAM_LIMIT);
+const PUBLIC_VISITOR_ID_RE = /^rhv_[A-Za-z0-9._:-]{4,124}$/;
+let publicReadLimiterLastGcAt = 0;
+type WorldLiveStreamCloseReason = "client" | "finish" | "timeout" | "write-failure" | "handler-error";
+type WorldLiveStreamWritePhase = "initial" | "snapshot" | "event" | "heartbeat" | "end";
+const WORLD_LIVE_STREAM_STATS = {
+  accepted: 0,
+  rejected: 0,
+  closed: 0,
+  closedByClient: 0,
+  closedByFinish: 0,
+  closedByTimeout: 0,
+  closedByWriteFailure: 0,
+  handlerErrors: 0,
+  writeFailures: 0,
+  initialWriteFailures: 0,
+  snapshotWriteFailures: 0,
+  eventWriteFailures: 0,
+  heartbeatWriteFailures: 0,
+  endWriteFailures: 0,
+};
+
+function recordWorldLiveStreamClose(reason: WorldLiveStreamCloseReason): void {
+  WORLD_LIVE_STREAM_STATS.closed += 1;
+  if (reason === "client") WORLD_LIVE_STREAM_STATS.closedByClient += 1;
+  else if (reason === "finish") WORLD_LIVE_STREAM_STATS.closedByFinish += 1;
+  else if (reason === "timeout") WORLD_LIVE_STREAM_STATS.closedByTimeout += 1;
+  else if (reason === "write-failure") WORLD_LIVE_STREAM_STATS.closedByWriteFailure += 1;
+  else if (reason === "handler-error") WORLD_LIVE_STREAM_STATS.handlerErrors += 1;
+}
+
+function recordWorldLiveStreamWriteFailure(phase: WorldLiveStreamWritePhase): void {
+  WORLD_LIVE_STREAM_STATS.writeFailures += 1;
+  if (phase === "initial") WORLD_LIVE_STREAM_STATS.initialWriteFailures += 1;
+  else if (phase === "snapshot") WORLD_LIVE_STREAM_STATS.snapshotWriteFailures += 1;
+  else if (phase === "event") WORLD_LIVE_STREAM_STATS.eventWriteFailures += 1;
+  else if (phase === "heartbeat") WORLD_LIVE_STREAM_STATS.heartbeatWriteFailures += 1;
+  else if (phase === "end") WORLD_LIVE_STREAM_STATS.endWriteFailures += 1;
+}
+
+function publicClientKey(ctx: RouteContext): string {
+  const ip = ctx.clientIp || "no-ip";
+  const visitor = firstHeaderValue(ctx.visitorHeader).trim();
+  if (!PUBLIC_VISITOR_ID_RE.test(visitor)) return ip;
+  const visitorHash = createHash("sha256").update(visitor).digest("hex").slice(0, 16);
+  return `${ip}:visitor:${visitorHash}`;
+}
+
+function publicReadRateKey(ctx: RouteContext, scope: string): string {
+  return `${publicClientKey(ctx)}:${scope}`;
+}
+
+function worldLiveStreamKey(ctx: RouteContext): string {
+  return publicClientKey(ctx);
+}
+
+function reserveWorldLiveStream(ctx: RouteContext): (() => void) | null {
+  const release = WORLD_LIVE_STREAM_POOL.reserve(worldLiveStreamKey(ctx));
+  if (release) WORLD_LIVE_STREAM_STATS.accepted += 1;
+  else WORLD_LIVE_STREAM_STATS.rejected += 1;
+  return release;
+}
+
+function rejectWorldLiveStreamLimit(ctx: RouteContext): void {
+  const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+  res.setHeader?.("Retry-After", "5");
+  ctx.error(ctx.res, "Too many live world streams.", 429);
+}
+
+function worldLiveStreamOpsSnapshot(): AdminOpsSnapshot["worldLiveStreams"] {
+  return {
+    ...WORLD_LIVE_STREAM_POOL.snapshot(),
+    ...WORLD_LIVE_STREAM_STATS,
+  };
+}
+
+function publicReadLimiterOpsSnapshot(): AdminOpsSnapshot["publicReadLimiter"] {
+  return {
+    trackedKeys: PUBLIC_READ_LIMITER.size(),
+    gcIntervalMs: PUBLIC_READ_LIMITER_GC_INTERVAL_MS,
+    lastGcAt: publicReadLimiterLastGcAt || null,
+  };
+}
+
+function adminOpsSnapshot(): AdminOpsSnapshot {
+  return {
+    publicReadLimiter: publicReadLimiterOpsSnapshot(),
+    worldLiveStreams: worldLiveStreamOpsSnapshot(),
+  };
+}
+
+function setNoStoreJsonHeaders(res: unknown): void {
+  const r = res as { setHeader?: (name: string, value: string) => void };
+  r.setHeader?.("Cache-Control", "no-store");
+}
+
+function takePublicReadToken(ctx: RouteContext, scope: string): boolean {
+  const now = Date.now();
+  if (now - publicReadLimiterLastGcAt >= PUBLIC_READ_LIMITER_GC_INTERVAL_MS) {
+    PUBLIC_READ_LIMITER.gc(now);
+    publicReadLimiterLastGcAt = now;
+  }
+  const key = publicReadRateKey(ctx, scope);
+  if (PUBLIC_READ_LIMITER.take(key, 1, now)) return true;
+  const retryAfter = PUBLIC_READ_LIMITER.retryAfterSeconds(key, now);
+  const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+  res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
+  ctx.error(ctx.res, "Too many public read requests.", 429);
+  return false;
+}
+
+function decodePathSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 function parseSessionId(pathname: string): string | null {
   const m = pathname.match(/^\/api\/apps\/ruby-high\/session\/([^/]+)(?:\/.*)?$/);
-  return m?.[1] ? decodeURIComponent(m[1]) : null;
+  return m?.[1] ? decodePathSegment(m[1]) : null;
 }
 
 function parseSessionSubroute(pathname: string): "command" | "control" | null {
   if (pathname.endsWith("/command")) return "command";
   if (pathname.endsWith("/control")) return "control";
   return null;
+}
+
+function parseCohortGradePath(pathname: string): { matches: boolean; grade: Grade | null; invalidGrade: string | null } {
+  if (pathname === `${APP_ROUTE_PREFIX}/cohort`) return { matches: true, grade: null, invalidGrade: null };
+  const prefix = `${APP_ROUTE_PREFIX}/cohort/`;
+  if (!pathname.startsWith(prefix)) return { matches: false, grade: null, invalidGrade: null };
+  const rawGrade = decodePathSegment(pathname.slice(prefix.length));
+  if (rawGrade === null) return { matches: true, grade: null, invalidGrade: "malformed" };
+  if (!rawGrade || rawGrade.includes("/")) return { matches: false, grade: null, invalidGrade: null };
+  if (!GRADES.includes(rawGrade as Grade)) return { matches: true, grade: null, invalidGrade: rawGrade };
+  return { matches: true, grade: rawGrade as Grade, invalidGrade: null };
+}
+
+interface SseResponse {
+  writeHead?(status: number, headers: Record<string, string | string[]>): void;
+  setHeader?(name: string, value: string | string[]): void;
+  write?(chunk: string): boolean | void;
+  end(body?: string): void;
+  flushHeaders?: () => void;
+  statusCode?: number;
+  on?(event: "close" | "finish", listener: () => void): void;
+}
+
+async function sendWorldEventStream(ctx: RouteContext, ruby: RubyHighService, opts: { onClose?: () => void } = {}): Promise<void> {
+  const res = ctx.res as SseResponse;
+  const headers = {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  };
+  if (typeof res.writeHead === "function") {
+    res.writeHead(200, headers);
+  } else {
+    res.statusCode = 200;
+    for (const [name, value] of Object.entries(headers)) res.setHeader?.(name, value);
+  }
+  res.flushHeaders?.();
+  const live = parseWorldLive(ctx.url);
+  let closed = false;
+  let polling = false;
+  let interval: ReturnType<typeof setInterval> | null = null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  function cleanup(end: boolean, reason: WorldLiveStreamCloseReason) {
+    if (closed) return;
+    closed = true;
+    if (live) recordWorldLiveStreamClose(reason);
+    opts.onClose?.();
+    if (interval) clearInterval(interval);
+    if (timeout) clearTimeout(timeout);
+    if (end) {
+      write(formatSseFrame("end", { ok: true, generatedAt: Date.now(), eventCount: 0 }), { allowClosed: true, phase: "end" });
+      try {
+        res.end(buffered || undefined);
+      } catch {
+        // The socket may already be gone; cleanup has already released the slot.
+      }
+    }
+  }
+  let buffered = "";
+  const write = (chunk: string, opts: { allowClosed?: boolean; phase?: WorldLiveStreamWritePhase } = {}) => {
+    if (closed && !opts.allowClosed) return false;
+    try {
+      if (typeof res.write === "function") res.write(chunk);
+      else buffered += chunk;
+      return true;
+    } catch {
+      if (live) recordWorldLiveStreamWriteFailure(opts.phase ?? "event");
+      cleanup(false, "write-failure");
+      return false;
+    }
+  };
+  const send = (event: string, data: unknown, id?: string, phase: WorldLiveStreamWritePhase = "event") => {
+    return write(formatSseFrame(event, data, id), { phase });
+  };
+  const explicitSince = parseWorldSince(ctx.url);
+  const replayState = initialWorldReplayCursorState({
+    explicitSince,
+    lastEventId: parseWorldLastEventId(ctx),
+    durableCursor: parseWorldCursorParam(ctx.url) ?? parseWorldLastCursor(ctx),
+    live,
+  });
+  const presenter = new WorldSnapshotPresenter();
+  const sendSnapshotAndEvents = async (opts: { forceSnapshot?: boolean } = {}) => {
+    const limit = parseWorldLimit(ctx.url);
+    const now = Date.now();
+    const world = await ruby.getFreshSchoolWorldSnapshot(0, now);
+    if (closed) {
+      return { generatedAt: world.generatedAt, eventCount: 0, snapshotChanged: false };
+    }
+    const worldEvents = await ruby.getFreshSchoolWorldEvents(limit, now);
+    if (closed) {
+      return { generatedAt: world.generatedAt, eventCount: 0, snapshotChanged: false };
+    }
+    const snapshot = presenter.snapshotFrame(world, { force: opts.forceSnapshot });
+    if (snapshot.frame && !write(snapshot.frame, { phase: "snapshot" })) {
+      return { generatedAt: world.generatedAt, eventCount: 0, snapshotChanged: snapshot.changed };
+    }
+    const replay = selectWorldReplayEvents(worldEvents, replayState);
+    const deliveredEvents: typeof replay.events = [];
+    for (const event of replay.events) {
+      if (!send("world-event", event, worldCursorForEvent(event))) break;
+      deliveredEvents.push(event);
+    }
+    applyWorldReplaySelection(replayState, { ...replay, events: deliveredEvents });
+    return { generatedAt: world.generatedAt, eventCount: deliveredEvents.length, snapshotChanged: snapshot.changed };
+  };
+  res.on?.("close", () => cleanup(false, "client"));
+  res.on?.("finish", () => cleanup(false, "finish"));
+  if (!write(formatSseRetry(5000), { phase: "initial" })) return;
+  let first: Awaited<ReturnType<typeof sendSnapshotAndEvents>>;
+  try {
+    first = await sendSnapshotAndEvents({ forceSnapshot: true });
+  } catch (err) {
+    if (closed) return;
+    send("end", {
+      ok: false,
+      generatedAt: Date.now(),
+      eventCount: 0,
+      error: "World stream unavailable.",
+    }, undefined, "end");
+    if (live) cleanup(false, "handler-error");
+    try {
+      res.end(buffered || undefined);
+    } catch {
+      // The client may already be gone; live cleanup has released the stream slot.
+    }
+    return;
+  }
+  if (!live) {
+    if (closed) return;
+    send("end", { ok: true, generatedAt: first.generatedAt, eventCount: first.eventCount }, undefined, "end");
+    res.end(buffered || undefined);
+    return;
+  }
+  if (closed) return;
+  const heartbeatMs = parseBoundedWorldMs(ctx.url, "heartbeatMs", 5000, 1000, 30000);
+  const streamMs = parseBoundedWorldMs(ctx.url, "streamMs", 55000, 1000, 120000);
+  interval = setInterval(() => {
+    if (closed) return;
+    if (!send("heartbeat", { ok: true, generatedAt: Date.now(), eventCount: 0 }, undefined, "heartbeat")) return;
+    if (polling) return;
+    polling = true;
+    void sendSnapshotAndEvents()
+      .catch(() => {
+        // Keep the stream alive; storage refresh errors are logged by the service.
+      })
+      .finally(() => {
+        polling = false;
+      });
+  }, heartbeatMs);
+  timeout = setTimeout(() => cleanup(true, "timeout"), streamMs);
+}
+
+function publicCohortStudents(students: ReturnType<RubyHighService["getRecentlyActiveStudents"]>) {
+  return students.map((student) => publicWorldStudentFromPresence({
+    sessionId: student.sessionId,
+    grade: student.grade as Grade,
+    facultyId: "",
+    displayName: "",
+    name: student.name,
+    playbookId: student.playbookId,
+    stats: student.stats,
+    classGrades: student.classGrades,
+    yearbookCount: student.yearbookCount,
+    lastActive: student.lastActive,
+    portraitUrl: student.portraitUrl,
+  }));
 }
 
 type NodeLikeResponse = {
@@ -155,18 +470,61 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return handleYearbookRoutes(ctx, ruby);
   }
 
-
-  if (ctx.method === "GET" && ctx.pathname === `${APP_ROUTE_PREFIX}/cohort`) {
+  if (ctx.method === "GET" && ctx.pathname === `${APP_ROUTE_PREFIX}/world`) {
+    if (!takePublicReadToken(ctx, "world")) return true;
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!ruby) {
       ctx.error(ctx.res, "RubyHighService unavailable", 503);
       return true;
     }
-    const sessionId = getSessionId(runtime, ctx.cookieHeader);
-    const state = ruby.getOrCreate(sessionId);
-    const currentGrade = state.currentGrade ?? "9";
-    const snapshot = ruby.getSchoolSnapshot();
-    const students = snapshot.topByYear[currentGrade] || [];
+    setNoStoreJsonHeaders(ctx.res);
+    ctx.json(ctx.res, { ok: true, world: await ruby.getFreshSchoolWorldSnapshot(parseWorldLimit(ctx.url)) });
+    return true;
+  }
+
+  if (ctx.method === "GET" && ctx.pathname === `${APP_ROUTE_PREFIX}/world/events`) {
+    if (!takePublicReadToken(ctx, "world-events")) return true;
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!ruby) {
+      ctx.error(ctx.res, "RubyHighService unavailable", 503);
+      return true;
+    }
+    const live = parseWorldLive(ctx.url);
+    const releaseLiveStream = live ? reserveWorldLiveStream(ctx) : null;
+    if (live && !releaseLiveStream) {
+      rejectWorldLiveStreamLimit(ctx);
+      return true;
+    }
+    try {
+      await sendWorldEventStream(ctx, ruby, { onClose: releaseLiveStream ?? undefined });
+    } catch (err) {
+      if (live) recordWorldLiveStreamClose("handler-error");
+      releaseLiveStream?.();
+      throw err;
+    }
+    return true;
+  }
+
+  const cohortPath = parseCohortGradePath(ctx.pathname);
+  if (ctx.method === "GET" && cohortPath.matches) {
+    if (!takePublicReadToken(ctx, "cohort")) return true;
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!ruby) {
+      ctx.error(ctx.res, "RubyHighService unavailable", 503);
+      return true;
+    }
+    if (cohortPath.invalidGrade) {
+      ctx.error(ctx.res, `Unknown grade: ${cohortPath.invalidGrade}`, 400);
+      return true;
+    }
+    const currentGrade = cohortPath.grade ?? (() => {
+      const sessionId = getSessionId(runtime, ctx.cookieHeader);
+      const state = ruby.getOrCreate(sessionId);
+      return state.currentGrade ?? "9";
+    })();
+    const snapshot = await ruby.getFreshSchoolSnapshot();
+    const students = publicCohortStudents(snapshot.topByYear[currentGrade] || []);
+    setNoStoreJsonHeaders(ctx.res);
     ctx.json(ctx.res, { ok: true, grade: currentGrade, students });
     return true;
   }
@@ -177,7 +535,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
       return true;
     }
-    return handleAdminMetricsRoute(ctx, { auth, ruby });
+    return handleAdminMetricsRoute(ctx, { auth, ruby, ops: adminOpsSnapshot() });
   }
 
   if (ctx.pathname === ADMIN_METRICS_SCHEMA_PATH) {
@@ -191,7 +549,17 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
       return true;
     }
-    return handleAdminOverviewRoute(ctx, { auth, ruby });
+    return handleAdminOverviewRoute(ctx, { auth, ruby, ops: adminOpsSnapshot() });
+  }
+
+  if (ctx.pathname === ADMIN_CURRICULUM_REPLENISHMENT_PATH) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!auth || !ruby) {
+      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleAdminCurriculumReplenishmentRoute(ctx, { auth, ruby });
   }
 
   if (ctx.pathname === METRICS_EVENT_PATH) {
@@ -275,6 +643,9 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         cookieHeader: ctx.cookieHeader,
         apiKeyHeader: ctx.apiKeyHeader,
         clientIp: ctx.clientIp,
+        contentTypeHeader: ctx.contentTypeHeader,
+        originHeader: ctx.originHeader,
+        callbackUrlBuilder: ctx.callbackUrlBuilder,
         error: ctx.error,
         json: ctx.json,
         readJsonBody: ctx.readJsonBody,
@@ -310,8 +681,12 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       {
         method: ctx.method,
         pathname: ctx.pathname,
+        url: ctx.url,
         res: ctx.res,
         cookieHeader: ctx.cookieHeader,
+        contentTypeHeader: ctx.contentTypeHeader,
+        originHeader: ctx.originHeader,
+        callbackUrlBuilder: ctx.callbackUrlBuilder,
         error: ctx.error,
         json: ctx.json,
         readJsonBody: ctx.readJsonBody,

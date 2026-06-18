@@ -323,8 +323,6 @@ export function buildSessionState(args: {
   const { runtime, state, faculty } = args;
   const sessionId = getSessionId(runtime, args.cookieHeader);
   const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
-  // Trigger a daily photo post if one is due.
-  ruby?.maybePostDailyPhoto();
 
   const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
   const authRecord = auth?.resolve(auth.parseSessionToken(args.cookieHeader));
@@ -439,12 +437,12 @@ export function buildSessionState(args: {
     active_round: deriveActiveRound(state),
     is_opinion: state.current?.type === "opinion",
     character: state.character,
-    pending_photo_count: state.character?.pendingPhotos?.length ?? 0,
+    pending_photo_count: Array.isArray(state.character?.pendingPhotos) ? state.character.pendingPhotos.length : 0,
     pending_photo_pool_size: ruby?.pendingPhotoPoolSize() ?? 0,
     student_pool: state.studentPool ?? [],
     character_slots: characterSlots,
     comic_collection: state.comicCollection,
-    school_events: (state.schoolEvents ?? []).slice(-30),
+    school_events: (Array.isArray(state.schoolEvents) ? state.schoolEvents : []).slice(-30),
     essay_reports: (state.essayReports ?? []).slice(-30),
     yearbook_shares: ruby
       ? ruby.yearbookSharesForSession(sessionId).map((entry) => ({

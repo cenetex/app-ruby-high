@@ -44,6 +44,9 @@
  *      (not forced Social cards), then blocks further progress with a signup
  *      gate once the daily class is complete.
  *
+ *   10. Public world snapshot + SSE replay expose the multiplayer feed
+ *       shape without leaking private school-event identifiers.
+ *
  * Usage:
  *   node scripts/smoke.mjs                                # against http://127.0.0.1:8080
  *   node scripts/smoke.mjs https://ruby-high.fly.dev      # against prod
@@ -60,6 +63,7 @@ const base = baseArg.replace(/\/+$/, "");
 const TIMEOUT_MS = 20_000;
 const READY_TIMEOUT_MS = Number(process.env.SMOKE_READY_TIMEOUT_MS || 90_000);
 const READY_POLL_MS = Number(process.env.SMOKE_READY_POLL_MS || 2_000);
+const MIN_BUILT_IN_PACK_QUESTIONS = 600;
 
 let failed = 0;
 let smokeCookie = "";
@@ -206,6 +210,13 @@ async function check1Health() {
           return fail(name, `unexpected body shape: ${JSON.stringify(body).slice(0, 200)}`);
         }
         if (!body.state) return fail(name, "missing 'state' field");
+        const healthQuestionCount = Number(body.curriculum?.totalQuestions || 0);
+        if (healthQuestionCount < MIN_BUILT_IN_PACK_QUESTIONS) {
+          return fail(
+            name,
+            `health curriculum expected >=${MIN_BUILT_IN_PACK_QUESTIONS} questions, got ${body.curriculum ? healthQuestionCount : "missing"}`,
+          );
+        }
         return ok(name, `ready after ${attempts} ${attempts === 1 ? "try" : "tries"}; state=${body.state} build=${body.build}`);
       }
       last = `status ${r.status}: ${text.slice(0, 200)}`;
@@ -285,7 +296,10 @@ async function check2ViewerRenders() {
       return fail(name, "viewer script missing buildCareerCard()");
     }
     for (const local of ["streakLastDate", "todayKey"]) {
-      if (careerBody.includes(local) && !new RegExp(`\\b(const|let|var)\\s+${local}\\b`).test(careerBody)) {
+      const hasDeclaration = new RegExp(`\\b(const|let|var)\\s+${local}\\b`).test(careerBody);
+      const hasBundledPropertyMapping = new RegExp(`\\b${local}\\s*:`).test(careerBody);
+      const hasBareShorthandReference = new RegExp(`\\b${local}\\s*[,}]`).test(careerBody);
+      if (hasBareShorthandReference && !hasDeclaration && !hasBundledPropertyMapping) {
         return fail(name, `buildCareerCard references ${local} without declaring it`);
       }
     }
@@ -409,6 +423,14 @@ async function check7OfflinePlayFlow() {
     }
     if (!telemetry.active_course_progress || !telemetry.current_grade) {
       return fail(name, `session telemetry missing grade/course progress: ${JSON.stringify(telemetry).slice(0, 240)}`);
+    }
+    const builtInPack = (telemetry.available_packs || []).find((p) => p?.id === "ruby-high-original");
+    const builtInQuestionCount = Number(builtInPack?.question_count || 0);
+    if (!builtInPack || builtInQuestionCount < MIN_BUILT_IN_PACK_QUESTIONS) {
+      return fail(
+        name,
+        `built-in question bank expected >=${MIN_BUILT_IN_PACK_QUESTIONS}, got ${builtInPack ? builtInQuestionCount : "missing"}; expanded question assets may be missing from the deployed image`,
+      );
     }
 
     const create = await postJson(commandPath, {
@@ -544,6 +566,61 @@ async function check9GuestDailyGate() {
   }
 }
 
+function containsPrivateWorldIdentifier(text) {
+  return /\bschool:event:|\bteacher:|\bstudent:|\bsession:/i.test(text);
+}
+
+async function check10PublicWorldFeed() {
+  const name = "public world feed";
+  try {
+    const snapshotRes = await fetchWithTimeout(`${base}/api/apps/ruby-high/world?limit=5`);
+    const snapshotText = await readText(snapshotRes.clone());
+    if (snapshotRes.status !== 200) return fail(name, `world snapshot expected 200, got ${snapshotRes.status}: ${snapshotText.slice(0, 200)}`);
+    const cacheControl = snapshotRes.headers.get("cache-control") || "";
+    if (!/\bno-store\b/i.test(cacheControl)) {
+      return fail(name, `world snapshot should be no-store, got cache-control=${cacheControl || "missing"}`);
+    }
+    if (containsPrivateWorldIdentifier(snapshotText)) {
+      return fail(name, `world snapshot leaked an internal identifier: ${snapshotText.slice(0, 240)}`);
+    }
+    const snapshotBody = await readJson(snapshotRes);
+    const snapshot = snapshotBody?.world;
+    if (!snapshotBody?.ok || !snapshot || typeof snapshot.generatedAt !== "number" || typeof snapshot.activeStudents !== "number") {
+      return fail(name, `world snapshot missing public envelope: ${JSON.stringify(snapshotBody).slice(0, 240)}`);
+    }
+    if (!Array.isArray(snapshot.activeRooms) || !snapshot.cohorts || typeof snapshot.cohorts !== "object" || Array.isArray(snapshot.cohorts)) {
+      return fail(name, `world snapshot missing activeRooms or grade-keyed cohorts: ${JSON.stringify(snapshot).slice(0, 240)}`);
+    }
+    if (!Array.isArray(snapshot.recentEvents)) {
+      return fail(name, `world snapshot missing recentEvents array: ${JSON.stringify(snapshot).slice(0, 240)}`);
+    }
+    if (!snapshot.curriculum || typeof snapshot.curriculum !== "object" || !Array.isArray(snapshot.curriculum.lowPools)) {
+      return fail(name, `world snapshot missing curriculum coverage: ${JSON.stringify(snapshot).slice(0, 240)}`);
+    }
+
+    const eventsRes = await fetchWithTimeout(`${base}/api/apps/ruby-high/world/events?limit=3&since=0`);
+    const eventsText = await readText(eventsRes);
+    if (eventsRes.status !== 200) return fail(name, `world events expected 200, got ${eventsRes.status}: ${eventsText.slice(0, 200)}`);
+    const contentType = eventsRes.headers.get("content-type") || "";
+    if (!/\btext\/event-stream\b/i.test(contentType)) {
+      return fail(name, `world events should be text/event-stream, got ${contentType || "missing"}`);
+    }
+    const eventsCache = eventsRes.headers.get("cache-control") || "";
+    if (!/\bno-store\b/i.test(eventsCache)) {
+      return fail(name, `world events should be no-store, got cache-control=${eventsCache || "missing"}`);
+    }
+    if (!/event: world-snapshot\n/.test(eventsText) || !/event: end\n/.test(eventsText)) {
+      return fail(name, `world events missing snapshot/end SSE frames: ${eventsText.slice(0, 240)}`);
+    }
+    if (containsPrivateWorldIdentifier(eventsText)) {
+      return fail(name, `world events leaked an internal identifier: ${eventsText.slice(0, 240)}`);
+    }
+    ok(name, `${snapshot.activeStudents} active students, ${snapshot.activeRooms.length} rooms, SSE replay framed`);
+  } catch (e) {
+    fail(name, e?.message || String(e));
+  }
+}
+
 console.log(`smoke target: ${base}\n`);
 
 await check1Health();
@@ -561,6 +638,7 @@ await check6BillingEntitlements();
 await check7OfflinePlayFlow();
 await check8AuthGate();
 await check9GuestDailyGate();
+await check10PublicWorldFeed();
 
 console.log();
 if (failed > 0) {

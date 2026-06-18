@@ -183,6 +183,17 @@ describe("AuthService.gcSessions", () => {
     expect(snapshot.newVisitors).toBe(1);
   });
 
+  it("ignores legacy unprefixed visitor ids for guest recovery", async () => {
+    const auth = await freshAuth();
+    const first = await auth.createGuestSession(null, "legacy_visitor_id");
+    const second = await auth.createGuestSession(null, "legacy_visitor_id");
+    const snapshot = auth.analyticsSnapshot(Date.now());
+
+    expect(second.record.userId).not.toBe(first.record.userId);
+    expect(snapshot.users).toBe(2);
+    expect(snapshot.visitors.total).toBe(0);
+  });
+
   it("binds an existing cookie guest to a visitor id for later lost-cookie recovery", async () => {
     const auth = await freshAuth();
     const first = await auth.createGuestSession();

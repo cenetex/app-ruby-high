@@ -92,11 +92,13 @@ No hosted account or OpenRouter key is needed for these:
 
 - `GET /api/apps/ruby-high/admin` renders a browser dashboard for the token-gated usage snapshot, 14-day charts, and an operator overview. Paste the admin token once; the page stores it locally and calls admin endpoints with a Bearer header.
 - `POST /api/apps/ruby-high/metrics/event` records first-party viewer events. The bundled viewer sends durable `app_open` on boot and `session_resume` after returning from five-plus minutes inactive.
-- `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth identity records/sessions, visitor counts, 14-day auth/play/event series, Ruby High session progression, visitor and character D1 retention, durable v4 metric events, and in-process log counters. `auth.users` is identity records, not unique humans. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
-- `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v4`): field semantics, reliability levels, caveats, and the durable event streams for traffic, retention, funnel, commerce, LLM, and errors.
+- `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth identity records/sessions, visitor counts, 14-day auth/play/event series, Ruby High session progression, visitor and character D1 retention, durable metric events, public-read/live-stream ops, and in-process log counters. `auth.users` is identity records, not unique humans. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
+- `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v5`): field semantics, reliability levels, caveats, and the durable event streams for traffic, retention, funnel, commerce, LLM, and errors.
 - `GET /api/apps/ruby-high/admin/overview` returns a token-gated LLM-generated operator overview built only from aggregate metrics. It requires the normal server LLM credential.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data and `?format=svg` returns the social image. `?format=png` is intentionally 501 until server-side raster rendering is configured.
 - `GET /api/apps/ruby-high/cohort/:grade` renders the classroom cohort leaderboard for the current grade, scoped to active sessions at that year level.
+- `GET /api/apps/ruby-high/world` returns the privacy-filtered multiplayer read model: active classrooms, public honor-roll cohorts, recent public school events, and low curriculum pools. `?limit=` caps recent events.
+- `GET /api/apps/ruby-high/world/events` streams the same public world model as SSE frames; `?live=1` keeps the stream open briefly for viewer refreshes and future multiplayer clients.
 
 ## Service Wiring
 
@@ -233,7 +235,7 @@ npm run test:browser
 npm run eval:voice
 ```
 
-`check:full` runs typecheck, the Vitest suite, and the offline SPA build. `test:browser` is the opt-in Playwright smoke target; it builds and launches the dev server, boots the viewer in Chromium, exercises guest play, account tabs, responsive framing, and the Privy bundle load path. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
+`check:full` runs typecheck, the Vitest suite, and the offline SPA build. `test:browser` is the opt-in Playwright smoke target; it builds and launches the dev server, boots the viewer in Chromium, exercises guest play, account tabs, responsive framing, public-world feed rollover, comic unlock modals, and the Privy bundle load path. The `browser-smoke` GitHub Actions workflow runs the same target manually and on PRs that touch viewer/browser files. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
 
 The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading with praise-gate detection, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, yearbook/admin/cohort routes, and the content-pack registry.
 

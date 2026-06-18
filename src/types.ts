@@ -241,6 +241,9 @@ export interface Question {
   /** Which character stat modifies the 2d6 roll for this question. */
   stat?: keyof CharacterStats;
   difficulty?: Difficulty;
+  /** Optional school-year gate. Omitted means available as soon as its
+   *  difficulty is unlocked, preserving old hand-authored and imported packs. */
+  minGrade?: Grade;
   faculty?: string;
   /** Legacy card rarity. New progression ignores this. */
   rarity?: Rarity;
@@ -267,6 +270,11 @@ export interface AnswerRecord {
   at: number;
   answerText?: string;
   expectedAnswer?: string;
+}
+
+export interface AnswerStats {
+  totalAnswers: number;
+  repeatedAnswers: number;
 }
 
 export type CardReviewRating = "again" | "hard" | "good" | "easy";
@@ -637,6 +645,8 @@ export interface QuizState {
   subject: string | null;
   current: Question | null;
   history: AnswerRecord[];
+  /** Cumulative answer counters. Raw history is a bounded recent log. */
+  answerStats?: AnswerStats;
   score: { correct: number; total: number; points?: number; possible?: number };
   wallet: RubyHighWallet;
   lastReveal: LastReveal | null;
@@ -914,6 +924,16 @@ export interface PendingPhotoReveal {
   tweetedAt?: number;
 }
 
+export interface ClassPhotoArchive {
+  photoId: string;
+  imageUrl: string;
+  teacherFacultyId: string;
+  earnedAt: number;
+  revealedAt: number;
+  tweetId?: string;
+  tweetedAt?: number;
+}
+
 /** The player's character sheet. Generated once at character creation. The
  *  player inhabits this AI-rolled student — they don't manually build it. */
 export interface PlayerCharacter {
@@ -940,6 +960,10 @@ export interface PlayerCharacter {
    *  is moved from this queue to the character's permanent fields. If no
    *  teacher is connected to X, photos reveal immediately. */
   pendingPhotos?: PendingPhotoReveal[];
+  /** Class photos revealed by teacher/social posting. Unlike portraits and
+   *  diplomas, these do not map to a single permanent character image field,
+   *  so a small history is kept for admin/social audit surfaces. */
+  classPhotos?: ClassPhotoArchive[];
   /** A 2-3 sentence personality blurb that teachers see in their context
    *  when interacting with the player. */
   personality: string;
@@ -1087,6 +1111,7 @@ export interface StudentPoolEntry {
    *  is moved from this queue to the character's permanent fields. If no
    *  teacher is connected to X, photos reveal immediately. */
   pendingPhotos?: PendingPhotoReveal[];
+  classPhotos?: ClassPhotoArchive[];
   personality: string;
   portraitDataUrl?: string;
   diplomaImageDataUrl?: string;

@@ -20,9 +20,8 @@ ENV NODE_ENV=production
 ENV PORT=8080
 ENV HOST=0.0.0.0
 ENV RUBY_HIGH_BUILD=$RUBY_HIGH_BUILD
-# RUBY_HIGH_DATA_DIR points the JSON state-store at /data. On the current
-# deploy target (Fly.io) this is only used if the JSON backend is selected.
-# Production uses DynamoDB; the path is retained for local/container fallback.
+# RUBY_HIGH_DATA_DIR points the JSON fallback state-store at /data. Production
+# selects SQLite via RUBY_HIGH_STORE_BACKEND and RUBY_HIGH_STATE_PATH in fly.toml.
 ENV RUBY_HIGH_DATA_DIR=/data
 COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --omit=dev && npm cache clean --force

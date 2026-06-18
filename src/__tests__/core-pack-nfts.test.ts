@@ -190,6 +190,60 @@ describe("Core pack NFT checkout transactions", () => {
     })]);
   });
 
+  it("skips malformed Core pack metadata URLs during DAS sync", async () => {
+    process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    process.env.RUBY_HIGH_SOLANA_RPC_URL = "https://beta.helius-rpc.com/?api-key=test";
+    const ownerWalletAddress = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      if (init && typeof init === "object" && init.method === "POST") {
+        return new Response(JSON.stringify({
+          jsonrpc: "2.0",
+          id: "ruby-high-pack-sync",
+          result: {
+            items: [
+              {
+                id: "BadMetadata111111111111111111111111111111",
+                burnt: false,
+                content: {
+                  json_uri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/%E0%A4%A.json?packs=1&cards=5",
+                  metadata: { name: "Ruby High Pack #bad" },
+                },
+                ownership: { owner: ownerWalletAddress },
+                grouping: [
+                  { group_key: "collection", group_value: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" },
+                ],
+              },
+              {
+                id: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+                burnt: false,
+                content: {
+                  json_uri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
+                  metadata: { name: "Ruby High Pack #570329" },
+                },
+                ownership: { owner: ownerWalletAddress },
+                grouping: [
+                  { group_key: "collection", group_value: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" },
+                ],
+              },
+            ],
+          },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("metadata unavailable", { status: 404 });
+    });
+
+    const owned = await fetchOwnedCorePackNfts(ownerWalletAddress);
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(owned).toEqual([expect.objectContaining({
+      assetAddress: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+      serial: 570329,
+    })]);
+  });
+
   it("syncs owned Core packs whose metadata URI is durable Arweave JSON", async () => {
     process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
     process.env.RUBY_HIGH_SOLANA_RPC_URL = "https://beta.helius-rpc.com/?api-key=test";

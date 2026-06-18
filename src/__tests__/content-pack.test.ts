@@ -76,14 +76,15 @@ describe("ContentPack registry", () => {
 
   it("ships hundreds of playable built-in curriculum cards with teacher corpora", async () => {
     const pack = await getActivePack();
-    const counts = Object.fromEntries(pack.faculty.map((f) => [
+    const questionCounts = Object.fromEntries(pack.faculty.map((f) => [f.id, f.questions.length]));
+    const totalCounts = Object.fromEntries(pack.faculty.map((f) => [
       f.id,
       f.questions.length + (f.sourceCards?.length ?? 0),
     ]));
-    expect(counts.ruby).toBeGreaterThanOrEqual(75);
-    expect(counts["sally-science"]).toBeGreaterThanOrEqual(75);
-    expect(counts["professor-edward"]).toBeGreaterThanOrEqual(75);
-    expect(Object.values(counts).reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(225);
+    expect(questionCounts.ruby).toBeGreaterThanOrEqual(200);
+    expect(questionCounts["sally-science"]).toBeGreaterThanOrEqual(200);
+    expect(questionCounts["professor-edward"]).toBeGreaterThanOrEqual(200);
+    expect(Object.values(totalCounts).reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(600);
   });
 
   it("keeps built-in teacher corpora gated behind upper-grade progression", async () => {

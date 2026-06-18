@@ -8,7 +8,7 @@
       "subject": "physics",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "Speed of light in vacuum is approximately…",
+      "prompt": "What is the approximate speed of light in a vacuum?",
       "options": {
         "A": "3 × 10^6 m/s",
         "B": "3 × 10^8 m/s",
@@ -218,7 +218,7 @@
       "subject": "chemistry",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "Avogadro's number is approximately…",
+      "prompt": "What is Avogadro's number approximately?",
       "options": {
         "A": "6.02 × 10^21",
         "B": "6.02 × 10^23",
@@ -303,7 +303,8 @@
       },
       "correct": "A",
       "explanation": "Natural selection is a population-level filter on existing heritable variation. Individuals don't evolve by choice, and acquired traits aren't written into the DNA passed to offspring.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-002",
@@ -320,7 +321,8 @@
       },
       "correct": "C",
       "explanation": "A cell is an open system. It maintains internal order by exporting entropy to its surroundings, usually as heat. The total entropy of the universe still increases.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-003",
@@ -337,7 +339,8 @@
       },
       "correct": "B",
       "explanation": "The greenhouse effect is radiative, not convective. Greenhouse gases don't trap physical air; they absorb and re-emit infrared photons, slowing the escape of heat energy.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-004",
@@ -354,7 +357,8 @@
       },
       "correct": "B",
       "explanation": "Phase changes like melting and refreezing alter the physical structure and gas ratios in ice. Good science requires discarding compromised evidence and reporting the uncertainty.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-005",
@@ -371,7 +375,8 @@
       },
       "correct": "B",
       "explanation": "A catalyst provides an alternative pathway with lower activation energy. It participates in the mechanism but is regenerated, meaning it isn't consumed as fuel.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-006",
@@ -388,7 +393,8 @@
       },
       "correct": "A",
       "explanation": "Hardy-Weinberg is a null model. By defining a population that isn't evolving, it gives us a mathematical baseline to detect and measure real evolutionary forces.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-007",
@@ -405,7 +411,8 @@
       },
       "correct": "C",
       "explanation": "Never taste or smell unknown chemicals. Using pH paper provides clean, quantitative evidence about the hydrogen ion concentration without risking exposure.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-008",
@@ -422,7 +429,8 @@
       },
       "correct": "B",
       "explanation": "Relative dating relies on principles like superposition to sequence events. It tells you what happened first, but you need radiometric dating for absolute numerical ages.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-009",
@@ -439,7 +447,8 @@
       },
       "correct": "C",
       "explanation": "The photoelectric effect proves light energy is quantized. If it were a continuous wave, bright red light would eventually accumulate enough energy to eject an electron.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-010",
@@ -456,7 +465,8 @@
       },
       "correct": "A",
       "explanation": "Cells aren't just empty boxes or prison walls; they are the fundamental, living building blocks that carry out the functions required for an organism to survive.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-011",
@@ -473,7 +483,8 @@
       },
       "correct": "A",
       "explanation": "Buffers are chemical systems that resist changes in pH by absorbing or releasing hydrogen ions. Lyra can reassure her brother that his blood contains natural buffers that neutralize the excess acid from the soda, maintaining homeostasis without needing to magically convert it to water or pump it through his skin.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-012",
@@ -490,7 +501,8 @@
       },
       "correct": "B",
       "explanation": "Molarity is defined as moles of solute per liter of total solution, not per liter of solvent. Adding a mole of salt to a liter of water would increase the total volume beyond one liter, dropping the concentration below 1.0 M. The solute must be dissolved first, then diluted to the exact final volume mark.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-013",
@@ -507,7 +519,8 @@
       },
       "correct": "C",
       "explanation": "While the term 'oxidation' historically comes from reactions with oxygen, the strict chemical definition is the loss of electrons. In a galvanic cell, zinc oxidizes by losing electrons to the circuit, a mechanism that relies on electron transfer evidence, not the presence of oxygen gas.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-014",
@@ -524,7 +537,8 @@
       },
       "correct": "A",
       "explanation": "A rusty spring might have a slightly different pre-stretch, but a zero reading at the first load usually means the student didn't subtract the unloaded equilibrium position. Good data discipline means measuring extension relative to the spring's initial hanging length before adding masses, not assuming the spring starts at zero stretch.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-015",
@@ -541,7 +555,8 @@
       },
       "correct": "A",
       "explanation": "Clapping at regular intervals lets you time several round trips and average them, which reduces the effect of reaction-time variability. Moving farther away does increase travel time, but it also introduces more sound attenuation and doesn't fix the inconsistent clap timing — a steady beat is the real control.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-016",
@@ -558,7 +573,8 @@
       },
       "correct": "A",
       "explanation": "pH is defined as the negative logarithm (base 10) of hydrogen‑ion concentration. A decrease of one pH unit corresponds to a tenfold increase in [H⁺], so pH 3 has 10 times the [H⁺] of pH 4 and 100 times that of pH 5. Lyra’s linear thinking (‘half’, ‘even smaller’) is the classic mistake. Option A correctly gives the factor‐of‐ten relationship and shows why her brother’s worry is unfounded—the change from pH 3 to pH 5 is huge, not small, so two tablets would overshoot.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-018",
@@ -575,7 +591,8 @@
       },
       "correct": "B",
       "explanation": "Pre-incubating the enzyme with the chemical alone, then adding substrate, tests whether the chemical permanently damages the enzyme (denaturation) or reversibly inhibits it. If the enzyme loses activity even without substrate present during incubation, the chemical likely denatured the enzyme rather than acting as a reversible inhibitor. This control is essential before claiming inhibition.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-019",
@@ -592,7 +609,8 @@
       },
       "correct": "B",
       "explanation": "Apoptosis is characterized by cell shrinkage, membrane blebbing, and fragmentation into membrane-bound apoptotic bodies, without immediate loss of membrane integrity. Necrosis, caused by injury or contamination, involves swelling and rupture. Observing the hallmarks of apoptosis prevents misdiagnosis and unnecessary discarding of cultures.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-020",
@@ -600,7 +618,7 @@
       "subject": "earth-science",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "After a large earthquake, a student examines global seismograph records and notices that S waves are completely absent from a wide region directly opposite the epicenter, while P waves arrive normally. The student wonders, 'Did the S waves just fade out before they got there?' Which physical constraint best explains this observation?",
+      "prompt": "S waves vanish on the far side of Earth after a quake, while P waves arrive. What physical constraint explains this?",
       "options": {
         "A": "S waves are shear waves; they cannot propagate through the liquid outer core, so they never reach the opposite side.",
         "B": "S waves travel much slower than P waves, so they arrive after the seismograph stops recording.",
@@ -609,7 +627,8 @@
       },
       "correct": "A",
       "explanation": "S waves are shear waves that require a rigid medium to transmit their motion. The liquid outer core cannot support shear stress, so any path that goes through the core blocks S waves, creating a shadow zone. This is not about speed, absorption, or reflection — it's a direct consequence of the outer core's phase being liquid.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-021",
@@ -626,7 +645,8 @@
       },
       "correct": "B",
       "explanation": "Your classmate is mistaking weather (a single summer) for climate (long-term trends). On top of that, large eruptions typically eject sulfate aerosols that reflect incoming solar radiation, temporarily cooling the planet — the opposite of warming. The evidence from historical eruptions like Pinatubo shows a measurable global temperature drop, not a rise. It's kind to point out the weather-climate distinction without dismissing their observation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-022",
@@ -643,7 +663,8 @@
       },
       "correct": "C",
       "explanation": "A measurement's precision is indicated by the number of digits, but accuracy depends on calibration and technique. The meter stick has an uncertainty of about ±0.1 cm, while the caliper's uncertainty is typically ±0.01 cm. However, both are measuring the same object, and the small difference (0.03 cm) is within the combined uncertainty. More digits do not automatically mean a better measurement; you must consider the tool's limitations and the context. The responsible interpretation is to recognize that both are valid and the true value lies within the overlapping uncertainty ranges.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-023",
@@ -660,7 +681,8 @@
       },
       "correct": "A",
       "explanation": "This is a classic case where precision (number of digits) is confused with accuracy. Both thermometers likely have an uncertainty of at least ±0.1°C, so the readings overlap. The responsible move is to acknowledge both measurements as valid and explain that the difference is within expected error. This respects both students' work and teaches the importance of uncertainty over false precision. Dismissing Indra's measurement without evidence would be a failure of lab responsibility.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-024",
@@ -677,7 +699,8 @@
       },
       "correct": "A",
       "explanation": "Ohm's law says V = IR, so R = V/I = 9.0 V / 0.30 A = 30 Ω. Watch your units and decimal places.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-026",
@@ -694,7 +717,8 @@
       },
       "correct": "A",
       "explanation": "A catalyst lowers activation energy without being chemically changed or consumed. The most direct evidence is that its mass remains unchanged after the reaction. Options B, C, and D do not directly show that the catalyst is unchanged — B addresses rate, not consumption; C is a plausible inference but not a measurement; D actually suggests a chemical change, which would contradict the definition.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-027",
@@ -702,7 +726,7 @@
       "subject": "chemistry",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "Sami collected hydrogen gas over water and recorded the gas volume at room temperature and atmospheric pressure. He used PV = nRT and got a molar volume that was about 8% too low. Frustrated, he blamed the ideal gas law. What essential correction did Sami overlook, and why is neglecting it a failure of lab responsibility?",
+      "prompt": "Sami measures hydrogen over water and gets molar volume too low. What correction did he overlook?",
       "options": {
         "A": "He forgot to subtract the vapor pressure of water, which contributes to the total pressure but is not from the H₂.",
         "B": "He used the wrong gas constant R because he mixed up units.",
@@ -711,7 +735,8 @@
       },
       "correct": "A",
       "explanation": "When collecting gas over water, the measured pressure is the sum of the gas pressure and the vapor pressure of water. To get the true pressure of the dry hydrogen, Sami must subtract the water vapor pressure at that temperature. Neglecting this correction is a failure of lab responsibility because it ignores a known systematic error that directly affects the calculated moles of gas.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-028",
@@ -728,7 +753,8 @@
       },
       "correct": "B",
       "explanation": "B is the essential control. Without holding other variables constant, Ravi can't rule out that differences in nutrients, starting density, or oxygen caused the growth difference—not temperature. Adding more temperatures (A) still lacks control, measuring temperature (C) doesn't control for other factors, and adding antibiotic (D) introduces a new uncontrolled variable.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-030",
@@ -736,7 +762,7 @@
       "subject": "earth-science",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "In a road cut, a student sees a thin layer of volcanic ash sandwiched between two sedimentary rock layers. 'That ash layer must be the oldest thing here — it's so thin and crushed, it’s been through everything,' they claim. As the geologist in charge, which principle of relative dating do you invoke to correct their reasoning?",
+      "prompt": "A volcanic ash layer sits between two sedimentary layers. Which relative-dating principle corrects a student who calls it oldest?",
       "options": {
         "A": "The principle of superposition: in undisturbed layers, the oldest layer is at the bottom, so the ash is younger than the rock beneath it.",
         "B": "The principle of cross-cutting relationships: the ash cuts across the sedimentary layers, making it older than both.",
@@ -745,7 +771,8 @@
       },
       "correct": "A",
       "explanation": "The principle of superposition states that in an undeformed sequence of sedimentary layers, each layer is younger than the one below it. The ash sits above the lower sedimentary layer, so it must be younger, not older. The student mistakenly judged age based on appearance — thinness and crushing — rather than using the straightforward positional rule.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-033",
@@ -762,7 +789,8 @@
       },
       "correct": "A",
       "explanation": "The student is looking down, so their line of sight is not perpendicular to the scale—that's parallax, which introduces a systematic reading error. The cylinder size is fine (B), taring is irrelevant here (C), and they are reading the bottom but from the wrong angle (D misidentifies the error). Measuring responsibly means controlling your perspective.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-034",
@@ -779,7 +807,8 @@
       },
       "correct": "A",
       "explanation": "The book is in static equilibrium: its weight downward and the normal force from the table upward sum to zero net force. Zero net force means constant velocity (here, zero), not the absence of forces. Option D confuses zero acceleration with zero forces. Option B invents invisible motion. Option C invents a horizontal force where none is needed.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-036",
@@ -796,7 +825,8 @@
       },
       "correct": "A",
       "explanation": "Molarity is moles of solute per liter of total solution volume, not per liter of solvent plus assumed volume. The solution contains 2.00 moles of NaCl. To find the concentration, divide by the measured final volume: 2.00 mol ÷ 1.95 L ≈ 1.03 M. The common error of assuming volumes are perfectly additive (2.00 L total) gives 1.00 M, but real solutions often contract when mixed. Always use your measured volume, not a naïve sum.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-038",
@@ -813,7 +843,8 @@
       },
       "correct": "A",
       "explanation": "The shrunken appearance, condensed chromatin, and membrane blebbing are classic hallmarks of apoptosis, a controlled, programmed cell death that avoids inflammation. Necrosis, by contrast, involves swelling and rupture, often triggering an inflammatory response. There is no evidence of bacterial contamination, so suggesting a Gram-stain is premature. Option C describes features of necrosis, not apoptosis. Option A directly addresses the misconception while explaining the actual mechanism.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-040",
@@ -830,7 +861,8 @@
       },
       "correct": "A",
       "explanation": "Cross-cutting relationships tell us that any feature that cuts across another must be younger. The sediments were deposited horizontally first; the fault later fractured and offset them. Your partner's instinct that 'cutting through old rock' means the fault is old is a common misreading — it's exactly the opposite.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-042",
@@ -847,7 +879,8 @@
       },
       "correct": "A",
       "explanation": "Sami's meter stick has markings every 1 mm, so he can estimate to the nearest 0.1 cm (0.001 m). But his three measurements vary by 0.01 m, meaning the uncertainty is about ±0.01 m. Reporting 1.520 m implies he knows the length to 0.001 m, which his data don't support. The number of digits should reflect the precision of the measurement, not a desire for more accuracy.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-045",
@@ -864,7 +897,8 @@
       },
       "correct": "A",
       "explanation": "You've spotted a hidden variable: temperature. The crushed chalk was warmer, and higher temperature increases reaction rate. To isolate the effect of surface area, you must control the temperature – that's a basic rule of experimental design. Averaging more trials (C) doesn't fix a confounded variable, and assuming temperature doesn't matter (D) dismisses evidence without checking. Option B ignores that even a small temperature difference can matter. The responsible move is to run a controlled comparison at the same temperature.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-046",
@@ -881,7 +915,8 @@
       },
       "correct": "A",
       "explanation": "Enzymes lower activation energy but do not provide it, nor do they alter equilibrium. A plateau in rate versus substrate concentration indicates Vmax, where all enzyme active sites are occupied (saturated). Blaming \"running out of energy\" confuses kinetics with thermodynamics and ignores saturation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-047",
@@ -898,7 +933,8 @@
       },
       "correct": "A",
       "explanation": "Natural selection acts on existing heritable variation, not on individual physiological acclimation or \"stretching.\" The population's average trait shifts because individuals with advantageous traits (larger beaks) have higher differential survival and reproduction, not because individuals change their own phenotypes.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-048",
@@ -915,7 +951,8 @@
       },
       "correct": "A",
       "explanation": "PCR relies on primers binding to specific flanking sequences. A silent mutation or polymorphism in the primer binding site will prevent amplification, yielding no band on the gel despite the gene being fully present. Concluding gene absence without sequencing or using multiple primer sets is sloppy evidence discipline.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-049",
@@ -932,7 +969,8 @@
       },
       "correct": "A",
       "explanation": "Circulating antibodies have a limited half-life and degrade over time. Immunological memory is maintained by long-lived memory B and T cells, not by indefinitely circulating antibodies. A booster stimulates these memory cells to rapidly proliferate and secrete fresh, high-affinity antibodies.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-050",
@@ -949,7 +987,8 @@
       },
       "correct": "A",
       "explanation": "Orbital variations trigger initial warming, which releases CO2 from oceans. This CO2 then acts as a greenhouse gas, amplifying the warming. The lag doesn't disprove greenhouse forcing; it reveals the sequence of trigger and feedback.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-051",
@@ -966,7 +1005,8 @@
       },
       "correct": "B",
       "explanation": "Deep ocean currents (thermohaline circulation) are driven by density differences, not surface winds. To simulate this, you must manipulate temperature (cooling) and salinity (adding salt) to increase surface water density until it sinks.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-052",
@@ -983,7 +1023,8 @@
       },
       "correct": "B",
       "explanation": "S-waves (shear waves) require a rigid medium to propagate. Because Earth's outer core is liquid, it absorbs S-waves, creating a shadow zone on the opposite side of the planet. The instrument isn't broken; it's recording a physical constraint.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-053",
@@ -1000,7 +1041,8 @@
       },
       "correct": "B",
       "explanation": "The Coriolis effect is a real force, but its magnitude is proportional to the scale and duration of the fluid motion. In a small, fast-draining sink, local asymmetries and initial momentum completely overwhelm the tiny Coriolis deflection.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-054",
@@ -1017,7 +1059,8 @@
       },
       "correct": "A",
       "explanation": "A catalyst is defined as a substance that increases the rate of a chemical reaction without itself undergoing any permanent chemical change. The observation that the white powder is still present and unchanged after increasing the reaction rate is direct evidence for it acting as a catalyst. Options B and C are incorrect because they imply the substance is consumed or transformed, which contradicts the observation. Option D is a misconception; solvents do not inherently speed up reactions, and their role is different from that of a catalyst.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-055",
@@ -1034,7 +1077,8 @@
       },
       "correct": "A",
       "explanation": "Redox reactions are defined by the transfer of electrons. While precipitate formation (a solid forming from solution) can *sometimes* be part of a redox reaction, it is not sufficient evidence on its own. Without observing electron transfer (e.g., changes in oxidation states), claiming it's a redox reaction is an unsupported leap. Color changes or temperature changes can also occur in non-redox reactions.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-056",
@@ -1051,7 +1095,8 @@
       },
       "correct": "A",
       "explanation": "The initial moles of solute are (5.0 mol/L) * (0.100 L) = 0.50 mol. The final volume is given as 590 mL, which is 0.590 L. The final concentration is (0.50 mol) / (0.590 L) ≈ 0.85 M. This scenario highlights the error of assuming volumes are perfectly additive, especially when mixing liquids, and the importance of using the *actual measured final volume* for dilution calculations.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-057",
@@ -1068,7 +1113,8 @@
       },
       "correct": "A",
       "explanation": "The ideal gas law (PV=nRT) shows that pressure is directly proportional to the number of moles (n) and temperature (T) if volume (V) is constant. The student correctly notes the temperature increase, but they fail to consider that the reaction itself may have *produced* more gas molecules (increased 'n'), which would also increase pressure. Assuming the volume is constant and only considering temperature ignores the contribution of gas production, a common error when interpreting gas behavior in reactions.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-058",
@@ -1085,7 +1131,8 @@
       },
       "correct": "A",
       "explanation": "In titrations, the 'endpoint' is the point at which the indicator changes color or a visible change, like the *persistent* formation or disappearance of a precipitate, signals that the reaction is stoichiometrically complete. Simply seeing a precipitate form isn't enough; the student must observe the specific point where adding more titrant no longer causes a change, indicating the reaction has reached its limit. Temperature and solubility are important factors, but not the primary indicator of completion in this context.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-059",
@@ -1102,7 +1149,8 @@
       },
       "correct": "A",
       "explanation": "While a buffer solution *resists* changes in pH, its ability to do so is not infinite. This resistance is called buffer capacity, and it depends directly on the concentrations of the weak acid and its conjugate base. If a large amount of strong acid or base is added, the buffer can be overwhelmed, and the pH will change significantly. The classmate is overlooking that buffers have limits to their effectiveness.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-060",
@@ -1119,7 +1167,8 @@
       },
       "correct": "A",
       "explanation": "Chromatography separates components based on their differential partitioning between a stationary phase and a mobile phase. Observing two distinct spots indicates that there are at least two components with different affinities for these phases, causing them to migrate at different rates. However, it does not guarantee that these components are *pure*; each spot could potentially be a mixture of substances with very similar affinities. The statement 'successfully separated' implies purity, which isn't proven by just two spots.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-061",
@@ -1136,7 +1185,8 @@
       },
       "correct": "A",
       "explanation": "The formation of a precipitate, a solid that separates from a solution, is a classic observable sign that a chemical reaction has occurred. This indicates that new chemical substances, with different properties than the original reactants, have formed. While the *type* of reaction (e.g., acid-base, redox, double displacement) requires further evidence, the precipitate itself is valid evidence of a chemical change, not just a physical one.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-062",
@@ -1153,7 +1203,8 @@
       },
       "correct": "A",
       "explanation": "Enzymes are proteins, and high temperatures can disrupt the weak bonds that maintain their specific three-dimensional structure, leading to denaturation and loss of function. Options B, C, and D describe other kinetic phenomena but don't specifically explain the sharp drop in activity due to excessive heat.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-063",
@@ -1170,7 +1221,8 @@
       },
       "correct": "A",
       "explanation": "To establish causation, we must isolate the variable of interest (population density) while controlling other factors. Option A directly manipulates density and controls for genetics. Option B shows correlation, not causation. Option C introduces another variable (predator), and Option D measures a potential *mechanism* but doesn't directly test the density-birth rate link.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-064",
@@ -1187,7 +1239,8 @@
       },
       "correct": "A",
       "explanation": "This question directly addresses the misconception of confusing correlation with causation. While the observation is valid, it only shows an association. Rigorous science demands evidence demonstrating the gene's *causal* role, not just its presence. Option B is a valid point but secondary to the primary error of assuming causation from correlation. Option C is an overgeneralization, and D addresses sample size but not the core logical fallacy.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-065",
@@ -1204,7 +1257,8 @@
       },
       "correct": "A",
       "explanation": "The alignment of chromosomes is a key visual difference between mitosis (sister chromatids align individually) and meiosis (homologous pairs align first, then sister chromatids). The other options describe cellular processes unrelated to chromosome behavior during division.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-066",
@@ -1221,7 +1275,8 @@
       },
       "correct": "A",
       "explanation": "This question addresses the misconception that correlation (or even a lag) negates causation. While temperature might initiate some past warming (e.g., orbital cycles), CO2 acts as a powerful amplifier. Option A correctly interprets this complex relationship. Option B is an overstatement. Option C dismisses valid data. Option D is an unsupported leap.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-067",
@@ -1238,7 +1293,8 @@
       },
       "correct": "A",
       "explanation": "This question targets a common misconception about enzyme saturation. The plateau occurs when all enzyme active sites are occupied by substrate molecules, a state called enzyme saturation, not energy saturation. Option B is incorrect as denaturation usually occurs with heat or extreme pH. Option C misinterprets activation energy's role. Option D is incorrect; the reaction is proceeding at its maximum velocity, not necessarily at equilibrium.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-068",
@@ -1255,7 +1311,8 @@
       },
       "correct": "B",
       "explanation": "This question addresses the common misconception of correlation vs. causation and the nuance of feedback loops in climate science. While CO2 might not initiate every warming event, its presence as a greenhouse gas amplifies the initial temperature rise, creating a positive feedback. Option A incorrectly dismisses CO2's role entirely. Options C and D ignore the evidence or make unsupported leaps.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-069",
@@ -1272,7 +1329,8 @@
       },
       "correct": "C",
       "explanation": "S-waves, unlike P-waves, cannot travel through liquids. The complete absence of S-waves in the antipodal region, known as the S-wave shadow zone, is critical evidence that the Earth's outer core is liquid, as it prevents these shear waves from passing through. Option A is incorrect because while the mantle is solid, the outer core is not. Option B is partially correct about the inner core but doesn't explain the S-wave shadow zone. Option D describes refraction, but the complete blockage points to a phase change in the medium.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-070",
@@ -1289,7 +1347,8 @@
       },
       "correct": "C",
       "explanation": "Albedo is the measure of reflectivity. Surfaces with high albedo (like snow) reflect most incoming solar radiation, while surfaces with low albedo (like dark asphalt) absorb more. This absorbed energy contributes to heating the surface and the atmosphere, directly impacting Earth's energy balance. Options A, B, and D describe related but distinct physical properties or consequences, not the direct measurement of albedo's role in energy balance.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-071",
@@ -1297,7 +1356,7 @@
       "subject": "earth-science",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "A student is analyzing satellite data that shows significant variations in Earth's reflectivity, or albedo, across different regions – for example, bright white ice caps versus dark oceans. They are tasked with explaining how these albedo differences influence global climate. What is the most rigorous scientific explanation they should provide?",
+      "prompt": "Ice reflects more sunlight than dark ocean. How do albedo differences affect climate?",
       "options": {
         "A": "Regions with higher albedo absorb more solar radiation, leading to increased local temperatures and thus more evaporation.",
         "B": "Surfaces with lower albedo absorb more solar radiation, contributing to warming, while higher albedo surfaces reflect more energy, promoting cooling.",
@@ -1306,7 +1365,8 @@
       },
       "correct": "B",
       "explanation": "This question tests the understanding of albedo's role in Earth's energy budget. Higher albedo surfaces reflect more sunlight, reducing absorption and thus having a cooling effect. Lower albedo surfaces absorb more sunlight, increasing absorption and contributing to warming. Option A incorrectly states that high albedo leads to increased absorption and temperature. Option C misattributes the primary effect of albedo. Option D underestimates the significant impact of albedo, especially in scenarios like ice-albedo feedback.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-072",
@@ -1323,7 +1383,8 @@
       },
       "correct": "B",
       "explanation": "The presence of a liquid outer core prevents the transmission of shear (S) waves.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-073",
@@ -1340,7 +1401,8 @@
       },
       "correct": "A",
       "explanation": "When averaging measurements, the result should not imply greater precision than the least precise measurement. Since the individual measurements only have two decimal places, the average should also be reported to two decimal places (1.52 m) unless an explicit uncertainty calculation justifies more.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-074",
@@ -1357,7 +1419,8 @@
       },
       "correct": "A",
       "explanation": "Science progresses by gathering evidence that supports or refutes hypotheses. No single experiment can definitively 'prove' a hypothesis true in an absolute sense. This option acknowledges the support while maintaining scientific rigor and encouraging further investigation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-075",
@@ -1374,7 +1437,8 @@
       },
       "correct": "B",
       "explanation": "The group with no fertilizer acts as a control. It allows you to compare the growth in the fertilized groups against a condition where the independent variable (fertilizer amount) is absent, thereby isolating the effect of the fertilizer itself on plant growth.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-076",
@@ -1391,7 +1455,8 @@
       },
       "correct": "B",
       "explanation": "While general protection is always good, the primary safety concern when heating a liquid, especially a flammable one, is the risk of burns from splashes or contact with a hot beaker. Gloves provide a thermal barrier and chemical resistance against such hazards.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-077",
@@ -1408,7 +1473,8 @@
       },
       "correct": "B",
       "explanation": "This scenario highlights the common error of mistaking correlation for causation. While the bell ringing and students moving are correlated (they happen together), the students' movement is primarily caused by the scheduled class change, not the sound wave itself compelling them. The bell is a signal, not a direct cause of motion.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-078",
@@ -1425,7 +1491,8 @@
       },
       "correct": "B",
       "explanation": "While the shock absorber analogy is helpful for the general idea of 'smoothing out' disturbances, it fails to capture the chemical nature of biological buffers. Buffers work by undergoing reversible chemical reactions to neutralize added acids or bases, a dynamic process unlike the passive mechanical function of a shock absorber.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-079",
@@ -1442,7 +1509,8 @@
       },
       "correct": "C",
       "explanation": "The key to a correct titration endpoint is observing the *persistent* color change. A temporary color change might occur if a drop is added too quickly or if local concentrations are high. Slowly adding titrant and swirling, then checking if the color disappears with mixing, confirms that the indicator has truly reacted with the analyte and the endpoint has been reached.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-080",
@@ -1459,7 +1527,8 @@
       },
       "correct": "B",
       "explanation": "The observation demonstrates phototropism (growth towards light), which is a response to light. However, concluding that light is *essential for survival* based solely on this observation is an overreach. A controlled experiment (e.g., comparing plants with and without light under otherwise identical conditions) is needed to rigorously establish light's necessity for survival, not just its influence on growth direction.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-081",
@@ -1476,7 +1545,8 @@
       },
       "correct": "B",
       "explanation": "Correlation does not imply causation; there's no evidence the socks directly influence the game's outcome.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-082",
@@ -1493,7 +1563,8 @@
       },
       "correct": "B",
       "explanation": "This question probes the limits of analogies in science, a key aspect of Sally's teaching. The lock-and-key model is a useful starting point for enzyme specificity, but it's an oversimplification. Real enzymes exhibit 'induced fit,' where the active site changes shape slightly upon substrate binding to achieve a better fit and facilitate the reaction. Option B highlights this crucial biological nuance that the rigid lock-and-key analogy misses. Options A, C, and D point out differences but don't address the core mechanism of enzyme-substrate interaction as directly as B does.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-083",
@@ -1510,7 +1581,8 @@
       },
       "correct": "C",
       "explanation": "This question focuses on the practical application of experimental design, specifically the role of control groups. Group C, receiving no treatment, is essential to isolate the effect of the fertilizer. Group B (plain water) is also a control, specifically for the watering aspect, ensuring that any difference observed between A and B is due to the fertilizer, not just the act of watering. While A and D touch on valid comparisons, C most accurately describes the *primary* function of a true control group in isolating the independent variable (the fertilizer).",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-084",
@@ -1527,7 +1599,8 @@
       },
       "correct": "C",
       "explanation": "They need to state the uncertainty of the measurement, not just the average.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-085",
@@ -1544,7 +1617,8 @@
       },
       "correct": "D",
       "explanation": "This question targets the distinction between observation and inference, a common pitfall. The student *observed* nuclear size variation but *inferred* health without evidence. Option D directly addresses this flaw. Option A is a good point about context but doesn't pinpoint the logical error. Option B is about experimental technique, not the interpretation of the current observation. Option C is a possibility but not the most direct critique of the student's stated conclusion about 'health'.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-086",
@@ -1552,7 +1626,7 @@
       "subject": "physics",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "You are measuring the current flowing through a resistor. The ammeter reads 0.52 A. You then calculate the voltage across the resistor using Ohm's Law (V=IR), assuming the resistance R is exactly 10 ohms. Your calculated voltage is 5.2 V. What is the most critical procedural step you should take to improve the scientific rigor of your voltage calculation?",
+      "prompt": "An ammeter reads 0.52 A and you assume a resistor is exactly 10 ohms. What should you verify before calculating voltage?",
       "options": {
         "A": "Measure the resistance (R) with a separate ohmmeter to confirm its value.",
         "B": "Recalculate the voltage using a more precise value for R if available.",
@@ -1561,7 +1635,8 @@
       },
       "correct": "A",
       "explanation": "Measure the resistance (R) with a separate ohmmeter to confirm its value.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-087",
@@ -1578,7 +1653,8 @@
       },
       "correct": "B",
       "explanation": "The conclusion oversimplifies a complex system and ignores other contributing factors or feedback loops.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-088",
@@ -1595,7 +1671,8 @@
       },
       "correct": "A",
       "explanation": "To establish causation, it's crucial to isolate the suspected cause. Repeating the experiment with the chemical while keeping everything else constant (control) confirms the chemical's role. Option B is a control, but doesn't confirm the chemical's role. C and D explore other aspects but don't isolate the cause.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-089",
@@ -1612,7 +1689,8 @@
       },
       "correct": "D",
       "explanation": "Charles's Law specifically describes the direct proportionality between the volume and temperature of an ideal gas at constant pressure. While the student's observation aligns with this, stating 'makes' implies a direct, singular cause without considering the underlying kinetic theory (B) or the specific law (D). Option A is correlation, not explanation. C is an overgeneralization.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-090",
@@ -1629,7 +1707,8 @@
       },
       "correct": "A",
       "explanation": "The student is jumping from correlation to causation. While deer eating wildflowers is a plausible explanation, rigorous science requires testing. Asking them to design an experiment (A) directly addresses the need to establish causation by isolating the variable (deer presence/grazing) and observing the effect on wildflowers, while controlling for other factors. B makes an assumption, C is a general statement without a specific action, and D is a good step but less about experimental design.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-091",
@@ -1646,7 +1725,8 @@
       },
       "correct": "A",
       "explanation": "The student correctly calculated the numerical value but omitted the units. In physics, units are critical for understanding the physical meaning of a quantity. 1 kg⋅m²/s² is indeed equivalent to 1 Joule (J), and failing to state this unit makes the answer incomplete and potentially ambiguous. While B, C, and D are important aspects of good experimental practice, the prompt specifically highlights the missing units.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-092",
@@ -1663,7 +1743,8 @@
       },
       "correct": "A",
       "explanation": "The student has observed a correlation and inferred causation. The most scientifically responsible critique is to point out the need for experimental verification of causation (A). Option B provides a plausible mechanism but doesn't address the need for proof. C and D suggest alternative explanations but don't directly critique the student's leap to causation based on their observation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-093",
@@ -1680,7 +1761,8 @@
       },
       "correct": "A",
       "explanation": "Analogies are powerful tools but always have limits. The 'wanted poster' analogy effectively introduces the concept of recognition. However, it fails to capture the *mechanism* of immune response – how the immune system generates antibodies, memory cells, or cytotoxic responses to neutralize the pathogen. Options B, C, and D point out differences but don't address the core explanatory gap in the analogy's mechanism.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-094",
@@ -1697,7 +1779,8 @@
       },
       "correct": "A",
       "explanation": "The student's explanation is enthusiastic but lacks scientific rigor by omitting a key variable. Temperature is crucial for solubility and crystallization rates. A change in temperature could have been the primary driver of the rapid crystallization, not just the seed crystal. Mentioning the seed crystal is good, but ignoring temperature's role in a supersaturated solution is a significant oversight in explaining the *mechanism* and controlling the experiment. B, C, and D are less relevant to the scientific explanation of the process.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-095",
@@ -1714,7 +1797,8 @@
       },
       "correct": "A",
       "explanation": "The student's raw measurements have three significant figures (e.g., 1.25 s). The average should reflect this precision. Reporting 1.25333 seconds implies a level of precision not supported by the original data. The most immediate and responsible action is to correctly round the average to the appropriate number of significant figures (1.25 s). While B and C are good practices for improving data quality, A addresses the immediate error in reporting the result. D is incorrect as it falsely inflates precision.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-096",
@@ -1731,7 +1815,8 @@
       },
       "correct": "A",
       "explanation": "A catalyst is defined by its ability to increase reaction rate without being consumed in the process. The observation that the substance is not found in the products strongly supports it acting as a catalyst, rather than a reactant or product. Inhibitors slow reactions and are typically consumed or remain present.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-097",
@@ -1748,7 +1833,8 @@
       },
       "correct": "A",
       "explanation": "While the correlation is strong evidence, it's crucial to remember that correlation alone does not establish causation. Other complex factors influence global temperature, and a rigorous scientific approach requires investigating all potential contributors and their interactions, not just focusing on a single correlated variable.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-098",
@@ -1765,7 +1851,8 @@
       },
       "correct": "A",
       "explanation": "The shock absorber analogy is good for illustrating the smoothing effect, but it doesn't convey that buffers have a finite capacity. Just as a shock absorber can be overloaded, a buffer can be overwhelmed by a large addition of acid or base, leading to a significant pH change. This limitation is crucial for understanding buffer behavior in practical applications.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-099",
@@ -1782,7 +1869,8 @@
       },
       "correct": "A",
       "explanation": "The dilution equation $M_1V_1 = M_2V_2$ is the correct approach here, where $M_1$ and $V_1$ are the initial molarity and volume, and $M_2$ and $V_2$ are the final molarity and volume. The key to this calculation is ensuring that both volumes ($V_1$ and $V_2$) are in the same units, whether milliliters or liters, so they cancel out correctly or are used consistently in the final calculation of $M_2$.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-100",
@@ -1799,7 +1887,8 @@
       },
       "correct": "A",
       "explanation": "While the color change might suggest a redox reaction, the defining characteristic of redox is the transfer of electrons, leading to changes in oxidation states. Simply observing a color change or the presence of a metal like iron doesn't confirm electron transfer. A control experiment (D) is good practice, but it doesn't directly prove electron transfer. Activation energy (B) and enthalpy change (C) are related to reaction kinetics and thermodynamics, not the fundamental definition of redox.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-101",
@@ -1816,7 +1905,8 @@
       },
       "correct": "A",
       "explanation": "The observation shows a correlation between light and growth direction, but to establish necessity, we need to isolate light as the variable. A control group that does not receive light (or receives it from a different direction) would allow us to determine if light is truly essential for survival and growth, not just a factor influencing direction. Identifying wavelengths (B), measuring rates (C), or explaining the mechanism (D) are important, but they don't address the fundamental experimental design flaw.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-102",
@@ -1833,7 +1923,8 @@
       },
       "correct": "B",
       "explanation": "The crucial aspect of a titration endpoint is that it accurately reflects the equivalence point. This relies on choosing an indicator whose color change range (its transition range) brackets the pH at which the moles of acid and base are stoichiometrically equal. While persistence of color (A) is a good sign it's not a fleeting change, and swirling (D) and proper rinsing (C) are essential procedural steps, the indicator's suitability for the specific titration is paramount for a valid endpoint.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-103",
@@ -1850,7 +1941,8 @@
       },
       "correct": "A",
       "explanation": "The Earth's interior is not uniform; it's composed of layers with varying densities and states (solid, liquid). Seismic waves (P-waves and S-waves) refract (bend) and change speed as they encounter these different materials, much like light bending when passing through water. This phenomenon is fundamental to understanding how we map the Earth's interior. Surface waves do exist, but body waves travel through the Earth, and their behavior is complex, not a straight, constant-speed path.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-104",
@@ -1867,7 +1959,8 @@
       },
       "correct": "C",
       "explanation": "Extreme pH levels can disrupt the ionic and hydrogen bonds that maintain an enzyme's three-dimensional structure, leading to denaturation and loss of function. While changes in substrate concentration or reaching equilibrium can affect reaction rates, denaturation is the most direct consequence of suboptimal pH on enzyme structure and activity.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-105",
@@ -1884,7 +1977,8 @@
       },
       "correct": "B",
       "explanation": "Natural selection acts on existing heritable variation within a population. While the drought may have created a selective pressure favoring finches with larger beaks (perhaps for accessing drought-resistant seeds), this observation alone doesn't mean individual finches grew larger beaks. It implies that finches with larger beaks had higher survival and reproduction rates, leading to a shift in the population's average beak size over generations. This is population evolution, not individual adaptation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-106",
@@ -1901,7 +1995,8 @@
       },
       "correct": "B",
       "explanation": "While the analogy captures the 'readiness' of the immune system, it overlooks the dynamic nature of immune memory. Antibody titers (levels) and the number of memory cells can wane over time, meaning immunity isn't always permanent or at peak strength without re-exposure or boosters. The analogy implies a static, always-ready state, which isn't entirely accurate.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-107",
@@ -1918,7 +2013,8 @@
       },
       "correct": "A",
       "explanation": "Before concluding the gene is absent, you must first rule out experimental error. Repeating the PCR with the same sample and reagents is the most direct way to check for technical issues like pipetting errors, reagent degradation, or inconsistent cycling conditions that might have prevented amplification, even if the gene is present.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-108",
@@ -1935,7 +2031,8 @@
       },
       "correct": "B",
       "explanation": "This statement exhibits teleological reasoning, implying intent or purpose behind the predator's actions. Natural population dynamics, like predator-prey cycles, arise from the interplay of ecological factors such as birth rates, death rates, and resource availability, not from a conscious 'effort' by the predators to regulate the prey. The observed pattern is a consequence of these pressures, not a deliberate strategy.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-109",
@@ -1952,7 +2049,8 @@
       },
       "correct": "D",
       "explanation": "While options A, B, and C are *possible* reasons for the absence of a band, the most rigorous scientific conclusion, given that the PCR components are functional, is that an unknown technical error occurred in Sample B. Without further controls or data, we cannot definitively distinguish between the absence of the target sequence, primer binding issues, or DNA degradation. The failure of the reaction itself is the most direct, albeit incomplete, inference.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-110",
@@ -1969,7 +2067,8 @@
       },
       "correct": "B",
       "explanation": "Antibodies are produced by plasma cells, which are differentiated B lymphocytes. Low antibody levels in the face of infection strongly suggest a problem with B cell activation, differentiation, or antibody secretion, which is a critical component of adaptive immunity responsible for humoral defense.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-111",
@@ -1986,7 +2085,8 @@
       },
       "correct": "C",
       "explanation": "The standard logistic growth model assumes that population growth instantaneously adjusts to resource availability. In reality, there are often time lags between a change in population size, the resulting impact on resources, and the subsequent effect on birth and death rates. Consistently overshooting and crashing suggests these time lags are significant and not accounted for in the basic model.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-112",
@@ -2003,7 +2103,8 @@
       },
       "correct": "A",
       "explanation": "This question targets the common misconception of mistaking correlation for causation. While temperature rises first, the CO2 increase then amplifies and sustains the warming, creating a positive feedback loop. The student's error is failing to see how CO2 acts as both a consequence and a driver of warming in a complex system.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-113",
@@ -2020,7 +2121,8 @@
       },
       "correct": "A",
       "explanation": "S-waves, or shear waves, are known to be unable to travel through liquids. The observation of an 'S-wave shadow zone' on the antipodal side of the Earth is direct evidence that the outer core is liquid, as it prevents these waves from passing through it.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-114",
@@ -2037,7 +2139,8 @@
       },
       "correct": "A",
       "explanation": "Thermohaline circulation is driven by density differences in seawater, which are primarily controlled by temperature (thermo) and salinity (haline). The student's model lacks the crucial element of density variation, which is the engine for deep ocean currents.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-115",
@@ -2054,7 +2157,8 @@
       },
       "correct": "A",
       "explanation": "While options B, C, and D touch on aspects of the problem, option A requires a quantitative assessment of energy balance. To rigorously evaluate the proposal, one must calculate the *energy budget* change, considering not just reflected energy but also absorbed energy and how that energy affects the surface and air temperature, accounting for thermal properties.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-116",
@@ -2071,7 +2175,8 @@
       },
       "correct": "A",
       "explanation": "The Coriolis effect is a consequence of Earth's rotation but is only noticeable for large-scale systems where the path length and time are significant. For small-scale, short-duration events like water draining from a sink, other factors like the initial motion of the water or the basin's shape are far more influential, making the Coriolis effect negligible.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-117",
@@ -2088,7 +2193,8 @@
       },
       "correct": "A",
       "explanation": "The Coriolis effect is dependent on the speed of rotation and the scale of the motion. A tabletop is essentially not rotating relative to the Earth's surface in a way that produces a significant Coriolis force on a small, fast-moving object like a ball. The effect is only noticeable on large scales (like weather systems or ocean currents) or with very long travel times.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-118",
@@ -2105,7 +2211,8 @@
       },
       "correct": "C",
       "explanation": "The student is observing wilting and attributing it *solely* to lack of water. To isolate water as the *only* cause, we need a control that accounts for the other variable introduced: the sealed bag. A plant watered normally but not in the bag serves as this baseline, showing that wilting doesn't happen under normal conditions. Option A doesn't control for water. Options B and D introduce additional variables or don't isolate the core issue.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-119",
@@ -2122,7 +2229,8 @@
       },
       "correct": "A",
       "explanation": "When using a ruler marked in millimeters (0.1 cm), you can reliably estimate to the nearest millimeter. This means your measurement should include one decimal place. 123.4 cm shows precision to the nearest millimeter. 123 cm drops a significant digit, and 123.40 cm implies precision to the nearest tenth of a millimeter, which isn't possible with this ruler.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-120",
@@ -2139,7 +2247,8 @@
       },
       "correct": "D",
       "explanation": "Isolating the effect of soil type on water retention.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-121",
@@ -2156,7 +2265,8 @@
       },
       "correct": "A",
       "explanation": "Newton's Second Law states F=ma. In this scenario, acceleration (a) is held constant at 2 m/s². The data shows that when mass (m) doubles from 2 kg to 4 kg, the force (F) also doubles from 4 N to 8 N. This directly demonstrates that force is directly proportional to mass when acceleration is the constant variable.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-122",
@@ -2173,7 +2283,8 @@
       },
       "correct": "A",
       "explanation": "Option A uses an analogy of energetic particles (air molecules) transferring energy through collisions, which is a good, simplified model for convection and conduction. It's relatable and hints at the kinetic nature of heat. Option B is magical thinking. Option C is scientifically incorrect (heat moves from hotter to colder). Option D focuses only on radiation, ignoring convection/conduction, and is less explanatory of the general 'hot day' effect.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-123",
@@ -2190,7 +2301,8 @@
       },
       "correct": "B",
       "explanation": "The scientific rationale is based on risk assessment and evidence of potential harm. Chemicals, even when handled carefully, can splash due to unexpected reactions, equipment failure, or accidents. The eyes are particularly vulnerable to severe and permanent damage from chemical exposure. While following rules (A) is important, the *reason* for the rule is protection. Looking like a scientist (C) is irrelevant to safety. Lung harm (D) is a different exposure route and not the primary reason for eye protection.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-124",
@@ -2207,7 +2319,8 @@
       },
       "correct": "B",
       "explanation": "The student is observing a correlation between low albedo and higher temperatures in urban areas and jumping to a causal conclusion without considering other contributing factors or the complexity of the urban heat island effect. While albedo is a factor, it's not the sole cause, and other elements like waste heat, building materials, and lack of vegetation play significant roles. This question targets the misconception of assuming correlation implies causation and the need for rigorous, multi-factor analysis in complex systems.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-125",
@@ -2215,7 +2328,7 @@
       "subject": "chemistry",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "We're observing a chemical reaction where a precipitate forms. A student notes that every time they heat the solution, more precipitate appears. They conclude that heat *causes* the precipitate formation. What is the most rigorous next step to test this hypothesis, ensuring we're not mistaking correlation for causation?",
+      "prompt": "Heating a solution seems to produce more precipitate. What test separates causation from correlation?",
       "options": {
         "A": "Measure the temperature of the solution precisely and record it alongside precipitate amounts.",
         "B": "Design a second experiment where the temperature is kept constant, but other factors (like reactant concentration) are varied.",
@@ -2224,7 +2337,8 @@
       },
       "correct": "C",
       "explanation": "Option C describes a controlled experiment. By keeping all variables the same except for the temperature, we can isolate the effect of heat. Option A only collects more correlational data. Option B introduces a new variable (concentration) which complicates the isolation of heat's effect. Option D asks for reasoning but doesn't perform an experiment to test the hypothesis.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-126",
@@ -2241,7 +2355,8 @@
       },
       "correct": "B",
       "explanation": "The student observed that wilting occurred when the plants were in the sun, but this doesn't isolate sun exposure as the cause. The closed window likely caused significant heat buildup and reduced air circulation, which are also strong wilting factors. The experiment needs controls to isolate the effect of sunlight from these other variables. Mistaking the co-occurrence of sun and wilting for a direct cause-and-effect relationship is a classic correlation-causation fallacy.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-127",
@@ -2258,7 +2373,8 @@
       },
       "correct": "B",
       "explanation": "The student performed multiple trials, suggesting an attempt to establish reliability. While rounding can sometimes obscure precision, the most critical error here is the complete omission of any indication of measurement uncertainty. Reporting a single value without acknowledging the range (e.g., 98.3 ± 0.1 °C) implies an unwarranted level of absolute precision and ignores the inherent variability in experimental measurements.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-128",
@@ -2275,7 +2391,8 @@
       },
       "correct": "A",
       "explanation": "Homeostasis is the maintenance of stable internal conditions. The regulation of blood glucose by insulin is a classic example of a homeostatic feedback loop. When this loop is broken, as in diabetes, glucose levels become unstable, leading to prolonged elevation after a meal.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-129",
@@ -2292,7 +2409,8 @@
       },
       "correct": "A",
       "explanation": "An absent band in PCR indicates a failure of amplification, not necessarily the absence of the gene itself. This could be due to issues with primer binding, enzyme activity, temperature cycling, or sample quality, rather than the gene's complete deletion from the organism's genome. We must be careful not to overstate conclusions from a single negative result.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-130",
@@ -2309,7 +2427,8 @@
       },
       "correct": "A",
       "explanation": "This question targets the misconception of teleology – the idea that evolution has a purpose or goal. Natural selection acts on existing heritable variation. In this case, finches with larger beaks were *already* present in the population, and *if* those larger beaks conferred an advantage in cracking the available drought-resistant seeds, then those individuals would survive and reproduce at higher rates, leading to an increase in the average beak size in the *next generation*. It's about differential survival and reproduction of pre-existing traits, not a conscious adaptation driven by need.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-131",
@@ -2317,7 +2436,7 @@
       "subject": "earth-science",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "We're examining ice core data showing that during past glacial periods, atmospheric CO2 levels were lower, and during interglacial periods, they were higher. A student suggests that the rising CO2 levels *caused* the warming. What critical piece of evidence, often observed in deglaciation events, challenges this direct causal link?",
+      "prompt": "Ice cores show CO2 is higher in warm periods. What evidence complicates saying CO2 alone caused deglaciation warming?",
       "options": {
         "A": "Temperature increases are observed to *precede* the rise in CO2.",
         "B": "Ice cores cannot accurately measure CO2 concentrations from ancient times.",
@@ -2326,7 +2445,8 @@
       },
       "correct": "A",
       "explanation": "While CO2 is a significant greenhouse gas that contributes to warming, ice core data from deglaciation events often shows a lag: temperature begins to rise *before* CO2 levels increase. This suggests that initial warming may have triggered processes that released CO2, which then amplified the warming. This observation is crucial for understanding the complex feedback loops in Earth's climate system and avoids the common fallacy of assuming correlation equals causation, especially when the temporal order is reversed.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-132",
@@ -2343,7 +2463,8 @@
       },
       "correct": "A",
       "explanation": "Seismic S-waves, which are shear waves, cannot propagate through liquids. The observation that S-waves do not reach seismographs on the antipodal side of the Earth is direct evidence that a substantial liquid layer exists within the planet, which we now understand to be the outer core. This layer refracts and absorbs the S-waves, creating a distinct 'shadow zone' where they are not detected, thereby providing crucial evidence for Earth's internal structure.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-133",
@@ -2360,7 +2481,8 @@
       },
       "correct": "A",
       "explanation": "This is a classic misconception! The Coriolis effect is a result of Earth's rotation, but it only becomes significant for large-scale, long-duration movements, like hurricanes or ocean currents. The scale and speed of water draining from a sink are far too small for the Coriolis effect to have a noticeable impact. Other factors, such as the shape of the sink and any initial swirl in the water, are the dominant influences on drainage direction.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-134",
@@ -2368,7 +2490,7 @@
       "subject": "earth-science",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "A student is experimenting with different surfaces to see how much solar energy they absorb. They measure that a black asphalt road absorbs significantly more energy than a white concrete sidewalk. They conclude that painting all roads white would drastically reduce global temperatures. What is the most critical flaw in their reasoning, beyond just scale?",
+      "prompt": "A black road absorbs more energy than white concrete. What flaw appears when a student scales that result to global climate?",
       "options": {
         "A": "They haven't accounted for the fact that white surfaces reflect more energy, thus increasing Earth's albedo.",
         "B": "They haven't considered that asphalt is a better conductor of heat than concrete.",
@@ -2377,7 +2499,8 @@
       },
       "correct": "A",
       "explanation": "They haven't accounted for the fact that white surfaces reflect more energy, thus increasing Earth's albedo.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-135",
@@ -2394,7 +2517,8 @@
       },
       "correct": "A",
       "explanation": "A meter stick marked in millimeters allows for readings to the nearest millimeter (0.001 m). Reporting to the fourth decimal place (1.5270 m, if the zero is estimated) or third decimal place (1.527 m) implies a precision beyond what the tool can reliably provide. The measurement should reflect the precision of the tool, typically to the smallest marked division or one estimated digit beyond it. Significant figures are crucial for accurately representing measurement uncertainty.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-136",
@@ -2411,7 +2535,8 @@
       },
       "correct": "C",
       "explanation": "This question probes the distinction between observation and definitive event. While vigorous bubbling is an observable indicator, the reaction likely began *before* the visible bubbling became pronounced. The precise start time is when reactants are mixed or a trigger is applied, not necessarily when the effect is easily seen. This highlights the need for clear operational definitions and careful observation of the *initiation* of a process, not just its most obvious manifestation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-137",
@@ -2428,7 +2553,8 @@
       },
       "correct": "B",
       "explanation": "This scenario tests the understanding of experimental controls. To establish that watering *causes* growth, you need to compare the growth of a watered plant to a plant that is identical in all other respects but does *not* receive water. This control group isolates the variable (watering) and allows you to attribute any difference in growth to that specific factor, rather than other potential influences like light, temperature, or nutrients.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-138",
@@ -2445,7 +2571,8 @@
       },
       "correct": "A",
       "explanation": "The student's statement reflects a common misconception that energy is 'lost.' The scientifically accurate explanation, however, is that energy is *transformed* into less useful forms, primarily heat and sound, due to dissipative forces like friction and air resistance. Option A directly addresses this transformation and identifies the responsible forces, providing a mechanistic explanation rather than just stating a rule.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-139",
@@ -2462,7 +2589,8 @@
       },
       "correct": "D",
       "explanation": "The student's conclusion conflates correlation with causation. To establish that sunlight *causes* growth, we must control for other essential growth factors like water and nutrients. Option D provides a plant in the dark but ensures it still receives water and nutrients, allowing a comparison to a plant receiving sunlight (and presumably water and nutrients) to isolate the effect of light. Option A is not a control for sunlight itself, and B and C introduce additional confounding variables that prevent isolating the effect of sunlight.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-140",
@@ -2479,7 +2607,8 @@
       },
       "correct": "A",
       "explanation": "Reporting a measurement as 25.0°C, rather than just 25°C, indicates that the measurement was taken with an instrument capable of discerning tenths of a degree. This implies greater precision. While it doesn't guarantee accuracy (how close to the true value), it shows a more rigorous approach to measurement uncertainty. Option B is incorrect as the values are effectively the same within the precision of the first measurement. Option C is incorrect because the trailing zero *does* convey information about precision. Option D is incorrect as precision and simplicity are not the same as accuracy.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-141",
@@ -2496,7 +2625,8 @@
       },
       "correct": "B",
       "explanation": "This is a classic example of mistaking correlation for causation. Both ice cream sales and drowning incidents tend to increase during warmer weather (e.g., summer). The warm weather is a confounding variable that influences both independently. Option B correctly identifies this as the most critical flaw: the overlooking of a common cause. The other options focus on irrelevant details or aspects of the correlation itself rather than the faulty causal inference.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-142",
@@ -2513,7 +2643,8 @@
       },
       "correct": "C",
       "explanation": "People clapping are discrete events, not continuous waves, and the 'adding up' or 'canceling out' is not directly observable in the same way as wave superposition.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-143",
@@ -2530,7 +2661,8 @@
       },
       "correct": "C",
       "explanation": "The student observed two events happening at the same time (temperature increase and precipitation) and directly assumed one caused the other. This is a classic case of confusing correlation with causation. While the added solid *might* be a reactant, it could also be a catalyst that facilitates an exothermic reaction, or its dissolution might be exothermic, leading to precipitation from a supersaturated solution. Further experiments would be needed to isolate the cause.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-144",
@@ -2547,7 +2679,8 @@
       },
       "correct": "B",
       "explanation": "While CO2 is a significant greenhouse gas and correlates strongly with temperature, observing that temperature sometimes leads CO2 increases during deglaciation suggests a more complex feedback loop rather than a simple, unidirectional cause-and-effect. Initial warming, perhaps from orbital changes, can degas CO2 from oceans, which then amplifies the warming. This highlights the importance of considering the sequence of events and potential feedback mechanisms, not just correlation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-145",
@@ -2564,7 +2697,8 @@
       },
       "correct": "A",
       "explanation": "The student has likely observed the *endpoint* of the indicator, which is the point where the indicator changes color. The *equivalence point* is the theoretical point where the moles of titrant exactly equal the moles of analyte. While a good indicator's endpoint is very close to the equivalence point, they are not always identical. Stopping at the first color change without further verification or understanding the indicator's properties means they might not have reached the true equivalence point, leading to an inaccurate volume measurement for the reaction.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-146",
@@ -2581,7 +2715,8 @@
       },
       "correct": "B",
       "explanation": "The defining characteristic of a catalyst is that it speeds up a reaction without being consumed or permanently altered in the process. If the student's added substance is used up or chemically changed during the reaction, it's acting as a reactant, not a catalyst. Checking the fate of the substance after the reaction is key evidence.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-147",
@@ -2598,7 +2733,8 @@
       },
       "correct": "A",
       "explanation": "When the reaction rate plateaus despite increasing substrate concentration, it means the enzyme is working as fast as it can. This occurs when all available enzyme active sites are continuously occupied by substrate molecules, a state known as enzyme saturation. Options B, C, and D describe different scenarios not indicated by a rate plateau in standard enzyme kinetics experiments.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-148",
@@ -2615,7 +2751,8 @@
       },
       "correct": "A",
       "explanation": "Autoimmune disorders arise when the adaptive immune system fails to maintain tolerance to self-antigens. T-cell tolerance, a critical part of immune memory development, involves eliminating or inactivating T-cells that react against the body's own tissues. A breakdown in these tolerance mechanisms allows self-reactive T-cells to persist and attack the body's own cells, causing autoimmune disease. Option B mischaracterizes immune memory's role. Option C describes immunodeficiency, not autoimmunity. Option D points to innate immunity, while autoimmunity is primarily an adaptive immune issue.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-149",
@@ -2632,7 +2769,8 @@
       },
       "correct": "A",
       "explanation": "Albedo is the measure of how much solar radiation a surface reflects. Snow and ice are highly reflective, meaning they have a high albedo and send a large fraction of incoming sunlight back into space, thus absorbing less energy and contributing to cooler temperatures. Dark surfaces like forests absorb more sunlight (low albedo), leading to greater energy absorption and warmer local temperatures. This difference is crucial for understanding Earth's overall energy balance and how changes in surface cover, like melting ice or deforestation, can impact climate.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-150",
@@ -2649,7 +2787,8 @@
       },
       "correct": "B",
       "explanation": "This question addresses the common misconception of mistaking correlation for causation and oversimplifying complex climate feedback loops. The observed lag indicates that while CO2 is a powerful greenhouse gas that amplifies warming, it may not always be the *initial* trigger for deglaciation. Other factors, like orbital cycles, could initiate warming, leading to CO2 release from oceans, which then amplifies the warming. Option B acknowledges this complexity, while A, C, and D represent flawed reasoning or dismissal of evidence.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-151",
@@ -2666,7 +2805,8 @@
       },
       "correct": "C",
       "explanation": "S-waves, or shear waves, cannot travel through liquids. The observation that S-waves do not reach the antipodal side of the Earth directly implies the existence of a large, liquid layer—the outer core—that blocks their passage. P-waves, or compressional waves, can travel through liquids (though they refract), which is why we still detect them on the opposite side. Option A is incorrect because S-waves do travel through the mantle. Option B is incorrect because the outer core is liquid. Option D describes mantle heterogeneity but doesn't explain the complete absence of S-waves.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-152",
@@ -2674,7 +2814,7 @@
       "subject": "earth-science",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "Consider a large, flat, snow-covered plain in winter and a dense, dark forest next to it. Satellite measurements show that the snow-covered area reflects a much higher percentage of incoming solar radiation than the forest. Based on this observation, how would the albedo difference between these two surfaces most directly impact their local energy balance?",
+      "prompt": "Snow reflects more sunlight than a dark forest. What is the most direct local energy-balance effect?",
       "options": {
         "A": "The snow will absorb more solar energy, leading to warmer surface temperatures than the forest.",
         "B": "The forest will absorb more solar energy, leading to warmer surface temperatures than the snow.",
@@ -2683,7 +2823,8 @@
       },
       "correct": "D",
       "explanation": "Albedo is the measure of reflectivity. A higher albedo means more solar radiation is reflected away, and less is absorbed. Snow has a high albedo, while dark forests have a low albedo. Therefore, the snow reflects more energy, meaning less energy is absorbed to heat the surface and the air above it. The forest, with its lower albedo, absorbs more solar energy, leading to warmer surface and atmospheric temperatures. Option D correctly identifies that higher reflection (higher albedo) leads to less energy absorption and thus a cooler local environment compared to a low-albedo surface.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-153",
@@ -2700,7 +2841,8 @@
       },
       "correct": "B",
       "explanation": "Scientific measurements always have some degree of uncertainty. Reporting 5.3 meters suggests a precision to the nearest tenth of a meter, while 5.31 meters indicates precision to the nearest hundredth. The second measurement is more precise, meaning it narrows down the possible true value to a smaller range, not necessarily that the first was outright 'wrong' but less refined.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-154",
@@ -2717,7 +2859,8 @@
       },
       "correct": "B",
       "explanation": "This question targets the misconception that evolution is goal-directed or driven by 'need.' Natural selection acts on existing, heritable variation. The rabbits that survived *already possessed* thicker fur due to random genetic variation, not because they 'needed' it and willed it into existence. Option B directly addresses this by highlighting random variation and differential survival, which are the core mechanisms.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-155",
@@ -2734,7 +2877,8 @@
       },
       "correct": "A",
       "explanation": "Reading the meniscus at eye level is a technique to avoid parallax error, which is the apparent shift in the position of an object when viewed from different angles. This ensures the measurement is as accurate and reproducible as possible, a key aspect of experimental discipline.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-156",
@@ -2751,7 +2895,8 @@
       },
       "correct": "B",
       "explanation": "Reporting 5.3050 m implies precision to the ten-thousandths place, but the initial measurements only consistently agree to the hundredths place (5.3, 5.31). The final zero suggests an unjustified level of certainty, violating the principle of reporting uncertainty appropriately.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-157",
@@ -2768,7 +2913,8 @@
       },
       "correct": "A",
       "explanation": "When averaging, the result should be rounded to the least precise decimal place among the original measurements. The measurements are 10.2 g (one decimal place), 10.3 g (one decimal place), and 10.25 g (two decimal places). The least precise is one decimal place. Averaging gives 10.275 g, which rounds to 10.3 g.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-158",
@@ -2785,7 +2931,8 @@
       },
       "correct": "B",
       "explanation": "While the observation shows a correlation, jumping to a causal conclusion without further experimental manipulation (e.g., showing that *changing* the temperature *causes* a change in rate) is a common logical fallacy. The other options point to potential experimental improvements but don't address the core logical leap.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-159",
@@ -2802,7 +2949,8 @@
       },
       "correct": "B",
       "explanation": "A proper control group should isolate the variable being tested. In this setup, the control group receives only water, while the experimental group receives both water *and* fertilizer. To isolate the effect of the fertilizer, the control group must receive all the same conditions as the experimental group *except* for the fertilizer itself. Therefore, the control should receive water that *would have* contained the fertilizer, but doesn't.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-160",
@@ -2819,7 +2967,8 @@
       },
       "correct": "B",
       "explanation": "The change from 1.5 to 1.52 meters reflects an increase in precision. The laser device, by its nature, likely offers a higher degree of precision (more decimal places) and potentially accuracy (closer to the true value) than a standard meter stick, which has inherent limitations in its markings and the user's ability to align it perfectly. While other factors *could* be at play, the most direct interpretation of obtaining a more precise number is that the instrument used allowed for it.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-161",
@@ -2836,7 +2985,8 @@
       },
       "correct": "A",
       "explanation": "While redox reactions can cause precipitates, forming a precipitate alone doesn't prove electron transfer has occurred. Many precipitation reactions are not redox reactions. The student jumped to a conclusion without specific evidence for electron transfer, a key characteristic of redox.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-162",
@@ -2853,7 +3003,8 @@
       },
       "correct": "A",
       "explanation": "Le Chatelier's principle explains how equilibrium shifts to counteract a disturbance, like adding a reactant. This shift moves the system toward a new equilibrium state, but it doesn't necessarily mean the *rate* of either the forward or reverse reaction has increased. The student is conflating the *position* of equilibrium with the *speed* of the reaction.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-163",
@@ -2870,7 +3021,8 @@
       },
       "correct": "A",
       "explanation": "Buffers are designed to resist *drastic* changes in pH. A small change, like from 7.0 to 6.8 upon addition of a strong acid, is actually evidence that the solution *is* acting as a buffer, by minimizing the pH drop. The student is likely expecting the pH to remain exactly unchanged, which is not the definition of a buffer's function.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-164",
@@ -2887,7 +3039,8 @@
       },
       "correct": "A",
       "explanation": "A precipitate forming indicates a chemical reaction has occurred, but not necessarily a redox reaction. Redox reactions specifically involve the transfer of electrons. Without evidence of electron transfer (like a change in oxidation states), the conclusion is unfounded, even if other reaction indicators are present.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-165",
@@ -2904,7 +3057,8 @@
       },
       "correct": "A",
       "explanation": "While the indicator's color change signals the endpoint of the titration, this point might not perfectly coincide with the equivalence point where moles of acid equal moles of base. For weak acids and strong bases, the equivalence point occurs at a pH above 7, and the indicator must be chosen carefully to approximate this. Simply stopping at the first color change doesn't guarantee the reaction is stoichiometrically complete.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-166",
@@ -2921,7 +3075,8 @@
       },
       "correct": "A",
       "explanation": "The student likely calculated the new molarity using the initial volume (100 mL) instead of the final total volume (100 mL + 500 mL = 600 mL). Molarity is moles of solute per *total* liters of solution. Dilution increases the volume, thus decreasing the concentration. A correct calculation would be (2.0 M * 0.100 L) / 0.600 L = 0.333 M. The reported 1.6 M suggests an incorrect volume was used, possibly by subtracting volumes or using only the added volume.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-167",
@@ -2938,7 +3093,8 @@
       },
       "correct": "A",
       "explanation": "Enzymes are proteins with specific three-dimensional structures essential for their function. Extreme pH levels can disrupt the ionic and hydrogen bonds that maintain this structure, leading to denaturation and loss of activity. While substrate concentration and the presence of the enzyme are crucial, the sharp, specific drop at a particular pH points to a structural change rather than a simple concentration issue or absence.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-168",
@@ -2955,7 +3111,8 @@
       },
       "correct": "A",
       "explanation": "This question addresses a common misconception about natural selection. Evolution acts on populations, not individuals, and it favors individuals with pre-existing, heritable traits that enhance survival and reproduction. The drought didn't cause finches to change their beaks; it simply meant that finches *already possessing* larger beaks were more successful, passing those traits to the next generation. Options B and D describe Lamarckian inheritance or phenotypic plasticity, not natural selection. Option C incorrectly suggests directed mutation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-169",
@@ -2972,7 +3129,8 @@
       },
       "correct": "B",
       "explanation": "While absence of the band *could* mean the gene is missing (A), it's far from the only or even most likely explanation. PCR is a sensitive technique prone to failure from numerous experimental variables: incorrect temperatures, degraded reagents, pipetting errors, or primer issues (C, D). A single negative result, especially when other samples work, strongly suggests a technical failure in that specific reaction rather than a definitive biological conclusion about gene absence. Rigorous interpretation demands considering all potential sources of error.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-170",
@@ -2989,7 +3147,8 @@
       },
       "correct": "A",
       "explanation": "This question addresses the core concept of homeostasis and its importance for health. While blood glucose does fluctuate, the body's regulatory mechanisms (like insulin and glucagon) work to keep these fluctuations within a functional range. Extreme or prolonged deviations (like in diabetes) can impair cellular processes and lead to serious health complications. The student's question implies a lack of understanding of why *stability* is important, even with normal fluctuations. Options B, C, and D downplay the critical need for tight regulation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-171",
@@ -3006,7 +3165,8 @@
       },
       "correct": "B",
       "explanation": "This observation highlights a crucial aspect of climate feedback loops. While CO2 is a significant greenhouse gas that amplifies warming, the initial trigger for deglaciation in this scenario wasn't CO2 itself. Something else, like orbital cycles, initiated the warming, and as temperatures rose, oceans released more CO2, which then further increased the temperature. This shows that complex systems often have multiple interacting drivers and feedbacks, and correlation doesn't always imply direct causation as the primary driver.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-172",
@@ -3023,7 +3183,8 @@
       },
       "correct": "C",
       "explanation": "Seismic S-waves (secondary waves) are shear waves, meaning they cause particles to move perpendicular to the direction of wave propagation. These waves require a solid medium to travel through. The observation that S-waves do not reach the antipodal side of the Earth indicates that there is a region they cannot penetrate. This region is the Earth's liquid outer core, which effectively blocks S-waves, creating an 'S-wave shadow zone.' P-waves, however, can travel through liquids and solids, though they are refracted by the outer core.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-173",
@@ -3031,7 +3192,7 @@
       "subject": "earth-science",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "Imagine you're explaining Earth's energy balance. You show a graph comparing global average albedo over the last century with global average temperature. If you observe that periods of lower albedo (more absorption) consistently correspond with higher temperatures, what is the most direct and scientifically sound conclusion you can draw?",
+      "prompt": "Lower global albedo lines up with higher temperature. What conclusion is scientifically sound?",
       "options": {
         "A": "Lower albedo is the sole cause of all observed temperature increases.",
         "B": "Changes in Earth's reflectivity are directly correlated with changes in global temperature.",
@@ -3040,7 +3201,8 @@
       },
       "correct": "B",
       "explanation": "This question tests the understanding of correlation versus causation and the role of albedo. Observing that lower albedo (meaning more solar radiation is absorbed by the Earth's surface) corresponds with higher temperatures shows a strong correlation. This indicates that albedo is a factor influencing Earth's temperature. However, it's crucial to avoid claiming it's the *sole* cause or that temperature dictates albedo without further evidence. The most rigorous conclusion from this specific data is the direct correlation.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-174",
@@ -3057,7 +3219,8 @@
       },
       "correct": "A",
       "explanation": "Reporting an average with too many significant figures implies a precision that wasn't achieved in the original measurements. Since the original measurements are precise to the hundredths place, the average should also be reported to the hundredths place. The units are correct, and while the range is informative, the average is a standard way to represent central tendency.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-175",
@@ -3074,7 +3237,8 @@
       },
       "correct": "A",
       "explanation": "A common error in molarity calculations is failing to convert volumes to liters. If 25.00 mL (0.02500 L) was mistakenly used as 25.00 L, or if the moles of acid were divided by 0.02500 instead of 25.00, it would lead to a drastically incorrect concentration. While overshooting the endpoint (C) or misreading the initial volume (D) are possible errors, forgetting unit conversion is a very frequent calculation mistake that yields such large discrepancies.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-176",
@@ -3091,7 +3255,8 @@
       },
       "correct": "A",
       "explanation": "The core principle of lab safety, especially eye protection, is to establish a consistent habit. Even seemingly benign substances can cause unexpected splashes or reactions. By always wearing goggles, the student ensures they are protected when truly hazardous materials are introduced, preventing a lapse in judgment or procedure at a critical moment. This demonstrates responsible adherence to safety protocols.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-177",
@@ -3108,7 +3273,8 @@
       },
       "correct": "B",
       "explanation": "This is a classic example of correlation not equaling causation. Both ice cream sales and drowning incidents are likely influenced by a common confounding variable: warmer temperatures and increased outdoor activity during summer months. Option B correctly identifies this underlying factor, demonstrating an understanding of how to interpret correlational data rigorously by seeking a plausible, underlying mechanism rather than assuming a direct causal link.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-178",
@@ -3125,7 +3291,8 @@
       },
       "correct": "B",
       "explanation": "The student is mistaking correlation for causation and ignoring potential confounding variables. To rigorously test the effect of light color, all other factors, especially light intensity and duration, must be held constant. Without this control, we cannot isolate the effect of the red light itself.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-179",
@@ -3142,7 +3309,8 @@
       },
       "correct": "B",
       "explanation": "All measurements have uncertainty. A graduated cylinder marked in milliliters can typically be read to about half of the smallest increment, meaning the uncertainty is likely around ±0.5 mL or ±1 mL. Simply stating '100 mL' ignores this fundamental aspect of measurement.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-180",
@@ -3159,7 +3327,8 @@
       },
       "correct": "C",
       "explanation": "Even a correct numerical value is scientifically meaningless without its associated units. The calculation 2 meters / 4 seconds yields 0.5, but the units are meters per second (m/s). Dropping units is a common oversight that renders a result incomplete and potentially ambiguous.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-181",
@@ -3176,7 +3345,8 @@
       },
       "correct": "C",
       "explanation": "S-waves, or shear waves, cannot propagate through liquids. The fact that they are blocked on the far side of the Earth provides direct evidence that the Earth's outer core is in a liquid state, while P-waves (compressional waves) can pass through it, albeit with refraction.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-182",
@@ -3184,7 +3354,7 @@
       "subject": "chemistry",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "A student observes that when they add a small amount of solid sodium hydroxide (NaOH) to a beaker of pure water, the temperature increases. They immediately conclude that dissolving NaOH is an exothermic process. What is the most rigorous scientific interpretation of this observation, considering potential missing information?",
+      "prompt": "Adding NaOH to water raises temperature. What is the most rigorous interpretation before declaring the whole process exothermic?",
       "options": {
         "A": "The dissolution of NaOH releases heat, making the process exothermic.",
         "B": "The increase in temperature is likely due to the heat of hydration of the ions, but the overall enthalpy change of dissolution needs further measurement.",
@@ -3193,7 +3363,8 @@
       },
       "correct": "B",
       "explanation": "While the overall dissolution of NaOH is exothermic, the observation of a temperature increase alone doesn't isolate the heat of hydration from other potential enthalpy contributions. A rigorous interpretation acknowledges that the observed heat is a net result and the overall enthalpy of dissolution requires more data than just a temperature change upon mixing.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-183",
@@ -3210,7 +3381,8 @@
       },
       "correct": "B",
       "explanation": "A defining characteristic of a catalyst is that it participates in the reaction mechanism but is regenerated by the end of the reaction, meaning it is not consumed. Observing an increased reaction rate is a necessary condition, but not sufficient on its own. We must also confirm the catalyst's fate.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-184",
@@ -3227,7 +3399,8 @@
       },
       "correct": "A",
       "explanation": "While an increased reaction rate is characteristic of a catalyst, the definition of a catalyst requires that it is not consumed in the reaction. Without verifying that the added substance remains unchanged at the end of the reaction, we cannot definitively label it a catalyst. It could be a reactant that participates in a faster pathway, or even an inhibitor if the student misinterpreted the rate change.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-185",
@@ -3244,7 +3417,8 @@
       },
       "correct": "A",
       "explanation": "They failed to account for the change in total volume, likely assuming the volume remained 50 mL.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-186",
@@ -3261,7 +3435,8 @@
       },
       "correct": "A",
       "explanation": "Le Chatelier's principle states that if a change of condition is applied to a system in equilibrium, the system will shift in a direction that relieves the stress. Adding a reactant is a stress. The system will counteract this by consuming the added reactant and shifting the equilibrium position towards the products. This is a direct application of the principle to predict the direction of the shift.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-187",
@@ -3278,7 +3453,8 @@
       },
       "correct": "C",
       "explanation": "While denaturation (A) is a possibility at extreme pH, the most direct interpretation of reduced activity as pH deviates from an optimum is that the enzyme functions best within a specific pH range. Option B introduces an unsupported variable. Option D is incorrect; pH primarily affects enzyme structure and active site ionization, not the reaction's enthalpy.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-188",
@@ -3295,7 +3471,8 @@
       },
       "correct": "B",
       "explanation": "This question directly addresses the common misconception of confusing correlation with causation. Just because the population increased after the effort doesn't mean the effort was the sole or even primary cause. Other factors (e.g., environmental changes, other concurrent efforts) could be responsible. Rigorous scientific interpretation requires isolating variables and establishing controls, which is what option B highlights.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-189",
@@ -3312,7 +3489,8 @@
       },
       "correct": "B",
       "explanation": "A single negative PCR result doesn't definitively prove absence of the gene (A). It could be due to issues with primer binding (B), polymerase activity (C), or DNA degradation (D). However, primer binding failure is a very common and direct cause of a failed PCR amplification for a specific target sequence when other components are assumed to be functional. Options C and D are also possibilities, but B is the most direct explanation related to the primer-target interaction, which is fundamental to PCR specificity.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     },
     {
       "id": "sally-gen-190",
@@ -3329,7 +3507,8 @@
       },
       "correct": "B",
       "explanation": "This scenario perfectly illustrates the concept of immunological memory. While antibody levels may wane (D is partially true but incomplete), memory B cells persist. Upon secondary exposure, these memory cells are quickly activated, leading to a rapid and robust secondary immune response, characterized by faster and higher antibody production. Option A is unlikely without further evidence, and C misinterprets the nature of immune memory.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "12"
     },
     {
       "id": "sally-gen-191",
@@ -3346,7 +3525,8 @@
       },
       "correct": "A",
       "explanation": "The initial warming must have been caused by factors other than CO2.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "10"
     },
     {
       "id": "sally-gen-192",
@@ -3363,7 +3543,8 @@
       },
       "correct": "A",
       "explanation": "The Earth's outer core is composed of a material that cannot transmit shear waves.",
-      "faculty": "sally-science"
+      "faculty": "sally-science",
+      "minGrade": "11"
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   fetchLlmChatCompletions,
   hasConfiguredLlmCredential,
@@ -7,20 +8,61 @@ import {
 import { log, logMetricsSnapshot } from "../services/logger.js";
 import type { AuthAnalyticsSnapshot, AuthService } from "../services/auth-service.js";
 import type { RubyHighAnalyticsSnapshot, RubyHighService } from "../services/ruby-high-service.js";
+import type { StoredDraftContentPackRecord, StoredDraftTeacherRecord } from "../services/state-store.js";
+import { getActivePack } from "../content/registry.js";
+import type { PackSourceCard } from "../content/types.js";
 import { APP_ROUTE_PREFIX, X_SOCIAL_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
+import type { BankedQuestion, Grade } from "../types.js";
 
 export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
 export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
 export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/schema`;
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v4";
-const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-05-19";
+export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v5";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-06-15";
 const ADMIN_METRICS_DEFAULT_TRUST_START = ADMIN_METRICS_SCHEMA_PUBLISHED_AT;
+const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
+const BUILT_IN_QUESTION_FILES: Record<string, string> = {
+  ruby: "assets/questions/ruby.json",
+  "sally-science": "assets/questions/sally-science.json",
+  "professor-edward": "assets/questions/professor-edward.json",
+};
 
 interface AdminDeps {
   auth: AuthService;
   ruby: RubyHighService;
+  ops?: AdminOpsSnapshot;
+}
+
+export interface AdminOpsSnapshot {
+  publicReadLimiter: {
+    trackedKeys: number;
+    gcIntervalMs: number;
+    lastGcAt: number | null;
+  };
+  worldLiveStreams: {
+    active: number;
+    clients: number;
+    limitPerClient: number;
+    saturatedClients: number;
+    maxClientStreams: number;
+    accepted: number;
+    rejected: number;
+    closed: number;
+    closedByClient: number;
+    closedByFinish: number;
+    closedByTimeout: number;
+    closedByWriteFailure: number;
+    handlerErrors: number;
+    writeFailures: number;
+    initialWriteFailures: number;
+    snapshotWriteFailures: number;
+    eventWriteFailures: number;
+    heartbeatWriteFailures: number;
+    endWriteFailures: number;
+  };
 }
 
 interface AdminMetricsSnapshot {
@@ -30,6 +72,7 @@ interface AdminMetricsSnapshot {
   generatedAt: string;
   auth: AuthAnalyticsSnapshot;
   ruby: RubyHighAnalyticsSnapshot;
+  ops: AdminOpsSnapshot;
   logs: ReturnType<typeof logMetricsSnapshot>;
   quality: AdminMetricsQuality;
 }
@@ -40,6 +83,79 @@ interface AdminOverview {
   highlights: string[];
   risks: string[];
   actions: string[];
+}
+
+interface AdminCurriculumReplenishmentStep {
+  grade: string;
+  facultyId: string;
+  displayName: string;
+  mode: "manual-curation" | "generate";
+  lowPoolSessions: number;
+  exhaustedSessions: number;
+  targetNewQuestions: number;
+  targetDifficulty: string;
+  targetMinGrade: string;
+  focusSubjects: string[];
+  sourceCardIds: string[];
+  promptSeed: string;
+  command: string[] | null;
+  displayCommand: string | null;
+  reason: string;
+}
+
+interface AdminCurriculumReplenishmentSnapshot {
+  ok: true;
+  generatedAt: string;
+  source: typeof ADMIN_METRICS_PATH;
+  dryRun: true;
+  planCount: number;
+  steps: AdminCurriculumReplenishmentStep[];
+  reviewQueue: AdminCurriculumReviewDraftSummary[];
+}
+
+interface AdminCurriculumReviewDraftSummary {
+  id: string;
+  name: string;
+  facultyId: string;
+  grade: string;
+  requestDay: string;
+  teacherCount: number;
+  sourceCardCount: number;
+  questionCount: number;
+  updatedAt: number;
+}
+
+interface AdminCurriculumDraftResult {
+  ok: true;
+  generatedAt: string;
+  dryRun: false;
+  created: number;
+  reused: number;
+  drafts: Array<{
+    id: string;
+    name: string;
+    facultyId: string;
+    grade: string;
+    mode: AdminCurriculumReplenishmentStep["mode"];
+    status: "created" | "existing";
+    teacherCount: number;
+    sourceCardCount: number;
+    questionCount: number;
+  }>;
+}
+
+interface AdminCurriculumDraftExport {
+  ok: true;
+  generatedAt: string;
+  dryRun: true;
+  draftId: string;
+  facultyId: string;
+  grade: Grade;
+  requestDay: string;
+  targetFile: string;
+  questionCount: number;
+  questions: BankedQuestion[];
+  sourceQuestionIds: string[];
 }
 
 interface AdminMetricsQualityIssue {
@@ -95,6 +211,34 @@ function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
   const auth = deps.auth.analyticsSnapshot();
   const ruby = deps.ruby.analyticsSnapshot();
   const logs = logMetricsSnapshot();
+  const ops = deps.ops ?? {
+    publicReadLimiter: {
+      trackedKeys: 0,
+      gcIntervalMs: 0,
+      lastGcAt: null,
+    },
+    worldLiveStreams: {
+      active: 0,
+      clients: 0,
+      limitPerClient: 0,
+      saturatedClients: 0,
+      maxClientStreams: 0,
+      accepted: 0,
+      rejected: 0,
+      closed: 0,
+      closedByClient: 0,
+      closedByFinish: 0,
+      closedByTimeout: 0,
+      closedByWriteFailure: 0,
+      handlerErrors: 0,
+      writeFailures: 0,
+      initialWriteFailures: 0,
+      snapshotWriteFailures: 0,
+      eventWriteFailures: 0,
+      heartbeatWriteFailures: 0,
+      endWriteFailures: 0,
+    },
+  };
   return {
     ok: true,
     schemaVersion: ADMIN_METRICS_SCHEMA_VERSION,
@@ -102,9 +246,312 @@ function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
     generatedAt: new Date().toISOString(),
     auth,
     ruby,
+    ops,
     logs,
     quality: buildAdminMetricsQuality({ auth, ruby, logs }),
   };
+}
+
+function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculumReplenishmentStep[] {
+  const metrics = deps.ruby.analyticsSnapshot();
+  return (metrics.curriculum.lowPools ?? [])
+    .map((row): AdminCurriculumReplenishmentStep | null => {
+      const plan = row.replenishment;
+      if (!plan) return null;
+      const canRunBuiltInGenerator = plan.mode === "generate" && BUILT_IN_GENERATOR_FACULTY_IDS.has(row.facultyId);
+      const target = Math.max(row.totalEligibleMax, 0) + Math.max(plan.targetNewQuestions, 0);
+      const command = canRunBuiltInGenerator
+        ? [
+            "node",
+            "scripts/generate-built-in-question-bank.mjs",
+            `--faculty=${row.facultyId}`,
+            `--target=${target}`,
+          ]
+        : null;
+      return {
+        grade: row.grade,
+        facultyId: row.facultyId,
+        displayName: row.displayName,
+        mode: plan.mode,
+        lowPoolSessions: row.lowPoolSessions,
+        exhaustedSessions: row.exhaustedSessions,
+        targetNewQuestions: plan.targetNewQuestions,
+        targetDifficulty: plan.targetDifficulty,
+        targetMinGrade: plan.targetMinGrade,
+        focusSubjects: plan.focusSubjects,
+        sourceCardIds: plan.sourceCardIds,
+        promptSeed: plan.promptSeed,
+        command,
+        displayCommand: command ? command.map(shellWord).join(" ") : null,
+        reason: plan.mode === "manual-curation"
+          ? "Freshman starter pools are intentionally hand-curated; review this row before adding cards."
+          : canRunBuiltInGenerator
+            ? "Built-in teacher pool can be expanded with the corpus-backed generator."
+            : "This low pool belongs to a non-built-in pack; replenish it through the pack editor.",
+      };
+    })
+    .filter((step): step is AdminCurriculumReplenishmentStep => !!step);
+}
+
+async function buildAdminCurriculumReplenishmentSnapshot(deps: AdminDeps): Promise<AdminCurriculumReplenishmentSnapshot> {
+  const steps = buildAdminCurriculumReplenishmentSteps(deps);
+  const reviewQueue = (await deps.ruby.listDraftPackRecords())
+    .map(adminCurriculumReviewDraftSummary)
+    .filter((draft): draft is AdminCurriculumReviewDraftSummary => !!draft)
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.name.localeCompare(b.name));
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    source: ADMIN_METRICS_PATH,
+    dryRun: true,
+    planCount: steps.length,
+    steps,
+    reviewQueue,
+  };
+}
+
+async function createAdminCurriculumReplenishmentDrafts(
+  deps: AdminDeps,
+  opts: { limit?: number } = {},
+): Promise<AdminCurriculumDraftResult> {
+  const steps = buildAdminCurriculumReplenishmentSteps(deps);
+  const runnableSteps = steps.filter((step) => step.mode === "generate" && step.command);
+  const defaultLimit = runnableSteps.length || 1;
+  const requestedLimit = Math.floor(Number(opts.limit));
+  const limitSource = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
+  const limit = Math.max(1, Math.min(12, limitSource));
+  const selected = runnableSteps.slice(0, limit);
+  const existingDrafts = await deps.ruby.listDraftPackRecords();
+  const pack = await getActivePack();
+  const now = Date.now();
+  const day = new Date(now).toISOString().slice(0, 10);
+  const drafts: AdminCurriculumDraftResult["drafts"] = [];
+  let created = 0;
+  let reused = 0;
+
+  for (const step of selected) {
+    const requestId = `curriculum-replenishment:${day}:${step.grade}:${step.facultyId}`;
+    const existing = existingDrafts.find((draft) =>
+      draft.teachers.some((teacher) => teacher.clientRequestId === requestId)
+    );
+    if (existing) {
+      reused += 1;
+      drafts.push(adminCurriculumDraftSummary(existing, step, "existing"));
+      continue;
+    }
+
+    const faculty = pack.faculty.find((entry) => entry.id === step.facultyId);
+    const teacherId = `teacher_curriculum_${slugForAdminId(`${step.grade}-${step.facultyId}-${randomUUID()}`).slice(0, 40)}`;
+    const draftFacultyId = draftFacultyIdForAdminTeacher(teacherId);
+    const sourceCards = selectCurriculumSourceCards(faculty?.sourceCards ?? [], step)
+      .map((card) => ({ ...card, faculty: draftFacultyId }));
+    const teacher: StoredDraftTeacherRecord = {
+      id: teacherId,
+      clientRequestId: requestId,
+      displayName: step.displayName,
+      subject: step.focusSubjects[0] ?? faculty?.subjects[0] ?? step.targetDifficulty,
+      description: faculty?.bio || `Curriculum replenishment queue for ${step.displayName}.`,
+      quote: "Research the gap before you write the card.",
+      ...(faculty?.assetTeacherId ? { assetTeacherId: faculty.assetTeacherId } : {}),
+      ...(faculty?.profileImageUrl ? { profileImageUrl: faculty.profileImageUrl } : {}),
+      ...(faculty?.stats ? { stats: faculty.stats } : {}),
+      materials: curriculumDraftMaterials(step, sourceCards),
+      sourceCards,
+      questions: [],
+      generationCount: 0,
+      generationDay: day,
+      generatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const draft: StoredDraftContentPackRecord = {
+      id: `draft_curriculum_${Date.now().toString(36)}_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+      ownerUserId: "admin:curriculum",
+      ownerSessionId: "admin:curriculum",
+      name: `Curriculum Replenishment: ${step.displayName} Grade ${step.grade}`,
+      description: [
+        `Pending review draft for ${step.displayName}'s grade ${step.grade} curriculum.`,
+        step.promptSeed,
+      ].join("\n\n"),
+      visibility: "private",
+      derivedFrom: pack.id,
+      teachers: [teacher],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await deps.ruby.saveDraftPackRecord(draft);
+    existingDrafts.push(draft);
+    created += 1;
+    drafts.push(adminCurriculumDraftSummary(draft, step, "created"));
+  }
+
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    dryRun: false,
+    created,
+    reused,
+    drafts,
+  };
+}
+
+function selectCurriculumSourceCards(cards: readonly PackSourceCard[], step: AdminCurriculumReplenishmentStep): PackSourceCard[] {
+  const byId = new Map(cards.map((card) => [card.id, card]));
+  const selected = step.sourceCardIds
+    .map((id) => byId.get(id))
+    .filter((card): card is PackSourceCard => !!card);
+  if (selected.length > 0) return selected;
+  const focus = new Set(step.focusSubjects);
+  return cards.filter((card) => focus.size === 0 || focus.has(card.subject)).slice(0, 12);
+}
+
+function curriculumDraftMaterials(step: AdminCurriculumReplenishmentStep, sourceCards: readonly PackSourceCard[]): string {
+  const cardRows = sourceCards.length
+    ? sourceCards.map((card, index) => `${index + 1}. [${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join("\n")
+    : "No source cards were matched; use the teacher corpus before generating.";
+  return [
+    `# Curriculum Replenishment Request`,
+    `Faculty: ${step.displayName} (${step.facultyId})`,
+    `Grade: ${step.grade}`,
+    `Mode: ${step.mode}`,
+    `Target: ${step.targetNewQuestions} ${step.targetDifficulty} questions with minGrade ${step.targetMinGrade}`,
+    `Focus subjects: ${step.focusSubjects.join(", ") || "teacher corpus"}`,
+    ``,
+    `## Prompt Seed`,
+    step.promptSeed,
+    ``,
+    `## Source Cards`,
+    cardRows,
+  ].join("\n");
+}
+
+function adminCurriculumDraftSummary(
+  draft: StoredDraftContentPackRecord,
+  step: AdminCurriculumReplenishmentStep,
+  status: "created" | "existing",
+): AdminCurriculumDraftResult["drafts"][number] {
+  return {
+    id: draft.id,
+    name: draft.name,
+    facultyId: step.facultyId,
+    grade: step.grade,
+    mode: step.mode,
+    status,
+    teacherCount: draft.teachers.length,
+    sourceCardCount: draft.teachers.reduce((sum, teacher) => sum + teacher.sourceCards.length, 0),
+    questionCount: draft.teachers.reduce((sum, teacher) => sum + teacher.questions.length, 0),
+  };
+}
+
+function adminCurriculumReviewDraftSummary(draft: StoredDraftContentPackRecord): AdminCurriculumReviewDraftSummary | null {
+  if (draft.ownerUserId !== "admin:curriculum" || draft.ownerSessionId !== "admin:curriculum") return null;
+  const teacher = draft.teachers.find((entry) => entry.clientRequestId?.startsWith("curriculum-replenishment:"));
+  if (!teacher?.clientRequestId) return null;
+  const [, requestDay, grade, facultyId] = teacher.clientRequestId.split(":");
+  if (!requestDay || !grade || !facultyId) return null;
+  return {
+    id: draft.id,
+    name: draft.name,
+    facultyId,
+    grade,
+    requestDay,
+    teacherCount: draft.teachers.length,
+    sourceCardCount: draft.teachers.reduce((sum, entry) => sum + entry.sourceCards.length, 0),
+    questionCount: draft.teachers.reduce((sum, entry) => sum + entry.questions.length, 0),
+    updatedAt: draft.updatedAt,
+  };
+}
+
+async function exportAdminCurriculumDraft(
+  deps: AdminDeps,
+  draftId: string,
+): Promise<AdminCurriculumDraftExport> {
+  const draft = (await deps.ruby.listDraftPackRecords()).find((entry) => entry.id === draftId);
+  if (!draft) throw new Error("Unknown curriculum draft.");
+  if (draft.ownerUserId !== "admin:curriculum" || draft.ownerSessionId !== "admin:curriculum") {
+    throw new Error("Draft is not an admin curriculum draft.");
+  }
+  const teacher = draft.teachers.find((entry) => entry.clientRequestId?.startsWith("curriculum-replenishment:"));
+  if (!teacher?.clientRequestId) throw new Error("Draft is missing its curriculum request id.");
+  const [, requestDay, grade, facultyId] = teacher.clientRequestId.split(":");
+  if (!requestDay || !isGrade(grade) || !facultyId) throw new Error("Draft curriculum request id is invalid.");
+  const targetFile = BUILT_IN_QUESTION_FILES[facultyId];
+  if (!targetFile || !BUILT_IN_GENERATOR_FACULTY_IDS.has(facultyId)) {
+    throw new Error("Only built-in teacher curriculum drafts can be exported.");
+  }
+  if (teacher.questions.length === 0) {
+    throw new Error("Review and generate questions in the draft before exporting.");
+  }
+  const pack = await getActivePack();
+  const faculty = pack.faculty.find((entry) => entry.id === facultyId);
+  if (!faculty) throw new Error("Built-in teacher was not found.");
+  const existingPrompts = new Map(
+    faculty.questions.map((question) => [normalizePromptForDuplicateCheck(question.prompt), question.id]),
+  );
+  const exportPrompts = new Map<string, string>();
+  for (const question of teacher.questions) {
+    const promptKey = normalizePromptForDuplicateCheck(question.prompt);
+    if (!promptKey) throw new Error(`Reviewed question ${question.id} is missing a prompt.`);
+    const existingId = existingPrompts.get(promptKey);
+    if (existingId) {
+      throw new Error(`Reviewed question duplicates existing built-in question ${existingId}.`);
+    }
+    const priorDraftId = exportPrompts.get(promptKey);
+    if (priorDraftId) {
+      throw new Error(`Reviewed question ${question.id} duplicates draft question ${priorDraftId}.`);
+    }
+    exportPrompts.set(promptKey, question.id);
+  }
+  const slugDay = requestDay.replace(/[^0-9]/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const questions = teacher.questions.map((question, index) => ({
+    ...question,
+    id: `${facultyId}-review-${slugDay}-${String(index + 1).padStart(3, "0")}`,
+    faculty: facultyId,
+    minGrade: grade,
+  }));
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    dryRun: true,
+    draftId: draft.id,
+    facultyId,
+    grade,
+    requestDay,
+    targetFile,
+    questionCount: questions.length,
+    questions,
+    sourceQuestionIds: teacher.questions.map((question) => question.id),
+  };
+}
+
+function draftFacultyIdForAdminTeacher(teacherId: string): string {
+  return `draft-${slugForAdminId(teacherId)}`;
+}
+
+function isGrade(value: string | undefined): value is Grade {
+  return value === "9" || value === "10" || value === "11" || value === "12";
+}
+
+function normalizePromptForDuplicateCheck(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function slugForAdminId(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 56) || "curriculum";
+}
+
+function shellWord(value: string): string {
+  return /^[A-Za-z0-9_./:=@+-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function metricsTrustStart(): string | null {
@@ -359,6 +806,22 @@ function buildAdminMetricsSchema(): {
         caveat: "No per-day historical answer counts until answer events are persisted.",
       },
       {
+        path: "ruby.curriculum",
+        label: "Curriculum coverage",
+        source: "QuizState askedQuestionIds plus per-grade questionBankStatus",
+        semantics: "Active-character coverage by grade and teacher: eligible bank size, average seen/remaining cards, low/exhausted pool counts, and replenishment proposals.",
+        reliability: "authoritative",
+        caveat: "Aggregates current saved sessions, not anonymous traffic that has no active character.",
+      },
+      {
+        path: "ruby.photoPosts",
+        label: "Photo post scheduler",
+        source: "RubyHighService pending photo queue and in-memory post retry state",
+        semantics: "Scheduler active/running state, current pending photo count, in-flight post count, deferred retry count, next retry time, and last photo-post attempt result.",
+        reliability: "proxy",
+        caveat: "Retry and last-attempt state is in memory; queue size comes from saved game state.",
+      },
+      {
         path: "ruby.essayReports",
         label: "Essay reports",
         source: "QuizState.essayReports",
@@ -415,10 +878,10 @@ function buildAdminMetricsSchema(): {
       {
         path: "ruby.balance.repeatRate",
         label: "Question repeat rate",
-        source: "QuizState.history plus balance_sample",
-        semantics: "Observed repeated answers within saved sessions. Simulation samples are reported separately under ruby.balance.",
+        source: "QuizState.answerStats plus balance_sample",
+        semantics: "Cumulative repeated-answer counters from gameplay. Simulation samples are reported separately under ruby.balance.",
         reliability: "proxy",
-        caveat: "Observed state is current-session history, not a normalized event stream yet.",
+        caveat: "Gameplay counters are compact per-session state, not a normalized event stream yet.",
       },
       {
         path: "ruby.events.commerce",
@@ -443,6 +906,30 @@ function buildAdminMetricsSchema(): {
         semantics: "Durable operational error events grouped by feature.",
         reliability: "authoritative",
         caveat: "Stores clipped messages and feature names, not full stack traces.",
+      },
+      {
+        path: "ruby.world",
+        label: "Public world health",
+        source: "RubyHighService public school-world projection and durable event cache",
+        semantics: "Current public-world presence, recent visible event count/newest event time, durable event cache pressure, and last external-store refresh age.",
+        reliability: "proxy",
+        caveat: "Refresh age is process-local and reflects the most recent public-world store hydration in this app instance.",
+      },
+      {
+        path: "ops.publicReadLimiter",
+        label: "Public read limiter",
+        source: "In-process /world, /world/events, and /cohort token bucket",
+        semantics: "Currently tracked public read rate-limit buckets and the periodic GC cadence for visitor/IP keys.",
+        reliability: "volatile",
+        caveat: "Resets on deploy or restart and is per process. IDs are not exposed; use tracked key count to spot visitor-key churn.",
+      },
+      {
+        path: "ops.worldLiveStreams",
+        label: "Live world streams",
+        source: "In-process /world/events?live=1 reservation map",
+        semantics: "Currently open school-world SSE streams, per-client pressure, cumulative accepted/rejected streams, close reasons, handler errors, and write-failure phase counts.",
+        reliability: "volatile",
+        caveat: "Resets on deploy or restart and is per process. Use it for capacity smoke checks, not historical traffic reporting.",
       },
       {
         path: "logs.counters",
@@ -476,6 +963,37 @@ export async function handleAdminMetricsSchemaRoute(ctx: RouteContext): Promise<
   }
   if (!requireAdminAuth(ctx)) return true;
   ctx.json(ctx.res, buildAdminMetricsSchema());
+  return true;
+}
+
+export async function handleAdminCurriculumReplenishmentRoute(ctx: RouteContext, deps: AdminDeps): Promise<boolean> {
+  if (ctx.pathname !== ADMIN_CURRICULUM_REPLENISHMENT_PATH) return false;
+  if (ctx.method !== "GET" && ctx.method !== "HEAD" && ctx.method !== "POST") {
+    ctx.error(ctx.res, "Method not allowed", 405);
+    return true;
+  }
+  if (!requireAdminAuth(ctx)) return true;
+  if (ctx.method === "POST") {
+    const body = await ctx.readJsonBody?.().catch(() => ({})) ?? {};
+    const action = typeof body === "object" && body ? String((body as { action?: unknown }).action ?? "") : "";
+    if (action === "export-reviewed") {
+      const draftId = typeof body === "object" && body ? String((body as { draftId?: unknown }).draftId ?? "").trim() : "";
+      if (!draftId) {
+        ctx.error(ctx.res, "draftId is required.", 400);
+        return true;
+      }
+      try {
+        ctx.json(ctx.res, await exportAdminCurriculumDraft(deps, draftId));
+      } catch (err) {
+        ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      }
+      return true;
+    }
+    const limit = typeof body === "object" && body && "limit" in body ? Number((body as { limit?: unknown }).limit) : undefined;
+    ctx.json(ctx.res, await createAdminCurriculumReplenishmentDrafts(deps, { limit }));
+    return true;
+  }
+  ctx.json(ctx.res, await buildAdminCurriculumReplenishmentSnapshot(deps));
   return true;
 }
 
@@ -552,6 +1070,7 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       "Use auth.visitors and visitor-backed ruby.events.appOpen/sessionResume for traffic and return-visit claims after the trustStart date.",
       "Use ruby.retention.characterD1 and ruby.retention.visitorD1 before identity D1 retention.",
     ],
+    ops: metrics.ops,
     auth: {
       identityRecords: metrics.auth.users,
       guestIdentityRecords: metrics.auth.providers.guest,
@@ -582,6 +1101,7 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       completedGrades: metrics.ruby.completedGrades,
       essayReports: metrics.ruby.essayReports,
       questions: metrics.ruby.questions,
+      curriculum: metrics.ruby.curriculum,
       wallet: metrics.ruby.wallet,
       events: metrics.ruby.events,
       funnel: metrics.ruby.funnel,
@@ -643,6 +1163,7 @@ export function renderAdminDashboardHtml(): string {
   const metricsPath = JSON.stringify(ADMIN_METRICS_PATH);
   const schemaPath = JSON.stringify(ADMIN_METRICS_SCHEMA_PATH);
   const overviewPath = JSON.stringify(ADMIN_OVERVIEW_PATH);
+  const replenishmentPath = JSON.stringify(ADMIN_CURRICULUM_REPLENISHMENT_PATH);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -757,9 +1278,16 @@ export function renderAdminDashboardHtml(): string {
     .status strong { color: var(--ink); }
     .status.is-error { color: var(--bad); }
     .status.is-warn { color: var(--warn); }
-    .section {
-      padding: 22px 0 0;
-    }
+	    .section {
+	      padding: 22px 0 0;
+	    }
+	    .section-head {
+	      display: flex;
+	      align-items: center;
+	      justify-content: space-between;
+	      gap: 12px;
+	      flex-wrap: wrap;
+	    }
     .grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -959,6 +1487,7 @@ export function renderAdminDashboardHtml(): string {
       <div class="brand">
         <img src="${APP_ROUTE_PREFIX}/assets/logo.png" alt="">
         <h1>Ruby High Admin</h1>
+        <p class="sub">JSON: <code>${ADMIN_METRICS_PATH}</code> · <code>${ADMIN_METRICS_SCHEMA_PATH}</code> · <code>${ADMIN_OVERVIEW_PATH}</code> · <code>${ADMIN_CURRICULUM_REPLENISHMENT_PATH}</code></p>
       </div>
       <form class="controls" id="admin-form">
         <input id="token" type="password" autocomplete="current-password" placeholder="Admin token">
@@ -1020,17 +1549,23 @@ export function renderAdminDashboardHtml(): string {
     <section class="section">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <h2>Students</h2>
-        <button class="secondary x-social-btn" data-action="class-photo" style="font-size:13px;">Class Photo</button>
-        <button class="secondary x-social-btn" data-action="class-photo-history" style="font-size:13px;margin-left:6px;">History</button>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          <select id="social-teacher-select" style="height:34px;border:1px solid var(--line);border-radius:6px;padding:0 8px;font:inherit;background:var(--panel);color:var(--ink);font-size:13px;"></select>
+          <button class="secondary x-social-btn" data-action="class-photo" style="font-size:13px;">Class Photo</button>
+          <button class="secondary x-social-btn" data-action="class-photo-history" style="font-size:13px;">History</button>
+        </div>
       </div>
       <div id="students-panel" style="margin-top:12px;">
         <div class="empty">Loading recently active students…</div>
       </div>
     </section>
-    <section class="section">
-      <h2>Logs</h2>
-      <div class="tables" id="tables"></div>
-    </section>
+	    <section class="section">
+	      <div class="section-head">
+	        <h2>Logs</h2>
+	        <button class="secondary" id="curriculum-drafts-create" type="button" disabled>Create review drafts</button>
+	      </div>
+	      <div class="tables" id="tables"></div>
+	    </section>
   </main>
   <script>
     const xSocialPrefix = ${JSON.stringify(X_SOCIAL_PREFIX)};
@@ -1077,12 +1612,14 @@ async function postTelegramSnapshot() {
     const metricsPath = ${metricsPath};
     const schemaPath = ${schemaPath};
     const overviewPath = ${overviewPath};
+    const replenishmentPath = ${replenishmentPath};
     const tokenKey = "ruby-high-admin-token";
     const tokenEl = document.getElementById("token");
     const formEl = document.getElementById("admin-form");
     const refreshEl = document.getElementById("refresh");
     const overviewRefreshEl = document.getElementById("overview-refresh");
     const clearEl = document.getElementById("clear-token");
+    const curriculumDraftsCreateEl = document.getElementById("curriculum-drafts-create");
     const autoEl = document.getElementById("auto-refresh");
     const statusEl = document.getElementById("status");
     const overviewSummaryEl = document.getElementById("overview-summary");
@@ -1095,6 +1632,7 @@ async function postTelegramSnapshot() {
     const tablesEl = document.getElementById("tables");
     let timer = null;
     let latestMetrics = null;
+    let latestReplenishment = null;
 
     tokenEl.value = localStorage.getItem(tokenKey) || "";
     if (tokenEl.value) refresh();
@@ -1107,6 +1645,8 @@ async function postTelegramSnapshot() {
       localStorage.removeItem(tokenKey);
       tokenEl.value = "";
       latestMetrics = null;
+      latestReplenishment = null;
+      curriculumDraftsCreateEl.disabled = true;
       status("Locked.", "");
       overviewSummaryEl.textContent = "Waiting for metrics.";
       overviewListEl.innerHTML = "";
@@ -1116,9 +1656,21 @@ async function postTelegramSnapshot() {
       playGrid.innerHTML = "";
       creatorGrid.innerHTML = "";
       tablesEl.innerHTML = "";
+      connectedTeachers = [];
+      renderSocialTeacherSelect();
+      xPanel.innerHTML = '<div class="empty" style="grid-column:1/-1;">Unlock to manage X connections.</div>';
+      studentsPanel.innerHTML = '<div class="empty">Unlock to see students.</div>';
     });
     overviewRefreshEl.addEventListener("click", () => {
       generateOverview();
+    });
+    curriculumDraftsCreateEl.addEventListener("click", () => {
+      createCurriculumDrafts();
+    });
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest(".curriculum-export-btn");
+      if (!btn) return;
+      exportCurriculumDraft(btn.dataset.draftId || "", btn);
     });
     autoEl.addEventListener("change", () => {
       if (timer) clearInterval(timer);
@@ -1144,12 +1696,92 @@ async function postTelegramSnapshot() {
         }
         localStorage.setItem(tokenKey, token);
         latestMetrics = data;
+        latestReplenishment = await loadReplenishment(token);
         render(data);
         refreshXSocial();
       } catch (err) {
         status(err && err.message ? err.message : String(err), "is-error");
       } finally {
         refreshEl.disabled = false;
+      }
+    }
+
+    async function loadReplenishment(token) {
+      try {
+        const response = await fetch(replenishmentPath, {
+          headers: { "Authorization": "Bearer " + token },
+          cache: "no-store",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) return null;
+        return data;
+      } catch {
+        return null;
+      }
+    }
+
+    async function createCurriculumDrafts() {
+      const token = tokenEl.value.trim();
+      if (!token) {
+        status("Locked.", "");
+        return;
+      }
+      curriculumDraftsCreateEl.disabled = true;
+      curriculumDraftsCreateEl.textContent = "Creating...";
+      try {
+        const response = await fetch(replenishmentPath, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ limit: 3 }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Draft creation failed.");
+        }
+        status("Curriculum drafts: " + n(data.created) + " created, " + n(data.reused) + " already queued.", "");
+        latestReplenishment = await loadReplenishment(token);
+        if (latestMetrics) render(latestMetrics);
+      } catch (err) {
+        status(err && err.message ? err.message : String(err), "is-error");
+      } finally {
+        curriculumDraftsCreateEl.textContent = "Create review drafts";
+        curriculumDraftsCreateEl.disabled = false;
+      }
+    }
+
+    async function exportCurriculumDraft(draftId, btn) {
+      const token = tokenEl.value.trim();
+      if (!token || !draftId) {
+        status("Locked.", "");
+        return;
+      }
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Exporting...";
+      try {
+        const response = await fetch(replenishmentPath, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "export-reviewed", draftId }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Export failed.");
+        const payload = JSON.stringify(data.questions || [], null, 2);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(payload).catch(() => {});
+        }
+        status("Exported " + n(data.questionCount) + " reviewed questions for " + (data.targetFile || "question bank") + ".", "");
+      } catch (err) {
+        status(err && err.message ? err.message : String(err), "is-error");
+      } finally {
+        btn.textContent = original || "Export";
+        btn.disabled = false;
       }
     }
 
@@ -1182,6 +1814,7 @@ async function postTelegramSnapshot() {
       const auth = data.auth || {};
       const ruby = data.ruby || {};
       const events = ruby.events || {};
+      const ops = data.ops || {};
       const logs = data.logs || {};
       status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
       renderQuick(data);
@@ -1199,6 +1832,8 @@ async function postTelegramSnapshot() {
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
+        metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),
+        metric("Photo posts", photoPostMetricValue(ruby.photoPosts), photoPostMetricSub(ruby.photoPosts)),
       ].join("");
       const commerce = events.commerce || {};
       const funnel = events.conversionFunnel || {};
@@ -1207,6 +1842,9 @@ async function postTelegramSnapshot() {
         metric("Revenue", revenueStr, n(commerce.payingSessions) + " payers - " + n(commerce.events) + " txns"),
         metric("Funnel V→C→P", n(funnel.totalVisitors) + "→" + n(funnel.charactersCreated) + "→" + n(funnel.payers), pct(funnel.visitorToCharacterRate) + " / " + pct(funnel.characterToPayerRate)),
         metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
+        metric("World health", worldHealthMetricValue(ruby.world), worldHealthMetricSub(ruby.world)),
+        metric("Public reads", publicReadMetricValue(ops.publicReadLimiter), publicReadMetricSub(ops.publicReadLimiter)),
+        metric("World streams", worldStreamMetricValue(ops.worldLiveStreams), worldStreamMetricSub(ops.worldLiveStreams)),
         metric("LLM calls", n(events.llm && events.llm.calls), n(events.llm && events.llm.errors) + " errors"),
         metric("Durable errors", n(events.errors && events.errors.total), n((logs.counters || []).length) + " process counters"),
       ].join("");
@@ -1215,8 +1853,12 @@ async function postTelegramSnapshot() {
       const revenueTable = Object.keys(revenueBySource).length > 0
         ? table("Revenue by Source", revenueBySource)
         : "";
+      const replenishmentSteps = (latestReplenishment && latestReplenishment.steps) || [];
+      curriculumDraftsCreateEl.disabled = replenishmentSteps.filter((step) => step.mode === "generate" && step.command).length === 0;
       tablesEl.innerHTML = [
         revenueTable,
+        curriculumTable(ruby.curriculum),
+        curriculumReviewQueueTable(latestReplenishment && latestReplenishment.reviewQueue),
         table("Provider Records", auth.providers || {}),
         table("Durable Events", events.byName || {}),
         logTable(logs.counters || []),
@@ -1382,10 +2024,80 @@ async function postTelegramSnapshot() {
     function metric(label, value, sub) {
       return "<div class=\\"metric\\"><div class=\\"label\\">" + esc(label) + "</div><span class=\\"value\\">" + esc(String(value)) + "</span><div class=\\"sub\\">" + esc(String(sub || "")) + "</div></div>";
     }
+    function photoPostMetricValue(photoPosts) {
+      photoPosts = photoPosts || {};
+      return n(photoPosts.pendingPhotos) + " / " + n(photoPosts.inFlightPosts) + " / " + n(photoPosts.deferredPosts);
+    }
+    function photoPostMetricSub(photoPosts) {
+      photoPosts = photoPosts || {};
+      const result = photoPosts.lastResult || null;
+      const scheduler = photoPosts.schedulerActive ? photoPosts.schedulerRunning ? "scheduler posting" : "scheduler ready" : "scheduler off";
+      const last = result
+        ? result.posted ? "last tweeted"
+          : result.fallback ? "last revealed locally"
+          : result.deferredUntil ? "last deferred"
+          : "last queued"
+        : "no attempts yet";
+      const retry = photoPosts.nextRetryAt ? " · retry " + time(photoPosts.nextRetryAt) : "";
+      return "pending / active / deferred · " + scheduler + " · " + last + retry;
+    }
+    function worldStreamMetricValue(streams) {
+      streams = streams || {};
+      return n(streams.active) + " / " + n(streams.clients);
+    }
+    function worldStreamMetricSub(streams) {
+      streams = streams || {};
+      return "active / clients · cap " + n(streams.limitPerClient) + " · accepted " + n(streams.accepted) + " · rejected " + n(streams.rejected) + " · write fails " + n(streams.writeFailures);
+    }
+    function worldHealthMetricValue(world) {
+      world = world || {};
+      return n(world.activeStudents) + " / " + n(world.recentEvents);
+    }
+    function worldHealthMetricSub(world) {
+      world = world || {};
+      const refresh = world.lastRefreshAt ? "refresh " + time(world.lastRefreshAt) : "not refreshed";
+      const newest = world.newestEventAt ? " · newest " + time(world.newestEventAt) : "";
+      return "students / events · rooms " + n(world.activeRooms) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · " + refresh + newest;
+    }
+    function publicReadMetricValue(limiter) {
+      limiter = limiter || {};
+      return n(limiter.trackedKeys);
+    }
+    function publicReadMetricSub(limiter) {
+      limiter = limiter || {};
+      const gc = limiter.lastGcAt ? "last GC " + time(limiter.lastGcAt) : "GC pending";
+      return "tracked visitor/IP buckets · " + gc + " · every " + n(limiter.gcIntervalMs) + "ms";
+    }
     function table(title, rows) {
       const entries = Object.entries(rows);
       if (!entries.length) return "<div class=\\"empty\\">" + esc(title) + "</div>";
       return "<table><thead><tr><th>" + esc(title) + "</th><th>Count</th></tr></thead><tbody>" + entries.map(([key, value]) => "<tr><td>" + esc(key) + "</td><td>" + n(value) + "</td></tr>").join("") + "</tbody></table>";
+    }
+    function curriculumTable(curriculum) {
+      const rows = (curriculum && curriculum.lowPools) || [];
+      if (!rows.length) return "";
+      return "<table><thead><tr><th>Low Curriculum Pools</th><th>Remaining</th><th>Next</th></tr></thead><tbody>" + rows.map((row) => {
+        const label = "Grade " + esc(row.grade) + " · " + esc(row.displayName || row.facultyId);
+        const sub = n(row.sessions) + " sessions · " + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted";
+        const remaining = n(row.averageRemaining) + " / " + n(row.totalEligibleMax);
+        const plan = row.replenishment || null;
+        const next = plan
+          ? esc(plan.mode + " · " + n(plan.targetNewQuestions) + " " + plan.targetDifficulty) + "<div class=\\"sub\\">" + esc((plan.focusSubjects || []).slice(0, 3).join(", ") || "teacher corpus") + "</div>"
+          : "";
+        return "<tr><td>" + label + "<div class=\\"sub\\">" + esc(sub) + "</div></td><td>" + esc(remaining) + "</td><td>" + next + "</td></tr>";
+      }).join("") + "</tbody></table>";
+    }
+    function curriculumReviewQueueTable(rows) {
+      rows = rows || [];
+      if (!rows.length) return "";
+      return "<table><thead><tr><th>Curriculum Review Queue</th><th>Cards</th><th>Action</th></tr></thead><tbody>" + rows.map((row) => {
+        const label = "Grade " + esc(row.grade) + " · " + esc(row.facultyId);
+        const sub = esc(row.name || row.id) + "<div class=\\"sub\\">request " + esc(row.requestDay || "unknown") + "</div>";
+        const action = row.questionCount > 0
+          ? "<button class=\\"secondary curriculum-export-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Export</button><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>"
+          : "<span class=\\"sub\\">Generate questions first</span><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>";
+        return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + n(row.questionCount) + " q / " + n(row.sourceCardCount) + " src</td><td>" + action + "</td></tr>";
+      }).join("") + "</tbody></table>";
     }
     function logTable(rows) {
       if (!rows.length) return "<div class=\\"empty\\">No log counters.</div>";
@@ -1425,22 +2137,59 @@ async function postTelegramSnapshot() {
 
     // ── X Social ──────────────────────────────────────────────────────────
     const xPanel = document.getElementById("x-social-panel");
+    const socialTeacherSelect = document.getElementById("social-teacher-select");
     const FACULTY_IDS = ["ruby", "sally-science", "professor-edward"];
+    let connectedTeachers = [];
+
+    function renderSocialTeacherSelect() {
+      if (!socialTeacherSelect) return;
+      const previous = socialTeacherSelect.value;
+      socialTeacherSelect.innerHTML = connectedTeachers.length
+        ? connectedTeachers.map((t) => '<option value="' + escHtml(t.teacherId) + '">' + escHtml(t.teacherId) + (t.xScreenName ? " @" + escHtml(t.xScreenName) : "") + (t.hasMediaWrite === false ? " - reconnect for images" : "") + '</option>').join("")
+        : '<option value="">No X teacher</option>';
+      if (previous && connectedTeachers.some((t) => t.teacherId === previous)) {
+        socialTeacherSelect.value = previous;
+      }
+      socialTeacherSelect.disabled = connectedTeachers.length === 0;
+    }
+
+    async function loadConnectedTeachers(token) {
+      const res = await fetch(xSocialPrefix + "/connected", {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      connectedTeachers = Array.isArray(data.teachers) ? data.teachers : [];
+      renderSocialTeacherSelect();
+      return connectedTeachers;
+    }
+
+    async function selectedSocialTeacherId(token) {
+      if (!connectedTeachers.length) {
+        await loadConnectedTeachers(token);
+      }
+      const selected = socialTeacherSelect && socialTeacherSelect.value ? socialTeacherSelect.value : "";
+      if (selected && connectedTeachers.some((t) => t.teacherId === selected)) return selected;
+      return "";
+    }
 
     async function refreshXSocial() {
       const token = localStorage.getItem(tokenKey);
-      if (!token) { xPanel.innerHTML = '<div class="empty" style="grid-column:1/-1;">Unlock to manage X connections.</div>'; return; }
+      if (!token) {
+        connectedTeachers = [];
+        renderSocialTeacherSelect();
+        xPanel.innerHTML = '<div class="empty" style="grid-column:1/-1;">Unlock to manage X connections.</div>';
+        return;
+      }
       try {
-        const res = await fetch(xSocialPrefix + "/connected", {
-          headers: { Authorization: "Bearer " + token },
-        });
-        if (!res.ok) throw new Error(res.status);
-        const data = await res.json();
-        const connected = new Map(data.teachers.map(t => [t.teacherId, t]));
+        const teachers = await loadConnectedTeachers(token);
+        const connected = new Map(teachers.map(t => [t.teacherId, t]));
         xPanel.innerHTML = FACULTY_IDS.map(id => {
           const c = connected.get(id);
           if (c) {
-            return '<div class="metric"><div class="label">' + id + '</div><div class="value good" style="font-size:18px;">\u2714 Connected</div><div class="sub">@' + escHtml(c.xScreenName || "") + '</div><div style="display:flex;gap:6px;margin-top:8px;"><button class="x-social-btn" style="flex:1;" data-action="post" data-teacher="' + id + '">Post</button><button class="secondary x-social-btn" style="flex:1;" data-action="disconnect" data-teacher="' + id + '">Disconnect</button></div></div>';
+            const mediaCopy = c.hasMediaWrite === false ? "Reconnect for image posts - missing media.write" : "Image posts enabled";
+            const mediaClass = c.hasMediaWrite === false ? "bad" : "good";
+            return '<div class="metric"><div class="label">' + id + '</div><div class="value good" style="font-size:18px;">\u2714 Connected</div><div class="sub">@' + escHtml(c.xScreenName || "") + '</div><div class="sub ' + mediaClass + '">' + mediaCopy + '</div><div style="display:flex;gap:6px;margin-top:8px;"><button class="x-social-btn" style="flex:1;" data-action="post" data-teacher="' + id + '">Post</button><button class="secondary x-social-btn" style="flex:1;" data-action="disconnect" data-teacher="' + id + '">Disconnect</button></div></div>';
           }
           return '<div class="metric"><div class="label">' + id + '</div><div class="value" style="font-size:18px;color:var(--muted);">\u2014</div><div class="sub">Not connected</div><button style="margin-top:8px;width:100%;" class="x-social-btn" data-action="connect" data-teacher="' + id + '">Connect</button></div>';
         }).join("");
@@ -1520,15 +2269,10 @@ async function postTelegramSnapshot() {
       const origText = btn.textContent;
       btn.textContent = "Posting…";
       try {
-        // Get the first connected teacher to post from.
-        const connRes = await fetch(xSocialPrefix + "/connected", {
-          headers: { Authorization: "Bearer " + token },
-        });
-        const connData = await connRes.json();
-        const connected = connData.teachers && connData.teachers.length > 0 ? connData.teachers[0] : null;
-        if (!connected) { btn.textContent = "No teacher"; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); return; }
+        const teacherId = await selectedSocialTeacherId(token);
+        if (!teacherId) { btn.textContent = "No teacher"; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); return; }
 
-        const res = await fetch(xSocialPrefix + "/post-report/" + connected.teacherId, {
+        const res = await fetch(xSocialPrefix + "/post-report/" + teacherId, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
           body: JSON.stringify({ sessionId }),
@@ -1554,22 +2298,29 @@ async function postTelegramSnapshot() {
       const origText = btn.textContent;
       btn.textContent = "Generating…";
       try {
-        const connRes = await fetch(xSocialPrefix + "/connected", {
-          headers: { Authorization: "Bearer " + token },
-        });
-        const connData = await connRes.json();
-        const connected = connData.teachers && connData.teachers.length > 0 ? connData.teachers[0] : null;
-        if (!connected) { btn.textContent = "No teacher"; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); return; }
-        const res = await fetch(xSocialPrefix + "/class-photo/" + connected.teacherId, {
+        const teacherId = await selectedSocialTeacherId(token);
+        if (!teacherId) { btn.textContent = "No teacher"; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); return; }
+        const res = await fetch(xSocialPrefix + "/class-photo/" + teacherId, {
           method: "POST",
           headers: { Authorization: "Bearer " + token },
         });
         const data = await res.json();
-        btn.textContent = data.ok ? "Posted!" : "Failed";
+        if (!data.ok) {
+          btn.textContent = res.status === 409 ? "Not queued" : "Failed";
+          if (data.error) btn.title = data.error;
+        } else if (data.posted && data.tweetId) {
+          btn.textContent = "Tweeted!";
+        } else if (data.fallback || data.revealed) {
+          btn.textContent = "Revealed";
+        } else if (data.deferredUntil) {
+          btn.textContent = "Queued retry";
+        } else {
+          btn.textContent = "Queued";
+        }
       } catch {
         btn.textContent = "Error";
       }
-      setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+      setTimeout(() => { btn.textContent = origText; btn.title = ""; btn.disabled = false; }, 3000);
     }
 
     // ── Telegram ───────────────────────────────────────────────────────
@@ -1608,14 +2359,17 @@ async function postTelegramSnapshot() {
           headers: { Authorization: "Bearer " + token },
         });
         const data = await res.json();
-        const photos = (data.photoPool || []).filter(p => p.kind === "class-photo");
+        const queued = (data.photoPool || []).filter(p => p.kind === "class-photo").map(p => Object.assign({}, p, { status: "queued", sortAt: p.earnedAt }));
+        const posted = (data.classPhotoHistory || []).map(p => Object.assign({}, p, { sortAt: p.revealedAt || p.earnedAt }));
+        const photos = queued.concat(posted).sort((a, b) => (b.sortAt || 0) - (a.sortAt || 0));
         if (photos.length === 0) {
           panel.innerHTML = '<div class="empty">No class photos yet. Generate one first.</div>';
           return;
         }
         panel.innerHTML = photos.map(p => {
-          const date = new Date(p.earnedAt).toLocaleDateString();
-          return '<div class="metric" style="display:flex;align-items:center;justify-content:space-between;"><div><div class="label">Class Photo</div><div class="sub">' + date + ' · ' + p.studentName + '</div></div><span class="sub" style="color:var(--muted);">queued</span></div>';
+          const date = new Date(p.revealedAt || p.earnedAt).toLocaleDateString();
+          const status = p.status === "posted" ? "tweeted" : p.status === "revealed" ? "revealed" : "queued";
+          return '<div class="metric" style="display:flex;align-items:center;justify-content:space-between;"><div><div class="label">Class Photo</div><div class="sub">' + date + ' · ' + p.studentName + '</div></div><span class="sub" style="color:var(--muted);">' + status + '</span></div>';
         }).join("");
         panel.innerHTML += '<div style="margin-top:8px;"><button class="secondary x-social-btn" data-action="refresh-students" style="font-size:12px;">Back to Students</button></div>';
       } catch { panel.innerHTML = '<div class="empty">Failed to load class photos.</div>'; }
@@ -1667,8 +2421,6 @@ async function postTelegramSnapshot() {
       else if (action === "class-photo") postClassPhoto(btn);
       else if (action === "class-photo-history") showClassPhotoHistory();
       else if (action === "refresh-students") refreshStudents();
-      if (e.target.id === "tg-save") saveTelegramConfig();
-      if (e.target.id === "tg-post") postTelegramSnapshot();
     });
   </script>
 </body>

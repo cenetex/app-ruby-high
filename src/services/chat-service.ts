@@ -1146,7 +1146,7 @@ function describeRelationshipStateForTeacher(state: QuizState): string[] {
     lines.push(...cellLines);
   }
 
-  const recent = (state.schoolEvents ?? [])
+  const recent = (Array.isArray(state.schoolEvents) ? state.schoolEvents : [])
     .filter((event) => event.kind === "relationship.ticked" || event.kind === "mash.axis-resolved")
     .slice(-5);
   if (recent.length > 0) {
@@ -1433,8 +1433,8 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
     ? status.todayClass.status === "complete"
       ? `Today's graded class is complete${status.todayClass.letterGrade ? `: ${status.todayClass.letterGrade}` : ""}. Further boards are practice.`
       : status.todayClass.status === "active"
-        ? `Today's graded class is in progress: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}; practice cards ${status.todayClass.practiceCount ?? 0}, social cards ${status.todayClass.socialCount ?? 0}.`
-        : `Today's graded class is available: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}; practice and social cards may appear before class cards.`
+        ? `Today's graded class is in progress: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}; practice cards ${status.todayClass.practiceCount ?? 0}, reflection prompts ${status.todayClass.socialCount ?? 0}.`
+        : `Today's graded class is available: ${status.todayClass.questionCount}/${status.todayClass.totalQuestions}; practice and reflection prompts may appear before class cards.`
     : "Today's class status is unavailable.";
   const standing = status.courseGrade
     ? `Subject standing: ${status.courseGrade} (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`
@@ -1482,8 +1482,8 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
   if (status.remaining <= 0 && status.nextCardRole === "social") {
     return [
       `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
-      "Scheduler detail: Ruby High has a generated homeroom social card ready.",
-      "Use pick_from_bank for the next board; it will post the scheduled social card.",
+      "Scheduler detail: Ruby High has a generated homeroom reflection prompt ready.",
+      "Use pick_from_bank for the next board; it will post the scheduled reflection prompt.",
     ].join("\n");
   }
   return [

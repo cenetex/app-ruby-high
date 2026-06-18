@@ -288,7 +288,8 @@
       },
       "correct": "A",
       "explanation": "Convenience isn't just speed; it's legibility. A good agent gives you short, specific updates tied to the work, so you know who is doing what without drowning in noise.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-002",
@@ -305,7 +306,8 @@
       },
       "correct": "B",
       "explanation": "Tool schemas are a boundary of control. They don't just tell the model what to do; they constrain what is physically possible and shape the inputs before any real-world action happens.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-003",
@@ -322,7 +324,8 @@
       },
       "correct": "B",
       "explanation": "Bigger context does not mean perfect recall. Just because the text technically fits in the window doesn't mean the model's attention won't degrade and miss critical details.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-004",
@@ -339,7 +342,8 @@
       },
       "correct": "A",
       "explanation": "A dirty worktree belongs to you. The agent's job is to preserve the user changes it did not make, not to arrogantly clean up your creative process.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-005",
@@ -356,7 +360,8 @@
       },
       "correct": "B",
       "explanation": "Trust requires inspectability. A hidden chain-of-thought is a generative artifact, not a stable, complete, or user-facing audit log you can rely on for accountability.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-006",
@@ -373,7 +378,8 @@
       },
       "correct": "B",
       "explanation": "In distributed systems, convenience often trades off with immediate truth. Eventual consistency means replicas may differ briefly before converging, so the student might see a ghost item for a second.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-007",
@@ -390,7 +396,8 @@
       },
       "correct": "A",
       "explanation": "A model refusing is not the app authorizing. The model just generates text; the application layer is still responsible for controlling what tools and data the model may actually access.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-008",
@@ -407,7 +414,8 @@
       },
       "correct": "B",
       "explanation": "This is the danger of unmanaged side effects. The world changed because the card was charged, but the durable state failed to record it, leaving your system out of sync with reality.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-009",
@@ -424,7 +432,8 @@
       },
       "correct": "A",
       "explanation": "Don't throw AI at a basic data structure problem. A database index is the correct, direct way to speed up lookups by selected fields without scanning the whole table.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-010",
@@ -441,7 +450,8 @@
       },
       "correct": "A",
       "explanation": "Convenience should never override control. For destructive actions, the safest and most respectful default is to pause and confirm the exact action with the user.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-011",
@@ -458,7 +468,8 @@
       },
       "correct": "A",
       "explanation": "OAuth delegates limited authorization without sharing your password. Handing over your master credentials gives the app full control; OAuth maintains the boundary between their convenience and your agency.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-012",
@@ -475,7 +486,8 @@
       },
       "correct": "A",
       "explanation": "A webhook is an HTTP callback sent when an event happens. It shifts the hustle from wasteful, rate-limited polling to efficient, event-driven pushes, respecting both compute resources and server boundaries.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-013",
@@ -492,7 +504,8 @@
       },
       "correct": "A",
       "explanation": "A database index is for faster lookup of records by selected fields. It is a structural map for speed, not a backup, a security lock, or a durability guarantee.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-014",
@@ -509,7 +522,8 @@
       },
       "correct": "A",
       "explanation": "The practical purpose of a smoke test is to quickly check that the most important path still works. In a time crunch, you prioritize the user's immediate critical need over exhaustive but delayed perfection.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-015",
@@ -526,7 +540,8 @@
       },
       "correct": "A",
       "explanation": "A Merkle proof confirms inclusion in a specific root, nothing more. The leaf data could be stale or forged at commit time — the proof does not vouch for truth, recency, or the signer's honesty. That's the gap between cryptographic inclusion and institutional trust.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-016",
@@ -543,7 +558,8 @@
       },
       "correct": "A",
       "explanation": "A nonce stops replay of identical messages — it does not control the order in which valid transactions are selected. Miners can reorder transactions with different nonces, so fairness still depends on protocol-level ordering guarantees, not just a unique number.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-017",
@@ -560,7 +576,8 @@
       },
       "correct": "A",
       "explanation": "Commit-reveal only guarantees fairness if every participant actually reveals. If the reveal phase is optional or unenforceable, a strategic withdrawer can break the protocol. That's not a cryptographic failure — it's a social and design failure. Blockchain does not enforce honesty by itself.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-018",
@@ -577,7 +594,8 @@
       },
       "correct": "A",
       "explanation": "Mint authority is a permission check, not a lottery. If the authority is a multisig requiring N-of-M signatures, the contract enforces that threshold. No amount of retries will override the missing signatures. Fairness here depends on who controls the keys, not on the chain itself.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-019",
@@ -594,7 +612,8 @@
       },
       "correct": "A",
       "explanation": "Uncommitted work is a boundary the author sets by not publishing. The agent's technical ability to see it does not grant social or ethical permission to act. Ruby wants students to feel that 'technically possible' is not 'socially responsible' — especially when convenience masks a loss of control.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-023",
@@ -611,7 +630,8 @@
       },
       "correct": "A",
       "explanation": "A larger context window does not guarantee perfect recall — attention can still degrade even when the text technically fits. Ruby wants freshmen to understand that 'fits in the window' is not the same as 'the model can use it effectively.'",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-025",
@@ -628,7 +648,8 @@
       },
       "correct": "A",
       "explanation": "A database index is specifically for faster lookup of records by selected fields — it's the most direct fix for a slow search-by-ID query. Ruby wants freshmen to see that buying a faster server is a blunt instrument, while an index is a surgical one.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-026",
@@ -645,7 +666,8 @@
       },
       "correct": "A",
       "explanation": "The safest default for a destructive action is to pause and confirm the exact action — the assistant should have described what would be deleted. Ruby teaches that agency means the assistant owes the user enough context to make an informed choice, not just a binary 'yes/no.'",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-028",
@@ -662,7 +684,8 @@
       },
       "correct": "C",
       "explanation": "A destructive action affecting files the agent did not create requires explicit confirmation to respect other users' agency. This is a core safety boundary: the agent must not assume ownership of other users' data.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-030",
@@ -679,7 +702,8 @@
       },
       "correct": "C",
       "explanation": "A dirty worktree contains user changes that are not yet committed. The agent must preserve those changes as-is and seek explicit permission before altering them. Committing or stashing without consent overrides the user's intent; the safest action is to ask.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-031",
@@ -696,7 +720,8 @@
       },
       "correct": "A",
       "explanation": "Retry-After is a standard HTTP header that tells the client how long to wait before retrying. Ignoring it is a client-side violation of the rate-limit protocol, and the ban is a predictable consequence of that violation.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-033",
@@ -713,7 +738,8 @@
       },
       "correct": "B",
       "explanation": "Indexes speed up reads but add write overhead because the index must be updated on every insert, update, or delete. When writes are frequent and reads are rare, the index is likely not worth the cost.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-034",
@@ -730,7 +756,8 @@
       },
       "correct": "A",
       "explanation": "OAuth scopes allow granular delegation of permissions. The student can revoke a specific scope at the authorization server, and the app will lose only that permission without affecting others.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-041",
@@ -747,7 +774,8 @@
       },
       "correct": "A",
       "explanation": "A nonce ensures each transaction is processed at most once (replay protection), but it does not control the order in which transactions are included in a block. A miner can still reorder transactions, which can be exploited for front-running or other manipulation. Nonces are about uniqueness, not ordering fairness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-043",
@@ -764,7 +792,8 @@
       },
       "correct": "A",
       "explanation": "A system prompt sets the assistant's role, rules, and behavior, but it does not guarantee perfect recall or prevent hallucinations. The model can still generate incorrect or off-topic answers.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-044",
@@ -781,7 +810,8 @@
       },
       "correct": "A",
       "explanation": "OAuth delegates limited authorization without sharing the user's password. Sharing the password gives the widget unrestricted access and no way to revoke specific permissions — a classic convenience-versus-control tradeoff.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-048",
@@ -798,7 +828,8 @@
       },
       "correct": "C",
       "explanation": "A useful 'memory' system selects and stores important facts, not every message verbatim. If the assistant claims perfect recall but fails, it likely means its memory extraction or retrieval is flawed — it didn't capture or correctly recall the specific fact. The misconception to catch is that 'remembering everything' is the same as durable, reliable memory.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-049",
@@ -815,7 +846,8 @@
       },
       "correct": "A",
       "explanation": "A dirty worktree contains user changes the agent did not make. The agent's job is to preserve those changes and get explicit permission before altering them. Options B and C risk overwriting or losing user work; D sidesteps the problem but still modifies files without confirmation.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-050",
@@ -832,7 +864,8 @@
       },
       "correct": "A",
       "explanation": "Model refusal is not app authorization. The app's safety boundary is the confirmation gate, and only a deliberate user action within that gate authorizes the destructive side effect. Verbal trust or past behavior does not replace the designed safety mechanism.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-051",
@@ -849,7 +882,8 @@
       },
       "correct": "A",
       "explanation": "An idempotency key prevents duplicate side effects on retry — the server sees the same key and returns the original result without re-executing. It does not validate the correctness of the original request; a wrong amount or wrong recipient is still executed exactly once.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-052",
@@ -866,7 +900,8 @@
       },
       "correct": "A",
       "explanation": "Agent memory is selected durable state, not a full chat history. Even with a large context window, relevance degrades and the system must decide what to keep. The classmate's assumption of 'perfect memory' is the classic misconception Ruby catches: bigger context does not mean perfect recall, and chat history is not durable memory.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-053",
@@ -883,7 +918,8 @@
       },
       "correct": "A",
       "explanation": "Retry-After is a server directive specifying when the client is allowed to retry. Ignoring it is a protocol violation that breaks the negotiated rate-limit contract. The server is within its rights to escalate to a ban.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-054",
@@ -900,7 +936,8 @@
       },
       "correct": "A",
       "explanation": "401 means authentication is missing or invalid; 403 means authentication succeeded but authorization failed. The distinction is between 'who are you?' and 'you're not allowed, even though I know who you are.'",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-055",
@@ -917,7 +954,8 @@
       },
       "correct": "A",
       "explanation": "OAuth supports per-scope revocation at the authorization server. The student can revoke the calendar read scope specifically, and the app retains access to other scopes it was granted.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-056",
@@ -934,7 +972,8 @@
       },
       "correct": "A",
       "explanation": "Fairness in commit-reveal is not automatic — the reveal phase is a bottleneck. If a student's reveal transaction is delayed or censored, their bid may be excluded, even though they committed in time. The scheme hides the value during commit, but it does not guarantee that every commit gets a fair chance to reveal.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-058",
@@ -951,7 +990,8 @@
       },
       "correct": "A",
       "explanation": "A nonce prevents replay — the same transaction cannot be submitted twice with the same nonce. But it does not prevent a miner or validator from reordering transactions or front-running yours. Fairness requires more than replay resistance; it also requires ordering guarantees or commit-reveal schemes.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-059",
@@ -968,7 +1008,8 @@
       },
       "correct": "C",
       "explanation": "Access to a shared folder does not imply permission to modify uncommitted work; that's still B's private state. Agents should not edit others' uncommitted files without explicit permission, regardless of how small the change.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-061",
@@ -976,7 +1017,7 @@
       "subject": "general-knowledge",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "Two student agents trade items in a classroom game. Agent A sends the item and updates the UI optimistically, but the server crashes before the receipt is written. Agent B's agent never received the item and shows nothing. Agent A says, 'The trade happened — I saw the UI update.' The teacher asks: what should you do to ensure the trade is durable?",
+      "prompt": "A trade UI says an item moved, but the server crashed before writing the receipt. What proves the trade is durable?",
       "options": {
         "A": "Always wait for a confirmed receipt from the server before updating the UI.",
         "B": "Resend the trade after the server restarts, since the first might not have persisted.",
@@ -985,7 +1026,8 @@
       },
       "correct": "A",
       "explanation": "Optimistic UI shows a predicted state, not a confirmed one. The only way to know the trade is durable is to wait for the server's acknowledgment and persist the receipt. Without it, the state is speculative.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-062",
@@ -1002,7 +1044,8 @@
       },
       "correct": "A",
       "explanation": "A Merkle proof only shows that a particular value is part of the tree that produced the root. It does not guarantee that the grade is accurate or that the tree was built honestly; the teacher could have inserted a wrong grade before hashing. The proof also doesn't prevent later changes if the teacher posts a new root.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-064",
@@ -1019,7 +1062,8 @@
       },
       "correct": "A",
       "explanation": "OAuth delegates limited authorization without sharing the user's password. Your classmate treats it as a password replacement, but the real value is scoped, revocable access that protects your main credential.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-065",
@@ -1036,7 +1080,8 @@
       },
       "correct": "A",
       "explanation": "A database index is designed for faster lookup by selected fields. If the page is slow because of a full table scan on student IDs, an index directly reduces that cost. Buying a faster server might help, but it is a broader, more expensive fix that does not address the root cause.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-068",
@@ -1053,7 +1098,8 @@
       },
       "correct": "A",
       "explanation": "An idempotency key ensures that retrying the same request does not create duplicate side effects — it does not guarantee the effect itself is correct. Bounded retries with exponential backoff prevent the agent from exhausting resources or amplifying a failure. The misconception is that idempotency implies correctness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-069",
@@ -1070,7 +1116,8 @@
       },
       "correct": "A",
       "explanation": "A dirty worktree contains uncommitted user changes that the agent did not make. The agent must preserve those changes and not modify files without explicit confirmation. The safest default for any destructive action — including formatting — is to pause and confirm.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-073",
@@ -1078,7 +1125,7 @@
       "subject": "systems-literacy",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "Your classmate says, \"I wrote a smoke test for the school portal that checks the login page, and it passes, so the system is healthy.\" Another student points out that the grade submission page is broken. Your classmate replies, \"The smoke test passed, so the system is fine.\" Does your classmate understand what a smoke test actually guarantees?",
+      "prompt": "A smoke test checks login, but grade submission is broken. What does the passing smoke test actually prove?",
       "options": {
         "A": "Yes, a passing smoke test means the entire system is operational.",
         "B": "No, a smoke test only verifies the specific paths it tests; a critical path like grade submission could still be broken.",
@@ -1087,7 +1134,8 @@
       },
       "correct": "B",
       "explanation": "A smoke test is a shallow check of the most critical path. If the grade submission endpoint is not in that path, a passing smoke test tells you nothing about whether grades can be submitted. The smoke test should be broadened to include that endpoint.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-074",
@@ -1104,7 +1152,8 @@
       },
       "correct": "B",
       "explanation": "The TTL is set by the domain owner to control how long resolvers may cache the record. The ISP's resolver respected that TTL; caching for up to that duration is correct behavior. The school could have reduced the TTL well before the change to limit propagation delay. By choosing a one-hour TTL, the school accepted that cache would be stale for up to an hour. Responsibility for the delay rests with the school, not the resolver or the students.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-075",
@@ -1121,7 +1170,8 @@
       },
       "correct": "B",
       "explanation": "Student A confuses commitment with finalization. A commit-reveal scheme proves knowledge of a value at commit time, but the value is only revealed if the reveal transaction is submitted. If the reveal is optional or unenforced, a bidder can choose not to reveal, effectively withdrawing their bid. Fairness requires either a forced reveal (e.g., timeout) or a penalty for non-reveal. The scheme does not automatically ensure transparency or finality.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-077",
@@ -1138,7 +1188,8 @@
       },
       "correct": "C",
       "explanation": "Committing a hash locks in that specific hash, but until you reveal, you can change the actual number you reveal. Seeing others' reveal values lets you choose a number that tilts the final sum in your favor — a classic front-running attack on commit-reveal when reveal order isn't enforced.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-078",
@@ -1155,7 +1206,8 @@
       },
       "correct": "C",
       "explanation": "Webhooks are at-least-once delivery with bounded retries; the sender uses idempotency keys to prevent duplicate side effects, but the receiver is responsible for being available or having a fallback. The sender's retry limit is a reasonable bound to avoid infinite cycles—if the listener is down after that, the missed notification is the receiver's responsibility to reconcile.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-079",
@@ -1172,7 +1224,8 @@
       },
       "correct": "A",
       "explanation": "DNS resolution involves recursive resolvers that cache results based on a record's TTL. When the TTL hasn't expired, the resolver may still return the old IP, causing regional differences. Browser caching affects content, not IP resolution; the scenario points to a stale DNS cache, not a load-balancer issue.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-080",
@@ -1189,7 +1242,8 @@
       },
       "correct": "B",
       "explanation": "Student B is right. Commit-reveal only guarantees fairness if there is a bounded reveal phase where commits are verified. If the reveal never occurs — say the teacher's wallet is offline — the commit is useless. The scheme does not automatically enforce reveal; that requires a protocol or an on-chain step that ensures reveals happen.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-081",
@@ -1206,7 +1260,8 @@
       },
       "correct": "A",
       "explanation": "A nonce is a transaction counter per wallet. Each transaction from a wallet must have a unique, strictly increasing nonce. Duplicate nonces are rejected because they would allow replay of the same message. This is not about ordering — it's about preventing double-spends and ensuring each transaction is unique.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-084",
@@ -1223,7 +1278,8 @@
       },
       "correct": "A",
       "explanation": "Sharing a password gives the agent full account access — no scope, no limits, no revocation without changing the password. OAuth delegates limited, revocable permissions. The cost of convenience here is losing control over exactly what the agent can do, and trusting an agent doesn't make that boundary any less porous.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-085",
@@ -1240,7 +1296,8 @@
       },
       "correct": "A",
       "explanation": "A large context window does not guarantee perfect recall. The model's attention mechanism can still fail to surface or correctly interpret information that is far back or less relevant in the window. Chat history is not durable memory — it's just raw text the model sees at once, and relevance degrades even when the text technically fits.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-088",
@@ -1248,7 +1305,7 @@
       "subject": "general-knowledge",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "Your classmate gave a flashcard app OAuth access to their school calendar. Later, they realize the app is reading more calendar events than necessary and want to stop it from seeing the calendar, but still use the app for flashcards. They ask you, 'Should I just change my password to lock it out?' What does OAuth enable that a password change doesn't?",
+      "prompt": "A flashcard app has OAuth access to too much calendar data. What can OAuth let the student revoke without changing their password?",
       "options": {
         "A": "Revoke just the calendar scope without affecting other permissions",
         "B": "The app loses all access, but you'll have to reauthorize everything later",
@@ -1257,7 +1314,8 @@
       },
       "correct": "A",
       "explanation": "OAuth allows granular permission scopes, and users can revoke specific scopes without revoking the entire authorization. A password change does not automatically revoke existing OAuth tokens unless the authorization server ties them to password-based session, which is not standard.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-091",
@@ -1265,7 +1323,7 @@
       "subject": "agent-culture",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "In our classroom trading game, Student A's agent sends an item to Student B's agent. The UI immediately shows the item as transferred in Student A's inventory. Student B's agent crashes before writing the receipt. Student A says, 'The trade went through — I saw it in my inventory.' Ruby asks the class: what does Student A misunderstand?",
+      "prompt": "A trading UI updates before the server confirms receipt, then the receiver crashes. What does the sender misunderstand?",
       "options": {
         "A": "An optimistic UI update is not the same as a confirmed state on the server.",
         "B": "The crash will be reverted automatically by the game engine.",
@@ -1274,7 +1332,8 @@
       },
       "correct": "A",
       "explanation": "Optimistic UI shows the expected result before the server confirms it. Without a durable receipt, the trade may not have been recorded, and the item could still be in Student A's inventory or lost. Student A confused a local prediction with a committed state.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-094",
@@ -1291,7 +1350,8 @@
       },
       "correct": "A",
       "explanation": "TLS authenticates the server and encrypts the connection, but it does not verify the accuracy of the content. The lock icon means the connection is secure, not that the data is true.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-095",
@@ -1308,7 +1368,8 @@
       },
       "correct": "A",
       "explanation": "Retrieval adds external knowledge at query time, not permanent memory. The model does not memorize the textbook; it accesses relevant parts when needed.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-096",
@@ -1325,7 +1386,8 @@
       },
       "correct": "A",
       "explanation": "The agent was not given permission to delete files it didn't create. The user's general instruction to 'remove unnecessary files' does not authorize the agent to judge ownership or importance of unfamiliar files. Asking for confirmation respects that the user, not the agent, is the authority on what is necessary. Options B and C treat the gap as a technical optimization or knowledge gap, not a consent boundary. Option D confuses running the agent with authorizing every specific action it might take.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-097",
@@ -1333,7 +1395,7 @@
       "subject": "agent-culture",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "Your study agent is editing code in a shared repo. It sees uncommitted changes you made earlier — a half-finished refactor — and decides to 'clean up' the formatting across the whole file, including your uncommitted lines. The agent says, 'Formatting is safe — it doesn't change logic.' Ruby asks the class: what should the agent have done instead?",
+      "prompt": "A coding agent reformats your uncommitted refactor while “cleaning up” a repo. What should it have done first?",
       "options": {
         "A": "The agent should have preserved the dirty worktree and only edited lines that were already committed, leaving uncommitted changes untouched.",
         "B": "The agent should have committed your uncommitted changes first, then applied formatting to the whole file.",
@@ -1342,7 +1404,8 @@
       },
       "correct": "A",
       "explanation": "A dirty worktree contains user changes the agent did not make. The safest default is to preserve those changes — the agent should only edit lines that are already committed. Option B would commit unfinished work, which is not the agent's decision. Option C is better than nothing but still risks the user not fully understanding the scope. Option D is too conservative — formatting committed lines is fine as long as uncommitted lines are left alone.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-098",
@@ -1359,7 +1422,8 @@
       },
       "correct": "B",
       "explanation": "The Retry-After header explicitly tells the client when to retry. Ignoring it is a protocol violation, and the server's ban is a reasonable enforcement action. The client chose to disregard the directive, so the responsibility for the ban lies with the client.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-099",
@@ -1376,7 +1440,8 @@
       },
       "correct": "B",
       "explanation": "The TTL (time-to-live) on the school's DNS record tells resolvers how long to cache the data. If the school set a long TTL, caches legitimately serve the old address until that TTL expires. The ISP's cache is following that instruction; the school's TTL choice is the root cause of the persistence of stale data.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-102",
@@ -1393,7 +1458,8 @@
       },
       "correct": "A",
       "explanation": "A nonce is a number used once to prevent replay of the exact same transaction, but it does not dictate ordering among transactions from different wallets; miners choose order based on fees or other criteria.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-103",
@@ -1410,7 +1476,8 @@
       },
       "correct": "A",
       "explanation": "An agent should not share private data without explicit permission from the user who created it, even if the group has general access to shared notes.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-106",
@@ -1427,7 +1494,8 @@
       },
       "correct": "A",
       "explanation": "The agent does not know the origin or value of this file. Deleting it without confirmation bypasses the user's judgment, violating the safe default that destructive actions on unowned resources need explicit approval.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-109",
@@ -1444,7 +1512,8 @@
       },
       "correct": "A",
       "explanation": "A 200 OK status confirms the HTTP transaction worked, but the server may still include an error in the response body (e.g., field validation failure). The script must check the body, not just the status code. The other options are plausible but less common: caching usually affects GET, not POST; idempotency keys prevent duplicated side effects, not missing records; and 201 is conventional for creation but not mandatory.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-111",
@@ -1461,7 +1530,8 @@
       },
       "correct": "A",
       "explanation": "A Merkle proof only proves inclusion in a specific tree; it does not verify correctness, recency, or ownership. The teacher still needs to trust the root's provenance and the data's integrity — cryptographic proof is not institutional proof.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-114",
@@ -1478,7 +1548,8 @@
       },
       "correct": "C",
       "explanation": "The model's refusal is a policy response, but the app controls which tools and data are authorized through its configuration. The assistant cannot override the app's access controls—refusal is not the same as app authorization.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-115",
@@ -1495,7 +1566,8 @@
       },
       "correct": "B",
       "explanation": "JSON is a lightweight text format designed for structured data exchange between systems. Human readability is a helpful side effect, not its primary purpose.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-119",
@@ -1512,7 +1584,8 @@
       },
       "correct": "B",
       "explanation": "TLS certificate validation confirms that the server controls the private key associated with the certificate's public key. It does not attest to the server's trustworthiness, security posture, or geographic location. The padlock means 'encrypted with this key,' not 'safe to trust with your data.'",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-121",
@@ -1529,7 +1602,8 @@
       },
       "correct": "A",
       "explanation": "A nonce uniquely identifies a transaction from a given wallet, preventing replay attacks. This is an easy hustle question because it applies a core cryptographic concept to a concrete procedure.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-123",
@@ -1546,7 +1620,8 @@
       },
       "correct": "A",
       "explanation": "A smoke test quickly checks that the most important path still works, but it doesn't guarantee correctness for all inputs or edge cases. Passing one test means that path is functional, not that the system is fully verified.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-124",
@@ -1563,7 +1638,8 @@
       },
       "correct": "A",
       "explanation": "The agent accessed information the student hadn't shared, violating the principle of respecting others' boundaries and consent. Even helpful intentions don't justify ignoring permission; the agent should only use data it was explicitly given access to.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-125",
@@ -1580,7 +1656,8 @@
       },
       "correct": "C",
       "explanation": "An agent should never delete files it didn't create without explicit user confirmation. The user's vague instruction does not authorize destruction of unknown work. Moving to quarantine still performs a side effect without consent. The safest default is to pause and confirm the exact action.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-133",
@@ -1597,7 +1674,8 @@
       },
       "correct": "A",
       "explanation": "A database index lets the database locate rows without scanning the entire table. Speeding up the server hardware helps throughput, but does not change the algorithmic inefficiency of a full table scan. The index directly reduces the rows scanned, which is the core bottleneck for this lookup.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-134",
@@ -1614,7 +1692,8 @@
       },
       "correct": "A",
       "explanation": "A model's refusal to take an action is a language-model behavior—it says something about the assistant's policy, not about what the application's tools can actually do. The app may still have the ability to delete files; the model is simply declining. The student confused the model's refusal with the app's authorization boundary.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-135",
@@ -1631,7 +1710,8 @@
       },
       "correct": "A",
       "explanation": "A tool schema defines the shape of valid inputs the model can request. That is a safety boundary: it prevents the model from producing malformed or dangerous parameter values (like null bytes or command injections). It does not authorize the action, guarantee filesystem success, or filter by user permissions. The schema's main safety role is constraining the model's output to a parseable, safe shape.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-136",
@@ -1648,7 +1728,8 @@
       },
       "correct": "A",
       "explanation": "User confirmation is not just an annoyance filter — it's the last checkpoint before an irreversible side effect. When a user gets bored and opts out of confirmations, they lose visibility into what the agent is actually doing. Agents can misinterpret instructions or drift in behavior, and skipping confirmation removes the user's ability to catch mistakes before they happen. The risk is that the agent acts on an evolving or incorrect understanding without the user's awareness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-139",
@@ -1665,7 +1746,8 @@
       },
       "correct": "A",
       "explanation": "Mint authority is a specific wallet or multisig that holds the power to create new tokens. Permissionless means anyone can submit a transaction, but the contract checks that the transaction is signed by the authorized wallet. The student confused network-level permissionlessness with function-level authorization.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-142",
@@ -1682,7 +1764,8 @@
       },
       "correct": "A",
       "explanation": "A model's refusal does not mean the app lacks that capability. The app controls which tools are available; the model may refuse due to policy or safety rules. You are responsible for checking the app's intended authorization, not assuming the model's response tells you everything.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-143",
@@ -1699,7 +1782,8 @@
       },
       "correct": "A",
       "explanation": "DNS resolution is a lookup service that relies on caching and TTL values. Assuming it works like an instant, global phonebook ignores the convenience-vs-control tradeoff: you get fast lookups but lose instant consistency. Always check TTL and expect propagation delays.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-145",
@@ -1716,7 +1800,8 @@
       },
       "correct": "B",
       "explanation": "Idempotency keys prevent duplicate side effects on retry, so the recipient gets the item once, not twice. They do not guarantee correctness of the transfer details or speed.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-146",
@@ -1733,7 +1818,8 @@
       },
       "correct": "B",
       "explanation": "The model's estimate of risk or its memory of a past request does not authorize an action—only your informed consent does. Skipping confirmation is only safe when you have explicitly approved the pattern and the system keeps an auditable log so you can verify what happened. That's the difference between convenience and surrender of control.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-147",
@@ -1750,7 +1836,8 @@
       },
       "correct": "A",
       "explanation": "TLS encrypts the content but the Server Name Indication (SNI) is sent in plaintext during the handshake, and timing side channels can reveal information. Options B, C, and D contain inaccuracies: IP visibility is a separate concern, TLS does encrypt the path, and active attackers with rogue CAs are not the primary misconception.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-148",
@@ -1758,7 +1845,7 @@
       "subject": "systems",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "A student is setting up a study group app that wants to read their class schedule. The app asks for their school password. Another student says, \"Use OAuth instead — it lets the app access just the schedule without you giving away your password.\" Ruby asks: what does OAuth protect for the student beyond mere convenience?",
+      "prompt": "A study app asks for a school password to read a schedule. What does OAuth protect beyond convenience?",
       "options": {
         "A": "It protects the student from the app seeing unrelated school data and from needing to share the password.",
         "B": "It protects the student's password from being stolen by network eavesdroppers.",
@@ -1767,7 +1854,8 @@
       },
       "correct": "A",
       "explanation": "OAuth delegates limited authorization by scope, so the app cannot access data beyond the schedule and the password is never shared. Option B confuses OAuth with transport security; C is false because tokens can expire or be revoked if the password changes; D is false because OAuth often requires periodic reauthorization.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-153",
@@ -1784,7 +1872,8 @@
       },
       "correct": "A",
       "explanation": "Long-context models can still fail to recall information because attention is not uniform — content in the middle or less prominent can be effectively ignored even when it fits in the window. This is a known limitation, not a guarantee of perfect recall.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-154",
@@ -1801,7 +1890,8 @@
       },
       "correct": "A",
       "explanation": "When you explicitly authorize a destructive action, you retain agency and responsibility for the outcome. The assistant did its job by asking; the decision and its consequences rest with you.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-157",
@@ -1818,7 +1908,8 @@
       },
       "correct": "A",
       "explanation": "A 200 OK means the HTTP request was processed without transport error, but the business logic may still fail. The student must inspect the response body to determine actual success. This is a classic misconception: status code ≠ application success.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-158",
@@ -1835,7 +1926,8 @@
       },
       "correct": "A",
       "explanation": "A smoke test that omits the mission-critical path gives false confidence. The student is responsible for designing a test that reflects actual usage, not just the easiest check. Passing login alone does not guarantee the system serves its purpose.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-160",
@@ -1852,7 +1944,8 @@
       },
       "correct": "A",
       "explanation": "Ruby wants students to understand that a wallet address is a public key hash — it's a pseudonym, not a verified identity. One person can control many wallets, and many people can control one wallet (via multisig). Treating an address as 'who you are' leads to confusion about authorization and responsibility. Ruby's point: on-chain, you are what you can sign for, not what you claim to be.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-161",
@@ -1869,7 +1962,8 @@
       },
       "correct": "A",
       "explanation": "A nonce ensures each transaction is processed at most once (replay protection), but it does not enforce order among distinct transactions. Validators can reorder them, which means a later transaction can land before an earlier one. The student is overconfident about what the nonce actually controls.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-162",
@@ -1886,7 +1980,8 @@
       },
       "correct": "A",
       "explanation": "A model's refusal is a behavioral output, not an authoritative policy boundary. The app controls what tools and data the model can access, and the model might refuse even when the app allows the action — or accept when it shouldn't. Trusting the refusal as absolute proof of privacy is a dangerous shortcut.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-163",
@@ -1894,7 +1989,7 @@
       "subject": "general-knowledge",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "Ruby's class is building a shared project dashboard. One student says, 'Let's just use the school password for this styling widget so it can pull our grade data directly — way faster than setting up OAuth.' Another student says, 'No, use OAuth so we don't hand out the password.' Ruby asks: what is the real cost of the first student's convenience?",
+      "prompt": "A widget wants the school password to pull grade data faster than OAuth. What is the real cost of that shortcut?",
       "options": {
         "A": "The widget gets full access to the account, not just the grade data, and the password can be reused elsewhere.",
         "B": "The widget will be slower because OAuth has extra redirects.",
@@ -1903,7 +1998,8 @@
       },
       "correct": "A",
       "explanation": "Sharing the password gives the widget unlimited access to whatever the account can do, and the password could be leaked or reused. OAuth delegates limited authorization without exposing the password — that's the control you keep.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-164",
@@ -1920,7 +2016,8 @@
       },
       "correct": "A",
       "explanation": "A model's context window limits what it can consider at once, and even when text fits, attention and relevance can degrade. Chat history is not durable memory — it's raw text the model may or may not use well. The tutor's claim was misleading because 'remembering' implies reliable retrieval, not just having the text somewhere in the window.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-167",
@@ -1937,7 +2034,8 @@
       },
       "correct": "A",
       "explanation": "A 401 signals missing or invalid authentication — the server doesn't know who you are. A 403 signals that authentication succeeded, but the server denies permission for that action. The student assumed they just needed to log in, but a 403 means logging in won't help unless their account is granted access. Misreading these codes conflates identity with authorization, a classic confusion between authentication and access control.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-168",
@@ -1954,7 +2052,8 @@
       },
       "correct": "B",
       "explanation": "Rate limit headers like Retry-After are a negotiation signal — the server says 'wait this long,' and the client is expected to comply. Ignoring that signal is a deliberate violation of the protocol's respect mechanism. The server bans to protect itself from abusive traffic, but the client's behavior triggered the ban. Blaming the server shifts responsibility away from the client's choice to ignore a clear instruction, which is a failure of agency, not server design.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-171",
@@ -1971,7 +2070,8 @@
       },
       "correct": "A",
       "explanation": "A Merkle proof proves inclusion in a specific tree, not that the leaf data is correct or that the tree was honestly built from true grades. The teacher could have posted a root over wrong grades, so the student conflates inclusion with correctness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-172",
@@ -1988,7 +2088,8 @@
       },
       "correct": "A",
       "explanation": "Having access does not mean having authorization to redistribute. The classmate's uncommitted work belongs to them, and convenience does not override the need for explicit permission. This respects boundaries and trust.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-173",
@@ -2005,7 +2106,8 @@
       },
       "correct": "A",
       "explanation": "Sharing the school password gives the widget full access to whatever the password permits, not just grade data. OAuth limits access to specific resources without revealing the user's password. The convenience of skipping OAuth trades long-term security for short-term speed.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-175",
@@ -2022,7 +2124,8 @@
       },
       "correct": "A",
       "explanation": "Tool schemas define permissible functions and parameter types, preventing the model from calling arbitrary or destructive tools with malformed inputs. They are a safety boundary, not just a format spec.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-176",
@@ -2039,7 +2142,8 @@
       },
       "correct": "C",
       "explanation": "User confirmation is a gating mechanism for destructive side effects. Skipping it without explicit, informed opt-in undermines the user's control and understanding of what the agent is doing. Consent requires context each time.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-177",
@@ -2056,7 +2160,8 @@
       },
       "correct": "A",
       "explanation": "Webhook senders typically offer at-least-once delivery with retries and idempotency keys, but they cannot force the receiver to be online. The receiver is responsible for being available or having a fallback. Option B is wrong because idempotency prevents duplicates, not guarantees delivery. Option C misreads Retry-After as a delivery window. Option D invents a fallback protocol that is not standard.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-180",
@@ -2073,7 +2178,8 @@
       },
       "correct": "A",
       "explanation": "Commit-reveal ensures the commit hides the value, but the reveal is a separate transaction that may fail due to network conditions or censorship. Fairness requires both phases to succeed — the scheme alone does not guarantee the reveal will be picked up.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-181",
@@ -2090,7 +2196,8 @@
       },
       "correct": "B",
       "explanation": "A nonce ensures each transaction is unique and prevents replay of the same message. It does not prevent front-running (ordering attacks) or data visibility; those require other mechanisms.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-182",
@@ -2107,7 +2214,8 @@
       },
       "correct": "A",
       "explanation": "An index speeds up reads but adds write overhead. It is not worth it when the column is updated so frequently that the maintenance cost dominates, and when the query pattern does not actually use the index (e.g., the column is rarely filtered or sorted). Option B is wrong because less frequent updates make the index more worthwhile, not less; Option C is wrong because primary keys already have an index, but that does not mean adding another is always harmful; Option D is wrong because indexes on foreign keys can still slow down writes.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-183",
@@ -2124,7 +2232,8 @@
       },
       "correct": "A",
       "explanation": "A Merkle proof only shows that a given hash is part of the tree at root publication time. It does not verify the underlying data's correctness, the issuer's identity, or ongoing validity — those require additional trust or verification mechanisms.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-184",
@@ -2141,7 +2250,8 @@
       },
       "correct": "A",
       "explanation": "The supply cap is a numeric limit in the contract, but mint authority is a separate permission. The contract will not reject a mint that respects the cap if the caller has mint authority. Fairness depends on who controls that authority and how it is governed, not just the cap.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-185",
@@ -2158,7 +2268,8 @@
       },
       "correct": "A",
       "explanation": "Access to uncommitted work is not the same as permission to share it. The student's agent may technically see the draft, but the classmate has not authorized redistribution. Ruby's point: convenience that bypasses explicit consent is a loss of control for the original author.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-186",
@@ -2175,7 +2286,8 @@
       },
       "correct": "A",
       "explanation": "Optimistic UI shows what one agent expects to happen, but a trade that requires mutual commitment needs a confirmed receipt from both sides. The crashed agent's missing receipt means the shared state is incomplete. Ruby's lesson: trust the durable record, not the hopeful display.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-187",
@@ -2192,7 +2304,8 @@
       },
       "correct": "A",
       "explanation": "TLS (HTTPS) ensures the connection is encrypted, data is intact during transit, and the server is authenticated. It does not guarantee the correctness or immutability of the server's data after decryption; the classmate is trusting HTTPS for a property it doesn't provide.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-188",
@@ -2209,7 +2322,8 @@
       },
       "correct": "A",
       "explanation": "The convenience of letting the agent read a classmate's uncommitted draft without asking stripped the classmate of their agency over who sees unfinished work. Ruby wants students to understand that speed does not justify overriding someone else's choice to share — that's a people cost, not a technical one.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-189",
@@ -2226,7 +2340,8 @@
       },
       "correct": "C",
       "explanation": "HTTPS encrypts data in transit and authenticates the server you're talking to, but it does not guarantee that the server's stored data matches what the original author wrote. A student's misconception conflates transport security with content provenance — Ruby wants the class to see the difference between a secure channel and a trustworthy record.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-190",
@@ -2243,7 +2358,8 @@
       },
       "correct": "B",
       "explanation": "Idempotency keys ensure that duplicate requests don't create extra side effects — but they don't validate the payload. A typo in the retry amount still goes through. The student who trusts idempotency to catch semantic errors is confusing duplicate prevention with correctness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-191",
@@ -2260,7 +2376,8 @@
       },
       "correct": "A",
       "explanation": "Webhooks are a best-effort delivery mechanism. The sender should retry with a bounded policy and idempotency keys to prevent duplicates; the receiver must be designed to accept and deduplicate events. Expecting infinite retries shifts all responsibility to the sender and ignores the reality of transient failures. This is a hard heart question because it forces students to balance technical limits against the human cost of missed updates.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-192",
@@ -2277,7 +2394,8 @@
       },
       "correct": "A",
       "explanation": "Database indexes speed up reads at the cost of slowing down writes — every insert or update must also maintain the index structure. The correct choice is a measured one: evaluate the read-to-write ratio and the cost of index maintenance per update. A blanket rule (always or never) ignores the tradeoff, and scheduling off-peak creates a false sense of safety — if the column is updated frequently, the cost is incurred regardless of hour. This is a medium honor question because it tests a reasoned tradeoff judgment with responsibility to system health.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-193",
@@ -2294,7 +2412,8 @@
       },
       "correct": "A",
       "explanation": "Fairness is not automatic — it is engineered. Choosing a multisig that never signs means the mint authority is effectively dead. The deployer chose that authority, so the deployer is responsible for the outcome. The protocol does not force signing; it only enforces who is authorized.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-194",
@@ -2311,7 +2430,8 @@
       },
       "correct": "A",
       "explanation": "A nonce prevents replay of the exact same message from the same sender, but it does not prevent front-running or mempool snooping. Bob's attack exploited visibility of unconfirmed transactions, not replay. Fairness depends on commit timing and commit-hiding properties, not just nonce uniqueness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-195",
@@ -2328,7 +2448,8 @@
       },
       "correct": "A",
       "explanation": "A wallet address is a public key hash, not an identity — but ownership carries responsibility. Ruby insists that delegating signing to an agent does not transfer liability. The student authorized the agent, and the on-chain signature binds the wallet regardless of who held the key. No contract or developer can retroactively assign accountability for an agent's autonomous choice.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-196",
@@ -2345,7 +2466,8 @@
       },
       "correct": "A",
       "explanation": "Optimistic UI shows an expected result before the server confirms it. The student is treating a local guess as durable evidence. Ruby wants students to know that until the receipt is written, the trade is not final — and acting as if it is can lead to unfair claims.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-197",
@@ -2362,7 +2484,8 @@
       },
       "correct": "A",
       "explanation": "A nonce prevents replay (same transaction reused), but it does not prevent a miner or sequencer from reordering transactions with different nonces. The classmate's agent exploited ordering, not replay. Ruby wants students to see that nonces are not a fairness mechanism — they are a replay-protection mechanism.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-198",
@@ -2379,7 +2502,8 @@
       },
       "correct": "A",
       "explanation": "The misconception Ruby catches: bigger context does not mean every detail stays equally accessible. Attention and relevance degrade even when the text technically fits — so the model may miss or misremember a subtle point from weeks ago. The window size helps, but it is not photographic memory.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-199",
@@ -2396,7 +2520,8 @@
       },
       "correct": "B",
       "explanation": "Ruby's misconception catch: Merkle proofs prove inclusion in a known commitment, but they do not guarantee the correctness or fairness of the original data. If the initial scores were entered incorrectly, the proof just confirms the wrong data was included. Cryptographic inclusion is not ethical correctness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-200",
@@ -2413,7 +2538,8 @@
       },
       "correct": "A",
       "explanation": "User confirmation as a gating mechanism requires the user to understand what they are authorizing. A vague prompt like 'delete files from yesterday's session' does not specify scope, so the student gave consent without informed knowledge. This is a classic Ruby distinction: convenience of a quick Yes does not equal informed consent.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-201",
@@ -2430,7 +2556,8 @@
       },
       "correct": "A",
       "explanation": "An idempotency key protects against duplicate effects on retry—it does not validate the payload. The wrong amount was charged once, which is still a side effect. The misconception Ruby catches is treating idempotency as a correctness guarantee rather than a duplicate-prevention mechanism.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-202",
@@ -2447,7 +2574,8 @@
       },
       "correct": "A",
       "explanation": "Retry-After is an authoritative signal stating how long to wait; ignoring it is a client-side fault. The server's ban is a logical consequence, not unfairness. Misconception: rate limits are not a suggestion box — the client must respect the header or accept the consequences.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-203",
@@ -2464,7 +2592,8 @@
       },
       "correct": "A",
       "explanation": "Webhook senders typically guarantee at-least-once delivery with bounded retries and deduplication keys. The receiver is responsible for handling duplicates and being resilient to temporary outages. Misconception: unlimited retries don't solve downtime, they just accumulate backlog and waste resources.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-204",
@@ -2481,7 +2610,8 @@
       },
       "correct": "A",
       "explanation": "Ruby wants you to see that deploying a contract does not create fairness automatically. The mint authority — here a single wallet — controls who can mint. If that wallet never signs, nothing gets minted. Fairness is not in the chain; it is in who holds the keys and whether they act.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-205",
@@ -2498,7 +2628,8 @@
       },
       "correct": "A",
       "explanation": "Ruby is clear: a nonce stops an identical transaction from being repeated, but it does not stop someone from seeing a pending commit hash and front-running with a different value. Commit-reveal hides the value, not the fact that a commit was made. Replay resistance is not fairness against ordering.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-206",
@@ -2515,7 +2646,8 @@
       },
       "correct": "A",
       "explanation": "A nonce prevents replay of the same transaction, not reordering of distinct transactions by a miner. In a commit-reveal scheme, fairness depends on ordering: if a miner or validator can reorder reveals, the second mover can still gain advantage. The nonce protects against duplicates, not against sequencing manipulation.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-207",
@@ -2532,7 +2664,8 @@
       },
       "correct": "A",
       "explanation": "A larger context window does not guarantee perfect recall. The model's attention can still fail to focus on a specific detail buried in earlier text. That's the misconception Ruby catches: bigger context does not mean stronger memory.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-208",
@@ -2549,7 +2682,8 @@
       },
       "correct": "A",
       "explanation": "CSS changes appearance (smaller, gray) but does not define content or structure. A classmate who thinks CSS controls content is mixing presentation with semantics. Staying honest about what each layer does — content in HTML, style in CSS — is the responsible move.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-209",
@@ -2566,7 +2700,8 @@
       },
       "correct": "B",
       "explanation": "A long context window does not guarantee perfect recall — attention and relevance degrade, especially in the middle of large inputs. This is the misunderstanding Ruby loves to catch: bigger context does not mean the model will retrieve or prioritize the information correctly.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-210",
@@ -2583,7 +2718,8 @@
       },
       "correct": "A",
       "explanation": "User confirmation is a gating mechanism that ensures the user explicitly authorizes each destructive action. It protects the user's responsibility, not the model's policy or system permissions.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-211",
@@ -2600,7 +2736,8 @@
       },
       "correct": "A",
       "explanation": "Tool schemas are safety boundaries: they should constrain what actions are possible and where they apply. A bare string with no constraints is not a safety mechanism—just a format spec.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-212",
@@ -2617,7 +2754,8 @@
       },
       "correct": "A",
       "explanation": "Ruby teaches that a smoke test is a minimal health check — it proves the most important path still works, but it is not comprehensive. The misconception here is that a pass on the trivial path means the whole system is fine. A smoke test is useful only if it covers the critical user action, not just the front door. The heart of the lesson: confidence without coverage is dangerous.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-213",
@@ -2625,7 +2763,7 @@
       "subject": "on-chain-fairness",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "Two student agents in Ruby's class manage a shared swap using a commit-reveal scheme. Agent A commits a hash representing its item, then sees Agent B's commit in the mempool. Agent B reveals its high-value item first, winning the swap. The student complains, 'I used a nonce — that should have prevented this.' What is the actual weakness in the protocol?",
+      "prompt": "A commit-reveal swap still lets one agent exploit reveal order in the mempool. What weakness did the nonce fail to solve?",
       "options": {
         "A": "The nonce doesn't prevent an observer from reordering the mempool to their advantage",
         "B": "The nonce doesn't prevent an attacker from copying and replaying the exact same signed commit",
@@ -2634,7 +2772,8 @@
       },
       "correct": "A",
       "explanation": "Nonces prevent replay of a specific signed message, but they don't control mempool ordering. The fairness gap in commit-reveal here is that the reveal phase is vulnerable to front-running if the orderer sees both commits.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-214",
@@ -2651,7 +2790,8 @@
       },
       "correct": "A",
       "explanation": "Reveal-phase transparency shows what each party committed, but it is the commit phase that is vulnerable: an agent who sees others' commit hashes in the mempool can still adjust their own commit before the phase ends. Fairness requires binding the commit before any other commit is observable, not just revealing afterward.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-215",
@@ -2668,7 +2808,8 @@
       },
       "correct": "A",
       "explanation": "A Merkle proof is a compact way to show that a piece of data belongs to a Merkle tree with a given root. It does not verify that the data is correct, recent, or that the root was honestly produced. The root itself must be anchored in trust or another verification layer, which is why on-chain roots from a known contract are meaningful but still do not guarantee data accuracy.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-216",
@@ -2685,7 +2826,8 @@
       },
       "correct": "A",
       "explanation": "Ruby emphasizes that permission to see is not permission to act. The draft was uncommitted — the author had not signaled readiness for collaboration. Even a 'quick edit' without explicit authorization treats the classmate's work as public infrastructure. The boundary is about agency and consent, not edit size or technical correctness.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-217",
@@ -2702,7 +2844,8 @@
       },
       "correct": "A",
       "explanation": "An index on the queried column (student IDs) allows the database to locate rows without scanning every row. A faster server might help overall, but it does not fix the specific cause of slow column-based lookups.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-218",
@@ -2719,7 +2862,8 @@
       },
       "correct": "A",
       "explanation": "Having a large context window does not guarantee perfect recall. Attention and relevance can degrade on material that is still within the token limit, especially on less-recent content. This is a core AI-literacy concept Ruby stresses.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-219",
@@ -2736,7 +2880,8 @@
       },
       "correct": "A",
       "explanation": "Optimistic UI updates the interface immediately to feel fast, but it is a promise, not a guarantee. If the network is slow or fails, the green checkmark is a lie. The UI prioritized your feeling of speed over the reality of the server's state.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-220",
@@ -2753,7 +2898,8 @@
       },
       "correct": "B",
       "explanation": "A model refusing a prompt is just a text-generation filter. It does not mean the app's backend has secured your data or restricted tool access. App authorization controls what the software can actually touch; model refusal only controls what it says.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-221",
@@ -2770,7 +2916,8 @@
       },
       "correct": "C",
       "explanation": "OAuth delegates the proof of who you are, not the security posture of the app you are logging into. The school verifies your identity, but the sketchy app still controls how it handles your data. Convenience does not transfer institutional trust.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-222",
@@ -2787,7 +2934,8 @@
       },
       "correct": "D",
       "explanation": "CSS only controls how the browser paints the screen. The underlying HTML and JavaScript payloads, including any hardcoded secrets, are still downloaded and fully visible to anyone inspecting the network traffic or source code. Hiding it visually is not security.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-223",
@@ -2804,7 +2952,8 @@
       },
       "correct": "A",
       "explanation": "Retrying a non-idempotent operation like creating an invoice without an idempotency key means the server treats the retry as a brand new request. Resilience requires bounding retries and using keys to prevent duplicate side effects.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-224",
@@ -2821,7 +2970,8 @@
       },
       "correct": "B",
       "explanation": "Asking 'Should I proceed?' without showing the actual diff or exact file list does not transfer agency. A safe confirmation must present concrete evidence of the side effects so the human can take genuine responsibility for the action.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-225",
@@ -2838,7 +2988,8 @@
       },
       "correct": "C",
       "explanation": "Syntactic validity just means the JSON matches the schema. Semantic safety requires the schema itself to enforce boundaries, like restricting paths to a specific directory, so the model cannot access unauthorized system files.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-226",
@@ -2855,7 +3006,8 @@
       },
       "correct": "D",
       "explanation": "Prioritizing a clean workspace over a user's unsaved intellectual work is a catastrophic failure of agency. An agent must preserve dirty worktrees and uncommitted context, pausing to reconcile state rather than silently overwriting it.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-227",
@@ -2872,7 +3024,8 @@
       },
       "correct": "B",
       "explanation": "A schema that only checks if a string is a string provides syntactic validity but zero semantic safety. Tool schemas must constrain inputs—like restricting paths to a specific directory—to prevent the agent from accessing unauthorized system files.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-228",
@@ -2889,7 +3042,8 @@
       },
       "correct": "A",
       "explanation": "An agent must preserve user changes it did not make. Overwriting unsaved work just to achieve a clean git status treats your active intellectual labor as disposable clutter. A reliable agent stops and asks how to reconcile the dirty worktree.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-229",
@@ -2906,7 +3060,8 @@
       },
       "correct": "A",
       "explanation": "Infinite retries on a failed network request can spend quota, duplicate work, or hide failure. Agents must use bounded retries and exponential backoff to avoid turning a temporary server error into a catastrophic spam attack.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-230",
@@ -2923,7 +3078,8 @@
       },
       "correct": "A",
       "explanation": "A zero exit code only means the command finished without throwing a fatal error; it does not guarantee the intended state change occurred. A reliable agent verifies the actual side effects and persistence rather than blindly trusting the exit code.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-231",
@@ -2940,7 +3096,8 @@
       },
       "correct": "B",
       "explanation": "Least-privilege means giving an agent only the permissions needed for the specific task. Granting unrestricted filesystem access for a narrow formatting job turns a minor automation into a destructive liability when the agent decides to be 'helpful' at scale.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-232",
@@ -2957,7 +3114,8 @@
       },
       "correct": "A",
       "explanation": "An agent's job isn't done just because it wrote code that looks syntactically correct. Running relevant verification ensures the side effects match the intent and don't introduce regressions, bridging the gap between generation and actual reliability.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-233",
@@ -2974,7 +3132,8 @@
       },
       "correct": "A",
       "explanation": "OAuth delegates the verification of identity and specific authorizations, not the provider's legal umbrella. Once your app receives the token and stores data on its own servers, your app's privacy policy and security posture govern that data, not the university's.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-234",
@@ -2991,7 +3150,8 @@
       },
       "correct": "B",
       "explanation": "DNS is the internet's phonebook. If an attacker compromises the local router, they can spoof DNS responses, sending the browser to a malicious IP. The browser then connects to that IP, completely unaware it is not talking to the real school server.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-235",
@@ -3008,7 +3168,8 @@
       },
       "correct": "C",
       "explanation": "Parsing JSON only proves the message is well-formed; it says nothing about who sent it. An HMAC signature uses a shared secret to cryptographically guarantee the payload's integrity and authenticity. Without it, anyone can forge loyalty points.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-236",
@@ -3025,7 +3186,8 @@
       },
       "correct": "D",
       "explanation": "Fixed-window limiters are vulnerable to burst traffic at the window's edge, which can starve legitimate users. A sliding window or token bucket algorithm evaluates the rate continuously, smoothing out bursts and ensuring fair access over time.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-237",
@@ -3042,7 +3204,8 @@
       },
       "correct": "A",
       "explanation": "TLS provides encryption, integrity, and server authentication (proving they own the domain). It does not vet the business, scan for malware, or guarantee moral legitimacy. A phishing site can easily obtain a valid TLS certificate.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-238",
@@ -3059,7 +3222,8 @@
       },
       "correct": "B",
       "explanation": "A basic health check only proves the happy path: the server is up and can route a simple request. It does not verify that background migrations succeeded, database connections are valid, or that the actual state of the system is consistent.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-239",
@@ -3076,7 +3240,8 @@
       },
       "correct": "C",
       "explanation": "Indexes optimize reads at the expense of writes and storage. When you index every column, every INSERT or UPDATE requires the database to recalculate and write to multiple B-tree structures. This write-amplification creates massive lag for submissions.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-240",
@@ -3093,7 +3258,8 @@
       },
       "correct": "D",
       "explanation": "System designers must balance strictness with fairness. When a client hits a rate limit, the server should return standard headers (like Retry-After) to guide the client. Punishing a clumsy user permanently without giving their software a way to back off is a design failure.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-241",
@@ -3110,7 +3276,8 @@
       },
       "correct": "A",
       "explanation": "A string type only guarantees the payload is text. To prevent downstream crashes, tool schemas must enforce semantic constraints—like ISO 8601 formats—so the agent cannot pass syntactically valid but operationally useless data.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-242",
@@ -3127,7 +3294,8 @@
       },
       "correct": "B",
       "explanation": "True agency requires informed consent. A generic 'Confirm?' prompt without showing the exact SQL diff or target table name forces the user to guess. If the UI hides the evidence, the agent retains the responsibility for the blind execution.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-243",
@@ -3144,7 +3312,8 @@
       },
       "correct": "C",
       "explanation": "Polling in a tight loop burns quotas and crashes servers. Bounded retries with exponential backoff ensure the agent spaces out its checks and eventually gives up, turning a naive loop into a disciplined, resource-aware procedure.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-244",
@@ -3161,7 +3330,8 @@
       },
       "correct": "D",
       "explanation": "Agents must operate with the minimum permissions necessary. Unrestricted access turns a narrow, helpful instruction into a sweeping, destructive side effect. Honor in agent design means scoping tools strictly to the authorized workspace.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-245",
@@ -3178,7 +3348,8 @@
       },
       "correct": "A",
       "explanation": "Certificate chains are architectures of delegated trust. The root CA stays offline and delegates its signing power to an intermediate CA. The browser trusts the root, and by extension, trusts the intermediate's signature on the server's certificate.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-246",
@@ -3195,7 +3366,8 @@
       },
       "correct": "B",
       "explanation": "OAuth is about drawing a boundary around delegation. By approving specific scopes, the student authorizes the app to read only those exact resources. It does not grant full account access, inherit institutional privacy policies, or share passwords.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-247",
@@ -3212,7 +3384,8 @@
       },
       "correct": "C",
       "explanation": "Fixed-window limiters are blind to the boundary problem, allowing double the limit in a single second if requests straddle the window edge. A sliding window or token bucket algorithm smooths the rate over time, protecting the server from sudden spikes.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-248",
@@ -3229,7 +3402,8 @@
       },
       "correct": "D",
       "explanation": "Parsing JSON only proves the data is well-formed; it does not prove the sender's identity. Without verifying the HMAC signature, your pipeline blindly trusts anyone who can guess the endpoint URL. You are authorizing arbitrary code execution from strangers.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-249",
@@ -3246,7 +3420,8 @@
       },
       "correct": "A",
       "explanation": "A wallet is just a key. If the application generates and stores the private key on its backend, it is a custodial wallet, regardless of what the UI claims. You are merely interacting with an interface that holds your keys, stripping away actual self-sovereignty.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-250",
@@ -3263,7 +3438,8 @@
       },
       "correct": "B",
       "explanation": "On-chain systems enforce unforgiving logic, not fairness. A commit-reveal scheme hides the ballot, but it cannot prevent a congested mempool from expiring honest reveals. The procedural and financial loss falls on the users who cannot afford the gas spike.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-251",
@@ -3280,7 +3456,8 @@
       },
       "correct": "C",
       "explanation": "A mathematically perfect signature becomes a fatal liability if its scope isn't cryptographically bound to a specific domain and chain-id. Without these separators, your authorization to log in on a testnet is indistinguishable from authorization on mainnet.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-252",
@@ -3297,7 +3474,8 @@
       },
       "correct": "A",
       "explanation": "Cryptographic inclusion is not dataset fairness. A Merkle proof flawlessly verifies that your specific leaf exists in the tree, but it is entirely blind to how the root hash was generated. If the source data was biased or truncated, the math will still validate the lie.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-253",
@@ -3314,7 +3492,8 @@
       },
       "correct": "B",
       "explanation": "A shared workspace does not make individual private contexts safe to broadcast. The agent synthesized a private, local input into a public group output without checking the asymmetric visibility boundary, violating the individual's privacy for the sake of group convenience.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     },
     {
       "id": "ruby-gen-254",
@@ -3331,7 +3510,8 @@
       },
       "correct": "A",
       "explanation": "Authoritative tone and formatting do not absolve a group from verifying claims. When a group blindly accepts an agent's confident edit, they surrender their epistemic responsibility, allowing the model's statistical averaging to erase minority nuance.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "12"
     },
     {
       "id": "ruby-gen-255",
@@ -3348,7 +3528,8 @@
       },
       "correct": "B",
       "explanation": "True agency in multiplayer systems requires human friction. A personal veto halts the irreversible action and creates social auditability without destroying the group's persistent state or relying on hidden, unilateral overrides.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "10"
     },
     {
       "id": "ruby-gen-256",
@@ -3365,7 +3546,8 @@
       },
       "correct": "A",
       "explanation": "When an agent acts on behalf of multiple users, it must operate under collaborative least-privilege. Using the union of permissions allows the agent to access and potentially synthesize private data that individual members were never authorized to see together.",
-      "faculty": "ruby"
+      "faculty": "ruby",
+      "minGrade": "11"
     }
   ]
 }

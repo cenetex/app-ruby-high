@@ -28,8 +28,12 @@ import type { ContentPack } from "./content/types.js";
 export interface PackRouteContext {
   method: string;
   pathname: string;
+  url?: URL;
   res: unknown;
   cookieHeader?: string | null;
+  contentTypeHeader?: string | string[] | null;
+  originHeader?: string | string[] | null;
+  callbackUrlBuilder?: (path: string) => string;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
@@ -50,6 +54,49 @@ export interface PackRouteDeps {
 }
 
 const PACK_PREFIX = "/api/apps/ruby-high/packs";
+
+function firstHeader(value: string | string[] | null | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+function packOriginAllowed(ctx: PackRouteContext): boolean {
+  const origin = firstHeader(ctx.originHeader);
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const candidates = [
+      ctx.callbackUrlBuilder ? ctx.callbackUrlBuilder("/") : null,
+      ctx.url?.origin ?? null,
+    ].filter(Boolean) as string[];
+    if (candidates.length === 0) return true;
+    return candidates.some((candidate) => {
+      const candidateUrl = new URL(candidate);
+      return candidateUrl.origin === originUrl.origin
+        || (originUrl.protocol === "https:" && candidateUrl.host === originUrl.host);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function packRequestLooksLikeJson(ctx: PackRouteContext): boolean {
+  const contentType = firstHeader(ctx.contentTypeHeader).toLowerCase();
+  return !contentType || contentType.startsWith("application/json");
+}
+
+function rejectBadPackMutationRequest(ctx: PackRouteContext): boolean {
+  if (ctx.method === "GET" || ctx.method === "HEAD") return false;
+  if (!packRequestLooksLikeJson(ctx)) {
+    ctx.error(ctx.res, "Pack requests must be sent as JSON.", 415);
+    return true;
+  }
+  if (!packOriginAllowed(ctx)) {
+    ctx.error(ctx.res, "Pack request origin is not allowed.", 403);
+    return true;
+  }
+  return false;
+}
 
 function packSummary(pack: ContentPack) {
   const countFacultyCards = (f: ContentPack["faculty"][number]) =>
@@ -82,6 +129,7 @@ export async function handlePackRoutes(
 ): Promise<boolean> {
   const isPackRoute = ctx.pathname.startsWith(PACK_PREFIX);
   if (!isPackRoute) return false;
+  if (rejectBadPackMutationRequest(ctx)) return true;
   const sub = ctx.pathname.slice(PACK_PREFIX.length) || "/";
 
   // Every endpoint requires a signed-in session — pack management is

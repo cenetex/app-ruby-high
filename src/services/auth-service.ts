@@ -811,8 +811,7 @@ export function visitorHashFromHeader(value: string | string[] | null | undefine
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return null;
   const clean = raw.trim();
-  if (clean.length < 8 || clean.length > 128) return null;
-  if (!/^[A-Za-z0-9._:-]+$/.test(clean)) return null;
+  if (!/^rhv_[A-Za-z0-9._:-]{4,124}$/.test(clean)) return null;
   return createHash("sha256")
     .update(`ruby-high:visitor:v1:${clean}`)
     .digest("hex");

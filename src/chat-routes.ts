@@ -273,7 +273,7 @@ function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; 
   const readyLine = bank.remaining > 0
     ? `${bank.remaining} scheduled card${bank.remaining === 1 ? "" : "s"} ready`
     : bank.nextCardRole === "social"
-      ? "a Ruby High social card ready"
+      ? "a Ruby High reflection prompt ready"
     : "no scheduled cards ready";
   return `The Ruby High scheduler owns the blackboard while ${classLine} and ${readyLine}. Do not call tools or post/replace/clear questions. Do not say tool names like pick_from_bank; speak only as the teacher.`;
 }
@@ -2899,7 +2899,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   // responses are in (player + both NPCs), this also runs the grading turn
   // and streams the teacher's verdict as SSE. Works in offline (non-AI)
   // mode too — without an apiKey we use a deterministic auto-grade so the
-  // player isn't trapped on a Social card with no way forward.
+  // player isn't trapped on a reflection prompt with no way forward.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/opinion-submit`) {
     const sessionToken = auth.parseSessionToken(ctx.cookieHeader);
     const sessionRecord = sessionToken ? auth.resolve(sessionToken) : null;

@@ -147,6 +147,137 @@ describe("StateStore", () => {
     })]);
   });
 
+  it("round-trips durable school events separately from session state", async () => {
+    const store = new StateStore(storePath);
+    await store.saveSchoolEvent({
+      id: "school:event:1",
+      sessionId: "rh:user:test",
+      occurredAt: 100,
+      day: "1970-01-01",
+      event: {
+        id: "school:event:1",
+        kind: "comic.page-unlocked",
+        at: 100,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "first-bell-03",
+        pageNumber: 3,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Outbox page",
+      },
+    });
+    await store.save([blankState("a")]);
+
+    const fresh = new StateStore(storePath);
+    const events = await fresh.loadSchoolEvents();
+    expect(events).toEqual([expect.objectContaining({
+      id: "school:event:1",
+      sessionId: "rh:user:test",
+      event: expect.objectContaining({
+        kind: "comic.page-unlocked",
+        label: "Outbox page",
+      }),
+    })]);
+  });
+
+  it("queries durable school events by time and limit", async () => {
+    const store = new StateStore(storePath);
+    for (let i = 0; i < 4; i += 1) {
+      await store.saveSchoolEvent({
+        id: `school:event:${i}`,
+        sessionId: "rh:user:test",
+        occurredAt: 100 + i,
+        day: "1970-01-01",
+        event: {
+          id: `school:event:${i}`,
+          kind: "comic.page-unlocked",
+          at: 100 + i,
+          faculty: "ruby",
+          grade: "10",
+          issueId: "first-bell",
+          pageId: `first-bell-${i}`,
+          pageNumber: i + 1,
+          reason: "teacher-class-aced",
+          sourceId: "teacher:ruby:grade:10",
+          label: `Outbox page ${i}`,
+        },
+      });
+    }
+
+    const fresh = new StateStore(storePath);
+    const events = await fresh.loadSchoolEvents({ since: 101, limit: 2 });
+
+    expect(events.map((event) => event.id)).toEqual(["school:event:3", "school:event:2"]);
+  });
+
+  it("ignores malformed durable school event records on load and query", async () => {
+    await writeFile(storePath, JSON.stringify({
+      sessions: [],
+      schoolEvents: [
+        {
+          id: "school:event:good",
+          sessionId: "rh:user:test",
+          occurredAt: 100,
+          day: "1970-01-01",
+          event: {
+            id: "school:event:good",
+            kind: "comic.page-unlocked",
+          },
+        },
+        {
+          id: "school:event:nan",
+          sessionId: "rh:user:test",
+          occurredAt: Number.NaN,
+          day: "1970-01-01",
+          event: {
+            id: "school:event:nan",
+            kind: "comic.page-unlocked",
+          },
+        },
+        {
+          id: "school:event:bad-day",
+          sessionId: "rh:user:test",
+          occurredAt: 101,
+          day: "not-a-day",
+          event: {
+            id: "school:event:bad-day",
+            kind: "comic.page-unlocked",
+          },
+        },
+      ],
+    }), "utf8");
+
+    const events = await new StateStore(storePath).loadSchoolEvents({ since: 0, limit: 10 });
+
+    expect(events.map((event) => event.id)).toEqual(["school:event:good"]);
+  });
+
+  it("round-trips generic service state separately from sessions", async () => {
+    const store = new StateStore(storePath);
+    await store.saveServiceState({
+      id: "svc:test",
+      updatedAt: 123,
+      data: {
+        version: 1,
+        lastRunAt: 100,
+      },
+    });
+    await store.save([blankState("a")]);
+
+    const fresh = new StateStore(storePath);
+    await expect(fresh.loadServiceState("svc:test")).resolves.toEqual({
+      id: "svc:test",
+      updatedAt: 123,
+      data: {
+        version: 1,
+        lastRunAt: 100,
+      },
+    });
+    await expect(fresh.loadServiceState("svc:missing")).resolves.toBeNull();
+  });
+
   it("round-trips imported content packs separately from session state", async () => {
     const store = new StateStore(storePath);
     await store.save([blankState("a")]);

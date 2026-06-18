@@ -62,9 +62,15 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })');
     expectScriptToContain(script, "reg.update().catch");
     expectScriptToContain(script, "async function bootInitialSession()");
+    expectScriptToContain(script, "function consumeSharedPackFlag()");
+    expectScriptToContain(script, 'url.searchParams.get("pack")');
+    expectScriptToContain(script, "async function applySharedPackFromUrl(packId)");
+    expectScriptToContain(script, "await packStudioClient.installPack(cleanPackId, true)");
+    expectScriptToContain(script, "await packStudioClient.setActivePack(cleanPackId)");
     const boot = script.slice(script.indexOf("async function bootInitialSession()"));
     expect(boot.indexOf("await deriveAuth();")).toBeLessThan(boot.indexOf('postViewerMetricEvent("app_open"'));
     expect(boot.indexOf('postViewerMetricEvent("app_open"')).toBeLessThan(boot.indexOf("await fetchSession();"));
+    expect(boot.indexOf("await fetchSession();")).toBeLessThan(boot.indexOf("await applySharedPackFromUrl(sharedPackId);"));
   });
 
   it("uses an in-app confirmation dialog instead of native browser prompts", () => {
@@ -80,6 +86,135 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("window.confirm");
     expect(script).not.toContain("window.alert");
     expect(script).not.toContain("window.prompt");
+  });
+
+  it("surfaces the public school world feed in the main viewer", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expect(html).toContain('id="world-panel"');
+    expect(html).toContain('id="world-panel-refresh"');
+    expect(VIEWER_CSS).toContain(".world-panel");
+    expect(VIEWER_CSS).toContain(".world-event-row");
+    expectScriptToContain(script, "function renderWorldPanel()");
+    expectScriptToContain(script, "async function loadWorldFeed(opts)");
+    expectScriptToContain(script, "function createViewerWorldFeedClient");
+    expectScriptToContain(clientSource, "const worldFeedClient = createViewerWorldFeedClient({");
+    expectScriptToContain(script, '"/world/events?limit=8"');
+    expectScriptToContain(script, '"&live=1&streamMs=25000&heartbeatMs=5000"');
+    expectScriptToContain(script, "let backoffUntil = 0");
+    expectScriptToContain(script, "let requestSeq = 0");
+    expectScriptToContain(script, "let lastCursor = \"\"");
+    expectScriptToContain(script, "status === 429");
+    expectScriptToContain(script, "response.retryAfterMs");
+    expectScriptToContain(script, "World feed catching up.");
+    expectScriptToContain(script, 'event === "world-snapshot"');
+    expectScriptToContain(script, 'event === "world-event"');
+    expectScriptToContain(script, 'event === "end" && data && typeof data === "object" && data.ok === false');
+    expectScriptToContain(script, "function pruneWorldFeedEventList");
+    expectScriptToContain(script, "function mergeWorldFeedEventList");
+    expectScriptToContain(script, "function worldFeedEventDisplayLabel");
+    expectScriptToContain(script, "function worldFeedEventAgeLabel");
+    expectScriptToContain(script, "function worldFeedRoomTitle");
+    expectScriptToContain(script, "function worldFeedSummaryLabel");
+    expectScriptToContain(script, "function worldFeedRoomViews");
+    expectScriptToContain(script, "function worldFeedEventViews");
+    expectScriptToContain(script, "function worldFeedPanelView");
+    expectScriptToContain(script, "function worldFeedEventsUrl");
+    expectScriptToContain(script, "backoffUntil = deps.now() + 2e4");
+    expectScriptToContain(clientSource, "const WORLD_FEED_EVENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;");
+    expectScriptToContain(clientSource, "function pruneWorldFeedEvents(now)");
+    expectScriptToContain(clientSource, "worldFeedClient.prune(now, WORLD_FEED_EVENT_MAX_AGE_MS);");
+    expectScriptToContain(clientSource, "await worldFeedClient.load(options);");
+    expectScriptToContain(clientSource, "function worldFeedFacultyRoster()");
+    expectScriptToContain(clientSource, "const panelView = worldFeedPanelView(worldFeed, worldFeedFacultyRoster(), Date.now());");
+    expectScriptToContain(clientSource, "els.worldPanelSub.textContent = panelView.summary;");
+    expectScriptToContain(clientSource, "panelView.rooms.forEach((room) =>");
+    expectScriptToContain(clientSource, "panelView.events.forEach((event) =>");
+    expectScriptToContain(script, "const requestId = ++requestSeq;");
+    expectScriptToContain(script, "return requestId === requestSeq;");
+    expectScriptToContain(script, "if (requestId === requestSeq) {");
+    expectScriptToContain(script, "const merged = deps.mergeEvents(state.events, event, deps.now(), 8);");
+    expectScriptToContain(clientSource, "label.textContent = event.label;");
+    expectScriptToContain(clientSource, "time.textContent = event.age;");
+    expectScriptToContain(script, "lastCursor = id;");
+    expectScriptToContain(script, "mergeEvent(data);");
+    expectScriptToContain(script, "state.error = String(data.error || \"world unavailable\");");
+    expectScriptToContain(clientSource, "renderWorldPanel();\n    },");
+    expectScriptToContain(clientSource, "function pauseWorldFeedPoll()");
+    expectScriptToContain(clientSource, "function resumeWorldFeedPoll(delayMs)");
+    expectScriptToContain(clientSource, "if (document.visibilityState === \"hidden\") {\n      worldFeedPollHandle = null;\n      return;\n    }");
+    expectScriptToContain(clientSource, "pauseWorldFeedPoll();\n      return;");
+    expectScriptToContain(clientSource, "resumeWorldFeedPoll(20000);");
+    expectScriptToContain(script, "leaderboardViewOpen = true");
+  });
+
+  it("builds the race strip from typed view models", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function raceStripView");
+    expectScriptToContain(script, "function raceStripPickText");
+    expectScriptToContain(clientSource, "const view = raceStripView(");
+    expectScriptToContain(clientSource, "els.timerLabel.textContent = view.timer.label;");
+    expectScriptToContain(clientSource, "for (const c of view.cards)");
+    expectScriptToContain(clientSource, "lt.textContent = c.pickText;");
+    expectScriptToContain(clientSource, "if (c.showThinking) {");
+  });
+
+  it("builds blackboard question prompts from typed view models", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function questionPromptView");
+    expectScriptToContain(clientSource, "const view = questionPromptView(question);");
+    expectScriptToContain(clientSource, "view.images.forEach((asset) =>");
+    expectScriptToContain(clientSource, "img.src = asset.src;");
+    expectScriptToContain(clientSource, "renderMarkdownInto(text, view.prompt);");
+  });
+
+  it("builds leaderboard rows from typed view models", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function leaderboardView");
+    expectScriptToContain(script, "function leaderboardRowView");
+    expectScriptToContain(script, "function leaderboardGradeChips");
+    expectScriptToContain(clientSource, "const view = leaderboardView(data, playbooks);");
+    expectScriptToContain(clientSource, "header.appendChild(document.createTextNode(view.gradeLabel + \" Classroom \"));");
+    expectScriptToContain(clientSource, "view.rows.forEach((s) =>");
+    expectScriptToContain(clientSource, "pbEl.textContent = s.playbookName;");
+    expect(clientSource).not.toContain("header.innerHTML = labels[grade]");
+  });
+
+  it("builds the top-bar arc indicator from typed view models", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function arcIndicatorView");
+    expectScriptToContain(clientSource, "const view = arcIndicatorView(t, subjectClearSummary(), walletSummaryText(t));");
+    expectScriptToContain(clientSource, "els.arcIndicator.classList.toggle(\"is-graduated\", view.graduated);");
+    expectScriptToContain(clientSource, "els.arcStreak.classList.toggle(\"is-met\", view.streakMet);");
+    expectScriptToContain(clientSource, "els.arcXp.classList.toggle(\"is-met\", view.subjectMet);");
+  });
+
+  it("builds classmate arc labels and meters from typed helpers", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function classmateArcStanding");
+    expectScriptToContain(script, "function classmateArcSubtitle");
+    expectScriptToContain(script, "function classmateArcProgress");
+    expectScriptToContain(script, "function classmateArcProgressLabel");
+    expectScriptToContain(script, "function roomCompletionProgressView");
+    expectScriptToContain(script, "function roomCompletionProgressLabel");
+    expectScriptToContain(clientSource, "return classmateArcStanding(entry, currentGrade");
+    expectScriptToContain(clientSource, "return classmateArcSubtitle(entry, currentGrade");
+    expectScriptToContain(clientSource, "return classmateArcProgress(entry);");
+    expectScriptToContain(clientSource, "return classmateArcProgressLabel(progress);");
+    expectScriptToContain(clientSource, "return roomCompletionProgressView(fac);");
+    expectScriptToContain(clientSource, "return roomCompletionProgressLabel(fac, progress);");
   });
 
   it("keeps lounge mode out of the empty-board class-start CTA", () => {
@@ -142,6 +277,23 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "initializePrivyFromStoredSession();");
     expect(script).not.toContain("sendEmailCode");
     expect(script).not.toContain("loginWithEmailCode");
+  });
+
+  it("keeps browser-owned OpenRouter keys session-scoped unless persistence is explicit", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(clientSource, "const AUTH_KEY = \"rh_openrouter_key\"");
+    expectScriptToContain(clientSource, "const AUTH_PERSIST = \"rh_openrouter_persist\"");
+    expectScriptToContain(clientSource, "return kind === \"local\" ? window.localStorage : window.sessionStorage;");
+    expectScriptToContain(clientSource, "function persistentApiKeyStorageEnabled()");
+    expectScriptToContain(clientSource, "return storageGet(\"local\", AUTH_PERSIST) === \"1\";");
+    expectScriptToContain(clientSource, "function migrateLegacyLocalAuthToSession()");
+    expectScriptToContain(clientSource, "if (persistentApiKeyStorageEnabled()) return;");
+    expectScriptToContain(clientSource, "storageSet(\"session\", AUTH_KEY, key);");
+    expectScriptToContain(clientSource, "storageRemove(\"local\", AUTH_KEY);");
+    expectScriptToContain(script, "migrateLegacyLocalAuthToSession();");
+    expect(script).not.toContain('localStorage.setItem("rh_openrouter_key"');
   });
 
   it("keeps Stripe Hall Pass checkout separate from Solana pack checkout", () => {
@@ -406,6 +558,13 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "if (renderSig === accountHallPassCardsRenderSig && els.accountHallPassCards.childElementCount > 0) return;");
     expectScriptToContain(script, "function syncComicUnlockModals(t)");
     expectScriptToContain(script, "Comic Page Unlocked");
+    expectScriptToContain(script, 'title.appendChild(document.createTextNode(" "));');
+    expect(script).not.toContain("FIRST BELL CARD");
+    expect(script).not.toContain("First Bell Card Unlocked");
+    expect(script).not.toContain("Start Social Card");
+    expect(script).not.toContain("Social card ready");
+    expect(script).not.toContain("Social card: When a classmate");
+    expect(script).not.toContain("social card ready");
     expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
     expect(VIEWER_CSS).toContain(".account-tabs");
     expect(VIEWER_CSS).toContain(".comic-reader.is-reward");
@@ -508,9 +667,11 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
 
     expectScriptToContain(script, "function chatStreamStillCurrent(opts)");
-    expectScriptToContain(script, "const watchdog = setTimeout");
+    expectScriptToContain(script, "const resetWatchdog = () =>");
+    expectScriptToContain(script, "watchdog = setTimeout");
+    expectScriptToContain(script, "resetWatchdog();");
     expectScriptToContain(script, "reader.cancel()");
-    expectScriptToContain(script, "clearTimeout(watchdog)");
+    expectScriptToContain(script, "if (watchdog) clearTimeout(watchdog)");
     expectScriptToContain(script, "opts.streamSeq !== state.streamSeq");
     expectScriptToContain(script, "turnController.nextStreamGuard(targetFaculty)");
   });
@@ -531,7 +692,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('title="Passed daily classes needed for this year"');
     expect(html).toContain('title="Subjects cleared with a C or better this year"');
     expectScriptToContain(script, '"📚 " + streakCount + "/" + streakReq');
-    expectScriptToContain(script, '"✅ " + subjects.met + "/" + subjects.total');
+    expectScriptToContain(script, '"✅ " + subjectMet + "/" + subjectTotal');
+    expectScriptToContain(script, "const view = arcIndicatorView(t, subjectClearSummary(), walletSummaryText(t));");
     expectScriptToContain(script, 'walletSummaryText(t)');
     expectScriptToContain(script, '" · 🎫 "');
   });
@@ -589,6 +751,21 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "RECENT_ERRORS");
     expect(script).not.toContain("github.com/cenetex/app-ruby-high/issues/new");
     expect(script).not.toContain("mailto:hello@ratimics.com");
+  });
+
+  it("keeps the channel footer compact and clips tall student portraits", () => {
+    expect(cssRule(".channels-footer")).toContain("flex: 0 0 auto");
+    expect(cssRule(".channels-footer .you-avatar")).toContain("position: relative");
+    expect(cssRule(".channels-footer .you-avatar")).toContain("overflow: hidden");
+    expect(cssRule(".channels-footer .you-avatar img")).toContain("position: absolute");
+    expect(cssRule(".channels-footer .you-avatar img")).toContain("inset: 0");
+    expect(cssRule(".channels-footer .you-avatar img")).toContain("height: 100% !important");
+    expect(cssRule(".channels-footer .you-avatar img")).toContain("object-fit: cover");
+    expect(cssRule(".channels-rail .report-bug-link")).toContain("display: inline-flex");
+    expect(cssRule(".channels-rail .report-bug-link")).toContain("padding: 0");
+    expect(cssRule(".channels-links")).toContain("flex-wrap: wrap");
+    expect(cssRule(".channels-links")).toContain("flex: 0 0 auto");
+    expect(VIEWER_CSS).not.toContain("Stack links vertically in the channels footer");
   });
 
   it("keeps installed packs as one-click rows and searches creator packs separately", () => {

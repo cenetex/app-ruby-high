@@ -10,6 +10,14 @@ function gradeFromPath(value: string | undefined): Grade | null {
   return GRADES.includes(value as Grade) ? value as Grade : null;
 }
 
+function decodePathSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -148,7 +156,7 @@ export async function handleYearbookRoutes(ctx: RouteContext, ruby: RubyHighServ
   }
   const sub = ctx.pathname.slice(YEARBOOK_PREFIX.length);
   const match = sub.match(/^\/([^/]+)\/([^/]+)$/);
-  const shareId = match?.[1] ? decodeURIComponent(match[1]) : "";
+  const shareId = match?.[1] ? decodePathSegment(match[1]) : "";
   const grade = gradeFromPath(match?.[2]);
   if (!shareId || !grade) {
     ctx.error(ctx.res, "Yearbook card not found.", 404);

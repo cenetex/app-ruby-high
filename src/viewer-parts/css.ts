@@ -540,12 +540,13 @@ export const VIEWER_CSS = `
     text-decoration: line-through;
   }
   .channels-footer {
-    padding: 12px 14px calc(var(--safe-bot) + 12px);
+    padding: 12px 14px 10px;
     border-top: 1px solid var(--line);
     background: var(--bg-elev);
     display: flex;
     align-items: center;
     gap: 10px;
+    flex: 0 0 auto;
   }
   .channels-footer .you-avatar {
     width: 36px;
@@ -557,6 +558,17 @@ export const VIEWER_CSS = `
     place-items: center;
     font-weight: 800;
     flex: 0 0 auto;
+    position: relative;
+    overflow: hidden;
+  }
+  .channels-footer .you-avatar img {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+    object-position: center top;
   }
   .channels-footer .you-meta { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
   .channels-footer .you-name {
@@ -584,15 +596,17 @@ export const VIEWER_CSS = `
   }
   .channels-rail .report-bug-link {
     appearance: none;
-    display: block;
+    display: inline-flex;
+    align-items: center;
     background: transparent;
     border: none;
     color: var(--text-mute);
     font-size: 11px;
+    line-height: 1.2;
     text-decoration: underline;
     text-decoration-style: dotted;
     text-underline-offset: 2px;
-    padding: 6px 14px calc(var(--safe-bot) + 10px);
+    padding: 0;
     cursor: pointer;
     text-align: left;
   }
@@ -603,7 +617,7 @@ export const VIEWER_CSS = `
     grid-row: 1;
     grid-column: 1;
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto auto auto 1fr auto;
     height: 100dvh;
     overflow: hidden;
     background: var(--bg-deep);
@@ -1934,11 +1948,15 @@ export const VIEWER_CSS = `
     color: var(--text) !important;
     border-color: rgba(255,255,255,0.28) !important;
   }
-  /* Stack links vertically in the channels footer */
+  /* Keep footer links compact so they do not compete with the account row. */
   .channels-links {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 0 14px calc(var(--safe-bot) + 10px);
+    background: var(--bg-elev);
+    border-top: 1px solid rgba(255,255,255,0.04);
+    flex: 0 0 auto;
   }
 
   .board-subject-grades {
@@ -2326,9 +2344,144 @@ export const VIEWER_CSS = `
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* ── school world feed ─────────────────────────────────────────────────── */
+  .world-panel {
+    grid-row: 3;
+    min-height: 0;
+    max-height: 116px;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(170px, 0.8fr) minmax(130px, 0.75fr) minmax(220px, 1.45fr);
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px calc(var(--safe-right) + 12px) 10px calc(var(--safe-left) + 12px);
+    border-bottom: 1px solid var(--line);
+    background: rgba(21, 23, 31, 0.94);
+  }
+  .world-panel[hidden] {
+    display: none;
+  }
+  .world-panel-head {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .world-panel-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .world-panel-title {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1.2;
+  }
+  .world-panel-sub {
+    margin-top: 2px;
+    color: var(--text-mute);
+    font-size: 11px;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .world-panel-refresh {
+    appearance: none;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-elev);
+    color: var(--text-soft);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+  .world-panel-refresh svg {
+    width: 16px;
+    height: 16px;
+  }
+  .world-panel-refresh:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  }
+  .world-panel-rooms {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .world-panel-rooms::-webkit-scrollbar {
+    display: none;
+  }
+  .world-room-chip {
+    flex: 0 0 auto;
+    max-width: 152px;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    padding: 7px 9px;
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.25;
+  }
+  .world-room-chip strong {
+    display: block;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .world-panel-events {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    overflow: hidden;
+  }
+  .world-event-row {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.25;
+  }
+  .world-event-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .world-event-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .world-event-time {
+    color: var(--text-fade);
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .world-panel-empty {
+    color: var(--text-mute);
+    font-size: 11px;
+  }
+
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {
-    grid-row: 3;
+    grid-row: 4;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 12px calc(var(--safe-right) + 12px) 14px calc(var(--safe-left) + 12px);
@@ -6328,7 +6481,7 @@ export const VIEWER_CSS = `
 
   /* ── composer ──────────────────────────────────────────────────────────── */
   .composer-zone {
-    grid-row: 4;
+    grid-row: 5;
     border-top: 1px solid var(--line);
     background: rgba(21, 23, 31, 0.96);
     backdrop-filter: blur(14px);
@@ -6973,13 +7126,13 @@ export const VIEWER_CSS = `
      type via script-set classes. */
   @media (max-width: 600px) {
     main.workspace {
-      grid-template-rows: auto minmax(0, auto) minmax(92px, 1fr) auto;
+      grid-template-rows: auto minmax(0, auto) auto minmax(92px, 1fr) auto;
     }
     .blackboard-panel {
-      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 174px);
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 242px);
     }
     .blackboard-panel[data-mode="round-revealed"] {
-      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 118px);
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 186px);
     }
     .blackboard-meta {
       flex-wrap: nowrap;
@@ -7083,6 +7236,18 @@ export const VIEWER_CSS = `
       padding: 10px calc(var(--safe-right) + 10px) 12px calc(var(--safe-left) + 10px);
       scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 18px);
     }
+    .world-panel {
+      max-height: 96px;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+      padding: 8px calc(var(--safe-right) + 10px) 8px calc(var(--safe-left) + 10px);
+    }
+    .world-panel-head {
+      min-height: 30px;
+    }
+    .world-panel-events {
+      display: none;
+    }
     .msg {
       grid-template-columns: 32px minmax(0, 1fr);
       column-gap: 9px;
@@ -7111,7 +7276,7 @@ export const VIEWER_CSS = `
   @media (max-width: 380px) {
     .answers { grid-template-columns: 1fr; }
     .blackboard-panel {
-      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 150px);
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 218px);
     }
     .board {
       max-height: 28dvh;
@@ -7499,7 +7664,7 @@ export const VIEWER_CSS = `
 
   /* ── Honor Roll leaderboard ────────────────────────────────────────────── */
   .leaderboard-panel {
-    grid-row: 2;
+    grid-row: 2 / 5;
     background: var(--bg);
     display: flex;
     flex-direction: column;

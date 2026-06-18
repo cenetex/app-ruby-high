@@ -22,12 +22,15 @@
  * | CHAT_LIMITER       | chat-routes.ts |       60 |  1/sec | POST /chat, /chat/event, /chat/student-chime, /chat/opinion-submit, /chat/character/generate, /chat/reset |
  * | PORTRAIT_LIMITER   | chat-routes.ts |        8 | 1/30s  | POST /chat/character/portrait, /chat/character/diploma |
  * | COMMAND_LIMITER    | routes.ts      |      120 |  2/sec | POST /command (game-state mutation surface) |
+ * | PUBLIC_READ_LIMITER | routes.ts      |      120 |  2/sec | GET /world, /world/events, /cohort/:grade |
+ * | PACK_REVIEW_LIMITER | pack-library-routes.ts | 8 | 1/min | POST /pack/:id/review |
+ * | NFT_MUTATION_LIMITER | routes/nft.ts |       30 | 1/10s | POST /nft/sync-packs, /nft/open-pack, card mint/burn endpoints |
  * | METRICS_EVENT_LIMITER | metrics-events.ts | 60 | 1/sec | POST /metrics/event |
  *
  * Endpoints intentionally NOT gated:
  *
- * - GET routes (auth/me, auth/start, chat/history, viewer, assets, packs, the
- *   default session GET) — read-only, cheap, not worth false 429s on a
+ * - Most GET routes (auth/me, auth/start, chat/history, viewer, assets, packs,
+ *   the default session GET) — read-only, cheap, not worth false 429s on a
  *   refresh storm.
  * - POST /control — no-op stub.
  * - POST /auth/logout — single delete, cheap.

@@ -261,7 +261,7 @@ export async function handleCommandRoute(args: {
         throw new Error("Pick a graduation reward.");
       }
       const state = ruby.completeGraduation(stateKey, reward);
-      const message = state.character && (state.character.yearbook ?? []).length >= 4 ? "Graduated" : "Advanced";
+      const message = state.character && Array.isArray(state.character.yearbook) && state.character.yearbook.length >= 4 ? "Graduated" : "Advanced";
       return await persist(state, message);
     },
     "create-character": async () => {

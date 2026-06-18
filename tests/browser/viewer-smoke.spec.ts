@@ -1,78 +1,15 @@
-import { expect, type Page, test } from "@playwright/test";
-
-const PRIVY_CLIENT_STUB = `
-window.RubyHighPrivyClientModule = {
-  createRubyHighPrivyClient: async function () {
-    const emptySession = {
-      authenticated: false,
-      userId: null,
-      label: null,
-      walletAddress: null,
-      walletChainType: null,
-      solanaWalletAddress: null,
-      solanaAccountAddress: null
-    };
-    return {
-      current: async function () { return emptySession; },
-      login: async function () { return null; },
-      connectSolanaWallet: async function () { return null; },
-      logout: async function () {},
-      paySolanaQuote: async function () { throw new Error("Privy smoke stub cannot pay"); },
-      signSolanaTransaction: async function () { throw new Error("Privy smoke stub cannot sign"); },
-      signAndSendSolanaTransaction: async function () { throw new Error("Privy smoke stub cannot send"); },
-      onSession: function () { return function () {}; },
-      onDiagnostic: function () { return function () {}; }
-    };
-  }
-};
-`;
-
-function watchRuntimeErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => {
-    errors.push(error.message);
-  });
-  return errors;
-}
-
-async function stubPrivyBundle(page: Page): Promise<() => number> {
-  let requestCount = 0;
-  await page.route(/\/api\/apps\/ruby-high\/assets\/privy-client\.global\.js(?:\?.*)?$/, async (route) => {
-    requestCount += 1;
-    await route.fulfill({
-      status: 200,
-      contentType: "text/javascript; charset=utf-8",
-      body: PRIVY_CLIENT_STUB,
-    });
-  });
-  return () => requestCount;
-}
-
-async function openViewer(page: Page) {
-  const errors = watchRuntimeErrors(page);
-  const privyRequests = await stubPrivyBundle(page);
-  await page.goto("/api/apps/ruby-high/viewer");
-  await expect(page).toHaveTitle(/Ruby High/);
-  await expect(page.locator("#shell")).toBeVisible();
-  await expect(page.locator("#signin-overlay")).not.toHaveClass(/is-open/);
-  await expect.poll(async () => (await page.locator("#you-state").textContent()) ?? "")
-    .not.toMatch(/checking/i);
-  await expect.poll(privyRequests).toBeGreaterThan(0);
-  return { errors };
-}
+import { expect, test } from "@playwright/test";
+import { createCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("boots as a guest, creates a character, answers a card, and opens account tabs", async ({ page }) => {
   const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
 
-  await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
-  const lockButton = page.locator("#sheet-card").getByRole("button", { name: "Lock it in" });
+  const lockButton = page.getByRole("button", { name: "Lock it in" });
   await expect(lockButton).toBeEnabled();
   await lockButton.click();
 
-  await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
+  await expect(lockButton).not.toBeVisible();
   const firstAnswer = page.locator(".answer:not([disabled])").first();
   await expect(firstAnswer).toBeVisible();
   await firstAnswer.click();
@@ -87,6 +24,47 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(page.locator("#account-panel-library")).toBeVisible();
   await page.locator("#privy-close").click();
   await expect(page.locator("#privy-overlay")).not.toHaveClass(/is-open/);
+
+  expect(errors).toEqual([]);
+});
+
+test("keeps the public world feed healthy across a live stream rollover", async ({ page }) => {
+  test.setTimeout(50_000);
+  const { errors } = await openViewer(page);
+  const panel = page.locator("#world-panel");
+  const sub = page.locator("#world-panel-sub");
+
+  await expect(panel).toBeVisible();
+  await expect(sub).toContainText(/live|room/i);
+  await expect(sub).not.toContainText(/paused|catching up|unavailable/i);
+
+  await page.waitForTimeout(28_000);
+
+  await expect(panel).toBeVisible();
+  await expect(sub).toContainText(/live|room/i);
+  await expect(sub).not.toContainText(/paused|catching up|unavailable/i);
+  expect(errors).toEqual([]);
+});
+
+test("shows comic unlocks as a modal instead of an inline reward card", async ({ page }) => {
+  test.setTimeout(35_000);
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await createCharacter(page);
+
+  await expect(page.locator(".comic-reader")).toHaveCount(0);
+  await tickGrade(page);
+
+  const modal = page.locator(".comic-reader.is-reward");
+  await expect(modal).toBeVisible({ timeout: 10_000 });
+  await expect(modal).toHaveAttribute("role", "dialog");
+  await expect(modal).toHaveAttribute("aria-modal", "true");
+  await expect(modal).toContainText("Comic Page Unlocked");
+  await expect(modal.locator("img")).toHaveAttribute("src", /\/assets\/comics\/first-bell\/page-\d+\.jpg/);
+
+  await expect(page.getByText(/first bell card unlocked/i)).toHaveCount(0);
+  await modal.getByRole("button", { name: "Close comic page" }).click();
+  await expect(modal).not.toBeVisible();
 
   expect(errors).toEqual([]);
 });

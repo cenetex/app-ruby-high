@@ -10,11 +10,11 @@ import {
   WELCOME_HALL_PASS_GRANT_ID,
 } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
-import { MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
+import { getLoadedPack, MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
-import { dailyKey } from "../types.js";
+import { dailyKey, type AnswerRecord, type QuizState } from "../types.js";
 
 let tmpDir: string;
 let storePath: string;
@@ -29,7 +29,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  if (activeRuby) await activeRuby.flush();
+  if (activeRuby) await activeRuby.stop();
   await rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -656,6 +656,36 @@ function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"):
 }
 
 describe("imported pack persistence", () => {
+  it("does not let a persisted global built-in snapshot override bundled question assets", async () => {
+    const staleOriginal: ContentPack = {
+      ...fakeAnkiPackWithSally("ruby-high-original", "stale-global-q"),
+      name: "Stale Ruby High",
+      faculty: [
+        {
+          ...fakeAnkiPackWithSally("stale-ruby", "stale-ruby-q").faculty[0]!,
+          id: "ruby",
+          questions: [fakeAnkiPackWithSally("stale-ruby", "stale-ruby-q").faculty[0]!.questions[0]!],
+        },
+      ],
+    };
+    await new StateStore(storePath).savePack({
+      pack: staleOriginal,
+      ownerSessionId: "__ruby_high_global__",
+      touchedAt: 1,
+    });
+
+    const { ruby, faculty } = await makeServices();
+    expect(getLoadedPack().name).toBe("Ruby High");
+    expect(faculty.bank("ruby")?.questions.length).toBeGreaterThanOrEqual(200);
+    expect(faculty.bank("sally-science")?.questions.length).toBeGreaterThanOrEqual(200);
+    expect(faculty.bank("professor-edward")?.questions.length).toBeGreaterThanOrEqual(200);
+
+    await ruby.flush();
+    const persisted = await new StateStore(storePath).loadPacks();
+    expect(persisted.some((record) =>
+      record.ownerSessionId === "__ruby_high_global__" && record.pack.id === "ruby-high-original")).toBe(false);
+  });
+
   it("prunes persisted imported packs to the same per-owner cap as the registry", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:packs";
@@ -897,15 +927,95 @@ describe("RubyHighService Phase 1", () => {
     const sid = "test:freshman-curated-core";
     ruby.selectGrade(sid, "9");
 
-    const freshmanBankTotal = faculty.bank("ruby")!.questions.filter((q) => q.difficulty === "easy").length;
-    const sophomoreBankTotal = faculty.bank("ruby")!.questions.filter((q) => q.difficulty === "easy" || q.difficulty === "medium").length;
+    const rubyFaculty = getLoadedPack().faculty.find((f) => f.id === "ruby")!;
+    const freshmanBankTotal = rubyFaculty.questions.filter((q) => q.difficulty === "easy" && !q.minGrade).length;
+    const sophomoreBankTotal = rubyFaculty.questions.filter((q) =>
+      (q.difficulty === "easy" || q.difficulty === "medium") &&
+      (!q.minGrade || Number(q.minGrade) <= 10)
+    ).length + (rubyFaculty.sourceCards ?? []).filter((q) =>
+      (q.difficulty === "easy" || q.difficulty === "medium") &&
+      (!q.minGrade || Number(q.minGrade) <= 10)
+    ).length;
+    const oldDifficultyOnlyFreshmanTotal = faculty.bank("ruby")!.questions.filter((q) => q.difficulty === "easy").length;
     const freshmanStatus = ruby.questionBankStatus(sid, "ruby");
     expect(freshmanStatus.total).toBe(freshmanBankTotal);
+    expect(freshmanStatus.total).toBeLessThan(oldDifficultyOnlyFreshmanTotal);
 
     ruby.selectGrade(sid, "10");
     const sophomoreStatus = ruby.questionBankStatus(sid, "ruby");
     expect(sophomoreStatus.total).toBeGreaterThan(freshmanBankTotal);
-    expect(sophomoreStatus.total).toBeGreaterThan(sophomoreBankTotal);
+    expect(sophomoreStatus.total).toBe(sophomoreBankTotal);
+  });
+
+  it("reports curriculum coverage by grade and teacher for active characters", async () => {
+    const { ruby } = await makeServices();
+    const freshmanSid = "test:curriculum-coverage-freshman";
+    const sophomoreSid = "test:curriculum-coverage-sophomore";
+    const freshmanPack = fakeLeveledPack("pack:curriculum-coverage-freshman");
+    const sophomorePack = fakeLeveledPack("pack:curriculum-coverage-sophomore");
+    freshmanPack.faculty[0]!.sourceCards = [{
+      id: "level-corpus-easy",
+      kind: "basic",
+      front: "What does a source corpus let a teacher research?",
+      back: "A reusable concept base for new questions.",
+      acceptedAnswers: ["A reusable concept base for new questions."],
+      deckName: "level-test-corpus",
+      tags: ["curriculum"],
+      subject: "research",
+      difficulty: "easy",
+      minGrade: "10",
+      faculty: "level-test-course",
+    }];
+    sophomorePack.faculty[0]!.sourceCards = freshmanPack.faculty[0]!.sourceCards.map((card) => ({ ...card }));
+    registerPack(freshmanPack, freshmanSid);
+    registerPack(sophomorePack, sophomoreSid);
+
+    attachTestCharacter(ruby, freshmanSid);
+    ruby.setActivePackForSession(freshmanSid, freshmanPack.id);
+    ruby.selectGrade(freshmanSid, "9");
+    const posed = ruby.pickAndPose(freshmanSid, { faculty: "level-test-course" });
+    ruby.submitAnswer(freshmanSid, posed.current!.correct!);
+
+    attachTestCharacter(ruby, sophomoreSid);
+    ruby.setActivePackForSession(sophomoreSid, sophomorePack.id);
+    ruby.selectGrade(sophomoreSid, "10");
+
+    const coverage = ruby.curriculumCoverageSnapshot();
+    const freshman = coverage.rows.find((row) => row.grade === "9" && row.facultyId === "level-test-course");
+    const sophomore = coverage.rows.find((row) => row.grade === "10" && row.facultyId === "level-test-course");
+
+    expect(freshman).toMatchObject({
+      sessions: 1,
+      totalEligibleMax: 1,
+      averageSeen: 1,
+      averageRemaining: 0,
+      lowPoolSessions: 1,
+      exhaustedSessions: 1,
+      replenishment: {
+        mode: "manual-curation",
+        targetMinGrade: "9",
+        targetDifficulty: "easy",
+      },
+    });
+    expect(sophomore).toMatchObject({
+      sessions: 1,
+      totalEligibleMax: 3,
+      averageSeen: 0,
+      averageRemaining: 3,
+      lowPoolSessions: 1,
+      exhaustedSessions: 0,
+      replenishment: {
+        mode: "generate",
+        targetMinGrade: "10",
+        targetDifficulty: "easy",
+        sourceCardCount: 1,
+        focusSubjects: ["research"],
+        sourceCardIds: ["level-corpus-easy"],
+      },
+    });
+    expect(sophomore?.replenishment?.promptSeed).toContain("actively researching");
+    expect(coverage.lowPools.map((row) => `${row.grade}:${row.facultyId}`)).toContain("9:level-test-course");
+    expect(coverage.activeCharacterSessions).toBeGreaterThanOrEqual(2);
   });
 
   it("does not replace or clear a live unresolved board", async () => {
@@ -1023,6 +1133,7 @@ describe("RubyHighService Phase 1", () => {
     real.currentGrade = "9";
     real.character!.name = "Noor";
     real.character!.createdAt = now;
+    real.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/noor.png";
     real.character!.dailyClasses = {
       ruby: completedClassRecord("9", "ruby", today, "A", 300),
     };
@@ -1032,6 +1143,24 @@ describe("RubyHighService Phase 1", () => {
       imageUrl: "/api/apps/ruby-high/assets/portrait/noor.png",
       teacherFacultyId: "ruby",
       earnedAt: now,
+    }];
+
+    const privateStudent = attachTestCharacter(ruby, "test:social-private");
+    privateStudent.sessionId = "test:social-private";
+    privateStudent.currentGrade = "9";
+    privateStudent.character!.name = "Ari";
+    privateStudent.character!.createdAt = now;
+    privateStudent.character!.socialConsent = false;
+    privateStudent.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/ari.png";
+    privateStudent.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    privateStudent.character!.pendingPhotos = [{
+      photoId: "photo:private",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/ari.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now - 3,
     }];
 
     const smoke = attachTestCharacter(ruby, "test:social-smoke");
@@ -1066,18 +1195,1054 @@ describe("RubyHighService Phase 1", () => {
       earnedAt: now - 2,
     }];
 
+    const blank = attachTestCharacter(ruby, "test:social-blank");
+    blank.sessionId = "test:social-blank";
+    blank.currentGrade = "9";
+    blank.character!.name = "   ";
+    blank.character!.createdAt = now;
+    blank.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    blank.character!.pendingPhotos = [{
+      photoId: "photo:blank",
+      kind: "class-photo",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/blank.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now - 4,
+    }];
+
+    const malformedClasses = attachTestCharacter(ruby, "test:social-malformed-classes");
+    malformedClasses.sessionId = "test:social-malformed-classes";
+    malformedClasses.currentGrade = "9";
+    malformedClasses.character!.name = "Malformed Mina";
+    malformedClasses.character!.createdAt = now - 2 * 24 * 60 * 60 * 1000;
+    malformedClasses.character!.dailyClasses = [null] as never;
+    malformedClasses.character!.pendingPhotos = [{
+      photoId: "photo:malformed-classes",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/malformed.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now - 5,
+    }];
+
     const memories = ruby.getDailyMemories();
     expect(memories.charactersCreated).toEqual(["Noor"]);
     expect(memories.classesPassed.map((entry) => entry.studentName)).toEqual(["Noor"]);
-    expect(memories.totalStudents).toBe(1);
+    expect(memories.totalStudents).toBe(2);
     expect(memories.totalQuestionsAnswered).toBe(3);
 
     expect(ruby.getRecentlyActiveStudents().map((student) => student.name)).toEqual(["Noor"]);
+    expect(ruby.getClassPhotoCandidates()).toEqual([{
+      sessionId: "test:social-real",
+      name: "Noor",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/noor.png",
+      grade: "9",
+    }]);
 
     const snapshot = ruby.getSchoolSnapshot();
     expect(snapshot.photoPool.map((photo) => photo.studentName)).toEqual(["Noor"]);
+    expect(JSON.stringify(snapshot)).not.toContain("Ari");
     expect(JSON.stringify(snapshot)).not.toContain("Smoke");
     expect(JSON.stringify(snapshot)).not.toContain("Pacing");
+    expect(JSON.stringify(snapshot)).not.toContain("blank.png");
+    expect(JSON.stringify(snapshot)).not.toContain("malformed.png");
+
+    const photoId = ruby.enqueueClassPhotoReveal("ruby", "/api/apps/ruby-high/assets/class-photo/noor.png", ruby.getClassPhotoCandidates());
+    expect(photoId).toMatch(/^photo:test:social-real:class-photo:/);
+    expect(real.character!.pendingPhotos?.at(-1)).toMatchObject({
+      photoId,
+      kind: "class-photo",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/noor.png",
+      teacherFacultyId: "ruby",
+    });
+  });
+
+  it("keeps malformed character array fields from breaking social snapshots", async () => {
+    const { ruby } = await makeServices();
+    const oldDate = "2026-05-01";
+    const oldAt = Date.UTC(2026, 4, 1, 12);
+
+    const state = attachTestCharacter(ruby, "test:social-malformed-arrays");
+    state.sessionId = "test:social-malformed-arrays";
+    state.currentGrade = "9";
+    state.faculty = "ruby";
+    state.character!.name = "Malformed Array Mina";
+    state.character!.createdAt = oldAt;
+    state.character!.dailyClasses = {
+      ruby: {
+        ...completedClassRecord("9", "ruby", oldDate, "A", 300),
+        completedAt: oldAt,
+        updatedAt: oldAt,
+      },
+    };
+    state.character!.pendingPhotos = { length: 1 } as never;
+    state.character!.classPhotos = { length: 1 } as never;
+    state.character!.levelUps = { length: 1 } as never;
+    state.character!.yearbook = { length: 1 } as never;
+    state.schoolEvents = { length: 1 } as never;
+    state.studentPool = [{
+      id: "student:malformed-yearbook",
+      name: "Malformed Pool Mina",
+      playbookId: "check",
+      stats: { heart: 0, head: 0, hustle: 0, honor: 0 },
+      personality: "",
+      yearbook: { length: 1 } as never,
+      createdAt: oldAt,
+      completedAt: oldAt,
+    } as never];
+
+    const memories = ruby.getDailyMemories();
+    const snapshot = ruby.getSchoolSnapshot(Date.UTC(2026, 5, 15, 12));
+    const analytics = ruby.analyticsSnapshot(Date.UTC(2026, 5, 15, 12));
+
+    expect(memories.totalStudents).toBe(1);
+    expect(memories.classesPassed).toEqual([]);
+    expect(memories.gradesAdvanced).toEqual([]);
+    expect(memories.graduations).toEqual([]);
+    expect(memories.totalQuestionsAnswered).toBe(3);
+    expect(analytics.completedGrades).toBe(0);
+    expect(analytics.graduatedCharacters).toBe(0);
+    expect(ruby.yearbookSharesForSession("test:social-malformed-arrays")).toEqual([]);
+    expect(ruby.getSchoolWorldEvents(10, Date.UTC(2026, 5, 15, 12)).every((event) => event.id !== undefined)).toBe(true);
+    expect(ruby.pendingPhotoPoolSize()).toBe(0);
+    expect(ruby.getRecentlyActiveStudents(Date.UTC(2026, 5, 15, 12))).toEqual([
+      expect.objectContaining({ name: "Malformed Array Mina", yearbookCount: 0 }),
+    ]);
+    expect(snapshot.photoPool).toEqual([]);
+    expect(snapshot.classPhotoHistory).toEqual([]);
+  });
+
+  it("preflights class photo reveal targets before image generation", async () => {
+    const { ruby } = await makeServices();
+    const publicState = attachTestCharacter(ruby, "test:class-photo-public");
+    publicState.sessionId = "test:class-photo-public";
+    publicState.character!.name = "Noor";
+
+    const privateState = attachTestCharacter(ruby, "test:class-photo-private");
+    privateState.sessionId = "test:class-photo-private";
+    privateState.character!.name = "Ari";
+    privateState.character!.socialConsent = false;
+
+    const syntheticState = attachTestCharacter(ruby, "test:class-photo-synthetic");
+    syntheticState.sessionId = "test:class-photo-synthetic";
+    syntheticState.character!.name = "Smoke mqe1pkx3";
+
+    expect(ruby.hasClassPhotoRevealTarget([
+      {
+        sessionId: "test:class-photo-private",
+        name: "Ari",
+        imageUrl: "/api/apps/ruby-high/assets/portrait/ari.png",
+        grade: "9",
+      },
+      {
+        sessionId: "test:class-photo-synthetic",
+        name: "Smoke mqe1pkx3",
+        imageUrl: "/api/apps/ruby-high/assets/portrait/smoke.png",
+        grade: "9",
+      },
+    ])).toBe(false);
+
+    expect(ruby.hasClassPhotoRevealTarget([
+      {
+        sessionId: "test:class-photo-private",
+        name: "Ari",
+        imageUrl: "/api/apps/ruby-high/assets/portrait/ari.png",
+        grade: "9",
+      },
+      {
+        sessionId: "test:class-photo-public",
+        name: "Noor",
+        imageUrl: "/api/apps/ruby-high/assets/portrait/noor.png",
+        grade: "9",
+      },
+    ])).toBe(true);
+
+    const photoId = ruby.enqueueClassPhotoReveal("ruby", "/api/apps/ruby-high/assets/class-photo/noor.png", [
+      {
+        sessionId: "test:class-photo-private",
+        name: "Ari",
+        imageUrl: "/api/apps/ruby-high/assets/portrait/ari.png",
+        grade: "9",
+      },
+      {
+        sessionId: "test:class-photo-public",
+        name: "Noor",
+        imageUrl: "/api/apps/ruby-high/assets/portrait/noor.png",
+        grade: "9",
+      },
+    ]);
+
+    expect(photoId).toMatch(/^photo:test:class-photo-public:class-photo:/);
+    expect(privateState.character!.pendingPhotos ?? []).toEqual([]);
+    expect(publicState.character!.pendingPhotos).toHaveLength(1);
+  });
+
+  it("counts only postable public photos in global photo queue metrics", async () => {
+    const { ruby } = await makeServices();
+    const today = dailyKey();
+    const now = Date.now();
+
+    const publicState = attachTestCharacter(ruby, "test:photo-count-public");
+    publicState.sessionId = "test:photo-count-public";
+    publicState.character!.name = "Noor";
+    publicState.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    publicState.character!.pendingPhotos = [{
+      photoId: "photo:public",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/noor.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now,
+    }];
+
+    const classPhotoOnly = attachTestCharacter(ruby, "test:photo-count-class-photo");
+    classPhotoOnly.sessionId = "test:photo-count-class-photo";
+    classPhotoOnly.character!.name = "Mina";
+    classPhotoOnly.character!.dailyClasses = {};
+    classPhotoOnly.character!.pendingPhotos = [{
+      photoId: "photo:class-photo",
+      kind: "class-photo",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/mina.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now + 1,
+    }, {
+      photoId: "photo:class-photo-stowaway-portrait",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/mina.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now + 2,
+    }];
+
+    const noClassPortrait = attachTestCharacter(ruby, "test:photo-count-no-class");
+    noClassPortrait.sessionId = "test:photo-count-no-class";
+    noClassPortrait.character!.name = "Sol";
+    noClassPortrait.character!.dailyClasses = {};
+    noClassPortrait.character!.pendingPhotos = [{
+      photoId: "photo:no-class",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/sol.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now + 3,
+    }];
+
+    const privateState = attachTestCharacter(ruby, "test:photo-count-private");
+    privateState.sessionId = "test:photo-count-private";
+    privateState.character!.name = "Ari";
+    privateState.character!.socialConsent = false;
+    privateState.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    privateState.character!.pendingPhotos = [{
+      photoId: "photo:private",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/ari.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now + 4,
+    }];
+
+    const syntheticState = attachTestCharacter(ruby, "test:photo-count-synthetic");
+    syntheticState.sessionId = "test:photo-count-synthetic";
+    syntheticState.character!.name = "Smoke mqe1pkx3";
+    syntheticState.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    syntheticState.character!.pendingPhotos = [{
+      photoId: "photo:synthetic",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/smoke.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now + 5,
+    }];
+
+    const blankState = attachTestCharacter(ruby, "test:photo-count-blank");
+    blankState.sessionId = "test:photo-count-blank";
+    blankState.character!.name = "   ";
+    blankState.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    blankState.character!.pendingPhotos = [{
+      photoId: "photo:blank",
+      kind: "class-photo",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/blank.png",
+      teacherFacultyId: "ruby",
+      earnedAt: now + 6,
+    }];
+
+    expect(ruby.pendingPhotoPoolSize()).toBe(2);
+    expect(ruby.photoPostSchedulerSnapshot()).toMatchObject({
+      pendingPhotos: 2,
+    });
+    expect(ruby.getSchoolSnapshot().photoPool).toEqual([
+      {
+        studentName: "Noor",
+        kind: "portrait",
+        teacherFacultyId: "ruby",
+        earnedAt: now,
+      },
+      {
+        studentName: "Mina",
+        kind: "class-photo",
+        teacherFacultyId: "ruby",
+        earnedAt: now + 1,
+      },
+    ]);
+  });
+
+  it("bounds the school snapshot photo pool to the oldest postable photos", async () => {
+    const { ruby } = await makeServices();
+    const today = dailyKey();
+    const now = Date.now();
+
+    for (let i = 0; i < 125; i += 1) {
+      const state = attachTestCharacter(ruby, `test:photo-pool-cap-${i}`);
+      state.sessionId = `test:photo-pool-cap-${i}`;
+      state.character!.name = `Photo Student ${String(i).padStart(3, "0")}`;
+      state.character!.dailyClasses = {
+        ruby: completedClassRecord("9", "ruby", today, "A", 300),
+      };
+      state.character!.pendingPhotos = [{
+        photoId: `photo:pool-cap:${i}`,
+        kind: "portrait",
+        imageUrl: `/api/apps/ruby-high/assets/portrait/${i}.png`,
+        teacherFacultyId: "ruby",
+        earnedAt: now + i,
+      }];
+    }
+
+    const snapshot = ruby.getSchoolSnapshot();
+
+    expect(snapshot.photoPool).toHaveLength(100);
+    expect(snapshot.photoPool[0]).toMatchObject({
+      studentName: "Photo Student 000",
+      earnedAt: now,
+    });
+    expect(snapshot.photoPool.at(-1)).toMatchObject({
+      studentName: "Photo Student 099",
+      earnedAt: now + 99,
+    });
+  });
+
+  it("bounds daily memory detail lists without losing aggregate counts", async () => {
+    const { ruby } = await makeServices();
+    const today = dailyKey();
+    const now = Date.now();
+
+    for (let i = 0; i < 35; i += 1) {
+      const state = attachTestCharacter(ruby, `test:daily-memory-cap-${i}`);
+      state.sessionId = `test:daily-memory-cap-${i}`;
+      state.currentGrade = "9";
+      state.character!.name = `Student ${String(i).padStart(2, "0")}`;
+      state.character!.createdAt = now;
+      state.character!.dailyClasses = {
+        ruby: completedClassRecord("9", "ruby", today, "A", 300),
+      };
+    }
+
+    const memories = ruby.getDailyMemories();
+
+    expect(memories.charactersCreated).toHaveLength(25);
+    expect(memories.classesPassed).toHaveLength(25);
+    expect(memories.charactersCreated[0]).toBe("Student 00");
+    expect(memories.charactersCreated.at(-1)).toBe("Student 24");
+    expect(memories.classesPassed.at(-1)).toMatchObject({ studentName: "Student 24" });
+    expect(memories.totalStudents).toBe(35);
+    expect(memories.totalQuestionsAnswered).toBe(105);
+    expect(JSON.stringify(memories)).not.toContain("Student 34");
+  });
+
+  it("keeps stale public school events out of the world feed", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const state = attachTestCharacter(ruby, "test:world-stale-events");
+    state.sessionId = "test:world-stale-events";
+    state.currentGrade = "10";
+    state.faculty = "ruby";
+    state.character!.name = "Noor";
+    state.character!.createdAt = now - 2 * 24 * 60 * 60 * 1000;
+    const todayClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    todayClass.completedAt = now;
+    todayClass.updatedAt = now;
+    state.character!.dailyClasses = { ruby: todayClass };
+    state.schoolEvents.push({
+      id: "school:event:stale-world",
+      kind: "comic.page-unlocked",
+      at: now - 10 * 24 * 60 * 60 * 1000,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-old",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Old public page",
+    });
+    state.schoolEvents.push({
+      id: "school:event:nan-world",
+      kind: "comic.page-unlocked",
+      at: Number.NaN,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-nan",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Broken NaN public page",
+    });
+    state.schoolEvents.push({
+      id: "school:event:future-infinity-world",
+      kind: "comic.page-unlocked",
+      at: Number.POSITIVE_INFINITY,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-infinity",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Broken infinite public page",
+    });
+    state.schoolEvents.push({
+      id: "school:event:future-world",
+      kind: "comic.page-unlocked",
+      at: now + 60_000,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-future",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Future public page",
+    });
+    state.schoolEvents.push({
+      id: "school:event:fresh-world",
+      kind: "comic.page-unlocked",
+      at: now - 60_000,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-new",
+      pageNumber: 2,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Fresh public page",
+    });
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+    const comicEvents = world.recentEvents.filter((event) => event.kind === "comic.page-unlocked");
+
+    expect(world.activeStudents).toBe(1);
+    expect(comicEvents.map((event) => event.label)).toEqual(["Fresh public page"]);
+    expect(JSON.stringify(world)).not.toContain("Old public page");
+    expect(JSON.stringify(world)).not.toContain("Broken NaN public page");
+    expect(JSON.stringify(world)).not.toContain("Broken infinite public page");
+    expect(JSON.stringify(world)).not.toContain("Future public page");
+    expect(JSON.stringify(world)).not.toContain("school:event:fresh-world");
+    expect(JSON.stringify(world)).not.toContain("teacher:ruby:grade:10");
+  });
+
+  it("persists malformed-time school events with a safe durable timestamp", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const state = attachTestCharacter(ruby, "test:world-event-malformed-time");
+    state.sessionId = "test:world-event-malformed-time";
+
+    (ruby as unknown as {
+      appendSchoolEvent(state: QuizState, event: QuizState["schoolEvents"][number]): void;
+    }).appendSchoolEvent(state, {
+      id: "school:event:malformed-time",
+      kind: "comic.page-unlocked",
+      at: Number.NaN,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-malformed-time",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Malformed time page",
+    });
+    await ruby.flush();
+
+    const events = await new StateStore(storePath).loadSchoolEvents();
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: "school:event:malformed-time",
+        occurredAt: now,
+        day: "2026-06-15",
+      }),
+    ]);
+  });
+
+  it("hydrates only the bounded durable school-world event cache", async () => {
+    const loadSchoolEvents = vi.fn(async () => []);
+    const store = {
+      loadPacks: vi.fn(async () => []),
+      loadTeachers: vi.fn(async () => []),
+      loadDraftPacks: vi.fn(async () => []),
+      loadPackInstallations: vi.fn(async () => []),
+      load: vi.fn(async () => new Map()),
+      loadMetricEvents: vi.fn(async () => []),
+      loadSchoolEvents,
+      loadServiceState: vi.fn(async () => null),
+      saveSession: vi.fn(async () => {}),
+      saveAuthUser: vi.fn(async () => {}),
+      saveAuthSession: vi.fn(async () => {}),
+      savePack: vi.fn(async () => {}),
+      saveDraftPack: vi.fn(async () => {}),
+      savePackInstallation: vi.fn(async () => {}),
+      saveTeacher: vi.fn(async () => {}),
+      deletePack: vi.fn(async () => {}),
+      deleteTeacher: vi.fn(async () => {}),
+      deleteDraftPack: vi.fn(async () => {}),
+      deletePackInstallation: vi.fn(async () => {}),
+      deleteAuthSession: vi.fn(async () => {}),
+      save: vi.fn(async () => {}),
+      describe: () => "test bounded school event store",
+      flush: vi.fn(async () => {}),
+    };
+    const ruby = new RubyHighService({} as never, store as never);
+    activeRuby = ruby;
+
+    await ruby["hydrate"]();
+
+    expect(loadSchoolEvents).toHaveBeenCalledWith({ limit: 400 });
+  });
+
+  it("uses sanitized public session ids for world event fallback visibility", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+
+    const visible = attachTestCharacter(ruby, "test:world-event-visible");
+    visible.sessionId = "test:world-event-visible";
+    visible.currentGrade = "10";
+    visible.faculty = "ruby";
+    visible.character!.name = "Visible Noor";
+    visible.character!.createdAt = now;
+    const visibleClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    visibleClass.completedAt = now;
+    visibleClass.updatedAt = now;
+    visible.character!.dailyClasses = { ruby: visibleClass };
+    visible.schoolEvents.push({
+      id: "school:event:visible-session",
+      kind: "comic.page-unlocked",
+      at: now,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-visible",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Visible public page",
+    });
+
+    const malformedSessionId = "test:world-event-\u0000malformed";
+    const malformed = attachTestCharacter(ruby, malformedSessionId);
+    malformed.sessionId = malformedSessionId;
+    malformed.currentGrade = "10";
+    malformed.faculty = "ruby";
+    malformed.character!.name = "Malformed Noor";
+    malformed.character!.createdAt = now;
+    const malformedClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    malformedClass.completedAt = now;
+    malformedClass.updatedAt = now;
+    malformed.character!.dailyClasses = { ruby: malformedClass };
+    malformed.schoolEvents.push({
+      id: "school:event:malformed-session",
+      kind: "comic.page-unlocked",
+      at: now,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-malformed",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Malformed public page",
+    });
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+    const events = ruby
+      .getSchoolWorldEvents(10, now)
+      .filter((event) => event.kind === "comic.page-unlocked");
+
+    expect(world.activeStudents).toBe(1);
+    expect(JSON.stringify(world)).not.toContain("Malformed Noor");
+    expect(events.map((event) => event.label)).toEqual(["Visible public page"]);
+    expect(JSON.stringify(events)).not.toContain("Malformed public page");
+    expect(JSON.stringify(events)).not.toContain("Malformed Noor");
+  });
+
+  it("keeps no-class characters out of public world rooms", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const noClass = attachTestCharacter(ruby, "test:world-no-class");
+    noClass.sessionId = "test:world-no-class";
+    noClass.currentGrade = "10";
+    noClass.faculty = "ruby";
+    noClass.character!.name = "No Class Noor";
+    noClass.character!.createdAt = now;
+    noClass.character!.dailyClasses = {};
+
+    const completed = attachTestCharacter(ruby, "test:world-completed-class");
+    completed.sessionId = "test:world-completed-class";
+    completed.currentGrade = "10";
+    completed.faculty = "ruby";
+    completed.character!.name = "Completed Mina";
+    completed.character!.createdAt = now;
+    const todayClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    todayClass.completedAt = now;
+    todayClass.updatedAt = now;
+    completed.character!.dailyClasses = { ruby: todayClass };
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+
+    expect(world.activeStudents).toBe(1);
+    expect(world.activeRooms).toEqual([
+      expect.objectContaining({
+        activeStudents: 1,
+        students: [expect.objectContaining({ name: "Completed Mina" })],
+      }),
+    ]);
+    expect(JSON.stringify(world)).not.toContain("No Class Noor");
+  });
+
+  it("uses the supplied world clock for both room and cohort presence", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    try {
+      const { ruby } = await makeServices();
+      const stale = attachTestCharacter(ruby, "test:world-stale-cohort-clock");
+      stale.sessionId = "test:world-stale-cohort-clock";
+      stale.currentGrade = "10";
+      stale.faculty = "ruby";
+      stale.updatedAt = 0;
+      stale.character!.name = "Stale Mina";
+      stale.character!.createdAt = 0;
+      stale.character!.dailyClasses = {
+        ruby: {
+          ...completedClassRecord("10", "ruby", "2026-06-01", "A", 300),
+          completedAt: 0,
+          updatedAt: 0,
+        },
+      };
+
+      const world = ruby.getSchoolWorldSnapshot(10, 7 * 24 * 60 * 60 * 1000 + 2_000);
+
+      expect(world.activeStudents).toBe(0);
+      expect(world.activeRooms).toEqual([]);
+      expect(world.cohorts).toEqual({});
+      expect(JSON.stringify(world)).not.toContain("Stale Mina");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not count session metadata writes as public world activity", async () => {
+    const { ruby } = await makeServices();
+    const oldAt = Date.UTC(2026, 4, 1, 12);
+    const now = Date.UTC(2026, 5, 15, 12);
+    const metadataTouched = attachTestCharacter(ruby, "test:world-metadata-touch");
+    metadataTouched.sessionId = "test:world-metadata-touch";
+    metadataTouched.currentGrade = "10";
+    metadataTouched.faculty = "ruby";
+    metadataTouched.updatedAt = now;
+    metadataTouched.character!.name = "Touched Noor";
+    metadataTouched.character!.createdAt = oldAt;
+    metadataTouched.character!.dailyClasses = {
+      ruby: {
+        ...completedClassRecord("10", "ruby", "2026-05-01", "A", 300),
+        completedAt: oldAt,
+        updatedAt: oldAt,
+      },
+    };
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+
+    expect(world.activeStudents).toBe(0);
+    expect(world.activeRooms).toEqual([]);
+    expect(world.cohorts).toEqual({});
+    expect(JSON.stringify(world)).not.toContain("Touched Noor");
+  });
+
+  it("refreshes public world snapshots from durable sessions without stale overwrites", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+
+    const local = attachTestCharacter(ruby, "test:world-local-newer");
+    local.sessionId = "test:world-local-newer";
+    local.currentGrade = "10";
+    local.faculty = "ruby";
+    local.updatedAt = now + 500;
+    local.character!.name = "Local Mina";
+    local.character!.createdAt = now;
+    const localClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    localClass.completedAt = now;
+    localClass.updatedAt = now;
+    local.character!.dailyClasses = { ruby: localClass };
+
+    const template = structuredClone(ruby.getOrCreate("test:world-template")) as QuizState;
+    const external = structuredClone(template) as QuizState;
+    external.sessionId = "test:world-external";
+    external.currentGrade = "10";
+    external.faculty = "ruby";
+    external.updatedAt = now + 100;
+    const externalClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    externalClass.completedAt = now;
+    externalClass.updatedAt = now;
+    external.character = {
+      name: "External Noor",
+      playbookId: "lifer",
+      stats: { head: 90, heart: 88, hustle: 86, honor: 84 },
+      arcAnswer: "-",
+      personality: "-",
+      yearbook: [],
+      createdAt: now,
+      dailyClasses: {
+        ruby: externalClass,
+      },
+    };
+
+    const staleLocal = structuredClone(local) as QuizState;
+    staleLocal.updatedAt = now;
+    staleLocal.character!.name = "Stored Old Mina";
+
+    const externalStore = new StateStore(storePath, { debounceMs: 0 });
+    await externalStore.saveSession(external);
+    await externalStore.saveSession(staleLocal);
+    await externalStore.flush?.();
+
+    const world = await ruby.getFreshSchoolWorldSnapshot(10, now + 1_000);
+    const serialized = JSON.stringify(world);
+
+    expect(world.activeStudents).toBe(2);
+    expect(serialized).toContain("External Noor");
+    expect(serialized).toContain("Local Mina");
+    expect(serialized).not.toContain("Stored Old Mina");
+  });
+
+  it("uses the supplied world clock when throttling durable world refreshes", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const store = ruby["store"] as StateStore;
+    const loadSpy = vi.spyOn(store, "loadRecentSessions");
+
+    await ruby.getFreshSchoolWorldSnapshot(10, now);
+    await ruby.getFreshSchoolWorldSnapshot(10, now + 1_000);
+    await ruby.getFreshSchoolWorldSnapshot(10, now + 1_999);
+    await ruby.getFreshSchoolWorldSnapshot(10, now + 2_000);
+
+    expect(loadSpy).toHaveBeenCalledTimes(2);
+    expect(loadSpy).toHaveBeenLastCalledWith({
+      since: now + 2_000 - 7 * 24 * 60 * 60 * 1000,
+      limit: 5_000,
+    });
+  });
+
+  it("keeps private curriculum pools out of public world snapshots", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const customPack = fakeLeveledPack("pack:private-curriculum-world");
+
+    const privateState = attachTestCharacter(ruby, "test:world-private-curriculum");
+    privateState.sessionId = "test:world-private-curriculum";
+    privateState.currentGrade = "9";
+    privateState.faculty = "level-test-course";
+    privateState.updatedAt = now;
+    privateState.character!.name = "Private Course Mina";
+    privateState.character!.socialConsent = false;
+    privateState.character!.createdAt = now;
+    privateState.character!.dailyClasses = {
+      "level-test-course": completedClassRecord("9", "level-test-course", "2026-06-15", "A", 300),
+    };
+    registerPack(customPack, privateState.sessionId);
+    ruby.setActivePackForSession(privateState.sessionId, customPack.id);
+
+    const publicState = attachTestCharacter(ruby, "test:world-public-curriculum");
+    publicState.sessionId = "test:world-public-curriculum";
+    publicState.currentGrade = "10";
+    publicState.faculty = "sally-science";
+    publicState.updatedAt = now;
+    publicState.character!.name = "Public Sally Noor";
+    publicState.character!.createdAt = now;
+    publicState.character!.dailyClasses = {
+      "sally-science": completedClassRecord("10", "sally-science", "2026-06-15", "A", 300),
+    };
+
+    const adminCoverage = ruby.curriculumCoverageSnapshot();
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+
+    expect(adminCoverage.lowPools.map((row) => row.facultyId)).toContain("level-test-course");
+    expect(world.curriculum.activeCharacterSessions).toBe(1);
+    expect(world.curriculum.lowPools.map((row) => row.facultyId)).not.toContain("level-test-course");
+    expect(JSON.stringify(world)).not.toContain("Private Course Mina");
+    expect(JSON.stringify(world)).not.toContain("level-test-course");
+  });
+
+  it("includes durable school outbox events in public world snapshots", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const external = structuredClone(ruby.getOrCreate("test:world-outbox-template")) as QuizState;
+    external.sessionId = "test:world-outbox";
+    external.currentGrade = "10";
+    external.faculty = "ruby";
+    external.updatedAt = now;
+    external.schoolEvents = [];
+    external.character = {
+      name: "Outbox Noor",
+      playbookId: "lifer",
+      stats: { head: 90, heart: 88, hustle: 86, honor: 84 },
+      arcAnswer: "-",
+      personality: "-",
+      yearbook: [],
+      createdAt: now,
+      dailyClasses: {
+        ruby: completedClassRecord("10", "ruby", "2026-06-15", "A", 300),
+      },
+    };
+    const externalStore = new StateStore(storePath, { debounceMs: 0 });
+    await externalStore.saveSession(external);
+    await externalStore.saveSchoolEvent({
+      id: "school:event:outbox-world",
+      sessionId: external.sessionId,
+      occurredAt: now + 1,
+      day: "2026-06-15",
+      event: {
+        id: "school:event:outbox-world",
+        kind: "comic.page-unlocked",
+        at: now + 1,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "first-bell-outbox",
+        pageNumber: 5,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Outbox public page",
+      },
+    });
+    await externalStore.flush?.();
+
+    const world = await ruby.getFreshSchoolWorldSnapshot(10, now + 2);
+
+    expect(world.activeStudents).toBe(1);
+    expect(world.recentEvents).toEqual([
+      expect.objectContaining({
+        kind: "comic.page-unlocked",
+        label: "Outbox public page",
+      }),
+    ]);
+    expect(JSON.stringify(world)).not.toContain("school:event:outbox-world");
+    expect(JSON.stringify(world)).not.toContain("teacher:ruby:grade:10");
+  });
+
+  it("keeps malformed durable characters out of public world snapshots", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const completedClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    completedClass.completedAt = now;
+    completedClass.updatedAt = now;
+
+    const blankName = structuredClone(ruby.getOrCreate("test:world-blank-template")) as QuizState;
+    blankName.sessionId = "test:world-blank-name";
+    blankName.currentGrade = "10";
+    blankName.faculty = "ruby";
+    blankName.updatedAt = now;
+    blankName.character = {
+      name: "   ",
+      playbookId: "lifer",
+      stats: { head: 90, heart: 88, hustle: 86, honor: 84 },
+      arcAnswer: "-",
+      personality: "-",
+      yearbook: [],
+      createdAt: now,
+      dailyClasses: {
+        ruby: completedClass,
+      },
+    };
+
+    const malformedClasses = structuredClone(blankName) as QuizState;
+    malformedClasses.sessionId = "test:world-malformed-classes";
+    malformedClasses.character = {
+      ...blankName.character!,
+      name: "Malformed Classes Noor",
+      dailyClasses: "complete" as never,
+    };
+
+    const externalStore = new StateStore(storePath, { debounceMs: 0 });
+    await externalStore.saveSession(blankName);
+    await externalStore.saveSession(malformedClasses);
+    await externalStore.flush?.();
+
+    const world = await ruby.getFreshSchoolWorldSnapshot(10, now + 1_000);
+    const serialized = JSON.stringify(world);
+
+    expect(world.activeStudents).toBe(0);
+    expect(world.activeRooms).toEqual([]);
+    expect(world.cohorts).toEqual({});
+    expect(serialized).not.toContain("Malformed Classes Noor");
+  });
+
+  it("bounds aggregate public world events across many active students", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+
+    for (let i = 0; i < 130; i += 1) {
+      const label = `World event ${String(i).padStart(3, "0")}`;
+      const state = attachTestCharacter(ruby, `test:world-event-cap-${i}`);
+      state.sessionId = `test:world-event-cap-${i}`;
+      state.currentGrade = "10";
+      state.faculty = "ruby";
+      state.character!.name = `World Student ${String(i).padStart(3, "0")}`;
+      state.character!.createdAt = now;
+      const todayClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+      todayClass.completedAt = now;
+      todayClass.updatedAt = now;
+      state.character!.dailyClasses = { ruby: todayClass };
+      state.schoolEvents.push({
+        id: `school:event:world-cap-${i}`,
+        kind: "comic.page-unlocked",
+        at: now - i,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: `first-bell-cap-${i}`,
+        pageNumber: i,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label,
+      });
+    }
+
+    const world = ruby.getSchoolWorldSnapshot(120, now);
+    const labels = world.recentEvents
+      .filter((event) => event.kind === "comic.page-unlocked")
+      .map((event) => event.label);
+
+    expect(world.recentEvents).toHaveLength(100);
+    expect(labels[0]).toBe("World event 000");
+    expect(labels.at(-1)).toBe("World event 099");
+    expect(labels).not.toContain("World event 100");
+    expect(labels).not.toContain("World event 129");
+    expect(ruby.getSchoolWorldSnapshot(0, now).recentEvents).toEqual([]);
+  });
+
+  it("bounds cached durable school events under world-feed pressure", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const state = attachTestCharacter(ruby, "test:world-event-cache-bound");
+    state.sessionId = "test:world-event-cache-bound";
+    state.currentGrade = "10";
+    state.faculty = "ruby";
+    state.character!.name = "Cache Noor";
+    state.character!.createdAt = now;
+    const todayClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    todayClass.completedAt = now;
+    todayClass.updatedAt = now;
+    state.character!.dailyClasses = { ruby: todayClass };
+    const appendSchoolEvent = (ruby as unknown as {
+      appendSchoolEvent(state: QuizState, event: QuizState["schoolEvents"][number]): void;
+    }).appendSchoolEvent.bind(ruby);
+    for (let i = 0; i < 430; i += 1) {
+      const fresh = i < 420;
+      const occurredAt = fresh ? now - i : now - 10 * 24 * 60 * 60 * 1000 - i;
+      appendSchoolEvent(state, {
+        id: `school:event:cache-bound-${i}`,
+        kind: "comic.page-unlocked",
+        at: occurredAt,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: `first-bell-cache-${i}`,
+        pageNumber: i + 1,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: `Cache event ${String(i).padStart(3, "0")}`,
+      });
+    }
+
+    const world = ruby.getSchoolWorldSnapshot(100, now);
+    const cached = ruby["schoolEventRecords"] as Map<string, unknown>;
+
+    expect(cached.size).toBe(400);
+    expect(world.recentEvents).toHaveLength(100);
+    expect(world.recentEvents[0]).toMatchObject({ kind: "comic.page-unlocked", label: "Cache event 000" });
+    expect(world.recentEvents.at(-1)).toMatchObject({ kind: "comic.page-unlocked", label: "Cache event 099" });
+    expect(JSON.stringify(world)).not.toContain("Cache event 420");
+  });
+
+  it("prunes stale durable school events even while the cache is under capacity", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const state = attachTestCharacter(ruby, "test:world-event-cache-stale-under-cap");
+    state.sessionId = "test:world-event-cache-stale-under-cap";
+
+    (ruby as unknown as {
+      appendSchoolEvent(state: QuizState, event: QuizState["schoolEvents"][number]): void;
+    }).appendSchoolEvent(state, {
+      id: "school:event:cache-stale-under-cap",
+      kind: "comic.page-unlocked",
+      at: now - 10 * 24 * 60 * 60 * 1000,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-cache-stale-under-cap",
+      pageNumber: 1,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Stale cache event",
+    });
+
+    const cached = ruby["schoolEventRecords"] as Map<string, unknown>;
+
+    expect(cached.size).toBe(0);
+  });
+
+  it("keeps inline portrait data out of the public world feed", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const inlineState = attachTestCharacter(ruby, "test:world-inline-portrait");
+    inlineState.sessionId = "test:world-inline-portrait";
+    inlineState.currentGrade = "10";
+    inlineState.faculty = "ruby";
+    inlineState.character!.name = "Inline Noor";
+    inlineState.character!.createdAt = now;
+    inlineState.character!.portraitDataUrl = "data:image/png;base64,INLINE";
+    const inlineClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    inlineClass.completedAt = now;
+    inlineClass.updatedAt = now;
+    inlineState.character!.dailyClasses = { ruby: inlineClass };
+
+    const pathState = attachTestCharacter(ruby, "test:world-path-portrait");
+    pathState.sessionId = "test:world-path-portrait";
+    pathState.currentGrade = "10";
+    pathState.faculty = "ruby";
+    pathState.character!.name = "Path Mina";
+    pathState.character!.createdAt = now;
+    pathState.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/path-mina.png";
+    const pathClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    pathClass.completedAt = now;
+    pathClass.updatedAt = now;
+    pathState.character!.dailyClasses = { ruby: pathClass };
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+    const students = world.activeRooms.flatMap((room) => room.students);
+    const inlineStudent = students.find((student) => student.name === "Inline Noor");
+    const pathStudent = students.find((student) => student.name === "Path Mina");
+
+    expect(inlineStudent).not.toHaveProperty("portraitUrl");
+    expect(pathStudent).toMatchObject({
+      portraitUrl: "/api/apps/ruby-high/assets/portrait/path-mina.png",
+    });
+    expect(JSON.stringify(world)).not.toContain("data:image");
+    expect(JSON.stringify(world)).not.toContain("INLINE");
   });
 
   it("does not start duplicate X photo posts while a photo is in flight", async () => {
@@ -1113,12 +2278,395 @@ describe("RubyHighService Phase 1", () => {
     ruby.maybePostDailyPhoto();
 
     expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+    expect(ruby.photoPostSchedulerSnapshot()).toMatchObject({
+      schedulerActive: false,
+      schedulerRunning: false,
+      schedulerIntervalMs: null,
+      pendingPhotos: 1,
+      inFlightPosts: 1,
+      deferredPosts: 0,
+      lastAttemptAt: expect.any(Number),
+      lastResult: null,
+    });
 
     resolvePost(null);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    expect(ruby.photoPostSchedulerSnapshot()).toMatchObject({
+      pendingPhotos: 1,
+      inFlightPosts: 0,
+      deferredPosts: 1,
+      nextRetryAt: expect.any(Number),
+      lastAttemptAt: expect.any(Number),
+      lastResult: expect.objectContaining({
+        photoId: "photo:class",
+        posted: false,
+        revealed: false,
+        deferredUntil: expect.any(Number),
+      }),
+    });
+
+    ruby.maybePostDailyPhoto();
+    expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+
+    (ruby as any).deferredPhotoPosts.set("photo:class", Date.now() - 1);
     ruby.maybePostDailyPhoto();
     expect(maybePostMilestone).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs a single non-overlapping photo post scheduler tick and reports lifecycle state", async () => {
+    let resolvePost!: (value: string | null) => void;
+    const maybePostMilestone = vi.fn(
+      () => new Promise<string | null>((resolve) => { resolvePost = resolve; }),
+    );
+    const runtime = {
+      getService: (type: string) => {
+        if (type !== "x-social") return null;
+        return {
+          listConnected: () => [{ teacherId: "ruby" }],
+          getStatus: () => ({ connected: true }),
+          maybePostMilestone,
+        };
+      },
+    };
+    const { ruby } = await makeServices();
+    Object.defineProperty(ruby, "runtime", { value: runtime });
+
+    const state = attachTestCharacter(ruby, "test:photo-scheduler");
+    state.sessionId = "test:photo-scheduler";
+    state.character!.name = "Mina";
+    state.character!.pendingPhotos = [{
+      photoId: "photo:scheduler",
+      kind: "class-photo",
+      imageUrl: "data:image/png;base64,aW1hZ2U=",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+    }];
+
+    ruby.startPhotoPostScheduler(10_000);
+    expect(ruby.photoPostSchedulerSnapshot()).toMatchObject({
+      schedulerActive: true,
+      schedulerRunning: false,
+      schedulerIntervalMs: 10_000,
+    });
+
+    const firstTick = ruby.runPhotoPostSchedulerTick();
+    expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+    expect(ruby.photoPostSchedulerSnapshot()).toMatchObject({
+      schedulerActive: true,
+      schedulerRunning: true,
+      inFlightPosts: 1,
+    });
+
+    await expect(ruby.runPhotoPostSchedulerTick()).resolves.toBeNull();
+    expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+
+    resolvePost("tweet-scheduler");
+    await expect(firstTick).resolves.toMatchObject({
+      photoId: "photo:scheduler",
+      posted: true,
+      revealed: true,
+      tweetId: "tweet-scheduler",
+    });
+    expect(ruby.photoPostSchedulerSnapshot()).toMatchObject({
+      schedulerActive: true,
+      schedulerRunning: false,
+      pendingPhotos: 0,
+      inFlightPosts: 0,
+      lastResult: expect.objectContaining({ tweetId: "tweet-scheduler" }),
+    });
+
+    ruby.stopPhotoPostScheduler();
+    expect(ruby.photoPostSchedulerSnapshot()).toMatchObject({
+      schedulerActive: false,
+      schedulerRunning: false,
+      schedulerIntervalMs: null,
+    });
+  });
+
+  it("persists deferred photo post retries across service restarts", async () => {
+    const maybePostMilestone = vi.fn(async () => null);
+    const runtime = {
+      getService: (type: string) => {
+        if (type !== "x-social") return null;
+        return {
+          listConnected: () => [{ teacherId: "ruby" }],
+          getStatus: () => ({ connected: true }),
+          maybePostMilestone,
+        };
+      },
+    };
+    const { ruby, faculty } = await makeServices();
+    Object.defineProperty(ruby, "runtime", { value: runtime });
+
+    const state = attachTestCharacter(ruby, "test:photo-restart");
+    state.sessionId = "test:photo-restart";
+    state.character!.name = "Iris";
+    state.character!.pendingPhotos = [{
+      photoId: "photo:restart",
+      kind: "class-photo",
+      imageUrl: "data:image/png;base64,aW1hZ2U=",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+    }];
+
+    await expect(ruby.maybePostDailyPhoto()).resolves.toMatchObject({
+      photoId: "photo:restart",
+      posted: false,
+      revealed: false,
+      deferredUntil: expect.any(Number),
+    });
+    expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+    const deferredUntil = ruby.photoPostSchedulerSnapshot().nextRetryAt;
+    expect(deferredUntil).toEqual(expect.any(Number));
+
+    await ruby.stop();
+
+    const fresh = new RubyHighService({} as never, new StateStore(storePath));
+    await fresh["hydrate"]();
+    fresh.setFacultyService(faculty);
+    Object.defineProperty(fresh, "runtime", { value: runtime });
+    activeRuby = fresh;
+
+    expect(fresh.photoPostSchedulerSnapshot()).toMatchObject({
+      pendingPhotos: 1,
+      deferredPosts: 1,
+      nextRetryAt: deferredUntil,
+      lastResult: expect.objectContaining({
+        photoId: "photo:restart",
+        posted: false,
+        revealed: false,
+        deferredUntil,
+      }),
+    });
+
+    await expect(fresh.maybePostDailyPhoto()).resolves.toBeNull();
+    expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+  });
+
+  it("posts the requested class photo instead of randomly picking another pending photo", async () => {
+    const maybePostMilestone = vi.fn(async (_teacher, ctx) => ctx.imageUrl?.includes("target") ? "tweet-target" : "tweet-wrong");
+    const runtime = {
+      getService: (type: string) => {
+        if (type !== "x-social") return null;
+        return {
+          listConnected: () => [{ teacherId: "ruby" }],
+          getStatus: () => ({ connected: true }),
+          maybePostMilestone,
+        };
+      },
+    };
+    const { ruby } = await makeServices();
+    Object.defineProperty(ruby, "runtime", { value: runtime });
+
+    const older = attachTestCharacter(ruby, "test:photo-target-older");
+    older.sessionId = "test:photo-target-older";
+    older.character!.name = "Ari";
+    older.character!.pendingPhotos = [{
+      photoId: "photo:older",
+      kind: "class-photo",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/older.png",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now() - 10_000,
+    }];
+
+    const target = attachTestCharacter(ruby, "test:photo-target-new");
+    target.sessionId = "test:photo-target-new";
+    target.character!.name = "Noor";
+    target.character!.pendingPhotos = [{
+      photoId: "photo:target",
+      kind: "class-photo",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/target.png",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+    }];
+
+    const result = await ruby.maybePostDailyPhoto({ photoId: "photo:target" });
+
+    expect(result).toMatchObject({
+      photoId: "photo:target",
+      posted: true,
+      revealed: true,
+      tweetId: "tweet-target",
+    });
+    expect(maybePostMilestone).toHaveBeenCalledTimes(1);
+    expect(maybePostMilestone.mock.calls[0]?.[1]).toMatchObject({
+      kind: "class-photo",
+      characterName: "Noor",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/target.png",
+    });
+    expect(older.character!.pendingPhotos).toHaveLength(1);
+    expect(target.character!.pendingPhotos).toEqual([]);
+    expect(target.character!.classPhotos).toHaveLength(1);
+    expect(target.character!.classPhotos![0]).toMatchObject({
+      photoId: "photo:target",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/target.png",
+      teacherFacultyId: "ruby",
+      tweetId: "tweet-target",
+      tweetedAt: expect.any(Number),
+      revealedAt: expect.any(Number),
+    });
+
+    const blankHistory = attachTestCharacter(ruby, "test:photo-target-blank-history");
+    blankHistory.sessionId = "test:photo-target-blank-history";
+    blankHistory.character!.name = " ";
+    blankHistory.character!.classPhotos = [{
+      photoId: "photo:blank-history",
+      imageUrl: "/api/apps/ruby-high/assets/class-photo/blank-history.png",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+      revealedAt: Date.now(),
+      tweetId: "tweet-blank",
+      tweetedAt: Date.now(),
+    }];
+
+    const snapshot = ruby.getSchoolSnapshot();
+    expect(snapshot.photoPool.filter((photo) => photo.kind === "class-photo").map((photo) => photo.studentName)).toEqual(["Ari"]);
+    expect(snapshot.classPhotoHistory).toEqual([
+      expect.objectContaining({
+        studentName: "Noor",
+        teacherFacultyId: "ruby",
+        status: "posted",
+        tweetId: "tweet-target",
+        tweetedAt: expect.any(Number),
+        revealedAt: expect.any(Number),
+      }),
+    ]);
+    expect(JSON.stringify(snapshot.classPhotoHistory)).not.toContain("class-photo/target.png");
+    expect(JSON.stringify(snapshot.classPhotoHistory)).not.toContain("blank-history");
+  });
+
+  it("keeps social-consent-off pending photos out of daily photo posting", async () => {
+    const { ruby } = await makeServices();
+    const today = dailyKey();
+    const runtime = {
+      getService: (type: string) => {
+        if (type !== "x-social") return null;
+        return {
+          listConnected: () => [],
+          getStatus: () => ({ connected: false }),
+          maybePostMilestone: vi.fn(),
+        };
+      },
+    };
+    Object.defineProperty(ruby, "runtime", { value: runtime });
+
+    const publicState = attachTestCharacter(ruby, "test:photo-public-consent");
+    publicState.sessionId = "test:photo-public-consent";
+    publicState.character!.name = "Noor";
+    publicState.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    publicState.character!.pendingPhotos = [{
+      photoId: "photo:public",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/noor.png",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+    }];
+
+    const privateState = attachTestCharacter(ruby, "test:photo-private-consent");
+    privateState.sessionId = "test:photo-private-consent";
+    privateState.character!.name = "Ari";
+    privateState.character!.socialConsent = false;
+    privateState.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", today, "A", 300),
+    };
+    privateState.character!.pendingPhotos = [{
+      photoId: "photo:private",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/ari.png",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+    }];
+
+    ruby.maybePostDailyPhoto();
+
+    expect(publicState.character!.pendingPhotos).toEqual([]);
+    expect(publicState.character!.portraitDataUrl).toBe("/api/apps/ruby-high/assets/portrait/noor.png");
+    expect(privateState.character!.pendingPhotos).toHaveLength(1);
+    expect(privateState.character!.portraitDataUrl).toBeUndefined();
+  });
+
+  it("reveals photos for disconnected teachers even when another teacher is connected to X", async () => {
+    const maybePostMilestone = vi.fn(async () => "tweet-should-not-post");
+    const runtime = {
+      getService: (type: string) => {
+        if (type !== "x-social") return null;
+        return {
+          listConnected: () => [{ teacherId: "ruby" }],
+          getStatus: (teacherId: string) => ({ connected: teacherId === "ruby" }),
+          maybePostMilestone,
+        };
+      },
+    };
+    const { ruby } = await makeServices();
+    Object.defineProperty(ruby, "runtime", { value: runtime });
+
+    const state = attachTestCharacter(ruby, "test:photo-disconnected-teacher");
+    state.sessionId = "test:photo-disconnected-teacher";
+    state.character!.name = "Noor";
+    state.character!.dailyClasses = {
+      "sally-science": completedClassRecord("9", "sally-science", dailyKey(), "A", 300),
+    };
+    state.character!.pendingPhotos = [{
+      photoId: "photo:sally-disconnected",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/noor-sally.png",
+      teacherFacultyId: "sally-science",
+      earnedAt: Date.now(),
+    }];
+
+    const result = await ruby.maybePostDailyPhoto();
+
+    expect(result).toMatchObject({
+      photoId: "photo:sally-disconnected",
+      teacherFacultyId: "sally-science",
+      posted: false,
+      revealed: true,
+      fallback: true,
+    });
+    expect(maybePostMilestone).not.toHaveBeenCalled();
+    expect(state.character!.pendingPhotos).toEqual([]);
+    expect(state.character!.portraitDataUrl).toBe("/api/apps/ruby-high/assets/portrait/noor-sally.png");
+  });
+
+  it("does not send social-consent-off pending photos to connected X teachers", async () => {
+    const maybePostMilestone = vi.fn(async () => "tweet-private");
+    const runtime = {
+      getService: (type: string) => {
+        if (type !== "x-social") return null;
+        return {
+          listConnected: () => [{ teacherId: "ruby" }],
+          getStatus: () => ({ connected: true }),
+          maybePostMilestone,
+        };
+      },
+    };
+    const { ruby } = await makeServices();
+    Object.defineProperty(ruby, "runtime", { value: runtime });
+
+    const privateState = attachTestCharacter(ruby, "test:photo-private-x");
+    privateState.sessionId = "test:photo-private-x";
+    privateState.character!.name = "Ari";
+    privateState.character!.socialConsent = false;
+    privateState.character!.dailyClasses = {
+      ruby: completedClassRecord("9", "ruby", dailyKey(), "A", 300),
+    };
+    privateState.character!.pendingPhotos = [{
+      photoId: "photo:private-x",
+      kind: "portrait",
+      imageUrl: "/api/apps/ruby-high/assets/portrait/ari.png",
+      teacherFacultyId: "ruby",
+      earnedAt: Date.now(),
+    }];
+
+    ruby.maybePostDailyPhoto();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(maybePostMilestone).not.toHaveBeenCalled();
+    expect(privateState.character!.pendingPhotos).toHaveLength(1);
+    expect(privateState.character!.portraitDataUrl).toBeUndefined();
   });
 
   it("persists session state across a 'restart'", async () => {
@@ -1678,6 +3226,38 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("rotates the durable answer history while preserving score totals", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:answer-history-cap";
+    const state = ruby.getOrCreate(sid);
+    const append = (ruby as unknown as {
+      appendAnswerHistory: (state: QuizState, record: AnswerRecord) => void;
+    }).appendAnswerHistory.bind(ruby);
+
+    for (let i = 0; i < 525; i++) {
+      append(state, {
+        questionId: `q-${i % 500}`,
+        picked: "A",
+        correct: "A",
+        wasCorrect: true,
+        at: i,
+      });
+      state.score.correct += 1;
+      state.score.total += 1;
+    }
+
+    expect(state.history).toHaveLength(500);
+    expect(state.history[0]?.questionId).toBe("q-25");
+    expect(state.history.at(-1)?.questionId).toBe("q-24");
+    expect(state.score).toMatchObject({ correct: 525, total: 525 });
+    expect(state.answerStats).toEqual({ totalAnswers: 525, repeatedAnswers: 25 });
+    expect(ruby.analyticsSnapshot().balance.repeatRate).toEqual({
+      totalAnswers: 525,
+      repeatedAnswers: 25,
+      rate: 25 / 525,
+    });
+  });
+
   it("does not seat classmates who have drifted out of the player's grade", async () => {
     const { ruby } = await makeServices();
     const sid = "test:cohort-drift-seating";
@@ -2083,5 +3663,51 @@ describe("RubyHighService Phase 1", () => {
     expect(loaded.pendingRoll).toBeNull();
     expect(loaded.pendingRoll).not.toBeUndefined();
     activeRuby = ruby; // ensure flush in afterEach
+  });
+
+  it("normalizes oversized legacy answer histories on load", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(storePath, JSON.stringify({
+      sessions: [{
+        sessionId: "legacy:history-cap",
+        faculty: "ruby",
+        subject: null,
+        current: null,
+        history: Array.from({ length: 525 }, (_, i) => ({
+          questionId: `legacy-q-${i % 500}`,
+          picked: "A",
+          correct: "A",
+          wasCorrect: true,
+          at: i,
+        })),
+        score: { correct: 525, total: 525 },
+        lastReveal: null,
+        status: "idle",
+        askedQuestionIds: [],
+        currentGrade: null,
+        completedGrades: [],
+        hasSeenIntro: false,
+        character: null,
+        npcRosters: {},
+        activeRound: null,
+        updatedAt: Date.now(),
+      }],
+    }));
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+
+    const loaded = ruby.getOrCreate("legacy:history-cap");
+    expect(loaded.history).toHaveLength(500);
+    expect(loaded.history[0]?.questionId).toBe("legacy-q-25");
+    expect(loaded.answerStats).toEqual({ totalAnswers: 525, repeatedAnswers: 25 });
+    expect(loaded.score).toMatchObject({ correct: 525, total: 525 });
+    expect(ruby.analyticsSnapshot().balance.repeatRate).toEqual({
+      totalAnswers: 525,
+      repeatedAnswers: 25,
+      rate: 25 / 525,
+    });
+    activeRuby = ruby;
   });
 });

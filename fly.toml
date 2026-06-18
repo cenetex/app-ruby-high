@@ -10,12 +10,12 @@
 #     Cold starts are invisible inside this product since the user
 #     already expects a small loading moment when they open the app.
 #
-#  2. The app reaches DynamoDB in us-east-1 for state, so we deploy to iad
-#     (Ashburn) to keep the state-store hop on the AWS east coast and
-#     avoid a transcontinental round-trip on every PutItem.
+#  2. The app keeps production SQLite state on a Fly Volume in iad
+#     (Ashburn). Keeping compute and storage in one region keeps writes local
+#     and makes Litestream backup/restore paths predictable.
 #
 # Things deliberately NOT in this file:
-#  - Secrets (RUBY_HIGH_DYNAMO_TABLE, AWS_ACCESS_KEY_ID,
+#  - Secrets (RUBY_HIGH_ADMIN_TOKEN, RUBY_HIGH_OPENROUTER_API_KEY,
 #    RUBY_HIGH_PRIVY_APP_SECRET, RUBY_HIGH_GITHUB_ISSUES_TOKEN, etc.).
 #    Those go in `flyctl secrets set`
 #    per the runbook in infra/fly-deploy.md.
@@ -36,7 +36,7 @@ primary_region = "iad"
   RUBY_HIGH_STATE_PATH = "/data/ruby-high.db"
   AWS_REGION = "us-east-1"
   # AI portraits + diplomas are stored in S3 — the bytes are too big to
-  # live inline in the DynamoDB character record. Set
+  # live inline in the SQLite session row. Set
   # RUBY_HIGH_PORTRAITS_BUCKET (and optionally _REGION / _PUBLIC_BASE)
   # to enable. When unset, the server falls back to inline data URLs
   # and the size cap in createCharacter rejects oversized portraits.

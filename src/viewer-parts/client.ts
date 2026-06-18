@@ -111,7 +111,7 @@ export function runViewerClient(bootstrap) {
     if (cur && (currentRevealMatches(t) || t.status === "revealed")) return "Continue";
     const postClass = postClassState(t);
     if (postClass.report && guestSignupRequired(t)) return "Sign up";
-    if (postClass.socialReady) return "Start Social Card";
+    if (postClass.socialReady) return "Reflect";
     if (postClass.report) return "Practice";
     return offlineClassroom ? "Continue" : "Chat";
   }
@@ -142,7 +142,7 @@ export function runViewerClient(bootstrap) {
         : cur
         ? "Continue"
       : postClass.socialReady
-        ? "Start the next social card"
+        ? "Start a short homeroom reflection"
         : postClass.report
         ? "Start practice"
         : t && t.graduation_ready && !cur
@@ -661,6 +661,11 @@ export function runViewerClient(bootstrap) {
     appConfirmCancel: $("app-confirm-cancel"),
     leaderboardPanel: $("leaderboard-panel"),
     leaderboardBody: $("leaderboard-body"),
+    worldPanel: $("world-panel"),
+    worldPanelSub: $("world-panel-sub"),
+    worldPanelRooms: $("world-panel-rooms"),
+    worldPanelEvents: $("world-panel-events"),
+    worldPanelRefresh: $("world-panel-refresh"),
 
     appConfirmOk: $("app-confirm-ok"),
   };
@@ -768,6 +773,7 @@ export function runViewerClient(bootstrap) {
   let lastPrivyRateLimitedAt = 0;
   const PRIVY_REFRESH_MIN_INTERVAL_MS = 60 * 1000;
   const PRIVY_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000;
+  const WORLD_FEED_EVENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
   let privyState = {
     configured: !!privyConfig,
     authenticated: false,
@@ -806,11 +812,13 @@ export function runViewerClient(bootstrap) {
   let lastChatButtonAt = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let lastSocialSummaryId = null;
+  let leaderboardViewOpen = false;
   let billingProductsCache = null;
   let billingMode = "hall-passes";
   let billingBusy = false;
   let selectedBillingProductId = null;
   let activeAccountPane = "account";
+  let worldFeedPollHandle = null;
   let accountHallPassCardsRenderSig = "";
   let comicUnlockEventsPrimed = false;
   let comicUnlockModalOpen = false;
@@ -1240,6 +1248,14 @@ export function runViewerClient(bootstrap) {
     renderedHistorySig = null;
     lastSocialSummaryId = null;
   }
+  function showClassSurface() {
+    leaderboardViewOpen = false;
+    els.leaderboardPanel.hidden = true;
+    els.blackboardPanel.hidden = false;
+    els.stream.hidden = false;
+    els.composerZone.hidden = false;
+    renderWorldPanel();
+  }
   function resetBlackboard() {
     activeQuestionId = null;
     questionCounter = 0;
@@ -1302,6 +1318,114 @@ export function runViewerClient(bootstrap) {
 
   function apiFetch(url, init) {
     return apiClient.apiFetch(url, init);
+  }
+
+  const worldFeedClient = createViewerWorldFeedClient({
+    apiBase,
+    now() {
+      return Date.now();
+    },
+    apiFetch,
+    consumeSse: consumeViewerSseStream,
+    buildEventsUrl: worldFeedEventsUrl,
+    pruneEvents: pruneWorldFeedEventList,
+    mergeEvents: mergeWorldFeedEventList,
+    onChange() {
+      renderWorldPanel();
+    },
+  });
+
+  function worldFeedFacultyRoster() {
+    return lastTelemetry && Array.isArray(lastTelemetry.faculty_roster) ? lastTelemetry.faculty_roster : [];
+  }
+  function pruneWorldFeedEvents(now) {
+    worldFeedClient.prune(now, WORLD_FEED_EVENT_MAX_AGE_MS);
+  }
+  function renderWorldPanel() {
+    if (!els.worldPanel) return;
+    const worldFeed = worldFeedClient.state;
+    pruneWorldFeedEvents(Date.now());
+    if (leaderboardViewOpen || !worldFeed.loaded) {
+      els.worldPanel.hidden = true;
+      return;
+    }
+    els.worldPanel.hidden = false;
+    const panelView = worldFeedPanelView(worldFeed, worldFeedFacultyRoster(), Date.now());
+    if (els.worldPanelSub) {
+      els.worldPanelSub.textContent = panelView.summary;
+    }
+    if (els.worldPanelRooms) {
+      els.worldPanelRooms.replaceChildren();
+      if (panelView.rooms.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "world-room-chip";
+        empty.innerHTML = "<strong>Halls quiet</strong><span>Waiting for class</span>";
+        els.worldPanelRooms.appendChild(empty);
+      } else {
+        panelView.rooms.forEach((room) => {
+          const chip = document.createElement("div");
+          chip.className = "world-room-chip";
+          const title = document.createElement("strong");
+          title.textContent = room.title;
+          const meta = document.createElement("span");
+          meta.textContent = room.meta;
+          chip.appendChild(title);
+          chip.appendChild(meta);
+          els.worldPanelRooms.appendChild(chip);
+        });
+      }
+    }
+    if (els.worldPanelEvents) {
+      els.worldPanelEvents.replaceChildren();
+      if (panelView.events.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "world-panel-empty";
+        empty.textContent = "No public beats yet.";
+        els.worldPanelEvents.appendChild(empty);
+      } else {
+        panelView.events.forEach((event) => {
+          const row = document.createElement("div");
+          row.className = "world-event-row";
+          const dot = document.createElement("span");
+          dot.className = "world-event-dot";
+          const label = document.createElement("span");
+          label.className = "world-event-label";
+          label.textContent = event.label;
+          const time = document.createElement("span");
+          time.className = "world-event-time";
+          time.textContent = event.age;
+          row.appendChild(dot);
+          row.appendChild(label);
+          row.appendChild(time);
+          els.worldPanelEvents.appendChild(row);
+        });
+      }
+    }
+  }
+  async function loadWorldFeed(opts) {
+    const options = opts || {};
+    if (!els.worldPanel) return;
+    await worldFeedClient.load(options);
+  }
+  function scheduleWorldFeedPoll(delayMs) {
+    clearTimeout(worldFeedPollHandle);
+    if (document.visibilityState === "hidden") {
+      worldFeedPollHandle = null;
+      return;
+    }
+    worldFeedPollHandle = setTimeout(async () => {
+      await loadWorldFeed({ silent: true });
+      const backoffMs = worldFeedClient.backoffMs();
+      scheduleWorldFeedPoll(Math.max(20000, backoffMs));
+    }, delayMs || 20000);
+  }
+  function pauseWorldFeedPoll() {
+    clearTimeout(worldFeedPollHandle);
+    worldFeedPollHandle = null;
+  }
+  function resumeWorldFeedPoll(delayMs) {
+    if (document.visibilityState === "hidden") return;
+    scheduleWorldFeedPoll(delayMs || 0);
   }
 
   function postViewerMetricEvent(type, payload) {
@@ -1487,9 +1611,9 @@ export function runViewerClient(bootstrap) {
 
   // ── blackboard panel (single, persistent, updates in place) ─────────────
   function showBlackboardEmpty(reset) {
+    showClassSurface();
     els.blackboardPanel.classList.add("is-empty");
     els.blackboardEmpty.hidden = false;
-    els.leaderboardPanel.hidden = true;
     els.blackboardMeta.hidden = true;
     els.boardFrameHost.hidden = true;
     els.answersHost.hidden = true;
@@ -1521,6 +1645,7 @@ export function runViewerClient(bootstrap) {
     // just paints the live state: clear the empty placeholder, mark
     // opinion mode so the answers grid hides for opinion rounds, and
     // populate meta/board contents.
+    showClassSurface();
     els.blackboardPanel.classList.remove("is-empty");
     els.blackboardEmpty.hidden = true;
     els.blackboardMeta.hidden = false;
@@ -1541,6 +1666,7 @@ export function runViewerClient(bootstrap) {
       showBlackboardEmpty(true);
       return;
     }
+    showClassSurface();
     els.blackboardPanel.classList.remove("is-empty", "is-long-prompt", "is-essay-prompt");
     els.blackboardEmpty.hidden = true;
     els.blackboardMeta.hidden = false;
@@ -1666,8 +1792,8 @@ export function runViewerClient(bootstrap) {
       title.textContent = "Sign up to continue";
       body.textContent = "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.";
     } else if (state.socialReady) {
-      title.textContent = "Social card ready";
-      body.textContent = "One homeroom question before the next class.";
+      title.textContent = "Homeroom reflection";
+      body.textContent = "One short prompt before the next class.";
     } else if (state.practiceReady) {
       title.textContent = "Practice open";
       body.textContent = "Extra review, no change to today's grade.";
@@ -1685,6 +1811,7 @@ export function runViewerClient(bootstrap) {
       showBlackboardEmpty(true);
       return;
     }
+    showClassSurface();
     els.blackboardPanel.classList.remove("is-empty", "is-long-prompt", "is-essay-prompt");
     els.blackboardEmpty.hidden = true;
     els.blackboardMeta.hidden = false;
@@ -1728,34 +1855,19 @@ export function runViewerClient(bootstrap) {
   // sitting on the threshold, waiting for the other gate to land). After
   // graduation the year flips to "Graduated" and the gate hints drop.
   function renderArcIndicator(t) {
-    const ch = t.character;
-    const grade = t.current_grade;
-    if (!ch || !grade) {
+    const view = arcIndicatorView(t, subjectClearSummary(), walletSummaryText(t));
+    if (view.hidden) {
       els.arcIndicator.hidden = true;
       return;
     }
     els.arcIndicator.hidden = false;
-    const graduated = Array.isArray(ch.yearbook) && ch.yearbook.length >= 4;
-    els.arcIndicator.classList.toggle("is-graduated", graduated);
-    if (graduated) {
-      els.arcYear.textContent = "Graduated";
-      els.arcStreak.textContent = "🎓";
-      els.arcStreak.classList.remove("is-met");
-      els.arcXp.textContent = "✅";
-      els.arcXp.classList.remove("is-met");
-      els.arcScore.textContent = walletSummaryText(t);
-      return;
-    }
-    const yearLabel = GRADE_LABELS[grade] || ("Grade " + grade);
-    els.arcYear.textContent = yearLabel;
-    const streakCount = ch.streak && ch.streak.grade === grade ? ch.streak.count : 0;
-    const streakReq   = STREAK_REQUIRED[grade] || 1;
-    els.arcStreak.textContent = "📚 " + streakCount + "/" + streakReq;
-    els.arcStreak.classList.toggle("is-met", streakCount >= streakReq);
-    const subjects = subjectClearSummary();
-    els.arcXp.textContent = "✅ " + subjects.met + "/" + subjects.total;
-    els.arcXp.classList.toggle("is-met", subjects.met >= subjects.total);
-    els.arcScore.textContent = walletSummaryText(t);
+    els.arcIndicator.classList.toggle("is-graduated", view.graduated);
+    els.arcYear.textContent = view.yearText;
+    els.arcStreak.textContent = view.streakText;
+    els.arcStreak.classList.toggle("is-met", view.streakMet);
+    els.arcXp.textContent = view.subjectText;
+    els.arcXp.classList.toggle("is-met", view.subjectMet);
+    els.arcScore.textContent = view.scoreText;
   }
 
   function walletSummaryText(t) {
@@ -4521,96 +4633,77 @@ export function runViewerClient(bootstrap) {
     }
   }
 
+  function consumeSharedPackFlag() {
+    try {
+      const url = new URL(window.location.href);
+      const packId = (url.searchParams.get("pack") || "").trim();
+      if (!packId) return "";
+      url.searchParams.delete("pack");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      return packId.slice(0, 180);
+    } catch (_e) {
+      return "";
+    }
+  }
+
+  async function applySharedPackFromUrl(packId) {
+    const cleanPackId = String(packId || "").trim();
+    if (!cleanPackId) return;
+    try {
+      await packStudioClient.installPack(cleanPackId, true);
+      await packStudioClient.setActivePack(cleanPackId);
+      await fetchSession();
+      showCongrats("Shared class added.", true);
+    } catch (err) {
+      showCongrats("Could not add shared class.", false);
+    }
+  }
+
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
   function renderRaceStrip(t) {
-    const round = t.active_round;
+    const view = raceStripView(
+      t,
+      STUDENTS,
+      STUDENTS.filter((s) => shouldShowStudentId(s.id)).map((s) => s.id),
+      playerDisplayName(),
+    );
     // Visibility is owned by applyViewMode/CSS via data-mode. We bail
     // here only when there's NO content to paint — applyViewMode has
     // already hidden the strip if mode != round-live.
-    if (!round || !t.current || round.questionId !== t.current.id) {
+    if (!view) {
       els.raceRow.innerHTML = "";
       return;
     }
     // Timer label (uses server-derived remainingMs as the source of truth).
-    const remainingS = Math.max(0, Math.ceil((round.remainingMs ?? 0) / 1000));
-    els.timerLabel.textContent = round.resolved ? "done" : remainingS + "s";
-    els.timerPill.classList.toggle("is-warn", !round.resolved && remainingS <= 10 && remainingS > 5);
-    els.timerPill.classList.toggle("is-danger", !round.resolved && remainingS <= 5);
-    els.timerPill.classList.toggle("is-locked", !!round.resolved);
+    els.timerLabel.textContent = view.timer.label;
+    els.timerPill.classList.toggle("is-warn", view.timer.warn);
+    els.timerPill.classList.toggle("is-danger", view.timer.danger);
+    els.timerPill.classList.toggle("is-locked", view.timer.locked);
 
     // Per-participant cards (player + NPCs).
-    const cards = [];
-    cards.push({
-      kind: "player",
-      id: "player",
-      name: playerDisplayName(),
-      faceUrl: null,
-      isLocked: round.player.isLocked,
-      isTimedOut: !!round.player.timedOut,
-      pick: round.player.picked, // null until reveal
-      isCorrect: round.resolved && round.player.picked && t.current ? round.player.picked === t.lastReveal?.correct : null,
-      isFirstCorrect: round.firstCorrect === "player",
-      color: "var(--accent)",
-    });
-    (round.npcs || []).filter((n) => shouldShowStudentId(n.studentId)).forEach((n) => {
-      const s = STUDENTS.find((x) => x.id === n.studentId);
-      cards.push({
-        kind: "student",
-        id: n.studentId,
-        name: s ? s.shortName || s.name : n.studentId,
-        faceUrl: null,
-        isLocked: n.isLocked,
-        isTimedOut: false,
-        pick: n.pick,
-        isCorrect: n.isCorrect,
-        isFirstCorrect: round.firstCorrect === n.studentId,
-        color: s ? s.color : "#888",
-      });
-    });
     els.raceRow.innerHTML = "";
-    for (const c of cards) {
+    for (const c of view.cards) {
       const card = document.createElement("span");
       card.className = "race-card" + (c.isLocked ? " is-locked" : "");
-      if (round.resolved) {
-        if (c.isCorrect === true) card.classList.add("is-correct");
-        else if (c.isCorrect === false) card.classList.add("is-wrong");
-        if (c.isFirstCorrect) card.classList.add("is-first-correct");
-      }
+      if (c.isCorrect === true) card.classList.add("is-correct");
+      else if (c.isCorrect === false) card.classList.add("is-wrong");
+      if (c.isFirstCorrect) card.classList.add("is-first-correct");
       const av = document.createElement("span");
       av.className = "race-avatar";
-      if (c.kind === "student") {
-        // Students don't have face stickers yet — fall back to colored circle with initial.
-        av.style.background = c.color;
-        av.style.color = "#fff";
-        av.textContent = (c.name || "?").charAt(0).toUpperCase();
-      } else {
-        av.style.background = c.color;
-        av.style.color = "#fff";
-        av.textContent = "U";
-      }
+      av.style.background = c.color;
+      av.style.color = "#fff";
+      av.textContent = c.avatarText;
       card.appendChild(av);
       const nameEl = document.createElement("span");
       nameEl.textContent = c.name;
       card.appendChild(nameEl);
-      if (c.isLocked) {
-        if (round.resolved && c.isTimedOut) {
-          const lt = document.createElement("span");
-          lt.className = "pick-letter";
-          lt.textContent = "⏱";
-          lt.title = "Timed out";
-          card.appendChild(lt);
-        } else if (round.resolved && c.pick) {
-          const lt = document.createElement("span");
-          lt.className = "pick-letter";
-          lt.textContent = c.pick;
-          card.appendChild(lt);
-        } else if (!round.resolved) {
-          const lock = document.createElement("span");
-          lock.className = "pick-letter";
-          lock.textContent = "✓";
-          card.appendChild(lock);
-        }
-      } else {
+      if (c.pickText) {
+        const lt = document.createElement("span");
+        lt.className = "pick-letter";
+        lt.textContent = c.pickText;
+        if (c.isTimedOut) lt.title = "Timed out";
+        card.appendChild(lt);
+      } else if (c.showThinking) {
         const dots = document.createElement("span");
         dots.className = "thinking-dots";
         dots.appendChild(document.createElement("span"));
@@ -4701,25 +4794,22 @@ export function runViewerClient(bootstrap) {
   // server-side if we ever want a separate daily warm-up affordance.
 
   function renderQuestionPrompt(question) {
+    const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
-    const media = (question && Array.isArray(question.media)) ? question.media : [];
-    const images = media.filter((asset) =>
-      asset && typeof asset.dataUrl === "string" && asset.dataUrl.indexOf("data:image/") === 0
-    );
-    if (images.length > 0) {
+    if (view.images.length > 0) {
       const wrap = document.createElement("div");
       wrap.className = "anki-media-grid";
-      images.slice(0, 3).forEach((asset) => {
+      view.images.forEach((asset) => {
         const img = document.createElement("img");
-        img.src = asset.dataUrl;
-        img.alt = asset.name || "Source card image";
+        img.src = asset.src;
+        img.alt = asset.alt;
         wrap.appendChild(img);
       });
       els.boardPrompt.appendChild(wrap);
     }
     const text = document.createElement("div");
     text.className = "prompt-text";
-    renderMarkdownInto(text, (question && question.prompt) || "");
+    renderMarkdownInto(text, view.prompt);
     els.boardPrompt.appendChild(text);
   }
 
@@ -4867,7 +4957,7 @@ export function runViewerClient(bootstrap) {
       const cls = document.createElement("span");
       cls.className = "pill class-mode";
       cls.textContent = cardRole === "social"
-        ? "SOCIAL"
+        ? "REFLECTION"
         : ar.classSession.mode === "class"
         ? "GRADED " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
         : "PRACTICE";
@@ -5317,33 +5407,16 @@ export function runViewerClient(bootstrap) {
     return label + " class";
   }
   function studentRelativeStanding(entry, currentGrade) {
-    if (entry.arc && entry.arc.graduated) return "alumni";
-    if (!currentGrade || !entry.rosterGrade) return "";
-    const currentIdx = GRADE_ORDER.indexOf(String(currentGrade));
-    const studentIdx = GRADE_ORDER.indexOf(String(entry.rosterGrade));
-    if (studentIdx < 0 || currentIdx < 0) return "";
-    if (studentIdx > currentIdx) return "ahead of you";
-    if (studentIdx < currentIdx) return "behind you";
-    return entry.npc.currentRoom ? "#" + roomLabelFor(entry.npc.currentRoom) : "in your year";
+    return classmateArcStanding(entry, currentGrade, entry && entry.npc && entry.npc.currentRoom ? roomLabelFor(entry.npc.currentRoom) : "");
   }
   function studentArcSubtitle(entry, currentGrade) {
-    const bits = [];
-    const standing = studentRelativeStanding(entry, currentGrade);
-    if (standing) bits.push(standing);
-    if (entry.arc && entry.arc.graduated) {
-      bits.push(entry.arc.completedGrades.length + " years");
-    }
-    return bits.join(" · ");
+    return classmateArcSubtitle(entry, currentGrade, entry && entry.npc && entry.npc.currentRoom ? roomLabelFor(entry.npc.currentRoom) : "");
   }
   function studentArcProgress(entry) {
-    if (!entry.arc || entry.arc.graduated || !entry.arc.streak) return null;
-    const total = STREAK_REQUIRED[entry.rosterGrade] || 1;
-    const value = Math.max(0, Math.min(Number(entry.arc.streak.count || 0), total));
-    return { value, total };
+    return classmateArcProgress(entry);
   }
   function studentArcProgressLabel(progress) {
-    if (!progress) return "";
-    return "Year progress " + progress.value + " of " + progress.total;
+    return classmateArcProgressLabel(progress);
   }
   function buildStudentArcMeter(entry) {
     const progress = studentArcProgress(entry);
@@ -5361,15 +5434,10 @@ export function runViewerClient(bootstrap) {
     return meter;
   }
   function roomCompletionProgress(fac) {
-    if (!fac) return null;
-    const total = Math.max(0, Math.floor(Number(fac.requiredClasses || 0)));
-    if (total <= 0) return null;
-    const value = Math.max(0, Math.min(Math.floor(Number(fac.completedClasses || 0)), total));
-    return { value, total };
+    return roomCompletionProgressView(fac);
   }
   function roomCompletionLabel(fac, progress) {
-    const roomName = (fac && (fac.shortName || fac.displayName)) || "Room";
-    return roomName + " daily classes " + progress.value + " of " + progress.total;
+    return roomCompletionProgressLabel(fac, progress);
   }
   function buildRoomCompletionMeter(fac) {
     const progress = roomCompletionProgress(fac);
@@ -5754,9 +5822,11 @@ export function runViewerClient(bootstrap) {
 
   async function showLeaderboard() {
     closeRails();
+    leaderboardViewOpen = true;
     hideBlackboard();
     els.loungeStage.hidden = true;
     els.stream.hidden = true;
+    if (els.worldPanel) els.worldPanel.hidden = true;
     els.leaderboardPanel.hidden = false;
     els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
     try {
@@ -5772,15 +5842,15 @@ export function runViewerClient(bootstrap) {
   function hideBlackboard() {
     els.blackboardPanel.hidden = true;
     els.composerZone.hidden = true;
+    if (els.worldPanel) els.worldPanel.hidden = true;
   }
 
   function renderLeaderboard(data) {
-    const students = (data && data.students) || [];
-    const grade = (data && data.grade) || "9";
-    const labels = {"9":"Freshman","10":"Sophomore","11":"Junior","12":"Senior"};
+    const playbooks = (lastTelemetry && Array.isArray(lastTelemetry.playbooks)) ? lastTelemetry.playbooks : [];
+    const view = leaderboardView(data, playbooks);
     const body = els.leaderboardBody;
     body.innerHTML = "";
-    if (!students.length) {
+    if (view.empty) {
       body.innerHTML = '<div class="leaderboard-empty">No classmates yet. Complete daily classes with other players to see them here.</div>';
       return;
     }
@@ -5788,14 +5858,18 @@ export function runViewerClient(bootstrap) {
     group.className = "leaderboard-year-group";
     const header = document.createElement("div");
     header.className = "leaderboard-year-header";
-    header.innerHTML = labels[grade] + ' Classroom <span class="leaderboard-year-count">' + students.length + '</span>';
+    header.appendChild(document.createTextNode(view.gradeLabel + " Classroom "));
+    const count = document.createElement("span");
+    count.className = "leaderboard-year-count";
+    count.textContent = String(view.count);
+    header.appendChild(count);
     group.appendChild(header);
-    students.forEach((s, i) => {
+    view.rows.forEach((s) => {
         const row = document.createElement("div");
         row.className = "leaderboard-row";
         const rank = document.createElement("div");
-        rank.className = "leaderboard-rank rank-" + (i < 3 ? i + 1 : "n");
-        rank.textContent = String(i + 1);
+        rank.className = s.rankClass;
+        rank.textContent = s.rank;
         row.appendChild(rank);
         const thumb = document.createElement("div");
         thumb.className = "leaderboard-portrait";
@@ -5803,30 +5877,29 @@ export function runViewerClient(bootstrap) {
           const img = document.createElement("img");
           img.src = s.portraitUrl;
           img.alt = "";
-          img.onerror = () => { thumb.textContent = String(s.name || "?").slice(0,1).toUpperCase(); };
+          img.onerror = () => { thumb.textContent = s.avatarText; };
           thumb.appendChild(img);
         } else {
-          thumb.textContent = String(s.name || "?").slice(0,1).toUpperCase();
+          thumb.textContent = s.avatarText;
         }
         row.appendChild(thumb);
         const info = document.createElement("div");
         info.className = "leaderboard-info";
         const nameEl = document.createElement("div");
         nameEl.className = "leaderboard-name";
-        nameEl.textContent = s.name || "—";
+        nameEl.textContent = s.name;
         info.appendChild(nameEl);
         const pbEl = document.createElement("div");
         pbEl.className = "leaderboard-playbook";
-        const playbooks = (lastTelemetry && Array.isArray(lastTelemetry.playbooks)) ? lastTelemetry.playbooks : []; pbEl.textContent = (playbooks.find(p => p.id === s.playbookId) || {}).name || s.playbookId || "—";
+        pbEl.textContent = s.playbookName;
         info.appendChild(pbEl);
-        if (s.classGrades && typeof s.classGrades === "object") {
+        if (s.gradeChips.length > 0) {
           const grades = document.createElement("div");
           grades.className = "leaderboard-grades";
-          Object.entries(s.classGrades).slice(0, 3).forEach(([fac, gl]) => {
+          s.gradeChips.forEach((gradeChip) => {
             const chip = document.createElement("span");
-            chip.className = "leaderboard-grade-chip is-" + String(gl).charAt(0);
-            const fn = {"ruby":"Ruby","sally-science":"Sally","professor-edward":"Edward"}[fac] || fac;
-            chip.textContent = fn + " " + gl;
+            chip.className = gradeChip.className;
+            chip.textContent = gradeChip.text;
             grades.appendChild(chip);
           });
           info.appendChild(grades);
@@ -6166,6 +6239,12 @@ export function runViewerClient(bootstrap) {
     // CONTENT — they no longer fight over visibility.
     els.blackboardPanel.dataset.mode = mode;
     els.shell.dataset.mode = mode;
+    if (!leaderboardViewOpen) {
+      els.blackboardPanel.hidden = false;
+      els.stream.hidden = false;
+      els.composerZone.hidden = false;
+      els.leaderboardPanel.hidden = true;
+    }
     updateChatAction(mode);
     els.chatForm.hidden = true;
     setChatComposerDisabled(true);
@@ -6303,6 +6382,7 @@ export function runViewerClient(bootstrap) {
       loadHistory(t.faculty);
     }
     applyViewMode(deriveViewMode(t));
+    renderWorldPanel();
     // Morning announcements — shown once per day on first visit.
     // Fires after the first telemetry tick, before class content renders.
     showMorningAnnouncements(t);
@@ -8174,6 +8254,7 @@ export function runViewerClient(bootstrap) {
       const detail = document.createElement("div");
       detail.className = "comic-reader-detail";
       detail.textContent = comicPageTitle(pageNumber);
+      title.appendChild(document.createTextNode(" "));
       title.appendChild(detail);
     }
     const close = document.createElement("button");
@@ -12544,6 +12625,7 @@ export function runViewerClient(bootstrap) {
   if (youCardBlock) youCardBlock.addEventListener("click", () => { if (authed) openSheet(); });
   const youAvatarEl = document.querySelector(".channels-footer .you-avatar");
   if (youAvatarEl) youAvatarEl.addEventListener("click", () => { if (authed) openSheet(); });
+  if (els.worldPanelRefresh) els.worldPanelRefresh.addEventListener("click", () => { void loadWorldFeed({ force: true }); });
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
   els.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }
@@ -12563,6 +12645,7 @@ export function runViewerClient(bootstrap) {
   applyAuthUI();
   consumeBillingReturnFlag();
   consumeReferralFlag();
+  const sharedPackId = consumeSharedPackFlag();
   // The session is born already enrolled at Freshman year (server-side
   // default). The player progresses Freshman → Sophomore → Junior → Senior
   // → graduate as they clear per-grade daily-class and subject-grade gates. There is no year
@@ -12580,8 +12663,11 @@ export function runViewerClient(bootstrap) {
       ref: referralRef || "",
     });
     await fetchSession();
+    void loadWorldFeed({ initial: true });
+    await applySharedPackFromUrl(sharedPackId);
   }
   void bootInitialSession();
+  resumeWorldFeedPoll(20000);
   initializePrivyFromStoredSession();
   window.addEventListener("storage", (e) => {
     if (e.key === AUTH_KEY || e.key === AUTH_LABEL || e.key === AUTH_PERSIST || e.key === null) deriveAuth();
@@ -12611,12 +12697,15 @@ export function runViewerClient(bootstrap) {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       hiddenAt = Date.now();
+      pauseWorldFeedPoll();
       return;
     }
     if (document.visibilityState === "visible") {
       deriveAuth();
       initializePrivyFromStoredSession();
       maybePostSessionResume("visibilitychange");
+      void loadWorldFeed({ silent: true });
+      resumeWorldFeedPoll(20000);
     }
   });
   // Adaptive poll: tick every second during an active race so NPC picks

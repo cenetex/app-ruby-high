@@ -1,6 +1,14 @@
 import type { XSocialService } from "../services/x-social-service.js";
+import type {
+  ClassPhotoCandidate,
+  DailyPhotoPostResult,
+  RecentlyActiveStudent,
+  SchoolSnapshot,
+} from "../services/ruby-high-service.js";
 import type { RouteContext } from "./context.js";
 import { X_SOCIAL_CONNECT_PATH, X_SOCIAL_CALLBACK_PATH, X_SOCIAL_PREFIX } from "./constants.js";
+
+const TELEGRAM_TOKEN_PLACEHOLDER = "(already set)";
 
 function requireAdminAuth(ctx: RouteContext): boolean {
   const token = process.env.RUBY_HIGH_ADMIN_TOKEN;
@@ -32,6 +40,60 @@ function sendJson(res: unknown, data: unknown, status = 200): void {
 
 function sendError(res: unknown, message: string, status = 400): void {
   sendJson(res, { error: message }, status);
+}
+
+type RubySocialSnapshotService = {
+  getFreshSchoolSnapshot?: () => Promise<SchoolSnapshot>;
+  getSchoolSnapshot?: () => SchoolSnapshot;
+  getFreshRecentlyActiveStudents?: () => Promise<RecentlyActiveStudent[]>;
+  getRecentlyActiveStudents?: () => RecentlyActiveStudent[];
+  getFreshClassPhotoCandidates?: (limit?: number) => Promise<ClassPhotoCandidate[]>;
+  getClassPhotoCandidates?: (limit?: number) => ClassPhotoCandidate[];
+  hasClassPhotoRevealTarget?: (candidates: readonly ClassPhotoCandidate[]) => boolean;
+  enqueueClassPhotoReveal?: (teacherFacultyId: string, imageUrl: string, candidates: readonly ClassPhotoCandidate[]) => string | null;
+  maybePostDailyPhoto?: (opts?: { photoId?: string }) => Promise<DailyPhotoPostResult | null> | DailyPhotoPostResult | null;
+};
+
+function rubySocialService(xSocial: XSocialService): RubySocialSnapshotService | null {
+  const runtime = (xSocial as unknown as { runtime?: { getService?: (type: string) => unknown } }).runtime;
+  return (runtime?.getService?.("ruby-high") as RubySocialSnapshotService | null) ?? null;
+}
+
+async function freshSchoolSnapshot(rsvc: RubySocialSnapshotService | null): Promise<SchoolSnapshot | null> {
+  if (!rsvc) return null;
+  if (rsvc.getFreshSchoolSnapshot) return rsvc.getFreshSchoolSnapshot();
+  return rsvc.getSchoolSnapshot?.() ?? null;
+}
+
+async function freshRecentlyActiveStudents(rsvc: RubySocialSnapshotService | null): Promise<RecentlyActiveStudent[]> {
+  if (!rsvc) return [];
+  if (rsvc.getFreshRecentlyActiveStudents) return rsvc.getFreshRecentlyActiveStudents();
+  return rsvc.getRecentlyActiveStudents?.() ?? [];
+}
+
+async function freshClassPhotoCandidates(rsvc: RubySocialSnapshotService | null, limit: number): Promise<ClassPhotoCandidate[]> {
+  if (!rsvc) return [];
+  if (rsvc.getFreshClassPhotoCandidates) return rsvc.getFreshClassPhotoCandidates(limit);
+  return rsvc.getClassPhotoCandidates?.(limit) ?? [];
+}
+
+function isSyntheticClassPhotoName(name: string): boolean {
+  return /^(smoke|pacing)(?:\s|$)/i.test(name.trim());
+}
+
+function publicClassPhotoCandidates(candidates: readonly ClassPhotoCandidate[]): ClassPhotoCandidate[] {
+  const out: ClassPhotoCandidate[] = [];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const sessionId = typeof candidate.sessionId === "string" ? candidate.sessionId.trim() : "";
+    const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+    const imageUrl = typeof candidate.imageUrl === "string" ? candidate.imageUrl.trim() : "";
+    const grade = typeof candidate.grade === "string" ? candidate.grade.trim() : "";
+    if (!sessionId || !name || !imageUrl || !grade) continue;
+    if (isSyntheticClassPhotoName(name)) continue;
+    out.push({ sessionId, name, imageUrl, grade });
+  }
+  return out;
 }
 
 export async function handleXSocialRoutes(
@@ -115,9 +177,8 @@ export async function handleXSocialRoutes(
   // GET /x/students — list recently active students (admin only)
   if (ctx.method === "GET" && pathname === `${X_SOCIAL_PREFIX}/students`) {
     if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
-    const runtime = (xSocial as any).runtime;
-    const rsvc = runtime?.getService?.("ruby-high") as { getRecentlyActiveStudents?: () => any[] } | null;
-    const students = rsvc?.getRecentlyActiveStudents?.() ?? [];
+    const rsvc = rubySocialService(xSocial);
+    const students = await freshRecentlyActiveStudents(rsvc);
     ctx.json(ctx.res, { students });
     return true;
   }
@@ -148,9 +209,8 @@ export async function handleXSocialRoutes(
   // GET /x/snapshot — full school context for bots (admin only)
   if (ctx.method === "GET" && pathname === `${X_SOCIAL_PREFIX}/snapshot`) {
     if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
-    const runtime = (xSocial as any).runtime;
-    const rsvc = runtime?.getService?.("ruby-high") as { getSchoolSnapshot?: () => any } | null;
-    const snapshot = rsvc?.getSchoolSnapshot?.() ?? { topByYear: {}, photoPool: [], dailyMemories: {} };
+    const rsvc = rubySocialService(xSocial);
+    const snapshot = await freshSchoolSnapshot(rsvc) ?? { topByYear: {}, photoPool: [], classPhotoHistory: [], dailyMemories: {} };
     ctx.json(ctx.res, snapshot);
     return true;
   }
@@ -161,14 +221,13 @@ export async function handleXSocialRoutes(
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/post/`.length);
     if (!teacherId) { sendError(ctx.res, "Teacher ID is required.", 400); return true; }
     try {
-      const runtime = (xSocial as any).runtime;
-      const rsvc = runtime?.getService?.("ruby-high") as { getSchoolSnapshot?: () => any; getDailyMemories?: () => any } | null;
-      const snapshot = rsvc?.getSchoolSnapshot?.() ?? null;
-      const memories = snapshot?.dailyMemories ?? rsvc?.getDailyMemories?.() ?? { date: new Date().toISOString().slice(0,10), charactersCreated:[], classesPassed:[], gradesAdvanced:[], graduations:[], totalStudents:0, totalQuestionsAnswered:0 };
+      const rsvc = rubySocialService(xSocial);
+      const snapshot = await freshSchoolSnapshot(rsvc);
+      const memories = snapshot?.dailyMemories ?? { date: new Date().toISOString().slice(0,10), charactersCreated:[], classesPassed:[], gradesAdvanced:[], graduations:[], totalStudents:0, totalQuestionsAnswered:0 };
       const { teacherById } = await import("../characters/teachers.js");
       const teacher = teacherById(teacherId);
       if (!teacher) { sendError(ctx.res, "Unknown teacher: " + teacherId, 404); return true; }
-      const tweetId = await xSocial.postReflection(teacher, memories, snapshot);
+      const tweetId = await xSocial.postReflection(teacher, memories);
       if (tweetId) { ctx.json(ctx.res, { ok: true, tweetId }); }
       else { ctx.json(ctx.res, { ok: false, error: "Post failed or teacher not connected." }, 400); }
     } catch (err) {
@@ -186,15 +245,17 @@ export async function handleXSocialRoutes(
       const body = await ctx.readJsonBody() as Record<string, unknown> | null;
       const sessionId = typeof body?.sessionId === "string" ? body.sessionId : null;
       if (!sessionId) { ctx.error(ctx.res, "sessionId is required.", 400); return true; }
-      const runtime = (xSocial as any).runtime;
-      const rsvc = runtime?.getService?.("ruby-high") as { getRecentlyActiveStudents?: () => any[] } | null;
-      const students = rsvc?.getRecentlyActiveStudents?.() ?? [];
-      const student = students.find((s: any) => s.sessionId === sessionId);
+      const rsvc = rubySocialService(xSocial);
+      const students = await freshRecentlyActiveStudents(rsvc);
+      const student = students.find((s) => s.sessionId === sessionId);
       if (!student) { ctx.error(ctx.res, "Student not found.", 404); return true; }
       const { teacherById } = await import("../characters/teachers.js");
       const teacher = teacherById(teacherId);
       if (!teacher) { ctx.error(ctx.res, "Unknown teacher.", 404); return true; }
-      const tweetId = await xSocial.postReportCard(teacher, student);
+      const tweetId = await xSocial.postReportCard(teacher, {
+        ...student,
+        stats: { ...student.stats },
+      });
       if (tweetId) { ctx.json(ctx.res, { ok: true, tweetId }); }
       else { ctx.json(ctx.res, { ok: false, error: "Post failed." }, 400); }
     } catch (err) {
@@ -209,28 +270,16 @@ export async function handleXSocialRoutes(
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/class-photo/`.length);
     if (!teacherId) { ctx.error(ctx.res, "Teacher ID is required.", 400); return true; }
     try {
-      const rt = (xSocial as any).runtime;
-      const rsvc = rt?.getService?.("ruby-high") as { getSchoolSnapshot?: () => any; enqueuePhotoReveal?: (sid: string, kind: string, url: string, tid: string) => string; maybePostDailyPhoto?: () => void; sessions?: Map<string, any> } | null;
-      const snapshot = rsvc?.getSchoolSnapshot?.() ?? { topByYear: {}, photoPool: [] };
-      // Collect student portraits from the top-3-per-year list.
-      const studentImages: Array<{ name: string; imageUrl: string; sessionId: string }> = [];
-      const sessions = rsvc?.sessions
-        ? (rsvc as any).sessions as Map<string, any>
-        : new Map();
-      for (const gradeStudents of Object.values(snapshot.topByYear) as any[]) {
-        for (const s of gradeStudents) {
-          const state = sessions.get(s.sessionId);
-          const portraitUrl = state?.character?.portraitDataUrl;
-          if (portraitUrl) {
-            studentImages.push({ name: s.name, imageUrl: portraitUrl, sessionId: s.sessionId || "" });
-          }
-        }
-      }
-      if (studentImages.length === 0) {
+      const rsvc = rubySocialService(xSocial);
+      const selected = publicClassPhotoCandidates(await freshClassPhotoCandidates(rsvc, 8));
+      if (selected.length === 0) {
         ctx.json(ctx.res, { ok: false, error: "No students with portraits found." }, 400);
         return true;
       }
-      const selected = studentImages.slice(0, 8);
+      if (rsvc?.hasClassPhotoRevealTarget && !rsvc.hasClassPhotoRevealTarget(selected)) {
+        ctx.json(ctx.res, { ok: false, error: "No eligible student queue can accept a class photo." }, 409);
+        return true;
+      }
       const { teacherById } = await import("../characters/teachers.js");
       const teacher = teacherById(teacherId);
       if (!teacher) { ctx.error(ctx.res, "Unknown teacher.", 404); return true; }
@@ -241,16 +290,23 @@ export async function handleXSocialRoutes(
         return true;
       }
 
-      
-      let photoId = "class-photo-" + Date.now();
-      if (rsvc?.enqueuePhotoReveal) {
-        for (const s of selected) {
-          photoId = rsvc.enqueuePhotoReveal(s.sessionId || "", "class-photo", imageUrl, teacherId);
-          break; // Just enqueue once
-        }
+      const photoId = rsvc?.enqueueClassPhotoReveal?.(teacherId, imageUrl, selected) ?? null;
+      if (!photoId) {
+        ctx.json(ctx.res, { ok: false, error: "Class photo generated, but no eligible student queue accepted it." }, 409);
+        return true;
       }
-      rsvc?.maybePostDailyPhoto?.();
-      ctx.json(ctx.res, { ok: true, photoId, imageUrl, studentCount: selected.length });
+      const postResult = await rsvc?.maybePostDailyPhoto?.({ photoId });
+      ctx.json(ctx.res, {
+        ok: true,
+        photoId,
+        imageUrl,
+        studentCount: selected.length,
+        posted: postResult?.posted ?? false,
+        revealed: postResult?.revealed ?? false,
+        ...(postResult?.tweetId ? { tweetId: postResult.tweetId } : {}),
+        ...(postResult?.deferredUntil ? { deferredUntil: postResult.deferredUntil } : {}),
+        ...(postResult?.fallback ? { fallback: true } : {}),
+      });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : "Class photo failed", 500);
     }
@@ -267,12 +323,12 @@ export async function handleXSocialRoutes(
     return true;
   }
 
-  // GET /x/telegram/find-chat?token=... — proxy Telegram getUpdates (admin only)
-  // Token must match Telegram bot token format (digits:alphanum) before
-  // the outbound fetch to avoid leakage into access logs via the URL path.
-  if (ctx.method === "GET" && pathname === `${X_SOCIAL_PREFIX}/telegram/find-chat`) {
+  // POST /x/telegram/find-chat — proxy Telegram getUpdates (admin only).
+  // Accept the token only in the JSON body so it does not leak through URLs.
+  if (ctx.method === "POST" && pathname === `${X_SOCIAL_PREFIX}/telegram/find-chat`) {
     if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
-    const token = ctx.url?.searchParams.get("token") ?? "";
+    const body = await ctx.readJsonBody() as Record<string, unknown> | null;
+    const token = typeof body?.token === "string" ? body.token.trim() : "";
     if (!token) { ctx.error(ctx.res, "token is required.", 400); return true; }
     if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) { ctx.error(ctx.res, "Invalid bot token format.", 400); return true; }
     try {
@@ -298,8 +354,16 @@ export async function handleXSocialRoutes(
   if (ctx.method === "POST" && pathname === `${X_SOCIAL_PREFIX}/telegram`) {
     if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
     const body = await ctx.readJsonBody() as Record<string, unknown> | null;
-    const botToken = typeof body?.botToken === "string" ? body.botToken.trim() : "";
+    const rawBotToken = typeof body?.botToken === "string" ? body.botToken.trim() : "";
     const chatId = typeof body?.chatId === "string" ? body.chatId.trim() : "";
+    const runtime = (xSocial as any).runtime;
+    const telegram = runtime?.getService?.("telegram") as {
+      updateConfig?: (t: string | null, c: string) => void;
+      getConfig?: () => { chatId: string; enabled: boolean; hasToken: boolean };
+    } | null;
+    const existing = telegram?.getConfig?.() ?? { chatId: "", enabled: false, hasToken: false };
+    const keepExistingToken = rawBotToken === TELEGRAM_TOKEN_PLACEHOLDER || (!rawBotToken && existing.hasToken);
+    const botToken = keepExistingToken ? "" : rawBotToken;
     // If no chatId provided, auto-detect from Telegram getUpdates
     let resolvedChatId = chatId;
     if (botToken && !resolvedChatId) {
@@ -317,10 +381,10 @@ export async function handleXSocialRoutes(
         }
       } catch { /* keep empty */ }
     }
-    if (!botToken || !resolvedChatId) { ctx.error(ctx.res, "botToken and chatId are required. Send a message in the group first.", 400); return true; }
-    const runtime = (xSocial as any).runtime;
-    const telegram = runtime?.getService?.("telegram") as { updateConfig?: (t: string, c: string) => void; getConfig?: () => any } | null;
-    telegram?.updateConfig?.(botToken, resolvedChatId);
+    if (!resolvedChatId) { ctx.error(ctx.res, "chatId is required. Send a message in the group first.", 400); return true; }
+    if (!botToken && !keepExistingToken) { ctx.error(ctx.res, "botToken is required.", 400); return true; }
+    if (keepExistingToken && !existing.hasToken) { ctx.error(ctx.res, "botToken is required.", 400); return true; }
+    telegram?.updateConfig?.(keepExistingToken ? null : botToken, resolvedChatId);
     ctx.json(ctx.res, { ok: true, ...(telegram?.getConfig?.() ?? {}) });
     return true;
   }

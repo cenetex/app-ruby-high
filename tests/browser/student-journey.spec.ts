@@ -35,26 +35,22 @@ test("full student journey: grades 9-12 with item system", async ({ page }) => {
   const walletText = await page.locator("#account-panel-wallet").textContent();
   expect(walletText).toMatch(/Merit Stars|Hall Pass/i);
 
-  // Library — items section renders with cards.
+  // Library — comics section renders with collected and locked pages.
   await page.locator("#account-tab-library").click();
   await expect(page.locator("#account-panel-library")).toBeVisible();
 
-  // Items section should be visible.
-  const itemsSection = page.locator("#account-items");
-  await expect(itemsSection).toBeVisible({ timeout: 5000 });
+  const comicsSection = page.locator("#account-comics");
+  await expect(comicsSection).toBeVisible({ timeout: 5000 });
 
-  // Should show item cards (collected items or locked placeholders).
-  const itemCards = page.locator(".account-item-card");
-  const cardCount = await itemCards.count();
-  expect(cardCount).toBeGreaterThan(0);
+  const comicTiles = page.locator(".comic-page-tile");
+  const tileCount = await comicTiles.count();
+  expect(tileCount).toBeGreaterThan(0);
 
-  // Item summary shows count.
-  const summaryText = await page.locator("#account-item-summary").textContent();
-  expect(summaryText).toMatch(/\d+ collected/);
+  const summaryText = await page.locator("#account-comic-summary").textContent();
+  expect(summaryText).toMatch(/\d+\/\d+ pages found/);
 
-  // Comics section also renders.
   const libraryText = await page.locator("#account-panel-library").textContent();
-  expect(libraryText).toMatch(/yearbook|comic|collected/i);
+  expect(libraryText).toMatch(/comic|pages found/i);
 
   await page.locator("#privy-close").click();
   await expect(page.locator("#privy-overlay")).not.toHaveClass(/is-open/);

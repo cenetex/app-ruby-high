@@ -2,8 +2,8 @@
 // Production entry point. Same wiring as scripts/dev-server.mjs but with
 // container-friendly defaults: binds 0.0.0.0, reads PORT from env, exposes
 // /health for the platform's healthcheck, and writes session state to
-// `RUBY_HIGH_DATA_DIR` when set. Production runs on Fly.io with DynamoDB
-// persistence; the JSON path is retained for local/container fallback.
+// `RUBY_HIGH_DATA_DIR` when set. Production runs on Fly.io with SQLite on a
+// mounted volume; the JSON path is retained for local/container fallback.
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
@@ -58,15 +58,16 @@ async function bootServices() {
     handleAppRoutes: appRoutes,
   } = mod;
   handleAppRoutes = appRoutes;
-  // State backend: defaults to a JSON file. Set
-  // RUBY_HIGH_STORE_BACKEND=dynamodb + RUBY_HIGH_DYNAMO_TABLE to persist
-  // across container restarts.
+  // State backend: selected by RUBY_HIGH_STORE_BACKEND. Production uses
+  // sqlite at RUBY_HIGH_STATE_PATH; json remains the local fallback and
+  // dynamodb is retained only for legacy recovery/testing.
   stateStore = await createStateStore({ jsonPath: STATE_PATH ?? undefined });
   facultySvc = await FacultyService.start(fakeRuntime);
   authSvc = await AuthService.start(fakeRuntime, stateStore);
   chatSvc = await ChatService.start(fakeRuntime);
   const svc = new RubyHighService(fakeRuntime, stateStore);
   await svc["hydrate"]();
+  svc.startPhotoPostScheduler();
   svc.setFacultyService(facultySvc);
   chatSvc.setRubyHighService(svc);
   rubySvc = svc;
@@ -170,6 +171,7 @@ function makeRouteContext(req, res, url) {
     authorizationHeader: req.headers.authorization ?? null,
     stripeSignatureHeader: req.headers["stripe-signature"] ?? null,
     ifNoneMatch: req.headers["if-none-match"] ?? null,
+    lastEventIdHeader: req.headers["last-event-id"] ?? null,
     acceptEncoding: req.headers["accept-encoding"] ?? null,
     callbackUrlBuilder: (path) => new URL(base).origin + path,
     error(_r, message, status = 500) {
@@ -198,6 +200,21 @@ function healthPayload() {
     app: "ruby-high",
     build: process.env.RUBY_HIGH_BUILD ?? "dev",
     state: stateStore?.describe?.() ?? "starting",
+    curriculum: curriculumHealthPayload(),
+  };
+}
+
+function curriculumHealthPayload() {
+  if (!facultySvc?.faculty || !facultySvc?.bank) return null;
+  const byFaculty = {};
+  for (const faculty of facultySvc.faculty()) {
+    byFaculty[faculty.id] = facultySvc.bank(faculty.id)?.questions.length ?? 0;
+  }
+  const totalQuestions = Object.values(byFaculty).reduce((sum, count) => sum + count, 0);
+  return {
+    pack: "ruby-high-original",
+    totalQuestions,
+    byFaculty,
   };
 }
 
@@ -374,7 +391,11 @@ server.listen(PORT, HOST, () => {
 // Graceful shutdown so a rolling deploy doesn't sever in-flight SSE rudely.
 const shutdown = (sig) => {
   console.log(`[ruby-high] ${sig} received — closing`);
-  server.close(() => process.exit(0));
+  server.close(() => {
+    void rubySvc?.stop?.()
+      .catch((err) => console.error("[ruby-high] shutdown cleanup failed:", err))
+      .finally(() => process.exit(0));
+  });
   setTimeout(() => process.exit(1), 8000).unref();
 };
 process.on("SIGINT", () => shutdown("SIGINT"));

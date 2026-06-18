@@ -16,9 +16,13 @@ import type {
   StoredDraftContentPackRecord,
   StoredMetricEventRecord,
   StoredPackInstallationRecord,
+  StoredSchoolEventQuery,
+  StoredSchoolEventRecord,
+  StoredSessionQuery,
+  StoredServiceStateRecord,
   StoredTeacherRecord,
 } from "./state-store.js";
-import { isStoredMetricEventName } from "./state-store.js";
+import { isStoredMetricEventName, isStoredSchoolEventRecord, querySchoolEventRecords, querySessionRecords } from "./state-store.js";
 
 /**
  * DynamoDB-backed state store. One item per session, primary key = sessionId.
@@ -137,6 +141,16 @@ export class DynamoStateStore implements StateStoreLike {
       }
     }
     return map;
+  }
+
+  async loadRecentSessions(query: StoredSessionQuery = {}): Promise<Map<string, QuizState>> {
+    const states: QuizState[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const state = item.state as QuizState | undefined;
+      if (state && typeof state.sessionId === "string") states.push(state);
+    }
+    return querySessionRecords(states, query);
   }
 
   async loadAuth(): Promise<AuthStoreSnapshot> {
@@ -264,6 +278,37 @@ export class DynamoStateStore implements StateStoreLike {
     return records;
   }
 
+  async loadSchoolEvents(query: StoredSchoolEventQuery = {}): Promise<StoredSchoolEventRecord[]> {
+    const records: StoredSchoolEventRecord[] = [];
+    const items = await this.scanAll();
+    for (const item of items) {
+      const record = item.schoolEvent as StoredSchoolEventRecord | undefined;
+      if (isStoredSchoolEventRecord(record)) {
+        records.push(record);
+      }
+    }
+    return querySchoolEventRecords(records, query);
+  }
+
+  async loadServiceState(id: string): Promise<StoredServiceStateRecord | null> {
+    const items = await this.scanAll();
+    for (const item of items) {
+      if (item.pk !== `service-state:${encodeURIComponent(id)}`) continue;
+      const record = item.serviceState as StoredServiceStateRecord | undefined;
+      if (
+        record &&
+        record.id === id &&
+        typeof record.updatedAt === "number" &&
+        record.data &&
+        typeof record.data === "object" &&
+        !Array.isArray(record.data)
+      ) {
+        return record;
+      }
+    }
+    return null;
+  }
+
   private async scanAll(): Promise<Array<Record<string, unknown>>> {
     const now = Date.now();
     if (this.scanCache && now - this.scanCache.at <= SCAN_CACHE_MS) {
@@ -279,6 +324,7 @@ export class DynamoStateStore implements StateStoreLike {
 
   private async scanAllUncached(): Promise<Array<Record<string, unknown>>> {
     const items: Array<Record<string, unknown>> = [];
+    const nowSec = Math.floor(Date.now() / 1000);
     let lastEvaluatedKey: Record<string, unknown> | undefined;
     do {
       // Scan is fine at this scale (a few thousand sessions); past that,
@@ -288,6 +334,7 @@ export class DynamoStateStore implements StateStoreLike {
         ExclusiveStartKey: lastEvaluatedKey,
       }))) as { Items?: Array<Record<string, unknown>>; LastEvaluatedKey?: Record<string, unknown> };
       for (const item of result.Items ?? []) {
+        if (isExpiredDynamoItem(item, nowSec)) continue;
         items.push(item);
       }
       lastEvaluatedKey = result.LastEvaluatedKey;
@@ -466,6 +513,34 @@ export class DynamoStateStore implements StateStoreLike {
     }));
   }
 
+  async saveSchoolEvent(record: StoredSchoolEventRecord): Promise<void> {
+    this.invalidateScanCache();
+    const item: Record<string, unknown> = {
+      pk: `school-event:${record.day}:${encodeURIComponent(record.id)}`,
+      schoolEvent: record,
+      updatedAt: record.occurredAt,
+    };
+    if (this.ttlSeconds > 0) {
+      item.expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+    }
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: item,
+    }));
+  }
+
+  async saveServiceState(record: StoredServiceStateRecord): Promise<void> {
+    this.invalidateScanCache();
+    await this.client.send(new PutCommand({
+      TableName: this.tableName,
+      Item: {
+        pk: `service-state:${encodeURIComponent(record.id)}`,
+        serviceState: record,
+        updatedAt: record.updatedAt,
+      },
+    }));
+  }
+
   async deletePack(ownerSessionId: string | null, packId: string): Promise<void> {
     this.invalidateScanCache();
     await this.client.send(new DeleteCommand({
@@ -579,6 +654,11 @@ function readDebounceMsFromEnv(): number {
 }
 
 const DEFAULT_DEBOUNCE_MS = 25;
+
+function isExpiredDynamoItem(item: Record<string, unknown>, nowSec: number): boolean {
+  const expiresAt = item.expiresAt;
+  return typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt <= nowSec;
+}
 
 function nonEmptyRequestItems(items: BatchWriteRequestItems | undefined): BatchWriteRequestItems | null {
   if (!items) return null;

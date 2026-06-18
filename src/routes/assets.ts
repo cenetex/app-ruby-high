@@ -18,7 +18,6 @@ const VIEWER_SECURITY_CSP_DIRECTIVES = [
   "object-src 'none'",
   "form-action 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline'",
   "script-src-attr 'none'",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
@@ -199,7 +198,7 @@ export function sendHtmlResponse(
       : Array.isArray(existingCsp)
         ? existingCsp.join("; ").trim()
         : "";
-  response.setHeader("Content-Security-Policy", mergeViewerCsp(normalized));
+  response.setHeader("Content-Security-Policy", mergeViewerCsp(normalized, html));
   if (headerIncludes(acceptEncoding, "gzip")) {
     response.setHeader("Content-Encoding", "gzip");
     response.end(gzipSync(Buffer.from(html, "utf8"), { level: 6 }));
@@ -208,12 +207,17 @@ export function sendHtmlResponse(
   response.end(html);
 }
 
-function mergeViewerCsp(existing: string): string {
+function mergeViewerCsp(existing: string, html: string): string {
   const directives = existing
     .split(";")
     .map((part) => part.trim())
     .filter(Boolean);
   const seen = new Set(directives.map((part) => part.split(/\s+/, 1)[0]?.toLowerCase()).filter(Boolean));
+  const scriptSrc = viewerScriptSrcDirective(html);
+  if (!seen.has("script-src")) {
+    directives.push(scriptSrc);
+    seen.add("script-src");
+  }
   for (const directive of VIEWER_SECURITY_CSP_DIRECTIVES) {
     const name = directive.split(/\s+/, 1)[0]?.toLowerCase();
     if (!name || seen.has(name)) continue;
@@ -221,6 +225,23 @@ function mergeViewerCsp(existing: string): string {
     seen.add(name);
   }
   return directives.join("; ");
+}
+
+function viewerScriptSrcDirective(html: string): string {
+  const hashes = inlineScriptHashes(html);
+  return ["script-src", "'self'", ...hashes].join(" ");
+}
+
+function inlineScriptHashes(html: string): string[] {
+  const hashes: string[] = [];
+  const scriptPattern = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+  for (const match of html.matchAll(scriptPattern)) {
+    const source = match[1] ?? "";
+    if (!source.trim()) continue;
+    const digest = createHash("sha256").update(source, "utf8").digest("base64");
+    hashes.push(`'sha256-${digest}'`);
+  }
+  return hashes;
 }
 
 interface CachedAsset {
@@ -242,6 +263,7 @@ async function loadAsset(name: string): Promise<CachedAsset | null> {
     const here = dirname(fileURLToPath(import.meta.url));
     const candidates = entry.source === "dist"
       ? [
+          resolve(here, "..", "..", "dist", entry.file),
           resolve(here, "..", entry.file),
           resolve(here, entry.file),
         ]

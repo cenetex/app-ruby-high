@@ -82,8 +82,8 @@ export async function dismissAnnouncements(page: Page) {
 
 /**
  * Trigger character creation by clicking whichever affordance is visible
- * (Lock it in, Roll a student, or Save Character). Returns after the sheet
- * overlay closes and the classroom is visible.
+ * (Lock it in, Roll a student, or Save Character). Returns after the creation
+ * controls have committed and the classroom is visible.
  */
 export async function createCharacter(page: Page) {
   const lockItIn = page.getByRole("button", { name: "Lock it in" });
@@ -121,7 +121,8 @@ export async function createCharacter(page: Page) {
     // No Save Character button — auto-commit might have happened.
   }
 
-  // Sheet should close. If it doesn't, try clicking Lock it in once more.
+  // Creation can render inline or in the sheet. If the sheet remains open,
+  // try one visible commit action before failing.
   try {
     await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/, { timeout: 10000 });
   } catch {
@@ -161,15 +162,6 @@ export async function clickContinue(page: Page) {
   }
 }
 
-/**
- * Get the viewer client's session ID from the page.
- */
-
-/**
- * Force-complete the current grade: creates passing daily class records,
- * sets the streak, and marks the grade ready for graduation.
- * Call this after answering questions for all needed classes, then reload.
- */
 /**
  * Force-complete the current grade: creates passing daily class records,
  * sets the streak, and marks the grade ready for graduation.

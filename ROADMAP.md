@@ -1,8 +1,175 @@
-# Ruby High · Revenue Roadmap
+# Ruby High · Roadmap
+
+## MMO-readiness roadmap — 2026-06-18
+
+This section is grounded in the current GitHub issue tracker for
+`cenetex/app-ruby-high` plus the deployed Ruby High state as of June 18, 2026.
+The tracker has **no open MMO/multiplayer feature issues yet**; the open issues
+are mostly reliability, security, and maintainability work that should become
+the runway for MMO development rather than a parallel pile of guesses.
+
+### Tracker audit
+
+| Issue | Status | Roadmap meaning |
+|---|---:|---|
+| [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Implemented locally; ready for PR/CI | **P0 pre-MMO hardening.** Unknown mutation commands now fail closed with a 400 before mutating state. |
+| [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Implemented locally; ready for PR/CI | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, and size limits. |
+| [#120 Make the Privy browser bundle cacheable or smaller](https://github.com/cenetex/app-ruby-high/issues/120) | Implemented locally; ready for PR/CI | **P2 performance.** Versioned Privy bundle requests are immutable-cacheable and the bundle-size guard now protects the lazy account widget payload. |
+| [#119 Harden viewer auth-token handling and CSP](https://github.com/cenetex/app-ruby-high/issues/119) | Implemented locally; ready for PR/CI | **P1 security.** Browser-owned OpenRouter keys default to session scope, legacy local keys migrate down unless persistence is explicit, and inline viewer scripts use hashes instead of broad `unsafe-inline`. |
+| [#118 Add Playwright browser smoke tests](https://github.com/cenetex/app-ruby-high/issues/118) | Implemented; ready to close after CI run | **Tracker cleanup.** Playwright browser smoke exists locally and in a dedicated Actions workflow for viewer/browser PRs. |
+| [#117 Refactor inline viewer client into typed modules](https://github.com/cenetex/app-ruby-high/issues/117) | Open, first slice implemented | **P1 maintainability.** The MMO-facing public world feed now has typed pure helpers; continue extracting UI areas before adding larger multiplayer surfaces. |
+| [#65 Deploy Workflow Failed: deploy-fly](https://github.com/cenetex/app-ruby-high/issues/65) | Open but stale | **Tracker cleanup.** Current deploys and prod smoke pass; confirm the historical run is no longer actionable, then close or replace with a living deploy-health issue. |
+
+### Current readiness evidence
+
+- Production deploy is healthy on Fly and post-deploy smoke passes.
+- Built-in curriculum is expanded to 600 questions: Ruby, Sally Science, and
+  Professor Edward each expose 200 questions in prod health/session telemetry.
+- Public world surfaces exist:
+  `/api/apps/ruby-high/world` and `/api/apps/ruby-high/world/events`.
+- Deploy smoke now checks the public world snapshot, SSE replay framing,
+  `no-store` headers, and private identifier leakage.
+- Route tests cover live stream cursors, heartbeats, reconnects,
+  same-millisecond events, client close/write-failure cleanup, per-client live
+  stream caps, and sanitized public projections.
+
+### Phase 0 — Close the tracker gap
+
+Goal: get the issue tracker to tell the truth before inventing new MMO tickets.
+
+- Close or update #118 after confirming the browser smoke suite satisfies the
+  original acceptance criteria.
+- Close or replace #65 after confirming the current `deploy-fly` failure is stale.
+- Land #119-#122 through PR/CI before adding new multiplayer commands; public
+  multiplayer command and import surfaces should fail closed by default.
+- Open first-class MMO issues for the work below so this roadmap stays tied to
+  GitHub, not memory.
+
+Acceptance gate: open issues distinguish stale/resolved work from active
+blockers, and the tracker contains explicit MMO milestone issues.
+
+### Phase 1 — Multiplayer-safe foundation
+
+Goal: make the current app safe to extend into shared-world play.
+
+- Keep #119 and #121 fixes under regression coverage as public surfaces grow:
+  viewer token storage/CSP and creator URL imports are now guarded locally.
+- Continue #117 by extracting the public world/feed client behind typed
+  interfaces. Cursor math, event pruning, event labels, room titles, and compact
+  summary formatting now live in `client-pure.ts`; SSE request sequencing,
+  backoff, cursor replay, snapshots, and event merging now live in
+  `viewer-parts/world-feed.ts`; compact world-panel room/event render models
+  plus race-strip timer/card and blackboard question-prompt render models also
+  live in typed helpers. Honor Roll leaderboard row/header models are now typed
+  too, with the header rendered without string HTML, and the top-bar arc
+  indicator plus classmate/channel-rail arc labels, year meters, and room
+  completion meters are now typed. The next slice should move larger viewer
+  surfaces behind module boundaries before larger multiplayer UI is added.
+- Keep the public world smoke guard in every deploy.
+
+Acceptance gate: new multiplayer UI can be added without expanding the most
+fragile unchecked browser surface, and public/user-generated inputs have clear
+security boundaries.
+
+### Phase 2 — First multiplayer loop: live class rooms
+
+Goal: turn the existing public world feed into gameplay.
+
+Build a minimal room loop around the structures that already exist:
+
+- Grade/faculty rooms show active students, recent class events, and curriculum
+  pressure.
+- A class-wide goal runs for a short window: answer streaks, teacher affinity,
+  comic/page unlock progress, or curriculum rescue for low question pools.
+- Individual answers remain private by default; public events are sanitized and
+  consent-aware.
+- The world feed emits room-level progress events that clients can replay with
+  existing cursors.
+
+Acceptance gate: two anonymous/guest sessions can contribute to the same room
+goal and both clients observe progress through the public world feed without
+private state leakage.
+
+### Phase 3 — Dynamic teacher curriculum
+
+Goal: make question generation a teacher research loop, not one-off expansion.
+
+- Store hand-authored teacher research corpora as durable content inputs.
+- Track per-teacher coverage, repetition, weak pools, and recent generated
+  concepts.
+- Add a generation queue that proposes new questions only when a pool is weak,
+  then validates and promotes candidates through tests/check scripts.
+- Keep first-grade sets curated and narrow; allow higher grades to become more
+  expansive.
+
+Acceptance gate: a teacher can detect an exhausted or repetitive topic pool,
+generate candidate questions from her corpus, pass validation, and expose the
+new content without editing source JSON by hand.
+
+### Phase 4 — Durable world model
+
+Goal: stop deriving the MMO entirely from private session state.
+
+Introduce explicit durable entities only when Phase 2 proves the loop:
+
+- rooms/cohorts/terms
+- room goals and outcomes
+- teacher agendas
+- public world events
+- moderation/report records
+- season or school-year summaries
+
+Acceptance gate: shared room state survives deploys/restarts, has admin
+visibility, and can be replayed independently of any one student's session.
+
+### Phase 5 — Social product and moderation
+
+Goal: make public presence safe and legible.
+
+- Public profile/visibility controls beyond the current social consent bit.
+- Report/hide/admin moderation flows for public names and events.
+- Rate limits for public actions, not just HTTP endpoints.
+- Product language that explains what becomes public before it happens.
+
+Acceptance gate: a user can understand and control their public presence, and an
+admin can respond to a bad public event without touching the database manually.
+
+### Phase 6 — Economy and collection integration
+
+Goal: connect Hall Passes, NFTs, cards, and comics to the shared school world.
+
+- Public achievement rituals for card/comic unlocks.
+- Room or term rewards that can feed card packs without pay-to-win pressure.
+- Collection showcases and profile/yearbook flexes.
+- Marketplace verification remains a revenue/credibility track, not a blocker
+  on multiplayer play.
+
+Acceptance gate: multiplayer activity creates visible, collectible, shareable
+outcomes without requiring crypto participation.
+
+### Next GitHub issues to open
+
+1. **MMO: live class rooms MVP** — shared room goal, room progress events,
+   two-client acceptance test.
+2. **MMO: typed public-world viewer module** — extract feed/client rendering from
+   `viewer-parts/client.ts` behind typed pure helpers.
+3. **MMO: teacher curriculum research loop** — corpora, coverage detection,
+   generation queue, validation/promote path.
+4. **MMO: public presence and moderation controls** — visibility settings,
+   report/hide/admin review.
+5. **MMO: durable room/world state model** — explicit room/term/goal records once
+   live class rooms prove the loop.
+
+---
+
+## Revenue Roadmap
 
 **May 27, 2026** — written the day everything else was shut down.
 **Re-sequenced May 29, 2026** — measurement pulled to the front; distribution reframed
 as a pipeline (see [`docs/MARKETING.md`](./docs/MARKETING.md)).
+**Superseded in part June 18, 2026** — the "no multiplayer" constraint below no
+longer reflects product direction. Keep the revenue funnel work, but sequence it
+alongside the MMO-readiness roadmap above.
 
 The only project left is Ruby High. The only goal is to make it pay for
 itself, then for the next thing. Every line below is chosen by one
@@ -181,17 +348,18 @@ already flags the in-process counters as non-durable.
 | First NFT pack sold to a non-team wallet | The collection has organic demand |
 | Magic Eden listed + verified | The marketplace believes the collection is real |
 | D7 retention above 20% | The product works as a habit |
-| Monthly revenue covers Fly + DynamoDB | Self-sustaining |
+| Monthly revenue covers Fly + SQLite/S3 operating costs | Self-sustaining |
 
 ---
 
 ## What we're not doing
 
 - No new teachers. Three is enough until retention data proves demand.
-- No multiplayer, tournaments, or Faculty Cup. Premature until the core
-  loop converts.
+- Multiplayer is no longer out of scope as of June 18, 2026; the MMO-readiness
+  roadmap above supersedes the old "no multiplayer" constraint. Tournaments and
+  Faculty Cup remain later than the live-class-room MVP.
 - No public pack marketplace. Community packs are later, not now.
-- No new infrastructure. Fly + DynamoDB + S3 is the stack. No queues,
+- No new infrastructure. Fly + SQLite volume + S3 is the stack. No queues,
   no Kubernetes, no rearchitect. (Phase 0's sink is a log drain, not new infra.)
 - No betting the funnel on a single marketing event.
 

@@ -38,7 +38,8 @@ vi.mock("node:dns/promises", async (importOriginal) => {
 let tmpDir: string;
 let auth: AuthService;
 let ruby: RubyHighService;
-let lastResponse: { status: number; body: any } | null = null;
+type CapturedResponse = { status: number; body: any; headers: Record<string, string> };
+let lastResponse: CapturedResponse | null = null;
 
 function makeCtx(opts: {
   method: string;
@@ -46,20 +47,40 @@ function makeCtx(opts: {
   cookie?: string | null;
   apiKeyHeader?: string | null;
   clientIp?: string | null;
+  contentTypeHeader?: string | string[] | null;
+  originHeader?: string | string[] | null;
+  callbackOrigin?: string | null;
   body?: Record<string, unknown>;
 }): PackLibraryRouteContext {
   lastResponse = null;
+  const headers: Record<string, string> = {};
   const url = new URL(opts.path, "https://ruby.example.test");
   return {
     method: opts.method,
     pathname: url.pathname,
     url,
-    res: {} as never,
+    res: {
+      setHeader: (name: string, value: string) => { headers[name.toLowerCase()] = value; },
+      writeHead: (status: number, nextHeaders: Record<string, string>) => {
+        for (const [name, value] of Object.entries(nextHeaders)) headers[name.toLowerCase()] = value;
+        lastResponse = { status, body: null, headers: { ...headers } };
+      },
+      end: (body: string) => {
+        if (lastResponse) {
+          lastResponse = { ...lastResponse, body, headers: { ...headers } };
+          return;
+        }
+        lastResponse = { status: 200, body, headers: { ...headers } };
+      },
+    } as never,
     cookieHeader: opts.cookie ?? null,
     apiKeyHeader: opts.apiKeyHeader ?? null,
     clientIp: opts.clientIp ?? "203.0.113.10",
-    error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message } }; },
-    json: (_res, data, status = 200) => { lastResponse = { status, body: data }; },
+    contentTypeHeader: opts.contentTypeHeader === undefined ? "application/json" : opts.contentTypeHeader,
+    originHeader: opts.originHeader ?? null,
+    callbackUrlBuilder: (path) => `${opts.callbackOrigin ?? "https://ruby.example.test"}${path}`,
+    error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message }, headers: { ...headers } }; },
+    json: (_res, data, status = 200) => { lastResponse = { status, body: data, headers: { ...headers } }; },
     readJsonBody: async () => opts.body ?? {},
   };
 }
@@ -279,7 +300,7 @@ function stubQuestionGeneratorFetch() {
   return fetchMock;
 }
 
-async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: number; body: any }> {
+async function route(opts: Parameters<typeof makeCtx>[0]): Promise<CapturedResponse> {
   const handled = await handlePackLibraryRoutes(makeCtx(opts), makeDeps());
   expect(handled).toBe(true);
   expect(lastResponse).not.toBeNull();
@@ -288,9 +309,9 @@ async function route(opts: Parameters<typeof makeCtx>[0]): Promise<{ status: num
 
 async function waitForCourseGeneration(
   draftId: string,
-  started: { status: number; body: any },
+  started: CapturedResponse,
   cookie = "rh_session=alice",
-): Promise<{ status: number; body: any }> {
+): Promise<CapturedResponse> {
   expect(started.status).toBe(202);
   expect(started.body.status).toBe("running");
   expect(started.body.jobId).toEqual(expect.any(String));
@@ -385,6 +406,81 @@ describe("/pack-library", () => {
       canDelete: false,
       status: "published",
     });
+  });
+
+  it("rejects malformed creator route ids without throwing", async () => {
+    signInUser("alice");
+
+    let response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-library/%E0%A4%A/install",
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Pack id is malformed.");
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-drafts/%E0%A4%A",
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Draft id is malformed.");
+
+    const { draftId, teacherId } = await createDraftTeacher();
+    response = await route({
+      method: "PATCH",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/%E0%A4%A`,
+      cookie: "rh_session=alice",
+      body: { displayName: "Still Safe" },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Teacher id is malformed.");
+
+    response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/course/generate/%E0%A4%A`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Job id is malformed.");
+
+    response = await route({
+      method: "DELETE",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/questions/%E0%A4%A`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Question id is malformed.");
+
+    const drafts = (await ruby.listDraftPackRecords()).filter((draft) => draft.ownerUserId === "test-alice");
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]!.teachers).toHaveLength(1);
+    expect(drafts[0]!.teachers[0]!.displayName).toBe("Materials Guard");
+  });
+
+  it("rejects cross-origin creator pack mutations before changing installations", async () => {
+    signInUser("alice");
+    signInUser("bob");
+    const pack = fakeQuestionPack("pack:install-origin-guard");
+    pack.name = "Install Origin Guard";
+    await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-library/${encodeURIComponent(pack.id)}/install`,
+      cookie: "rh_session=bob",
+      originHeader: "https://evil.example",
+      body: { enabled: true },
+    });
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Content pack request origin is not allowed.");
+
+    const bobSessionId = auth.stateKeyForCookie("rh_session=bob");
+    expect((await ruby.listPackInstallationRecords()).some((entry) =>
+      entry.userId === "test-bob" && entry.packId === pack.id
+    )).toBe(false);
+    expect(ruby.getOrCreate(bobSessionId).guestPackOverrideId).not.toBe(pack.id);
   });
 
   it("keeps creator packs in search until a user installs them", async () => {
@@ -490,6 +586,155 @@ describe("/pack-library", () => {
       enabled: false,
       active: true,
     });
+  });
+
+  it("serves and reviews encoded creator pack share ids", async () => {
+    signInUser("alice");
+    signInUser("bob");
+    const pack = fakeQuestionPack("pack:shared-review-signals");
+    pack.name = "Reviewable Signals";
+    pack.description = "Creator lessons that can be shared and reviewed.";
+    await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+
+    let response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}?format=json`,
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      pack: {
+        id: pack.id,
+        name: "Reviewable Signals",
+      },
+      reviewCount: 0,
+    });
+    expect(response.headers["cache-control"]).toBe("no-store");
+
+    response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}`,
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["content-type"]).toBe("text/html; charset=utf-8");
+    expect(response.body).toContain(`href="/api/apps/ruby-high/viewer?pack=${encodeURIComponent(pack.id)}"`);
+    expect(response.body).toContain("Play this class");
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}/review`,
+      cookie: "rh_session=bob",
+      body: { rating: 5, comment: "Clean signals, good controls." },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.review).toMatchObject({
+      packId: pack.id,
+      userId: "test-bob",
+      rating: 5,
+      comment: "Clean signals, good controls.",
+    });
+
+    response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}?format=json`,
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      averageRating: 5,
+      reviewCount: 1,
+      reviews: [expect.objectContaining({ rating: 5 })],
+    });
+  });
+
+  it("rate limits repeated public pack reviews per signed-in caller", async () => {
+    signInUser("alice");
+    signInUser("bob");
+    const pack = fakeQuestionPack("pack:review-rate-limited");
+    pack.name = "Review Limit Signals";
+    await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+    const path = `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}/review`;
+
+    for (let i = 0; i < 8; i += 1) {
+      const response = await route({
+        method: "POST",
+        path,
+        cookie: "rh_session=bob",
+        clientIp: "203.0.113.88",
+        body: { rating: 5, comment: `Review ${i}` },
+      });
+      expect(response.status).toBe(200);
+      expect(response.body.review.comment).toBe(`Review ${i}`);
+    }
+
+    const limited = await route({
+      method: "POST",
+      path,
+      cookie: "rh_session=bob",
+      clientIp: "203.0.113.88",
+      body: { rating: 1, comment: "This one should not persist." },
+    });
+    expect(limited.status).toBe(429);
+    expect(limited.headers["retry-after"]).toBe("60");
+    expect(limited.body.error).toBe("Too many requests - slow down a moment.");
+
+    const response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}?format=json`,
+    });
+    expect(response.body).toMatchObject({
+      averageRating: 5,
+      reviews: [expect.objectContaining({ comment: "Review 7" })],
+    });
+  });
+
+  it("rejects cross-origin and non-json public pack review posts without mutating reviews", async () => {
+    signInUser("alice");
+    signInUser("bob");
+    const pack = fakeQuestionPack("pack:review-origin-guard");
+    pack.name = "Review Origin Guard";
+    await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+    const reviewPath = `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}/review`;
+
+    let response = await route({
+      method: "POST",
+      path: reviewPath,
+      cookie: "rh_session=bob",
+      originHeader: "https://evil.example",
+      body: { rating: 5, comment: "Cross-site review" },
+    });
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Content pack request origin is not allowed.");
+
+    response = await route({
+      method: "POST",
+      path: reviewPath,
+      cookie: "rh_session=bob",
+      contentTypeHeader: "text/plain",
+      body: { rating: 5, comment: "Plain text review" },
+    });
+    expect(response.status).toBe(415);
+    expect(response.body.error).toBe("Content pack requests must be sent as JSON.");
+
+    response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}?format=json`,
+    });
+    expect(response.body).toMatchObject({
+      averageRating: null,
+      reviewCount: 0,
+      reviews: [],
+    });
+
+    response = await route({
+      method: "POST",
+      path: reviewPath,
+      cookie: "rh_session=bob",
+      originHeader: "https://ruby.example.test",
+      body: { rating: 5, comment: "Same-origin review" },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.review.comment).toBe("Same-origin review");
   });
 
   it("searches across course content and falls back to available creator packs", async () => {

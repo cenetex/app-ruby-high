@@ -37,10 +37,12 @@ export class TelegramService extends Service {
     return { ...rest, hasToken: !!botToken };
   }
 
-  updateConfig(botToken: string, chatId: string): void {
-    this.config.botToken = botToken;
+  updateConfig(botToken: string | null | undefined, chatId: string): void {
+    if (botToken != null) {
+      this.config.botToken = botToken;
+    }
     this.config.chatId = chatId;
-    this.config.enabled = !!(botToken && chatId);
+    this.config.enabled = !!(this.config.botToken && chatId);
     log.event("telegram.config-updated", { enabled: this.config.enabled });
   }
 

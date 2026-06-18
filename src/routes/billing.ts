@@ -596,6 +596,49 @@ function firstHeader(value: string | string[] | null | undefined): string {
   return value ?? "";
 }
 
+function billingOriginAllowed(ctx: RouteContext): boolean {
+  const origin = firstHeader(ctx.originHeader);
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const candidates = [
+      ctx.callbackUrlBuilder ? ctx.callbackUrlBuilder("/") : null,
+      ctx.url?.origin ?? null,
+    ].filter(Boolean) as string[];
+    if (candidates.length === 0) return true;
+    return candidates.some((candidate) => {
+      const candidateUrl = new URL(candidate);
+      return candidateUrl.origin === originUrl.origin
+        || (originUrl.protocol === "https:" && candidateUrl.host === originUrl.host);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function billingRequestLooksLikeJson(ctx: RouteContext): boolean {
+  const contentType = firstHeader(ctx.contentTypeHeader).toLowerCase();
+  return !contentType || contentType.startsWith("application/json");
+}
+
+function isBillingWebhookPath(pathname: string): boolean {
+  return pathname === `${BILLING_PREFIX}/stripe/webhook`
+    || pathname === `${BILLING_PREFIX}/revenuecat/webhook`;
+}
+
+function rejectBadBrowserBillingMutation(ctx: RouteContext): boolean {
+  if (ctx.method === "GET" || ctx.method === "HEAD" || isBillingWebhookPath(ctx.pathname)) return false;
+  if (!billingRequestLooksLikeJson(ctx)) {
+    ctx.error(ctx.res, "Billing requests must be sent as JSON.", 415);
+    return true;
+  }
+  if (!billingOriginAllowed(ctx)) {
+    ctx.error(ctx.res, "Billing request origin is not allowed.", 403);
+    return true;
+  }
+  return false;
+}
+
 function safeReturnPath(raw: unknown, fallback: string): string {
   if (typeof raw !== "string") return fallback;
   const trimmed = raw.trim();
@@ -1107,6 +1150,7 @@ function hallPassBurnConversionKey(burns: HallPassCardBurnInput[]): string {
 
 export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps): Promise<boolean> {
   if (!ctx.pathname.startsWith(BILLING_PREFIX)) return false;
+  if (rejectBadBrowserBillingMutation(ctx)) return true;
 
   if (ctx.method === "GET" && ctx.pathname === `${BILLING_PREFIX}/products`) {
     const entitlements = optionalEntitlementsForRequest(ctx, deps);

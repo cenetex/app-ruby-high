@@ -984,8 +984,12 @@ function corePackInfoFromMetadataUri(metadataUri: string, name?: string): CorePa
   }
   const match = url.pathname.match(/\/metadata\/core\/pack\/([^/]+)\/([^/]+)\.json$/);
   if (!match) return null;
-  const productId = cleanProductId(decodeURIComponent(match[1] ?? "card-pack-1"));
-  const serial = Math.max(1, Math.floor(Number(decodeURIComponent(match[2] ?? "1"))));
+  const productIdSegment = safeDecodePathSegment(match[1] ?? "card-pack-1");
+  const serialSegment = safeDecodePathSegment(match[2] ?? "1");
+  if (!productIdSegment || !serialSegment) return null;
+  const productId = cleanProductId(productIdSegment);
+  const serial = Math.floor(Number(serialSegment));
+  if (!Number.isFinite(serial) || serial <= 0) return null;
   const productPackMatch = productId.match(/^card-pack-(\d+)$/);
   const namedPackMatch = typeof name === "string" ? name.match(/Ruby High\s+(\d+)-Pack/i) : null;
   const inferredPackCount = productPackMatch ? Number(productPackMatch[1]) : namedPackMatch ? Number(namedPackMatch[1]) : 1;
@@ -998,6 +1002,14 @@ function corePackInfoFromMetadataUri(metadataUri: string, name?: string): CorePa
     cardCount,
     serial: Number.isFinite(serial) ? serial : 1,
   };
+}
+
+function safeDecodePathSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
 }
 
 function corePackInfoFromMetadata(
@@ -1022,7 +1034,9 @@ function corePackInfoFromMetadata(
       ?? namedPackMatch?.[1]
       ?? 1,
   )));
-  const serial = Math.max(1, Math.floor(Number(serialValue ?? namedSerialMatch?.[1] ?? 0)));
+  const serialSource = serialValue ?? namedSerialMatch?.[1];
+  if (!serialSource) return null;
+  const serial = Math.floor(Number(serialSource));
   if (!Number.isFinite(serial) || serial <= 0) return null;
   const requestedCardCount = Math.max(1, Math.floor(Number(cardsValue ?? packCount * CORE_PACK_CARDS_PER_PACK)));
   return {

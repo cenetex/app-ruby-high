@@ -2,6 +2,7 @@ import type { ViewerRenderOptions } from "../viewer.js";
 import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
+import { createViewerWorldFeedClient } from "./world-feed.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -72,6 +73,34 @@ const PURE_HELPER_NAMES = [
   "essayScoreText",
   "essayLetter",
   "clipEssayText",
+  "normalizedWorldFeedEventAt",
+  "pruneWorldFeedEventList",
+  "mergeWorldFeedEventList",
+  "worldFeedEventDisplayLabel",
+  "worldFeedEventAgeLabel",
+  "worldFeedGradeLabel",
+  "worldFeedFacultyLabel",
+  "worldFeedRoomTitle",
+  "worldFeedSummaryLabel",
+  "worldFeedRoomViews",
+  "worldFeedEventViews",
+  "worldFeedPanelView",
+  "worldFeedEventsUrl",
+  "raceStripView",
+  "raceStripPickText",
+  "questionPromptView",
+  "leaderboardView",
+  "leaderboardRowView",
+  "leaderboardPlaybookName",
+  "leaderboardGradeChips",
+  "leaderboardFacultyLabel",
+  "arcIndicatorView",
+  "classmateArcStanding",
+  "classmateArcSubtitle",
+  "classmateArcProgress",
+  "classmateArcProgressLabel",
+  "roomCompletionProgressView",
+  "roomCompletionProgressLabel",
 ] as const;
 
 function serializePureHelpers(): string {
@@ -132,6 +161,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
   const createViewerApiClient = ${createViewerApiClient.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
+  const createViewerWorldFeedClient = ${createViewerWorldFeedClient.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};

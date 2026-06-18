@@ -11,9 +11,13 @@ import type {
   StoredDraftContentPackRecord,
   StoredMetricEventRecord,
   StoredPackInstallationRecord,
+  StoredSchoolEventQuery,
+  StoredSchoolEventRecord,
+  StoredSessionQuery,
+  StoredServiceStateRecord,
   StoredTeacherRecord,
 } from "./state-store.js";
-import { isStoredMetricEventName } from "./state-store.js";
+import { isStoredMetricEventName, isStoredSchoolEventRecord, querySchoolEventRecords } from "./state-store.js";
 
 /**
  * SQLite-backed state store. One row per record in a single `kv` table,
@@ -49,7 +53,9 @@ type Kind =
   | "teacherRecord"
   | "draftPack"
   | "packInstallation"
-  | "metricEvent";
+  | "metricEvent"
+  | "schoolEvent"
+  | "serviceState";
 
 const DEFAULT_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days, matching DynamoStateStore
 
@@ -93,6 +99,7 @@ export class SqliteStateStore implements StateStoreLike {
       );
     `);
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_kind ON kv(kind);");
+    this.db.exec("CREATE INDEX IF NOT EXISTS kv_kind_updated_at ON kv(kind, updated_at DESC);");
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_expires ON kv(expires_at);");
     this.purgeExpired();
     this.startPeriodicPurge();
@@ -122,6 +129,27 @@ export class SqliteStateStore implements StateStoreLike {
     for (const value of this.rowsOfKind("session")) {
       const state = value as QuizState;
       if (state && typeof state.sessionId === "string") map.set(state.sessionId, state);
+    }
+    return map;
+  }
+
+  async loadRecentSessions(query: StoredSessionQuery = {}): Promise<Map<string, QuizState>> {
+    this.purgeExpired();
+    const since = Number.isFinite(query.since) ? Math.floor(Number(query.since)) : 0;
+    const limit = Number.isFinite(query.limit) ? Math.max(0, Math.floor(Number(query.limit))) : 1000;
+    const map = new Map<string, QuizState>();
+    if (limit <= 0) return map;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const rows = this.db.prepare(
+      "SELECT data FROM kv WHERE kind = 'session' AND updated_at >= ? AND (expires_at IS NULL OR expires_at > ?) ORDER BY updated_at DESC, pk DESC LIMIT ?",
+    ).all(since, nowSec, limit);
+    for (const row of rows as Array<{ data: string }>) {
+      try {
+        const state = JSON.parse(row.data) as QuizState;
+        if (state && typeof state.sessionId === "string") map.set(state.sessionId, state);
+      } catch {
+        /* skip malformed row */
+      }
     }
     return map;
   }
@@ -247,6 +275,51 @@ export class SqliteStateStore implements StateStoreLike {
     return records;
   }
 
+  async loadSchoolEvents(query: StoredSchoolEventQuery = {}): Promise<StoredSchoolEventRecord[]> {
+    const records: StoredSchoolEventRecord[] = [];
+    const nowSec = Math.floor(Date.now() / 1000);
+    const rows = this.db.prepare(
+      "SELECT data FROM kv WHERE kind = 'schoolEvent' AND (expires_at IS NULL OR expires_at > ?)",
+    ).all(nowSec);
+    for (const row of rows as Array<{ data: string }>) {
+      let value: unknown;
+      try {
+        value = JSON.parse(row.data);
+      } catch {
+        continue;
+      }
+      if (isStoredSchoolEventRecord(value)) {
+        records.push(value);
+      }
+    }
+    return querySchoolEventRecords(records, query);
+  }
+
+  async loadServiceState(id: string): Promise<StoredServiceStateRecord | null> {
+    const pk = `service-state:${encodeURIComponent(id)}`;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const row = this.db
+      .prepare("SELECT data FROM kv WHERE pk = ? AND kind = 'serviceState' AND (expires_at IS NULL OR expires_at > ?)")
+      .get(pk, nowSec) as { data?: string } | undefined;
+    if (!row?.data) return null;
+    try {
+      const record = JSON.parse(row.data) as StoredServiceStateRecord;
+      if (
+        record &&
+        record.id === id &&
+        typeof record.updatedAt === "number" &&
+        record.data &&
+        typeof record.data === "object" &&
+        !Array.isArray(record.data)
+      ) {
+        return record;
+      }
+    } catch {
+      /* skip malformed row */
+    }
+    return null;
+  }
+
   // ── writes ─────────────────────────────────────────────────────────────────
 
   private put(pk: string, kind: Kind, data: unknown, updatedAt: number | undefined, expiresAtSec: number | null): void {
@@ -293,6 +366,14 @@ export class SqliteStateStore implements StateStoreLike {
 
   async saveMetricEvent(record: StoredMetricEventRecord): Promise<void> {
     this.put(`metric-event:${record.day}:${encodeURIComponent(record.id)}`, "metricEvent", record, record.occurredAt, this.defaultExpiry());
+  }
+
+  async saveSchoolEvent(record: StoredSchoolEventRecord): Promise<void> {
+    this.put(`school-event:${record.day}:${encodeURIComponent(record.id)}`, "schoolEvent", record, record.occurredAt, this.defaultExpiry());
+  }
+
+  async saveServiceState(record: StoredServiceStateRecord): Promise<void> {
+    this.put(`service-state:${encodeURIComponent(record.id)}`, "serviceState", record, record.updatedAt, null);
   }
 
   /** Bulk write — used by tests / migrations. Wrapped in a single transaction. */

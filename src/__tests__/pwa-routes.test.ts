@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { assetCacheControlFor } from "../routes/assets.js";
@@ -40,16 +41,24 @@ function compactScript(value: string): string {
   return value.replace(/\s+/g, "");
 }
 
+function cspDirective(csp: string, name: string): string {
+  return csp
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.toLowerCase().startsWith(`${name.toLowerCase()} `)) ?? "";
+}
+
 function makeCtx(
   pathname: string,
   response: ReturnType<typeof makeResponse>,
   method = "GET",
   acceptEncoding?: string,
 ): RouteContext {
+  const url = new URL(`http://localhost:3000${pathname}`);
   return {
     method,
-    pathname,
-    url: new URL(`http://localhost:3000${pathname}`),
+    pathname: url.pathname,
+    url,
     runtime: null,
     res: response.res as never,
     cookieHeader: null,
@@ -110,7 +119,6 @@ describe("PWA surface", () => {
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'none'");
-    expect(csp).toContain("script-src 'self' 'unsafe-inline'");
     expect(csp).toContain("script-src-attr 'none'");
     expect(csp).toContain("frame-ancestors 'self'");
     expect(Buffer.isBuffer(response.raw)).toBe(true);
@@ -118,6 +126,12 @@ describe("PWA surface", () => {
     const text = gunzipSync(response.raw as Buffer).toString("utf8");
     expect(text).toContain("<title>Ruby High");
     expect(text).toContain("/api/apps/ruby-high/auth/guest");
+    const script = text.match(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/)?.[1] ?? "";
+    const scriptHash = `'sha256-${createHash("sha256").update(script, "utf8").digest("base64")}'`;
+    const scriptSrc = cspDirective(csp, "script-src");
+    expect(scriptSrc).toContain("'self'");
+    expect(scriptSrc).toContain(scriptHash);
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
   });
 
   it("serves transparent teacher sticker assets", async () => {
@@ -154,10 +168,34 @@ describe("PWA surface", () => {
     expect(response.text).toContain("staleWhileRevalidate(request)");
   });
 
-  it("serves versioned Privy bundles with immutable browser caching", () => {
+  it("serves versioned Privy bundles with immutable browser caching", async () => {
     expect(assetCacheControlFor("privy-client.global.js")).toBe("no-cache");
     expect(assetCacheControlFor("privy-client.global.js", true)).toBe("public, max-age=31536000, immutable");
     expect(assetCacheControlFor("privy-client.js", true)).toBe("public, max-age=31536000, immutable");
+
+    const unversioned = makeResponse();
+    const unversionedHandled = await handleAppRoutes(makeCtx(
+      "/api/apps/ruby-high/assets/privy-client.global.js",
+      unversioned,
+      "HEAD",
+    ));
+    expect(unversionedHandled).toBe(true);
+    expect(unversioned.res.statusCode).toBe(200);
+    expect(unversioned.headers.get("cache-control")).toBe("no-cache");
+    expect(unversioned.headers.get("content-type")).toMatch(/text\/javascript/);
+    expect(unversioned.text).toBe("");
+
+    const versioned = makeResponse();
+    const versionedHandled = await handleAppRoutes(makeCtx(
+      "/api/apps/ruby-high/assets/privy-client.global.js?v=build-123",
+      versioned,
+      "HEAD",
+    ));
+    expect(versionedHandled).toBe(true);
+    expect(versioned.res.statusCode).toBe(200);
+    expect(versioned.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(versioned.headers.get("etag")).toMatch(/^".+"$/);
+    expect(versioned.text).toBe("");
   });
 
   it("supports HEAD checks for PWA resources", async () => {

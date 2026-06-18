@@ -1,79 +1,31 @@
 # Ruby High — Fly.io deploy
 
-Fly.io is the (cheaper) alternative deploy target alongside the AWS App
-Runner runbook in [`README.md`](./README.md). It's the cost-engineering
-move for this app: scales to zero on idle, ~300-500ms cold start, same
-Docker image, free tier covers the daily-cadence traffic profile.
+Fly.io is the production deploy target. It's the cost-engineering move
+for this app: scales to zero on idle, ~300-500ms cold start, same Docker
+image, free tier covers the daily-cadence traffic profile.
 
-The app config lives at [`fly.toml`](../fly.toml). State still lives in
-the same DynamoDB table that App Runner uses (`ruby-high-state` in
-`us-east-1`); the Fly machine reaches AWS over the open internet.
+The app config lives at [`fly.toml`](../fly.toml). Runtime state lives in
+SQLite on the Fly volume mounted at `/data`; the archived App Runner and
+DynamoDB runbooks live in [`infra/README.md`](./README.md).
 
 ## One-time bootstrap
 
-### 1. Create the dedicated IAM user
+### 1. Create the Fly volume
 
-The Fly app authenticates to AWS with static access keys. Use a
-dedicated IAM user with least-privilege scope (the policy in
-[`iam-fly-policy.json`](./iam-fly-policy.json) allows the DynamoDB
-operations the `DynamoStateStore` performs on the one
-state table, plus `s3:PutObject` on the portraits bucket).
+`fly.toml` mounts a volume named `ruby_high_data` at `/data`, and
+production sets `RUBY_HIGH_STATE_PATH=/data/ruby-high.db`.
 
 ```sh
-# Bucket for AI-generated character portraits + diplomas. Their bytes
-# are too big to live inline in the DynamoDB character record; a
-# single AI portrait can be 200KB-1MB and DDB caps items at 400KB.
-aws s3api create-bucket --bucket ruby-high-portraits --region us-east-1
-
-# Allow a bucket policy to grant public read (without disabling
-# account-level Block Public Access). Keep ACLs blocked — we don't
-# use them; only the bucket policy grants access.
-aws s3api put-public-access-block \
-  --bucket ruby-high-portraits \
-  --public-access-block-configuration \
-    'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=false,RestrictPublicBuckets=false'
-
-# Bucket policy: public-read on /portrait/* and /diploma/* only.
-cat > /tmp/ruby-high-portraits-policy.json <<'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    { "Sid": "PublicReadPortraits", "Effect": "Allow", "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": [
-        "arn:aws:s3:::ruby-high-portraits/portrait/*",
-        "arn:aws:s3:::ruby-high-portraits/diploma/*"
-      ]
-    }
-  ]
-}
-EOF
-aws s3api put-bucket-policy --bucket ruby-high-portraits \
-  --policy file:///tmp/ruby-high-portraits-policy.json
-
-# IAM user + inline policy.
-aws iam create-user --user-name ruby-high-fly
-
-aws iam put-user-policy \
-  --user-name ruby-high-fly \
-  --policy-name ruby-high-fly \
-  --policy-document file://infra/iam-fly-policy.json
-
-aws iam create-access-key --user-name ruby-high-fly \
-  --query 'AccessKey.{id:AccessKeyId,secret:SecretAccessKey}' \
-  --output json
+flyctl volumes create ruby_high_data --app ruby-high --region iad --size 1
 ```
 
-The last command prints `{"id": "AKIA...", "secret": "..."}` once. Save
-those for step 2; they cannot be retrieved later.
+### 2. Configure optional portrait storage
 
-### 2. Set the AWS secrets on Fly
-
-```sh
-flyctl secrets set --app ruby-high \
-  AWS_ACCESS_KEY_ID=<id from step 1> \
-  AWS_SECRET_ACCESS_KEY=<secret from step 1>
-```
+AI portraits and diplomas can be stored externally instead of inline in
+SQLite rows. Set `RUBY_HIGH_PORTRAITS_BUCKET` in `fly.toml` and provide
+matching provider credentials only when that bucket is enabled. When no
+bucket is configured, generated images stay inline and the server rejects
+oversized image refs before persisting them.
 
 ### 3. Set the GitHub deploy token
 
@@ -140,13 +92,12 @@ flyctl secrets set --app ruby-high KEY=value   # update one
 
 | Key | Why secret |
 |---|---|
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Credentials. |
-| `RUBY_HIGH_DYNAMO_TABLE` | Not strictly secret, but tied to the AWS environment so it lives with the AWS creds. |
 | `RUBY_HIGH_PUBLIC_BASE` | Tied to the deploy URL; staging vs. prod differ. |
 | `RUBY_HIGH_PRIVY_APP_ID` / `RUBY_HIGH_PRIVY_CLIENT_ID` | Privy app identifiers; stored with secrets so staging/prod can differ without editing `fly.toml`. |
 | `RUBY_HIGH_PRIVY_LOGIN_METHODS` | Optional public login-method allowlist, kept with the Privy app configuration. |
 | `RUBY_HIGH_PRIVY_APP_SECRET` / `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | Server-side Privy token verification. |
 | `RUBY_HIGH_OPENROUTER_API_KEY` | Enables hosted AI Day Passes and hosted image generation. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Only needed when `RUBY_HIGH_PORTRAITS_BUCKET` points at S3. |
 | `RUBY_HIGH_STRIPE_SECRET_KEY` / `RUBY_HIGH_STRIPE_WEBHOOK_SECRET` | Enables web Hall Pass checkout and webhook fulfillment. |
 | `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | Enables mobile/IAP Hall Pass webhook fulfillment. |
 
@@ -157,8 +108,10 @@ flyctl secrets set --app ruby-high KEY=value   # update one
 | `PORT` | `8080` |
 | `HOST` | `0.0.0.0` |
 | `NODE_ENV` | `production` |
-| `RUBY_HIGH_STORE_BACKEND` | `dynamodb` |
-| `AWS_REGION` | `us-east-1` |
+| `RUBY_HIGH_STORE_BACKEND` | `sqlite` |
+| `RUBY_HIGH_STATE_PATH` | `/data/ruby-high.db` |
+| `RUBY_HIGH_PORTRAITS_BUCKET` | Optional external image bucket. |
+| `RUBY_HIGH_PORTRAITS_REGION` | Region for the optional external image bucket. |
 
 ## Cost sanity check
 
@@ -166,19 +119,13 @@ Fly machine config: `shared-cpu-1x` × 512 MB. With `min_machines_running = 0` a
 
 - Idle (most of the day): $0.
 - Active (player open in the app): ~$0.0000022/sec while running. A 30-min daily session per user = ~$0.004/user/day = ~$0.12/user/month before even touching the free tier.
-- DynamoDB on-demand: pennies a month at this traffic.
+- SQLite volume: roughly the cost of the smallest Fly volume, with local writes.
 
 Roughly $0-2/month operating cost for this product as long as the user count stays small. Compare ~$50-65/month always-on for App Runner.
 
-## Cutover from App Runner
+## App Runner Archive
 
-The two deploys can run side-by-side. Steps to make Fly the primary:
-
-1. Verify Fly is healthy at `https://ruby-high.fly.dev/health`.
-2. Update OpenRouter redirect URI to point at Fly.
-3. (Optional) Move custom DNS record to Fly.
-4. Stop the App Runner service via the console or `aws apprunner pause-service`.
-
-The DynamoDB table is shared, so player state survives the cutover —
-sessions opened on App Runner can keep playing on Fly without any
-data migration.
+The App Runner and DynamoDB deployment path is retained only for
+historical reference in [`infra/README.md`](./README.md). Use
+[`scripts/migrate-dynamo-to-sqlite.mjs`](../scripts/migrate-dynamo-to-sqlite.mjs)
+when recovering an old DynamoDB export into the current SQLite store.

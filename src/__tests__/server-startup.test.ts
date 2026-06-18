@@ -5,8 +5,10 @@ const serverEntry = readFileSync(new URL("../../scripts/server.mjs", import.meta
 const devServerEntry = readFileSync(new URL("../../scripts/dev-server.mjs", import.meta.url), "utf8");
 const httpLimits = readFileSync(new URL("../../scripts/http-limits.mjs", import.meta.url), "utf8");
 const publicBase = readFileSync(new URL("../../scripts/public-base.mjs", import.meta.url), "utf8");
+const deployFly = readFileSync(new URL("../../scripts/deploy-fly.mjs", import.meta.url), "utf8");
 const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
 const flyConfig = readFileSync(new URL("../../fly.toml", import.meta.url), "utf8");
+const packageJson = readFileSync(new URL("../../package.json", import.meta.url), "utf8");
 
 describe("production startup guardrails", () => {
   it("keeps readiness unhealthy until services finish booting", () => {
@@ -14,6 +16,16 @@ describe("production startup guardrails", () => {
     expect(serverEntry).toMatch(/url\.pathname === "\/health"[\s\S]+url\.pathname === "\/healthz"[\s\S]+url\.pathname === "\/readyz"/);
     expect(serverEntry).toContain('sendJson(res, { ...healthPayload(), ok: false, status: "starting", t: Date.now() }, 503)');
     expect(serverEntry).not.toContain('res.end(JSON.stringify({ ...healthPayload(), status: "starting"');
+  });
+
+  it("exposes loaded curriculum counts in host health payloads", () => {
+    for (const entry of [serverEntry, devServerEntry]) {
+      expect(entry).toContain("curriculum: curriculumHealthPayload()");
+      expect(entry).toContain("function curriculumHealthPayload()");
+      expect(entry).toContain('pack: "ruby-high-original"');
+      expect(entry).toContain("totalQuestions");
+      expect(entry).toContain("byFaculty");
+    }
   });
 
   it("serves a retrying HTML shell for early viewer loads", () => {
@@ -31,6 +43,15 @@ describe("production startup guardrails", () => {
     expect(flyConfig).toContain('path = "/health"');
   });
 
+  it("stamps local Fly deploys with a dirty-tree fingerprint when needed", () => {
+    const pkg = JSON.parse(packageJson);
+    expect(pkg.scripts.deploy).toBe("node scripts/deploy-fly.mjs");
+    expect(deployFly).toContain("dirtyFingerprint");
+    expect(deployFly).toContain('"status", "--porcelain=v1"');
+    expect(deployFly).toContain('`${head}-dirty-${dirtyFingerprint()}`');
+    expect(deployFly).toContain("RUBY_HIGH_BUILD=");
+  });
+
   it("copies npm install policy into Docker before npm ci", () => {
     expect(dockerfile).toContain("COPY package.json package-lock.json* .npmrc ./");
   });
@@ -43,6 +64,11 @@ describe("production startup guardrails", () => {
     for (const file of relativeScriptImports) {
       expect(dockerfile).toContain(`COPY scripts/${file} ./scripts/${file}`);
     }
+  });
+
+  it("starts and stops Ruby High background schedulers in production", () => {
+    expect(serverEntry).toContain("svc.startPhotoPostScheduler()");
+    expect(serverEntry).toContain("rubySvc?.stop?.()");
   });
 
   it("normalizes the dead legacy public host before building callbacks", () => {
@@ -68,5 +94,11 @@ describe("production startup guardrails", () => {
       expect(entry).toContain("readJsonBody(req, bodyLimitForPath(url.pathname))");
     }
     expect(httpLimits).not.toContain("/packs/import-");
+  });
+
+  it("keeps the dev grade-completion helper available for browser journeys", () => {
+    expect(devServerEntry).toContain('url.pathname === "/dev/tick-grade"');
+    expect(devServerEntry).toContain("completeCurrentGradeForDev(sessionId)");
+    expect(devServerEntry).toContain("rubySvc.completeGraduation");
   });
 });

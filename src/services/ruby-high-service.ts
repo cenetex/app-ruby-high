@@ -1,5 +1,32 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { XSocialService, type XMilestoneContext } from "./x-social-service.js";
+import {
+  buildPublicWorldCohorts,
+  buildPublicWorldRooms,
+  publicSchoolWorldEvent,
+  publicWorldPortraitUrl,
+  publicWorldSessionId,
+  type PublicWorldEvent,
+  type PublicWorldPresenceEntry,
+  type PublicWorldRoom,
+  type PublicWorldStudent,
+} from "./ruby-high/world-projection.js";
+import {
+  PHOTO_POST_SCHEDULER_STATE_ID,
+  hydratePhotoPostSchedulerState,
+  photoPostSchedulerSnapshot as buildPhotoPostSchedulerSnapshot,
+  photoPostSchedulerStateRecord as buildPhotoPostSchedulerStateRecord,
+  type DailyPhotoPostResult,
+  type RubyHighPhotoPostSchedulerSnapshot,
+} from "./ruby-high/photo-post-scheduler.js";
+import {
+  buildCurriculumCoverageSnapshot,
+  generationDifficultyForCurriculumGrade,
+  type MutableCurriculumCoverageRow,
+  type RubyHighCurriculumCoverageRow,
+  type RubyHighCurriculumCoverageSnapshot,
+  type RubyHighCurriculumReplenishmentPlan,
+} from "./ruby-high/curriculum-coverage.js";
 import { teacherById } from "../characters/teachers.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
@@ -34,11 +61,13 @@ import {
   type ActiveRound,
   type AdvantageRoll,
   type AnswerRecord,
+  type AnswerStats,
   type BankedQuestion,
   type CardMemory,
   type CardReviewRating,
   type CharacterSlotEntitlements,
   type CharacterStats,
+  type ClassPhotoArchive,
   type Choice,
   type ComicCollection,
   type ComicPageUnlock,
@@ -91,6 +120,8 @@ import {
   type StoredMetricEventRecord,
   type StoredPackInstallationRecord,
   type StoredPackReview,
+  type StoredSchoolEventRecord,
+  type StoredServiceStateRecord,
   type StoredTeacherRecord,
 } from "./state-store.js";
 import { log, setLogSink, type LogSinkRecord } from "./logger.js";
@@ -148,7 +179,7 @@ import {
   setActivePack,
   unregisterPack,
 } from "../content/registry.js";
-import type { ContentPack, PackSourceCard } from "../content/types.js";
+import type { ContentPack, PackFaculty, PackSourceCard } from "../content/types.js";
 import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
 import {
   FIRST_BELL_SET_CODE,
@@ -248,10 +279,21 @@ export interface QuestionBankStatus {
 }
 
 const SCHOOL_EVENT_LIMIT = 80;
+const SCHOOL_WORLD_RECENT_EVENT_LIMIT = 100;
+const SCHOOL_WORLD_EVENT_CACHE_LIMIT = SCHOOL_WORLD_RECENT_EVENT_LIMIT * 4;
+const SCHOOL_WORLD_SESSION_REFRESH_LIMIT = 5_000;
+const SCHOOL_WORLD_STORE_REFRESH_MS = 2_000;
+const ANSWER_HISTORY_LIMIT = 500;
 const ESSAY_REPORT_LIMIT = 100;
 const WALLET_TRANSACTION_LIMIT = 200;
 const STUDENT_POOL_LIMIT = 50;
 const HALL_PASS_REDEEMED_CARD_LIMIT = 160;
+const DAILY_MEMORY_DETAIL_LIMIT = 25;
+const CLASS_PHOTO_HISTORY_LIMIT = 25;
+const SCHOOL_SNAPSHOT_PHOTO_POOL_LIMIT = 100;
+const SCHOOL_SNAPSHOT_CLASS_PHOTO_HISTORY_LIMIT = 100;
+const PHOTO_POST_RETRY_DELAY_MS = 15 * 60 * 1000;
+const PHOTO_POST_SCHEDULER_INTERVAL_MS = 60 * 1000;
 export const HALL_PASS_CARDS_PER_PACK = 5;
 export const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
@@ -277,6 +319,39 @@ const DIPLOMA_IMAGE_URL_BY_GRADE: Record<Grade, string> = {
 function gradeRank(grade: string): number {
   const idx = GRADES.indexOf(grade as Grade);
   return idx >= 0 ? idx : 0;
+}
+
+function characterAllowsSocialSharing(ch: PlayerCharacter): boolean {
+  return ch.socialConsent !== false;
+}
+
+function characterHasPublicName(ch: PlayerCharacter): boolean {
+  return typeof ch.name === "string" && ch.name.trim().length > 0 && !isSyntheticCharacterName(ch.name);
+}
+
+function characterAllowsPublicSharing(ch: PlayerCharacter): boolean {
+  return characterAllowsSocialSharing(ch) && characterHasPublicName(ch);
+}
+
+function characterDailyClassRecords(ch: PlayerCharacter): DailyClassRecord[] {
+  const dailyClasses = ch.dailyClasses;
+  if (!dailyClasses || typeof dailyClasses !== "object" || Array.isArray(dailyClasses)) return [];
+  return Object.values(dailyClasses).filter(
+    (record): record is DailyClassRecord => !!record && typeof record === "object",
+  );
+}
+
+function characterArrayField<K extends "yearbook" | "levelUps" | "pendingPhotos" | "classPhotos">(
+  ch: PlayerCharacter,
+  key: K,
+): NonNullable<PlayerCharacter[K]> {
+  const value = ch[key];
+  return (Array.isArray(value) ? value.filter((entry) => !!entry && typeof entry === "object") : []) as NonNullable<PlayerCharacter[K]>;
+}
+
+function characterYearbookEntries(owner: Pick<PlayerCharacter | StudentPoolEntry, "yearbook">): PlayerCharacter["yearbook"] {
+  const yearbook = owner.yearbook;
+  return (Array.isArray(yearbook) ? yearbook.filter((entry) => !!entry && typeof entry === "object") : []) as PlayerCharacter["yearbook"];
 }
 
 function graduationCollectibleId(
@@ -583,8 +658,30 @@ export interface RubyHighAnalyticsSnapshot {
     samples: number;
     latestSample?: Record<string, string | number | boolean | null>;
   };
+  world: RubyHighWorldHealthSnapshot;
+  photoPosts: RubyHighPhotoPostSchedulerSnapshot;
+  curriculum: RubyHighCurriculumCoverageSnapshot;
   daily: RubyHighAnalyticsDay[];
 }
+
+export interface RubyHighWorldHealthSnapshot {
+  lastRefreshAt: number | null;
+  refreshAgeMs: number | null;
+  refreshIntervalMs: number;
+  activeStudents: number;
+  activeRooms: number;
+  recentEvents: number;
+  newestEventAt: number | null;
+  durableEventCacheSize: number;
+  durableEventCacheLimit: number;
+}
+
+export type { DailyPhotoPostResult, RubyHighPhotoPostSchedulerSnapshot };
+export type {
+  RubyHighCurriculumCoverageRow,
+  RubyHighCurriculumCoverageSnapshot,
+  RubyHighCurriculumReplenishmentPlan,
+};
 
 export interface RubyHighAnalyticsDay {
   date: string;
@@ -702,10 +799,37 @@ export interface SchoolSnapshotPhoto {
   earnedAt: number;
 }
 
+export interface SchoolSnapshotClassPhoto {
+  studentName: string;
+  teacherFacultyId: string;
+  earnedAt: number;
+  revealedAt: number;
+  status: "posted" | "revealed";
+  tweetId?: string;
+  tweetedAt?: number;
+}
+
 export interface SchoolSnapshot {
   topByYear: Record<string, RecentlyActiveStudent[]>;
   photoPool: SchoolSnapshotPhoto[];
+  classPhotoHistory: SchoolSnapshotClassPhoto[];
   dailyMemories: DailyMemories;
+}
+
+export type SchoolWorldStudent = PublicWorldStudent;
+export type SchoolWorldRoom = PublicWorldRoom;
+export type SchoolWorldEvent = PublicWorldEvent;
+
+export interface SchoolWorldSnapshot {
+  generatedAt: number;
+  activeStudents: number;
+  activeRooms: SchoolWorldRoom[];
+  cohorts: Record<string, SchoolWorldStudent[]>;
+  recentEvents: SchoolWorldEvent[];
+  curriculum: {
+    activeCharacterSessions: number;
+    lowPools: RubyHighCurriculumCoverageRow[];
+  };
 }
 
 export interface RecentlyActiveStudent {
@@ -718,6 +842,13 @@ export interface RecentlyActiveStudent {
   yearbookCount: number;
   lastActive: number;
   portraitUrl?: string;
+}
+
+export interface ClassPhotoCandidate {
+  sessionId: string;
+  name: string;
+  imageUrl: string;
+  grade: string;
 }
 
 export interface DailyMemories {
@@ -895,13 +1026,22 @@ export class RubyHighService extends Service {
   private readonly store: StateStoreLike;
   private readonly backgroundWrites = new Set<Promise<void>>();
   private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
+  private readonly schoolEventRecords = new Map<string, StoredSchoolEventRecord>();
   private readonly pendingPhotoPosts = new Set<string>();
+  private readonly deferredPhotoPosts = new Map<string, number>();
+  private photoPostSchedulerTimer: ReturnType<typeof setInterval> | null = null;
+  private photoPostSchedulerIntervalMs: number | null = null;
+  private photoPostSchedulerRunning = false;
+  private lastPhotoPostAttemptAt: number | null = null;
+  private lastPhotoPostResult: DailyPhotoPostResult | null = null;
   private readonly disposeLogSink: () => void;
   private persistedPackRecords: StoredContentPackRecord[] | null = null;
   private teacherRecords: StoredTeacherRecord[] | null = null;
   private draftPackRecords: StoredDraftContentPackRecord[] | null = null;
   private packInstallationRecords: StoredPackInstallationRecord[] | null = null;
   private faculty: FacultyService | null = null;
+  private worldStoreRefreshedAt = 0;
+  private worldStoreRefresh: Promise<void> | null = null;
   private loaded = false;
 
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
@@ -913,14 +1053,17 @@ export class RubyHighService extends Service {
   static async start(runtime: IAgentRuntime): Promise<RubyHighService> {
     const svc = new RubyHighService(runtime);
     await svc.hydrate();
+    svc.startPhotoPostScheduler();
     return svc;
   }
 
   async stop(): Promise<void> {
-    await this.persistAll();
+    this.stopPhotoPostScheduler();
+    await this.flush();
     this.disposeLogSink();
     this.sessions.clear();
     this.metricEvents.clear();
+    this.schoolEventRecords.clear();
     this.persistedPackRecords = null;
     this.teacherRecords = null;
     this.draftPackRecords = null;
@@ -929,7 +1072,10 @@ export class RubyHighService extends Service {
 
   /** Wait for any in-flight persistence writes to flush. Useful in tests. */
   async flush(): Promise<void> {
-    await this.persistAll();
+    await Promise.all([
+      this.persistAll(),
+      this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
+    ]);
     if (typeof this.store.flush === "function") await this.store.flush();
     await Promise.allSettled(Array.from(this.backgroundWrites));
   }
@@ -1421,17 +1567,18 @@ export class RubyHighService extends Service {
           eligibleCharacterSessions += 1;
           if (updatedAt - characterCreatedAt >= dayMs) returnedCharacterSessions += 1;
         }
-        const yearbookCount = Array.isArray(state.character.yearbook) ? state.character.yearbook.length : 0;
+        const yearbook = characterYearbookEntries(state.character);
+        const yearbookCount = yearbook.length;
         completedGrades += yearbookCount;
         if (yearbookCount >= GRADES.length) graduatedCharacters += 1;
         incrementRubyHighDay(byDate, characterCreatedAt, "charactersCreated");
-        for (const entry of state.character.yearbook ?? []) {
+        for (const entry of yearbook) {
           incrementRubyHighDay(byDate, Number(entry.completedAt), "gradesCompleted");
         }
       }
       for (const pooled of state.studentPool ?? []) {
         incrementRubyHighDay(byDate, Number(pooled.createdAt), "charactersCreated");
-        for (const entry of pooled.yearbook ?? []) {
+        for (const entry of characterYearbookEntries(pooled)) {
           incrementRubyHighDay(byDate, Number(entry.completedAt), "gradesCompleted");
         }
       }
@@ -1443,13 +1590,9 @@ export class RubyHighService extends Service {
       }
       correct += Math.max(0, Math.floor(Number(state.score?.correct ?? 0)));
       total += Math.max(0, Math.floor(Number(state.score?.total ?? 0)));
-      const seenQuestionIds = new Set<string>();
-      for (const answer of Array.isArray(state.history) ? state.history : []) {
-        if (!answer?.questionId) continue;
-        answerEvents += 1;
-        if (seenQuestionIds.has(answer.questionId)) repeatedAnswers += 1;
-        else seenQuestionIds.add(answer.questionId);
-      }
+      const stats = normalizeAnswerStats(state.answerStats ?? answerStatsFromHistory(state.history));
+      answerEvents += stats.totalAnswers;
+      repeatedAnswers += stats.repeatedAnswers;
       const wallet = normalizeWallet(state.wallet, state.score?.points ?? 0);
       meritStars += wallet.meritStars;
       hallPasses += wallet.hallPasses;
@@ -1512,8 +1655,163 @@ export class RubyHighService extends Service {
         samples: events.balance.samples,
         ...(events.balance.latestRepeatRate != null ? { latestSample: { repeatRate: events.balance.latestRepeatRate } } : {}),
       },
+      world: this.worldHealthSnapshot(now),
+      photoPosts: this.photoPostSchedulerSnapshot(),
+      curriculum: this.curriculumCoverageSnapshot(),
       daily: days,
     };
+  }
+
+  worldHealthSnapshot(now: number = Date.now()): RubyHighWorldHealthSnapshot {
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const presence = this.publicSchoolWorldEntries(now, weekMs).map((entry) => this.publicWorldPresenceFromEntry(entry));
+    const rooms = buildPublicWorldRooms(presence, 5);
+    const events = this.getSchoolWorldEvents(SCHOOL_WORLD_RECENT_EVENT_LIMIT, now, rooms.publicSessionIds);
+    return {
+      lastRefreshAt: this.worldStoreRefreshedAt > 0 ? this.worldStoreRefreshedAt : null,
+      refreshAgeMs: this.worldStoreRefreshedAt > 0 ? Math.max(0, now - this.worldStoreRefreshedAt) : null,
+      refreshIntervalMs: SCHOOL_WORLD_STORE_REFRESH_MS,
+      activeStudents: rooms.activeStudents,
+      activeRooms: rooms.activeRooms.length,
+      recentEvents: events.length,
+      newestEventAt: events[0]?.at ?? null,
+      durableEventCacheSize: this.schoolEventRecords.size,
+      durableEventCacheLimit: SCHOOL_WORLD_EVENT_CACHE_LIMIT,
+    };
+  }
+
+  photoPostSchedulerSnapshot(): RubyHighPhotoPostSchedulerSnapshot {
+    return buildPhotoPostSchedulerSnapshot({
+      schedulerActive: this.photoPostSchedulerTimer !== null,
+      schedulerRunning: this.photoPostSchedulerRunning,
+      schedulerIntervalMs: this.photoPostSchedulerIntervalMs,
+      pendingPhotos: this.pendingPhotoPoolSize(),
+      inFlightPosts: this.pendingPhotoPosts.size,
+      deferredPhotoPosts: this.deferredPhotoPosts,
+      lastAttemptAt: this.lastPhotoPostAttemptAt,
+      lastResult: this.lastPhotoPostResult,
+    });
+  }
+
+  startPhotoPostScheduler(intervalMs: number = PHOTO_POST_SCHEDULER_INTERVAL_MS): void {
+    const normalizedIntervalMs = Math.max(1_000, Math.floor(Number(intervalMs)));
+    if (!Number.isFinite(normalizedIntervalMs) || this.photoPostSchedulerTimer) return;
+    this.photoPostSchedulerIntervalMs = normalizedIntervalMs;
+    this.photoPostSchedulerTimer = setInterval(() => {
+      void this.runPhotoPostSchedulerTick();
+    }, normalizedIntervalMs);
+    this.photoPostSchedulerTimer.unref?.();
+  }
+
+  stopPhotoPostScheduler(): void {
+    if (this.photoPostSchedulerTimer) clearInterval(this.photoPostSchedulerTimer);
+    this.photoPostSchedulerTimer = null;
+    this.photoPostSchedulerIntervalMs = null;
+  }
+
+  async runPhotoPostSchedulerTick(): Promise<DailyPhotoPostResult | null> {
+    if (this.photoPostSchedulerRunning) return null;
+    this.photoPostSchedulerRunning = true;
+    try {
+      return await this.maybePostDailyPhoto();
+    } finally {
+      this.photoPostSchedulerRunning = false;
+    }
+  }
+
+  private hydratePhotoPostSchedulerState(record: StoredServiceStateRecord | null): void {
+    const hydrated = hydratePhotoPostSchedulerState(record);
+    this.deferredPhotoPosts.clear();
+    for (const [photoId, retryAt] of hydrated.deferredPhotoPosts) this.deferredPhotoPosts.set(photoId, retryAt);
+    this.lastPhotoPostAttemptAt = hydrated.lastAttemptAt;
+    this.lastPhotoPostResult = hydrated.lastResult;
+  }
+
+  private photoPostSchedulerStateRecord(): StoredServiceStateRecord {
+    return buildPhotoPostSchedulerStateRecord({
+      deferredPhotoPosts: this.deferredPhotoPosts,
+      lastAttemptAt: this.lastPhotoPostAttemptAt,
+      lastResult: this.lastPhotoPostResult,
+    });
+  }
+
+  private persistPhotoPostSchedulerState(options: { surfaceErrors?: boolean } = {}): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.photoPostSchedulerStateRecord();
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("photo-post-scheduler.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  private recordPhotoPostAttempt(): void {
+    this.lastPhotoPostAttemptAt = Date.now();
+    void this.persistPhotoPostSchedulerState();
+  }
+
+  private recordPhotoPostResult(result: DailyPhotoPostResult): DailyPhotoPostResult {
+    this.lastPhotoPostResult = result;
+    void this.persistPhotoPostSchedulerState();
+    return result;
+  }
+
+  curriculumCoverageSnapshot(): RubyHighCurriculumCoverageSnapshot {
+    return this.curriculumCoverageSnapshotForStates(this.sessions.values());
+  }
+
+  private curriculumCoverageSnapshotForStates(states: Iterable<QuizState>): RubyHighCurriculumCoverageSnapshot {
+    const rows = new Map<string, MutableCurriculumCoverageRow>();
+    let activeCharacterSessions = 0;
+    for (const state of states) {
+      if (!state.character || !state.currentGrade) continue;
+      activeCharacterSessions += 1;
+      const grade = state.currentGrade;
+      for (const faculty of facultyForSession(state)) {
+        if (!faculty.questions?.length && !faculty.sourceCards?.length) continue;
+        const status = this.questionBankStatusForState(state, faculty.id);
+        const key = `${grade}:${status.facultyId}`;
+        let row = rows.get(key);
+        if (!row) {
+          row = {
+            grade,
+            facultyId: status.facultyId,
+            displayName: status.displayName,
+            sessions: 0,
+            totalEligibleMin: status.total,
+            totalEligibleMax: status.total,
+            seenSum: 0,
+            remainingSum: 0,
+            lowPoolSessions: 0,
+            exhaustedSessions: 0,
+            sourceCardIds: new Set<string>(),
+            sourceSubjects: new Map<string, number>(),
+          };
+          rows.set(key, row);
+        }
+        row.sessions += 1;
+        row.totalEligibleMin = Math.min(row.totalEligibleMin, status.total);
+        row.totalEligibleMax = Math.max(row.totalEligibleMax, status.total);
+        row.seenSum += status.asked;
+        row.remainingSum += status.remaining;
+        const lowThreshold = Math.max(3, Math.ceil(status.total * 0.1));
+        if (status.remaining <= 0) row.exhaustedSessions += 1;
+        if (status.remaining <= lowThreshold) row.lowPoolSessions += 1;
+        for (const card of this.curriculumSourceCardsForPlan(faculty, grade)) {
+          row.sourceCardIds.add(card.id);
+          row.sourceSubjects.set(card.subject, (row.sourceSubjects.get(card.subject) ?? 0) + 1);
+        }
+      }
+    }
+    return buildCurriculumCoverageSnapshot(activeCharacterSessions, rows.values());
+  }
+
+  private curriculumSourceCardsForPlan(faculty: PackFaculty, grade: Grade): PackSourceCard[] {
+    const targetDifficulty = generationDifficultyForCurriculumGrade(grade);
+    const unlocked = this.availableSourceCardsForGrade(faculty.sourceCards ?? [], grade);
+    const preferred = unlocked.filter((card) => card.difficulty === targetDifficulty);
+    return preferred.length ? preferred : unlocked;
   }
 
   yearbookSharesForSession(sessionId: string): YearbookShareCard[] {
@@ -2585,6 +2883,8 @@ export class RubyHighService extends Service {
       storedPackInstallations,
       loaded,
       storedMetricEvents,
+      storedSchoolEvents,
+      storedPhotoPostSchedulerState,
     ] = await Promise.all([
       this.store.loadPacks(),
       this.store.loadTeachers(),
@@ -2592,12 +2892,15 @@ export class RubyHighService extends Service {
       this.store.loadPackInstallations(),
       this.store.load(),
       this.store.loadMetricEvents?.() ?? Promise.resolve([]),
+      this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
+      this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
     ]);
-    this.persistedPackRecords = storedPacks.slice();
+    const staleBuiltInPackRecords = storedPacks.filter(isPersistedBuiltInPackOverride);
+    this.persistedPackRecords = storedPacks.filter((record) => !isPersistedBuiltInPackOverride(record));
     this.teacherRecords = storedTeachers.slice();
     this.draftPackRecords = storedDraftPacks.slice();
     this.packInstallationRecords = storedPackInstallations.slice();
-    storedPacks
+    this.persistedPackRecords
       .slice()
       .sort((a, b) => a.touchedAt - b.touchedAt)
       .forEach((record) => {
@@ -2616,6 +2919,16 @@ export class RubyHighService extends Service {
           });
         }
     });
+    if (staleBuiltInPackRecords.length > 0) {
+      this.trackBackgroundWrite(Promise.all(
+        staleBuiltInPackRecords.map((record) =>
+          this.store.deletePack(record.ownerSessionId, record.pack.id)),
+      ).then(() => undefined).catch((err) => {
+        log.error("ruby-high.delete-stale-built-in-pack-override-failed", err, {
+          count: staleBuiltInPackRecords.length,
+        });
+      }));
+    }
     let repaired = false;
     for (const [k, v] of loaded) {
       const state = normalizeLoaded(v);
@@ -2625,6 +2938,11 @@ export class RubyHighService extends Service {
     for (const event of storedMetricEvents) {
       this.metricEvents.set(event.id, event);
     }
+    for (const event of storedSchoolEvents) {
+      this.schoolEventRecords.set(event.id, event);
+    }
+    this.pruneSchoolEventRecords();
+    this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
     this.loaded = true;
     if (repaired) await this.persistAll();
   }
@@ -2958,6 +3276,7 @@ export class RubyHighService extends Service {
         subject: null,
         current: null,
         history: [],
+        answerStats: { totalAnswers: 0, repeatedAnswers: 0 },
         score: { correct: 0, total: 0, points: 0, possible: 0 },
         wallet: { meritStars: 0, hallPasses: 0 },
         lastReveal: null,
@@ -3039,6 +3358,22 @@ export class RubyHighService extends Service {
       events.splice(0, events.length - SCHOOL_EVENT_LIMIT);
     }
     state.schoolEvents = events;
+    const occurredAt = schoolEventOccurredAt(event.at);
+    const record: StoredSchoolEventRecord = {
+      id: event.id,
+      sessionId: state.sessionId,
+      event,
+      occurredAt,
+      day: new Date(occurredAt).toISOString().slice(0, 10),
+    };
+    this.schoolEventRecords.set(record.id, record);
+    this.pruneSchoolEventRecords();
+    if (this.store.saveSchoolEvent) {
+      const save = this.store.saveSchoolEvent(record).catch((err) => {
+        log.error("ruby-high.school-event-persist-failed", err, { eventId: event.id, sessionId: state.sessionId });
+      });
+      this.trackBackgroundWrite(save);
+    }
   }
 
   private appendEssayReport(state: QuizState, report: EssayReport): void {
@@ -3119,7 +3454,8 @@ export class RubyHighService extends Service {
   }
 
   private unlockTeacherStoryPagesForAClasses(state: QuizState, now = Date.now()): boolean {
-    const records = Object.values(state.character?.dailyClasses ?? {});
+    if (!state.character) return false;
+    const records = characterDailyClassRecords(state.character);
     let changed = false;
     for (const record of records) {
       if (this.unlockTeacherStoryPageForAClass(state, record, now)) changed = true;
@@ -3556,7 +3892,7 @@ export class RubyHighService extends Service {
       return { facultyId, grade: null, completed: 0, required, passed: false, today };
     }
 
-    const completed = Object.values(ch.dailyClasses ?? {})
+    const completed = characterDailyClassRecords(ch)
       .filter((r) => r.grade === grade && r.facultyId === facultyId && r.status === "complete")
       .sort((a, b) => a.date.localeCompare(b.date));
     let currentPassCount = 0;
@@ -3824,7 +4160,7 @@ export class RubyHighService extends Service {
       : faculty.questions;
     return [
       ...sourceCards.map((card) => this.questionForSourceCard(card)),
-      ...bankedQuestions,
+      ...bankedQuestions.filter((q) => this.questionUnlockedForGrade(q, state.currentGrade)),
     ];
   }
 
@@ -3835,6 +4171,11 @@ export class RubyHighService extends Service {
   private sourceCardUnlockedForGrade(card: PackSourceCard, grade: Grade | null): boolean {
     if (!card.minGrade) return true;
     return gradeRank(grade ?? DEFAULT_GRADE) >= gradeRank(card.minGrade);
+  }
+
+  private questionUnlockedForGrade(question: BankedQuestion, grade: Grade | null): boolean {
+    if (!question.minGrade) return true;
+    return gradeRank(grade ?? DEFAULT_GRADE) >= gradeRank(question.minGrade);
   }
 
   private eligibleCourseQuestions(
@@ -4081,6 +4422,25 @@ export class RubyHighService extends Service {
     memory[key] = next;
   }
 
+  private appendAnswerHistory(state: QuizState, record: AnswerRecord): void {
+    const stats = normalizeAnswerStats(state.answerStats ?? answerStatsFromHistory(state.history));
+    const repeated = this.answerRecordIsRepeat(state, record);
+    stats.totalAnswers += 1;
+    if (repeated) stats.repeatedAnswers += 1;
+    state.answerStats = stats;
+    state.history.push(record);
+    if (state.history.length > ANSWER_HISTORY_LIMIT) {
+      state.history.splice(0, state.history.length - ANSWER_HISTORY_LIMIT);
+    }
+  }
+
+  private answerRecordIsRepeat(state: QuizState, record: AnswerRecord): boolean {
+    for (const memory of Object.values(state.cardMemory ?? {})) {
+      if (memory.questionId === record.questionId && memory.lastReviewedAt != null) return true;
+    }
+    return state.history.some((entry) => entry.questionId === record.questionId);
+  }
+
   private cardCounts(state: QuizState, facultyId: string, questions: BankedQuestion[], now = Date.now()): {
     asked: number;
     ready: number;
@@ -4244,7 +4604,7 @@ export class RubyHighService extends Service {
         at: round.player.answeredAt ?? round.expiresAt,
         ...(isTypedQuestion ? { answerText, expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] } : {}),
       };
-      state.history.push(record);
+      this.appendAnswerHistory(state, record);
     }
     state.score.total += 1;
     if (wasCorrect) state.score.correct += 1;
@@ -4479,7 +4839,7 @@ export class RubyHighService extends Service {
     const ch = state.character;
     if (!status || !ch || !status.ready) return false;
     const grade = status.grade;
-    if (ch.yearbook?.some((y) => y.grade === grade) || state.completedGrades.includes(grade)) return false;
+    if (characterYearbookEntries(ch).some((y) => y.grade === grade) || state.completedGrades.includes(grade)) return false;
     if (ch.pendingGraduation?.grade === grade) return false;
     ch.pendingGraduation = {
       grade,
@@ -4507,7 +4867,7 @@ export class RubyHighService extends Service {
       throw new Error("Graduation requirements are not complete.");
     }
     const grade = pending.grade;
-    if (ch.yearbook?.some((y) => y.grade === grade) || state.completedGrades.includes(grade)) {
+    if (characterYearbookEntries(ch).some((y) => y.grade === grade) || state.completedGrades.includes(grade)) {
       ch.pendingGraduation = null;
       state.updatedAt = Date.now();
       void this.persistSession(sessionId);
@@ -4543,7 +4903,7 @@ export class RubyHighService extends Service {
       ? this.graduationPhotoCollectibleFor(state, ch, grade, completedAt)
       : null;
 
-    ch.yearbook = ch.yearbook ?? [];
+    ch.yearbook = characterYearbookEntries(ch);
     ch.yearbook.push({
       grade,
       completedAt,
@@ -4678,7 +5038,7 @@ export class RubyHighService extends Service {
     state: QuizState,
     grade: Grade,
   ): GraduationPhotoCollectible["teacher"] {
-    const records = Object.values(state.character?.dailyClasses ?? {})
+    const records = (state.character ? characterDailyClassRecords(state.character) : [])
       .filter((record) => record.grade === grade && record.status === "complete");
     const byFaculty = new Map<string, {
       facultyId: string;
@@ -5373,7 +5733,7 @@ export class RubyHighService extends Service {
         wasCorrect: passed,
         at: reviewAt,
       };
-      state.history.push(record);
+      this.appendAnswerHistory(state, record);
       state.score.total += 1;
       if (passed) state.score.correct += 1;
       const rawQuestionScore = playerGrade ? Math.round(clamp(playerGrade.score, 0, 10) * 10) : 0;
@@ -5496,7 +5856,7 @@ export class RubyHighService extends Service {
       faculty: facultyId,
       subject: "social",
       questionId: `social_${facultyId}_${grade}_${date}_${socialIndex}`,
-      prompt: "Social card: When a classmate gives an answer confidently, what is one sign you should trust it, and one sign you should check it?",
+      prompt: "When a classmate gives an answer confidently, what is one sign you should trust it, and one sign you should check it?",
       rubric: "A strong response names one concrete trust signal and one concrete reason to verify, then explains the difference in the player's own words.",
     });
   }
@@ -5870,7 +6230,7 @@ export class RubyHighService extends Service {
 
   private studentPoolIdFor(ch: PlayerCharacter): string {
     const created = Number.isFinite(Number(ch.createdAt)) ? Math.floor(Number(ch.createdAt)) : 0;
-    const firstCompletion = ch.yearbook?.[0]?.completedAt ?? Date.now();
+    const firstCompletion = characterYearbookEntries(ch)[0]?.completedAt ?? Date.now();
     const seed = created > 0 ? created : firstCompletion;
     const name = ch.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "student";
     const playbook = ch.playbookId.replace(/[^a-z0-9-]+/gi, "-").slice(0, 32) || "playbook";
@@ -5878,7 +6238,7 @@ export class RubyHighService extends Service {
   }
 
   private archiveCompletedCharacter(state: QuizState, ch: PlayerCharacter): StudentPoolEntry | null {
-    const yearbook = Array.isArray(ch.yearbook) ? ch.yearbook : [];
+    const yearbook = characterYearbookEntries(ch);
     if (yearbook.length < GRADES.length) return null;
     const completedTimes = yearbook.map((y) => Number(y.completedAt) || 0);
     const completedAt = Math.max(...completedTimes) || Date.now();
@@ -5892,8 +6252,9 @@ export class RubyHighService extends Service {
       personality: ch.personality,
       ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
       ...(ch.diplomaImageDataUrl ? { diplomaImageDataUrl: ch.diplomaImageDataUrl } : {}),
+      ...(characterArrayField(ch, "classPhotos").length ? { classPhotos: characterArrayField(ch, "classPhotos").map((p) => ({ ...p })) } : {}),
       yearbook: yearbook.map((y) => ({ ...y, stats: y.stats ? { ...y.stats } : undefined })),
-      ...(ch.levelUps ? { levelUps: ch.levelUps.map((l) => ({ ...l, reward: { ...l.reward } })) } : {}),
+      ...(characterArrayField(ch, "levelUps").length ? { levelUps: characterArrayField(ch, "levelUps").map((l) => ({ ...l, reward: { ...l.reward } })) } : {}),
       ...(ch.inheritedFrom ? { inheritedFrom: { ...ch.inheritedFrom } } : {}),
       ...(ch.mashCard ? { mashCard: ensureMashCard(ch.mashCard) } : {}),
       createdAt: Number.isFinite(Number(ch.createdAt)) ? Math.floor(Number(ch.createdAt)) : completedAt,
@@ -6032,6 +6393,7 @@ export class RubyHighService extends Service {
   setYearbookImage(sessionId: string, grade: string, imageUrl: string): QuizState {
     const state = this.getOrCreate(sessionId);
     if (!state.character) throw new Error("No character on this session.");
+    state.character.yearbook = characterYearbookEntries(state.character);
     const entry = state.character.yearbook.find((y) => y.grade === grade);
     if (!entry) throw new Error("No yearbook entry for grade " + grade + ".");
     entry.yearbookImageUrl = imageUrl;
@@ -6050,7 +6412,7 @@ export class RubyHighService extends Service {
     // playbook's startingMove. Cleared by createCharacter regardless of
     // whether the offer was accepted.
     const prev = state.character;
-    if (prev && (prev.yearbook ?? []).length >= 4) {
+    if (prev && characterYearbookEntries(prev).length >= 4) {
       this.archiveCompletedCharacter(state, prev);
       const playbook = PLAYBOOKS.find((p) => p.id === prev.playbookId);
       if (playbook) {
@@ -6263,6 +6625,31 @@ export class RubyHighService extends Service {
     return photoId;
   }
 
+  enqueueClassPhotoReveal(
+    teacherFacultyId: string,
+    imageUrl: string,
+    candidates: readonly ClassPhotoCandidate[],
+  ): string | null {
+    for (const candidate of candidates) {
+      if (!this.isClassPhotoRevealTarget(candidate.sessionId)) continue;
+      return this.enqueuePhotoReveal(candidate.sessionId, "class-photo", imageUrl, teacherFacultyId);
+    }
+    return null;
+  }
+
+  hasClassPhotoRevealTarget(candidates: readonly ClassPhotoCandidate[]): boolean {
+    return candidates.some((candidate) => this.isClassPhotoRevealTarget(candidate.sessionId));
+  }
+
+  private isClassPhotoRevealTarget(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    const ch = state?.character;
+    if (!ch) return false;
+    if (!characterAllowsSocialSharing(ch)) return false;
+    if (isSyntheticCharacterName(ch.name)) return false;
+    return true;
+  }
+
   /** Reveal a photo after the teacher tweeted it (or as an immediate
    *  fallback when no teacher is connected). Moves the image into the
    *  character's permanent fields and updates the yearbook. */
@@ -6290,8 +6677,7 @@ export class RubyHighService extends Service {
         ch.diplomaImageDataUrl = photo.imageUrl;
         break;
       case "class-photo":
-        // Class photos don't map to a single character's field.
-        // They're revealed by being tweeted — that's the artifact.
+        this.archiveClassPhoto(ch, photo);
         break;
     }
     this.archiveCompletedCharacter(state, ch);
@@ -6306,52 +6692,95 @@ export class RubyHighService extends Service {
     });
   }
 
+  private archiveClassPhoto(ch: PlayerCharacter, photo: PendingPhotoReveal): void {
+    const entry: ClassPhotoArchive = {
+      photoId: photo.photoId,
+      imageUrl: photo.imageUrl,
+      teacherFacultyId: photo.teacherFacultyId,
+      earnedAt: photo.earnedAt,
+      revealedAt: Date.now(),
+      ...(photo.tweetId ? { tweetId: photo.tweetId } : {}),
+      ...(photo.tweetedAt ? { tweetedAt: photo.tweetedAt } : {}),
+    };
+    const history = Array.isArray(ch.classPhotos) ? [...ch.classPhotos] : [];
+    const existing = history.findIndex((item) => item.photoId === entry.photoId);
+    if (existing >= 0) history[existing] = entry;
+    else history.push(entry);
+    history.sort((a, b) => a.revealedAt - b.revealedAt || a.photoId.localeCompare(b.photoId));
+    ch.classPhotos = history.slice(-CLASS_PHOTO_HISTORY_LIMIT);
+  }
+
   /** Called on viewer loads and milestone events. If the configured photo
    *  teacher hasn't posted a photo today and there are pending photos in
-   *  the pool, picks one at random and posts it. Non-blocking. */
-  maybePostDailyPhoto(): void {
-    if (!this.runtime || typeof (this.runtime as any).getService !== "function") return;
+   *  the pool, picks one at random and posts it. Admin-triggered class photo
+   *  posts can pass a photoId so the button posts the image it just made. */
+  async maybePostDailyPhoto(opts: { photoId?: string } = {}): Promise<DailyPhotoPostResult | null> {
+    if (!this.runtime || typeof (this.runtime as any).getService !== "function") return null;
     const xSocial = (this.runtime as any).getService(XSocialService.serviceType) as XSocialService | undefined;
-    if (!xSocial) return;
-    // Gather ALL pending photos across all sessions (unfiltered — we need
-    // the full pool for the fallback path below).
+    if (!xSocial) return null;
+    // Gather pending photos that are allowed to leave the private session.
     const allPhotos: { sessionId: string; photo: PendingPhotoReveal }[] = [];
     for (const [sid, state] of this.sessions) {
       const ch = state.character;
-      if (!ch?.pendingPhotos?.length) continue;
-      // Skip smoke-test/auto-generated characters.
-      if (isSyntheticCharacterName(ch.name)) continue;
-      // Skip test/smoke characters that haven't completed any classes.
-      const hasClasses = Object.values(ch.dailyClasses ?? {}).some(
-        (r) => r.status === "complete",
-      );
-      if (!hasClasses && ch.pendingPhotos.every((p) => p.kind !== "class-photo")) continue;
-      for (const p of ch.pendingPhotos) {
+      if (!ch) continue;
+      for (const p of characterArrayField(ch, "pendingPhotos")) {
+        if (!this.isPostablePendingPhoto(ch, p)) continue;
         allPhotos.push({ sessionId: sid, photo: p });
       }
     }
-    if (allPhotos.length === 0) return;
+    if (allPhotos.length === 0) return null;
+    const targetPhotoId = typeof opts.photoId === "string" && opts.photoId ? opts.photoId : null;
 
-    // Fallback: if no teacher is connected to X at all, auto-reveal all
-    // pending photos immediately so the yearbook still works.
-    const anyConnected = xSocial.listConnected().length > 0;
-    if (!anyConnected) {
-      for (const { sessionId: sid, photo: p } of allPhotos) {
+    // Fallback: if this photo's teacher is not connected to X, auto-reveal it
+    // immediately so one connected teacher cannot block another class's yearbook.
+    const fallbackPhotos = allPhotos.filter(({ photo }) =>
+      !xSocial.getStatus(photo.teacherFacultyId).connected &&
+      (!targetPhotoId || photo.photoId === targetPhotoId)
+    );
+    if (fallbackPhotos.length > 0) {
+      for (const { sessionId: sid, photo: p } of fallbackPhotos) {
         this.revealPhoto(sid, p.photoId);
       }
-      return;
+      const revealed = fallbackPhotos[0] ?? null;
+      if (!revealed) return null;
+      this.recordPhotoPostAttempt();
+      return this.recordPhotoPostResult({
+        photoId: revealed.photo.photoId,
+        sessionId: revealed.sessionId,
+        kind: revealed.photo.kind,
+        teacherFacultyId: revealed.photo.teacherFacultyId,
+        posted: false,
+        revealed: true,
+        fallback: true,
+      });
     }
 
     // One or more teachers are connected. Filter to photos whose teacher
     // is connected, then pick one at random.
     const eligible = allPhotos.filter((e) => xSocial.getStatus(e.photo.teacherFacultyId).connected);
-    if (eligible.length === 0) return;
-    const ready = eligible.filter((e) => !this.pendingPhotoPosts.has(e.photo.photoId));
-    if (ready.length === 0) return;
-    const pick = ready[Math.floor(Math.random() * ready.length)]!;
+    if (eligible.length === 0) return null;
+    const now = Date.now();
+    let clearedDeferredRetry = false;
+    const ready = eligible.filter((e) => {
+      if (this.pendingPhotoPosts.has(e.photo.photoId)) return false;
+      const retryAt = this.deferredPhotoPosts.get(e.photo.photoId) ?? 0;
+      if (retryAt > now) return false;
+      if (retryAt > 0) {
+        this.deferredPhotoPosts.delete(e.photo.photoId);
+        clearedDeferredRetry = true;
+      }
+      return true;
+    });
+    if (clearedDeferredRetry) void this.persistPhotoPostSchedulerState();
+    if (ready.length === 0) return null;
+    const pick = targetPhotoId
+      ? ready.find((e) => e.photo.photoId === targetPhotoId)
+      : ready[Math.floor(Math.random() * ready.length)];
+    if (!pick) return null;
     const teacher = teacherById(pick.photo.teacherFacultyId);
-    if (!teacher) return;
+    if (!teacher) return null;
     this.pendingPhotoPosts.add(pick.photo.photoId);
+    this.recordPhotoPostAttempt();
     const ctx: XMilestoneContext = {
       kind: pick.photo.kind === "portrait" ? "portrait-set"
           : pick.photo.kind === "diploma" ? "diploma-earned"
@@ -6362,13 +6791,48 @@ export class RubyHighService extends Service {
       portraitUrl: pick.photo.kind === "portrait" ? pick.photo.imageUrl : undefined,
       diplomaUrl: pick.photo.kind === "diploma" ? pick.photo.imageUrl : undefined,
     };
-    xSocial.maybePostMilestone(teacher, ctx).then((tweetId) => {
+    try {
+      const tweetId = await xSocial.maybePostMilestone(teacher, ctx);
       if (tweetId) {
+        this.deferredPhotoPosts.delete(pick.photo.photoId);
         this.revealPhoto(pick.sessionId, pick.photo.photoId, tweetId);
+        return this.recordPhotoPostResult({
+          photoId: pick.photo.photoId,
+          sessionId: pick.sessionId,
+          kind: pick.photo.kind,
+          teacherFacultyId: pick.photo.teacherFacultyId,
+          posted: true,
+          revealed: true,
+          tweetId,
+        });
+      } else {
+        const deferredUntil = Date.now() + PHOTO_POST_RETRY_DELAY_MS;
+        this.deferredPhotoPosts.set(pick.photo.photoId, deferredUntil);
+        return this.recordPhotoPostResult({
+          photoId: pick.photo.photoId,
+          sessionId: pick.sessionId,
+          kind: pick.photo.kind,
+          teacherFacultyId: pick.photo.teacherFacultyId,
+          posted: false,
+          revealed: false,
+          deferredUntil,
+        });
       }
-    }).catch(() => {}).finally(() => {
+    } catch {
+      const deferredUntil = Date.now() + PHOTO_POST_RETRY_DELAY_MS;
+      this.deferredPhotoPosts.set(pick.photo.photoId, deferredUntil);
+      return this.recordPhotoPostResult({
+        photoId: pick.photo.photoId,
+        sessionId: pick.sessionId,
+        kind: pick.photo.kind,
+        teacherFacultyId: pick.photo.teacherFacultyId,
+        posted: false,
+        revealed: false,
+        deferredUntil,
+      });
+    } finally {
       this.pendingPhotoPosts.delete(pick.photo.photoId);
-    });
+    }
   }
 
   /** Collect today's school memories across all sessions. Returns a
@@ -6388,21 +6852,25 @@ export class RubyHighService extends Service {
       const ch = state.character;
       if (!ch) continue;
 
-      // Skip smoke-test / auto-generated characters.
-      if (isSyntheticCharacterName(ch.name)) continue;
+      // Skip private, blank-name, smoke-test, and auto-generated characters.
+      if (!characterAllowsPublicSharing(ch)) continue;
       memories.totalStudents += 1;
       // Characters created today.
       if (ch.createdAt) {
         const createdDate = new Date(ch.createdAt).toISOString().slice(0, 10);
-        if (createdDate === today) {
+        if (createdDate === today && memories.charactersCreated.length < DAILY_MEMORY_DETAIL_LIMIT) {
           memories.charactersCreated.push(ch.name);
         }
       }
       // Daily classes passed today.
-      for (const record of Object.values(ch.dailyClasses ?? {})) {
+      for (const record of characterDailyClassRecords(ch)) {
         if (record.status === "complete" && record.completedAt) {
           const completedDate = new Date(record.completedAt).toISOString().slice(0, 10);
-          if (completedDate === today && letterGradePasses(record.letterGrade ?? "")) {
+          if (
+            completedDate === today &&
+            letterGradePasses(record.letterGrade ?? "") &&
+            memories.classesPassed.length < DAILY_MEMORY_DETAIL_LIMIT
+          ) {
             memories.classesPassed.push({
               studentName: ch.name,
               facultyId: record.facultyId,
@@ -6413,9 +6881,9 @@ export class RubyHighService extends Service {
         memories.totalQuestionsAnswered += record.questionCount ?? 0;
       }
       // Grade advancements today (check levelUps).
-      for (const lu of ch.levelUps ?? []) {
+      for (const lu of characterArrayField(ch, "levelUps")) {
         const awardedDate = new Date(lu.awardedAt).toISOString().slice(0, 10);
-        if (awardedDate === today) {
+        if (awardedDate === today && memories.gradesAdvanced.length < DAILY_MEMORY_DETAIL_LIMIT) {
           memories.gradesAdvanced.push({
             studentName: ch.name,
             fromGrade: lu.completedGrade,
@@ -6424,9 +6892,9 @@ export class RubyHighService extends Service {
         }
       }
       // Graduations today (yearbook entries with today's date).
-      for (const entry of ch.yearbook ?? []) {
+      for (const entry of characterArrayField(ch, "yearbook")) {
         const completedDate = new Date(entry.completedAt).toISOString().slice(0, 10);
-        if (completedDate === today && entry.grade === "12") {
+        if (completedDate === today && entry.grade === "12" && memories.graduations.length < DAILY_MEMORY_DETAIL_LIMIT) {
           memories.graduations.push(ch.name);
         }
       }
@@ -6439,32 +6907,32 @@ export class RubyHighService extends Service {
   pendingPhotoPoolSize(): number {
     let count = 0;
     for (const [, state] of this.sessions) {
-      count += state.character?.pendingPhotos?.length ?? 0;
+      const ch = state.character;
+      if (!ch) continue;
+      const pendingPhotos = characterArrayField(ch, "pendingPhotos");
+      if (!pendingPhotos.length) continue;
+      for (const photo of pendingPhotos) {
+        if (this.isPostablePendingPhoto(ch, photo)) count += 1;
+      }
     }
     return count;
   }
 
+  private isPostablePendingPhoto(ch: PlayerCharacter, photo: PendingPhotoReveal): boolean {
+    if (!characterAllowsPublicSharing(ch)) return false;
+    if (photo.kind === "class-photo") return true;
+    return characterDailyClassRecords(ch).some((record) => record.status === "complete");
+  }
+
   /** Recently active students, ranked by grade performance.
    *  Returns top 3 per year (Freshman/Sophomore/Junior/Senior). */
-  getRecentlyActiveStudents(): RecentlyActiveStudent[] {
-    const now = Date.now();
+  getRecentlyActiveStudents(now = Date.now()): RecentlyActiveStudent[] {
     const weekMs = 7 * 24 * 60 * 60 * 1000;
     const byGrade = new Map<string, RecentlyActiveStudent[]>();
 
-    for (const [, state] of this.sessions) {
-      const ch = state.character;
-      if (!ch) continue;
-      const lastActivity = this.lastActivityFor(ch, state);
-      if (now - lastActivity > weekMs) continue;
-      // Skip smoke-test and auto-generated characters.
-      if (isSyntheticCharacterName(ch.name)) continue;
-      // Skip students who haven't completed any classes.
-      const hasGrades = Object.values(ch.dailyClasses ?? {}).some(
-        (r) => r.status === "complete",
-      );
-      if (!hasGrades) continue;
+    for (const { state, ch, lastActive } of this.publicSchoolWorldEntries(now, weekMs)) {
       const classGrades: Record<string, string> = {};
-      for (const record of Object.values(ch.dailyClasses ?? {})) {
+      for (const record of characterDailyClassRecords(ch)) {
         if (record.status === "complete" && record.letterGrade) {
           classGrades[record.facultyId] = record.letterGrade;
         }
@@ -6476,8 +6944,8 @@ export class RubyHighService extends Service {
         grade: state.currentGrade ?? "9",
         stats: { ...ch.stats },
         classGrades,
-        yearbookCount: ch.yearbook?.length ?? 0,
-        lastActive: lastActivity,
+        yearbookCount: characterArrayField(ch, "yearbook").length,
+        lastActive,
         portraitUrl: ch.portraitDataUrl ?? undefined,
       };
       const g = student.grade;
@@ -6505,22 +6973,46 @@ export class RubyHighService extends Service {
     return results;
   }
 
+  getClassPhotoCandidates(limit = 8, now = Date.now()): ClassPhotoCandidate[] {
+    return this.getRecentlyActiveStudents(now)
+      .filter((student) => !!student.portraitUrl)
+      .slice(0, Math.max(0, Math.floor(limit)))
+      .map((student) => ({
+        sessionId: student.sessionId,
+        name: student.name,
+        imageUrl: student.portraitUrl!,
+        grade: student.grade,
+      }));
+  }
+
+  async getFreshRecentlyActiveStudents(now = Date.now()): Promise<RecentlyActiveStudent[]> {
+    await this.refreshWorldSessionsFromStore(now);
+    return this.getRecentlyActiveStudents(now);
+  }
+
+  async getFreshClassPhotoCandidates(limit = 8, now = Date.now()): Promise<ClassPhotoCandidate[]> {
+    await this.refreshWorldSessionsFromStore(now);
+    return this.getClassPhotoCandidates(limit, now);
+  }
+
   /** Full school snapshot — the data feed for bots (X, Telegram, etc.).
    *  Returns top students per year, photo queue, student of the day, and
    *  daily memories in a single call. */
-  getSchoolSnapshot(): SchoolSnapshot {
-    const top = this.getRecentlyActiveStudents();
+  getSchoolSnapshot(now = Date.now()): SchoolSnapshot {
+    const top = this.getRecentlyActiveStudents(now);
     const byYear: Record<string, RecentlyActiveStudent[]> = {};
     for (const s of top) {
       if (!byYear[s.grade]) byYear[s.grade] = [];
       byYear[s.grade]!.push(s);
     }
-    // Photo pool: all pending photos across all sessions.
+    // Photo pool: pending photos eligible for teacher social posting.
     const photoPool: SchoolSnapshotPhoto[] = [];
+    const classPhotoHistory: SchoolSnapshotClassPhoto[] = [];
     for (const [, state] of this.sessions) {
       const ch = state.character;
-      if (!ch || isSyntheticCharacterName(ch.name)) continue;
-      for (const p of ch.pendingPhotos ?? []) {
+      if (!ch) continue;
+      for (const p of characterArrayField(ch, "pendingPhotos")) {
+        if (!this.isPostablePendingPhoto(ch, p)) continue;
         photoPool.push({
           studentName: ch.name,
           kind: p.kind,
@@ -6528,13 +7020,226 @@ export class RubyHighService extends Service {
           earnedAt: p.earnedAt,
         });
       }
+      if (!characterAllowsPublicSharing(ch)) continue;
+      for (const p of characterArrayField(ch, "classPhotos")) {
+        classPhotoHistory.push({
+          studentName: ch.name,
+          teacherFacultyId: p.teacherFacultyId,
+          earnedAt: p.earnedAt,
+          revealedAt: p.revealedAt,
+          status: p.tweetId ? "posted" : "revealed",
+          ...(p.tweetId ? { tweetId: p.tweetId } : {}),
+          ...(p.tweetedAt ? { tweetedAt: p.tweetedAt } : {}),
+        });
+      }
     }
     photoPool.sort((a, b) => a.earnedAt - b.earnedAt);
+    if (photoPool.length > SCHOOL_SNAPSHOT_PHOTO_POOL_LIMIT) {
+      photoPool.length = SCHOOL_SNAPSHOT_PHOTO_POOL_LIMIT;
+    }
+    classPhotoHistory.sort((a, b) => b.revealedAt - a.revealedAt || a.studentName.localeCompare(b.studentName));
+    if (classPhotoHistory.length > SCHOOL_SNAPSHOT_CLASS_PHOTO_HISTORY_LIMIT) {
+      classPhotoHistory.length = SCHOOL_SNAPSHOT_CLASS_PHOTO_HISTORY_LIMIT;
+    }
     return {
       topByYear: byYear,
       photoPool,
+      classPhotoHistory,
       dailyMemories: this.getDailyMemories(),
     };
+  }
+
+  async getFreshSchoolSnapshot(now = Date.now()): Promise<SchoolSnapshot> {
+    await this.refreshWorldSessionsFromStore(now);
+    return this.getSchoolSnapshot(now);
+  }
+
+  getSchoolWorldSnapshot(limit = 30, now = Date.now()): SchoolWorldSnapshot {
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const eventLimit = Number.isFinite(limit) ? Math.max(0, Math.min(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.floor(limit))) : 30;
+    const publicEntries = this.publicSchoolWorldEntries(now, weekMs);
+    const presence = publicEntries.map((entry) => this.publicWorldPresenceFromEntry(entry));
+    const rooms = buildPublicWorldRooms(presence, 5);
+    const cohorts = buildPublicWorldCohorts(this.getRecentlyActiveStudents(now).map((student) => this.publicWorldPresenceFromRecent(student)));
+    const curriculum = this.curriculumCoverageSnapshotForStates(publicEntries.map((entry) => entry.state));
+    return {
+      generatedAt: now,
+      activeStudents: rooms.activeStudents,
+      activeRooms: rooms.activeRooms,
+      cohorts,
+      recentEvents: this.getSchoolWorldEvents(eventLimit, now, rooms.publicSessionIds),
+      curriculum: {
+        activeCharacterSessions: curriculum.activeCharacterSessions,
+        lowPools: curriculum.lowPools,
+      },
+    };
+  }
+
+  async getFreshSchoolWorldSnapshot(limit = 30, now = Date.now()): Promise<SchoolWorldSnapshot> {
+    await this.refreshWorldSessionsFromStore(now);
+    return this.getSchoolWorldSnapshot(limit, now);
+  }
+
+  async getFreshSchoolWorldEvents(limit = 30, now = Date.now()): Promise<SchoolWorldEvent[]> {
+    await this.refreshWorldSessionsFromStore(now, { eventLimit: limit });
+    return this.getSchoolWorldEvents(limit, now);
+  }
+
+  getSchoolWorldEvents(limit = 30, now = Date.now(), publicSessionIds?: ReadonlySet<string>): SchoolWorldEvent[] {
+    const eventLimit = Number.isFinite(limit) ? Math.max(0, Math.min(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.floor(limit))) : 30;
+    if (eventLimit <= 0) return [];
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const visibleSessionIds = publicSessionIds ?? this.publicSchoolWorldSessionIds(now, weekMs);
+    const rows = new Map<string, SchoolWorldEvent>();
+    const addEvent = (event: SchoolEvent) => {
+      const eventAt = Math.floor(Number(event.at ?? 0));
+      if (!Number.isFinite(eventAt) || eventAt < 0 || eventAt > now || now - eventAt > weekMs) return;
+      const publicEvent = publicSchoolWorldEvent(event);
+      rows.set(publicEvent.id, publicEvent);
+      if (rows.size <= SCHOOL_WORLD_RECENT_EVENT_LIMIT) return;
+      const retained = Array.from(rows.values())
+        .sort((a, b) => b.at - a.at || b.id.localeCompare(a.id))
+        .slice(0, SCHOOL_WORLD_RECENT_EVENT_LIMIT);
+      rows.clear();
+      for (const retainedEvent of retained) rows.set(retainedEvent.id, retainedEvent);
+    };
+
+    for (const record of this.schoolEventRecords.values()) {
+      if (!visibleSessionIds.has(record.sessionId)) continue;
+      addEvent(record.event);
+    }
+
+    for (const [sessionId, state] of this.sessions) {
+      if (!visibleSessionIds.has(sessionId)) continue;
+      for (const event of Array.isArray(state.schoolEvents) ? state.schoolEvents : []) addEvent(event);
+    }
+
+    return Array.from(rows.values())
+      .sort((a, b) => b.at - a.at || b.id.localeCompare(a.id))
+      .slice(0, eventLimit);
+  }
+
+  private pruneSchoolEventRecords(now = Date.now()): void {
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const retained = Array.from(this.schoolEventRecords.values())
+      .filter((record) => {
+        const at = Math.floor(Number(record.occurredAt ?? record.event.at ?? 0));
+        return Number.isFinite(at) && at >= 0 && at <= now && now - at <= weekMs;
+      })
+      .sort((a, b) => {
+        const atDiff = Number(b.occurredAt ?? b.event.at ?? 0) - Number(a.occurredAt ?? a.event.at ?? 0);
+        return atDiff || b.id.localeCompare(a.id);
+      })
+      .slice(0, SCHOOL_WORLD_EVENT_CACHE_LIMIT);
+    if (retained.length === this.schoolEventRecords.size) return;
+    this.schoolEventRecords.clear();
+    for (const record of retained) this.schoolEventRecords.set(record.id, record);
+  }
+
+  private publicSchoolWorldSessionIds(now = Date.now(), weekMs = 7 * 24 * 60 * 60 * 1000): Set<string> {
+    const sessionIds = new Set<string>();
+    for (const { state } of this.publicSchoolWorldEntries(now, weekMs)) {
+      const sessionId = publicWorldSessionId(state.sessionId);
+      if (sessionId) sessionIds.add(sessionId);
+    }
+    return sessionIds;
+  }
+
+  private publicSchoolWorldEntries(now = Date.now(), weekMs = 7 * 24 * 60 * 60 * 1000): Array<{ state: QuizState; ch: PlayerCharacter; lastActive: number }> {
+    const entries: Array<{ state: QuizState; ch: PlayerCharacter; lastActive: number }> = [];
+    for (const [, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch || !state.currentGrade) continue;
+      if (!characterAllowsPublicSharing(ch)) continue;
+      const lastActive = this.lastActivityFor(ch, state);
+      if (now - lastActive > weekMs) continue;
+      const hasGrades = characterDailyClassRecords(ch).some((record) => record.status === "complete");
+      if (!hasGrades) continue;
+      entries.push({ state, ch, lastActive });
+    }
+    return entries;
+  }
+
+  private publicWorldPresenceFromEntry(entry: { state: QuizState; ch: PlayerCharacter; lastActive: number }): PublicWorldPresenceEntry {
+    const { state, ch, lastActive } = entry;
+    const classGrades: Record<string, string> = {};
+    for (const record of characterDailyClassRecords(ch)) {
+      if (record.status === "complete" && record.letterGrade) {
+        classGrades[record.facultyId] = record.letterGrade;
+      }
+    }
+    const facultyId = state.faculty;
+    const faculty = facultyForSession(state).find((item) => item.id === facultyId);
+    return {
+      sessionId: state.sessionId,
+      grade: state.currentGrade ?? "9",
+      facultyId,
+      displayName: faculty?.displayName ?? facultyId,
+      name: ch.name,
+      playbookId: ch.playbookId,
+      stats: { ...ch.stats },
+      classGrades,
+      yearbookCount: characterArrayField(ch, "yearbook").length,
+      lastActive,
+      ...(publicWorldPortraitUrl(ch.portraitDataUrl) ? { portraitUrl: publicWorldPortraitUrl(ch.portraitDataUrl) } : {}),
+    };
+  }
+
+  private publicWorldPresenceFromRecent(student: RecentlyActiveStudent): PublicWorldPresenceEntry {
+    return {
+      sessionId: student.sessionId,
+      grade: student.grade as Grade,
+      facultyId: "",
+      displayName: "",
+      name: student.name,
+      playbookId: student.playbookId,
+      stats: { ...student.stats },
+      classGrades: { ...student.classGrades },
+      yearbookCount: student.yearbookCount,
+      lastActive: student.lastActive,
+      ...(publicWorldPortraitUrl(student.portraitUrl) ? { portraitUrl: publicWorldPortraitUrl(student.portraitUrl) } : {}),
+    };
+  }
+
+  private async refreshWorldSessionsFromStore(now = Date.now(), opts: { eventLimit?: number } = {}): Promise<void> {
+    if (now - this.worldStoreRefreshedAt < SCHOOL_WORLD_STORE_REFRESH_MS) return;
+    if (this.worldStoreRefresh) {
+      await this.worldStoreRefresh;
+      return;
+    }
+    this.worldStoreRefresh = (async () => {
+      try {
+        const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+        const [loaded, schoolEvents] = await Promise.all([
+          this.store.loadRecentSessions?.({
+            since: weekAgo,
+            limit: SCHOOL_WORLD_SESSION_REFRESH_LIMIT,
+          }) ?? this.store.load(),
+          this.store.loadSchoolEvents?.({
+            since: weekAgo,
+            limit: Math.max(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.floor(Number(opts.eventLimit ?? 0) || 0)),
+          }) ?? Promise.resolve([]),
+        ]);
+        for (const [sessionId, raw] of loaded) {
+          const loadedState = normalizeLoaded(raw);
+          this.reconcileLoadedPackState(loadedState);
+          const current = this.sessions.get(sessionId);
+          if (!current || Number(loadedState.updatedAt ?? 0) > Number(current.updatedAt ?? 0)) {
+            this.sessions.set(sessionId, loadedState);
+          }
+        }
+        for (const event of schoolEvents) {
+          this.schoolEventRecords.set(event.id, event);
+        }
+        this.pruneSchoolEventRecords(now);
+        this.worldStoreRefreshedAt = now;
+      } catch (err) {
+        log.error("ruby-high.world-refresh-failed", err);
+      }
+    })().finally(() => {
+      this.worldStoreRefresh = null;
+    });
+    await this.worldStoreRefresh;
   }
 
   /** Composite score from class grades. Higher = better. No grades = 0. */
@@ -6554,15 +7259,20 @@ export class RubyHighService extends Service {
   }
 
   private lastActivityFor(ch: PlayerCharacter, state: QuizState): number {
-    let latest = ch.createdAt ?? 0;
-    for (const record of Object.values(ch.dailyClasses ?? {})) {
+    let latest = Number(ch.createdAt ?? 0);
+    if (!Number.isFinite(latest) || latest < 0) latest = 0;
+    for (const record of characterDailyClassRecords(ch)) {
       const t = Number(record.updatedAt ?? record.completedAt ?? 0);
-      if (t > latest) latest = t;
+      if (Number.isFinite(t) && t > latest) latest = t;
     }
-    for (const lu of ch.levelUps ?? []) {
-      if (lu.awardedAt > latest) latest = lu.awardedAt;
+    for (const lu of characterArrayField(ch, "levelUps")) {
+      const t = Number(lu.awardedAt ?? 0);
+      if (Number.isFinite(t) && t > latest) latest = t;
     }
-    if (state.updatedAt > latest) latest = state.updatedAt;
+    for (const event of Array.isArray(state.schoolEvents) ? state.schoolEvents : []) {
+      const t = Number(event.at ?? 0);
+      if (Number.isFinite(t) && t > latest) latest = t;
+    }
     return latest;
   }
 
@@ -6603,6 +7313,7 @@ export class RubyHighService extends Service {
     // Per-student daily text budget: skip if this student already had a text
     // post today. Character-created and graduated are one-time events — always post.
     const ch = state.character;
+    if (ch && !characterAllowsSocialSharing(ch)) return;
     if (ch && ctx.kind !== "character-created" && ctx.kind !== "graduated") {
       const today = new Date().toISOString().slice(0, 10);
       ch.lastTextTweetDate = ch.lastTextTweetDate ?? "";
@@ -6679,6 +7390,32 @@ function normalizeScore(score: QuizState["score"] | null | undefined): QuizState
   };
 }
 
+function normalizeAnswerStats(stats: AnswerStats | null | undefined): AnswerStats {
+  const src = stats && typeof stats === "object" ? stats : {};
+  const totalAnswers = Math.max(0, Math.floor(Number((src as Partial<AnswerStats>).totalAnswers ?? 0)));
+  return {
+    totalAnswers,
+    repeatedAnswers: Math.min(
+      totalAnswers,
+      Math.max(0, Math.floor(Number((src as Partial<AnswerStats>).repeatedAnswers ?? 0))),
+    ),
+  };
+}
+
+function answerStatsFromHistory(history: unknown): AnswerStats {
+  const stats: AnswerStats = { totalAnswers: 0, repeatedAnswers: 0 };
+  const seenQuestionIds = new Set<string>();
+  if (!Array.isArray(history)) return stats;
+  for (const answer of history) {
+    const questionId = typeof answer?.questionId === "string" ? answer.questionId : "";
+    if (!questionId) continue;
+    stats.totalAnswers += 1;
+    if (seenQuestionIds.has(questionId)) stats.repeatedAnswers += 1;
+    else seenQuestionIds.add(questionId);
+  }
+  return stats;
+}
+
 function normalizePositiveInteger(value: number, label: string): number {
   const amount = Math.floor(Number(value));
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -6716,7 +7453,7 @@ function yearbookShareCardsForState(state: QuizState): YearbookShareCard[] {
       name: owner.name,
       createdAt: owner.createdAt,
     });
-    for (const entry of owner.yearbook ?? []) {
+    for (const entry of characterYearbookEntries(owner)) {
       cards.push({
         shareId,
         grade: entry.grade,
@@ -6934,8 +7671,17 @@ function hallPassPackSerialFromMetadataUri(metadataUri: string): number | null {
     pathname = metadataUri;
   }
   const match = pathname.match(/\/metadata\/core\/pack\/[^/]+\/([^/]+)\.json$/);
-  const parsed = Math.floor(Number(decodeURIComponent(match?.[1] ?? "")));
+  const serialSegment = safeDecodePathSegment(match?.[1] ?? "");
+  const parsed = Math.floor(Number(serialSegment ?? ""));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function safeDecodePathSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
 }
 
 function hallPassPackSerial(inputSerial: unknown, metadataUri: string, id: string, assetAddress: string): number {
@@ -7477,6 +8223,11 @@ function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
   return out.slice(-SCHOOL_EVENT_LIMIT);
 }
 
+function schoolEventOccurredAt(raw: unknown, fallback = Date.now()): number {
+  const value = Math.floor(Number(raw));
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 function normalizeEssayReports(value: unknown): EssayReport[] {
   if (!Array.isArray(value)) return [];
   const out: EssayReport[] = [];
@@ -7602,6 +8353,10 @@ function persistedPackRecordKey(ownerSessionId: string | null, packId: string): 
   return `${ownerSessionId ?? "public"}:${packId}`;
 }
 
+function isPersistedBuiltInPackOverride(record: StoredContentPackRecord): boolean {
+  return record.ownerSessionId === GLOBAL_PACK_OWNER && record.pack?.id === ORIGINAL_PACK_ID;
+}
+
 function packInstallationRecordKey(userId: string, packId: string): string {
   return `${userId}:${packId}`;
 }
@@ -7617,12 +8372,14 @@ function normalizeLoaded(s: QuizState): QuizState {
     : [];
   const phase: Phase = (s.phase as Phase | undefined) ?? derivePhaseForLegacy(s);
   const score = normalizeScore(s.score);
+  const answerStats = normalizeAnswerStats((s as { answerStats?: AnswerStats }).answerStats ?? answerStatsFromHistory(s.history));
   return {
     ...s,
     askedQuestionIds: Array.isArray(s.askedQuestionIds) ? s.askedQuestionIds : [],
     cardMemory: s.cardMemory && typeof s.cardMemory === "object" ? s.cardMemory : {},
     roomBoards: s.roomBoards && typeof s.roomBoards === "object" ? s.roomBoards : {},
-    history: Array.isArray(s.history) ? s.history : [],
+    history: Array.isArray(s.history) ? s.history.slice(-ANSWER_HISTORY_LIMIT) : [],
+    answerStats,
     score,
     wallet: normalizeWallet((s as { wallet?: unknown }).wallet, score.points ?? 0),
     status: statusForPhase(phase),

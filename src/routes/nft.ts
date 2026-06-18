@@ -24,6 +24,7 @@ import {
 import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
 import type { RubyHighService } from "../services/ruby-high-service.js";
 import { log } from "../services/logger.js";
+import { TokenBucket } from "../services/rate-limit.js";
 import { solanaErrorMessages } from "../services/solana-errors.js";
 import {
   FIRST_BELL_SET_CODE,
@@ -45,9 +46,79 @@ interface NftDeps {
 const MAX_MINTS_PER_REQUEST = 8;
 const MAX_BURNS_PER_REQUEST = 1;
 const BASE58ISH = /^[1-9A-HJ-NP-Za-km-z]+$/;
+const NFT_MUTATION_LIMITER = new TokenBucket(30, 1 / 10);
+
+function decodePathSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+function firstHeader(value: string | string[] | null | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+function nftOriginAllowed(ctx: RouteContext): boolean {
+  const origin = firstHeader(ctx.originHeader);
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const candidates = [
+      ctx.callbackUrlBuilder ? ctx.callbackUrlBuilder("/") : null,
+      ctx.url?.origin ?? null,
+    ].filter(Boolean) as string[];
+    if (candidates.length === 0) return true;
+    return candidates.some((candidate) => {
+      const candidateUrl = new URL(candidate);
+      return candidateUrl.origin === originUrl.origin
+        || (originUrl.protocol === "https:" && candidateUrl.host === originUrl.host);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function nftRequestLooksLikeJson(ctx: RouteContext): boolean {
+  const contentType = firstHeader(ctx.contentTypeHeader).toLowerCase();
+  return !contentType || contentType.startsWith("application/json");
+}
+
+function rejectBadNftMutationRequest(ctx: RouteContext): boolean {
+  if (ctx.method === "GET" || ctx.method === "HEAD") return false;
+  if (!nftRequestLooksLikeJson(ctx)) {
+    ctx.error(ctx.res, "NFT requests must be sent as JSON.", 415);
+    return true;
+  }
+  if (!nftOriginAllowed(ctx)) {
+    ctx.error(ctx.res, "NFT request origin is not allowed.", 403);
+    return true;
+  }
+  return false;
+}
+
+function nftMutationRateKey(ctx: RouteContext, deps: NftDeps): string {
+  const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+  return `${ctx.clientIp || "no-ip"}:${token || "anon"}:nft`;
+}
+
+function takeNftMutationToken(ctx: RouteContext, deps: NftDeps): boolean {
+  if (ctx.method === "GET" || ctx.method === "HEAD") return true;
+  const key = nftMutationRateKey(ctx, deps);
+  if (NFT_MUTATION_LIMITER.take(key)) return true;
+  const retryAfter = NFT_MUTATION_LIMITER.retryAfterSeconds(key);
+  const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+  res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
+  ctx.error(ctx.res, "Too many NFT requests. Try again shortly.", 429);
+  return false;
+}
 
 export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise<boolean> {
   if (!ctx.pathname.startsWith(HALL_PASS_NFT_PREFIX)) return false;
+  if (rejectBadNftMutationRequest(ctx)) return true;
+  if (!takeNftMutationToken(ctx, deps)) return true;
 
   if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/metadata/core/collection.json`) {
     setNftMetadataCacheHeaders(ctx.res);
@@ -69,8 +140,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     /^\/api\/apps\/ruby-high\/nft\/metadata\/core\/pack\/([^/]+)\/([^/]+)\.json$/,
   );
   if (ctx.method === "GET" && corePackMetadataMatch) {
-    const productId = decodeURIComponent(corePackMetadataMatch[1] ?? "card-pack-1");
-    const serial = decodeURIComponent(corePackMetadataMatch[2] ?? "1");
+    const productId = decodePathSegment(corePackMetadataMatch[1] ?? "card-pack-1");
+    const serial = decodePathSegment(corePackMetadataMatch[2] ?? "1");
+    if (!productId || !serial) {
+      ctx.error(ctx.res, "Unknown Ruby High pack metadata id.", 404);
+      return true;
+    }
     const knownPack = deps.ruby.findHallPassPackByMetadata(productId, Math.max(1, Math.floor(Number(serial || 1))));
     const opened = ctx.url?.searchParams.get("opened") === "1"
       || ctx.url?.searchParams.get("state") === "opened"
@@ -92,7 +167,11 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     /^\/api\/apps\/ruby-high\/nft\/metadata\/hall-pass\/card\/([^/]+)\.json$/,
   );
   if (ctx.method === "GET" && cardMetadataMatch) {
-    const cardId = decodeURIComponent(cardMetadataMatch[1] ?? "");
+    const cardId = decodePathSegment(cardMetadataMatch[1] ?? "");
+    if (!cardId) {
+      ctx.error(ctx.res, "Unknown Ruby High card metadata id.", 404);
+      return true;
+    }
     const card = deps.ruby.findHallPassCardById(cardId);
     if (!card) {
       ctx.error(ctx.res, "Unknown Ruby High card metadata id.", 404);
@@ -126,8 +205,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     /^\/api\/apps\/ruby-high\/nft\/metadata\/hall-pass\/([^/]+)\/([^/]+)\.json$/,
   );
   if (ctx.method === "GET" && metadataMatch) {
-    const characterId = decodeURIComponent(metadataMatch[1] ?? "ruby");
-    const serial = decodeURIComponent(metadataMatch[2] ?? "1");
+    const characterId = decodePathSegment(metadataMatch[1] ?? "ruby");
+    const serial = decodePathSegment(metadataMatch[2] ?? "1");
+    if (!characterId || !serial) {
+      ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
+      return true;
+    }
     const knownCard = deps.ruby.findHallPassCardByMetadata(characterId, Math.max(1, Math.floor(Number(serial || 1))));
     const metadata = hallPassNftMetadataForRoute({
       characterId,

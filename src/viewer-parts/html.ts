@@ -161,6 +161,22 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
+    <section class="world-panel" id="world-panel" hidden aria-live="polite">
+      <div class="world-panel-head">
+        <div class="world-panel-copy">
+          <div class="world-panel-title">School World</div>
+          <div class="world-panel-sub" id="world-panel-sub">Syncing halls...</div>
+        </div>
+        <button class="world-panel-refresh" id="world-panel-refresh" type="button" title="Refresh world" aria-label="Refresh world">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 0 1-15.5 6.3"/><path d="M3 12A9 9 0 0 1 18.5 5.7"/><path d="M18 3v5h-5"/><path d="M6 21v-5h5"/>
+          </svg>
+        </button>
+      </div>
+      <div class="world-panel-rooms" id="world-panel-rooms"></div>
+      <div class="world-panel-events" id="world-panel-events"></div>
+    </section>
+
 
     <section class="stream" id="stream"></section>
 

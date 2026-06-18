@@ -31,6 +31,7 @@ export interface XTokenRecord {
   xScreenName: string;
   connectedAt: number;
   updatedAt: number;
+  lastPhotoDate?: string;
 }
 
 export type XMilestoneKind =
@@ -292,6 +293,14 @@ function tokenHasScope(token: XTokenRecord, scope: string): boolean {
     .includes(scope);
 }
 
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizePhotoDate(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
 export class XSocialService extends Service {
   static override readonly serviceType = "x-social";
 
@@ -300,9 +309,8 @@ export class XSocialService extends Service {
   private postCounts = new Map<string, { count: number; resetAt: number }>();
   private pendingVerifiers = new Map<string, { verifier: string; teacherId: string; createdAt: number }>();
   private stateCounter = 0;
-  /** Per-teacher last photo tweet date (UTC YYYY-MM-DD). Enforces one
-   *  photo-reveal tweet per teacher per day. In-memory only — resets on
-   *  deploy, which is acceptable (at most one extra photo leaks). */
+  /** Per-teacher last photo tweet date (UTC YYYY-MM-DD). Mirrored onto the
+   *  token record so deploys cannot reopen the same day's photo slot. */
   private lastPhotoDate = new Map<string, string>();
 
   constructor(runtime?: IAgentRuntime | null) {
@@ -325,6 +333,8 @@ export class XSocialService extends Service {
       const records = await this.tokenStore.loadAll();
       for (const r of records) {
         if (r.expiresAt > Date.now() || r.refreshToken) {
+          const lastPhotoDate = normalizePhotoDate(r.lastPhotoDate);
+          if (lastPhotoDate) this.lastPhotoDate.set(r.teacherId, lastPhotoDate);
           this.tokens.set(r.teacherId, r);
         } else {
           await this.tokenStore.delete(r.teacherId).catch(() => {});
@@ -530,23 +540,43 @@ export class XSocialService extends Service {
     const token = this.tokens.get(teacher.id);
     if (!token) return null;
 
-    if (!this.checkPostRateLimit(teacher.id)) {
-      log.event("x-social.rate-limited", { teacherId: teacher.id, kind: ctx.kind });
-      return null;
+    const imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    let reservedPhotoSlot = false;
+    if (imageUrl) {
+      if (this.photoAlreadyPostedToday(teacher.id)) {
+        log.event("x-social.photo-already-today", { teacherId: teacher.id, kind: ctx.kind });
+        return null;
+      }
+      // Reserve the photo slot before async work so concurrent photo posts do
+      // not both pass the one-photo-per-day gate.
+      await this.reservePhotoSlot(teacher.id);
+      reservedPhotoSlot = true;
     }
 
+    const releasePhotoSlot = async () => {
+      if (reservedPhotoSlot) {
+        await this.releasePhotoSlot(teacher.id);
+        reservedPhotoSlot = false;
+      }
+    };
+
     const freshToken = await this.ensureFreshToken(token);
-    if (!freshToken) return null;
+    if (!freshToken) {
+      await releasePhotoSlot();
+      return null;
+    }
 
     const text = await this.generatePostText(teacher, ctx);
 
     // Content safety: validate the generated text before posting.
     if (!text || text.trim().length === 0) {
       log.event("x-social.text-rejected", { reason: "empty" });
+      await releasePhotoSlot();
       return null;
     }
     if (text.length > 280) {
       log.event("x-social.text-rejected", { reason: "too-long", length: text.length });
+      await releasePhotoSlot();
       return null;
     }
     // Guard against LLM hallucinating the system prompt into the tweet.
@@ -554,6 +584,7 @@ export class XSocialService extends Service {
     // positives from common English phrases like "You are running the".
     if (teacher.systemPrompt && teacher.systemPrompt.length >= 80 && text.includes(teacher.systemPrompt.slice(20, 100))) {
       log.event("x-social.text-rejected", { reason: "system-prompt-leak" });
+      await releasePhotoSlot();
       return null;
     }
     // Guard against tweets missing the student's name.
@@ -562,26 +593,29 @@ export class XSocialService extends Service {
       // Don't reject — the fallback template will handle it. Just log.
     }
 
-    // Resolve and upload an image if the milestone carries one.
-    // One photo-reveal tweet per teacher per UTC day.
-    const imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    if (!isDryRun && !this.checkPostRateLimit(teacher.id)) {
+      log.event("x-social.rate-limited", { teacherId: teacher.id, kind: ctx.kind });
+      await releasePhotoSlot();
+      return null;
+    }
+
+    // Resolve and upload an image if the milestone carries one. The daily
+    // photo slot was reserved before text generation to prevent concurrency.
     let mediaId: string | null = null;
     if (imageUrl) {
-      const today = new Date().toISOString().slice(0, 10);
-      if (this.lastPhotoDate.get(teacher.id) === today) {
-        log.event("x-social.photo-already-today", { teacherId: teacher.id, kind: ctx.kind });
-        return null;
-      }
-      // Reserve the photo slot optimistically to prevent concurrent posts.
-      this.lastPhotoDate.set(teacher.id, today);
       try {
         const imageBytes = await this.resolveImageToBuffer(imageUrl);
         mediaId = await this.uploadMedia(freshToken, imageBytes);
+        if (!mediaId) {
+          await releasePhotoSlot();
+          return null;
+        }
       } catch (err) {
-        // Release the reserved slot on failure so another attempt can retry.
-        this.lastPhotoDate.delete(teacher.id);
+        // Release the reserved slot and retry later rather than posting a
+        // text-only "photo" milestone that would reveal an unposted artifact.
+        await releasePhotoSlot();
         log.error("x-social.media-upload-failed", err, { kind: ctx.kind });
-        // Fall through — post text-only.
+        return null;
       }
     }
 
@@ -593,6 +627,7 @@ export class XSocialService extends Service {
         text: text.slice(0, 200),
         ...(mediaId ? { mediaId } : {}),
       });
+      await releasePhotoSlot();
       return `dry-run:${ctx.kind}`;
     }
 
@@ -600,7 +635,7 @@ export class XSocialService extends Service {
 
     if (tweetId) {
       this.recordPost(teacher.id);
-      // lastPhotoDate was already set optimistically above.
+      // The photo slot was already reserved optimistically above.
       log.event("x-social.posted", {
         teacherId: teacher.id,
         xScreenName: token.xScreenName,
@@ -610,6 +645,7 @@ export class XSocialService extends Service {
       });
     }
 
+    if (!tweetId) await releasePhotoSlot();
     return tweetId;
   }
 
@@ -785,17 +821,18 @@ export class XSocialService extends Service {
   }
 
   private async ensureFreshToken(record: XTokenRecord): Promise<XTokenRecord | null> {
-    if (record.expiresAt > Date.now() + TOKEN_REFRESH_WINDOW_SEC * 1000) {
-      return record;
+    const latest = this.tokens.get(record.teacherId) ?? record;
+    if (latest.expiresAt > Date.now() + TOKEN_REFRESH_WINDOW_SEC * 1000) {
+      return latest;
     }
-    if (!record.refreshToken) {
-      await this.disconnect(record.teacherId);
+    if (!latest.refreshToken) {
+      await this.disconnect(latest.teacherId);
       return null;
     }
     try {
       const body = new URLSearchParams({
         grant_type: "refresh_token",
-        refresh_token: record.refreshToken,
+        refresh_token: latest.refreshToken,
         client_id: xClientId(),
       });
       const authHeader: Record<string, string> = {};
@@ -821,17 +858,17 @@ export class XSocialService extends Service {
         expires_in: number;
       };
       const updated: XTokenRecord = {
-        ...record,
+        ...latest,
         accessToken: data.access_token,
-        refreshToken: data.refresh_token ?? record.refreshToken,
+        refreshToken: data.refresh_token ?? latest.refreshToken,
         expiresAt: Date.now() + (data.expires_in ?? 7200) * 1000,
         updatedAt: Date.now(),
       };
-      this.tokens.set(record.teacherId, updated);
+      this.tokens.set(latest.teacherId, updated);
       await this.tokenStore.save(updated);
       return updated;
     } catch (err) {
-      log.error("x-social.token-refresh-failed", err, { teacherId: record.teacherId });
+      log.error("x-social.token-refresh-failed", err, { teacherId: latest.teacherId });
       return null;
     }
   }
@@ -877,7 +914,32 @@ export class XSocialService extends Service {
   }
 
   private recordPost(teacherId: string): void {
-    // Slot was pre-reserved in checkPostRateLimit; no-op here.
+    // The 24h post slot is reserved immediately before the API call.
+    void teacherId;
+  }
+
+  private photoAlreadyPostedToday(teacherId: string): boolean {
+    return this.lastPhotoDate.get(teacherId) === todayKey();
+  }
+
+  private async reservePhotoSlot(teacherId: string): Promise<void> {
+    const token = this.tokens.get(teacherId);
+    const date = todayKey();
+    this.lastPhotoDate.set(teacherId, date);
+    if (!token) return;
+    const updated: XTokenRecord = { ...token, lastPhotoDate: date, updatedAt: Date.now() };
+    this.tokens.set(teacherId, updated);
+    await this.tokenStore.save(updated);
+  }
+
+  private async releasePhotoSlot(teacherId: string): Promise<void> {
+    this.lastPhotoDate.delete(teacherId);
+    const token = this.tokens.get(teacherId);
+    if (!token) return;
+    const { lastPhotoDate: _lastPhotoDate, ...rest } = token;
+    const updated: XTokenRecord = { ...rest, updatedAt: Date.now() };
+    this.tokens.set(teacherId, updated);
+    await this.tokenStore.save(updated);
   }
 
   private async generatePostText(teacher: TeacherCharacter, ctx: XMilestoneContext): Promise<string> {
@@ -1144,8 +1206,7 @@ export class XSocialService extends Service {
 
     // Check the one-photo-per-day limit, but do not reserve it here. The
     // actual post path owns reservation so generated photos can still tweet.
-    const today = new Date().toISOString().slice(0, 10);
-    if (this.lastPhotoDate.get(teacher.id) === today) {
+    if (this.photoAlreadyPostedToday(teacher.id)) {
       log.event("x-social.photo-already-today", { teacherId: teacher.id, kind: "class-photo" });
       return null;
     }

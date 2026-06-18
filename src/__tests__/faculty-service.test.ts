@@ -5,9 +5,9 @@ describe("FacultyService", () => {
   it("loads all three packs at start()", async () => {
     const svc = await FacultyService.start({} as never);
     expect(svc.isReady()).toBe(true);
-    expect(svc.bank("ruby")?.questions.length).toBeGreaterThanOrEqual(15);
-    expect(svc.bank("sally-science")?.questions.length).toBeGreaterThanOrEqual(15);
-    expect(svc.bank("professor-edward")?.questions.length).toBeGreaterThanOrEqual(15);
+    expect(svc.bank("ruby")?.questions.length).toBeGreaterThanOrEqual(200);
+    expect(svc.bank("sally-science")?.questions.length).toBeGreaterThanOrEqual(200);
+    expect(svc.bank("professor-edward")?.questions.length).toBeGreaterThanOrEqual(200);
   });
 
   it("pick(faculty) returns only that faculty's questions", async () => {

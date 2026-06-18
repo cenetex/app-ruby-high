@@ -38,7 +38,7 @@
       "subject": "literature",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "*Invisible Man* (1952) was written by…",
+      "prompt": "Who wrote Invisible Man in 1952?",
       "options": {
         "A": "Richard Wright",
         "B": "James Baldwin",
@@ -128,7 +128,7 @@
       "subject": "literary-theory",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Mikhail Bakhtin's central concept describing the multiplicity of voices within a novel is…",
+      "prompt": "What concept names the multiplicity of voices within a novel in Bakhtin's criticism?",
       "options": {
         "A": "Heteroglossia",
         "B": "Catachresis",
@@ -173,7 +173,7 @@
       "subject": "literary-theory",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Harold Bloom's 'anxiety of influence' (1973) describes…",
+      "prompt": "What does Harold Bloom's anxiety of influence describe?",
       "options": {
         "A": "Writers misreading their precursors to make space for themselves",
         "B": "Critics inventing new terms to escape their advisors",
@@ -288,7 +288,8 @@
       },
       "correct": "A",
       "explanation": "Holden's unreliability isn't a vibe; it's a structural gap. We prove it by catching his narration contradicting the very events he's describing, not by psychoanalyzing Salinger or summarizing the plot.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-002",
@@ -305,7 +306,8 @@
       },
       "correct": "B",
       "explanation": "Free indirect discourse doesn't change the grammatical person; it infects the third-person narration with the character's specific lexicon and emotional rhythm. It's a subtle bleed, not a pronoun shift or authorial intrusion.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-003",
@@ -322,7 +324,8 @@
       },
       "correct": "C",
       "explanation": "Deconstruction isn't just listing two sides of a binary or doing biography. The actual procedure is showing how the text's own internal logic unravels the hierarchy it tries to establish between the terms.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-004",
@@ -339,7 +342,8 @@
       },
       "correct": "B",
       "explanation": "Confessional poetry uses the 'I', but treating the poem as a mere medical transcript commits the intentional fallacy. The text is a crafted artifice, not a diary entry, and we have a responsibility to respect that boundary.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-005",
@@ -356,7 +360,8 @@
       },
       "correct": "B",
       "explanation": "Students constantly confuse the voice telling the story (narration) with the eyes seeing the scene (focalization). An omniscient historian can easily focalize through a panicked soldier without changing the narrative voice.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-006",
@@ -373,7 +378,8 @@
       },
       "correct": "C",
       "explanation": "Archive theory reminds us that the archive is not a neutral mirror of the past; it's an exercise of institutional power. If we only read the preserved New York marketing, we are complicit in the erasure of the margins.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-007",
@@ -390,7 +396,8 @@
       },
       "correct": "A",
       "explanation": "This question probes the distinction between authorial biography and textual meaning, a core tenet of modern criticism. By focusing solely on the narrator's 'personal history' as if it were the author's own, the student is committing the intentional fallacy, assuming a direct, knowable link between the author's life and the text's construction. Options B, C, and D introduce related but distinct concepts that don't directly address this specific error.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-008",
@@ -407,7 +414,8 @@
       },
       "correct": "B",
       "explanation": "This question tests the ability to identify textual evidence for unreliable narration beyond mere 'vibes.' The correct answer, B, points to analyzing the narrator's internal thoughts and framing, which are key sites where unreliability is signaled through language, bias, or self-deception. Option A is incorrect because genre adherence doesn't automatically signal unreliability. Option C wrongly conflates author and narrator. Option D is plot summary, not textual analysis of unreliability.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-009",
@@ -424,7 +432,8 @@
       },
       "correct": "B",
       "explanation": "This question asks students to connect formal choices (genre bending) to thematic concerns (postwar anxieties). The correct answer, B, aligns with the thesis that mid-century narrative innovations often reflect anxieties about authenticity and mediation. By blending genres, authors can create a sense of unease or question established realities. Option A is a possible outcome but not the primary formal *purpose*. Options C and D are too simplistic and don't account for the specific anxieties of the postwar period.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-010",
@@ -441,7 +450,8 @@
       },
       "correct": "C",
       "explanation": "Investigating the publication history, marketing, and reception of the texts.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-011",
@@ -458,7 +468,8 @@
       },
       "correct": "A",
       "explanation": "Archive theory, by focusing on what is preserved and excluded, directly addresses the historical and institutional forces that shape a text, thus countering the notion of isolated authorial genius. While formalism and New Criticism focus on the text itself, they don't inherently engage with the historical conditions of its production or reception in the way archive theory does. Reader-response centers the reader, not the historical context of production.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-012",
@@ -475,7 +486,8 @@
       },
       "correct": "A",
       "explanation": "The intentional fallacy is the error of equating a work's meaning with the author's intended meaning. Therefore, distinguishing between what a narrator expresses (textual evidence) and what the author might have personally believed or intended is crucial for avoiding this fallacy. While B, C, and D are valid analytical approaches, they don't specifically address the intentional fallacy as directly as A does.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-013",
@@ -492,7 +504,8 @@
       },
       "correct": "A",
       "explanation": "To understand how the paperback boom influenced literary form, one must examine its material conditions. Investigating distribution and pricing (A) directly addresses the economic and logistical changes that made books more accessible and potentially altered publishing decisions regarding content and form. While C and D might offer insights, A gets to the core of the 'boom's' impact on the industry and thus, potentially, form. B is too general.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-014",
@@ -509,7 +522,8 @@
       },
       "correct": "A",
       "explanation": "To move beyond a 'vibes-based' connection between author and character, a close reading of the text itself is paramount. Analyzing linguistic patterns and narrative gaps (A) within the monologue allows for a rigorous examination of how the voice functions, distinguishing it from biographical speculation and demonstrating textual evidence of narrative artifice or authorial control, rather than assuming a direct authorial transcript. B commits the intentional fallacy. C and D are useful but don't directly address the author-narrator distinction as effectively as A.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-015",
@@ -526,7 +540,8 @@
       },
       "correct": "A",
       "explanation": "This question probes the crucial distinction between authorial biography and narrative voice, a common student misconception. Option A correctly identifies the need to analyze textual evidence—specifically linguistic markers—to differentiate between the author's presumed intent and the character's presented consciousness. Options B, C, and D all fall into the trap of conflating author and narrator/character or prioritizing biographical inference over textual analysis.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-016",
@@ -543,7 +558,8 @@
       },
       "correct": "A",
       "explanation": "Obscenity trials historically targeted explicit content that violated community standards. While authorial biography (B), thematic content (C), or narrative complexity (D) might be debated, the direct challenge to morality through explicit depiction (A) is the most common and legally actionable reason for such trials in mid-century literature.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-017",
@@ -560,7 +576,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse is a powerful tool for revealing a character's inner thoughts and feelings, often in contrast to their outward presentation or the narrative's surface tone. Option A correctly identifies this technique as a means to uncover subtle critiques. Option B relies on superficial counting, C ignores the 'how' for the 'what,' and D commits the biographical fallacy.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-018",
@@ -577,7 +594,8 @@
       },
       "correct": "A",
       "explanation": "The intentional fallacy, as articulated by Wimsatt and Beardsley, warns against using authorial intent or biography to determine a work's meaning. Option A correctly captures this by emphasizing the autonomy of the text's formal and narrative elements in generating meaning, even when historical context is present. Options B, C, and D all risk collapsing the distinction between historical context/authorial intent and textual meaning.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-019",
@@ -594,7 +612,8 @@
       },
       "correct": "A",
       "explanation": "This question probes how narrative choices, like omissions, shape reader perception and ethical engagement. Option A correctly identifies that analyzing the *construction* of a worldview through omissions is key to understanding the ethical implications, rather than merely stating authorial intent (B), focusing on character psychology (C), or making a simple comparison (D).",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-020",
@@ -611,7 +630,8 @@
       },
       "correct": "A",
       "explanation": "This question asks students to move from identification to analysis regarding genre blending. Option A correctly points to analyzing the *effect* of the blend—how it manipulates reader expectations or offers critique—which is the core of understanding its purpose. Options B, C, and D focus on mere identification, dominance, or authorial preference, rather than the functional impact of the genre fusion.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-021",
@@ -628,7 +648,8 @@
       },
       "correct": "A",
       "explanation": "This question prompts students to consider the intersection of literary form, historical context, and reception, specifically the impact of the paperback boom. Option A correctly suggests analyzing how production and distribution (paperback economics, audience) might shape formal and thematic elements. Options B, C, and D represent dismissals of context, biographical fallacy, or unprovable hypotheticals, respectively, failing to engage with the historical pressures on the text.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-022",
@@ -645,7 +666,8 @@
       },
       "correct": "A",
       "explanation": "This question focuses on how subtle linguistic features can subvert a seemingly objective narration, engaging the reader's interpretive faculties. Option A correctly points to specific textual features (loaded language, irony, tonal shifts) that can be analyzed to reveal a critique, aligning with close reading principles. Option B falls into the intentional fallacy, and Option C commits the biographical fallacy. Option D oversimplifies the locus of critique.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-023",
@@ -662,7 +684,8 @@
       },
       "correct": "B",
       "explanation": "This question probes the distinction between authorial biography and narrative function, emphasizing how formal choices enact ideology. Option B correctly identifies that the analysis should focus on how the *text itself* (diction, omission) constructs meaning and ideology for the reader, rather than resorting to authorial intent (A), assuming narrator veracity (C), or prioritizing plot over technique (D).",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-024",
@@ -679,7 +702,8 @@
       },
       "correct": "C",
       "explanation": "This question asks students to connect formal narrative technique to historical context. Option C directly addresses how the *formal juxtaposition* of narrative voices can represent the postwar anxieties of surveillance and a fragmented self, aligning with the prompt's focus on how form enacts historical pressures. Options A, B, and D offer less textually grounded or historically relevant interpretations.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-025",
@@ -696,7 +720,8 @@
       },
       "correct": "B",
       "explanation": "This question addresses the practical application of archive theory in understanding the material conditions of a text. Option B correctly identifies the need to examine the paratextual elements (cover art, marketing) as part of the text's broader context and reception history, rather than ignoring them (A), assuming authorial control (C), or limiting analysis to the internal text (D).",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-026",
@@ -713,7 +738,8 @@
       },
       "correct": "B",
       "explanation": "This question focuses on the responsible application of genre theory, demanding textual evidence for claims about authorial purpose. Option B guides the student toward analyzing *how* the text uses and potentially destabilizes genre conventions to engage with historical anxieties, emphasizing textual evidence and avoiding assumptions about authorial intent (D) or mere classification (A, C).",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-027",
@@ -730,7 +756,8 @@
       },
       "correct": "A",
       "explanation": "The concept of the 'author-function,' as developed by Foucault, directly addresses how authorship operates as a social and institutional role, distinct from the author's biography. This helps students move beyond biographical fallacy and understand narrative choices as formally and culturally determined, not just personal expressions.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-028",
@@ -747,7 +774,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse is crucial for capturing the nuanced critiques often found in mid-century suburban fiction. It allows authors to present a character's internal state—their dissatisfaction or paranoia—while maintaining a third-person narrative voice, thus creating a subtle dissonance between the surface presentation of domestic life and the underlying anxieties.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-029",
@@ -764,7 +792,8 @@
       },
       "correct": "A",
       "explanation": "The student is committing the intentional fallacy, which is the error of equating a work's meaning with the author's presumed intentions. Barthes' 'Death of the Author' is a foundational text in arguing that meaning is produced in the act of reading, not dictated by the author, thereby shifting focus from authorial intent to the text and its reception.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-030",
@@ -781,7 +810,8 @@
       },
       "correct": "A",
       "explanation": "The intentional fallacy, which urges us to look beyond authorial intent to the text's formal properties.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-031",
@@ -798,7 +828,8 @@
       },
       "correct": "A",
       "explanation": "The intentional fallacy, a concept often discussed in relation to New Criticism and later theorists like Barthes, directly addresses the error of equating a text's meaning or a narrator's stance with the author's personal beliefs or intentions. While focalization (C) is relevant to narrative perspective, it doesn't directly address the authorial intent fallacy. Reader-response (B) and Formalism (D) are broader theoretical frameworks that don't specifically target this particular misconception about authorial intent.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-032",
@@ -815,7 +846,8 @@
       },
       "correct": "A",
       "explanation": "The intentional fallacy, a concept often discussed in relation to New Criticism, warns against equating a work's meaning or the narrator's stance with the author's personal beliefs or intentions. This directly addresses the student's conflation of the narrator's voice with the author's biography, guiding them toward a more text-centered analysis.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-033",
@@ -832,7 +864,8 @@
       },
       "correct": "A",
       "explanation": "This question probes the relationship between literary form and the material conditions of its production and dissemination. Option A directly addresses how the publishing industry (e.g., the paperback boom) influenced literary form in the mid-century, a key aspect of Edward's research. Options B, C, and D focus on content, narrator psychology, or formal comparison, respectively, rather than the institutional and economic forces that shape literary production, thus missing the 'hustle' of understanding how books *get made* and *reach readers*.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-034",
@@ -849,7 +882,8 @@
       },
       "correct": "A",
       "explanation": "The intentional fallacy, a concept critiqued by New Critics and later theorists, posits that a work's meaning should not be reduced to what the author might have intended. This directly counters the student's assumption that authorial intent guarantees truth or dictates meaning, urging instead a focus on the textual evidence of the narrator's performance.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-035",
@@ -866,7 +900,8 @@
       },
       "correct": "A",
       "explanation": "Obscenity trials in the mid-century often targeted explicit content. While a questioning protagonist (B), author's biography (C), or bleak tone (D) might be present, the direct depiction of sexual acts or taboo subjects was the most common legal and social trigger for censorship challenges during this period.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-036",
@@ -883,7 +918,8 @@
       },
       "correct": "A",
       "explanation": "This question probes the crucial distinction between authorial intent and narrative presentation. Option A correctly identifies that focusing on textual evidence—how the narrative's form and language create the tone—is the method for avoiding the intentional fallacy and moving beyond biographical assumptions. Options B, C, and D represent misinterpretations or oversimplifications of literary analysis.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-037",
@@ -900,7 +936,8 @@
       },
       "correct": "A",
       "explanation": "This question targets the understanding of how literary texts can challenge societal norms and attract censorship, focusing on the *how* rather than just the *what*. Option A points to the nuanced linguistic strategies that can be perceived as subversive, which is precisely what censors often targeted. Options B, C, and D describe elements that are unlikely to cause controversy and would typically be seen as reinforcing, rather than challenging, societal norms.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-038",
@@ -917,7 +954,8 @@
       },
       "correct": "A",
       "explanation": "This question addresses a frequent student error: conflating a character's internal state with the author's own beliefs. Option A correctly identifies this confusion and points to narrative focalization (or the related concept of free indirect discourse itself) as the critical tool for separating character perspective from authorial intent, thus avoiding the intentional fallacy. Options B, C, and D propose incorrect interpretive pitfalls or irrelevant theoretical concepts for this specific scenario.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-039",
@@ -934,7 +972,8 @@
       },
       "correct": "A",
       "explanation": "The prompt asks how to articulate the *ethical implications* of a narrator's manipulative strategy, specifically their omissions that create reader sympathy. Option A directly addresses this by focusing on how the *omissions* shape reader *response* and create a potentially misleading emotional effect, which is the ethical concern. Option B falls into the intentional fallacy. Option C is a basic identification, not an ethical analysis. Option D misdirects by focusing on the protagonist rather than the narrator's strategy.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-040",
@@ -951,7 +990,8 @@
       },
       "correct": "A",
       "explanation": "The prompt asks how to analyze the *purpose* of genre blending in a postwar novel, specifically connecting it to cultural anxieties. Option A provides a concrete analytical move: examining how the *combination* of genres (domestic drama + sci-fi) serves to articulate specific anxieties (technological control, conformity), which is precisely what the prompt requires. Option B dismisses authorial intent and thematic purpose. Option C focuses on resolution rather than the function of the blend. Option D is a comparative step but doesn't explain the *purpose* of the blend itself.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-041",
@@ -968,7 +1008,8 @@
       },
       "correct": "A",
       "explanation": "The concept of the 'author-function,' as theorized by Foucault, is crucial for understanding how authorship operates as a cultural and institutional role, distinct from the biographical author. This allows us to analyze the narrative voice and its claims without assuming it directly reflects the author's personal beliefs, thus avoiding the intentional fallacy.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-042",
@@ -985,7 +1026,8 @@
       },
       "correct": "B",
       "explanation": "Foucault's concept of the 'author-function' moves beyond biographical intention to consider how authorship operates as a cultural and institutional role. Option B correctly applies this by suggesting an analysis of how the author's public persona and the publishing industry influence how the novel's form is understood, thereby linking formal innovation to historical and institutional pressures rather than purely individual genius.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-043",
@@ -993,7 +1035,7 @@
       "subject": "literature",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "A student is analyzing a postwar novel where the narrator's retrospective account of a traumatic event is contradicted by fragmented, present-tense descriptions. They claim the narrator is simply unreliable. What critical concept offers a more nuanced way to understand this narrative strategy, moving beyond a simple label?",
+      "prompt": "A trauma narrator contradicts their own retrospective account with fragmented present-tense scenes. What concept gives a sharper reading than “unreliable”?",
       "options": {
         "A": "Focalization, to analyze whose perspective shapes the fragmented details.",
         "B": "The author function, to consider how the text constructs an authorial presence.",
@@ -1002,7 +1044,8 @@
       },
       "correct": "A",
       "explanation": "While 'unreliable narrator' is a common observation, focalization offers a more precise tool for analyzing *how* the narrative's perspective shifts and fragments, revealing the subjective shaping of events rather than just a general failing of trustworthiness. This allows for a deeper understanding of the narrator's relationship to the trauma.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-044",
@@ -1019,7 +1062,8 @@
       },
       "correct": "A",
       "explanation": "This question probes the relationship between text and its publication context. The 'author function,' as theorized by Foucault, helps us understand authorship not just as an individual but as a role shaped by institutions and cultural practices. Marketing and cover art are key parts of this function, influencing how a text is received and understood, especially in the context of the mid-century paperback boom.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-045",
@@ -1036,7 +1080,8 @@
       },
       "correct": "A",
       "explanation": "Omission in mid-century narratives often operates as a deliberate formal strategy that reveals ideological silences shaped by institutional or cultural pressures. It invites readers to interrogate what is left out, rather than treating omission as mere bias or error.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-046",
@@ -1053,7 +1098,8 @@
       },
       "correct": "A",
       "explanation": "Distinguishing narrator from author prevents the intentional fallacy. Narrator distortion is a formal device that may serve thematic or ideological functions, not a straightforward reflection of authorial truthfulness.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-047",
@@ -1070,7 +1116,8 @@
       },
       "correct": "A",
       "explanation": "Genre blending in postwar novels often reflects cultural tensions, such as fears around suburban conformity or technological change, by destabilizing familiar narrative frameworks and inviting critical reflection.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-048",
@@ -1087,7 +1134,8 @@
       },
       "correct": "A",
       "explanation": "A detached narrative voice often functions as a formal strategy to create ironic distance, encouraging readers to question representation and engage critically, rather than assuming it reflects authorial emotion or failure.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-049",
@@ -1104,7 +1152,8 @@
       },
       "correct": "A",
       "explanation": "Narrative omission in mid-century novels often functions as a purposeful ethical and ideological gesture. It shapes how readers engage with the text and its historical context, rather than being a mere oversight or neutral gap. This challenges simplistic readings that equate omission with unreliability or authorial forgetfulness.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-050",
@@ -1121,7 +1170,8 @@
       },
       "correct": "A",
       "explanation": "Narratology encourages us to see contradictory or fragmented narration as a site of ethical complexity, where the narrator negotiates truth, memory, and responsibility. Simply branding a narrator ‘unreliable’ flattens this complexity and misses the deeper ethical and epistemological tensions at play.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-051",
@@ -1138,7 +1188,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony in mid-century novels is not mere multiplicity but a dialogic contestation of meaning. By presenting conflicting focalizations, the narrative problematizes singular historical truths, reflecting ideological tensions and inviting readers to negotiate competing versions rather than accept one authoritative account.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-052",
@@ -1155,7 +1206,8 @@
       },
       "correct": "A",
       "explanation": "Genre blending in mid-century novels often signals cultural hybridity and anxiety. Combining domestic realism with speculative tropes mirrors Cold War fears—technological surveillance, ideological infiltration—within the ostensibly safe spaces of home, making the familiar uncanny and charged with political unease.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-053",
@@ -1172,7 +1224,8 @@
       },
       "correct": "A",
       "explanation": "Effective analysis moves beyond naming bias to interrogate how omission functions ethically and ideologically, shaping reader interpretation and the narrative’s ideological work. Assuming deception or authorial intent conflates narrator and author, while tone alone overlooks the strategic silence’s broader stakes.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-054",
@@ -1189,7 +1242,8 @@
       },
       "correct": "A",
       "explanation": "Archive theory urges readers to consider what paratexts reveal about institutional contexts shaping a text’s reception and authority. Ignoring or privileging the text alone risks missing how author-function and cultural forces mediate meaning. Paratexts are not irrelevant nor straightforward authorial confessions.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-055",
@@ -1206,7 +1260,8 @@
       },
       "correct": "A",
       "explanation": "Narrative omissions can be strategic, reflecting ideological or ethical complexities rather than mere bias. Paratextual contradictions invite readers to interrogate how narratorial silence functions within the text's broader cultural and institutional context.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-056",
@@ -1223,7 +1278,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony foregrounds multiple voices and perspectives, resisting singular or authoritative historical claims. Readers must ethically navigate these contradictions, recognizing the text's engagement with contested truth rather than dismissing it as unreliable or incoherent.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-057",
@@ -1240,7 +1296,8 @@
       },
       "correct": "A",
       "explanation": "Genre blending in mid-century novels often operates as a cultural argument, using the tension between genres to expose or critique social and ideological pressures rather than serving only stylistic or entertainment purposes.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-058",
@@ -1257,7 +1314,8 @@
       },
       "correct": "A",
       "explanation": "Readers must distinguish between paratextual framing and the text itself, responsibly weighing marketing materials without letting them override evidence from the narrative's language, tone, and form.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-059",
@@ -1274,7 +1332,8 @@
       },
       "correct": "A",
       "explanation": "The intentional fallacy cautions against equating narrator or narrative voice with the author's own beliefs, emphasizing the importance of treating narrators as distinct textual constructions rather than authorial mouthpieces.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-060",
@@ -1291,7 +1350,8 @@
       },
       "correct": "A",
       "explanation": "Narrative contradictions around trauma often reflect ethical and psychological complexity rather than mere unreliability. Readers should engage with how trauma shapes narration, avoiding reductive labels that obscure interpretive nuance.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-061",
@@ -1308,7 +1368,8 @@
       },
       "correct": "A",
       "explanation": "Responsible analysis requires students to consider narrative omissions as strategic and ideological, exploring their function and ethical implications rather than reducing them to bias or simple untrustworthiness.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-062",
@@ -1325,7 +1386,8 @@
       },
       "correct": "A",
       "explanation": "Close readers must ethically engage with archival and paratextual evidence, recognizing how institutional and cultural forces influence a text's reception and authority, rather than privileging one source uncritically.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-063",
@@ -1342,7 +1404,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony in mid-century novels complicates narrative authority by presenting competing perspectives that question fixed historical truths, rather than just indicating unreliable narration or authorial doubt.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-064",
@@ -1359,7 +1422,8 @@
       },
       "correct": "A",
       "explanation": "The dual imagery of comfort and menace in suburban settings often encodes ideological critique of postwar conformity, inviting readers to see beneath surface normality to cultural anxieties.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-065",
@@ -1376,7 +1440,8 @@
       },
       "correct": "A",
       "explanation": "Analyzing how genre conventions intersect with cultural context helps students see genre blending as a formal response to postwar tensions, beyond plot summary or biography.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-066",
@@ -1393,7 +1458,8 @@
       },
       "correct": "A",
       "explanation": "Close readers must recognize that censorship can influence style and form, requiring attention to how institutional power shapes textual features beyond explicit content.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-067",
@@ -1410,7 +1476,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse complicates boundaries between narrator and character, marking a narrative strategy distinct from authorial presence and enabling nuanced focalization.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-068",
@@ -1427,7 +1494,8 @@
       },
       "correct": "A",
       "explanation": "Irony functions formally to defamiliarize and critique cultural norms, revealing tensions and contradictions in postwar suburban life rather than endorsing them.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-069",
@@ -1444,7 +1512,8 @@
       },
       "correct": "A",
       "explanation": "Examining how frame narratives mediate and complicate narrative authority allows students to separate narrator reliability from authorial presence through close reading of narrative levels.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-070",
@@ -1461,7 +1530,8 @@
       },
       "correct": "A",
       "explanation": "Close readers have a responsibility to integrate paratextual materials like marketing into their interpretation, recognizing how institutional forces shape reception beyond the text itself.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-071",
@@ -1478,7 +1548,8 @@
       },
       "correct": "A",
       "explanation": "Polyphonic focalization in mid-century novels complicates truth by filtering ideological assumptions through multiple voices, challenging singular or authoritative accounts rather than just presenting neutral perspectives.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-072",
@@ -1495,7 +1566,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse here is a site of narrative-psychological tension where irony complicates reliability, engaging readers ethically in discerning truth rather than straightforwardly exposing deceit or authorial intention.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-073",
@@ -1512,7 +1584,8 @@
       },
       "correct": "A",
       "explanation": "Identifying narrative omission requires close reading of what is left out and interpreting its ideological or ethical implications, moving beyond simplistic bias labels to nuanced textual analysis.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-074",
@@ -1529,7 +1602,8 @@
       },
       "correct": "A",
       "explanation": "Frame narratives in mid-century novels function as ethical and epistemological mediators, influencing how readers interpret embedded stories and their claims to historical or cultural truth.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-075",
@@ -1546,7 +1620,8 @@
       },
       "correct": "A",
       "explanation": "Narrator voice—even intimate or confessional—is a constructed narrative stance, not a straightforward reflection of the author’s identity or beliefs, a key distinction in mid-century literary analysis.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-076",
@@ -1563,7 +1638,8 @@
       },
       "correct": "A",
       "explanation": "Close comparison of narrator and character voices in free indirect discourse passages uncovers narrative tension and ambiguity, a crucial interpretive skill beyond simplistic transparency assumptions.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-077",
@@ -1580,7 +1656,8 @@
       },
       "correct": "A",
       "explanation": "Close reading must account for the author function and publishing context, recognizing how paratextual elements like covers influence reader positioning and complicate narrative authority in mid-century culture.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-078",
@@ -1597,7 +1674,8 @@
       },
       "correct": "A",
       "explanation": "The frame narrative here does more than structure; it mediates historical memory and ethical engagement by positioning the reader to weigh conflicting narratorial truth claims, rather than offering a straightforward or authoritative testimony.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-079",
@@ -1614,7 +1692,8 @@
       },
       "correct": "A",
       "explanation": "Polyphonic focalization does not just offer multiple viewpoints; it acts as an ideological filter, exposing contradictions and tensions that challenge any one narrative’s claim to truth.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-080",
@@ -1631,7 +1710,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse here is a site of ambivalence and power negotiation, complicating how readers interpret character psychology and reliability rather than granting direct access.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-081",
@@ -1648,7 +1728,8 @@
       },
       "correct": "A",
       "explanation": "The key is procedural: students must dissect how genre conventions interact to reveal cultural anxieties, not reduce the mix to superficial labeling or authorial intent.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-082",
@@ -1665,7 +1746,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse mediates between narrator and character, often introducing ambiguity and tension that complicate straightforward psychological reading.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-083",
@@ -1682,7 +1764,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony here is dialogic contestation, inviting readers into an interpretive struggle rather than delivering a unified or author-endorsed viewpoint.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-084",
@@ -1699,7 +1782,8 @@
       },
       "correct": "A",
       "explanation": "Analyzing narrative omission requires close attention to gaps and silences as purposeful strategies, not accidental errors or mere bias, revealing ideological stakes.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-085",
@@ -1716,7 +1800,8 @@
       },
       "correct": "A",
       "explanation": "Focusing on what the omission reveals or conceals helps students analyze narrative ethics and ideology. Simply labeling bias or assuming authorial intent misses the nuanced textual strategy at work.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-086",
@@ -1733,7 +1818,8 @@
       },
       "correct": "A",
       "explanation": "Close readers must separate the text’s formal tone from external marketing pressures, recognizing institutional forces without collapsing paratext into authorial meaning.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-087",
@@ -1750,7 +1836,8 @@
       },
       "correct": "A",
       "explanation": "Heteroglossia highlights dialogic interaction among diverse voices, inviting readers to negotiate historical truth rather than accept a single, authoritative account.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-088",
@@ -1767,7 +1854,8 @@
       },
       "correct": "A",
       "explanation": "The narrator’s confessional tone is a crafted narrative strategy, not a transparent window onto the author’s self; readers must separate voice from authorial presence.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-089",
@@ -1784,7 +1872,8 @@
       },
       "correct": "A",
       "explanation": "Framing complicates narrative authority and ethical engagement; readers must consider how doubt and endorsement operate narratively without defaulting to simple truth claims.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-090",
@@ -1801,7 +1890,8 @@
       },
       "correct": "A",
       "explanation": "Close reading demands interpreting how patterns contribute to meaning, not simply cataloging devices or reducing theme to a label or moral.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-091",
@@ -1818,7 +1908,8 @@
       },
       "correct": "A",
       "explanation": "Reader-response criticism values the active role of readers in making meaning from polyphony, highlighting interpretive openness rather than fixed answers.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-092",
@@ -1835,7 +1926,8 @@
       },
       "correct": "A",
       "explanation": "The interplay between narrator and genre conventions creates a nuanced critique of conformity. The narrator neither simply endorses nor rejects suburban norms; instead, the absurdist elements destabilize the familiar, inviting readers to question ideological assumptions embedded in domestic realism.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-093",
@@ -1852,7 +1944,8 @@
       },
       "correct": "A",
       "explanation": "Close comparison of text and cover art foregrounds the ethical responsibility of readers to recognize paratextual influence on interpretation. Author biography or plot summary alone cannot reveal how the cover art shapes reception or potentially misrepresents narrative tone.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-094",
@@ -1869,7 +1962,8 @@
       },
       "correct": "A",
       "explanation": "The paperback boom made literature widely available, incentivizing narrative forms that could engage mass audiences quickly. This reshaped literary form and reception by encouraging brevity, immediacy, and genre hybridity, challenging traditional elite literary models.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-095",
@@ -1886,7 +1980,8 @@
       },
       "correct": "A",
       "explanation": "Students must ethically distinguish between the author’s public persona shaped by mass media and the narrator’s voice within the text, avoiding simplistic conflations that erase narrative complexity or impose external politics onto the narrative voice.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-096",
@@ -1903,7 +1998,8 @@
       },
       "correct": "A",
       "explanation": "Focusing on narrative silences as deliberate ideological acts helps students ethically interpret omissions as part of the text’s negotiation with Cold War anxieties rather than mere bias or error.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-097",
@@ -1920,7 +2016,8 @@
       },
       "correct": "A",
       "explanation": "Close readers must recognize that paratexts, especially in censorship contexts, can serve ideological functions that conflict with the text’s nuanced critique, requiring ethical vigilance to separate marketing or legal framing from narrative meaning.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-098",
@@ -1937,7 +2034,8 @@
       },
       "correct": "A",
       "explanation": "Heteroglossia highlights the dialogic interplay of diverse social languages within a text, allowing mid-century novels to present competing ideologies without committing the author to any single perspective, thus enriching interpretive complexity.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-099",
@@ -1954,7 +2052,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading requires recognizing narratorial omission as a narrative strategy that complicates ideology, rather than conflating narrator and author or dismissing contradictory evidence.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-100",
@@ -1971,7 +2070,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading respects the polyphony of voices and resists equating any narrator with authorial truth, fostering nuanced engagement with conflicting narratives.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-101",
@@ -1988,7 +2088,8 @@
       },
       "correct": "A",
       "explanation": "Close reading that includes paratextual analysis helps students understand how marketing frames reader expectations and participates in cultural discourse beyond the text alone.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-102",
@@ -2005,7 +2106,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading balances awareness of institutional framing with fidelity to the text, resisting simplistic hierarchies of authority between paratext and narrative.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-103",
@@ -2022,7 +2124,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse blends narrator and character voices but is a constructed narrative form, not a straightforward authorial confession.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-104",
@@ -2039,7 +2142,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading respects the complexity of polyphony, exploring how conflicting voices challenge singular truth rather than resolving them prematurely.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-105",
@@ -2056,7 +2160,8 @@
       },
       "correct": "A",
       "explanation": "Responsible interpretation requires integrating textual close reading with external context to understand the ethical implications of narratorial silence.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-106",
@@ -2073,7 +2178,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading distinguishes narrative technique from authorial intention, requiring evidence and nuance rather than direct equation of narrator and author.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-107",
@@ -2090,7 +2196,8 @@
       },
       "correct": "A",
       "explanation": "A detached narrative tone can be a formal device to evoke trauma's dislocation and ethical complexity. Interpreting it as authorial failure or narrator unreliability misses the narrative strategy that invites readers to grapple with trauma's affective difficulty.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-108",
@@ -2107,7 +2214,8 @@
       },
       "correct": "A",
       "explanation": "Comparing narrative omissions to historical facts reveals ideological silences and ethical implications. This procedural move resists reductive biography or plot summary, fostering evidence-based interpretation of narrative distortion or omission.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-109",
@@ -2124,7 +2232,8 @@
       },
       "correct": "A",
       "explanation": "Close readers must ethically navigate the tension between institutional framing (paratext) and the text’s subtle strategies, recognizing how censorship shapes reception without collapsing author, narrator, and institution into one voice.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-110",
@@ -2141,7 +2250,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse complicates narrative authority by merging narrator voice with character consciousness, challenging readers to distinguish voice layers and question assumptions about focalization and reliability.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-111",
@@ -2158,7 +2268,8 @@
       },
       "correct": "A",
       "explanation": "Imagery that simultaneously comforts and menaces suburban settings often encodes ideological tensions in postwar culture, critiquing conformity and revealing underlying social anxieties rather than serving as neutral description.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-112",
@@ -2175,7 +2286,8 @@
       },
       "correct": "A",
       "explanation": "Mapping omissions against historical context enables students to interpret narrative silences ethically, recognizing ideological stakes and narrator strategy without resorting to simplistic accusations or ignoring textual complexity.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-113",
@@ -2192,7 +2304,8 @@
       },
       "correct": "A",
       "explanation": "Close reading requires ethical attention to how narrative distortion reflects ideological positions and power dynamics, rather than dismissing the narrator wholesale or conflating narrator with author.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-114",
@@ -2209,7 +2322,8 @@
       },
       "correct": "A",
       "explanation": "Frame narratives in mid-century novels often serve as mediators of cultural memory, influencing how readers ethically engage with the embedded story, rather than acting as neutral or decorative devices.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-115",
@@ -2226,7 +2340,8 @@
       },
       "correct": "A",
       "explanation": "Multiple focalizers reveal how ideological assumptions filter narrative information, complicating truth claims rather than merely presenting neutral perspectives.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-116",
@@ -2243,7 +2358,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse can generate narrative-psychological tension that invites readers into an ambivalent space, questioning the narrator’s reliability and their own interpretive role.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-117",
@@ -2260,7 +2376,8 @@
       },
       "correct": "A",
       "explanation": "Close comparison of contradictions reveals how fragmented memory and narration raise ethical questions about truth and subjectivity, moving beyond a simplistic unreliable label.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-118",
@@ -2277,7 +2394,8 @@
       },
       "correct": "A",
       "explanation": "Narrative omissions often function as deliberate ideological strategies that shape ethical and political readings rather than mere oversights or bias.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-119",
@@ -2294,7 +2412,8 @@
       },
       "correct": "A",
       "explanation": "Genre blending in mid-century novels often encodes cultural tensions and anxieties, especially those related to Cold War-era identity and technological fears.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-120",
@@ -2311,7 +2430,8 @@
       },
       "correct": "A",
       "explanation": "Recognizing free indirect discourse as a site of narrative-psychological tension helps students distinguish narrator’s mediated voice from authorial intention, avoiding the intentional fallacy.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-121",
@@ -2328,7 +2448,8 @@
       },
       "correct": "A",
       "explanation": "Close readers should note omissions as deliberate narrative choices shaping reliability and ideology, rather than ignoring or minimizing their significance.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-122",
@@ -2345,7 +2466,8 @@
       },
       "correct": "A",
       "explanation": "Ethically, readers must separate institutional paratext from the text itself to avoid misreading authorial or narrative positions, especially in contested mid-century publishing contexts.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-123",
@@ -2362,7 +2484,8 @@
       },
       "correct": "A",
       "explanation": "Polyphonic narration complicates affective engagement, requiring readers to navigate shifts in tone and stance rather than settling on a single emotional attitude.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-124",
@@ -2379,7 +2502,8 @@
       },
       "correct": "A",
       "explanation": "Analyzing formal features reveals how ideology is embedded structurally in the text, not just in surface content or external context.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-125",
@@ -2396,7 +2520,8 @@
       },
       "correct": "A",
       "explanation": "Omissions are ethically charged narrative choices that shape readers’ understanding and require active, critical engagement to avoid complicity in ideological erasure.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-126",
@@ -2413,7 +2538,8 @@
       },
       "correct": "A",
       "explanation": "New Criticism’s method isolates the text for close reading but does not claim history is unimportant; it’s a methodological choice, not a denial of context.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-127",
@@ -2430,7 +2556,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony invites readers to engage interpretively with competing voices, reflecting the complexity of historical truth rather than reducing it to one authoritative narrative.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-128",
@@ -2447,7 +2574,8 @@
       },
       "correct": "A",
       "explanation": "The tonal shifts invite readers to perceive the tension between surface conformity and hidden unrest, a hallmark of mid-century suburban fiction’s critique. This polyphony resists reducing characters or ideology to simple binaries, instead complicating the relationship between public and private voices.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-129",
@@ -2464,7 +2592,8 @@
       },
       "correct": "A",
       "explanation": "Close attention to paratexts and textual variants across editions uncovers how censorship shaped the text’s language and form. This method grounds interpretation in material evidence rather than speculation or biography alone, crucial for understanding mid-century censorship’s impact.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-130",
@@ -2481,7 +2610,8 @@
       },
       "correct": "A",
       "explanation": "Readers must ethically separate commercial paratexts from the narrative’s voice and authorial intention, especially in mid-century paperbacks where marketing often distorted the text’s subtlety. This guards against simplistic or misguided readings based on sensational packaging.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-131",
@@ -2498,7 +2628,8 @@
       },
       "correct": "A",
       "explanation": "Paperbacks made literature widely available, incentivizing concise, engaging narratives that could appeal to broader audiences. This distribution model influenced not only reception but also formal choices, challenging traditional literary hierarchies and modes.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-132",
@@ -2515,7 +2646,8 @@
       },
       "correct": "A",
       "explanation": "Narrative omissions in politically charged contexts invite readers to interrogate what is left unsaid and consider ideological implications. This ethical engagement resists collapsing narrator and author or dismissing silence as mere oversight.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-133",
@@ -2532,7 +2664,8 @@
       },
       "correct": "A",
       "explanation": "Cold War anxieties often permeate narrative form through subtle devices like imagery, silences, and focalization shifts. Close reading these elements reveals ideological undercurrents beyond overt political content, a key skill in mid-century literary analysis.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-134",
@@ -2549,7 +2682,8 @@
       },
       "correct": "A",
       "explanation": "Mass media expanded authors’ public personas and accelerated cultural circulation, complicating how texts are read and understood. This shift affects authorial authority and reader expectations, a crucial dynamic in mid-century literary culture.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-135",
@@ -2566,7 +2700,8 @@
       },
       "correct": "A",
       "explanation": "Foucault’s author function emphasizes the author as a cultural and institutional construct, not a transparent source of meaning. This encourages readers to distinguish narrator voice from authorial identity and to consider how the author shapes reception without collapsing narrator and authorial politics.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-136",
@@ -2583,7 +2718,8 @@
       },
       "correct": "A",
       "explanation": "Tonal polyphony invites readers to hold multiple perspectives in tension, ethically acknowledging social complexity and the narrator’s conflicted position rather than seeking a single authoritative truth or collapsing voices.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-137",
@@ -2600,7 +2736,8 @@
       },
       "correct": "A",
       "explanation": "Mapping omissions against paratextual or archival evidence helps students see omissions as strategic narrative choices with ideological implications, moving beyond simplistic bias labeling to nuanced ethical reading.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-138",
@@ -2617,7 +2754,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading requires recognizing how paratext shapes reception and reader expectations but ultimately grounding interpretation in close reading of the text’s own voice and argument, especially when paratext and text diverge.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-139",
@@ -2634,7 +2772,8 @@
       },
       "correct": "A",
       "explanation": "Genre blending in mid-century novels often functions as a cultural argument, using speculative elements to disrupt realistic domestic scenes and challenge dominant ideologies and norms.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-140",
@@ -2651,7 +2790,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading embraces polyphony and temporal complexity, recognizing that multiple narrative voices and perspectives coexist without one overriding the other, especially in trauma narratives.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-141",
@@ -2668,7 +2808,8 @@
       },
       "correct": "A",
       "explanation": "Careful close reading that contrasts narrative voice with external authorial evidence helps students maintain the critical distance between narrator unreliability and authorial intention without conflating the two.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-142",
@@ -2685,7 +2826,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse is a narrative technique mixing character and narrator perspectives, but it does not straightforwardly reveal authorial intention; responsible reading keeps these layers distinct.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-143",
@@ -2702,7 +2844,8 @@
       },
       "correct": "A",
       "explanation": "Narrative distortion here functions as an ideological strategy that challenges readers to question the narrator's perspective, rather than merely signaling unreliability or authorial confession.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-144",
@@ -2719,7 +2862,8 @@
       },
       "correct": "A",
       "explanation": "The ethical demand is to engage with the narrator's multifaceted voice critically, acknowledging the tension between detachment and confession as a deliberate narrative strategy rather than a straightforward self-revelation.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-145",
@@ -2736,7 +2880,8 @@
       },
       "correct": "A",
       "explanation": "Close reading of imagery requires attention to conflicting sensory cues that reveal ideological tensions beneath surface meanings, rather than relying on plot or narrator commentary.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-146",
@@ -2753,7 +2898,8 @@
       },
       "correct": "A",
       "explanation": "Recognizing omission as shaped by external forces like censorship or ideology prevents reductive readings that equate narrator silence with mere bias or authorial agreement.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-147",
@@ -2770,7 +2916,8 @@
       },
       "correct": "A",
       "explanation": "Genre blending in this context is a formal strategy that mirrors cultural ambivalence about postwar domesticity and modernity, not merely an aesthetic experiment or authorial whim.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-148",
@@ -2787,7 +2934,8 @@
       },
       "correct": "A",
       "explanation": "This tonal shift constructs a layered relationship where intimacy is performed and mediated, complicating assumptions about narrator transparency and authorial presence.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-149",
@@ -2804,7 +2952,8 @@
       },
       "correct": "A",
       "explanation": "Close reading subtle textual strategies reveals how censorship shapes form and style, encouraging students to look beyond overt plot elements or external history.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-150",
@@ -2821,7 +2970,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading demands attention to what is left out and why, considering how narrative silence implicates ideological power and responsibility rather than dismissing it as oversight or neutrality.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-151",
@@ -2838,7 +2988,8 @@
       },
       "correct": "A",
       "explanation": "Focalization is not just perspective but an ideological filter that shapes how information is presented and what is emphasized, influencing readers' understanding beyond mere viewpoint.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-152",
@@ -2855,7 +3006,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony stages dialogic contestation, ethically demanding that readers weigh conflicting voices and resist easy closure, reflecting the complexity of historical truth.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-153",
@@ -2872,7 +3024,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse is a site of narrative-psychological tension; noticing tonal or lexical contradictions within it helps reveal the narrator’s ambivalence and unreliability.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-154",
@@ -2889,7 +3042,8 @@
       },
       "correct": "A",
       "explanation": "Narrative omissions are often strategic, inviting readers to recognize ideological silences rather than dismissing them as bias or error, thus respecting narrative complexity and ethics.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-155",
@@ -2906,7 +3060,8 @@
       },
       "correct": "A",
       "explanation": "Genre blending in mid-century texts often encodes cultural tensions—here, the speculative elements highlight Cold War fears within the familiar domestic sphere.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-156",
@@ -2923,7 +3078,8 @@
       },
       "correct": "A",
       "explanation": "Narratology reveals how fragmented narration can ethically represent trauma’s effects on memory and identity, resisting simplistic judgments of unreliability as deceit.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-157",
@@ -2940,7 +3096,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse is characterized by third-person narration colored by a character’s voice, requiring careful attention to subtle shifts rather than surface emotion or first-person markers.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-158",
@@ -2957,7 +3114,8 @@
       },
       "correct": "A",
       "explanation": "Frame narratives often function as a critical lens, inviting readers to question and contextualize the embedded narrative’s claims rather than accept them uncritically.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-159",
@@ -2974,7 +3132,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony invites readers to engage ethically by recognizing multiple ideological perspectives rather than settling for a singular historical truth. This complexity resists reducing narrators to unreliable liars or conflating their views with authorial intent.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-160",
@@ -2991,7 +3150,8 @@
       },
       "correct": "A",
       "explanation": "The narrator’s intimate tone invites emotional connection, but the omission of political context complicates this affect, encouraging readers to feel both drawn in and wary of what is withheld.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-161",
@@ -3008,7 +3168,8 @@
       },
       "correct": "A",
       "explanation": "Students should analyze how genre blending functions as a formal strategy to expose cultural contradictions, not just as a stylistic choice or plot quirk.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-162",
@@ -3025,7 +3186,8 @@
       },
       "correct": "A",
       "explanation": "Archive theory foregrounds the institutional and historical conditions that produce paratexts and texts, encouraging readers to critically evaluate how these elements authorize or obscure meanings.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-163",
@@ -3042,7 +3204,8 @@
       },
       "correct": "A",
       "explanation": "Free indirect discourse is characterized by third-person narration that adopts a character’s voice and perspective without explicit markers, blending narrative and thought.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-164",
@@ -3059,7 +3222,8 @@
       },
       "correct": "A",
       "explanation": "Confessional narration creates an intimate dynamic, requiring readers to actively interpret the narrator’s sincerity and ethical stance rather than passively consume the narrative.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-165",
@@ -3076,7 +3240,8 @@
       },
       "correct": "A",
       "explanation": "Students should link formal narrative features—like repetition or fragmentation—to the cultural anxieties of the Cold War, showing how form encodes ideology and affect.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-166",
@@ -3093,7 +3258,8 @@
       },
       "correct": "A",
       "explanation": "Ethical reading demands attention to narrative omissions as deliberate choices that shape ideological meaning, avoiding simplistic judgments about narrator reliability or intent.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-167",
@@ -3110,7 +3276,8 @@
       },
       "correct": "A",
       "explanation": "Genre hybridity in mid-century novels often destabilizes the reassuring suburban realism by inserting absurd or speculative elements, revealing the precariousness of conformity under Cold War pressures. This formal strategy encodes anxiety without explicit political statements, rather than merely entertaining or rejecting ideologies outright.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-168",
@@ -3127,7 +3294,8 @@
       },
       "correct": "A",
       "explanation": "A confessional narrator who omits political contexts creates a tension: the reader feels close and sympathetic but must also reckon with what is left unsaid. This narrative strategy ethically implicates the reader in the ideological silence, prompting critical awareness rather than uncritical empathy or simple alignment.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-169",
@@ -3144,7 +3312,8 @@
       },
       "correct": "A",
       "explanation": "Students should ground their interpretation in the narrative’s language and form, recognizing that paratexts like cover art often serve marketing or ideological agendas separate from the text’s voice. This avoids the common misstep of reading paratext as narrative tone or authorial intent.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-170",
@@ -3161,7 +3330,8 @@
       },
       "correct": "A",
       "explanation": "Ethically, readers must recognize narrative omissions as deliberate strategies that shape meaning and ideological complicity. Reducing silence to bias or unreliability oversimplifies the text’s engagement with Cold War pressures and ignores the complexity of narrative ethics.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-171",
@@ -3178,7 +3348,8 @@
       },
       "correct": "A",
       "explanation": "Heteroglossia highlights the presence of multiple social languages and ideologies interacting polyphonically. Mid-century novels use this to represent ideological tensions without endorsing any single position, complicating simplistic readings of authorial intent or coherence.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-172",
@@ -3195,7 +3366,8 @@
       },
       "correct": "A",
       "explanation": "The mixed narrative voice creates an ambivalent stance that both draws readers into suburban experience and unsettles its ideological assumptions. This dual affect encourages nuanced engagement with postwar conformity and hidden dissatisfaction rather than simple endorsement or rejection.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-173",
@@ -3212,7 +3384,8 @@
       },
       "correct": "A",
       "explanation": "Close reading that includes paratexts reveals how paperback marketing often pressures readers toward simplified interpretations, creating interpretive tensions with the text’s irony. This step helps students understand the material conditions shaping literary reception in the mid-century.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-174",
@@ -3229,7 +3402,8 @@
       },
       "correct": "A",
       "explanation": "Ethically, readers should recognize the obscenity trial as a site where literary form, cultural norms, and institutional power intersect. Respecting the text’s complexity avoids simplistic moral judgments and acknowledges the stakes of artistic freedom amid Cold War censorship pressures.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-175",
@@ -3246,7 +3420,8 @@
       },
       "correct": "A",
       "explanation": "Narratorial omission is not mere bias; it is a strategic silence that asks readers to interpret absences ethically, recognizing how narrative choices shape meaning beyond simple partiality.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-176",
@@ -3263,7 +3438,8 @@
       },
       "correct": "A",
       "explanation": "Polyphony invites readers to engage ethically with multiple perspectives, understanding that no single voice holds absolute authority, thus complicating simplistic truth claims.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-177",
@@ -3280,7 +3456,8 @@
       },
       "correct": "A",
       "explanation": "Close reading the moments where genres collide reveals how formal hybridity unsettles normative postwar ideals, showing cultural critique embedded in narrative form rather than relying on external authorial statements.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-178",
@@ -3297,7 +3474,8 @@
       },
       "correct": "A",
       "explanation": "Readers must ethically separate paratextual influences from the text’s own voice, recognizing that marketing strategies do not equate to authorial or narratorial intent and avoiding misinterpretation.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-179",
@@ -3314,7 +3492,8 @@
       },
       "correct": "A",
       "explanation": "Foucault’s author-function shows authorship as a discursive construct shaping how texts are read, cautioning against collapsing narrator’s voice into author’s intentions as if they were identical or fully knowable.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     },
     {
       "id": "edward-gen-180",
@@ -3331,7 +3510,8 @@
       },
       "correct": "A",
       "explanation": "The tension between retrospective and present-tense narration ethically challenges readers to respect trauma’s fragmented temporality and resist reductive judgments about reliability or coherence.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "12"
     },
     {
       "id": "edward-gen-181",
@@ -3348,7 +3528,8 @@
       },
       "correct": "A",
       "explanation": "By grounding interpretation in textual evidence and critically interrogating narrative omissions, readers can resist manipulation while still building coherent, responsible readings.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "10"
     },
     {
       "id": "edward-gen-182",
@@ -3365,7 +3546,8 @@
       },
       "correct": "A",
       "explanation": "Archive theory urges readers to balance paratext and text as co-constitutive but distinct evidentiary sites, ethically recognizing contradictions as productive rather than dismissible.",
-      "faculty": "professor-edward"
+      "faculty": "professor-edward",
+      "minGrade": "11"
     }
   ]
 }

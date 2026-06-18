@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthService } from "../services/auth-service.js";
 import { FacultyService } from "../services/faculty-service.js";
+import { addLogObserver } from "../services/logger.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
 import type { Choice, Grade } from "../types.js";
@@ -18,28 +19,12 @@ import type { Choice, Grade } from "../types.js";
 type CapturedEvent = { name: string; [k: string]: unknown };
 
 const captured: CapturedEvent[] = [];
-let restoreStdout: (() => void) | null = null;
+let removeLogObserver: (() => void) | null = null;
 
 function startCapture(): void {
-  const original = process.stdout.write.bind(process.stdout);
-  // Vitest's process.stdout.write has overloaded signatures; we only
-  // care about the (chunk, ...) form that the logger uses.
-  process.stdout.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
-    const s = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-    for (const line of s.split("\n")) {
-      if (!line.startsWith("{")) continue;
-      try {
-        const obj = JSON.parse(line) as CapturedEvent;
-        if (obj && typeof obj.name === "string") captured.push(obj);
-      } catch {
-        // Not a structured log line — ignore.
-      }
-    }
-    return original(chunk as never, ...(rest as never[]));
-  }) as typeof process.stdout.write;
-  restoreStdout = () => {
-    process.stdout.write = original;
-  };
+  removeLogObserver = addLogObserver((record) => {
+    captured.push({ name: record.name, ...record.data });
+  });
 }
 
 function emittedNames(): string[] {
@@ -52,8 +37,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (restoreStdout) restoreStdout();
-  restoreStdout = null;
+  if (removeLogObserver) removeLogObserver();
+  removeLogObserver = null;
   vi.restoreAllMocks();
 });
 

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
-import type { BankedQuestion, CharacterStats, QuizState } from "../types.js";
+import type { BankedQuestion, CharacterStats, QuizState, SchoolEvent } from "../types.js";
 import type { ContentPack, PackSourceCard } from "../content/types.js";
 
 export interface AuthUserRecord {
@@ -181,6 +181,34 @@ export interface StoredMetricEventRecord {
   metadata?: Record<string, string | number | boolean | null>;
 }
 
+export interface StoredSchoolEventRecord {
+  id: string;
+  sessionId: string;
+  event: SchoolEvent;
+  occurredAt: number;
+  day: string;
+}
+
+export interface StoredSchoolEventQuery {
+  /** Inclusive lower bound on occurredAt. */
+  since?: number;
+  /** Maximum number of newest records to return. */
+  limit?: number;
+}
+
+export interface StoredSessionQuery {
+  /** Inclusive lower bound on updatedAt. */
+  since?: number;
+  /** Maximum number of newest sessions to return. */
+  limit?: number;
+}
+
+export interface StoredServiceStateRecord {
+  id: string;
+  updatedAt: number;
+  data: Record<string, unknown>;
+}
+
 /**
  * Common shape every state-store backend implements. RubyHighService talks
  * to this abstraction; the JSON-file backend (this file) and the DynamoDB
@@ -203,12 +231,15 @@ export interface StoredMetricEventRecord {
  */
 export interface StateStoreLike {
   load(): Promise<Map<string, QuizState>>;
+  loadRecentSessions?(query?: StoredSessionQuery): Promise<Map<string, QuizState>>;
   loadAuth(): Promise<AuthStoreSnapshot>;
   loadPacks(): Promise<StoredContentPackRecord[]>;
   loadTeachers(): Promise<StoredTeacherRecord[]>;
   loadDraftPacks(): Promise<StoredDraftContentPackRecord[]>;
   loadPackInstallations(): Promise<StoredPackInstallationRecord[]>;
   loadMetricEvents?(): Promise<StoredMetricEventRecord[]>;
+  loadSchoolEvents?(query?: StoredSchoolEventQuery): Promise<StoredSchoolEventRecord[]>;
+  loadServiceState?(id: string): Promise<StoredServiceStateRecord | null>;
   saveSession(state: QuizState): Promise<void>;
   saveAuthUser(user: AuthUserRecord): Promise<void>;
   saveAuthSession(session: AuthSessionRecord): Promise<void>;
@@ -217,6 +248,8 @@ export interface StateStoreLike {
   savePackInstallation(record: StoredPackInstallationRecord): Promise<void>;
   saveTeacher(record: StoredTeacherRecord): Promise<void>;
   saveMetricEvent?(record: StoredMetricEventRecord): Promise<void>;
+  saveSchoolEvent?(record: StoredSchoolEventRecord): Promise<void>;
+  saveServiceState?(record: StoredServiceStateRecord): Promise<void>;
   deletePack(ownerSessionId: string | null, packId: string): Promise<void>;
   deleteTeacher(teacherId: string): Promise<void>;
   deleteDraftPack(draftId: string): Promise<void>;
@@ -257,6 +290,8 @@ export class StateStore implements StateStoreLike {
   private draftPacks = new Map<string, StoredDraftContentPackRecord>();
   private packInstallations = new Map<string, StoredPackInstallationRecord>();
   private metricEvents = new Map<string, StoredMetricEventRecord>();
+  private schoolEvents = new Map<string, StoredSchoolEventRecord>();
+  private serviceStates = new Map<string, StoredServiceStateRecord>();
 
   // Debounced-write batching. Per-mutation calls (saveSession, saveAuthUser,
   // savePack, deleteAuthSession) all rewrite the same file, so we coalesce
@@ -282,6 +317,12 @@ export class StateStore implements StateStoreLike {
     if (!parsed) return new Map();
     this.applyParsedSnapshot(parsed);
     return new Map(this.snapshot);
+  }
+
+  async loadRecentSessions(query: StoredSessionQuery = {}): Promise<Map<string, QuizState>> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    return querySessionRecords(this.snapshot.values(), query);
   }
 
   async loadAuth(): Promise<AuthStoreSnapshot> {
@@ -323,6 +364,18 @@ export class StateStore implements StateStoreLike {
     return Array.from(this.metricEvents.values());
   }
 
+  async loadSchoolEvents(query: StoredSchoolEventQuery = {}): Promise<StoredSchoolEventRecord[]> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    return querySchoolEventRecords(this.schoolEvents.values(), query);
+  }
+
+  async loadServiceState(id: string): Promise<StoredServiceStateRecord | null> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    return this.serviceStates.get(id) ?? null;
+  }
+
   private async readFileSnapshot(): Promise<{
     sessions?: QuizState[];
     authUsers?: AuthUserRecord[];
@@ -332,6 +385,8 @@ export class StateStore implements StateStoreLike {
     draftPacks?: StoredDraftContentPackRecord[];
     packInstallations?: StoredPackInstallationRecord[];
     metricEvents?: StoredMetricEventRecord[];
+    schoolEvents?: StoredSchoolEventRecord[];
+    serviceStates?: StoredServiceStateRecord[];
   } | null> {
     try {
       const raw = await readFile(this.path, "utf8");
@@ -344,6 +399,8 @@ export class StateStore implements StateStoreLike {
           draftPacks?: StoredDraftContentPackRecord[];
           packInstallations?: StoredPackInstallationRecord[];
           metricEvents?: StoredMetricEventRecord[];
+          schoolEvents?: StoredSchoolEventRecord[];
+          serviceStates?: StoredServiceStateRecord[];
         };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -355,6 +412,8 @@ export class StateStore implements StateStoreLike {
         this.draftPacks = new Map();
         this.packInstallations = new Map();
         this.metricEvents = new Map();
+        this.schoolEvents = new Map();
+        this.serviceStates = new Map();
         return null;
       }
       throw err;
@@ -370,6 +429,8 @@ export class StateStore implements StateStoreLike {
     draftPacks?: StoredDraftContentPackRecord[];
     packInstallations?: StoredPackInstallationRecord[];
     metricEvents?: StoredMetricEventRecord[];
+    schoolEvents?: StoredSchoolEventRecord[];
+    serviceStates?: StoredServiceStateRecord[];
   }): void {
     const sessions = new Map<string, QuizState>();
     for (const s of parsed.sessions ?? []) {
@@ -465,6 +526,25 @@ export class StateStore implements StateStoreLike {
         metricEvents.set(r.id, r);
       }
     }
+    const serviceStates = new Map<string, StoredServiceStateRecord>();
+    for (const r of parsed.serviceStates ?? []) {
+      if (
+        r &&
+        typeof r.id === "string" &&
+        typeof r.updatedAt === "number" &&
+        r.data &&
+        typeof r.data === "object" &&
+        !Array.isArray(r.data)
+      ) {
+        serviceStates.set(r.id, r);
+      }
+    }
+    const schoolEvents = new Map<string, StoredSchoolEventRecord>();
+    for (const r of parsed.schoolEvents ?? []) {
+      if (isStoredSchoolEventRecord(r)) {
+        schoolEvents.set(r.id, r);
+      }
+    }
     this.snapshot = sessions;
     this.authUsers = authUsers;
     this.authSessions = authSessions;
@@ -473,6 +553,8 @@ export class StateStore implements StateStoreLike {
     this.draftPacks = draftPacks;
     this.packInstallations = packInstallations;
     this.metricEvents = metricEvents;
+    this.schoolEvents = schoolEvents;
+    this.serviceStates = serviceStates;
   }
 
   /**
@@ -539,6 +621,16 @@ export class StateStore implements StateStoreLike {
 
   saveMetricEvent(record: StoredMetricEventRecord): Promise<void> {
     this.metricEvents.set(record.id, record);
+    return this.scheduleWrite();
+  }
+
+  saveSchoolEvent(record: StoredSchoolEventRecord): Promise<void> {
+    this.schoolEvents.set(record.id, record);
+    return this.scheduleWrite();
+  }
+
+  saveServiceState(record: StoredServiceStateRecord): Promise<void> {
+    this.serviceStates.set(record.id, record);
     return this.scheduleWrite();
   }
 
@@ -653,6 +745,8 @@ export class StateStore implements StateStoreLike {
         draftPacks: Array.from(this.draftPacks.values()),
         packInstallations: Array.from(this.packInstallations.values()),
         metricEvents: Array.from(this.metricEvents.values()),
+        schoolEvents: Array.from(this.schoolEvents.values()),
+        serviceStates: Array.from(this.serviceStates.values()),
       }, null, 2), "utf8");
       await rename(tmp, this.path);
     } catch (err) {
@@ -697,6 +791,64 @@ export function isStoredMetricEventName(value: unknown): value is StoredMetricEv
     value === "error" ||
     value === "balance_sample"
   );
+}
+
+export function isStoredSchoolEventRecord(value: unknown): value is StoredSchoolEventRecord {
+  const record = value as Partial<StoredSchoolEventRecord> | null | undefined;
+  return !!(
+    record &&
+    typeof record.id === "string" &&
+    record.id &&
+    typeof record.sessionId === "string" &&
+    record.sessionId &&
+    record.event &&
+    typeof record.event.id === "string" &&
+    record.event.id &&
+    typeof record.event.kind === "string" &&
+    Number.isFinite(record.occurredAt) &&
+    Math.floor(record.occurredAt as number) >= 0 &&
+    typeof record.day === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(record.day)
+  );
+}
+
+export function querySchoolEventRecords(
+  records: Iterable<StoredSchoolEventRecord>,
+  query: StoredSchoolEventQuery = {},
+): StoredSchoolEventRecord[] {
+  const since = Number.isFinite(query.since) ? Math.floor(Number(query.since)) : null;
+  const limit = Number.isFinite(query.limit)
+    ? Math.max(0, Math.floor(Number(query.limit)))
+    : null;
+  const rows = Array.from(records)
+    .filter(isStoredSchoolEventRecord)
+    .filter((record) => since === null || record.occurredAt >= since)
+    .sort((a, b) => b.occurredAt - a.occurredAt || b.id.localeCompare(a.id));
+  return limit === null ? rows : rows.slice(0, limit);
+}
+
+export function querySessionRecords(
+  records: Iterable<QuizState>,
+  query: StoredSessionQuery = {},
+): Map<string, QuizState> {
+  const since = Number.isFinite(query.since) ? Math.floor(Number(query.since)) : null;
+  const limit = Number.isFinite(query.limit)
+    ? Math.max(0, Math.floor(Number(query.limit)))
+    : null;
+  const rows = Array.from(records)
+    .filter((state): state is QuizState =>
+      !!state &&
+      typeof state.sessionId === "string" &&
+      state.sessionId.length > 0 &&
+      Number.isFinite(Number(state.updatedAt ?? 0))
+    )
+    .filter((state) => since === null || Number(state.updatedAt ?? 0) >= since)
+    .sort((a, b) =>
+      Number(b.updatedAt ?? 0) - Number(a.updatedAt ?? 0) ||
+      b.sessionId.localeCompare(a.sessionId)
+    );
+  const selected = limit === null ? rows : rows.slice(0, limit);
+  return new Map(selected.map((state) => [state.sessionId, state]));
 }
 
 export function authUserKey(provider: AuthUserRecord["provider"], providerUserHash: string): string {

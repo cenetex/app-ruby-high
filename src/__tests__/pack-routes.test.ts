@@ -24,13 +24,25 @@ let auth: AuthService;
 let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
 
-function makeCtx(opts: { method: string; path: string; cookie?: string | null; body?: any }): PackRouteContext {
+function makeCtx(opts: {
+  method: string;
+  path: string;
+  cookie?: string | null;
+  body?: any;
+  contentTypeHeader?: string | string[] | null;
+  originHeader?: string | string[] | null;
+  callbackOrigin?: string | null;
+}): PackRouteContext {
   lastResponse = null;
   return {
     method: opts.method,
     pathname: opts.path,
+    url: new URL(`https://ruby.example.test${opts.path}`),
     res: {} as never,
     cookieHeader: opts.cookie ?? null,
+    contentTypeHeader: opts.contentTypeHeader === undefined ? "application/json" : opts.contentTypeHeader,
+    originHeader: opts.originHeader ?? null,
+    callbackUrlBuilder: (path) => `${opts.callbackOrigin ?? "https://ruby.example.test"}${path}`,
     error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { lastResponse = { status, body: data }; },
     readJsonBody: async () => opts.body ?? {},
@@ -169,6 +181,48 @@ describe("/packs/active — switch flow", () => {
     expect(lastResponse?.status).toBe(200);
     const state = ruby.getOrCreate("rh:user:test-alice");
     expect(state.activePackId).toBe("agent:alice-1");
+  });
+
+  it("rejects cross-origin pack activation before changing activePackId", async () => {
+    signInUser("alice");
+    registerPack(syntheticPack("agent:alice-1"), "rh:user:test-alice");
+
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/active",
+      cookie: "rh_session=alice",
+      originHeader: "https://evil.example",
+      body: { packId: "agent:alice-1" },
+    });
+    await handlePackRoutes(ctx, makeDeps());
+
+    expect(lastResponse).toEqual({
+      status: 403,
+      body: { error: "Pack request origin is not allowed." },
+    });
+    const state = ruby.getOrCreate("rh:user:test-alice");
+    expect(state.activePackId).toBeNull();
+  });
+
+  it("rejects non-json pack activation before changing activePackId", async () => {
+    signInUser("alice");
+    registerPack(syntheticPack("agent:alice-1"), "rh:user:test-alice");
+
+    const ctx = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/packs/active",
+      cookie: "rh_session=alice",
+      contentTypeHeader: "text/plain",
+      body: { packId: "agent:alice-1" },
+    });
+    await handlePackRoutes(ctx, makeDeps());
+
+    expect(lastResponse).toEqual({
+      status: 415,
+      body: { error: "Pack requests must be sent as JSON." },
+    });
+    const state = ruby.getOrCreate("rh:user:test-alice");
+    expect(state.activePackId).toBeNull();
   });
 });
 

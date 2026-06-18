@@ -73,6 +73,8 @@ function makeCtx(opts: {
   rawBody?: string;
   stripeSignature?: string;
   authorization?: string;
+  contentTypeHeader?: string | string[] | null;
+  originHeader?: string | string[] | null;
 }): RouteContext {
   lastResponse = null;
   return {
@@ -82,6 +84,8 @@ function makeCtx(opts: {
     runtime: null,
     res: {} as never,
     cookieHeader: opts.cookie ?? null,
+    contentTypeHeader: opts.contentTypeHeader === undefined ? "application/json" : opts.contentTypeHeader,
+    originHeader: opts.originHeader ?? null,
     stripeSignatureHeader: opts.stripeSignature ?? null,
     authorizationHeader: opts.authorization ?? null,
     callbackUrlBuilder: (path) => `http://localhost:3000${path}`,
@@ -336,6 +340,40 @@ describe("billing products", () => {
       },
     });
   });
+
+  it("rejects cross-origin welcome grants before mutating wallet state", async () => {
+    const stateKey = signInUser("welcome-origin-guard");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/welcome",
+      cookie: "rh_session=welcome-origin-guard",
+      originHeader: "https://evil.example",
+    }), deps());
+
+    expect(lastResponse).toEqual({
+      status: 403,
+      body: { error: "Billing request origin is not allowed." },
+    });
+    emptyWelcomeHallPasses(stateKey);
+  });
+
+  it("rejects non-json welcome grants before mutating wallet state", async () => {
+    const stateKey = signInUser("welcome-content-type-guard");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/welcome",
+      cookie: "rh_session=welcome-content-type-guard",
+      contentTypeHeader: "text/plain",
+    }), deps());
+
+    expect(lastResponse).toEqual({
+      status: 415,
+      body: { error: "Billing requests must be sent as JSON." },
+    });
+    emptyWelcomeHallPasses(stateKey);
+  });
 });
 
 describe("AI Access", () => {
@@ -496,6 +534,8 @@ describe("Stripe webhook", () => {
       path: "/api/apps/ruby-high/billing/stripe/webhook",
       rawBody,
       stripeSignature: signature,
+      contentTypeHeader: "text/plain",
+      originHeader: "https://stripe.example",
     }), deps());
 
     expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: true, hallPasses: 50, amount: 50 } });

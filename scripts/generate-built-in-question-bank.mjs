@@ -14,9 +14,11 @@ const FACULTY_FILTER = argValue("faculty");
 const BRIEF_CACHE_PATH = resolve(root, ".tmp", "generated-question-banks", "research-briefs.json");
 const REQUEST_TIMEOUT_MS = Number(argValue("timeout-ms") ?? 120_000);
 const DIFFICULTIES = ["easy", "medium", "hard"];
+const GRADES = ["9", "10", "11", "12"];
 const STATS = ["head", "heart", "hustle", "honor"];
 const CHOICES = ["A", "B", "C", "D"];
 const GENERATED_PROMPT_MAX = 360;
+const GENERATED_EASY_PROMPT_MAX = 320;
 const GENERATED_OPTION_MAX = 180;
 const GENERATED_EXPLANATION_MAX = 600;
 const META_OPTION_RE = /\b(all of the above|none of the above|both [a-d] and [a-d]|answers? [a-d] and [a-d])\b/i;
@@ -163,7 +165,7 @@ async function generateForFaculty(config) {
 
   const output = {
     ...parsed,
-    questions: working.slice(0, TARGET_COUNT),
+    questions: working,
   };
   await writeFile(filePath, `${JSON.stringify(output, null, 2)}\n`);
 }
@@ -238,7 +240,7 @@ async function generateBatch(args) {
     "Return only JSON. No markdown fences.",
     PROVIDER === "local" ? "Return compact minified JSON in one line. Do not add commentary, analysis, or whitespace-heavy formatting." : "",
     "Use this exact shape:",
-    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","minGrade":"10","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
     "Rules:",
     "- Questions must be answerable from the teacher research corpus below.",
     "- Avoid duplicating existing cards or simply restating a source card word-for-word.",
@@ -250,6 +252,7 @@ async function generateBatch(args) {
     `- Keep explanations under ${GENERATED_EXPLANATION_MAX} characters.`,
     "- Never use meta-options such as 'All of the above', 'None of the above', or 'Both A and B'. Every option must be a standalone answer that reads correctly in any position.",
     "- difficulty must be easy, medium, or hard.",
+    "- minGrade must be 10 for easy generated questions, 11 for medium generated questions, and 12 for hard generated questions. Freshman grade 9 is reserved for the hand-curated starter cards.",
     "- stat must be head, heart, hustle, or honor.",
     "- correct must be A, B, C, or D.",
     existingQuestionPrompt(args.existing),
@@ -457,12 +460,14 @@ function normalizeGeneratedQuestions(value, opts) {
     const subject = normalizeSubject(cleanGeneratedText(entry.subject ?? entry.topic, 80) || opts.fallbackSubject);
     const difficulty = target?.difficulty ?? cleanDifficulty(entry.difficulty ?? entry.level);
     const stat = target?.stat ?? cleanStat(entry.stat ?? entry.trait ?? entry.attribute);
+    const minGrade = cleanGrade(entry.minGrade ?? entry.minimumGrade) ?? minimumGradeForGeneratedDifficulty(difficulty);
     const explanation = boundedGeneratedText(entry.explanation ?? entry.rationale ?? entry.answer, GENERATED_EXPLANATION_MAX) || correctAnswer;
     out.push({
       id: `${opts.facultyId}-pending`,
       type: "multiple-choice",
       subject,
       difficulty,
+      minGrade,
       stat,
       prompt,
       options: optionSet.options,
@@ -518,9 +523,10 @@ function isGeneratedQuestion(config, question) {
 
 function generatedQuestionLooksUsable(question) {
   const prompt = normalizeWhitespace(question?.prompt);
-  if (!isUsableGeneratedPrompt(prompt)) return false;
+  if (!isUsableGeneratedPrompt(prompt, question?.difficulty)) return false;
   if (!CHOICES.includes(question?.correct)) return false;
   if (!question?.options || typeof question.options !== "object") return false;
+  if (!cleanGrade(question?.minGrade)) return false;
   const values = CHOICES.map((choice) => normalizeWhitespace(question.options[choice]));
   if (values.some((entry) => !entry || entry.length > GENERATED_OPTION_MAX || META_OPTION_RE.test(entry))) return false;
   if (new Set(values.map((entry) => normalizeText(entry))).size < 4) return false;
@@ -535,8 +541,9 @@ function boundedGeneratedText(value, max) {
   return text;
 }
 
-function isUsableGeneratedPrompt(prompt) {
+function isUsableGeneratedPrompt(prompt, difficulty) {
   if (!prompt || prompt.length > GENERATED_PROMPT_MAX) return false;
+  if (difficulty === "easy" && prompt.length > GENERATED_EASY_PROMPT_MAX) return false;
   if (TRAILING_FRAGMENT_RE.test(prompt)) return false;
   return /[?.!]"?[\])']?$/.test(prompt);
 }
@@ -705,6 +712,17 @@ function cleanDifficulty(value) {
 function cleanStat(value) {
   const raw = cleanGeneratedText(value, 20).toLowerCase();
   return STATS.includes(raw) ? raw : "head";
+}
+
+function cleanGrade(value) {
+  const raw = cleanGeneratedText(value, 20);
+  return GRADES.includes(raw) ? raw : null;
+}
+
+function minimumGradeForGeneratedDifficulty(difficulty) {
+  if (difficulty === "easy") return "10";
+  if (difficulty === "medium") return "11";
+  return "12";
 }
 
 function cleanChoice(value) {

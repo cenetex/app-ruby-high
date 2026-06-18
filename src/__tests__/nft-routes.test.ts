@@ -76,6 +76,9 @@ function makeCtx(opts: {
   method: string;
   path: string;
   cookie?: string | null;
+  contentTypeHeader?: string | string[] | null;
+  originHeader?: string | string[] | null;
+  callbackOrigin?: string | null;
   body?: any;
 }): RouteContext {
   lastResponse = null;
@@ -93,6 +96,9 @@ function makeCtx(opts: {
     runtime: null,
     res: res as never,
     cookieHeader: opts.cookie ?? null,
+    contentTypeHeader: opts.contentTypeHeader === undefined ? "application/json" : opts.contentTypeHeader,
+    originHeader: opts.originHeader ?? null,
+    callbackUrlBuilder: (path) => `${opts.callbackOrigin ?? "https://ruby-high.ai"}${path}`,
     error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { lastResponse = { status, body: data }; },
     readJsonBody: async () => opts.body ?? {},
@@ -306,6 +312,26 @@ describe("Hall Pass NFT routes", () => {
       status: 404,
       body: { error: "Unknown Ruby High card character." },
     });
+
+    await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/hall-pass/%E0%A4%A/1.json",
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 404,
+      body: { error: "Unknown Ruby High card character." },
+    });
+
+    await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/hall-pass/card/%E0%A4%A.json",
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 404,
+      body: { error: "Unknown Ruby High card metadata id." },
+    });
   });
 
   it("serves every canonical revealed card metadata profile", async () => {
@@ -410,6 +436,16 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.image).toBe(expectedNftImage("/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2"));
     expect(lastResponse?.body.attributes).toContainEqual({ trait_type: "State", value: "Opened" });
+
+    await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/metadata/core/pack/%E0%A4%A/123456.json",
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 404,
+      body: { error: "Unknown Ruby High pack metadata id." },
+    });
   });
 
   it("uses stable revealed metadata URIs for future card mints", () => {
@@ -571,6 +607,47 @@ describe("Hall Pass NFT routes", () => {
     expect(lastHeaders["cache-control"]).toBe("no-cache");
   });
 
+  it("rejects cross-origin pack opens before mutating wallet state", async () => {
+    const stateKey = signInUser("open-pack-origin-guard");
+    const updateOpenedPack = vi.fn(async () => ({
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      signature: "5mPackOpenedUpdateSignature11111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5&opened=1",
+    }));
+    restorePackOpenedUpdater = setCorePackNftOpenedUpdaterForTest(updateOpenedPack);
+    const pack = ruby.recordHallPassPackMint(stateKey, {
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      ownerWalletAddress: OWNER,
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      mintSignature: "5mPackMintSignature111111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5",
+      idempotencyKey: "solana:spl-token-transfer:open-pack-origin-guard",
+      source: "solana",
+    }).pack!;
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/open-pack",
+      cookie: "rh_session=open-pack-origin-guard",
+      originHeader: "https://evil.example",
+      body: { packId: pack.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 403,
+      body: { error: "NFT request origin is not allowed." },
+    });
+    expect(updateOpenedPack).not.toHaveBeenCalled();
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
+      id: pack.id,
+      status: "active",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards ?? []).toHaveLength(0);
+  });
+
   it("imports transferred Core pack NFTs owned by the connected wallet", async () => {
     const stateKey = signInUser("sync-pack");
     const transferredAsset = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
@@ -689,6 +766,36 @@ describe("Hall Pass NFT routes", () => {
     });
   });
 
+  it("rate limits repeated wallet pack syncs before calling the on-chain fetcher", async () => {
+    signInUser("sync-pack-rate-limit");
+    const fetchOwned = vi.fn(async () => [] as OwnedCorePackNft[]);
+    restorePackFetcher = setOwnedCorePackNftFetcherForTest(fetchOwned);
+
+    for (let i = 0; i < 30; i += 1) {
+      await handleNftRoutes(makeCtx({
+        method: "POST",
+        path: "/api/apps/ruby-high/nft/sync-packs",
+        cookie: "rh_session=sync-pack-rate-limit",
+        body: { ownerWalletAddress: OWNER },
+      }), deps());
+      expect(lastResponse?.status).toBe(200);
+    }
+
+    await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/sync-packs",
+      cookie: "rh_session=sync-pack-rate-limit",
+      body: { ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(lastResponse).toEqual({
+      status: 429,
+      body: { error: "Too many NFT requests. Try again shortly." },
+    });
+    expect(lastHeaders["retry-after"]).toBe("10");
+    expect(fetchOwned).toHaveBeenCalledTimes(30);
+  });
+
   it("prepares one owner-paid card mint without recording the reveal", async () => {
     const stateKey = signInUser("alice");
     const grant = ruby.grantHallPassCards(stateKey, {
@@ -736,6 +843,38 @@ describe("Hall Pass NFT routes", () => {
       pendingMintPreparedAt: expect.any(Number),
     });
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) => tx.kind === "hall-pass-card-mint")).toBe(false);
+  });
+
+  it("rejects non-json card mint preparation before writing pending mint state", async () => {
+    const stateKey = signInUser("mint-prepare-content-type");
+    const grant = ruby.grantHallPassCards(stateKey, {
+      cardCount: 1,
+      idempotencyKey: "stripe:checkout:mint_prepare_content_type",
+      source: "stripe",
+    });
+    const card = grant.cards![0]!;
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/mint-card-prepare",
+      cookie: "rh_session=mint-prepare-content-type",
+      contentTypeHeader: "text/plain",
+      body: { cardId: card.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 415,
+      body: { error: "NFT requests must be sent as JSON." },
+    });
+    const recorded = ruby.getOrCreate(stateKey).wallet.hallPassCards?.[0];
+    expect(recorded).toMatchObject({ id: card.id });
+    expect(recorded).not.toHaveProperty("mintAddress");
+    expect(recorded).not.toHaveProperty("mintSignature");
+    expect(recorded).not.toHaveProperty("metadataUri");
+    expect(recorded).not.toHaveProperty("pendingMintAddress");
+    expect(recorded).not.toHaveProperty("pendingMintMetadataUri");
+    expect(recorded).not.toHaveProperty("pendingMintTransactionHash");
   });
 
   it("accepts the prepared durable metadata URI for owner-paid card mint submission", async () => {

@@ -23,6 +23,11 @@ const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "localhost";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
 const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE) ?? `http://${HOST}:${PORT}`;
+const GRADES = ["9", "10", "11", "12"];
+const CLASS_QUESTIONS_PER_DAY = 3;
+const GRADUATION_ROOM_TARGETS = { "9": 1, "10": 2, "11": 3, "12": 4 };
+const GRADUATION_DAYS = { "9": 1, "10": 1, "11": 2, "12": 3 };
+const CORE_GRADUATION_FACULTY = ["ruby", "sally-science", "professor-edward"];
 
 const stateStore = await createStateStore({ jsonPath: STATE_PATH ?? undefined });
 console.log(`[ruby-high] state store: ${stateStore.describe()}`);
@@ -157,7 +162,94 @@ function healthPayload() {
     app: "ruby-high",
     build: process.env.RUBY_HIGH_BUILD ?? "dev",
     state: stateStore?.describe?.() ?? "starting",
+    curriculum: curriculumHealthPayload(),
     t: Date.now(),
+  };
+}
+
+function curriculumHealthPayload() {
+  if (!facultySvc?.faculty || !facultySvc?.bank) return null;
+  const byFaculty = {};
+  for (const faculty of facultySvc.faculty()) {
+    byFaculty[faculty.id] = facultySvc.bank(faculty.id)?.questions.length ?? 0;
+  }
+  const totalQuestions = Object.values(byFaculty).reduce((sum, count) => sum + count, 0);
+  return {
+    pack: "ruby-high-original",
+    totalQuestions,
+    byFaculty,
+  };
+}
+
+function nextGradeAfter(grade) {
+  const index = GRADES.indexOf(grade);
+  return index >= 0 && index < GRADES.length - 1 ? GRADES[index + 1] : null;
+}
+
+function classDateForOffset(offset) {
+  const date = new Date(Date.UTC(2026, 0, 1 + offset));
+  return date.toISOString().slice(0, 10);
+}
+
+function graduationFacultyIdsForState(state, grade) {
+  const available = new Set((state.contentPack?.faculty ?? facultySvc.faculty()).map((faculty) => faculty.id));
+  const selected = CORE_GRADUATION_FACULTY.filter((facultyId) => available.has(facultyId));
+  for (const faculty of state.contentPack?.faculty ?? facultySvc.faculty()) {
+    if (!selected.includes(faculty.id)) selected.push(faculty.id);
+  }
+  return selected.slice(0, Math.min(GRADUATION_ROOM_TARGETS[grade] ?? 1, selected.length || 1));
+}
+
+function completeCurrentGradeForDev(sessionId) {
+  const state = rubySvc.getOrCreate(sessionId);
+  const ch = state.character;
+  const grade = state.currentGrade;
+  if (!ch || !grade) {
+    const err = new Error("No active character grade to complete.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const facultyIds = graduationFacultyIdsForState(state, grade);
+  const requiredDays = GRADUATION_DAYS[grade] ?? 1;
+  const now = Date.now();
+  ch.dailyClasses = ch.dailyClasses ?? {};
+  ch.graduationClassrooms = ch.graduationClassrooms ?? {};
+  ch.graduationClassrooms[grade] = facultyIds;
+  for (const facultyId of facultyIds) {
+    for (let day = 0; day < requiredDays; day += 1) {
+      const date = classDateForOffset(GRADES.indexOf(grade) * 10 + day);
+      ch.dailyClasses[`${grade}:${facultyId}:${date}`] = {
+        grade,
+        facultyId,
+        date,
+        status: "complete",
+        questionCount: CLASS_QUESTIONS_PER_DAY,
+        correctCount: CLASS_QUESTIONS_PER_DAY,
+        scoreTotal: CLASS_QUESTIONS_PER_DAY * 100,
+        scoreMax: CLASS_QUESTIONS_PER_DAY * 100,
+        letterGrade: "A",
+        completedAt: now,
+        updatedAt: now,
+      };
+    }
+  }
+  ch.streak = { grade, count: requiredDays, lastDate: classDateForOffset(GRADES.indexOf(grade) * 10 + requiredDays - 1) };
+  ch.essayCompleted = true;
+  ch.pendingGraduation = {
+    grade,
+    readyAt: now,
+    summary: { correct: requiredDays, total: requiredDays },
+  };
+
+  const completed = rubySvc.completeGraduation(sessionId, { kind: "advantage" });
+  return {
+    ok: true,
+    completedGrade: grade,
+    nextGrade: nextGradeAfter(grade),
+    currentGrade: completed.currentGrade,
+    graduated: !completed.currentGrade,
+    yearbookCount: completed.character?.yearbook?.length ?? completed.graduatedCharacter?.yearbook?.length ?? 0,
   };
 }
 
@@ -226,6 +318,21 @@ const server = createServer(async (req, res) => {
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ ok: true, roster }));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/dev/tick-grade") {
+    try {
+      const sessionId = authSvc.stateKeyForCookie(req.headers.cookie ?? null);
+      const payload = completeCurrentGradeForDev(sessionId);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(payload));
+    } catch (err) {
+      res.statusCode = err.statusCode ?? 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    }
     return;
   }
 

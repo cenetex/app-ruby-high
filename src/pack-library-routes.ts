@@ -55,6 +55,9 @@ export interface PackLibraryRouteContext {
   cookieHeader?: string | null;
   apiKeyHeader?: string | null;
   clientIp?: string | null;
+  contentTypeHeader?: string | string[] | null;
+  originHeader?: string | string[] | null;
+  callbackUrlBuilder?: (path: string) => string;
   error: (response: unknown, message: string, status?: number) => void;
   json: (response: unknown, data: unknown, status?: number) => void;
   readJsonBody: () => Promise<unknown>;
@@ -81,11 +84,64 @@ const EMPTY_DRAFT_CLEANUP_LIMIT = readPositiveInt(process.env.RUBY_HIGH_EMPTY_DR
 const MORE_QUESTIONS_COUNT = moreQuestionsCount();
 const PACK_SEARCH_LIMIT = 24;
 const MATERIALS_URL_LIMITER = new TokenBucket(12, 1 / 10);
+const PACK_REVIEW_LIMITER = new TokenBucket(8, 1 / 60);
 const MAX_MATERIAL_URL_REDIRECTS = 5;
 const DEFAULT_MATERIAL_URL_HOSTS = ["raw.githubusercontent.com", "gist.githubusercontent.com"] as const;
 type PackLibrarySource = "official" | "creator" | "imported";
 const GENERATED_DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard"] as const;
 const GENERATED_STATS: readonly QuestionStat[] = ["head", "heart", "hustle", "honor"] as const;
+
+function decodeRouteSegment(ctx: PackLibraryRouteContext, value: string, label = "Route id"): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    ctx.error(ctx.res, `${label} is malformed.`, 400);
+    return null;
+  }
+}
+
+function firstHeader(value: string | string[] | null | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+function packLibraryOriginAllowed(ctx: PackLibraryRouteContext): boolean {
+  const origin = firstHeader(ctx.originHeader);
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const candidates = [
+      ctx.callbackUrlBuilder ? ctx.callbackUrlBuilder("/") : null,
+      ctx.url?.origin ?? null,
+    ].filter(Boolean) as string[];
+    if (candidates.length === 0) return true;
+    return candidates.some((candidate) => {
+      const candidateUrl = new URL(candidate);
+      return candidateUrl.origin === originUrl.origin
+        || (originUrl.protocol === "https:" && candidateUrl.host === originUrl.host);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function packLibraryRequestLooksLikeJson(ctx: PackLibraryRouteContext): boolean {
+  const contentType = firstHeader(ctx.contentTypeHeader).toLowerCase();
+  return !contentType || contentType.startsWith("application/json");
+}
+
+function rejectBadMutationRequest(ctx: PackLibraryRouteContext): boolean {
+  if (ctx.method === "GET" || ctx.method === "HEAD") return false;
+  if (!packLibraryRequestLooksLikeJson(ctx)) {
+    ctx.error(ctx.res, "Content pack requests must be sent as JSON.", 415);
+    return true;
+  }
+  if (!packLibraryOriginAllowed(ctx)) {
+    ctx.error(ctx.res, "Content pack request origin is not allowed.", 403);
+    return true;
+  }
+  return false;
+}
 
 interface QuestionBalanceTarget {
   difficulty: Difficulty;
@@ -140,16 +196,22 @@ export async function handlePackLibraryRoutes(
     const shareSub = ctx.pathname.slice(PACK_SHARE_PREFIX.length) || "/";
     const shareMatch = shareSub.match(/^\/([^/]+)$/);
     const reviewMatch = shareSub.match(/^\/([^/]+)\/review$/);
+    if (reviewMatch?.[1] && rejectBadMutationRequest(ctx)) return true;
     if (ctx.method === "GET" && shareMatch?.[1]) {
-      return await handlePackSharePage(ctx, deps, shareMatch[1]);
+      const packId = decodeRouteSegment(ctx, shareMatch[1], "Pack id");
+      if (!packId) return true;
+      return await handlePackSharePage(ctx, deps, packId);
     }
     if (ctx.method === "POST" && reviewMatch?.[1]) {
-      return await handlePackReview(ctx, deps, reviewMatch[1]);
+      const packId = decodeRouteSegment(ctx, reviewMatch[1], "Pack id");
+      if (!packId) return true;
+      return await handlePackReview(ctx, deps, packId);
     }
     return false;
   }
 
   if (!isLibrary && !isDraft) return false;
+  if (rejectBadMutationRequest(ctx)) return true;
 
   const token = deps.auth.parseSessionToken(ctx.cookieHeader);
   const record = deps.auth.resolve(token);
@@ -185,7 +247,8 @@ export async function handlePackLibraryRoutes(
 
     const editDraftMatch = sub.match(/^\/([^/]+)\/edit-draft$/);
     if (ctx.method === "POST" && editDraftMatch?.[1]) {
-      const packId = decodeURIComponent(editDraftMatch[1]);
+      const packId = decodeRouteSegment(ctx, editDraftMatch[1], "Pack id");
+      if (!packId) return true;
       try {
         const draft = await ensurePublishedEditDraft({ ruby: deps.ruby, record, sessionId, packId });
         ctx.json(ctx.res, { ok: true, draft: draftDetail(draft) });
@@ -199,7 +262,8 @@ export async function handlePackLibraryRoutes(
 
     const installMatch = sub.match(/^\/([^/]+)\/install$/);
     if (ctx.method === "POST" && installMatch?.[1]) {
-      const packId = decodeURIComponent(installMatch[1]);
+      const packId = decodeRouteSegment(ctx, installMatch[1], "Pack id");
+      if (!packId) return true;
       const body = await readBody(ctx);
       try {
         const enabled = bodyValue(body, "enabled") !== false;
@@ -214,7 +278,8 @@ export async function handlePackLibraryRoutes(
 
     const uninstallMatch = sub.match(/^\/([^/]+)\/uninstall$/);
     if ((ctx.method === "POST" || ctx.method === "DELETE") && uninstallMatch?.[1]) {
-      const packId = decodeURIComponent(uninstallMatch[1]);
+      const packId = decodeRouteSegment(ctx, uninstallMatch[1], "Pack id");
+      if (!packId) return true;
       try {
         await uninstallPack({ ruby: deps.ruby, userId: record.userId, sessionId, packId });
         ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
@@ -227,7 +292,8 @@ export async function handlePackLibraryRoutes(
 
     const activeMatch = sub.match(/^\/([^/]+)\/active$/);
     if (ctx.method === "POST" && activeMatch?.[1]) {
-      const packId = decodeURIComponent(activeMatch[1]);
+      const packId = decodeRouteSegment(ctx, activeMatch[1], "Pack id");
+      if (!packId) return true;
       try {
         await setGuestOverride({ ruby: deps.ruby, userId: record.userId, sessionId, packId });
         ctx.json(ctx.res, await libraryPayload(deps.ruby, record, sessionId));
@@ -240,7 +306,8 @@ export async function handlePackLibraryRoutes(
 
     const deletePackMatch = sub.match(/^\/([^/]+)$/);
     if (ctx.method === "DELETE" && deletePackMatch?.[1]) {
-      const packId = decodeURIComponent(deletePackMatch[1]);
+      const packId = decodeRouteSegment(ctx, deletePackMatch[1], "Pack id");
+      if (!packId) return true;
       try {
         const deleted = await deleteOwnedPublishedPack({ ruby: deps.ruby, record, sessionId, packId });
         ctx.json(ctx.res, deletedPublishedPackPayload(deps.ruby, sessionId, deleted));
@@ -276,14 +343,18 @@ export async function handlePackLibraryRoutes(
 
   const draftIdMatch = sub.match(/^\/([^/]+)$/);
   if (ctx.method === "GET" && draftIdMatch?.[1]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(draftIdMatch[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, draftIdMatch[1], "Draft id");
+    if (!draftId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     ctx.json(ctx.res, { draft: draftDetail(draft) });
     return true;
   }
 
   if (ctx.method === "PATCH" && draftIdMatch?.[1]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(draftIdMatch[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, draftIdMatch[1], "Draft id");
+    if (!draftId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     const body = await readBody(ctx);
     const updated: StoredDraftContentPackRecord = {
@@ -299,7 +370,9 @@ export async function handlePackLibraryRoutes(
   }
 
   if (ctx.method === "DELETE" && draftIdMatch?.[1]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(draftIdMatch[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, draftIdMatch[1], "Draft id");
+    if (!draftId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     await deps.ruby.deleteDraftPackRecord(draft.id);
     ctx.json(ctx.res, deletedDraftPackPayload(deps.ruby, sessionId, draft.id));
@@ -308,7 +381,9 @@ export async function handlePackLibraryRoutes(
 
   const teachersPath = sub.match(/^\/([^/]+)\/teachers$/);
   if (ctx.method === "POST" && teachersPath?.[1]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(teachersPath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, teachersPath[1], "Draft id");
+    if (!draftId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     const body = await readBody(ctx);
     try {
@@ -354,9 +429,11 @@ export async function handlePackLibraryRoutes(
 
   const courseGenerateStatusPath = sub.match(/^\/([^/]+)\/course\/generate\/([^/]+)$/);
   if (ctx.method === "GET" && courseGenerateStatusPath?.[1] && courseGenerateStatusPath?.[2]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(courseGenerateStatusPath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, courseGenerateStatusPath[1], "Draft id");
+    const jobId = decodeRouteSegment(ctx, courseGenerateStatusPath[2], "Job id");
+    if (!draftId || !jobId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
-    const jobId = decodeURIComponent(courseGenerateStatusPath[2]);
     const job = courseGenerationJobs.get(jobId);
     if (!job || job.draftId !== draft.id || job.ownerUserId !== record.userId) {
       ctx.error(ctx.res, "Course generation status expired. Reopen the draft to see any saved changes.", 404);
@@ -368,7 +445,9 @@ export async function handlePackLibraryRoutes(
 
   const courseGeneratePath = sub.match(/^\/([^/]+)\/course\/generate$/);
   if (ctx.method === "POST" && courseGeneratePath?.[1]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(courseGeneratePath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, courseGeneratePath[1], "Draft id");
+    if (!draftId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     const body = await readBody(ctx);
     const materials = bodyString(body, "materials") || bodyString(body, "courseMaterials") || bodyString(body, "markdown") || bodyString(body, "text");
@@ -436,13 +515,16 @@ export async function handlePackLibraryRoutes(
 
   const teacherPath = sub.match(/^\/([^/]+)\/teachers\/([^/]+)$/);
   if (ctx.method === "PATCH" && teacherPath?.[1] && teacherPath?.[2]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(teacherPath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, teacherPath[1], "Draft id");
+    const teacherId = decodeRouteSegment(ctx, teacherPath[2], "Teacher id");
+    if (!draftId || !teacherId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     const body = await readBody(ctx);
     try {
-      const updated = updateDraftTeacher(draft, decodeURIComponent(teacherPath[2]), body);
+      const updated = updateDraftTeacher(draft, teacherId, body);
       await deps.ruby.saveDraftPackRecord(updated);
-      const teacher = updated.teachers.find((entry) => entry.id === decodeURIComponent(teacherPath[2]));
+      const teacher = updated.teachers.find((entry) => entry.id === teacherId);
       ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(teacher) : null });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
@@ -451,10 +533,13 @@ export async function handlePackLibraryRoutes(
   }
 
   if (ctx.method === "DELETE" && teacherPath?.[1] && teacherPath?.[2]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(teacherPath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, teacherPath[1], "Draft id");
+    const teacherId = decodeRouteSegment(ctx, teacherPath[2], "Teacher id");
+    if (!draftId || !teacherId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     try {
-      const updated = deleteDraftTeacher(draft, decodeURIComponent(teacherPath[2]));
+      const updated = deleteDraftTeacher(draft, teacherId);
       await deps.ruby.saveDraftPackRecord(updated);
       ctx.json(ctx.res, { ok: true, draft: draftDetail(updated) });
     } catch (err) {
@@ -465,7 +550,10 @@ export async function handlePackLibraryRoutes(
 
   const materialsUrlPath = sub.match(/^\/([^/]+)\/teachers\/([^/]+)\/materials\/from-url$/);
   if (ctx.method === "POST" && materialsUrlPath?.[1] && materialsUrlPath?.[2]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(materialsUrlPath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, materialsUrlPath[1], "Draft id");
+    const teacherId = decodeRouteSegment(ctx, materialsUrlPath[2], "Teacher id");
+    if (!draftId || !teacherId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     const rlKey = packLibraryRateKey(ctx, token);
     if (!MATERIALS_URL_LIMITER.take(rlKey)) {
@@ -476,12 +564,12 @@ export async function handlePackLibraryRoutes(
     try {
       const sourceUrl = normalizeMarkdownSourceUrl(bodyString(body, "url"));
       const materials = await fetchMarkdownMaterials(sourceUrl);
-      const updated = updateDraftTeacher(draft, decodeURIComponent(materialsUrlPath[2]), {
+      const updated = updateDraftTeacher(draft, teacherId, {
         materials,
         materialSourceUrl: sourceUrl,
       });
       await deps.ruby.saveDraftPackRecord(updated);
-      const teacher = updated.teachers.find((entry) => entry.id === decodeURIComponent(materialsUrlPath[2]));
+      const teacher = updated.teachers.find((entry) => entry.id === teacherId);
       ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(teacher) : null });
     } catch (err) {
       log.error("pack-draft.materials-from-url-failed", err, { userId: record.userId });
@@ -492,7 +580,10 @@ export async function handlePackLibraryRoutes(
 
   const generatePath = sub.match(/^\/([^/]+)\/teachers\/([^/]+)\/questions\/generate$/);
   if (ctx.method === "POST" && generatePath?.[1] && generatePath?.[2]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(generatePath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, generatePath[1], "Draft id");
+    const teacherId = decodeRouteSegment(ctx, generatePath[2], "Teacher id");
+    if (!draftId || !teacherId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     const body = await readBody(ctx);
     const credential = resolveQuestionGenerationCredential(ctx, deps.ruby, sessionId);
@@ -500,7 +591,6 @@ export async function handlePackLibraryRoutes(
       ctx.error(ctx.res, openRouterGenerationRequiredMessage("generating questions"), 401);
       return true;
     }
-    const teacherId = decodeURIComponent(generatePath[2]);
     const hallPassCost = credential.hosted ? QUESTION_GENERATION_HALL_PASS_COST : 0;
     const requestId = cleanClientRequestId(bodyString(body, "requestId")) || String(Date.now());
     const spendKey = `question-generation:${sessionId}:${draft.id}:${teacherId}:${requestId}`;
@@ -630,16 +720,20 @@ export async function handlePackLibraryRoutes(
 
   const questionDeletePath = sub.match(/^\/([^/]+)\/teachers\/([^/]+)\/questions\/([^/]+)$/);
   if (ctx.method === "DELETE" && questionDeletePath?.[1] && questionDeletePath?.[2] && questionDeletePath?.[3]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(questionDeletePath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, questionDeletePath[1], "Draft id");
+    const teacherId = decodeRouteSegment(ctx, questionDeletePath[2], "Teacher id");
+    const questionId = decodeRouteSegment(ctx, questionDeletePath[3], "Question id");
+    if (!draftId || !teacherId || !questionId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     try {
       const updated = deleteDraftQuestion(
         draft,
-        decodeURIComponent(questionDeletePath[2]),
-        decodeURIComponent(questionDeletePath[3]),
+        teacherId,
+        questionId,
       );
       await deps.ruby.saveDraftPackRecord(updated);
-      const teacher = updated.teachers.find((entry) => entry.id === decodeURIComponent(questionDeletePath[2]));
+      const teacher = updated.teachers.find((entry) => entry.id === teacherId);
       ctx.json(ctx.res, { ok: true, draft: draftDetail(updated), teacher: teacher ? teacherDetail(teacher) : null });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), clientErrorStatus(err));
@@ -649,7 +743,9 @@ export async function handlePackLibraryRoutes(
 
   const publishPath = sub.match(/^\/([^/]+)\/publish$/);
   if (ctx.method === "POST" && publishPath?.[1]) {
-    const draft = await requireDraft(deps.ruby, record, decodeURIComponent(publishPath[1]), ctx);
+    const draftId = decodeRouteSegment(ctx, publishPath[1], "Draft id");
+    if (!draftId) return true;
+    const draft = await requireDraft(deps.ruby, record, draftId, ctx);
     if (!draft) return true;
     try {
       const pack = packFromDraft(draft);
@@ -3121,6 +3217,7 @@ async function handlePackSharePage(
   const subjects = [...new Set(p.faculty.flatMap((f) => f.subjects ?? []))];
 
   if (format === "json") {
+    (ctx.res as { setHeader?: (name: string, value: string) => void }).setHeader?.("Cache-Control", "no-store");
     ctx.json(ctx.res, {
       ok: true,
       pack: {
@@ -3208,7 +3305,10 @@ async function handlePackSharePage(
 </html>`;
 
   const res = ctx.res as { writeHead: (code: number, headers: Record<string, string>) => void; end: (body: string) => void };
-  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
   res.end(html);
   return true;
 }
@@ -3222,6 +3322,11 @@ async function handlePackReview(
   const record = deps.auth.resolve(token);
   if (!record || !token) {
     ctx.error(ctx.res, "Sign in to review packs.", 401);
+    return true;
+  }
+  const rlKey = packLibraryRateKey(ctx, token);
+  if (!PACK_REVIEW_LIMITER.take(rlKey)) {
+    reject429(ctx, PACK_REVIEW_LIMITER.retryAfterSeconds(rlKey));
     return true;
   }
   const body = await readBody(ctx);

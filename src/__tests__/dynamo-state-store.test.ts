@@ -389,6 +389,7 @@ describe("DynamoStateStore", () => {
   });
 
   it("saves and loads auth users/sessions in separate Dynamo items", async () => {
+    const expiresAt = Date.now() + 400_000;
     await store.saveSession(blankState("rh:user:state"));
     await store.saveAuthUser({
       userId: "usr_1",
@@ -401,14 +402,14 @@ describe("DynamoStateStore", () => {
       token: "token-1",
       userId: "usr_1",
       createdAt: 300,
-      expiresAt: 400_000,
+      expiresAt,
     });
 
     const snapshot = fake.snapshot();
     expect(snapshot.get("auth:user:openrouter:hash-1")?.authUser).toBeDefined();
     const sessionItem = snapshot.get("auth:session:token-1")!;
     expect(sessionItem.authSession).toBeDefined();
-    expect(sessionItem.expiresAt).toBe(400);
+    expect(sessionItem.expiresAt).toBe(Math.floor(expiresAt / 1000));
 
     const auth = await store.loadAuth();
     expect(auth.users.map((u) => u.userId)).toEqual(["usr_1"]);
@@ -457,6 +458,166 @@ describe("DynamoStateStore", () => {
     const loadedSessions = await store.load();
     expect(loadedSessions.has("rh:user:state")).toBe(true);
     expect(loadedSessions.has("metric-event:1970-01-01:evt-1")).toBe(false);
+  });
+
+  it("saves and loads durable school events in separate Dynamo items", async () => {
+    await store.saveSession(blankState("rh:user:state"));
+    await store.saveSchoolEvent({
+      id: "school:event:dynamo",
+      sessionId: "rh:user:state",
+      occurredAt: 123_000,
+      day: "1970-01-01",
+      event: {
+        id: "school:event:dynamo",
+        kind: "comic.page-unlocked",
+        at: 123_000,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "first-bell-dynamo",
+        pageNumber: 6,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Dynamo page",
+      },
+    });
+
+    const snapshot = fake.snapshot();
+    const item = snapshot.get("school-event:1970-01-01:school%3Aevent%3Adynamo")!;
+    expect(item.schoolEvent).toMatchObject({
+      id: "school:event:dynamo",
+      sessionId: "rh:user:state",
+      event: expect.objectContaining({ label: "Dynamo page" }),
+    });
+    expect(item.expiresAt).toBeGreaterThan(0);
+
+    const events = await store.loadSchoolEvents();
+    expect(events).toEqual([expect.objectContaining({
+      id: "school:event:dynamo",
+      sessionId: "rh:user:state",
+    })]);
+    const loadedSessions = await store.load();
+    expect(loadedSessions.has("rh:user:state")).toBe(true);
+    expect(loadedSessions.has("school-event:1970-01-01:school%3Aevent%3Adynamo")).toBe(false);
+  });
+
+  it("filters expired Dynamo TTL items before loading durable school events", async () => {
+    await store.saveSchoolEvent({
+      id: "school:event:fresh",
+      sessionId: "rh:user:fresh",
+      occurredAt: 200,
+      day: "1970-01-01",
+      event: {
+        id: "school:event:fresh",
+        kind: "comic.page-unlocked",
+        at: 200,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "fresh",
+        pageNumber: 7,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Fresh page",
+      },
+    });
+    await fake.send(new PutCommand({
+      TableName: "ruby-high-test",
+      Item: {
+        pk: "school-event:1970-01-01:school%3Aevent%3Aexpired",
+        schoolEvent: {
+          id: "school:event:expired",
+          sessionId: "rh:user:expired",
+          occurredAt: Date.now(),
+          day: "1970-01-01",
+          event: {
+            id: "school:event:expired",
+            kind: "comic.page-unlocked",
+            at: Date.now(),
+            faculty: "ruby",
+            grade: "10",
+            issueId: "first-bell",
+            pageId: "expired",
+            pageNumber: 8,
+            reason: "teacher-class-aced",
+            sourceId: "teacher:ruby:grade:10",
+            label: "Expired page",
+          },
+        },
+        updatedAt: Date.now(),
+        expiresAt: 1,
+      },
+    }));
+
+    const events = await store.loadSchoolEvents({ since: 0, limit: 10 });
+
+    expect(events.map((event) => event.id)).toEqual(["school:event:fresh"]);
+  });
+
+  it("queries durable school events by time and limit", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await store.saveSchoolEvent({
+        id: `school:event:dynamo:${i}`,
+        sessionId: "rh:user:state",
+        occurredAt: 100 + i,
+        day: "1970-01-01",
+        event: {
+          id: `school:event:dynamo:${i}`,
+          kind: "comic.page-unlocked",
+          at: 100 + i,
+          faculty: "ruby",
+          grade: "10",
+          issueId: "first-bell",
+          pageId: `first-bell-dynamo-${i}`,
+          pageNumber: i + 1,
+          reason: "teacher-class-aced",
+          sourceId: "teacher:ruby:grade:10",
+          label: `Dynamo page ${i}`,
+        },
+      });
+    }
+
+    const events = await store.loadSchoolEvents({ since: 102, limit: 2 });
+
+    expect(events.map((event) => event.id)).toEqual([
+      "school:event:dynamo:4",
+      "school:event:dynamo:3",
+    ]);
+  });
+
+  it("saves and loads generic service state in a separate Dynamo item", async () => {
+    await store.saveSession(blankState("rh:user:state"));
+    await store.saveServiceState({
+      id: "svc:test",
+      updatedAt: 456,
+      data: {
+        version: 1,
+        lastRunAt: 123,
+      },
+    });
+
+    const snapshot = fake.snapshot();
+    expect(snapshot.get("service-state:svc%3Atest")?.serviceState).toEqual({
+      id: "svc:test",
+      updatedAt: 456,
+      data: {
+        version: 1,
+        lastRunAt: 123,
+      },
+    });
+
+    await expect(store.loadServiceState("svc:test")).resolves.toEqual({
+      id: "svc:test",
+      updatedAt: 456,
+      data: {
+        version: 1,
+        lastRunAt: 123,
+      },
+    });
+    await expect(store.loadServiceState("svc:missing")).resolves.toBeNull();
+    const loadedSessions = await store.load();
+    expect(loadedSessions.has("rh:user:state")).toBe(true);
+    expect(loadedSessions.has("service-state:svc%3Atest")).toBe(false);
   });
 
   it("saves and loads imported content packs in separate Dynamo items", async () => {

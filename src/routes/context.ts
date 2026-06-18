@@ -16,8 +16,10 @@ export interface RouteContext {
   /** Raw browser-local visitor id header. Stored only after server-side hashing. */
   visitorHeader?: string | string[] | null;
   /** Raw value of the `X-Openrouter-Key` header, if the client sent one.
-   *  This is the OpenRouter API key - clients keep it in localStorage and
-   *  attach it to every LLM-touching request. The server never persists it. */
+   *  This is the browser-owned OpenRouter API key. The viewer defaults to
+   *  sessionStorage, honors localStorage only after explicit persistence
+   *  opt-in, and attaches the key to same-origin LLM-touching requests. The
+   *  server never persists it. */
   apiKeyHeader?: string | null;
   /** Builds an absolute callback URL for OAuth redirects. */
   callbackUrlBuilder?: (path: string) => string;
@@ -39,6 +41,9 @@ export interface RouteContext {
    *  304 Not Modified when the client's cached ETag matches. Optional - if
    *  absent, assets always serve the full body (correct, just not cached). */
   ifNoneMatch?: string | null;
+  /** Raw Last-Event-ID request header from EventSource reconnects. SSE
+   *  routes use it to resume after the last event a browser observed. */
+  lastEventIdHeader?: string | string[] | null;
   /** Raw Accept-Encoding request header. Used to compress large viewer HTML. */
   acceptEncoding?: string | string[] | null;
 }

@@ -4,6 +4,7 @@
 // enough metadata to grep on.
 
 const buildId = process.env.RUBY_HIGH_BUILD?.slice(0, 12) ?? "dev";
+const quietStdout = truthyEnv(process.env.RUBY_HIGH_QUIET_LOGS);
 
 interface LogMetric {
   count: number;
@@ -22,13 +23,26 @@ export interface LogSinkRecord {
 const startedAt = new Date().toISOString();
 const metrics = new Map<string, LogMetric>();
 let logSink: ((record: LogSinkRecord) => void | Promise<void>) | null = null;
+const logObservers = new Set<(record: LogSinkRecord) => void | Promise<void>>();
 let emittingToSink = false;
+
+function truthyEnv(value: string | undefined): boolean {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
 
 export function setLogSink(sink: ((record: LogSinkRecord) => void | Promise<void>) | null): () => void {
   const previous = logSink;
   logSink = sink;
   return () => {
     if (logSink === sink) logSink = previous;
+  };
+}
+
+export function addLogObserver(observer: (record: LogSinkRecord) => void | Promise<void>): () => void {
+  logObservers.add(observer);
+  return () => {
+    logObservers.delete(observer);
   };
 }
 
@@ -41,6 +55,16 @@ function recordMetric(level: "event" | "error", name: string, ts: string): void 
   }
   existing.count += 1;
   existing.lastAt = ts;
+}
+
+function reportSinkFailure(err: unknown): void {
+  process.stderr.write(JSON.stringify({
+    ts: new Date().toISOString(),
+    level: "error",
+    build: buildId,
+    name: "logger.sink-failed",
+    message: err instanceof Error ? err.message : String(err),
+  }) + "\n");
 }
 
 function emit(level: "event" | "error", name: string, data: Record<string, unknown>): void {
@@ -60,27 +84,33 @@ function emit(level: "event" | "error", name: string, data: Record<string, unkno
   const line = JSON.stringify({
     ...payload,
   });
+  const record: LogSinkRecord = {
+    ts,
+    level,
+    build: buildId,
+    name,
+    data: payload,
+  };
   // Errors → stderr so the platform can split them; events → stdout.
-  if (level === "error") process.stderr.write(line + "\n");
-  else process.stdout.write(line + "\n");
-  if (!logSink || emittingToSink) return;
+  // Tests can silence terminal noise without disabling metrics or sinks.
+  if (!quietStdout) {
+    if (level === "error") process.stderr.write(line + "\n");
+    else process.stdout.write(line + "\n");
+  }
+  if ((!logSink && logObservers.size === 0) || emittingToSink) return;
   emittingToSink = true;
   try {
-    Promise.resolve(logSink({
-      ts,
-      level,
-      build: buildId,
-      name,
-      data: payload,
-    })).catch((err) => {
-      process.stderr.write(JSON.stringify({
-        ts: new Date().toISOString(),
-        level: "error",
-        build: buildId,
-        name: "logger.sink-failed",
-        message: err instanceof Error ? err.message : String(err),
-      }) + "\n");
-    });
+    const sinks = [
+      ...(logSink ? [logSink] : []),
+      ...Array.from(logObservers),
+    ];
+    for (const sink of sinks) {
+      try {
+        Promise.resolve(sink(record)).catch(reportSinkFailure);
+      } catch (err) {
+        reportSinkFailure(err);
+      }
+    }
   } finally {
     emittingToSink = false;
   }
