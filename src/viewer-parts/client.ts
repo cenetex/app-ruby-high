@@ -2397,16 +2397,6 @@ export function runViewerClient(bootstrap) {
     }
   }
 
-  function officialRubyHighWebsite() {
-    return "https://ruby-high.ai/";
-  }
-
-  function solanaAccountLink(address) {
-    const raw = String(address || "").trim();
-    if (!raw) return "";
-    return "https://solscan.io/account/" + encodeURIComponent(raw);
-  }
-
   function appendSolanaProofLink(parent, address, label) {
     const href = solanaAccountLink(address);
     if (!parent || !href) return null;
@@ -2452,19 +2442,11 @@ export function runViewerClient(bootstrap) {
   function renderAccountTrust() {
     if (!els.accountTrustList) return;
     const payload = billingProductsCache && typeof billingProductsCache === "object" ? billingProductsCache : null;
-    const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
-    const nfts = payload && payload.nfts && typeof payload.nfts === "object" ? payload.nfts : null;
-    const corePacks = nfts && nfts.corePacks && typeof nfts.corePacks === "object" ? nfts.corePacks : solana && solana.packNfts;
     const connectedWallet = knownSolanaOwnerWalletAddress();
+    const view = accountTrustPanelView(payload, connectedWallet, buildId || "dev");
     els.accountTrustList.replaceChildren();
-    appendAccountTrustRow("Official website", officialRubyHighWebsite(), officialRubyHighWebsite());
-    appendAccountTrustRow("Current build", buildId || "dev");
-    appendAccountTrustRow("Connected wallet", connectedWallet ? shortWallet(connectedWallet) : "Not connected", solanaAccountLink(connectedWallet));
-    appendAccountTrustRow("Treasury", solana && solana.recipient ? shortWallet(solana.recipient) : "Shown before wallet payment", solana && solana.recipient ? solanaAccountLink(solana.recipient) : "");
-    appendAccountTrustRow("RUBY token", solana && solana.mint ? shortWallet(solana.mint) : "Shown before wallet payment", solana && solana.mint ? solanaAccountLink(solana.mint) : "");
-    appendAccountTrustRow("Pack collection", corePacks && corePacks.collectionAddress ? shortWallet(corePacks.collectionAddress) : "Loading configuration", corePacks && corePacks.collectionAddress ? solanaAccountLink(corePacks.collectionAddress) : "");
-    appendAccountTrustRow("Card collection", nfts && nfts.collectionAddress ? shortWallet(nfts.collectionAddress) : "Loading configuration", nfts && nfts.collectionAddress ? solanaAccountLink(nfts.collectionAddress) : "");
-    appendAccountTrustNote("Ruby High never asks for a seed phrase. Wallet prompts should be limited to sign-in, pack payment, pack opening, card minting, or card burning.");
+    view.rows.forEach((row) => appendAccountTrustRow(row.label, row.value, row.href));
+    appendAccountTrustNote(view.note);
   }
 
   function hallPassCardsForTelemetry(t) {

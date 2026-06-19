@@ -121,6 +121,15 @@ export type AccountPaneItemView = {
   tabIndex: 0 | -1;
   hidden: boolean;
 };
+export type AccountTrustRowView = {
+  label: string;
+  value: string;
+  href: string;
+};
+export type AccountTrustPanelView = {
+  rows: AccountTrustRowView[];
+  note: string;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -382,6 +391,14 @@ export function walletPreviewAddress(address: unknown): string {
 export function walletPreviewLine(label: string, value: unknown): string {
   const text = String(value || "").trim();
   return label + ": " + (text || "Unavailable");
+}
+export function officialRubyHighWebsite(): string {
+  return "https://ruby-high.ai/";
+}
+export function solanaAccountLink(address: unknown): string {
+  const raw = String(address || "").trim();
+  if (!raw) return "";
+  return "https://solscan.io/account/" + encodeURIComponent(raw);
 }
 
 // ── account public-world visibility ────────────────────────────────
@@ -703,6 +720,55 @@ export function accountPaneItemView(id: unknown, activePane: unknown): AccountPa
     ariaSelected: selected ? "true" : "false",
     tabIndex: selected ? 0 : -1,
     hidden: !selected,
+  };
+}
+
+export function accountTrustPanelView(payloadInput: NullableRecord, connectedWalletInput: unknown, buildIdInput: unknown): AccountTrustPanelView {
+  const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : null;
+  const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana as LooseRecord : null;
+  const nfts = payload && payload.nfts && typeof payload.nfts === "object" ? payload.nfts as LooseRecord : null;
+  const corePacks = nfts && nfts.corePacks && typeof nfts.corePacks === "object"
+    ? nfts.corePacks as LooseRecord
+    : solana && solana.packNfts && typeof solana.packNfts === "object"
+      ? solana.packNfts as LooseRecord
+      : null;
+  const connectedWallet = String(connectedWalletInput || "").trim();
+  const buildId = String(buildIdInput || "dev");
+  const treasury = solana && solana.recipient;
+  const tokenMint = solana && solana.mint;
+  const packCollection = corePacks && corePacks.collectionAddress;
+  const cardCollection = nfts && nfts.collectionAddress;
+  return {
+    rows: [
+      { label: "Official website", value: officialRubyHighWebsite(), href: officialRubyHighWebsite() },
+      { label: "Current build", value: buildId, href: "" },
+      {
+        label: "Connected wallet",
+        value: connectedWallet ? shortWallet(connectedWallet) : "Not connected",
+        href: solanaAccountLink(connectedWallet),
+      },
+      {
+        label: "Treasury",
+        value: treasury ? shortWallet(treasury) : "Shown before wallet payment",
+        href: solanaAccountLink(treasury),
+      },
+      {
+        label: "RUBY token",
+        value: tokenMint ? shortWallet(tokenMint) : "Shown before wallet payment",
+        href: solanaAccountLink(tokenMint),
+      },
+      {
+        label: "Pack collection",
+        value: packCollection ? shortWallet(packCollection) : "Loading configuration",
+        href: solanaAccountLink(packCollection),
+      },
+      {
+        label: "Card collection",
+        value: cardCollection ? shortWallet(cardCollection) : "Loading configuration",
+        href: solanaAccountLink(cardCollection),
+      },
+    ],
+    note: "Ruby High never asks for a seed phrase. Wallet prompts should be limited to sign-in, pack payment, pack opening, card minting, or card burning.",
   };
 }
 
