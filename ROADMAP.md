@@ -19,7 +19,7 @@ research plumbing, presence/moderation controls, and durable public-world state.
 |---|---:|---|
 | [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is turning those records into a fuller room/term model. |
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, MVP in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, report dismissal, global suppression, and action throttles exist; next is stronger public-name/profile policy and operator workflow. |
-| [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, first loop in #138 | **P1 content engine.** Teacher corpora metadata, replenishment proposals, validation, review readiness, runtime promotion, weak-subject and repetition signals exist; next is automatic generation from coverage exhaustion plus richer reviewer approval. |
+| [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, misconception checks, grade briefs, replenishment proposals, validation, review readiness, runtime promotion, weak-subject and repetition signals exist; next is automatic generation from coverage exhaustion plus richer reviewer approval. |
 | [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
 | [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, two-client goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal and observe sanitized public progress; next is richer room rules, visible cooperative rewards, and less dev-helper coverage. |
 | [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Fixed in #138; close after merge | **P0 pre-MMO hardening.** Unknown mutation commands fail closed with a 400 before mutating state. |
@@ -115,9 +115,9 @@ Goal: make question generation a teacher research loop, not one-off expansion.
   then validates and promotes candidates through tests/check scripts. #138 has a
   proposal queue, automatic corpus-backed candidate draft seeding from weak
   pools, optional OpenRouter/course-model draft generation with deterministic
-  fallback, validation, and runtime promotion; the next step is enriching the
-  teacher corpora themselves so generated drafts have more primary material to
-  research from.
+  fallback, validation, runtime promotion, and richer hand-authored teacher
+  corpora with reading lists, canonical misconceptions, and grade-specific
+  briefs that are carried into admin snapshots, draft packets, and LLM prompts.
 - Keep first-grade sets curated and narrow; allow higher grades to become more
   expansive.
 
@@ -176,10 +176,10 @@ outcomes without requiring crypto participation.
 1. [#140](https://github.com/cenetex/app-ruby-high/issues/140) / [#117](https://github.com/cenetex/app-ruby-high/issues/117):
    continue extracting larger public-world and account UI surfaces from
    `viewer-parts/client.ts` into typed modules with unit tests.
-2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): deepen the
-   hand-authored teacher corpora with reading lists, canonical misconceptions,
-   and grade-specific research briefs so OpenRouter-backed drafts become less
-   templated and more like each teacher actively researching.
+2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): add coverage
+   exhaustion triggers that can automatically enqueue replenishment drafts,
+   then continue broadening the teacher corpora with primary-source packets and
+   reviewer approval affordances.
 3. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    browser smoke's dev-only live-room contribution helper with a normal answer
    flow that contributes sanitized room progress.

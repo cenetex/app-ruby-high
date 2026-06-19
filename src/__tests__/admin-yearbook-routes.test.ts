@@ -1832,6 +1832,9 @@ describe("admin metrics route", () => {
       corpusTitle: "Ruby Research Corpus",
       corpusPath: "assets/corpora/ruby.md",
       researchInterests: expect.arrayContaining(["AI application design", "agent reliability"]),
+      readingList: expect.arrayContaining([expect.stringContaining("Agent operations notes")]),
+      canonicalMisconceptions: expect.arrayContaining([expect.stringContaining("context window")]),
+      gradeBrief: expect.stringContaining("sophomores"),
       command: expect.arrayContaining([
         "node",
         "scripts/generate-built-in-question-bank.mjs",
@@ -1840,8 +1843,11 @@ describe("admin metrics route", () => {
     });
     expect(rubyStep.displayCommand).toContain("scripts/generate-built-in-question-bank.mjs");
     expect(rubyStep.researchDirective).toContain("Ruby Research Corpus");
+    expect(rubyStep.researchDirective).toContain("Grade brief:");
     expect(rubyStep.researchLanes.length).toBeGreaterThan(0);
     expect(rubyStep.promptSeed).toContain("actively researching");
+    expect(rubyStep.promptSeed).toContain("Grade brief:");
+    expect(rubyStep.promptSeed).toContain("Test one misconception");
     expect(rubyStep.reason).toContain("Built-in teacher pool");
     expect(response.body.generationQueue).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -1885,6 +1891,9 @@ describe("admin metrics route", () => {
     expect(persistedDrafts[0]!.name).toContain("Curriculum Replenishment");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Ruby Research Corpus");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Research Directive");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Reading List");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Canonical Misconceptions");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Grade brief:");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Prompt Seed");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Automatic Candidate Drafts");
     expect(persistedDrafts[0]!.teachers[0]!.sourceCards.length).toBeGreaterThan(0);
@@ -2165,6 +2174,9 @@ describe("admin metrics route", () => {
     expect(body.model).toBe("test/course-model");
     expect(body.messages[1].content).toContain("Weak subjects:");
     expect(body.messages[1].content).toContain("Ruby Research Corpus");
+    expect(body.messages[1].content).toContain("Reading list:");
+    expect(body.messages[1].content).toContain("Canonical misconceptions:");
+    expect(body.messages[1].content).toContain("Grade brief:");
     const persistedDrafts = await store.loadDraftPacks();
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Generation source: llm");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Generation model: test/course-model");

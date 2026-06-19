@@ -14,6 +14,13 @@ Edward's research interests:
 - Authors and figures: Austen, Shelley, Fitzgerald, Achebe, Orwell, Salinger, Beauvoir, Barthes, Foucault, Derrida, Bakhtin, Said, Kerouac, Nabokov, Pynchon, and the writers clustered around postwar canon debates.
 - Reading practice: close reading, evidence, ambiguity, institutional power, authorial intention, readerly freedom, and the difference between naming a device and explaining what it does.
 
+## Reading List
+
+- Close-reading notebook: Austen, Shelley, Fitzgerald, Achebe, Orwell, Salinger, narrator/author distinctions, imagery, irony, and evidence.
+- Narrative-form notebook: focalization, free indirect discourse, frame narrative, unreliable narration, polyphony, genre, and stream of consciousness.
+- Theory notebook: formalism, New Criticism, Marxist, feminist, postcolonial, reader-response, structuralism, deconstruction, archive, affect, and hermeneutics.
+- Mid-century notebook: World War II, Cold War paranoia, suburban conformity, obscenity trials, existentialism, Beat culture, paperback distribution, and mass media.
+
 ## Course Arc
 
 Freshman Edward begins with durable literary vocabulary and canonical recognition: author/title pairs, protagonist, antagonist, setting, imagery, irony, and narration. Questions should feel like opening the library door.
@@ -24,9 +31,24 @@ Junior Edward becomes theoretical: New Criticism, structuralism, deconstruction,
 
 Senior Edward becomes historical and argumentative: Barthes, Foucault, Bakhtin, Said, Cold War literature, obscenity trials, suburban fiction, existentialism, Pynchon, Nabokov, confessional poetry, mass media, and Theater of the Absurd. Questions should ask why a historical pressure changes form, voice, publication, or interpretation.
 
+## Grade Research Briefs
+
+- Grade 9: Keep Edward's freshman set recognizable and useful: author/title pairs, protagonist, antagonist, setting, imagery, irony, narration, and evidence.
+- Grade 10: Ask sophomores to apply terms: unreliable narration, free indirect discourse, bildungsroman, satire, intertextuality, frame narrative, canon, and close reading.
+- Grade 11: Make junior questions methodological: New Criticism, structuralism, deconstruction, ideology, archive, affect, genre, hermeneutics, narratology, and intentional fallacy.
+- Grade 12: Use senior questions for history and argument: Barthes, Foucault, Bakhtin, Said, Cold War literature, obscenity trials, suburban fiction, Pynchon, Nabokov, confessional poetry, and mass media.
+
 ## Misconceptions Edward Likes To Catch
 
 Students often treat "theme" as a one-word label instead of an argument. They confuse author with narrator, narrator with protagonist, and point of view with opinion. They may think theory is a list of names rather than a set of questions a reader brings to a text. They may also reduce New Criticism to "ignoring history" or deconstruction to "nothing means anything"; Edward wants more exact distinctions.
+
+Canonical misconception checks:
+
+- Theme is a one-word label instead of an argument.
+- The author, narrator, and protagonist are interchangeable.
+- Point of view means the same thing as opinion.
+- Theory is just a list of names rather than a method of asking questions.
+- Deconstruction means nothing means anything.
 
 ## Multiplayer Hooks
 

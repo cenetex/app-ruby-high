@@ -5,6 +5,9 @@ export interface RubyHighTeacherResearchCorpus {
   corpusPath: string;
   researchInterests: string[];
   lanes: string[];
+  readingList: string[];
+  canonicalMisconceptions: string[];
+  gradeBriefs: Record<"9" | "10" | "11" | "12", string>;
 }
 
 const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
@@ -27,6 +30,25 @@ const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
       "On-chain fairness questions: wallets, mint authority, nonces, Merkle proofs, replay resistance, and commit-reveal verification.",
       "Multiplayer ethics questions: what classmates can see, what must stay private, and when confidence should be checked.",
     ],
+    readingList: [
+      "AI application design notes: system prompts, retrieval, structured outputs, evals, and model routing.",
+      "Agent operations notes: least privilege, idempotency, retries, dirty worktrees, audit trails, and human confirmation.",
+      "Networked systems notes: HTTP, TLS, DNS, OAuth, webhooks, database indexes, rate limits, and smoke tests.",
+      "On-chain fairness notes: wallets, mint authorities, nonces, Merkle proofs, replay resistance, and commit-reveal verification.",
+    ],
+    canonicalMisconceptions: [
+      "A bigger context window means perfect recall.",
+      "Chat history is the same thing as durable memory.",
+      "A model refusal policy is the same thing as app authorization.",
+      "Putting a game on-chain automatically makes every outcome fair.",
+      "An agent can safely retry irreversible tools without idempotency or confirmation.",
+    ],
+    gradeBriefs: {
+      "9": "Keep Ruby's freshman set concrete: vocabulary, permissions, context windows, BYOK, streaming, retrieval, and small classroom decisions.",
+      "10": "Move sophomores into operations: prompts versus policies, OAuth versus passwords, retrieval versus memory, and automation with bounded side effects.",
+      "11": "Ask juniors to reason architecturally: evals, grounding, structured tool calls, idempotency, model routing, indexes, and consistency tradeoffs.",
+      "12": "Make senior questions adversarial and ethical: prompt injection, secret handling, least privilege, replay resistance, commit-reveal fairness, and public/private boundaries.",
+    },
   },
   {
     id: "sally-science-research-corpus",
@@ -47,6 +69,26 @@ const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
       "Biology systems questions: DNA, transcription, enzymes, evolution, homeostasis, immunity, meiosis, and population assumptions.",
       "Earth science evidence questions: tectonics, seismology, atmosphere, climate records, ocean currents, albedo, and Coriolis.",
     ],
+    readingList: [
+      "Lab-method notes: units, variables, controls, error, uncertainty, graph reading, and evidence discipline.",
+      "Physics model notes: motion, forces, energy, momentum, electricity, optics, waves, thermodynamics, relativity, and quantum evidence.",
+      "Chemistry reasoning notes: atoms, bonding, pH, catalysts, solutions, redox, gases, equilibrium, nuclear decay, and separation methods.",
+      "Life-and-earth systems notes: cells, DNA, enzymes, evolution, immunity, meiosis, tectonics, climate records, oceans, and atmosphere.",
+    ],
+    canonicalMisconceptions: [
+      "Speed and acceleration are the same quantity.",
+      "Mass and weight measure the same thing.",
+      "Catalysts are consumed by the reactions they speed up.",
+      "pH changes linearly instead of logarithmically.",
+      "Individuals evolve because they need to adapt.",
+      "Weather and climate describe the same scale of evidence.",
+    ],
+    gradeBriefs: {
+      "9": "Keep Sally's freshman set like a clean lab bench: units, definitions, everyday observations, safety, variables, and direct cause/effect.",
+      "10": "Ask sophomores to combine relationships: Ohm's law, conservation, catalysts, molarity, transcription, selection, and greenhouse effect.",
+      "11": "Make junior questions model-driven: wave tradeoffs, equilibrium shifts, codons, Hardy-Weinberg assumptions, seafloor spreading, and current drivers.",
+      "12": "Use senior questions for evidence and constraints: entropy, Lorentz factor, photoelectric effect, chromatography, crossing over, antibodies, ice cores, albedo, S waves, and Coriolis.",
+    },
   },
   {
     id: "professor-edward-research-corpus",
@@ -67,6 +109,25 @@ const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
       "Mid-century history questions: Cold War paranoia, suburban conformity, obscenity trials, paperback distribution, and mass media.",
       "Seminar ethics questions: how readers resist manipulative narration, handle authorial intention, and argue responsibly from evidence.",
     ],
+    readingList: [
+      "Close-reading notebook: Austen, Shelley, Fitzgerald, Achebe, Orwell, Salinger, narrator/author distinctions, imagery, irony, and evidence.",
+      "Narrative-form notebook: focalization, free indirect discourse, frame narrative, unreliable narration, polyphony, genre, and stream of consciousness.",
+      "Theory notebook: formalism, New Criticism, Marxist, feminist, postcolonial, reader-response, structuralism, deconstruction, archive, affect, and hermeneutics.",
+      "Mid-century notebook: World War II, Cold War paranoia, suburban conformity, obscenity trials, existentialism, Beat culture, paperback distribution, and mass media.",
+    ],
+    canonicalMisconceptions: [
+      "Theme is a one-word label instead of an argument.",
+      "The author, narrator, and protagonist are interchangeable.",
+      "Point of view means the same thing as opinion.",
+      "Theory is just a list of names rather than a method of asking questions.",
+      "Deconstruction means nothing means anything.",
+    ],
+    gradeBriefs: {
+      "9": "Keep Edward's freshman set recognizable and useful: author/title pairs, protagonist, antagonist, setting, imagery, irony, narration, and evidence.",
+      "10": "Ask sophomores to apply terms: unreliable narration, free indirect discourse, bildungsroman, satire, intertextuality, frame narrative, canon, and close reading.",
+      "11": "Make junior questions methodological: New Criticism, structuralism, deconstruction, ideology, archive, affect, genre, hermeneutics, narratology, and intentional fallacy.",
+      "12": "Use senior questions for history and argument: Barthes, Foucault, Bakhtin, Said, Cold War literature, obscenity trials, suburban fiction, Pynchon, Nabokov, confessional poetry, and mass media.",
+    },
   },
 ];
 
@@ -83,5 +144,8 @@ export function builtInTeacherResearchCorpora(): RubyHighTeacherResearchCorpus[]
     ...corpus,
     researchInterests: [...corpus.researchInterests],
     lanes: [...corpus.lanes],
+    readingList: [...corpus.readingList],
+    canonicalMisconceptions: [...corpus.canonicalMisconceptions],
+    gradeBriefs: { ...corpus.gradeBriefs },
   }));
 }

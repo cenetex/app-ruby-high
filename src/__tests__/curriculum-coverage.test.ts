@@ -58,6 +58,14 @@ describe("curriculum coverage planning", () => {
         corpusPath: "assets/corpora/ruby.md",
         researchInterests: ["AI application design", "agent reliability"],
         lanes: ["Freshman bridge questions: practical AI/web vocabulary, but asked through small classroom scenarios."],
+        readingList: ["Agent operations notes: least privilege and idempotency."],
+        canonicalMisconceptions: ["Chat history is the same thing as durable memory."],
+        gradeBriefs: {
+          "9": "Keep Ruby's freshman set concrete.",
+          "10": "Move sophomores into operations.",
+          "11": "Ask juniors to reason architecturally.",
+          "12": "Make senior questions adversarial and ethical.",
+        },
       },
     })).toMatchObject({
       mode: "manual-curation",
@@ -66,6 +74,9 @@ describe("curriculum coverage planning", () => {
       targetNewQuestions: 8,
       corpusTitle: "Ruby Research Corpus",
       researchInterests: ["AI application design", "agent reliability"],
+      readingList: ["Agent operations notes: least privilege and idempotency."],
+      canonicalMisconceptions: ["Chat history is the same thing as durable memory."],
+      gradeBrief: "Keep Ruby's freshman set concrete.",
       researchDirective: expect.stringContaining("Keep grade 9 tight"),
       weakSubjects: ["agent reliability"],
       recentConcepts: ["AI application design", "networked systems"],
@@ -120,6 +131,14 @@ describe("curriculum coverage planning", () => {
           corpusPath: "assets/corpora/edward.md",
           researchInterests: ["close reading", "rhetoric"],
           lanes: ["Close-reading questions: narrator versus author, point of view, imagery, irony, setting, and textual evidence."],
+          readingList: ["Close-reading notebook: narrator/author distinctions."],
+          canonicalMisconceptions: ["Theme is a one-word label instead of an argument."],
+          gradeBriefs: {
+            "9": "Keep Edward's freshman set recognizable.",
+            "10": "Ask sophomores to apply terms.",
+            "11": "Make junior questions methodological.",
+            "12": "Use senior questions for history and argument.",
+          },
         },
         sourceSubjects: new Map([
           ["literature", 1],
@@ -202,6 +221,9 @@ describe("curriculum coverage planning", () => {
       researchLanes: [
         "Close-reading questions: narrator versus author, point of view, imagery, irony, setting, and textual evidence.",
       ],
+      readingList: ["Close-reading notebook: narrator/author distinctions."],
+      canonicalMisconceptions: ["Theme is a one-word label instead of an argument."],
+      gradeBrief: "Use senior questions for history and argument.",
     });
     expect(snapshot.lowPools).toHaveLength(8);
     expect(snapshot.lowPools[0]?.facultyId).toBe("ruby");

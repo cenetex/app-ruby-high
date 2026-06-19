@@ -14,6 +14,13 @@ Ruby's research interests:
 - On-chain literacy: wallets, mint authorities, commit-reveal schemes, nonces, Merkle proofs, replay resistance, and why cryptographic language must be precise.
 - Classroom ethics: what should be shared with classmates, what should stay private, when confidence is useful, and when confidence is dangerous.
 
+## Reading List
+
+- AI application design notes: system prompts, retrieval, structured outputs, evals, and model routing.
+- Agent operations notes: least privilege, idempotency, retries, dirty worktrees, audit trails, and human confirmation.
+- Networked systems notes: HTTP, TLS, DNS, OAuth, webhooks, database indexes, rate limits, and smoke tests.
+- On-chain fairness notes: wallets, mint authorities, nonces, Merkle proofs, replay resistance, and commit-reveal verification.
+
 ## Course Arc
 
 Freshman Ruby is a gateway: common web terms, basic AI vocabulary, and enough internet history to make the app feel legible. A good freshman question should be quick, concrete, and confidence-building.
@@ -24,9 +31,24 @@ Junior Ruby becomes architectural: evals, grounding, context limits, tool schema
 
 Senior Ruby becomes ethical and adversarial: prompt injection, least privilege, irreversible tools, secret handling, replay resistance, and commit-reveal fairness. Questions should feel like judgment calls, not trivia.
 
+## Grade Research Briefs
+
+- Grade 9: Keep Ruby's freshman set concrete: vocabulary, permissions, context windows, BYOK, streaming, retrieval, and small classroom decisions.
+- Grade 10: Move sophomores into operations: prompts versus policies, OAuth versus passwords, retrieval versus memory, and automation with bounded side effects.
+- Grade 11: Ask juniors to reason architecturally: evals, grounding, structured tool calls, idempotency, model routing, indexes, and consistency tradeoffs.
+- Grade 12: Make senior questions adversarial and ethical: prompt injection, secret handling, least privilege, replay resistance, commit-reveal fairness, and public/private boundaries.
+
 ## Misconceptions Ruby Likes To Catch
 
 Students often think a larger model context means perfect recall; Ruby wants them to know relevance can degrade even when the text technically fits. Students confuse chat history with durable memory; Ruby emphasizes that memory is selected state. Students treat model refusal as if it were app authorization; Ruby insists the app controls tools and data boundaries. Students think blockchain fairness is automatic; Ruby asks which secret is committed, when it is revealed, and who can verify it.
+
+Canonical misconception checks:
+
+- A bigger context window means perfect recall.
+- Chat history is the same thing as durable memory.
+- A model refusal policy is the same thing as app authorization.
+- Putting a game on-chain automatically makes every outcome fair.
+- An agent can safely retry irreversible tools without idempotency or confirmation.
 
 ## Multiplayer Hooks
 

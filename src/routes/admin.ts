@@ -111,6 +111,9 @@ interface AdminCurriculumReplenishmentStep {
   corpusPath: string | null;
   researchInterests: string[];
   researchLanes: string[];
+  readingList: string[];
+  canonicalMisconceptions: string[];
+  gradeBrief: string | null;
   researchDirective: string;
   promptSeed: string;
   command: string[] | null;
@@ -331,6 +334,9 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
         corpusPath: plan.corpusPath,
         researchInterests: plan.researchInterests,
         researchLanes: plan.researchLanes,
+        readingList: plan.readingList,
+        canonicalMisconceptions: plan.canonicalMisconceptions,
+        gradeBrief: plan.gradeBrief,
         researchDirective: plan.researchDirective,
         promptSeed: plan.promptSeed,
         command,
@@ -591,6 +597,9 @@ async function generateAdminCurriculumDraftQuestionsWithLlm(
             `Repetition pressure: ${Math.round(step.repetitionPressure * 100)}%`,
             `Research directive: ${step.researchDirective}`,
             `Research lanes: ${step.researchLanes.join(" | ") || "none"}`,
+            `Reading list: ${step.readingList.join(" | ") || "none"}`,
+            `Canonical misconceptions: ${step.canonicalMisconceptions.join(" | ") || "none"}`,
+            `Grade brief: ${step.gradeBrief ?? "none"}`,
             `Source cards: ${sourceCards.slice(0, 8).map((card) => `[${card.id} ${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join(" | ") || "none"}`,
             "Each question must include: id, type='multiple-choice', prompt, options A-D, correct='A'|'B'|'C'|'D', explanation, subject, difficulty, minGrade, faculty, stat.",
             "Use faculty as the draft faculty id. Use stat one of head, heart, hustle, honor.",
@@ -675,10 +684,25 @@ function curriculumDraftMaterials(
     `Repetition pressure: ${Math.round(step.repetitionPressure * 100)}% (${step.repeatedAnswers} repeated answers across ${step.repeatedAnswerSessions} sessions)`,
     `Corpus: ${step.corpusTitle ? `${step.corpusTitle} (${step.corpusPath ?? "unknown path"})` : "source-card corpus only"}`,
     `Research interests: ${step.researchInterests.join(", ") || "derived from source cards"}`,
+    `Grade brief: ${step.gradeBrief ?? "none"}`,
     ``,
     `## Research Directive`,
     step.researchDirective,
     ``,
+    ...(step.readingList.length
+      ? [
+          `## Reading List`,
+          ...step.readingList.map((entry, index) => `${index + 1}. ${entry}`),
+          ``,
+        ]
+      : []),
+    ...(step.canonicalMisconceptions.length
+      ? [
+          `## Canonical Misconceptions`,
+          ...step.canonicalMisconceptions.map((entry, index) => `${index + 1}. ${entry}`),
+          ``,
+        ]
+      : []),
     ...(step.researchLanes.length
       ? [
           `## Research Lanes`,

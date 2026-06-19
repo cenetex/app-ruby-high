@@ -44,6 +44,9 @@ export interface RubyHighCurriculumReplenishmentPlan {
   corpusPath: string | null;
   researchInterests: string[];
   researchLanes: string[];
+  readingList: string[];
+  canonicalMisconceptions: string[];
+  gradeBrief: string | null;
   researchDirective: string;
   promptSeed: string;
 }
@@ -97,6 +100,9 @@ export function buildCurriculumReplenishmentPlan(args: {
   const researchCorpus = args.researchCorpus ?? null;
   const researchInterests = researchCorpus?.researchInterests.slice(0, 8) ?? [];
   const researchLanes = researchCorpus?.lanes.slice(0, 5) ?? [];
+  const readingList = researchCorpus?.readingList.slice(0, 6) ?? [];
+  const canonicalMisconceptions = researchCorpus?.canonicalMisconceptions.slice(0, 8) ?? [];
+  const gradeBrief = researchCorpus?.gradeBriefs[args.grade] ?? null;
   const weakSubjects = (args.weakSubjects ?? []).slice(0, 6);
   const recentConcepts = (args.recentConcepts ?? []).slice(0, 8);
   const repetitionPressure = Math.max(0, Math.min(1, Number(args.repetitionPressure ?? 0)));
@@ -111,6 +117,7 @@ export function buildCurriculumReplenishmentPlan(args: {
     displayName: args.displayName,
     focusSubjects: args.focusSubjects,
     researchCorpus,
+    gradeBrief,
     targetDifficulty,
     targetMinGrade: args.grade,
     mode,
@@ -124,6 +131,8 @@ export function buildCurriculumReplenishmentPlan(args: {
     args.sourceCardIds.length ? `Prioritize source cards: ${args.sourceCardIds.join(", ")}.` : "",
     weakSubjects.length ? `Repair weak subjects first: ${weakSubjects.join(", ")}.` : "",
     recentConcepts.length ? `Do not repeat recent concepts: ${recentConcepts.join(", ")}.` : "",
+    gradeBrief ? `Grade brief: ${gradeBrief}` : "",
+    canonicalMisconceptions.length ? `Test one misconception without copying it verbatim: ${canonicalMisconceptions.slice(0, 3).join(" | ")}.` : "",
     repetitionPressure > 0 ? `Repetition pressure: ${Math.round(repetitionPressure * 100)}%; prefer new angles over near-duplicates.` : "",
     "Avoid repeating existing prompts; write like the teacher is actively researching this class, not filling a spreadsheet.",
   ].filter(Boolean).join(" ");
@@ -143,6 +152,9 @@ export function buildCurriculumReplenishmentPlan(args: {
     corpusPath: researchCorpus?.corpusPath ?? null,
     researchInterests,
     researchLanes,
+    readingList,
+    canonicalMisconceptions,
+    gradeBrief,
     researchDirective,
     promptSeed,
   };
@@ -152,6 +164,7 @@ function buildResearchDirective(args: {
   displayName: string;
   focusSubjects: string[];
   researchCorpus: RubyHighTeacherResearchCorpus | null;
+  gradeBrief: string | null;
   targetDifficulty: Difficulty;
   targetMinGrade: Grade;
   mode: RubyHighCurriculumReplenishmentPlan["mode"];
@@ -166,6 +179,7 @@ function buildResearchDirective(args: {
     `Research corpus: ${args.researchCorpus.title} (${args.researchCorpus.corpusPath}).`,
     `Research interests: ${args.researchCorpus.researchInterests.join(", ")}.`,
     lane ? `Current lane: ${lane}` : "",
+    args.gradeBrief ? `Grade brief: ${args.gradeBrief}` : "",
     args.mode === "manual-curation"
       ? `Keep grade ${args.targetMinGrade} tight, concrete, and hand-curated before broad generation.`
       : `Expand grade ${args.targetMinGrade} with ${args.targetDifficulty} questions that feel like fresh research from this corpus.`,

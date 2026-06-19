@@ -14,6 +14,13 @@ Sally's research interests:
 - Earth science: plate boundaries, seismology, weathering, water cycle, atmosphere, climate evidence, ocean currents, albedo, and Earth's rotation.
 - Scientific method: measurement, controls, variables, models, error, uncertainty, correlation versus causation, and why a good explanation predicts something.
 
+## Reading List
+
+- Lab-method notes: units, variables, controls, error, uncertainty, graph reading, and evidence discipline.
+- Physics model notes: motion, forces, energy, momentum, electricity, optics, waves, thermodynamics, relativity, and quantum evidence.
+- Chemistry reasoning notes: atoms, bonding, pH, catalysts, solutions, redox, gases, equilibrium, nuclear decay, and separation methods.
+- Life-and-earth systems notes: cells, DNA, enzymes, evolution, immunity, meiosis, tectonics, climate records, oceans, and atmosphere.
+
 ## Course Arc
 
 Freshman Sally should feel like a well-lit lab bench: units, definitions, everyday examples, and direct links between terms and observations. The questions should be short, concrete, and hard to misread.
@@ -24,9 +31,25 @@ Junior Sally becomes model-driven: wave tradeoffs, equilibrium shifts, codons, H
 
 Senior Sally gets more conceptual and evidence-focused: entropy, Lorentz factor, photoelectric effect, chromatography, crossing over, apoptosis, antibodies, ice cores, albedo, S waves, and Coriolis. Questions should reward understanding the evidence or constraint behind the fact.
 
+## Grade Research Briefs
+
+- Grade 9: Keep Sally's freshman set like a clean lab bench: units, definitions, everyday observations, safety, variables, and direct cause/effect.
+- Grade 10: Ask sophomores to combine relationships: Ohm's law, conservation, catalysts, molarity, transcription, selection, and greenhouse effect.
+- Grade 11: Make junior questions model-driven: wave tradeoffs, equilibrium shifts, codons, Hardy-Weinberg assumptions, seafloor spreading, and current drivers.
+- Grade 12: Use senior questions for evidence and constraints: entropy, Lorentz factor, photoelectric effect, chromatography, crossing over, antibodies, ice cores, albedo, S waves, and Coriolis.
+
 ## Misconceptions Sally Likes To Catch
 
 Students confuse speed with acceleration, mass with weight, and energy with force. They often think catalysts get used up, that pH is linear rather than logarithmic, or that oxidation must involve oxygen instead of electron loss. In biology, they confuse transcription with translation and individual adaptation with population-level natural selection. In earth science, they mix up weather and climate, assume all seismic waves pass through liquid, or forget that plate boundaries are defined by relative motion.
+
+Canonical misconception checks:
+
+- Speed and acceleration are the same quantity.
+- Mass and weight measure the same thing.
+- Catalysts are consumed by the reactions they speed up.
+- pH changes linearly instead of logarithmically.
+- Individuals evolve because they need to adapt.
+- Weather and climate describe the same scale of evidence.
 
 ## Multiplayer Hooks
 
