@@ -3558,22 +3558,23 @@ export function runViewerClient(bootstrap) {
   // packCountLabel is in client-pure.ts.
 
   function buildBillingPaymentChoice(payload, product) {
+    const view = billingHallPassPaymentChoiceView(payload, product, { billingBusy });
     const panel = document.createElement("div");
     panel.className = "billing-payment-choice";
     const title = document.createElement("div");
     title.className = "billing-payment-title";
-    title.textContent = "Buy " + hallPassCostLabel(productHallPassCount(product));
+    title.textContent = view.titleText;
     const meta = document.createElement("div");
     meta.className = "billing-product-meta";
-    meta.textContent = formatMoney(product.unitAmount, product.currency);
+    meta.textContent = view.metaText;
     const actions = document.createElement("div");
     actions.className = "billing-payment-actions";
     const stripe = document.createElement("button");
     stripe.type = "button";
     stripe.className = "billing-buy";
-    stripe.textContent = "Checkout";
-    stripe.disabled = !payload.configured || billingBusy;
-    stripe.title = payload.configured ? "Pay by card with Stripe." : "Stripe checkout is not configured.";
+    stripe.textContent = view.buttonText;
+    stripe.disabled = view.buttonDisabled;
+    stripe.title = view.buttonTitle;
     stripe.addEventListener("click", () => startCheckout(product.id));
     actions.appendChild(stripe);
     panel.appendChild(title);

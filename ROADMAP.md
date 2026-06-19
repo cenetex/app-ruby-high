@@ -241,7 +241,8 @@ outcomes without requiring crypto participation.
    copy and button state now come from a typed pure view model instead of
    inline billing DOM branching. Card-pack payment choice title/meta/button/note
    copy now comes from a typed pure view model while the unchecked client keeps
-   wallet/config checks and payment side effects.
+   wallet/config checks and payment side effects. Stripe Hall Pass payment
+   choice title/meta/button state now follows the same typed pure-helper path.
    Active term-rule summary labels now have a dedicated typed helper for
    ordering, filtering, and capping grade-scoped room modifiers.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the

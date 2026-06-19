@@ -358,9 +358,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'mode === "card-packs"');
     expectScriptToContain(script, "buildCardPackPaymentChoice(solana, product)");
     expectScriptToContain(script, "buildBillingPaymentChoice(payload, product)");
-    expectScriptToContain(script, 'title.textContent = "Buy " + hallPassCostLabel(productHallPassCount(product));');
-    expectScriptToContain(script, "meta.textContent = formatMoney(product.unitAmount, product.currency);");
-    expectScriptToContain(script, 'stripe.textContent = "Checkout"');
+    expectScriptToContain(script, "function billingHallPassPaymentChoiceView(");
+    expectScriptToContain(script, "const view = billingHallPassPaymentChoiceView(payload, product, { billingBusy });");
+    expectScriptToContain(script, "stripe.disabled = view.buttonDisabled;");
     expectScriptToContain(script, "function billingCardPackPaymentChoiceView(");
     expectScriptToContain(script, "const view = billingCardPackPaymentChoiceView(solana, product, {");
     expectScriptToContain(script, "const canPackCheckout = !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));");

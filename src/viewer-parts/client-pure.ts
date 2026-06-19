@@ -212,6 +212,13 @@ export type BillingCardPackPaymentChoiceView = {
   noteText: string;
   showGetRubyLink: boolean;
 };
+export type BillingHallPassPaymentChoiceView = {
+  titleText: string;
+  metaText: string;
+  buttonText: string;
+  buttonDisabled: boolean;
+  buttonTitle: string;
+};
 export type AccountComicPageTileView = {
   pageNumber: number;
   title: string;
@@ -470,6 +477,25 @@ export function positiveWholeNumber(value: unknown, fallback: number): number {
 export function hallPassCostLabel(cost: unknown): string {
   const normalized = positiveWholeNumber(cost, 1);
   return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
+}
+export function billingHallPassPaymentChoiceView(
+  payloadInput: NullableRecord,
+  productInput: NullableRecord,
+  opts?: NullableRecord,
+): BillingHallPassPaymentChoiceView {
+  const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : {};
+  const product = productInput && typeof productInput === "object" ? productInput : {};
+  const explicit = Number(product.hallPasses);
+  const hallPasses = Number.isFinite(explicit) && explicit > 0 ? Math.floor(explicit) : 1;
+  const configured = !!payload.configured;
+  const billingBusy = !!(opts && opts.billingBusy);
+  return {
+    titleText: "Buy " + hallPassCostLabel(hallPasses),
+    metaText: formatMoney(product.unitAmount, product.currency),
+    buttonText: "Checkout",
+    buttonDisabled: !configured || billingBusy,
+    buttonTitle: configured ? "Pay by card with Stripe." : "Stripe checkout is not configured.",
+  };
 }
 export function welcomeHallPassPopupView(
   grantInput: NullableRecord,

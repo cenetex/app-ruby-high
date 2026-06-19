@@ -65,6 +65,7 @@ const PURE_HELPER_NAMES = [
   "renderMarkdownInto",
   "positiveWholeNumber",
   "hallPassCostLabel",
+  "billingHallPassPaymentChoiceView",
   "welcomeHallPassPopupView",
   "clipPlayerContext",
   "imageRequestId",
