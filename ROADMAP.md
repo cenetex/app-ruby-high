@@ -24,7 +24,7 @@ the implementation contract.
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, public-name review policy, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is tying moderation surfaces into richer live-room rewards and term progression. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, primary-source packets, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, explicit approval gates, runtime promotion, weak-subject and repetition signals exist; next is broader per-teacher corpus depth. |
 | [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, public-world action handling, composed world-controller wiring, race/question/leaderboard/progress models, account pane/AI/wallet/trust/cards/card-tile/card-reader/comics/public-world visibility view models, account trust/history/character/comic/Hall Pass card-panel DOM rendering, account-history row models, and account character-slot panel/card models are typed; next is extracting the next public-world/account surface still owned by `viewer-parts/client.ts`. |
-| [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, answer-flow goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal through normal answer commands and observe sanitized public progress; next is richer room rules and visible cooperative rewards. |
+| [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, answer-flow goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal through normal answer commands and observe sanitized public progress; quick completions now earn a public Class Chain bonus label on durable room outcomes and replayed world-feed events. Next is richer room rules and player-facing cooperative reward UI. |
 | [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Fixed in #138; close after merge | **P0 pre-MMO hardening.** Unknown mutation commands fail closed with a 400 before mutating state. |
 | [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Fixed in #138; close after merge | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, final normalized source tracking, and size limits. |
 | [#120 Make the Privy browser bundle cacheable or smaller](https://github.com/cenetex/app-ruby-high/issues/120) | Fixed in #138; close after merge | **P2 performance.** Versioned Privy bundle requests are immutable-cacheable and the bundle-size guard protects the lazy account widget payload. |
@@ -299,7 +299,10 @@ outcomes without requiring crypto participation.
    both term-rule and teacher-research pressure without adding unchecked client
    branching. Next, decide whether cohort-term entities need their own
    persistence namespace or can remain embedded in the term record until the
-   next MMO loop proves it.
+   next MMO loop proves it. Quick live-room completions now also record a
+   durable Class Chain bonus label on the room outcome, replay it through the
+   sanitized public world event, and render it alongside the Study/Rally Spark
+   reward in the world feed.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.

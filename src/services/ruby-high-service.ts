@@ -983,6 +983,7 @@ const PUBLIC_WORLD_ROOM_RECORD_LIMIT = 80;
 const PUBLIC_WORLD_ROOM_OUTCOME_LIMIT = 120;
 const PUBLIC_WORLD_TERM_RECORD_LIMIT = 12;
 const PUBLIC_WORLD_TEACHER_AGENDA_LIMIT = 80;
+const LIVE_ROOM_CLASS_CHAIN_WINDOW_MS = 10 * 60 * 1000;
 
 export interface LiveRoomGoalContributionResult {
   grade: Grade;
@@ -994,6 +995,7 @@ export interface LiveRoomGoalContributionResult {
   updatedAt: number;
   duplicate: boolean;
   ruleLabel?: string;
+  bonusLabel?: string;
 }
 
 interface LiveRoomGoalState {
@@ -1004,6 +1006,7 @@ interface LiveRoomGoalState {
   target: number;
   ruleLabel?: string;
   contributors: Set<string>;
+  startedAt: number;
   updatedAt: number;
 }
 
@@ -1033,6 +1036,7 @@ export interface PublicWorldRoomOutcomeRecord {
   rewardKind: "study-spark";
   rewardLabel: string;
   ruleLabel?: string;
+  bonusLabel?: string;
   progress: number;
   target: number;
   contributorCount: number;
@@ -2329,6 +2333,7 @@ export class RubyHighService extends Service {
     if (this.publicWorldRoomOutcomeRecords.has(id)) return;
     const schoolYear = schoolYearForTimestamp(completedAt);
     const displayName = publicWorldRoomDisplayName(goal.displayName, goal.facultyId);
+    const bonusLabel = liveRoomGoalBonusLabel(goal, progress, target, completedAt);
     const outcome: PublicWorldRoomOutcomeRecord = {
       id,
       schoolYear,
@@ -2343,6 +2348,7 @@ export class RubyHighService extends Service {
       rewardKind: "study-spark",
       rewardLabel: publicWorldRoomOutcomeRewardLabel(displayName, goal.ruleLabel),
       ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
+      ...(bonusLabel ? { bonusLabel } : {}),
       progress,
       target,
       contributorCount: goal.contributors.size,
@@ -2743,6 +2749,7 @@ export class RubyHighService extends Service {
       const displayName = publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId);
       const target = Math.max(1, Math.min(99, publicWorldStoredInteger(source.target, 3)));
       const ruleLabel = publicWorldStoredText(source.ruleLabel, 80);
+      const startedAt = publicWorldStoredInteger(source.startedAt, updatedAt);
       this.liveRoomGoalStates.set(this.liveRoomGoalStateKey(grade, facultyId, day), {
         grade,
         facultyId,
@@ -2751,6 +2758,7 @@ export class RubyHighService extends Service {
         target,
         ...(ruleLabel ? { ruleLabel } : {}),
         contributors,
+        startedAt,
         updatedAt,
       });
     }
@@ -2773,6 +2781,7 @@ export class RubyHighService extends Service {
             target: goal.target,
             ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
             contributors: Array.from(goal.contributors).sort(),
+            startedAt: goal.startedAt,
             updatedAt: goal.updatedAt,
           })),
       },
@@ -8260,6 +8269,7 @@ export class RubyHighService extends Service {
         target: rule.target,
         ...(rule.ruleLabel ? { ruleLabel: rule.ruleLabel } : {}),
         contributors: new Set<string>(),
+        startedAt: 0,
         updatedAt: 0,
       };
       this.liveRoomGoalStates.set(key, goal);
@@ -8267,6 +8277,7 @@ export class RubyHighService extends Service {
     const duplicate = goal.contributors.has(publicSessionId);
     if (!duplicate) {
       goal.contributors.add(publicSessionId);
+      if (goal.startedAt <= 0) goal.startedAt = now;
       goal.updatedAt = now;
       void this.persistLiveRoomGoalState({}, now);
     }
@@ -8275,6 +8286,7 @@ export class RubyHighService extends Service {
     if (!duplicate && progress >= target) {
       this.recordPublicWorldRoomOutcome(goal, progress, target, now);
     }
+    const bonusLabel = liveRoomGoalBonusLabel(goal, progress, target, now);
     return {
       grade,
       facultyId,
@@ -8285,6 +8297,7 @@ export class RubyHighService extends Service {
       updatedAt: goal.updatedAt,
       duplicate,
       ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
+      ...(bonusLabel ? { bonusLabel } : {}),
     };
   }
 
@@ -8594,6 +8607,7 @@ export class RubyHighService extends Service {
         pruned = true;
         continue;
       }
+      const bonusLabel = liveRoomGoalBonusLabel(goal, goal.contributors.size, goal.target, now);
       out.push({
         grade: goal.grade,
         facultyId: goal.facultyId,
@@ -8601,6 +8615,7 @@ export class RubyHighService extends Service {
         target: goal.target,
         updatedAt: goal.updatedAt,
         ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
+        ...(bonusLabel ? { bonusLabel } : {}),
       });
     }
     if (pruned) void this.persistLiveRoomGoalState({}, now);
@@ -9992,6 +10007,16 @@ function publicWorldRoomOutcomeRewardLabel(displayName: string, ruleLabel?: stri
   return publicWorldStoredText(`${displayName} earned a class-wide ${rewardName}`, 180) || `Class earned a ${rewardName}`;
 }
 
+function liveRoomGoalBonusLabel(goal: Pick<LiveRoomGoalState, "startedAt" | "updatedAt" | "displayName">, progress: number, target: number, now = Date.now()): string {
+  if (progress < target) return "";
+  const startedAt = publicWorldStoredInteger(goal.startedAt, 0);
+  const completedAt = publicWorldStoredInteger(goal.updatedAt, now);
+  if (startedAt <= 0 || completedAt <= 0 || completedAt < startedAt) return "";
+  if (completedAt - startedAt > LIVE_ROOM_CLASS_CHAIN_WINDOW_MS) return "";
+  const displayName = publicWorldRoomDisplayName(goal.displayName, "Class");
+  return publicWorldStoredText(`${displayName} earned a Class Chain bonus`, 120) || "Class Chain bonus";
+}
+
 function publicWorldRoomOutcomeSummaryLabel(displayName: string, progress: number, target: number, contributorCount: number): string {
   const contributors = Math.max(0, Math.floor(Number(contributorCount) || 0));
   const contributorText = contributors === 1 ? "1 contributor" : `${contributors} contributors`;
@@ -10326,6 +10351,7 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
   const rewardKind = source.rewardKind === "study-spark" ? source.rewardKind : "study-spark";
   const rewardLabel = publicWorldStoredText(source.rewardLabel, 180) || publicWorldRoomOutcomeRewardLabel(displayName);
   const ruleLabel = publicWorldStoredText(source.ruleLabel, 80);
+  const bonusLabel = publicWorldStoredText(source.bonusLabel, 120);
   return {
     id,
     schoolYear,
@@ -10340,6 +10366,7 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
     rewardKind,
     rewardLabel,
     ...(ruleLabel ? { ruleLabel } : {}),
+    ...(bonusLabel ? { bonusLabel } : {}),
     progress,
     target,
     contributorCount,

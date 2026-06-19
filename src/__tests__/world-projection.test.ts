@@ -340,6 +340,7 @@ describe("public world projection", () => {
       target: 2,
       updatedAt: 700,
       ruleLabel: "Term Momentum",
+      bonusLabel: "Ruby earned a Class Chain bonus",
     }]);
 
     expect(result.activeRooms[0]).toMatchObject({
@@ -361,6 +362,7 @@ describe("public world projection", () => {
         target: 2,
         complete: true,
         ruleLabel: "Term Momentum",
+        bonusLabel: "Ruby earned a Class Chain bonus",
         rewardLabel: "Ruby earned a class-wide Study Spark",
       }),
     ]);

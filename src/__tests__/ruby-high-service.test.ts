@@ -2258,6 +2258,7 @@ describe("RubyHighService Phase 1", () => {
       target: 3,
       complete: true,
       duplicate: false,
+      bonusLabel: "Ruby earned a Class Chain bonus",
     });
     await ruby.flush();
     const roomOutcomeState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-room-outcomes:v1");
@@ -2277,6 +2278,7 @@ describe("RubyHighService Phase 1", () => {
           summaryLabel: "Ruby live class completed 3/3 with 3 contributors",
           rewardKind: "study-spark",
           rewardLabel: "Ruby earned a class-wide Study Spark",
+          bonusLabel: "Ruby earned a Class Chain bonus",
           progress: 3,
           target: 3,
           contributorCount: 3,
@@ -2308,6 +2310,7 @@ describe("RubyHighService Phase 1", () => {
         target: 3,
         complete: true,
         updatedAt: now + 10,
+        bonusLabel: "Ruby earned a Class Chain bonus",
       },
     });
     expect(rehydratedWorld.summary).toMatchObject({
@@ -2340,6 +2343,7 @@ describe("RubyHighService Phase 1", () => {
         complete: true,
         label: "Ruby filled a live class goal",
         rewardLabel: "Ruby earned a class-wide Study Spark",
+        bonusLabel: "Ruby earned a Class Chain bonus",
       }),
     ]));
     expect(rehydrated.worldHealthSnapshot(now + 10)).toMatchObject({
@@ -2353,6 +2357,7 @@ describe("RubyHighService Phase 1", () => {
           summaryLabel: "Ruby live class completed 3/3 with 3 contributors",
           rewardKind: "study-spark",
           rewardLabel: "Ruby earned a class-wide Study Spark",
+          bonusLabel: "Ruby earned a Class Chain bonus",
         }),
       ],
       liveRoomGoals: 1,

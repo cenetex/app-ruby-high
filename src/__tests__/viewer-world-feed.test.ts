@@ -76,6 +76,13 @@ describe("viewer world feed pure helpers", () => {
       label: "Ruby filled a live class goal",
       rewardLabel: "Ruby earned a class-wide Study Spark",
     })).toBe("Ruby earned a class-wide Study Spark");
+    expect(worldFeedEventDisplayLabel({
+      kind: "room.goal-progress",
+      complete: true,
+      label: "Ruby filled a live class goal",
+      rewardLabel: "Ruby earned a class-wide Study Spark",
+      bonusLabel: "Ruby earned a Class Chain bonus",
+    })).toBe("Ruby earned a class-wide Study Spark · Ruby earned a Class Chain bonus");
     expect(worldFeedEventDisplayLabel({ kind: "room.goal-progress" })).toBe("Live class progress");
     expect(worldFeedEventDisplayLabel({ kind: "comic.page-unlocked" })).toBe("Comic page unlocked");
     expect(worldFeedEventDisplayLabel({ kind: "relationship.ticked" })).toBe("Classmate bond shifted");

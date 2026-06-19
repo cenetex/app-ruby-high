@@ -49,6 +49,7 @@ export interface PublicWorldRoomGoal {
   complete: boolean;
   updatedAt: number;
   ruleLabel?: string;
+  bonusLabel?: string;
 }
 
 export interface PublicWorldRoom {
@@ -81,6 +82,7 @@ export interface PublicWorldRoomGoalContribution {
   target?: number;
   updatedAt: number;
   ruleLabel?: string;
+  bonusLabel?: string;
 }
 
 export interface PublicWorldRoomBuildResult {
@@ -109,6 +111,7 @@ export type PublicWorldEvent =
       complete: boolean;
       label: string;
       ruleLabel?: string;
+      bonusLabel?: string;
       rewardLabel?: string;
     }
   | {
@@ -357,6 +360,7 @@ export function buildPublicWorldRooms(
     const updatedAt = publicWorldNonNegativeInteger(contribution.updatedAt);
     const roomName = publicWorldRoomDisplayName(room.displayName, "Class");
     const ruleLabel = publicWorldText(contribution.ruleLabel, "", 80);
+    const bonusLabel = publicWorldText(contribution.bonusLabel, "", 120);
     room.goal = {
       kind: "live-class",
       label: `${roomName} live class ${progress}/${target}${ruleLabel ? ` · ${ruleLabel}` : ""}`,
@@ -365,6 +369,7 @@ export function buildPublicWorldRooms(
       complete: progress >= target,
       updatedAt,
       ...(ruleLabel ? { ruleLabel } : {}),
+      ...(bonusLabel ? { bonusLabel } : {}),
     };
   }
   const sortedRooms = Array.from(roomRows.values()).sort((a, b) =>
@@ -451,6 +456,9 @@ export function publicWorldRoomGoalEvents(rooms: readonly PublicWorldRoom[]): Pu
       const rewardLabel = room.goal.complete
         ? publicWorldEventLabel(`${room.displayName} earned a class-wide ${rewardName}`, "Class reward unlocked")
         : "";
+      const bonusLabel = room.goal.complete && room.goal.bonusLabel
+        ? publicWorldEventLabel(room.goal.bonusLabel, "Class bonus unlocked")
+        : "";
       const event = {
         kind: "room.goal-progress" as const,
         at: publicWorldNonNegativeInteger(room.goal.updatedAt),
@@ -463,6 +471,7 @@ export function publicWorldRoomGoalEvents(rooms: readonly PublicWorldRoom[]): Pu
         complete: room.goal.complete === true,
         label,
         ...(room.goal.ruleLabel ? { ruleLabel: publicWorldEventLabel(room.goal.ruleLabel, "Room rule") } : {}),
+        ...(bonusLabel ? { bonusLabel } : {}),
         ...(rewardLabel ? { rewardLabel } : {}),
       };
       return {
