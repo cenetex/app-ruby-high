@@ -2723,16 +2723,15 @@ export function runViewerClient(bootstrap) {
   };
 
   function buildHallPassPack(pack) {
+    const walletReady = !!knownSolanaOwnerWalletAddress();
+    const view = accountHallPassPackTileView(pack, { authed, billingBusy, walletReady });
     const item = document.createElement("article");
-    item.className = "account-pack-tile is-" + String(pack.status || "active");
-    const packs = Math.max(1, Math.floor(Number(pack.packCount || 1)));
-    const cardCount = Math.max(packs * HALL_PASS_CARDS_PER_PACK, Math.floor(Number(pack.cardCount || 0)));
-    const status = String(pack.status || "active");
+    item.className = view.className;
     const img = document.createElement("img");
     img.className = "account-pack-tile-art";
-    img.alt = status === "active" ? "Ruby High Pack" : "Opened Ruby High Pack";
+    img.alt = view.imageAlt;
     img.loading = "lazy";
-    img.src = status === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL;
+    img.src = view.imageKind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL;
     item.appendChild(img);
     const meta = document.createElement("div");
     meta.className = "account-pack-tile-meta";
@@ -2740,32 +2739,25 @@ export function runViewerClient(bootstrap) {
     copy.className = "account-pack-tile-copy";
     const title = document.createElement("div");
     title.className = "account-pack-tile-title";
-    title.textContent = packs === 1 ? "Ruby High Pack" : "Ruby High " + packs + "-Pack";
+    title.textContent = view.title;
     const detail = document.createElement("div");
     detail.className = "account-pack-tile-detail";
-    detail.textContent = (status === "active" ? "On-chain Core NFT" : "Opened pack record")
-      + " · " + formatWholeNumber(cardCount)
-      + " cards · #" + String(pack.serial || "").padStart(6, "0");
+    detail.textContent = view.detail;
     copy.appendChild(title);
     copy.appendChild(detail);
-    appendSolanaProofLink(copy, pack.assetAddress, status === "active" ? "View pack NFT" : "Pack proof");
+    appendSolanaProofLink(copy, pack.assetAddress, view.proofLabel);
     meta.appendChild(copy);
-    if (pack.status === "active") {
-      const walletReady = !!knownSolanaOwnerWalletAddress();
+    if (view.openVisible) {
       const open = document.createElement("button");
       open.type = "button";
       open.className = "account-pack-tile-open";
-      open.textContent = walletReady
-        ? (billingBusy ? "Opening..." : "Open Pack")
-        : (billingBusy ? "Connecting..." : "Connect Wallet");
-      open.disabled = !authed || billingBusy;
-      open.title = walletReady
-        ? "Open this Ruby High pack and create its Cards."
-        : "Connect a Solana wallet before opening this Ruby High pack.";
+      open.textContent = view.openText;
+      open.disabled = view.openDisabled;
+      open.title = view.openTitle;
       open.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (!walletReady) {
+        if (!view.walletReady) {
           void ensureSolanaWalletFromAccount();
           return;
         }
@@ -2778,62 +2770,38 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildHallPassCard(card) {
-    const faceDown = hallPassCardIsFaceDown(card);
+    const view = accountHallPassCardTileView(card);
     const item = document.createElement("button");
     item.type = "button";
-    item.className = "account-card-tile is-" + String(card.status || "active")
-      + " is-" + String(card.role || "student")
-      + " rarity-" + String(card.rarity || "common").replace(/[^a-z0-9-]/gi, "")
-      + (faceDown ? " is-face-down" : "");
-    item.setAttribute("aria-label", "Open " + hallPassCardTitle(card, faceDown));
-    const artUrl = faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
+    item.className = view.className;
+    item.setAttribute("aria-label", view.ariaLabel);
+    const artUrl = view.faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
     if (artUrl) {
       const img = document.createElement("img");
       img.className = "account-card-tile-art";
-      img.alt = faceDown
-        ? "Face-down Ruby High card"
-        : card.characterName ? card.characterName + " Ruby High card" : "Ruby High card";
+      img.alt = view.imageAlt;
       img.loading = "lazy";
       img.src = artUrl;
       item.appendChild(img);
     } else {
       const fallback = document.createElement("div");
       fallback.className = "account-card-tile-fallback";
-      fallback.textContent = String(card.characterName || "R").slice(0, 1).toUpperCase();
+      fallback.textContent = view.fallbackInitial;
       item.appendChild(fallback);
     }
     const meta = document.createElement("div");
     meta.className = "account-card-tile-meta";
     const title = document.createElement("div");
     title.className = "account-card-tile-title";
-    title.textContent = hallPassCardTitle(card, faceDown);
+    title.textContent = view.title;
     const detail = document.createElement("div");
     detail.className = "account-card-tile-detail";
-    detail.textContent = hallPassCardDetail(card, faceDown);
+    detail.textContent = view.detail;
     meta.appendChild(title);
     meta.appendChild(detail);
     item.appendChild(meta);
     item.addEventListener("click", () => showHallPassCardReader(card));
     return item;
-  }
-
-  function hallPassCardIsFaceDown(card) {
-    return !card || !card.mintAddress || !card.mintSignature || card.characterId === "card-back";
-  }
-
-  function hallPassCardTitle(card, faceDown) {
-    return faceDown ? "Mystery Card" : card && card.characterName ? card.characterName : "Ruby High Card";
-  }
-
-  function hallPassCardStatus(card) {
-    if (!card) return "active";
-    return card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
-  }
-
-  function hallPassCardDetail(card, faceDown) {
-    if (faceDown) return "Face-down Card · mint to reveal · #" + String(card && (card.serial || card.id) || "").slice(-6);
-    const chain = card && card.mintAddress && card.mintSignature ? "On-chain Card" : "In-app Card";
-    return chain + " · " + String(card && card.rarity || "common") + " · " + hallPassCardStatus(card) + " · #" + String(card && (card.serial || card.id) || "").slice(-6);
   }
 
   function hallPassCardProfile(card) {

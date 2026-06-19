@@ -271,6 +271,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const view = accountTrustPanelView(payload, connectedWallet, buildId || \"dev\");");
     expectScriptToContain(script, "function accountHallPassCardsPanelView(");
     expectScriptToContain(clientSource, "const view = accountHallPassCardsPanelView(packs, cards, pendingMints, {");
+    expectScriptToContain(script, "function accountHallPassPackTileView(packInput, opts)");
+    expectScriptToContain(clientSource, "const view = accountHallPassPackTileView(pack, { authed, billingBusy, walletReady });");
+    expectScriptToContain(script, "function accountHallPassCardTileView(cardInput)");
+    expectScriptToContain(clientSource, "const view = accountHallPassCardTileView(card);");
     expectScriptToContain(script, "function accountComicPanelView(collectionInput)");
     expectScriptToContain(clientSource, "const view = accountComicPanelView(comicCollectionForTelemetry());");
     expectScriptToContain(script, "function accountCharacterCardView(entry, slotNumber, playbooks, currentGrade, fallbackPortraitUrl)");
@@ -377,12 +381,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'apiBase + "/nft/sync-packs"');
     expectScriptToContain(script, "const removedCount = Math.max(0, Math.floor(Number(data.removedCount || 0)))");
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
-    expectScriptToContain(script, 'img.src = status === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL');
-    expectScriptToContain(script, 'item.className = "account-pack-tile is-" + String(pack.status || "active")');
+    expectScriptToContain(script, 'img.src = view.imageKind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL');
+    expectScriptToContain(script, "item.className = view.className");
     expectScriptToContain(script, '"On-chain Core NFT"');
     expectScriptToContain(script, '"Opened pack record"');
     expectScriptToContain(script, '"View pack NFT"');
-    expectScriptToContain(script, 'item.className = "account-card-tile is-" + String(card.status || "active")');
+    expectScriptToContain(script, "item.className = view.className");
     expectScriptToContain(script, 'item.type = "button"');
     expectScriptToContain(script, 'item.addEventListener("click", () => showHallPassCardReader(card))');
     expectScriptToContain(script, '"Face-down Card · mint to reveal · #"');

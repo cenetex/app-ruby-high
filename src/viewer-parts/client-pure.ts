@@ -141,6 +141,31 @@ export type AccountHallPassCardsPanelView = {
   mintTitle: string;
   needsWalletConnection: boolean;
 };
+export type AccountHallPassPackTileView = {
+  className: string;
+  status: string;
+  packCount: number;
+  cardCount: number;
+  imageAlt: string;
+  imageKind: "active" | "opened";
+  title: string;
+  detail: string;
+  proofLabel: string;
+  openVisible: boolean;
+  openText: string;
+  openDisabled: boolean;
+  openTitle: string;
+  walletReady: boolean;
+};
+export type AccountHallPassCardTileView = {
+  className: string;
+  faceDown: boolean;
+  title: string;
+  detail: string;
+  ariaLabel: string;
+  imageAlt: string;
+  fallbackInitial: string;
+};
 export type AccountComicPageTileView = {
   pageNumber: number;
   title: string;
@@ -859,6 +884,80 @@ export function accountHallPassCardsPanelView(
     mintText,
     mintTitle,
     needsWalletConnection,
+  };
+}
+
+export function accountHallPassPackTileView(packInput: NullableRecord, opts?: NullableRecord): AccountHallPassPackTileView {
+  const pack = packInput || {};
+  const status = String(pack.status || "active");
+  const packCount = Math.max(1, Math.floor(Number(pack.packCount || 1)));
+  const cardCount = Math.max(packCount * VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK, Math.floor(Number(pack.cardCount || 0)));
+  const walletReady = !!(opts && opts.walletReady);
+  const authed = !!(opts && opts.authed);
+  const billingBusy = !!(opts && opts.billingBusy);
+  return {
+    className: "account-pack-tile is-" + status,
+    status,
+    packCount,
+    cardCount,
+    imageAlt: status === "active" ? "Ruby High Pack" : "Opened Ruby High Pack",
+    imageKind: status === "active" ? "active" : "opened",
+    title: packCount === 1 ? "Ruby High Pack" : "Ruby High " + packCount + "-Pack",
+    detail: (status === "active" ? "On-chain Core NFT" : "Opened pack record")
+      + " · " + formatWholeNumber(cardCount)
+      + " cards · #" + String(pack.serial || "").padStart(6, "0"),
+    proofLabel: status === "active" ? "View pack NFT" : "Pack proof",
+    openVisible: status === "active",
+    openText: walletReady
+      ? (billingBusy ? "Opening..." : "Open Pack")
+      : (billingBusy ? "Connecting..." : "Connect Wallet"),
+    openDisabled: !authed || billingBusy,
+    openTitle: walletReady
+      ? "Open this Ruby High pack and create its Cards."
+      : "Connect a Solana wallet before opening this Ruby High pack.",
+    walletReady,
+  };
+}
+
+export function hallPassCardIsFaceDown(card: NullableRecord): boolean {
+  return !card || !card.mintAddress || !card.mintSignature || card.characterId === "card-back";
+}
+
+export function hallPassCardTitle(card: NullableRecord, faceDown?: unknown): string {
+  const hidden = faceDown === undefined ? hallPassCardIsFaceDown(card) : !!faceDown;
+  return hidden ? "Mystery Card" : card && card.characterName ? String(card.characterName) : "Ruby High Card";
+}
+
+export function hallPassCardStatus(card: NullableRecord): string {
+  if (!card) return "active";
+  return card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
+}
+
+export function hallPassCardDetail(card: NullableRecord, faceDown?: unknown): string {
+  const hidden = faceDown === undefined ? hallPassCardIsFaceDown(card) : !!faceDown;
+  if (hidden) return "Face-down Card · mint to reveal · #" + String(card && (card.serial || card.id) || "").slice(-6);
+  const chain = card && card.mintAddress && card.mintSignature ? "On-chain Card" : "In-app Card";
+  return chain + " · " + String(card && card.rarity || "common") + " · " + hallPassCardStatus(card) + " · #" + String(card && (card.serial || card.id) || "").slice(-6);
+}
+
+export function accountHallPassCardTileView(cardInput: NullableRecord): AccountHallPassCardTileView {
+  const card = cardInput || {};
+  const faceDown = hallPassCardIsFaceDown(card);
+  const title = hallPassCardTitle(card, faceDown);
+  const rarity = String(card.rarity || "common").replace(/[^a-z0-9-]/gi, "");
+  return {
+    className: "account-card-tile is-" + String(card.status || "active")
+      + " is-" + String(card.role || "student")
+      + " rarity-" + rarity
+      + (faceDown ? " is-face-down" : ""),
+    faceDown,
+    title,
+    detail: hallPassCardDetail(card, faceDown),
+    ariaLabel: "Open " + title,
+    imageAlt: faceDown
+      ? "Face-down Ruby High card"
+      : card.characterName ? String(card.characterName) + " Ruby High card" : "Ruby High card",
+    fallbackInitial: String(card.characterName || "R").slice(0, 1).toUpperCase(),
   };
 }
 
