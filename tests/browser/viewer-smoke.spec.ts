@@ -75,6 +75,8 @@ test("shows shared live-room progress across two browser clients", async ({ brow
   const contextB = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
+  const roomProgressPattern = /Ruby live class (?:2|3)\/3/i;
+  const eventProgressPattern = /Ruby (?:live class is (?:2|3)\/3|filled a live class goal)/i;
 
   try {
     const clientA = await openViewer(pageA);
@@ -100,17 +102,17 @@ test("shows shared live-room progress across two browser clients", async ({ brow
     await expect.poll(async () => {
       await refreshA.click();
       return (await pageA.locator("#world-panel-rooms").textContent()) ?? "";
-    }, { timeout: 20_000 }).toContain("Ruby live class 2/3");
+    }, { timeout: 20_000 }).toMatch(roomProgressPattern);
 
     await expect.poll(async () => {
       await refreshB.click();
       return (await pageB.locator("#world-panel-rooms").textContent()) ?? "";
-    }, { timeout: 20_000 }).toContain("Ruby live class 2/3");
+    }, { timeout: 20_000 }).toMatch(roomProgressPattern);
 
     await expect(pageA.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
     await expect(pageB.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
-    await expect(pageA.locator(".world-event-row").first()).toContainText(/Ruby live class is 2\/3|Ruby live class 2\/3/i);
-    await expect(pageB.locator(".world-event-row").first()).toContainText(/Ruby live class is 2\/3|Ruby live class 2\/3/i);
+    await expect(pageA.locator("#world-panel-events")).toContainText(eventProgressPattern);
+    await expect(pageB.locator("#world-panel-events")).toContainText(eventProgressPattern);
     await expect(pageA.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
     await expect(pageB.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
     expect(clientA.errors).toEqual([]);

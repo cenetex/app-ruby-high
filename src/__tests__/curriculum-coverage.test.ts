@@ -19,8 +19,12 @@ function row(input: Partial<MutableCurriculumCoverageRow> & {
     remainingSum: 10,
     lowPoolSessions: 0,
     exhaustedSessions: 0,
+    repeatedAnswers: 0,
+    repeatedAnswerSessions: 0,
     sourceCardIds: new Set(),
     sourceSubjects: new Map(),
+    weakSubjects: new Map(),
+    recentConcepts: new Map(),
     researchCorpus: null,
     ...input,
   };
@@ -43,6 +47,9 @@ describe("curriculum coverage planning", () => {
       exhaustedSessions: 0,
       sourceCardCount: 0,
       focusSubjects: [],
+      weakSubjects: ["agent reliability"],
+      recentConcepts: ["AI application design", "networked systems"],
+      repetitionPressure: 0.5,
       sourceCardIds: [],
       researchCorpus: {
         id: "ruby-research-corpus",
@@ -60,7 +67,10 @@ describe("curriculum coverage planning", () => {
       corpusTitle: "Ruby Research Corpus",
       researchInterests: ["AI application design", "agent reliability"],
       researchDirective: expect.stringContaining("Keep grade 9 tight"),
-      promptSeed: expect.stringContaining("Freshman starter questions"),
+      weakSubjects: ["agent reliability"],
+      recentConcepts: ["AI application design", "networked systems"],
+      repetitionPressure: 0.5,
+      promptSeed: expect.stringContaining("Do not repeat recent concepts: AI application design, networked systems."),
     });
 
     expect(buildCurriculumReplenishmentPlan({
@@ -71,6 +81,8 @@ describe("curriculum coverage planning", () => {
       exhaustedSessions: 2,
       sourceCardCount: 2,
       focusSubjects: ["postwar literature", "AI criticism"],
+      weakSubjects: [],
+      recentConcepts: [],
       sourceCardIds: ["edward-card-1", "edward-card-2"],
     })).toMatchObject({
       mode: "generate",
@@ -98,6 +110,8 @@ describe("curriculum coverage planning", () => {
         seenSum: 10,
         remainingSum: 10,
         lowPoolSessions: 1,
+        repeatedAnswers: 2,
+        repeatedAnswerSessions: 1,
         sourceCardIds: new Set(["ed-2", "ed-1"]),
         researchCorpus: {
           id: "edward-research-corpus",
@@ -111,6 +125,14 @@ describe("curriculum coverage planning", () => {
           ["literature", 1],
           ["rhetoric", 3],
           ["AI criticism", 3],
+        ]),
+        weakSubjects: new Map([
+          ["rhetoric", 2],
+          ["literature", 3],
+        ]),
+        recentConcepts: new Map([
+          ["rhetoric", 2],
+          ["close reading", 1],
         ]),
       }),
       row({
@@ -172,6 +194,9 @@ describe("curriculum coverage planning", () => {
     expect(snapshot.rows.find((entry) => entry.facultyId === "edward")?.replenishment).toMatchObject({
       mode: "generate",
       focusSubjects: ["AI criticism", "rhetoric", "literature"],
+      weakSubjects: ["literature", "rhetoric"],
+      recentConcepts: ["rhetoric", "close reading"],
+      repetitionPressure: 0.5,
       sourceCardIds: ["ed-2", "ed-1"],
       corpusTitle: "Edward Research Corpus",
       researchLanes: [

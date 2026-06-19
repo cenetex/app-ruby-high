@@ -94,6 +94,12 @@ interface AdminCurriculumReplenishmentStep {
   mode: "manual-curation" | "generate";
   lowPoolSessions: number;
   exhaustedSessions: number;
+  repeatedAnswers: number;
+  repeatedAnswerSessions: number;
+  averageRepeatedAnswers: number;
+  repetitionPressure: number;
+  weakSubjects: string[];
+  recentConcepts: string[];
   targetNewQuestions: number;
   targetDifficulty: string;
   targetMinGrade: string;
@@ -306,6 +312,12 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
         mode: plan.mode,
         lowPoolSessions: row.lowPoolSessions,
         exhaustedSessions: row.exhaustedSessions,
+        repeatedAnswers: row.repeatedAnswers,
+        repeatedAnswerSessions: row.repeatedAnswerSessions,
+        averageRepeatedAnswers: row.averageRepeatedAnswers,
+        repetitionPressure: row.repetitionPressure,
+        weakSubjects: row.weakSubjects,
+        recentConcepts: row.recentConcepts,
         targetNewQuestions: plan.targetNewQuestions,
         targetDifficulty: plan.targetDifficulty,
         targetMinGrade: plan.targetMinGrade,
@@ -400,7 +412,10 @@ function adminCurriculumRequestId(step: Pick<AdminCurriculumReplenishmentStep, "
 }
 
 function adminCurriculumGenerationPriority(step: AdminCurriculumReplenishmentStep): number {
-  return step.exhaustedSessions * 100 + step.lowPoolSessions * 10 + step.targetNewQuestions;
+  return step.exhaustedSessions * 100
+    + step.lowPoolSessions * 10
+    + Math.round(step.repetitionPressure * 25)
+    + step.targetNewQuestions;
 }
 
 function statusRank(status: AdminCurriculumGenerationProposal["status"]): number {
@@ -517,6 +532,9 @@ function curriculumDraftMaterials(step: AdminCurriculumReplenishmentStep, source
     `Mode: ${step.mode}`,
     `Target: ${step.targetNewQuestions} ${step.targetDifficulty} questions with minGrade ${step.targetMinGrade}`,
     `Focus subjects: ${step.focusSubjects.join(", ") || "teacher corpus"}`,
+    `Weak subjects: ${step.weakSubjects.join(", ") || "none detected"}`,
+    `Recent concepts to avoid: ${step.recentConcepts.join(", ") || "none detected"}`,
+    `Repetition pressure: ${Math.round(step.repetitionPressure * 100)}% (${step.repeatedAnswers} repeated answers across ${step.repeatedAnswerSessions} sessions)`,
     `Corpus: ${step.corpusTitle ? `${step.corpusTitle} (${step.corpusPath ?? "unknown path"})` : "source-card corpus only"}`,
     `Research interests: ${step.researchInterests.join(", ") || "derived from source cards"}`,
     ``,
@@ -2311,11 +2329,13 @@ async function postTelegramSnapshot() {
       if (!rows.length) return "";
       return "<table><thead><tr><th>Low Curriculum Pools</th><th>Remaining</th><th>Next</th></tr></thead><tbody>" + rows.map((row) => {
         const label = "Grade " + esc(row.grade) + " · " + esc(row.displayName || row.facultyId);
-        const sub = n(row.sessions) + " sessions · " + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted";
+        const repeated = row.repetitionPressure ? " · " + n(Math.round(row.repetitionPressure * 100)) + "% repeat pressure" : "";
+        const sub = n(row.sessions) + " sessions · " + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted" + repeated;
         const remaining = n(row.averageRemaining) + " / " + n(row.totalEligibleMax);
         const plan = row.replenishment || null;
+        const planSubjects = plan ? ((plan.weakSubjects && plan.weakSubjects.length ? plan.weakSubjects : plan.focusSubjects) || []) : [];
         const next = plan
-          ? esc(plan.mode + " · " + n(plan.targetNewQuestions) + " " + plan.targetDifficulty) + "<div class=\\"sub\\">" + esc((plan.focusSubjects || []).slice(0, 3).join(", ") || "teacher corpus") + "</div>"
+          ? esc(plan.mode + " · " + n(plan.targetNewQuestions) + " " + plan.targetDifficulty) + "<div class=\\"sub\\">" + esc(planSubjects.slice(0, 3).join(", ") || "teacher corpus") + "</div>"
           : "";
         return "<tr><td>" + label + "<div class=\\"sub\\">" + esc(sub) + "</div></td><td>" + esc(remaining) + "</td><td>" + next + "</td></tr>";
       }).join("") + "</tbody></table>";

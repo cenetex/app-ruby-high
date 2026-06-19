@@ -2123,8 +2123,12 @@ export class RubyHighService extends Service {
             remainingSum: 0,
             lowPoolSessions: 0,
             exhaustedSessions: 0,
+            repeatedAnswers: 0,
+            repeatedAnswerSessions: 0,
             sourceCardIds: new Set<string>(),
             sourceSubjects: new Map<string, number>(),
+            weakSubjects: new Map<string, number>(),
+            recentConcepts: new Map<string, number>(),
             researchCorpus: builtInTeacherResearchCorpusForFaculty(status.facultyId),
           };
           rows.set(key, row);
@@ -2137,6 +2141,24 @@ export class RubyHighService extends Service {
         const lowThreshold = Math.max(3, Math.ceil(status.total * 0.1));
         if (status.remaining <= 0) row.exhaustedSessions += 1;
         if (status.remaining <= lowThreshold) row.lowPoolSessions += 1;
+        const eligibleQuestions = this.eligibleCourseQuestions(state, status.facultyId, {
+          allowedDifficulties: state.currentGrade && !this.isImportedReviewCourse(state, status.facultyId)
+            ? difficultiesForGrade(state.currentGrade)
+            : undefined,
+        });
+        const analytics = this.curriculumCoverageAnalyticsForState(
+          state,
+          eligibleQuestions,
+          status.remainingBySubject,
+        );
+        row.repeatedAnswers += analytics.repeatedAnswers;
+        if (analytics.repeatedAnswers > 0) row.repeatedAnswerSessions += 1;
+        for (const [subject, count] of analytics.weakSubjects) {
+          row.weakSubjects.set(subject, (row.weakSubjects.get(subject) ?? 0) + count);
+        }
+        for (const [concept, count] of analytics.recentConcepts) {
+          row.recentConcepts.set(concept, (row.recentConcepts.get(concept) ?? 0) + count);
+        }
         for (const card of this.curriculumSourceCardsForPlan(faculty, grade)) {
           row.sourceCardIds.add(card.id);
           row.sourceSubjects.set(card.subject, (row.sourceSubjects.get(card.subject) ?? 0) + 1);
@@ -2144,6 +2166,52 @@ export class RubyHighService extends Service {
       }
     }
     return buildCurriculumCoverageSnapshot(activeCharacterSessions, rows.values());
+  }
+
+  private curriculumCoverageAnalyticsForState(
+    state: QuizState,
+    eligibleQuestions: readonly BankedQuestion[],
+    remainingBySubject: Record<string, number>,
+  ): {
+    repeatedAnswers: number;
+    weakSubjects: Map<string, number>;
+    recentConcepts: Map<string, number>;
+  } {
+    const byId = new Map(eligibleQuestions.map((question) => [question.id, question]));
+    const subjectTotals = new Map<string, number>();
+    for (const question of eligibleQuestions) {
+      subjectTotals.set(question.subject, (subjectTotals.get(question.subject) ?? 0) + 1);
+    }
+    const weakSubjects = new Map<string, number>();
+    for (const [subject, total] of subjectTotals) {
+      const remaining = Math.max(0, Math.floor(Number(remainingBySubject[subject] ?? 0)));
+      const threshold = Math.max(1, Math.ceil(total * 0.2));
+      if (remaining <= threshold) {
+        weakSubjects.set(subject, Math.max(1, total - remaining));
+      }
+    }
+
+    const answeredCounts = new Map<string, number>();
+    const matchingHistory = state.history.filter((record) => byId.has(record.questionId));
+    for (const record of matchingHistory) {
+      answeredCounts.set(record.questionId, (answeredCounts.get(record.questionId) ?? 0) + 1);
+    }
+    let repeatedAnswers = 0;
+    for (const count of answeredCounts.values()) {
+      if (count > 1) repeatedAnswers += count - 1;
+    }
+
+    const recentIds = matchingHistory.length
+      ? matchingHistory.slice(-12).map((record) => record.questionId)
+      : state.askedQuestionIds.filter((id) => byId.has(id)).slice(-12);
+    const recentConcepts = new Map<string, number>();
+    for (const id of recentIds) {
+      const question = byId.get(id);
+      if (!question) continue;
+      const concept = curriculumQuestionConceptLabel(question);
+      recentConcepts.set(concept, (recentConcepts.get(concept) ?? 0) + 1);
+    }
+    return { repeatedAnswers, weakSubjects, recentConcepts };
   }
 
   private curriculumSourceCardsForPlan(faculty: PackFaculty, grade: Grade): PackSourceCard[] {
@@ -9686,6 +9754,12 @@ function normalizeMetricMetadata(value: Record<string, unknown>): Record<string,
     }
   }
   return out;
+}
+
+function curriculumQuestionConceptLabel(question: BankedQuestion): string {
+  const subject = question.subject || "general";
+  if (question.sourceCardId) return `${subject} via ${question.sourceCardId}`;
+  return subject;
 }
 
 /** Backfill Paper Card snapshot on legacy yearbook entries written before

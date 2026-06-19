@@ -1007,6 +1007,13 @@ describe("RubyHighService Phase 1", () => {
     ruby.selectGrade(freshmanSid, "9");
     const posed = ruby.pickAndPose(freshmanSid, { faculty: "level-test-course" });
     ruby.submitAnswer(freshmanSid, posed.current!.correct!);
+    ruby.getOrCreate(freshmanSid).history.push({
+      questionId: posed.current!.id,
+      picked: posed.current!.correct!,
+      correct: posed.current!.correct!,
+      wasCorrect: true,
+      at: Date.now() + 1,
+    });
 
     attachTestCharacter(ruby, sophomoreSid);
     ruby.setActivePackForSession(sophomoreSid, sophomorePack.id);
@@ -1027,7 +1034,12 @@ describe("RubyHighService Phase 1", () => {
         mode: "manual-curation",
         targetMinGrade: "9",
         targetDifficulty: "easy",
+        recentConcepts: ["leveling"],
+        weakSubjects: ["leveling"],
+        repetitionPressure: 1,
       },
+      repeatedAnswers: 1,
+      repeatedAnswerSessions: 1,
     });
     expect(sophomore).toMatchObject({
       sessions: 1,
@@ -1036,12 +1048,14 @@ describe("RubyHighService Phase 1", () => {
       averageRemaining: 3,
       lowPoolSessions: 1,
       exhaustedSessions: 0,
+      weakSubjects: ["research"],
       replenishment: {
         mode: "generate",
         targetMinGrade: "10",
         targetDifficulty: "easy",
         sourceCardCount: 1,
         focusSubjects: ["research"],
+        weakSubjects: ["research"],
         sourceCardIds: ["level-corpus-easy"],
         corpusId: null,
       },

@@ -19,6 +19,12 @@ export interface RubyHighCurriculumCoverageRow {
   remainingShare: number | null;
   lowPoolSessions: number;
   exhaustedSessions: number;
+  repeatedAnswers: number;
+  repeatedAnswerSessions: number;
+  averageRepeatedAnswers: number;
+  repetitionPressure: number;
+  weakSubjects: string[];
+  recentConcepts: string[];
   replenishment: RubyHighCurriculumReplenishmentPlan | null;
 }
 
@@ -29,6 +35,9 @@ export interface RubyHighCurriculumReplenishmentPlan {
   targetNewQuestions: number;
   sourceCardCount: number;
   focusSubjects: string[];
+  weakSubjects: string[];
+  recentConcepts: string[];
+  repetitionPressure: number;
   sourceCardIds: string[];
   corpusId: string | null;
   corpusTitle: string | null;
@@ -50,8 +59,12 @@ export interface MutableCurriculumCoverageRow {
   remainingSum: number;
   lowPoolSessions: number;
   exhaustedSessions: number;
+  repeatedAnswers: number;
+  repeatedAnswerSessions: number;
   sourceCardIds: Set<string>;
   sourceSubjects: Map<string, number>;
+  weakSubjects: Map<string, number>;
+  recentConcepts: Map<string, number>;
   researchCorpus: RubyHighTeacherResearchCorpus | null;
 }
 
@@ -69,6 +82,9 @@ export function buildCurriculumReplenishmentPlan(args: {
   exhaustedSessions: number;
   sourceCardCount: number;
   focusSubjects: string[];
+  weakSubjects?: string[];
+  recentConcepts?: string[];
+  repetitionPressure?: number;
   sourceCardIds: string[];
   researchCorpus?: RubyHighTeacherResearchCorpus | null;
 }): RubyHighCurriculumReplenishmentPlan {
@@ -81,8 +97,13 @@ export function buildCurriculumReplenishmentPlan(args: {
   const researchCorpus = args.researchCorpus ?? null;
   const researchInterests = researchCorpus?.researchInterests.slice(0, 8) ?? [];
   const researchLanes = researchCorpus?.lanes.slice(0, 5) ?? [];
+  const weakSubjects = (args.weakSubjects ?? []).slice(0, 6);
+  const recentConcepts = (args.recentConcepts ?? []).slice(0, 8);
+  const repetitionPressure = Math.max(0, Math.min(1, Number(args.repetitionPressure ?? 0)));
   const subjectHint = args.focusSubjects.length
     ? args.focusSubjects.join(", ")
+    : weakSubjects.length
+      ? weakSubjects.join(", ")
     : researchInterests.length
       ? researchInterests.join(", ")
       : "the teacher's current research corpus";
@@ -101,6 +122,9 @@ export function buildCurriculumReplenishmentPlan(args: {
     `Focus subjects: ${subjectHint}.`,
     researchDirective,
     args.sourceCardIds.length ? `Prioritize source cards: ${args.sourceCardIds.join(", ")}.` : "",
+    weakSubjects.length ? `Repair weak subjects first: ${weakSubjects.join(", ")}.` : "",
+    recentConcepts.length ? `Do not repeat recent concepts: ${recentConcepts.join(", ")}.` : "",
+    repetitionPressure > 0 ? `Repetition pressure: ${Math.round(repetitionPressure * 100)}%; prefer new angles over near-duplicates.` : "",
     "Avoid repeating existing prompts; write like the teacher is actively researching this class, not filling a spreadsheet.",
   ].filter(Boolean).join(" ");
   return {
@@ -110,6 +134,9 @@ export function buildCurriculumReplenishmentPlan(args: {
     targetNewQuestions,
     sourceCardCount: args.sourceCardCount,
     focusSubjects: args.focusSubjects,
+    weakSubjects,
+    recentConcepts,
+    repetitionPressure,
     sourceCardIds: args.sourceCardIds,
     corpusId: researchCorpus?.id ?? null,
     corpusTitle: researchCorpus?.title ?? null,
@@ -175,6 +202,18 @@ function normalizeCurriculumCoverageRow(row: MutableCurriculumCoverageRow): Ruby
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 5)
     .map(([subject]) => subject);
+  const weakSubjects = Array.from(row.weakSubjects.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 6)
+    .map(([subject]) => subject);
+  const recentConcepts = Array.from(row.recentConcepts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 8)
+    .map(([concept]) => concept);
+  const averageRepeatedAnswers = row.sessions > 0 ? row.repeatedAnswers / row.sessions : 0;
+  const repetitionPressure = row.sessions > 0
+    ? Math.max(row.repeatedAnswerSessions / row.sessions, row.repeatedAnswers / Math.max(1, row.seenSum))
+    : 0;
   return {
     grade: row.grade,
     facultyId: row.facultyId,
@@ -187,6 +226,12 @@ function normalizeCurriculumCoverageRow(row: MutableCurriculumCoverageRow): Ruby
     remainingShare,
     lowPoolSessions: row.lowPoolSessions,
     exhaustedSessions: row.exhaustedSessions,
+    repeatedAnswers: row.repeatedAnswers,
+    repeatedAnswerSessions: row.repeatedAnswerSessions,
+    averageRepeatedAnswers,
+    repetitionPressure,
+    weakSubjects,
+    recentConcepts,
     replenishment: row.lowPoolSessions > 0 ? buildCurriculumReplenishmentPlan({
       grade: row.grade,
       facultyId: row.facultyId,
@@ -195,6 +240,9 @@ function normalizeCurriculumCoverageRow(row: MutableCurriculumCoverageRow): Ruby
       exhaustedSessions: row.exhaustedSessions,
       sourceCardCount: row.sourceCardIds.size,
       focusSubjects,
+      weakSubjects,
+      recentConcepts,
+      repetitionPressure,
       sourceCardIds,
       researchCorpus: row.researchCorpus,
     }) : null,
