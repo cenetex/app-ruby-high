@@ -130,6 +130,17 @@ export type AccountTrustPanelView = {
   rows: AccountTrustRowView[];
   note: string;
 };
+export type AccountHallPassCardsPanelView = {
+  summaryText: string;
+  buyText: string;
+  buyTitle: string;
+  buyDisabled: boolean;
+  mintHidden: boolean;
+  mintDisabled: boolean;
+  mintText: string;
+  mintTitle: string;
+  needsWalletConnection: boolean;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -769,6 +780,69 @@ export function accountTrustPanelView(payloadInput: NullableRecord, connectedWal
       },
     ],
     note: "Ruby High never asks for a seed phrase. Wallet prompts should be limited to sign-in, pack payment, pack opening, card minting, or card burning.",
+  };
+}
+
+export function accountHallPassCardsPanelView(
+  packsInput: unknown,
+  cardsInput: unknown,
+  pendingMintsInput: unknown,
+  opts?: NullableRecord,
+): AccountHallPassCardsPanelView {
+  const packs = Array.isArray(packsInput) ? packsInput.filter((pack) => pack && typeof pack === "object") as LooseRecord[] : [];
+  const cards = Array.isArray(cardsInput) ? cardsInput.filter((card) => card && typeof card === "object") as LooseRecord[] : [];
+  const pendingMints = Array.isArray(pendingMintsInput)
+    ? pendingMintsInput.filter((card) => card && typeof card === "object") as LooseRecord[]
+    : [];
+  const activePacks = packs.filter((pack) => pack.status === "active");
+  const activeCards = cards.filter((card) => card.status === "active");
+  const mintedCards = cards.filter((card) => card.mintAddress && card.mintSignature);
+  const hasSolanaWallet = !!(opts && opts.hasSolanaWallet);
+  const needsWalletConnection = !hasSolanaWallet && (activePacks.length > 0 || pendingMints.length > 0);
+  const pieces: string[] = [];
+  if (packs.length > 0) pieces.push(activePacks.length + " active pack" + (activePacks.length === 1 ? "" : "s"));
+  if (cards.length > 0) {
+    pieces.push(activeCards.length + " active card" + (activeCards.length === 1 ? "" : "s"));
+    if (mintedCards.length > 0) pieces.push(mintedCards.length + " on-chain Card" + (mintedCards.length === 1 ? "" : "s"));
+    if (pendingMints.length > 0) {
+      pieces.push(pendingMints.length + " face-down Card" + (pendingMints.length === 1 ? "" : "s") + " to reveal");
+    }
+  }
+  let summaryText = needsWalletConnection
+    ? "Connect a Solana wallet to open packs and reveal Cards."
+    : pieces.length === 0
+      ? "No packs or Cards in this wallet yet."
+      : pieces.join(" · ");
+  const checkout = opts && opts.checkout && typeof opts.checkout === "object" ? opts.checkout as LooseRecord : {};
+  const checkoutBlocked = !!(checkout.loaded && !checkout.ready);
+  const checkoutReason = String(checkout.reason || "");
+  if (checkoutBlocked && checkoutReason) summaryText += " · " + checkoutReason;
+  const authed = !!(opts && opts.authed);
+  const billingBusy = !!(opts && opts.billingBusy);
+  const billingMode = String((opts && opts.billingMode) || "");
+  let mintText = "Reveal Card";
+  let mintTitle = "No face-down cards are ready to reveal.";
+  if (needsWalletConnection) {
+    mintText = billingBusy ? "Connecting..." : "Connect Wallet";
+    mintTitle = "Connect a Solana wallet before opening packs or revealing Cards.";
+  } else if (pendingMints.length > 0) {
+    mintText = billingBusy ? "Minting..." : "Reveal Card";
+    mintTitle = "Mint the next face-down Ruby High Card to reveal it.";
+  }
+  return {
+    summaryText,
+    buyText: billingBusy && billingMode === "card-packs" ? "Loading..." : "Buy Card Packs",
+    buyTitle: !authed
+      ? "Sign in to buy Ruby High card packs."
+      : checkoutBlocked
+        ? checkoutReason || "Card pack checkout is unavailable right now."
+        : "Buy Ruby High card packs.",
+    buyDisabled: !authed || billingBusy || checkoutBlocked,
+    mintHidden: !needsWalletConnection && pendingMints.length === 0,
+    mintDisabled: !authed || billingBusy,
+    mintText,
+    mintTitle,
+    needsWalletConnection,
   };
 }
 

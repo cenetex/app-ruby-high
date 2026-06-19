@@ -2522,13 +2522,8 @@ export function runViewerClient(bootstrap) {
     if (!els.accountHallPassCards) return;
     const cards = hallPassCardsForTelemetry();
     const packs = hallPassPacksForTelemetry();
-    const activePacks = packs.filter((pack) => pack.status === "active");
-    const active = cards.filter((card) => card.status === "active");
-    const minted = cards.filter((card) => card.mintAddress && card.mintSignature);
     const pendingMints = pendingHallPassCardMintsForTelemetry();
     const hasSolanaWallet = !!knownSolanaOwnerWalletAddress();
-    const needsWalletConnection = !hasSolanaWallet && (activePacks.length > 0 || pendingMints.length > 0);
-    let summaryText = "";
     const shown = cards
       .slice()
       .sort((a, b) => {
@@ -2537,51 +2532,27 @@ export function runViewerClient(bootstrap) {
         return Number(b.updatedAt || b.issuedAt || 0) - Number(a.updatedAt || a.issuedAt || 0);
       })
       .slice(0, 24);
+    const view = accountHallPassCardsPanelView(packs, cards, pendingMints, {
+      authed,
+      billingBusy,
+      billingMode,
+      checkout: cardPackCheckoutState(),
+      hasSolanaWallet,
+    });
     if (els.accountCardSummary) {
-      const pieces = [];
-      if (packs.length > 0) pieces.push(activePacks.length + " active pack" + (activePacks.length === 1 ? "" : "s"));
-      if (cards.length > 0) {
-        pieces.push(active.length + " active card" + (active.length === 1 ? "" : "s"));
-        if (minted.length > 0) pieces.push(minted.length + " on-chain Card" + (minted.length === 1 ? "" : "s"));
-        if (pendingMints.length > 0) pieces.push(pendingMints.length + " face-down Card" + (pendingMints.length === 1 ? "" : "s") + " to reveal");
-      }
-      summaryText = needsWalletConnection
-        ? "Connect a Solana wallet to open packs and reveal Cards."
-        : pieces.length === 0
-        ? "No packs or Cards in this wallet yet."
-        : pieces.join(" · ");
-      els.accountCardSummary.textContent = summaryText;
+      els.accountCardSummary.textContent = view.summaryText;
     }
     if (els.accountBuyCardPacks) {
-      const checkout = cardPackCheckoutState();
-      const checkoutBlocked = checkout.loaded && !checkout.ready;
-      els.accountBuyCardPacks.disabled = !authed || billingBusy || checkoutBlocked;
-      els.accountBuyCardPacks.textContent = billingBusy && billingMode === "card-packs" ? "Loading..." : "Buy Card Packs";
-      if (!authed) {
-        els.accountBuyCardPacks.title = "Sign in to buy Ruby High card packs.";
-      } else if (checkoutBlocked) {
-        els.accountBuyCardPacks.title = checkout.reason || "Card pack checkout is unavailable right now.";
-      } else {
-        els.accountBuyCardPacks.title = "Buy Ruby High card packs.";
-      }
-      if (els.accountCardSummary && checkoutBlocked && checkout.reason) {
-        els.accountCardSummary.textContent = summaryText + " · " + checkout.reason;
-      }
+      els.accountBuyCardPacks.disabled = view.buyDisabled;
+      els.accountBuyCardPacks.textContent = view.buyText;
+      els.accountBuyCardPacks.title = view.buyTitle;
     }
     configureGetRubyLink(els.accountGetRuby);
     if (els.accountMintCards) {
-      els.accountMintCards.hidden = !needsWalletConnection && pendingMints.length === 0;
-      els.accountMintCards.disabled = !authed || billingBusy;
-      if (needsWalletConnection) {
-        els.accountMintCards.textContent = billingBusy ? "Connecting..." : "Connect Wallet";
-        els.accountMintCards.title = "Connect a Solana wallet before opening packs or revealing Cards.";
-      } else if (pendingMints.length > 0) {
-        els.accountMintCards.textContent = billingBusy ? "Minting..." : "Reveal Card";
-        els.accountMintCards.title = "Mint the next face-down Ruby High Card to reveal it.";
-      } else {
-        els.accountMintCards.textContent = "Reveal Card";
-        els.accountMintCards.title = "No face-down cards are ready to reveal.";
-      }
+      els.accountMintCards.hidden = view.mintHidden;
+      els.accountMintCards.disabled = view.mintDisabled;
+      els.accountMintCards.textContent = view.mintText;
+      els.accountMintCards.title = view.mintTitle;
     }
     const shownPacks = packs
       .slice()
