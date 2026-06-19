@@ -2115,6 +2115,18 @@ describe("RubyHighService Phase 1", () => {
         updatedAt: now + 10,
       },
     });
+    expect(rehydratedWorld.summary).toMatchObject({
+      roomGoalEvents: {
+        total: 2,
+        complete: 1,
+      },
+      studySparks: {
+        total: 1,
+        byGrade: {
+          "10": 1,
+        },
+      },
+    });
     expect(rehydratedWorld.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "room.goal-progress",

@@ -136,14 +136,26 @@ describe("world stream cursor helpers", () => {
     };
     const laterSameWorld = { ...world, generatedAt: 200 };
     const changedWorld = { ...world, generatedAt: 300, activeStudents: 2 };
+    const changedSummaryWorld = {
+      ...world,
+      generatedAt: 400,
+      summary: {
+        ...publicWorldSummary(),
+        studySparks: { total: 1, byGrade: { "9": 1 } },
+      },
+    };
     const presenter = new WorldSnapshotPresenter();
 
     expect(worldSnapshotPayload(world)).toMatchObject({
       ok: true,
       generatedAt: 100,
       activeStudents: 1,
+      summary: {
+        studySparks: { total: 0, byGrade: {} },
+      },
     });
     expect(worldSnapshotSignature(worldSnapshotPayload(world))).toBe(worldSnapshotSignature(worldSnapshotPayload(laterSameWorld)));
+    expect(worldSnapshotSignature(worldSnapshotPayload(world))).not.toBe(worldSnapshotSignature(worldSnapshotPayload(changedSummaryWorld)));
 
     const first = presenter.snapshotFrame(world, { force: true });
     expect(first.changed).toBe(true);

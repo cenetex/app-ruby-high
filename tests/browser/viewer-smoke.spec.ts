@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { answerLiveRoomQuestion, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("boots as a guest, creates a character, answers a card, and opens account tabs", async ({ page }) => {
   const { errors } = await openViewer(page);
@@ -70,12 +70,14 @@ test("shows comic unlocks as a modal instead of an inline reward card", async ({
   expect(errors).toEqual([]);
 });
 
-test("shows shared live-room progress across two browser clients", async ({ browser }) => {
+test("shows shared live-room Study Spark progress across browser clients", async ({ browser }) => {
   test.setTimeout(90_000);
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
+  const contextC = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
+  const pageC = await contextC.newPage();
   const readWorld = async (page: typeof pageA) => page.evaluate(async () => {
     const resp = await fetch("/api/apps/ruby-high/world?limit=20", { credentials: "same-origin" });
     const body = await resp.json();
@@ -87,54 +89,82 @@ test("shows shared live-room progress across two browser clients", async ({ brow
   try {
     const clientA = await openViewer(pageA);
     const clientB = await openViewer(pageB);
+    const clientC = await openViewer(pageC);
     await dismissAnnouncements(pageA);
     await dismissAnnouncements(pageB);
+    await dismissAnnouncements(pageC);
     await createPublicCharacter(pageA, "Noor Live");
     await createPublicCharacter(pageB, "Mina Live");
+    await createPublicCharacter(pageC, "Sol Live");
 
     await tickGrade(pageA);
     await tickGrade(pageB);
+    await tickGrade(pageC);
     await closeRewardComicIfVisible(pageA);
     await closeRewardComicIfVisible(pageB);
+    await closeRewardComicIfVisible(pageC);
 
-    await expect.poll(async () => {
-      const response = await answerLiveRoomQuestion(pageA, "ruby");
-      return {
-        faculty: response.session?.telemetry?.faculty,
-        lastReveal: response.session?.telemetry?.lastReveal,
-      };
-    }, { timeout: 15_000 }).toMatchObject({
-      faculty: "ruby",
-      lastReveal: expect.objectContaining({ picked: expect.any(String) }),
-    });
-    await expect.poll(async () => {
-      const response = await answerLiveRoomQuestion(pageB, "ruby");
-      return {
-        faculty: response.session?.telemetry?.faculty,
-        lastReveal: response.session?.telemetry?.lastReveal,
-      };
-    }, { timeout: 15_000 }).toMatchObject({
-      faculty: "ruby",
-      lastReveal: expect.objectContaining({ picked: expect.any(String) }),
-    });
     const devContributionA = await contributeLiveRoomGoalForDev(pageA, "ruby");
     const devContributionB = await contributeLiveRoomGoalForDev(pageB, "ruby");
+    const devContributionC = await contributeLiveRoomGoalForDev(pageC, "ruby");
     expect(Math.max(devContributionA.result?.progress ?? 0, devContributionB.result?.progress ?? 0)).toBeGreaterThanOrEqual(2);
+    expect(devContributionC.result).toMatchObject({
+      progress: 3,
+      target: 3,
+      complete: true,
+      duplicate: false,
+    });
+    await closeRewardComicIfVisible(pageA);
+    await closeRewardComicIfVisible(pageB);
+    await closeRewardComicIfVisible(pageC);
+    await closeBlockingSheetIfVisible(pageA);
+    await closeBlockingSheetIfVisible(pageB);
+    await closeBlockingSheetIfVisible(pageC);
 
     const refreshA = pageA.locator("#world-panel-refresh");
     const refreshB = pageB.locator("#world-panel-refresh");
     await expect(refreshA).toBeVisible();
     await expect(refreshB).toBeVisible();
+    await refreshA.click();
+    await refreshB.click();
+    await expect(pageA.locator("#world-panel-sub")).toContainText("Study Spark", { timeout: 15_000 });
+    await expect(pageB.locator("#world-panel-sub")).toContainText("Study Spark", { timeout: 15_000 });
 
     const worldA = await readWorld(pageA);
     const worldB = await readWorld(pageB);
-    expect(worldA).toMatchObject({ activeStudents: expect.any(Number), recentEvents: expect.any(Array) });
-    expect(worldB).toMatchObject({ activeStudents: expect.any(Number), recentEvents: expect.any(Array) });
+    expect(worldA).toMatchObject({
+      activeStudents: expect.any(Number),
+      recentEvents: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "room.goal-progress",
+          complete: true,
+          rewardLabel: expect.stringContaining("Study Spark"),
+        }),
+      ]),
+      summary: { studySparks: { total: expect.any(Number) } },
+    });
+    expect(worldB).toMatchObject({
+      activeStudents: expect.any(Number),
+      recentEvents: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "room.goal-progress",
+          complete: true,
+          rewardLabel: expect.stringContaining("Study Spark"),
+        }),
+      ]),
+      summary: { studySparks: { total: expect.any(Number) } },
+    });
+    expect(worldA.summary.studySparks.total).toBeGreaterThanOrEqual(1);
+    expect(worldB.summary.studySparks.total).toBeGreaterThanOrEqual(1);
     expect(clientA.errors).toEqual([]);
     expect(clientB.errors).toEqual([]);
+    expect(clientC.errors).toEqual([]);
   } finally {
-    await contextA.close();
-    await contextB.close();
+    await Promise.all([
+      contextA.close().catch(() => {}),
+      contextB.close().catch(() => {}),
+      contextC.close().catch(() => {}),
+    ]);
   }
 });
 

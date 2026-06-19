@@ -220,9 +220,11 @@ outcomes without requiring crypto participation.
    completed live-room goals now carry a class-wide Study Spark reward label in
    the sanitized world feed and increment Study Spark totals in the durable
    public-world summary/admin health surface; the public `/world` snapshot now
-   carries those totals and the player School World panel renders them in its
-   compact summary. Next, make the reward affect a richer room or term
-   progression surface verified by two clients through normal answer flow.
+   carries those totals, the live `/world/events` snapshot includes them, and
+   the player School World panel renders them in its compact summary with
+   browser coverage across multiple public clients. Next, make the reward
+   affect a richer room or term progression surface verified through normal
+   answer flow.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): add richer
    durable room outcome summaries and teacher agenda execution rules, then test
    replay after restart with JSON/dev and SQLite-compatible state.

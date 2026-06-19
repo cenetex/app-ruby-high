@@ -202,6 +202,17 @@ export async function closeRewardComicIfVisible(page: Page) {
   }
 }
 
+export async function closeBlockingSheetIfVisible(page: Page) {
+  const close = page.locator(".sheet-close:visible").first();
+  try {
+    await expect(close).toBeVisible({ timeout: 1000 });
+    await close.click();
+    await expect(close).not.toBeVisible({ timeout: 5000 });
+  } catch {
+    // No blocking sheet is open.
+  }
+}
+
 /**
  * Click the Continue/Chat button. Returns true if the click was handled
  * (some clicks are debounced or suppressed when no action is available).

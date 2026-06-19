@@ -9,6 +9,7 @@ export interface WorldSnapshotPayload {
   activeStudents: number;
   activeRooms: WorldSnapshotSource["activeRooms"];
   cohorts: WorldSnapshotSource["cohorts"];
+  summary: WorldSnapshotSource["summary"];
   curriculum: WorldSnapshotSource["curriculum"];
 }
 
@@ -204,6 +205,7 @@ export function worldSnapshotPayload(world: WorldSnapshotSource): WorldSnapshotP
     activeStudents: world.activeStudents,
     activeRooms: world.activeRooms,
     cohorts: world.cohorts,
+    summary: world.summary,
     curriculum: world.curriculum,
   };
 }
@@ -213,6 +215,7 @@ export function worldSnapshotSignature(payload: WorldSnapshotPayload): string {
     activeStudents: payload.activeStudents,
     activeRooms: payload.activeRooms,
     cohorts: payload.cohorts,
+    summary: payload.summary,
     curriculum: payload.curriculum,
   });
 }
