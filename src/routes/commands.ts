@@ -39,9 +39,18 @@ import { buildSessionState } from "./session-state.js";
  *  shared NAT doesn't get throttled by their neighbour and a bot rotating
  *  cookies still has its IP-share counted. */
 const COMMAND_LIMITER = new TokenBucket(120, 2);
+const PUBLIC_WORLD_ACTION_LIMITER = new TokenBucket(6, 1 / 60);
 
 function commandRateKey(clientIp: string | null | undefined, stateKey: string): string {
   return `${clientIp || "no-ip"}:${stateKey || "anon"}`;
+}
+
+function publicWorldActionRateKey(clientIp: string | null | undefined, stateKey: string): string {
+  return `${commandRateKey(clientIp, stateKey)}:public-world-action`;
+}
+
+function isPublicWorldSafetyCommand(type: unknown): boolean {
+  return type === "hide-public-world-event" || type === "report-public-world-event";
 }
 
 type CommandBody = {
@@ -139,6 +148,16 @@ export async function handleCommandRoute(args: {
   }
   const body = (await ctx.readJsonBody().catch(() => ({}))) as CommandBody;
   const type = body?.type;
+  if (isPublicWorldSafetyCommand(type)) {
+    const safetyKey = publicWorldActionRateKey(ctx.clientIp, args.rateLimitStateKey ?? stateKey);
+    if (!PUBLIC_WORLD_ACTION_LIMITER.take(safetyKey)) {
+      const retryAfter = PUBLIC_WORLD_ACTION_LIMITER.retryAfterSeconds(safetyKey);
+      const res = ctx.res as { setHeader?: (name: string, value: string) => void };
+      res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
+      ctx.error(ctx.res, "Too many public world safety actions — slow down a moment.", 429);
+      return true;
+    }
+  }
   const guestAccess = (() => {
     if (!auth) return null;
     const record = args.authRecord ?? auth.resolve(auth.parseSessionToken(cookieHeader));

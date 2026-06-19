@@ -577,6 +577,38 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
+  it("rate limits repeated public world safety actions per player", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 5, 15, 13));
+    setActivePack(singleQuestionPack());
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const session = await auth.createGuestSession();
+      const cookie = `rh_session=${session.token}`;
+      const eventId = `world:event:${"a".repeat(16)}`;
+      for (let i = 0; i < 6; i += 1) {
+        const ok = makeCommandCtx(ruby, { type: "hide-public-world-event", eventId }, undefined, null, auth, cookie);
+        expect(await handleAppRoutes(ok.ctx)).toBe(true);
+        expect(ok.response?.status).toBe(200);
+      }
+
+      const limited = makeCommandCtx(ruby, {
+        type: "report-public-world-event",
+        eventId,
+        reason: "repeat",
+      }, undefined, null, auth, cookie);
+      expect(await handleAppRoutes(limited.ctx)).toBe(true);
+      expect(limited.response?.status).toBe(429);
+      expect(limited.response?.body.error).toBe("Too many public world safety actions — slow down a moment.");
+      expect(limited.getHeader("Retry-After")).toBe("60");
+    } finally {
+      await auth.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it("returns a no-op success when offline pick has no scheduled card due", async () => {
     setActivePack(singleQuestionPack());
     const faculty = await FacultyService.start({} as never);
