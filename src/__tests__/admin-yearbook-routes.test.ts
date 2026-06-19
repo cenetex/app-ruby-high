@@ -2060,6 +2060,122 @@ describe("admin metrics route", () => {
     expect(await store.loadDraftPacks()).toHaveLength(1);
   });
 
+  it("can seed replenishment draft questions from the configured course LLM", async () => {
+    vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "or-course-key");
+    vi.stubEnv("RUBY_HIGH_COURSE_MODEL", "test/course-model");
+    const sessionId = "rh:user:admin-curriculum-llm-low-pool";
+    const state = ruby.getOrCreate(sessionId);
+    state.character = {
+      name: "LLM Mira",
+      playbookId: "overachiever",
+      stats: { head: 3, heart: 2, hustle: 2, honor: 3 },
+      arcAnswer: "I ask the teacher to research weak pools.",
+      personality: "Careful and exacting.",
+      createdAt: Date.UTC(2026, 5, 1),
+      yearbook: [],
+    };
+    state.currentGrade = "10";
+    state.faculty = "ruby";
+    const pack = await getActivePack();
+    const rubyFaculty = pack.faculty.find((faculty) => faculty.id === "ruby")!;
+    const eligibleIds = [
+      ...rubyFaculty.questions,
+      ...(rubyFaculty.sourceCards ?? []),
+    ]
+      .filter((question) =>
+        (question.difficulty === "easy" || question.difficulty === "medium") &&
+        (!question.minGrade || Number(question.minGrade) <= 10)
+      )
+      .map((question) => question.id);
+    state.cardMemory = {};
+    for (const questionId of eligibleIds.slice(0, -1)) {
+      state.cardMemory[cardMemoryKey("ruby", questionId)] = {
+        courseId: "ruby",
+        questionId,
+        phase: "learning",
+        dueAt: Date.UTC(2026, 6, 1),
+        stability: 1,
+        difficulty: 0.5,
+        consecutiveCorrect: 1,
+        correctCount: 1,
+        wrongCount: 0,
+        delayedCorrectCount: 0,
+        lastReviewedAt: Date.UTC(2026, 5, 1),
+        lastResult: "good",
+        lapses: 0,
+      };
+    }
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              questions: [{
+                id: "llm-ruby-weak-pool-1",
+                type: "multiple-choice",
+                prompt: "Ruby is researching an exhausted AI literacy pool. Which draft question best avoids repetition?",
+                options: {
+                  A: "Ask a new classroom scenario about authorization and evidence",
+                  B: "Reuse the last prompt with one different classmate name",
+                  C: "Hide the weak topic from the review queue",
+                  D: "Make the answer depend on a private session id",
+                },
+                correct: "A",
+                explanation: "The LLM-backed draft should turn the weak pool and corpus into a fresh, reviewable scenario.",
+                subject: "ai-literacy",
+                difficulty: "easy",
+                minGrade: "10",
+                faculty: "draft-ruby",
+                stat: "head",
+              }],
+            }),
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { limit: 1, provider: "llm" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      created: 1,
+      drafts: [
+        expect.objectContaining({
+          facultyId: "ruby",
+          grade: "10",
+          questionCount: 1,
+          generationSource: "llm",
+          generationModel: "test/course-model",
+        }),
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const headers = request.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer or-course-key");
+    const body = JSON.parse(String(request.body));
+    expect(body.model).toBe("test/course-model");
+    expect(body.messages[1].content).toContain("Weak subjects:");
+    expect(body.messages[1].content).toContain("Ruby Research Corpus");
+    const persistedDrafts = await store.loadDraftPacks();
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Generation source: llm");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Generation model: test/course-model");
+    expect(persistedDrafts[0]!.teachers[0]!.questions[0]).toMatchObject({
+      id: "draft-llm-ruby-weak-pool-1",
+      faculty: expect.stringMatching(/^draft-/),
+      minGrade: "10",
+      subject: "ai-literacy",
+    });
+  });
+
   it("publishes the token-gated metrics schema with field reliability notes", async () => {
     let response = await appRoute({
       path: "/api/apps/ruby-high/admin/metrics/schema",

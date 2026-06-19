@@ -3,6 +3,7 @@ import {
   fetchLlmChatCompletions,
   hasConfiguredLlmCredential,
   llmProviderName,
+  resolveCourseModel,
   throwLlmResponseError,
 } from "../services/llm-provider.js";
 import { log, logMetricsSnapshot } from "../services/logger.js";
@@ -168,6 +169,8 @@ interface AdminCurriculumDraftResult {
     teacherCount: number;
     sourceCardCount: number;
     questionCount: number;
+    generationSource: "deterministic" | "llm" | "llm-fallback";
+    generationModel: string | null;
   }>;
 }
 
@@ -427,7 +430,7 @@ function statusRank(status: AdminCurriculumGenerationProposal["status"]): number
 
 async function createAdminCurriculumReplenishmentDrafts(
   deps: AdminDeps,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; useLlm?: boolean } = {},
 ): Promise<AdminCurriculumDraftResult> {
   const steps = buildAdminCurriculumReplenishmentSteps(deps);
   const existingDrafts = await deps.ruby.listDraftPackRecords();
@@ -461,6 +464,7 @@ async function createAdminCurriculumReplenishmentDrafts(
     const draftFacultyId = draftFacultyIdForAdminTeacher(teacherId);
     const sourceCards = selectCurriculumSourceCards(faculty?.sourceCards ?? [], step)
       .map((card) => ({ ...card, faculty: draftFacultyId }));
+    const generated = await generateAdminCurriculumDraftQuestions(step, sourceCards, draftFacultyId, opts);
     const teacher: StoredDraftTeacherRecord = {
       id: teacherId,
       clientRequestId: requestId,
@@ -471,9 +475,9 @@ async function createAdminCurriculumReplenishmentDrafts(
       ...(faculty?.assetTeacherId ? { assetTeacherId: faculty.assetTeacherId } : {}),
       ...(faculty?.profileImageUrl ? { profileImageUrl: faculty.profileImageUrl } : {}),
       ...(faculty?.stats ? { stats: faculty.stats } : {}),
-      materials: curriculumDraftMaterials(step, sourceCards),
+      materials: curriculumDraftMaterials(step, sourceCards, generated),
       sourceCards,
-      questions: buildAdminCurriculumCandidateQuestions(step, sourceCards, draftFacultyId),
+      questions: generated.questions,
       generationCount: 0,
       generationDay: day,
       generatedAt: now,
@@ -498,7 +502,7 @@ async function createAdminCurriculumReplenishmentDrafts(
     await deps.ruby.saveDraftPackRecord(draft);
     existingDrafts.push(draft);
     created += 1;
-    drafts.push(adminCurriculumDraftSummary(draft, step, "created"));
+    drafts.push(adminCurriculumDraftSummary(draft, step, "created", generated.source, generated.model));
   }
 
   return {
@@ -521,7 +525,135 @@ function selectCurriculumSourceCards(cards: readonly PackSourceCard[], step: Adm
   return cards.filter((card) => focus.size === 0 || focus.has(card.subject)).slice(0, 12);
 }
 
-function curriculumDraftMaterials(step: AdminCurriculumReplenishmentStep, sourceCards: readonly PackSourceCard[]): string {
+async function generateAdminCurriculumDraftQuestions(
+  step: AdminCurriculumReplenishmentStep,
+  sourceCards: readonly PackSourceCard[],
+  draftFacultyId: string,
+  opts: { useLlm?: boolean },
+): Promise<{ questions: BankedQuestion[]; source: "deterministic" | "llm" | "llm-fallback"; model: string | null }> {
+  if (!opts.useLlm || !hasConfiguredLlmCredential()) {
+    return {
+      questions: buildAdminCurriculumCandidateQuestions(step, sourceCards, draftFacultyId),
+      source: "deterministic",
+      model: null,
+    };
+  }
+  const model = resolveCourseModel();
+  try {
+    const questions = await generateAdminCurriculumDraftQuestionsWithLlm(step, sourceCards, draftFacultyId, model);
+    if (questions.length > 0) return { questions, source: "llm", model };
+  } catch (err) {
+    log.error("admin.curriculum-llm-draft-failed", err);
+  }
+  return {
+    questions: buildAdminCurriculumCandidateQuestions(step, sourceCards, draftFacultyId),
+    source: "llm-fallback",
+    model,
+  };
+}
+
+async function generateAdminCurriculumDraftQuestionsWithLlm(
+  step: AdminCurriculumReplenishmentStep,
+  sourceCards: readonly PackSourceCard[],
+  draftFacultyId: string,
+  model: string,
+): Promise<BankedQuestion[]> {
+  const count = adminCurriculumCandidateCount(step, sourceCards);
+  const r = await fetchLlmChatCompletions({
+    label: "admin-curriculum-draft",
+    title: "Ruby High Curriculum",
+    timeoutMs: 45_000,
+    body: {
+      model,
+      temperature: 0.45,
+      max_tokens: 2600,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are Ruby High's curriculum editor.",
+            "Return JSON only.",
+            "Write review-ready multiple-choice candidate questions from the teacher research corpus.",
+            "Do not copy existing prompts. Avoid blind expansion and repeated concepts.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: [
+            `Return JSON: {"questions":[...]}. Create ${count} questions.`,
+            `Faculty: ${step.displayName} (${step.facultyId})`,
+            `Draft faculty id: ${draftFacultyId}`,
+            `Grade/minGrade: ${step.targetMinGrade}`,
+            `Difficulty: ${step.targetDifficulty}`,
+            `Weak subjects: ${step.weakSubjects.join(", ") || "none"}`,
+            `Focus subjects: ${step.focusSubjects.join(", ") || "teacher corpus"}`,
+            `Recent concepts to avoid: ${step.recentConcepts.join(", ") || "none"}`,
+            `Repetition pressure: ${Math.round(step.repetitionPressure * 100)}%`,
+            `Research directive: ${step.researchDirective}`,
+            `Research lanes: ${step.researchLanes.join(" | ") || "none"}`,
+            `Source cards: ${sourceCards.slice(0, 8).map((card) => `[${card.id} ${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join(" | ") || "none"}`,
+            "Each question must include: id, type='multiple-choice', prompt, options A-D, correct='A'|'B'|'C'|'D', explanation, subject, difficulty, minGrade, faculty, stat.",
+            "Use faculty as the draft faculty id. Use stat one of head, heart, hustle, honor.",
+          ].join("\n"),
+        },
+      ],
+    },
+  });
+  if (!r.ok) await throwLlmResponseError(r, "admin-curriculum-draft");
+  const body = await r.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const content = body.choices?.[0]?.message?.content?.trim() ?? "";
+  const parsed = parseJsonObject(content);
+  if (!parsed) throw new Error("Generated curriculum draft returned no JSON object.");
+  const rawQuestions = Array.isArray(parsed.questions) ? parsed.questions : [];
+  const questions = rawQuestions
+    .map((entry, index) => normalizeAdminCurriculumLlmQuestion(entry, index, step, draftFacultyId))
+    .filter((question): question is BankedQuestion => !!question)
+    .slice(0, count);
+  const validation = validateCurriculumCandidateQuestions({
+    facultyId: step.facultyId,
+    targetMinGrade: step.targetMinGrade as Grade,
+    questions,
+  });
+  if (!validation.ok) throw new Error(`Generated curriculum draft failed validation: ${validation.errors.join("; ")}`);
+  return questions;
+}
+
+function normalizeAdminCurriculumLlmQuestion(
+  entry: unknown,
+  index: number,
+  step: AdminCurriculumReplenishmentStep,
+  draftFacultyId: string,
+): BankedQuestion | null {
+  if (!entry || typeof entry !== "object") return null;
+  const record = entry as Record<string, unknown>;
+  const options = record.options && typeof record.options === "object" ? record.options as Record<string, unknown> : {};
+  const id = String(record.id || `draft-${slugForAdminId(`${step.facultyId}-${step.grade}-llm-${index + 1}`)}`).trim();
+  const question: BankedQuestion = {
+    id: slugForAdminId(id).startsWith("draft-") ? slugForAdminId(id) : `draft-${slugForAdminId(id)}`,
+    type: "multiple-choice",
+    prompt: String(record.prompt || "").trim(),
+    options: {
+      A: String(options.A || "").trim(),
+      B: String(options.B || "").trim(),
+      C: String(options.C || "").trim(),
+      D: String(options.D || "").trim(),
+    },
+    correct: ["A", "B", "C", "D"].includes(String(record.correct)) ? String(record.correct) as BankedQuestion["correct"] : "A",
+    explanation: String(record.explanation || "").trim(),
+    subject: slugForAdminId(String(record.subject || step.focusSubjects[0] || step.weakSubjects[0] || "teacher-research")).slice(0, 48) || "teacher-research",
+    difficulty: step.targetDifficulty as BankedQuestion["difficulty"],
+    minGrade: step.targetMinGrade as Grade,
+    faculty: draftFacultyId,
+    stat: ["head", "heart", "hustle", "honor"].includes(String(record.stat)) ? String(record.stat) as NonNullable<BankedQuestion["stat"]> : "head",
+  };
+  return question;
+}
+
+function curriculumDraftMaterials(
+  step: AdminCurriculumReplenishmentStep,
+  sourceCards: readonly PackSourceCard[],
+  generated: { source: "deterministic" | "llm" | "llm-fallback"; model: string | null },
+): string {
   const cardRows = sourceCards.length
     ? sourceCards.map((card, index) => `${index + 1}. [${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join("\n")
     : "No source cards were matched; use the teacher corpus before generating.";
@@ -534,6 +666,8 @@ function curriculumDraftMaterials(step: AdminCurriculumReplenishmentStep, source
     `Faculty: ${step.displayName} (${step.facultyId})`,
     `Grade: ${step.grade}`,
     `Mode: ${step.mode}`,
+    `Generation source: ${generated.source}`,
+    `Generation model: ${generated.model ?? "none"}`,
     `Target: ${step.targetNewQuestions} ${step.targetDifficulty} questions with minGrade ${step.targetMinGrade}`,
     `Focus subjects: ${step.focusSubjects.join(", ") || "teacher corpus"}`,
     `Weak subjects: ${step.weakSubjects.join(", ") || "none detected"}`,
@@ -719,7 +853,10 @@ function adminCurriculumDraftSummary(
   draft: StoredDraftContentPackRecord,
   step: AdminCurriculumReplenishmentStep,
   status: "created" | "existing",
+  generationSource?: AdminCurriculumDraftResult["drafts"][number]["generationSource"],
+  generationModel?: string | null,
 ): AdminCurriculumDraftResult["drafts"][number] {
+  const teacher = draft.teachers.find((entry) => entry.clientRequestId?.startsWith("curriculum-replenishment:"));
   return {
     id: draft.id,
     name: draft.name,
@@ -730,7 +867,22 @@ function adminCurriculumDraftSummary(
     teacherCount: draft.teachers.length,
     sourceCardCount: draft.teachers.reduce((sum, teacher) => sum + teacher.sourceCards.length, 0),
     questionCount: draft.teachers.reduce((sum, teacher) => sum + teacher.questions.length, 0),
+    generationSource: generationSource ?? generationSourceFromTeacher(teacher),
+    generationModel: generationModel ?? generationModelFromTeacher(teacher),
   };
+}
+
+function generationSourceFromTeacher(
+  teacher: StoredDraftTeacherRecord | undefined,
+): AdminCurriculumDraftResult["drafts"][number]["generationSource"] {
+  const raw = teacher?.materials.match(/^Generation source:\s*(.+)$/m)?.[1]?.trim();
+  if (raw === "llm" || raw === "llm-fallback" || raw === "deterministic") return raw;
+  return "deterministic";
+}
+
+function generationModelFromTeacher(teacher: StoredDraftTeacherRecord | undefined): string | null {
+  const raw = teacher?.materials.match(/^Generation model:\s*(.+)$/m)?.[1]?.trim();
+  return raw && raw !== "none" ? raw : null;
 }
 
 function adminCurriculumReviewDraftSummary(
@@ -1324,7 +1476,9 @@ export async function handleAdminCurriculumReplenishmentRoute(ctx: RouteContext,
       return true;
     }
     const limit = typeof body === "object" && body && "limit" in body ? Number((body as { limit?: unknown }).limit) : undefined;
-    ctx.json(ctx.res, await createAdminCurriculumReplenishmentDrafts(deps, { limit }));
+    const provider = typeof body === "object" && body ? String((body as { provider?: unknown }).provider ?? "") : "";
+    const useLlm = provider === "llm" || !!(typeof body === "object" && body && (body as { useLlm?: unknown }).useLlm);
+    ctx.json(ctx.res, await createAdminCurriculumReplenishmentDrafts(deps, { limit, useLlm }));
     return true;
   }
   ctx.json(ctx.res, await buildAdminCurriculumReplenishmentSnapshot(deps));
@@ -2112,13 +2266,14 @@ async function postTelegramSnapshot() {
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ limit: 3 }),
+          body: JSON.stringify({ limit: 3, provider: "llm" }),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) {
           throw new Error(data.error || "Draft creation failed.");
         }
-        status("Curriculum drafts: " + n(data.created) + " created, " + n(data.reused) + " already queued.", "");
+        const sources = Array.from(new Set((data.drafts || []).map((draft) => draft.generationSource).filter(Boolean))).join(", ");
+        status("Curriculum drafts: " + n(data.created) + " created, " + n(data.reused) + " already queued" + (sources ? " · " + sources : "") + ".", "");
         latestReplenishment = await loadReplenishment(token);
         if (latestMetrics) render(latestMetrics);
       } catch (err) {

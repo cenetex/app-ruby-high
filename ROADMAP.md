@@ -114,9 +114,10 @@ Goal: make question generation a teacher research loop, not one-off expansion.
 - Add a generation queue that proposes new questions only when a pool is weak,
   then validates and promotes candidates through tests/check scripts. #138 has a
   proposal queue, automatic corpus-backed candidate draft seeding from weak
-  pools, validation, and runtime promotion; the next step is replacing the
-  deterministic seed cards with OpenRouter-generated drafts that cite the same
-  teacher corpus and repetition constraints.
+  pools, optional OpenRouter/course-model draft generation with deterministic
+  fallback, validation, and runtime promotion; the next step is enriching the
+  teacher corpora themselves so generated drafts have more primary material to
+  research from.
 - Keep first-grade sets curated and narrow; allow higher grades to become more
   expansive.
 
@@ -175,10 +176,10 @@ outcomes without requiring crypto participation.
 1. [#140](https://github.com/cenetex/app-ruby-high/issues/140) / [#117](https://github.com/cenetex/app-ruby-high/issues/117):
    continue extracting larger public-world and account UI surfaces from
    `viewer-parts/client.ts` into typed modules with unit tests.
-2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): wire the
-   OpenRouter-backed generator into admin replenishment draft creation so weak
-   pools can request corpus-aware candidates without shelling out manually, then
-   keep promotion behind validation/review.
+2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): deepen the
+   hand-authored teacher corpora with reading lists, canonical misconceptions,
+   and grade-specific research briefs so OpenRouter-backed drafts become less
+   templated and more like each teacher actively researching.
 3. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    browser smoke's dev-only live-room contribution helper with a normal answer
    flow that contributes sanitized room progress.
