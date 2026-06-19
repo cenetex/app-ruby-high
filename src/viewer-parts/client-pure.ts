@@ -94,6 +94,13 @@ export type AccountAiPanelView = {
   secondaryLabel: string;
   secondaryDisabled: boolean;
 };
+export type AccountWalletPanelView = {
+  balanceText: string;
+  metaText: string;
+  buyPassesText: string;
+  buyPassesTitle: string;
+  buyPassesDisabled: boolean;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -602,6 +609,25 @@ export function accountAiPanelView(aiInput: NullableRecord, opts?: NullableRecor
     primaryDisabled,
     secondaryLabel,
     secondaryDisabled,
+  };
+}
+
+export function accountWalletPanelView(walletInput: NullableRecord, slotsInput?: NullableRecord, opts?: NullableRecord): AccountWalletPanelView {
+  const wallet = walletInput || {};
+  const slots = slotsInput || {};
+  const meritStars = Math.max(0, Math.round(Number(wallet.meritStars || 0)));
+  const hallPasses = Math.max(0, Math.round(Number(wallet.hallPasses || 0)));
+  const photoDayCredits = Math.max(0, Math.floor(Number(slots.photoDayCredits || 0)));
+  const billingBusy = !!(opts && opts.billingBusy);
+  const billingMode = String((opts && opts.billingMode) || "");
+  return {
+    balanceText: "⭐ " + formatWholeNumber(meritStars) + " · 🎫 " + formatWholeNumber(hallPasses),
+    metaText: photoDayCredits > 0
+      ? photoDayCredits + " Photo Day " + (photoDayCredits === 1 ? "credit" : "credits")
+      : "Use Hall Passes for AI, images, and slots. Buy more or burn a Card on the Buy Hall Passes page.",
+    buyPassesText: billingBusy && billingMode === "hall-passes" ? "Loading..." : "Buy Hall Passes",
+    buyPassesTitle: "Buy Hall Passes for hosted AI, creator slots, and image generation.",
+    buyPassesDisabled: !(opts && opts.authed) || billingBusy,
   };
 }
 

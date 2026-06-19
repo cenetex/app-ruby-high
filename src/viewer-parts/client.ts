@@ -2370,16 +2370,19 @@ export function runViewerClient(bootstrap) {
   function renderAccountWallet() {
     if (!els.accountWalletBalance) return;
     const slots = characterSlotTelemetry();
-    els.accountWalletBalance.textContent = walletSummaryText(lastTelemetry || {});
+    const view = accountWalletPanelView(walletNumbers(lastTelemetry || {}), slots, {
+      authed,
+      billingBusy,
+      billingMode,
+    });
+    els.accountWalletBalance.textContent = view.balanceText;
     if (els.accountBuyPasses) {
-      els.accountBuyPasses.disabled = !authed || billingBusy;
-      els.accountBuyPasses.textContent = billingBusy && billingMode === "hall-passes" ? "Loading..." : "Buy Hall Passes";
-      els.accountBuyPasses.title = "Buy Hall Passes for hosted AI, creator slots, and image generation.";
+      els.accountBuyPasses.disabled = view.buyPassesDisabled;
+      els.accountBuyPasses.textContent = view.buyPassesText;
+      els.accountBuyPasses.title = view.buyPassesTitle;
     }
     if (els.accountWalletMeta) {
-      els.accountWalletMeta.textContent = slots.photoDayCredits > 0
-        ? slots.photoDayCredits + " Photo Day " + (slots.photoDayCredits === 1 ? "credit" : "credits")
-        : "Use Hall Passes for AI, images, and slots. Buy more or burn a Card on the Buy Hall Passes page.";
+      els.accountWalletMeta.textContent = view.metaText;
     }
   }
 
