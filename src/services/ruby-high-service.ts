@@ -333,7 +333,7 @@ function characterHasPublicName(ch: PlayerCharacter): boolean {
 }
 
 function characterAllowsPublicSharing(ch: PlayerCharacter): boolean {
-  return characterAllowsSocialSharing(ch) && characterHasPublicName(ch);
+  return characterAllowsSocialSharing(ch) && ch.publicWorldVisible !== false && characterHasPublicName(ch);
 }
 
 function characterDailyClassRecords(ch: PlayerCharacter): DailyClassRecord[] {

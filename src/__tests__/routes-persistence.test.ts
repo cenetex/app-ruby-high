@@ -401,6 +401,68 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
+  it("toggles public world presence separately from social posting consent", async () => {
+    vi.useFakeTimers();
+    const now = Date.UTC(2026, 5, 15, 12);
+    vi.setSystemTime(now);
+    setActivePack(rubyHomeroomSocialPack());
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const session = await auth.createGuestSession();
+      const cookie = `rh_session=${session.token}`;
+      const state = ruby.getOrCreate(auth.stateKeyForRecord(session.record));
+      ruby.createCharacter(state.sessionId, {
+        name: "Presence Noor",
+        playbookId: "overachiever",
+        stats: { head: 2, heart: 1, hustle: 0, honor: 1 },
+        arcAnswer: "I want control over where I appear.",
+        personality: "Careful but public.",
+      });
+      state.currentGrade = "10";
+      state.faculty = "ruby";
+      state.character!.socialConsent = true;
+      state.character!.dailyClasses = {
+        "10:ruby:2026-06-15": {
+          grade: "10",
+          facultyId: "ruby",
+          date: "2026-06-15",
+          status: "complete",
+          questionCount: 3,
+          correctCount: 3,
+          scoreTotal: 300,
+          scoreMax: 300,
+          letterGrade: "A",
+          completedAt: now,
+          updatedAt: now,
+        },
+      };
+
+      expect(ruby.getSchoolWorldSnapshot(10, now).activeStudents).toBe(1);
+      const hide = makeCommandCtx(ruby, { type: "set-public-presence", publicWorldVisible: false }, undefined, null, auth, cookie);
+      expect(await handleAppRoutes(hide.ctx)).toBe(true);
+      expect(hide.response?.status).toBe(200);
+      expect(hide.response?.body.message).toBe("Public world presence hidden");
+      expect(state.character!.socialConsent).toBe(true);
+      expect(state.character!.publicWorldVisible).toBe(false);
+      const hiddenWorld = ruby.getSchoolWorldSnapshot(10, now);
+      expect(hiddenWorld.activeStudents).toBe(0);
+      expect(JSON.stringify(hiddenWorld)).not.toContain("Presence Noor");
+
+      const show = makeCommandCtx(ruby, { type: "set-public-presence", publicWorldVisible: true }, undefined, null, auth, cookie);
+      expect(await handleAppRoutes(show.ctx)).toBe(true);
+      expect(show.response?.status).toBe(200);
+      expect(show.response?.body.message).toBe("Public world presence enabled");
+      expect(state.character!.socialConsent).toBe(true);
+      expect(state.character!.publicWorldVisible).toBe(true);
+      expect(ruby.getSchoolWorldSnapshot(10, now).activeStudents).toBe(1);
+    } finally {
+      await auth.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it("returns a no-op success when offline pick has no scheduled card due", async () => {
     setActivePack(singleQuestionPack());
     const faculty = await FacultyService.start({} as never);

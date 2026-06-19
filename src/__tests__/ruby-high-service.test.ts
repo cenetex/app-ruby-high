@@ -1814,6 +1814,41 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(world)).not.toContain("No Class Noor");
   });
 
+  it("keeps public-world-hidden characters out of rooms while preserving social consent", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const hidden = attachTestCharacter(ruby, "test:world-presence-hidden");
+    hidden.sessionId = "test:world-presence-hidden";
+    hidden.currentGrade = "10";
+    hidden.faculty = "ruby";
+    hidden.character!.name = "Hidden World Noor";
+    hidden.character!.createdAt = now;
+    hidden.character!.socialConsent = true;
+    hidden.character!.publicWorldVisible = false;
+    const hiddenClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    hiddenClass.completedAt = now;
+    hiddenClass.updatedAt = now;
+    hidden.character!.dailyClasses = { ruby: hiddenClass };
+
+    const visible = attachTestCharacter(ruby, "test:world-presence-visible");
+    visible.sessionId = "test:world-presence-visible";
+    visible.currentGrade = "10";
+    visible.faculty = "ruby";
+    visible.character!.name = "Visible World Mina";
+    visible.character!.createdAt = now;
+    const visibleClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    visibleClass.completedAt = now;
+    visibleClass.updatedAt = now;
+    visible.character!.dailyClasses = { ruby: visibleClass };
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+
+    expect(hidden.character!.socialConsent).toBe(true);
+    expect(world.activeStudents).toBe(1);
+    expect(JSON.stringify(world)).toContain("Visible World Mina");
+    expect(JSON.stringify(world)).not.toContain("Hidden World Noor");
+  });
+
   it("exposes shared live-room goal progress through the public world feed", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);

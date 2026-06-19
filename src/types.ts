@@ -952,6 +952,10 @@ export interface PlayerCharacter {
   /** When true, allows teacher X posts about this character's milestones.
    *  Defaults to true for new characters; can be toggled via command. */
   socialConsent?: boolean;
+  /** Controls whether this character may appear in aggregate public world
+   *  rooms/feed. Defaults to true; legacy socialConsent=false still hides
+   *  the character from public world surfaces as a conservative fallback. */
+  publicWorldVisible?: boolean;
   /** UTC date (YYYY-MM-DD) of the last text-only X post for this character.
    *  Enforces one text post per student per day. */
   lastTextTweetDate?: string;
@@ -1103,6 +1107,9 @@ export interface StudentPoolEntry {
   /** When true, allows teacher X posts about this character's milestones.
    *  Defaults to true for new characters; can be toggled via command. */
   socialConsent?: boolean;
+  /** Controls whether this archived character can appear in public world
+   *  surfaces when it is used as a public student entry. */
+  publicWorldVisible?: boolean;
   /** UTC date (YYYY-MM-DD) of the last text-only X post for this character.
    *  Enforces one text post per student per day. */
   lastTextTweetDate?: string;

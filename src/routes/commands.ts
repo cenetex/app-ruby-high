@@ -66,6 +66,7 @@ type CommandBody = {
   grade?: string;
   requestId?: string;
   socialConsent?: boolean;
+  publicWorldVisible?: boolean;
 } | null;
 
 async function sendPersistedCommandState(
@@ -319,6 +320,15 @@ export async function handleCommandRoute(args: {
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);
       return await persist(state, consent ? "Social posting enabled" : "Social posting disabled");
+    },
+    "set-public-presence": async () => {
+      const visible = body?.publicWorldVisible ?? true;
+      const state = ruby.getOrCreate(stateKey);
+      if (!state.character) throw new Error("No character to update.");
+      state.character.publicWorldVisible = !!visible;
+      state.updatedAt = Date.now();
+      void ruby.flushSession(stateKey);
+      return await persist(state, visible ? "Public world presence enabled" : "Public world presence hidden");
     },
   };
 
