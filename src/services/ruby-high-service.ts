@@ -1971,6 +1971,10 @@ export class RubyHighService extends Service {
     };
   }
 
+  publicWorldTeacherAgendas(now: number = Date.now()): PublicWorldTeacherAgendaRecord[] {
+    return this.publicWorldTeacherAgendaRecordList(now);
+  }
+
   photoPostSchedulerSnapshot(): RubyHighPhotoPostSchedulerSnapshot {
     return buildPhotoPostSchedulerSnapshot({
       schedulerActive: this.photoPostSchedulerTimer !== null,

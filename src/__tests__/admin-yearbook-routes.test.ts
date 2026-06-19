@@ -2519,6 +2519,137 @@ describe("admin metrics route", () => {
     expect(await store.loadDraftPacks()).toHaveLength(1);
   });
 
+  it("auto-enqueues term-rule teacher agenda drafts before full exhaustion", async () => {
+    vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
+    const now = Date.now();
+    await store.saveServiceState({
+      id: "ruby-high:public-world-events:v1",
+      updatedAt: now,
+      data: {
+        version: 1,
+        events: Array.from({ length: 6 }, (_value, index) => ({
+          id: publicWorldEventId("room.goal-progress", now - index, `term-rally-${index}`),
+          kind: "room.goal-progress",
+          at: now - index,
+          faculty: "ruby",
+          grade: "10",
+          roomTitle: "Ruby room",
+          goalKind: "live-class",
+          progress: 3,
+          target: 3,
+          complete: true,
+          label: "Ruby filled a live class goal",
+          rewardLabel: "Ruby earned a class-wide Study Spark",
+        })),
+      },
+    });
+    await store.flush?.();
+    ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    expect(ruby.worldHealthSnapshot(now).summary).toMatchObject({
+      studySparks: {
+        total: 6,
+        byGrade: {
+          "10": 6,
+        },
+      },
+    });
+
+    const sessionId = "rh:user:admin-curriculum-term-rule-low-pool";
+    const state = ruby.getOrCreate(sessionId);
+    state.character = {
+      name: "Term Mira",
+      playbookId: "overachiever",
+      stats: { head: 3, heart: 2, hustle: 2, honor: 3 },
+      arcAnswer: "I want the school term to pull weak classes into review.",
+      personality: "Careful, competitive, and generous with classmates.",
+      createdAt: now,
+      yearbook: [],
+    };
+    state.currentGrade = "10";
+    state.faculty = "ruby";
+    const pack = await getActivePack();
+    const rubyFaculty = pack.faculty.find((faculty) => faculty.id === "ruby")!;
+    const eligibleIds = [
+      ...rubyFaculty.questions,
+      ...(rubyFaculty.sourceCards ?? []),
+    ]
+      .filter((question) =>
+        (question.difficulty === "easy" || question.difficulty === "medium") &&
+        (!question.minGrade || Number(question.minGrade) <= 10)
+      )
+      .map((question) => question.id);
+    state.cardMemory = {};
+    for (const questionId of eligibleIds.slice(0, -1)) {
+      state.cardMemory[cardMemoryKey("ruby", questionId)] = {
+        courseId: "ruby",
+        questionId,
+        phase: "learning",
+        dueAt: now + 24 * 60 * 60 * 1000,
+        stability: 1,
+        difficulty: 0.5,
+        consecutiveCorrect: 1,
+        correctCount: 1,
+        wrongCount: 0,
+        delayedCorrectCount: 0,
+        lastReviewedAt: now,
+        lastResult: "good",
+        lapses: 0,
+      };
+    }
+
+    let response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.generationQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        facultyId: "ruby",
+        grade: "10",
+        status: "ready",
+        action: "create-draft",
+        exhaustedSessions: 0,
+        autoEligible: true,
+        autoReason: "Teacher agenda is ready from Term Rally.",
+        teacherAgenda: expect.objectContaining({
+          executionStatus: "ready",
+          executionReason: "term-rule-pressure",
+          nextAction: "generate-draft",
+          termRuleLabel: "Term Rally",
+          termRuleTarget: 4,
+        }),
+      }),
+    ]));
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "auto-enqueue", limit: 3 },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      dryRun: false,
+      trigger: "coverage-exhaustion",
+      created: 1,
+      reused: 0,
+      drafts: [
+        expect.objectContaining({
+          facultyId: "ruby",
+          grade: "10",
+          mode: "generate",
+          status: "created",
+          generationSource: "deterministic",
+        }),
+      ],
+    });
+    const persistedDrafts = await store.loadDraftPacks();
+    expect(persistedDrafts).toHaveLength(1);
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Term Rally");
+  });
+
   it("publishes the token-gated metrics schema with field reliability notes", async () => {
     let response = await appRoute({
       path: "/api/apps/ruby-high/admin/metrics/schema",

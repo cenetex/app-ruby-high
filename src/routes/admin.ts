@@ -9,7 +9,7 @@ import {
 import { log, logMetricsSnapshot } from "../services/logger.js";
 import { validateCurriculumCandidateQuestions } from "../services/ruby-high/curriculum-candidate-validation.js";
 import type { AuthAnalyticsSnapshot, AuthService } from "../services/auth-service.js";
-import type { RubyHighAnalyticsSnapshot, RubyHighService } from "../services/ruby-high-service.js";
+import type { PublicWorldTeacherAgendaRecord, RubyHighAnalyticsSnapshot, RubyHighService } from "../services/ruby-high-service.js";
 import type { StoredDraftContentPackRecord, StoredDraftTeacherRecord } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
 import type { ContentPack, PackSourceCard } from "../content/types.js";
@@ -128,6 +128,18 @@ interface AdminCurriculumReplenishmentStep {
   command: string[] | null;
   displayCommand: string | null;
   reason: string;
+  teacherAgenda: AdminCurriculumTeacherAgendaSummary | null;
+}
+
+interface AdminCurriculumTeacherAgendaSummary {
+  id: string;
+  executionStatus: PublicWorldTeacherAgendaRecord["executionStatus"];
+  executionReason: PublicWorldTeacherAgendaRecord["executionReason"];
+  nextAction: PublicWorldTeacherAgendaRecord["nextAction"];
+  priorityScore: number;
+  updatedAt: number;
+  termRuleLabel: string | null;
+  termRuleTarget: number | null;
 }
 
 interface AdminCurriculumReplenishmentSnapshot {
@@ -327,8 +339,9 @@ function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
 }
 
 function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculumReplenishmentStep[] {
-  const metrics = deps.ruby.analyticsSnapshot();
-  return (metrics.curriculum.lowPools ?? [])
+  const curriculum = deps.ruby.curriculumCoverageSnapshot();
+  const agendas = deps.ruby.publicWorldTeacherAgendas();
+  return (curriculum.lowPools ?? [])
     .map((row): AdminCurriculumReplenishmentStep | null => {
       const plan = row.replenishment;
       if (!plan) return null;
@@ -378,9 +391,33 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
           : canRunBuiltInGenerator
             ? "Built-in teacher pool can be expanded with the corpus-backed generator."
             : "This low pool belongs to a non-built-in pack; replenish it through the pack editor.",
+        teacherAgenda: adminCurriculumTeacherAgendaForStep({ grade: row.grade, facultyId: row.facultyId }, agendas),
       };
     })
     .filter((step): step is AdminCurriculumReplenishmentStep => !!step);
+}
+
+function adminCurriculumTeacherAgendaForStep(
+  step: Pick<AdminCurriculumReplenishmentStep, "grade" | "facultyId">,
+  agendas: readonly PublicWorldTeacherAgendaRecord[],
+): AdminCurriculumTeacherAgendaSummary | null {
+  const agenda = agendas
+    .filter((entry) => entry.grade === step.grade && entry.facultyId === step.facultyId)
+    .sort((a, b) =>
+      b.priorityScore - a.priorityScore ||
+      b.updatedAt - a.updatedAt
+    )[0];
+  if (!agenda) return null;
+  return {
+    id: agenda.id,
+    executionStatus: agenda.executionStatus,
+    executionReason: agenda.executionReason,
+    nextAction: agenda.nextAction,
+    priorityScore: agenda.priorityScore,
+    updatedAt: agenda.updatedAt,
+    termRuleLabel: agenda.termRuleLabel ?? null,
+    termRuleTarget: agenda.termRuleTarget ?? null,
+  };
 }
 
 async function buildAdminCurriculumReplenishmentSnapshot(deps: AdminDeps): Promise<AdminCurriculumReplenishmentSnapshot> {
@@ -457,7 +494,7 @@ function adminCurriculumAutoEnqueueEligible(
   return status === "ready"
     && step.mode === "generate"
     && !!step.command
-    && step.exhaustedSessions > 0;
+    && (step.exhaustedSessions > 0 || adminCurriculumAgendaCanAutoEnqueue(step));
 }
 
 function adminCurriculumAutoEnqueueReason(
@@ -469,8 +506,19 @@ function adminCurriculumAutoEnqueueReason(
   if (status !== "ready") return "This pool is not ready for automatic replenishment.";
   if (step.mode !== "generate") return "Only generated-mode pools can be auto-enqueued.";
   if (!step.command) return "Only built-in teacher pools with a generator command can be auto-enqueued.";
+  if (step.exhaustedSessions > 0) return "Coverage exhaustion can auto-create a review draft.";
+  if (adminCurriculumAgendaCanAutoEnqueue(step)) {
+    return step.teacherAgenda?.termRuleLabel
+      ? `Teacher agenda is ready from ${step.teacherAgenda.termRuleLabel}.`
+      : "Teacher agenda is ready for draft generation.";
+  }
   if (step.exhaustedSessions <= 0) return "Automatic replenishment waits for at least one exhausted active session.";
   return "Coverage exhaustion can auto-create a review draft.";
+}
+
+function adminCurriculumAgendaCanAutoEnqueue(step: AdminCurriculumReplenishmentStep): boolean {
+  return step.teacherAgenda?.executionStatus === "ready"
+    && step.teacherAgenda.nextAction === "generate-draft";
 }
 
 function adminCurriculumRequestId(step: Pick<AdminCurriculumReplenishmentStep, "grade" | "facultyId">, day: string): string {
@@ -481,6 +529,7 @@ function adminCurriculumGenerationPriority(step: AdminCurriculumReplenishmentSte
   return step.exhaustedSessions * 100
     + step.lowPoolSessions * 10
     + Math.round(step.repetitionPressure * 25)
+    + (step.teacherAgenda?.executionStatus === "ready" ? step.teacherAgenda.priorityScore : 0)
     + step.targetNewQuestions;
 }
 
@@ -656,6 +705,7 @@ async function generateAdminCurriculumDraftQuestionsWithLlm(
             `Focus subjects: ${step.focusSubjects.join(", ") || "teacher corpus"}`,
             `Recent concepts to avoid: ${step.recentConcepts.join(", ") || "none"}`,
             `Repetition pressure: ${Math.round(step.repetitionPressure * 100)}%`,
+            `Teacher agenda: ${adminCurriculumTeacherAgendaPrompt(step)}`,
             `Research directive: ${step.researchDirective}`,
             `Research lanes: ${step.researchLanes.join(" | ") || "none"}`,
             `Reading list: ${step.readingList.join(" | ") || "none"}`,
@@ -744,6 +794,7 @@ function curriculumDraftMaterials(
     `Weak subjects: ${step.weakSubjects.join(", ") || "none detected"}`,
     `Recent concepts to avoid: ${step.recentConcepts.join(", ") || "none detected"}`,
     `Repetition pressure: ${Math.round(step.repetitionPressure * 100)}% (${step.repeatedAnswers} repeated answers across ${step.repeatedAnswerSessions} sessions)`,
+    `Teacher agenda: ${adminCurriculumTeacherAgendaPrompt(step)}`,
     `Corpus: ${step.corpusTitle ? `${step.corpusTitle} (${step.corpusPath ?? "unknown path"})` : "source-card corpus only"}`,
     `Research interests: ${step.researchInterests.join(", ") || "derived from source cards"}`,
     `Grade brief: ${step.gradeBrief ?? "none"}`,
@@ -793,6 +844,15 @@ function curriculumDraftMaterials(
     `## Source Cards`,
     cardRows,
   ].join("\n");
+}
+
+function adminCurriculumTeacherAgendaPrompt(step: Pick<AdminCurriculumReplenishmentStep, "teacherAgenda">): string {
+  const agenda = step.teacherAgenda;
+  if (!agenda) return "none";
+  const rule = agenda.termRuleLabel
+    ? `; term rule ${agenda.termRuleLabel}${agenda.termRuleTarget ? ` target ${agenda.termRuleTarget}` : ""}`
+    : "";
+  return `${agenda.executionStatus}/${agenda.executionReason}; next ${agenda.nextAction}; priority ${agenda.priorityScore}${rule}`;
 }
 
 function adminCurriculumSourcePacketPrompt(step: AdminCurriculumReplenishmentStep): string {
@@ -2980,7 +3040,9 @@ async function postTelegramSnapshot() {
       if (!rows.length) return "";
       return "<table><thead><tr><th>Curriculum Generation Queue</th><th>Pressure</th><th>Status</th></tr></thead><tbody>" + rows.map((row) => {
         const label = "Grade " + esc(row.grade) + " · " + esc(row.displayName || row.facultyId);
-        const sub = esc((row.focusSubjects || []).slice(0, 3).join(", ") || row.corpusTitle || "teacher corpus");
+        const agenda = row.teacherAgenda || null;
+        const agendaText = agenda ? " · agenda " + esc(agenda.executionReason || "ready") + (agenda.termRuleLabel ? " / " + esc(agenda.termRuleLabel) : "") : "";
+        const sub = esc((row.focusSubjects || []).slice(0, 3).join(", ") || row.corpusTitle || "teacher corpus") + agendaText;
         const pressure = n(row.priority) + "<div class=\\"sub\\">" + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted</div>";
         const auto = row.autoEligible ? " · auto" : "";
         const reason = row.autoReason ? "<div class=\\"sub\\">" + esc(row.autoReason) + "</div>" : "";

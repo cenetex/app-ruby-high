@@ -277,9 +277,10 @@ outcomes without requiring crypto participation.
    in the public world summary, compact player world-feed label, and room chips:
    active rooms now show rule pressure such as Term Rally's four-student goal at
    room-selection time. Active term room rules now also promote matching
-   low-pool teacher agendas to ready execution with durable term-rule metadata.
-   Next, connect those agenda records to actual generated/reviewed curriculum
-   drafts.
+   low-pool teacher agendas to ready execution with durable term-rule metadata,
+   and the admin replenishment queue now uses ready teacher agendas to
+   prioritize and auto-enqueue review drafts without bypassing approval. Next,
+   carry reviewed draft outcomes back into durable teacher-agenda status.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.
