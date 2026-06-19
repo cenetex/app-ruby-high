@@ -103,6 +103,8 @@ describe("viewer world feed pure helpers", () => {
     expect(worldFeedRoomTitle({ grade: "9", facultyId: "ruby" }, roster)).toBe("Freshman · Ruby");
     expect(worldFeedSummaryLabel(1, [{}])).toBe("1 student live · 1 room");
     expect(worldFeedSummaryLabel(3, [{}, {}])).toBe("3 students live · 2 rooms");
+    expect(worldFeedSummaryLabel(3, [{}, {}], null, { studySparks: { total: 1 } })).toBe("3 students live · 2 rooms · 1 Study Spark");
+    expect(worldFeedSummaryLabel(3, [{}, {}], null, { studySparks: { total: 2 } })).toBe("3 students live · 2 rooms · 2 Study Sparks");
     expect(worldFeedSummaryLabel(3, 2)).toBe("3 students live · 2 rooms");
     expect(worldFeedSummaryLabel(3, 2, "offline")).toBe("World feed paused");
   });
@@ -123,6 +125,7 @@ describe("viewer world feed pure helpers", () => {
         { id: "world:event:a", at: now - 60_000, label: "Ruby started class" },
         { id: "world:event:b", at: now - 2 * 60_000, kind: "comic.page-unlocked" },
       ],
+      summary: { studySparks: { total: 1 } },
     };
 
     expect(worldFeedRoomViews(state.activeRooms, roster)).toEqual([
@@ -134,7 +137,7 @@ describe("viewer world feed pure helpers", () => {
       { id: "world:event:b", label: "Comic page unlocked", age: "2m" },
     ]);
     expect(worldFeedPanelView(state, roster, now)).toEqual({
-      summary: "3 students live · 2 rooms",
+      summary: "3 students live · 2 rooms · 1 Study Spark",
       rooms: [
         { title: "Freshman · Ruby", meta: "1 student active" },
         { title: "Sophomore · Sally Science", meta: "Sally Science live class 2/3" },

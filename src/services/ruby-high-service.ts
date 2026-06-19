@@ -861,6 +861,7 @@ export interface SchoolWorldSnapshot {
   activeRooms: SchoolWorldRoom[];
   cohorts: Record<string, SchoolWorldStudent[]>;
   recentEvents: SchoolWorldEvent[];
+  summary: Pick<PublicWorldSummarySnapshot, "schoolYear" | "roomGoalEvents" | "studySparks">;
   curriculum: {
     activeCharacterSessions: number;
     lowPools: RubyHighCurriculumCoverageRow[];
@@ -7999,6 +8000,7 @@ export class RubyHighService extends Service {
     const rooms = buildPublicWorldRooms(presence, 5, 24, this.liveRoomGoalContributionsForWorld(now));
     this.clampPublicWorldRoomGoalTimes(rooms.activeRooms, now);
     this.syncPublicWorldRoomRecords(rooms.activeRooms, now);
+    const summary = this.publicWorldSummarySnapshot(now);
     const cohorts = buildPublicWorldCohorts(this.getRecentlyActiveStudents(now).map((student) => this.publicWorldPresenceFromRecent(student)));
     const curriculum = this.curriculumCoverageSnapshotForStates(publicEntries.map((entry) => entry.state));
     return {
@@ -8007,6 +8009,11 @@ export class RubyHighService extends Service {
       activeRooms: rooms.activeRooms,
       cohorts,
       recentEvents: this.getSchoolWorldEvents(eventLimit, now, rooms.publicSessionIds, rooms.activeRooms),
+      summary: {
+        schoolYear: summary.schoolYear,
+        roomGoalEvents: summary.roomGoalEvents,
+        studySparks: summary.studySparks,
+      },
       curriculum: {
         activeCharacterSessions: curriculum.activeCharacterSessions,
         lowPools: curriculum.lowPools,

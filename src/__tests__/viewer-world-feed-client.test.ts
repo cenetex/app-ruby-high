@@ -17,6 +17,7 @@ function makeClient(overrides: Partial<ViewerWorldFeedClientDeps> = {}) {
       activeRooms: [{ grade: "9", facultyId: "ruby", activeStudents: 2 }],
       cohorts: { "9": { activeStudents: 2 } },
       curriculum: { weakPools: [] },
+      summary: { schoolYear: "2025-2026", studySparks: { total: 1, byGrade: { "9": 1 } } },
     }, null);
     await handlers.onEvent("world-event", { id: "world:event:a", at: now, label: "Ruby started class" }, "world:cursor:1:world%3Aevent%3Aa");
   });
@@ -54,6 +55,7 @@ describe("viewer world feed client", () => {
     expect(harness.client.state.loading).toBe(false);
     expect(harness.client.state.activeStudents).toBe(2);
     expect(harness.client.state.activeRooms).toEqual([{ grade: "9", facultyId: "ruby", activeStudents: 2 }]);
+    expect(harness.client.state.summary).toEqual({ schoolYear: "2025-2026", studySparks: { total: 1, byGrade: { "9": 1 } } });
     expect(harness.client.state.events).toEqual([
       { id: "world:event:a", at: Date.UTC(2026, 5, 18, 12), label: "Ruby started class" },
     ]);

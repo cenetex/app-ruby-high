@@ -517,13 +517,16 @@ export function worldFeedRoomTitle(room: unknown, roster: unknown): string {
   return worldFeedGradeLabel(record.grade) + " · " + worldFeedFacultyLabel(record.facultyId, roster);
 }
 
-export function worldFeedSummaryLabel(activeStudents: unknown, activeRooms: unknown, error?: unknown): string {
+export function worldFeedSummaryLabel(activeStudents: unknown, activeRooms: unknown, error?: unknown, summary?: unknown): string {
   if (error) return "World feed paused";
   const students = Math.max(0, Math.floor(Number(activeStudents || 0)));
   const roomCount = Array.isArray(activeRooms) ? activeRooms.length : Math.max(0, Math.floor(Number(activeRooms || 0)));
   const studentText = students === 1 ? "1 student" : students + " students";
   const roomText = roomCount === 1 ? "1 room" : roomCount + " rooms";
-  return studentText + " live · " + roomText;
+  const record = summary && typeof summary === "object" ? summary as LooseRecord : {};
+  const sparks = Math.max(0, Math.floor(Number(record.studySparks && typeof record.studySparks === "object" ? (record.studySparks as LooseRecord).total : 0)));
+  const sparkText = sparks > 0 ? " · " + sparks + " Study " + (sparks === 1 ? "Spark" : "Sparks") : "";
+  return studentText + " live · " + roomText + sparkText;
 }
 
 export function worldFeedRoomViews(rooms: unknown, roster: unknown, limit = 5): WorldFeedRoomView[] {
@@ -564,7 +567,7 @@ export function worldFeedPanelView(state: unknown, roster: unknown, now: unknown
   const record = state && typeof state === "object" ? state as LooseRecord : {};
   const rooms = Array.isArray(record.activeRooms) ? record.activeRooms : [];
   return {
-    summary: worldFeedSummaryLabel(record.activeStudents, rooms, record.error),
+    summary: worldFeedSummaryLabel(record.activeStudents, rooms, record.error, record.summary),
     rooms: worldFeedRoomViews(rooms, roster, 5),
     events: worldFeedEventViews(record.events, now, 3),
   };

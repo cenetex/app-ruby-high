@@ -55,6 +55,7 @@ function makeHarness(overrides: {
       activeRooms: [{ grade: "9", facultyId: "ruby", activeStudents: 2 }],
       cohorts: {},
       curriculum: null,
+      summary: null,
       events: [{ id: "world:event:a", at: now - 60_000, label: "Ruby started class" }],
     },
     load,

@@ -571,6 +571,13 @@ describe("school world route", () => {
         activeCharacterSessions: expect.any(Number),
         lowPools: expect.any(Array),
       },
+      summary: {
+        schoolYear: expect.any(String),
+        studySparks: {
+          total: expect.any(Number),
+          byGrade: expect.any(Object),
+        },
+      },
     });
     expect(response.body.world.activeRooms).toEqual([
       expect.objectContaining({

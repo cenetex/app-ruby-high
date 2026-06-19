@@ -31,6 +31,14 @@ const replayEvents = [
   { at: 30, id: "world:event:000000000000000d", label: "new" },
 ];
 
+function publicWorldSummary() {
+  return {
+    schoolYear: "2025-2026",
+    roomGoalEvents: { total: 0, complete: 0 },
+    studySparks: { total: 0, byGrade: {} },
+  };
+}
+
 describe("world stream cursor helpers", () => {
   it("parses public stream limits and since cursors conservatively", () => {
     expect(parseWorldLimit(url())).toBe(30);
@@ -123,6 +131,7 @@ describe("world stream cursor helpers", () => {
       }],
       cohorts: {},
       recentEvents: [],
+      summary: publicWorldSummary(),
       curriculum: { activeCharacterSessions: 1, lowPools: [] },
     };
     const laterSameWorld = { ...world, generatedAt: 200 };

@@ -11,6 +11,7 @@ export interface ViewerWorldFeedState {
   activeRooms: unknown[];
   cohorts: LooseRecord;
   curriculum: unknown;
+  summary: unknown;
   events: LooseRecord[];
 }
 
@@ -54,6 +55,7 @@ export function createViewerWorldFeedClient(deps: ViewerWorldFeedClientDeps): Vi
     activeRooms: [],
     cohorts: {},
     curriculum: null,
+    summary: null,
     events: [],
   };
   let lastEventAt = 0;
@@ -91,6 +93,7 @@ export function createViewerWorldFeedClient(deps: ViewerWorldFeedClientDeps): Vi
     state.activeRooms = Array.isArray(record.activeRooms) ? record.activeRooms : [];
     state.cohorts = record.cohorts && typeof record.cohorts === "object" ? record.cohorts : {};
     state.curriculum = record.curriculum || null;
+    state.summary = record.summary && typeof record.summary === "object" ? record.summary : null;
   }
 
   async function load(opts?: ViewerWorldFeedLoadOptions): Promise<void> {
