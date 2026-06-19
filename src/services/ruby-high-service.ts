@@ -173,6 +173,7 @@ import {
   facultyByIdForSession,
   facultyForSession,
   GUEST_COURSE_ID,
+  getActivePack,
   guestPackForSession,
   isPackLoaded,
   MAX_PACKS_PER_OWNER,
@@ -3305,6 +3306,48 @@ export class RubyHighService extends Service {
       log.error("ruby-high.persist-pack-failed", err, { sessionId, packId: pack.id });
       throw err;
     }
+  }
+
+  async promoteBuiltInCurriculumQuestions(
+    facultyId: string,
+    questions: readonly BankedQuestion[],
+    now = Date.now(),
+  ): Promise<{ packId: string; facultyId: string; inserted: number; skipped: number; totalQuestions: number }> {
+    const pack = await getActivePack();
+    if (pack.id !== ORIGINAL_PACK_ID) throw new Error("Built-in curriculum can only be promoted into Ruby High Original.");
+    const faculty = pack.faculty.find((entry) => entry.id === facultyId);
+    if (!faculty) throw new Error("Built-in teacher was not found.");
+    let updatedPack: ContentPack | null = null;
+    let inserted = 0;
+    let skipped = 0;
+    for (const question of questions) {
+      if (faculty.questions.some((entry) => entry.id === question.id)) {
+        skipped += 1;
+        continue;
+      }
+      const next = appendQuestionToPackBank(pack.id, facultyId, question, now);
+      if (!next) throw new Error("Could not promote reviewed curriculum question.");
+      updatedPack = next;
+      inserted += 1;
+    }
+    if (updatedPack) {
+      const record: StoredContentPackRecord = {
+        pack: updatedPack,
+        ownerSessionId: GLOBAL_PACK_OWNER,
+        touchedAt: now,
+      };
+      await this.store.savePack(record);
+      this.upsertPersistedPackRecord(record);
+    }
+    const totalQuestions = updatedPack?.faculty.find((entry) => entry.id === facultyId)?.questions.length
+      ?? faculty.questions.length;
+    return {
+      packId: pack.id,
+      facultyId,
+      inserted,
+      skipped,
+      totalQuestions,
+    };
   }
 
   async listPersistedPackRecords(): Promise<StoredContentPackRecord[]> {

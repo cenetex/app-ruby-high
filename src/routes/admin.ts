@@ -170,6 +170,16 @@ interface AdminCurriculumDraftExport {
   sourceQuestionIds: string[];
 }
 
+interface AdminCurriculumDraftPromotion extends Omit<AdminCurriculumDraftExport, "dryRun"> {
+  dryRun: false;
+  promoted: {
+    packId: string;
+    inserted: number;
+    skipped: number;
+    totalQuestions: number;
+  };
+}
+
 interface AdminMetricsQualityIssue {
   field: string;
   severity: "info" | "warning";
@@ -572,6 +582,27 @@ async function exportAdminCurriculumDraft(
     questionCount: questions.length,
     questions,
     sourceQuestionIds: teacher.questions.map((question) => question.id),
+  };
+}
+
+async function promoteAdminCurriculumDraft(
+  deps: AdminDeps,
+  draftId: string,
+): Promise<AdminCurriculumDraftPromotion> {
+  const exported = await exportAdminCurriculumDraft(deps, draftId);
+  const promoted = await deps.ruby.promoteBuiltInCurriculumQuestions(
+    exported.facultyId,
+    exported.questions,
+  );
+  return {
+    ...exported,
+    dryRun: false,
+    promoted: {
+      packId: promoted.packId,
+      inserted: promoted.inserted,
+      skipped: promoted.skipped,
+      totalQuestions: promoted.totalQuestions,
+    },
   };
 }
 
@@ -1025,6 +1056,19 @@ export async function handleAdminCurriculumReplenishmentRoute(ctx: RouteContext,
       }
       try {
         ctx.json(ctx.res, await exportAdminCurriculumDraft(deps, draftId));
+      } catch (err) {
+        ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      }
+      return true;
+    }
+    if (action === "promote-reviewed") {
+      const draftId = typeof body === "object" && body ? String((body as { draftId?: unknown }).draftId ?? "").trim() : "";
+      if (!draftId) {
+        ctx.error(ctx.res, "draftId is required.", 400);
+        return true;
+      }
+      try {
+        ctx.json(ctx.res, await promoteAdminCurriculumDraft(deps, draftId));
       } catch (err) {
         ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
       }
@@ -1751,6 +1795,11 @@ async function postTelegramSnapshot() {
       if (!btn) return;
       exportCurriculumDraft(btn.dataset.draftId || "", btn);
     });
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest(".curriculum-promote-btn");
+      if (!btn) return;
+      promoteCurriculumDraft(btn.dataset.draftId || "", btn);
+    });
     autoEl.addEventListener("change", () => {
       if (timer) clearInterval(timer);
       timer = autoEl.checked ? setInterval(refresh, 60000) : null;
@@ -1860,6 +1909,37 @@ async function postTelegramSnapshot() {
         status(err && err.message ? err.message : String(err), "is-error");
       } finally {
         btn.textContent = original || "Export";
+        btn.disabled = false;
+      }
+    }
+
+    async function promoteCurriculumDraft(draftId, btn) {
+      const token = tokenEl.value.trim();
+      if (!token || !draftId) {
+        status("Locked.", "");
+        return;
+      }
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Promoting...";
+      try {
+        const response = await fetch(replenishmentPath, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "promote-reviewed", draftId }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Promotion failed.");
+        status("Promoted " + n(data.promoted && data.promoted.inserted) + " reviewed questions into " + (data.promoted && data.promoted.packId || "the active bank") + ".", "");
+        latestReplenishment = await loadReplenishment(token);
+        if (latestMetrics) render(latestMetrics);
+      } catch (err) {
+        status(err && err.message ? err.message : String(err), "is-error");
+      } finally {
+        btn.textContent = original || "Promote";
         btn.disabled = false;
       }
     }
@@ -2136,7 +2216,7 @@ async function postTelegramSnapshot() {
       world = world || {};
       const refresh = world.lastRefreshAt ? "refresh " + time(world.lastRefreshAt) : "not refreshed";
       const newest = world.newestEventAt ? " · newest " + time(world.newestEventAt) : "";
-      return "students / events · rooms " + n(world.activeRooms) + " · goals " + n(world.liveRoomGoals) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · " + refresh + newest;
+      return "students / events · rooms " + n(world.activeRooms) + " · goals " + n(world.liveRoomGoals) + " · replay " + n(world.publicEventLogSize) + "/" + n(world.publicEventLogLimit) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · " + refresh + newest;
     }
     function publicReadMetricValue(limiter) {
       limiter = limiter || {};
@@ -2178,7 +2258,7 @@ async function postTelegramSnapshot() {
           ? "Ready<div class=\\"sub\\">validation passed</div>"
           : "Needs review" + (errors.length ? "<div class=\\"sub\\">" + errors.map(esc).join("<br>") + "</div>" : "");
         const action = validation.ok
-          ? "<button class=\\"secondary curriculum-export-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Export</button><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>"
+          ? "<button class=\\"secondary curriculum-export-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Export</button> <button class=\\"secondary curriculum-promote-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Promote</button><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>"
           : "<span class=\\"sub\\">" + (row.questionCount > 0 ? "Fix validation first" : "Generate questions first") + "</span><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>";
         return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + n(row.questionCount) + " q / " + n(row.sourceCardCount) + " src</td><td>" + status + "</td><td>" + action + "</td></tr>";
       }).join("") + "</tbody></table>";

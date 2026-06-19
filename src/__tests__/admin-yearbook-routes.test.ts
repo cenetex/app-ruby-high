@@ -1680,6 +1680,8 @@ describe("admin metrics route", () => {
           newestEventAt: eventAt,
           durableEventCacheSize: 0,
           durableEventCacheLimit: 400,
+          publicEventLogSize: 2,
+          publicEventLogLimit: 400,
           liveRoomGoals: 0,
           suppressedEvents: 0,
         },
@@ -1740,7 +1742,7 @@ describe("admin metrics route", () => {
     expect(response.body.generatedAt).toEqual(expect.any(String));
   });
 
-  it("exports token-gated curriculum replenishment steps without mutating banks", async () => {
+  it("exports and promotes token-gated curriculum replenishment steps", async () => {
     vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
     const sessionId = "rh:user:admin-curriculum-low-pool";
     const state = ruby.getOrCreate(sessionId);
@@ -1969,6 +1971,36 @@ describe("admin metrics route", () => {
     });
 
     response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "promote-reviewed", draftId: persistedDrafts[0]!.id },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      dryRun: false,
+      draftId: persistedDrafts[0]!.id,
+      facultyId: "ruby",
+      grade: "10",
+      promoted: {
+        packId: "ruby-high-original",
+        inserted: 1,
+        skipped: 0,
+        totalQuestions: expect.any(Number),
+      },
+    });
+    const promotedQuestionId = response.body.questions[0]!.id;
+    const activePackAfterPromotion = await getActivePack();
+    expect(activePackAfterPromotion.faculty.find((faculty) => faculty.id === "ruby")!.questions.some((question) =>
+      question.id === promotedQuestionId
+    )).toBe(true);
+    const persistedPromotedPack = (await store.loadPacks()).find((record) => record.pack.id === "ruby-high-original");
+    expect(persistedPromotedPack?.pack.faculty.find((faculty) => faculty.id === "ruby")!.questions.some((question) =>
+      question.id === promotedQuestionId
+    )).toBe(true);
+
+    response = await appRoute({
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",
       authorizationHeader: "Bearer admin-test-token",
     });
@@ -1981,8 +2013,8 @@ describe("admin metrics route", () => {
         questionCount: 1,
         sourceCardCount: persistedDrafts[0]!.teachers[0]!.sourceCards.length,
         validation: {
-          ok: true,
-          errors: [],
+          ok: false,
+          errors: [expect.stringContaining("duplicates existing built-in question")],
         },
       }),
     ]);
