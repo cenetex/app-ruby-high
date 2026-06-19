@@ -2032,6 +2032,12 @@ describe("admin metrics route", () => {
       difficulty: "easy",
       explanation: expect.stringContaining("Ruby Research Corpus"),
     });
+    expect(ruby.publicWorldTeacherAgendas().find((agenda) => agenda.grade === "10" && agenda.facultyId === "ruby")).toMatchObject({
+      draftId: persistedDrafts[0]!.id,
+      draftStatus: "review-draft-created",
+      draftQuestionCount: 6,
+      draftUpdatedAt: expect.any(Number),
+    });
 
     response = await appRoute({
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",
@@ -2061,6 +2067,11 @@ describe("admin metrics route", () => {
         status: "queued",
         action: "review-draft",
         draftId: persistedDrafts[0]!.id,
+        teacherAgenda: expect.objectContaining({
+          draftId: persistedDrafts[0]!.id,
+          draftStatus: "review-draft-created",
+          draftQuestionCount: 6,
+        }),
       }),
     ]));
 
@@ -2172,6 +2183,12 @@ describe("admin metrics route", () => {
         required: true,
       },
     });
+    expect(ruby.publicWorldTeacherAgendas().find((agenda) => agenda.grade === "10" && agenda.facultyId === "ruby")).toMatchObject({
+      draftId: persistedDrafts[0]!.id,
+      draftStatus: "review-approved",
+      draftApprovedAt: expect.any(Number),
+      draftQuestionCount: 6,
+    });
 
     await ruby.saveDraftPackRecord({
       ...reviewedDraft,
@@ -2243,6 +2260,27 @@ describe("admin metrics route", () => {
     expect(persistedPromotedPack?.pack.faculty.find((faculty) => faculty.id === "ruby")!.questions.some((question) =>
       question.id === promotedQuestionId
     )).toBe(true);
+    expect(ruby.publicWorldTeacherAgendas().find((agenda) => agenda.grade === "10" && agenda.facultyId === "ruby")).toMatchObject({
+      draftId: persistedDrafts[0]!.id,
+      draftStatus: "questions-promoted",
+      draftPromotedAt: expect.any(Number),
+      draftQuestionCount: 6,
+      promotedQuestionCount: 6,
+    });
+    await ruby.flush();
+    const durableAgendaState = await store.loadServiceState("ruby-high:public-world-teacher-agendas:v1");
+    expect(durableAgendaState?.data).toMatchObject({
+      agendas: expect.arrayContaining([
+        expect.objectContaining({
+          grade: "10",
+          facultyId: "ruby",
+          draftId: persistedDrafts[0]!.id,
+          draftStatus: "questions-promoted",
+          draftQuestionCount: 6,
+          promotedQuestionCount: 6,
+        }),
+      ]),
+    });
 
     response = await appRoute({
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",

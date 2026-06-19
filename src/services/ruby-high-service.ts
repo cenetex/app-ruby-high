@@ -1063,6 +1063,13 @@ export interface PublicWorldTeacherAgendaRecord {
   priorityScore: number;
   termRuleLabel?: string;
   termRuleTarget?: number;
+  draftId?: string;
+  draftStatus?: "review-draft-created" | "review-approved" | "questions-promoted";
+  draftQuestionCount?: number;
+  draftUpdatedAt?: number;
+  draftApprovedAt?: number;
+  draftPromotedAt?: number;
+  promotedQuestionCount?: number;
   targetDifficulty: Difficulty;
   targetNewQuestions: number;
   lowPoolSessions: number;
@@ -1975,6 +1982,41 @@ export class RubyHighService extends Service {
     return this.publicWorldTeacherAgendaRecordList(now);
   }
 
+  recordPublicWorldTeacherAgendaDraftOutcome(args: {
+    grade: Grade;
+    facultyId: string;
+    draftId: string;
+    draftStatus: NonNullable<PublicWorldTeacherAgendaRecord["draftStatus"]>;
+    draftQuestionCount: number;
+    approvedAt?: number;
+    promotedAt?: number;
+    promotedQuestionCount?: number;
+    now?: number;
+  }): boolean {
+    const now = publicWorldStoredInteger(args.now, Date.now()) || Date.now();
+    const facultyId = publicWorldRoomId(args.facultyId);
+    const draftId = publicWorldStoredText(args.draftId, 120);
+    if (!facultyId || !draftId) return false;
+    const schoolYear = schoolYearForTimestamp(now);
+    const id = publicWorldTeacherAgendaId(schoolYear, args.grade, facultyId);
+    const prior = this.publicWorldTeacherAgendaRecords.get(id);
+    if (!prior) return false;
+    const next: PublicWorldTeacherAgendaRecord = {
+      ...prior,
+      draftId,
+      draftStatus: args.draftStatus,
+      draftQuestionCount: Math.min(999, publicWorldStoredInteger(args.draftQuestionCount, 0)),
+      draftUpdatedAt: now,
+      updatedAt: now,
+      ...(args.approvedAt ? { draftApprovedAt: publicWorldStoredInteger(args.approvedAt, now) } : {}),
+      ...(args.promotedAt ? { draftPromotedAt: publicWorldStoredInteger(args.promotedAt, now) } : {}),
+      ...(args.promotedQuestionCount !== undefined ? { promotedQuestionCount: Math.min(999, publicWorldStoredInteger(args.promotedQuestionCount, 0)) } : {}),
+    };
+    this.publicWorldTeacherAgendaRecords.set(id, next);
+    void this.persistPublicWorldTeacherAgendaState({}, now);
+    return true;
+  }
+
   photoPostSchedulerSnapshot(): RubyHighPhotoPostSchedulerSnapshot {
     return buildPhotoPostSchedulerSnapshot({
       schedulerActive: this.photoPostSchedulerTimer !== null,
@@ -2419,6 +2461,7 @@ export class RubyHighService extends Service {
         priorityScore: execution.priorityScore,
         ...(execution.termRuleLabel ? { termRuleLabel: execution.termRuleLabel } : {}),
         ...(execution.termRuleTarget ? { termRuleTarget: execution.termRuleTarget } : {}),
+        ...publicWorldTeacherAgendaDraftFields(prior),
         targetDifficulty: plan.targetDifficulty,
         targetNewQuestions: publicWorldStoredInteger(plan.targetNewQuestions, 0),
         lowPoolSessions: publicWorldStoredInteger(row.lowPoolSessions, 0),
@@ -10037,6 +10080,33 @@ function publicWorldTeacherAgendaExecution(
   };
 }
 
+function publicWorldTeacherAgendaDraftFields(source: unknown): Partial<Pick<
+  PublicWorldTeacherAgendaRecord,
+  "draftId" | "draftStatus" | "draftQuestionCount" | "draftUpdatedAt" | "draftApprovedAt" | "draftPromotedAt" | "promotedQuestionCount"
+>> {
+  if (!source || typeof source !== "object") return {};
+  const record = source as Partial<PublicWorldTeacherAgendaRecord> & Record<string, unknown>;
+  const draftId = publicWorldStoredText(record.draftId, 120);
+  const draftStatus = record.draftStatus === "review-draft-created" || record.draftStatus === "review-approved" || record.draftStatus === "questions-promoted"
+    ? record.draftStatus
+    : null;
+  if (!draftId || !draftStatus) return {};
+  const draftQuestionCount = Math.min(999, publicWorldStoredInteger(record.draftQuestionCount, 0));
+  const draftUpdatedAt = publicWorldStoredInteger(record.draftUpdatedAt, 0);
+  const draftApprovedAt = publicWorldStoredInteger(record.draftApprovedAt, 0);
+  const draftPromotedAt = publicWorldStoredInteger(record.draftPromotedAt, 0);
+  const promotedQuestionCount = Math.min(999, publicWorldStoredInteger(record.promotedQuestionCount, 0));
+  return {
+    draftId,
+    draftStatus,
+    draftQuestionCount,
+    ...(draftUpdatedAt > 0 ? { draftUpdatedAt } : {}),
+    ...(draftApprovedAt > 0 ? { draftApprovedAt } : {}),
+    ...(draftPromotedAt > 0 ? { draftPromotedAt } : {}),
+    ...(promotedQuestionCount > 0 ? { promotedQuestionCount } : {}),
+  };
+}
+
 function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | null {
   if (!raw || typeof raw !== "object") return null;
   const source = raw as Record<string, unknown>;
@@ -10256,6 +10326,7 @@ function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeach
     priorityScore: Math.min(9999, publicWorldStoredInteger(source.priorityScore, execution.priorityScore)),
     ...(rawTermRuleLabel ? { termRuleLabel: rawTermRuleLabel } : execution.termRuleLabel ? { termRuleLabel: execution.termRuleLabel } : {}),
     ...(rawTermRuleTarget ? { termRuleTarget: rawTermRuleTarget } : execution.termRuleTarget ? { termRuleTarget: execution.termRuleTarget } : {}),
+    ...publicWorldTeacherAgendaDraftFields(source),
     targetDifficulty,
     targetNewQuestions: Math.min(200, publicWorldStoredInteger(source.targetNewQuestions, 0)),
     lowPoolSessions,
@@ -10286,6 +10357,13 @@ function publicWorldTeacherAgendaContentKey(agenda: PublicWorldTeacherAgendaReco
     priorityScore: agenda.priorityScore,
     termRuleLabel: agenda.termRuleLabel ?? null,
     termRuleTarget: agenda.termRuleTarget ?? null,
+    draftId: agenda.draftId ?? null,
+    draftStatus: agenda.draftStatus ?? null,
+    draftQuestionCount: agenda.draftQuestionCount ?? null,
+    draftUpdatedAt: agenda.draftUpdatedAt ?? null,
+    draftApprovedAt: agenda.draftApprovedAt ?? null,
+    draftPromotedAt: agenda.draftPromotedAt ?? null,
+    promotedQuestionCount: agenda.promotedQuestionCount ?? null,
     targetDifficulty: agenda.targetDifficulty,
     targetNewQuestions: agenda.targetNewQuestions,
     lowPoolSessions: agenda.lowPoolSessions,

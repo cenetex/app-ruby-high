@@ -140,6 +140,13 @@ interface AdminCurriculumTeacherAgendaSummary {
   updatedAt: number;
   termRuleLabel: string | null;
   termRuleTarget: number | null;
+  draftId: string | null;
+  draftStatus: PublicWorldTeacherAgendaRecord["draftStatus"] | null;
+  draftQuestionCount: number | null;
+  draftUpdatedAt: number | null;
+  draftApprovedAt: number | null;
+  draftPromotedAt: number | null;
+  promotedQuestionCount: number | null;
 }
 
 interface AdminCurriculumReplenishmentSnapshot {
@@ -417,6 +424,13 @@ function adminCurriculumTeacherAgendaForStep(
     updatedAt: agenda.updatedAt,
     termRuleLabel: agenda.termRuleLabel ?? null,
     termRuleTarget: agenda.termRuleTarget ?? null,
+    draftId: agenda.draftId ?? null,
+    draftStatus: agenda.draftStatus ?? null,
+    draftQuestionCount: agenda.draftQuestionCount ?? null,
+    draftUpdatedAt: agenda.draftUpdatedAt ?? null,
+    draftApprovedAt: agenda.draftApprovedAt ?? null,
+    draftPromotedAt: agenda.draftPromotedAt ?? null,
+    promotedQuestionCount: agenda.promotedQuestionCount ?? null,
   };
 }
 
@@ -615,6 +629,14 @@ async function createAdminCurriculumReplenishmentDrafts(
       updatedAt: now,
     };
     await deps.ruby.saveDraftPackRecord(draft);
+    deps.ruby.recordPublicWorldTeacherAgendaDraftOutcome({
+      grade: step.grade as Grade,
+      facultyId: step.facultyId,
+      draftId: draft.id,
+      draftStatus: "review-draft-created",
+      draftQuestionCount: generated.questions.length,
+      now,
+    });
     existingDrafts.push(draft);
     created += 1;
     drafts.push(adminCurriculumDraftSummary(draft, step, "created", generated.source, generated.model));
@@ -852,7 +874,10 @@ function adminCurriculumTeacherAgendaPrompt(step: Pick<AdminCurriculumReplenishm
   const rule = agenda.termRuleLabel
     ? `; term rule ${agenda.termRuleLabel}${agenda.termRuleTarget ? ` target ${agenda.termRuleTarget}` : ""}`
     : "";
-  return `${agenda.executionStatus}/${agenda.executionReason}; next ${agenda.nextAction}; priority ${agenda.priorityScore}${rule}`;
+  const draft = agenda.draftStatus
+    ? `; draft ${agenda.draftStatus}${agenda.draftQuestionCount != null ? ` (${agenda.draftQuestionCount} questions)` : ""}`
+    : "";
+  return `${agenda.executionStatus}/${agenda.executionReason}; next ${agenda.nextAction}; priority ${agenda.priorityScore}${rule}${draft}`;
 }
 
 function adminCurriculumSourcePacketPrompt(step: AdminCurriculumReplenishmentStep): string {
@@ -1235,6 +1260,15 @@ async function approveAdminCurriculumDraft(
     updatedAt: now,
   };
   await deps.ruby.saveDraftPackRecord(approvedDraft);
+  deps.ruby.recordPublicWorldTeacherAgendaDraftOutcome({
+    grade,
+    facultyId,
+    draftId: draft.id,
+    draftStatus: "review-approved",
+    draftQuestionCount: teacher.questions.length,
+    approvedAt: now,
+    now,
+  });
   return {
     ok: true,
     dryRun: false,
@@ -1269,6 +1303,15 @@ async function promoteAdminCurriculumDraft(
     exported.facultyId,
     exported.questions,
   );
+  deps.ruby.recordPublicWorldTeacherAgendaDraftOutcome({
+    grade: exported.grade,
+    facultyId: exported.facultyId,
+    draftId: draft.id,
+    draftStatus: "questions-promoted",
+    draftQuestionCount: exported.questionCount,
+    promotedAt: Date.now(),
+    promotedQuestionCount: promoted.inserted,
+  });
   return {
     ...exported,
     dryRun: false,
@@ -3041,7 +3084,7 @@ async function postTelegramSnapshot() {
       return "<table><thead><tr><th>Curriculum Generation Queue</th><th>Pressure</th><th>Status</th></tr></thead><tbody>" + rows.map((row) => {
         const label = "Grade " + esc(row.grade) + " · " + esc(row.displayName || row.facultyId);
         const agenda = row.teacherAgenda || null;
-        const agendaText = agenda ? " · agenda " + esc(agenda.executionReason || "ready") + (agenda.termRuleLabel ? " / " + esc(agenda.termRuleLabel) : "") : "";
+        const agendaText = agenda ? " · agenda " + esc(agenda.executionReason || "ready") + (agenda.termRuleLabel ? " / " + esc(agenda.termRuleLabel) : "") + (agenda.draftStatus ? " / " + esc(agenda.draftStatus) : "") : "";
         const sub = esc((row.focusSubjects || []).slice(0, 3).join(", ") || row.corpusTitle || "teacher corpus") + agendaText;
         const pressure = n(row.priority) + "<div class=\\"sub\\">" + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted</div>";
         const auto = row.autoEligible ? " · auto" : "";

@@ -279,8 +279,11 @@ outcomes without requiring crypto participation.
    room-selection time. Active term room rules now also promote matching
    low-pool teacher agendas to ready execution with durable term-rule metadata,
    and the admin replenishment queue now uses ready teacher agendas to
-   prioritize and auto-enqueue review drafts without bypassing approval. Next,
-   carry reviewed draft outcomes back into durable teacher-agenda status.
+   prioritize and auto-enqueue review drafts without bypassing approval.
+   Reviewed draft creation, approval, and promotion now write durable lifecycle
+   status back onto the matching teacher agenda. Next, use those lifecycle
+   outcomes to close agenda loops and suppress already-satisfied replenishment
+   pressure.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.
