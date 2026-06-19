@@ -1598,7 +1598,7 @@ function buildAdminMetricsSchema(): {
         path: "ruby.world",
         label: "Public world health",
         source: "RubyHighService public school-world projection, durable event cache, and public-world service state",
-        semantics: "Current public-world presence, recent visible event count/newest event time, durable event cache pressure, durable room/outcome/teacher-agenda counts, live-room goal state count, suppressed-event count, and last external-store refresh age.",
+        semantics: "Current public-world presence, recent visible event count/newest event time, durable event cache pressure, durable room/outcome counts, teacher-agenda ready/queued/watching counts, live-room goal state count, suppressed-event count, and last external-store refresh age.",
         reliability: "proxy",
         caveat: "Refresh age is process-local and reflects the most recent public-world store hydration in this app instance.",
       },
@@ -2940,7 +2940,9 @@ async function postTelegramSnapshot() {
       const newest = world.newestEventAt ? " · newest " + time(world.newestEventAt) : "";
       const summary = world.summary || {};
       const latestOutcome = Array.isArray(world.recentRoomOutcomes) && world.recentRoomOutcomes[0] ? " · latest outcome " + esc(world.recentRoomOutcomes[0].summaryLabel || world.recentRoomOutcomes[0].rewardLabel || "recorded") : "";
-      return "students / events · year " + esc(summary.schoolYear || "n/a") + " · rooms " + n(world.activeRooms) + " · durable rooms " + n(world.durableRoomRecords) + "/" + n(world.durableRoomRecordLimit) + " · outcomes " + n(world.durableRoomOutcomes) + "/" + n(world.durableRoomOutcomeLimit) + latestOutcome + " · agendas " + n(world.durableTeacherAgendas) + "/" + n(world.durableTeacherAgendaLimit) + " · goals " + n(world.liveRoomGoals) + " · sparks " + n(summary.studySparks && summary.studySparks.total) + " · replay " + n(world.publicEventLogSize) + "/" + n(world.publicEventLogLimit) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · summary " + n(summary.eventCount) + " · " + refresh + newest;
+      const agendaExec = world.teacherAgendaExecution || {};
+      const latestAgenda = Array.isArray(world.recentTeacherAgendas) && world.recentTeacherAgendas[0] ? " · latest agenda " + esc(world.recentTeacherAgendas[0].nextAction || "monitor-coverage") + " p" + n(world.recentTeacherAgendas[0].priorityScore) : "";
+      return "students / events · year " + esc(summary.schoolYear || "n/a") + " · rooms " + n(world.activeRooms) + " · durable rooms " + n(world.durableRoomRecords) + "/" + n(world.durableRoomRecordLimit) + " · outcomes " + n(world.durableRoomOutcomes) + "/" + n(world.durableRoomOutcomeLimit) + latestOutcome + " · agendas " + n(world.durableTeacherAgendas) + "/" + n(world.durableTeacherAgendaLimit) + " ready " + n(agendaExec.ready) + " queued " + n(agendaExec.queued) + " watching " + n(agendaExec.watching) + latestAgenda + " · goals " + n(world.liveRoomGoals) + " · sparks " + n(summary.studySparks && summary.studySparks.total) + " · replay " + n(world.publicEventLogSize) + "/" + n(world.publicEventLogLimit) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · summary " + n(summary.eventCount) + " · " + refresh + newest;
     }
     function publicReadMetricValue(limiter) {
       limiter = limiter || {};

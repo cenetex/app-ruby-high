@@ -1079,6 +1079,10 @@ describe("RubyHighService Phase 1", () => {
           displayName: "Ruby",
           agendaKind: "curriculum-replenishment",
           mode: "manual-curation",
+          executionStatus: "ready",
+          executionReason: "exhausted-pool",
+          nextAction: "manual-curation",
+          priorityScore: 225,
           targetDifficulty: "easy",
           lowPoolSessions: 1,
           exhaustedSessions: 1,
@@ -1094,6 +1098,10 @@ describe("RubyHighService Phase 1", () => {
           displayName: "Ruby",
           agendaKind: "curriculum-replenishment",
           mode: "generate",
+          executionStatus: "queued",
+          executionReason: "low-pool",
+          nextAction: "monitor-coverage",
+          priorityScore: 25,
           targetDifficulty: "easy",
           focusSubjects: ["research"],
           weakSubjects: ["research"],
@@ -1108,6 +1116,74 @@ describe("RubyHighService Phase 1", () => {
     expect(ruby.worldHealthSnapshot()).toMatchObject({
       durableTeacherAgendas: 2,
       durableTeacherAgendaLimit: 80,
+      teacherAgendaExecution: {
+        ready: 1,
+        queued: 1,
+        watching: 0,
+      },
+      recentTeacherAgendas: expect.arrayContaining([
+        expect.objectContaining({
+          executionStatus: expect.stringMatching(/^(ready|queued)$/),
+          nextAction: expect.stringMatching(/^(manual-curation|monitor-coverage)$/),
+          priorityScore: expect.any(Number),
+        }),
+      ]),
+    });
+  });
+
+  it("hydrates legacy durable teacher agendas with derived execution rules", async () => {
+    const now = Date.UTC(2026, 5, 16, 12);
+    const store = serviceStateOnlyStore([
+      {
+        id: "ruby-high:public-world-teacher-agendas:v1",
+        updatedAt: now,
+        data: {
+          version: 1,
+          agendas: [
+            {
+              schoolYear: "2025-2026",
+              termId: "2025-2026",
+              grade: "10",
+              facultyId: "ruby",
+              displayName: "Ruby",
+              agendaKind: "curriculum-replenishment",
+              mode: "generate",
+              targetDifficulty: "easy",
+              targetNewQuestions: 12,
+              lowPoolSessions: 2,
+              exhaustedSessions: 1,
+              repetitionPressure: 0.75,
+              focusSubjects: ["algorithms"],
+              weakSubjects: ["algorithms"],
+              recentConcepts: ["search"],
+              sourcePacketIds: ["ruby-search"],
+              corpusId: "ruby",
+              generatedAt: now,
+              updatedAt: now,
+            },
+          ],
+        },
+      },
+    ]);
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    activeRuby = ruby;
+
+    expect(ruby.worldHealthSnapshot(now)).toMatchObject({
+      durableTeacherAgendas: 1,
+      teacherAgendaExecution: {
+        ready: 1,
+        queued: 0,
+        watching: 0,
+      },
+      recentTeacherAgendas: [
+        expect.objectContaining({
+          executionStatus: "ready",
+          executionReason: "exhausted-pool",
+          nextAction: "generate-draft",
+          priorityScore: 225,
+        }),
+      ],
     });
   });
 
@@ -2417,6 +2493,12 @@ describe("RubyHighService Phase 1", () => {
       durableRoomOutcomes: 0,
       recentRoomOutcomes: [],
       durableTeacherAgendas: 0,
+      teacherAgendaExecution: {
+        ready: 0,
+        queued: 0,
+        watching: 0,
+      },
+      recentTeacherAgendas: [],
       publicEventLogSize: 0,
       liveRoomGoals: 0,
       suppressedEvents: 0,

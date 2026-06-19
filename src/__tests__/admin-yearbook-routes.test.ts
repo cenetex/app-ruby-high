@@ -1780,6 +1780,12 @@ describe("admin metrics route", () => {
           recentRoomOutcomes: [],
           durableTeacherAgendas: 0,
           durableTeacherAgendaLimit: 80,
+          teacherAgendaExecution: {
+            ready: 0,
+            queued: 0,
+            watching: 0,
+          },
+          recentTeacherAgendas: [],
           liveRoomGoals: 0,
           suppressedEvents: 0,
           summary: {

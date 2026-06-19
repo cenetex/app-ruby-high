@@ -689,6 +689,12 @@ export interface RubyHighWorldHealthSnapshot {
   durableRoomOutcomeLimit: number;
   durableTeacherAgendas: number;
   durableTeacherAgendaLimit: number;
+  teacherAgendaExecution: {
+    ready: number;
+    queued: number;
+    watching: number;
+  };
+  recentTeacherAgendas: PublicWorldTeacherAgendaRecord[];
   liveRoomGoals: number;
   suppressedEvents: number;
   recentRoomOutcomes: PublicWorldRoomOutcomeRecord[];
@@ -1001,6 +1007,10 @@ export interface PublicWorldTeacherAgendaRecord {
   displayName: string;
   agendaKind: "curriculum-replenishment";
   mode: "manual-curation" | "generate";
+  executionStatus: "ready" | "queued" | "watching";
+  executionReason: "exhausted-pool" | "repetition-pressure" | "low-pool";
+  nextAction: "generate-draft" | "manual-curation" | "monitor-coverage";
+  priorityScore: number;
   targetDifficulty: Difficulty;
   targetNewQuestions: number;
   lowPoolSessions: number;
@@ -1873,6 +1883,7 @@ export class RubyHighService extends Service {
     this.clampPublicWorldRoomGoalTimes(rooms.activeRooms, now);
     this.syncPublicWorldRoomRecords(rooms.activeRooms, now);
     const events = this.getSchoolWorldEvents(SCHOOL_WORLD_RECENT_EVENT_LIMIT, now, rooms.publicSessionIds);
+    const teacherAgendaExecution = this.publicWorldTeacherAgendaExecutionSnapshot(now);
     return {
       lastRefreshAt: this.worldStoreRefreshedAt > 0 ? this.worldStoreRefreshedAt : null,
       refreshAgeMs: this.worldStoreRefreshedAt > 0 ? Math.max(0, now - this.worldStoreRefreshedAt) : null,
@@ -1891,6 +1902,8 @@ export class RubyHighService extends Service {
       durableRoomOutcomeLimit: PUBLIC_WORLD_ROOM_OUTCOME_LIMIT,
       durableTeacherAgendas: this.publicWorldTeacherAgendaRecords.size,
       durableTeacherAgendaLimit: PUBLIC_WORLD_TEACHER_AGENDA_LIMIT,
+      teacherAgendaExecution,
+      recentTeacherAgendas: this.publicWorldTeacherAgendaRecordList(now).slice(0, 5),
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
       recentRoomOutcomes: this.publicWorldRoomOutcomeRecordList(now).slice(0, 5),
@@ -2253,6 +2266,7 @@ export class RubyHighService extends Service {
       const id = publicWorldTeacherAgendaId(schoolYear, row.grade, facultyId);
       retainedIds.add(id);
       const prior = this.publicWorldTeacherAgendaRecords.get(id);
+      const execution = publicWorldTeacherAgendaExecution(plan.mode, row.exhaustedSessions, row.lowPoolSessions, row.repetitionPressure);
       const candidate: PublicWorldTeacherAgendaRecord = {
         id,
         schoolYear,
@@ -2262,6 +2276,10 @@ export class RubyHighService extends Service {
         displayName: publicWorldRoomDisplayName(row.displayName, facultyId),
         agendaKind: "curriculum-replenishment",
         mode: plan.mode,
+        executionStatus: execution.executionStatus,
+        executionReason: execution.executionReason,
+        nextAction: execution.nextAction,
+        priorityScore: execution.priorityScore,
         targetDifficulty: plan.targetDifficulty,
         targetNewQuestions: publicWorldStoredInteger(plan.targetNewQuestions, 0),
         lowPoolSessions: publicWorldStoredInteger(row.lowPoolSessions, 0),
@@ -2311,6 +2329,16 @@ export class RubyHighService extends Service {
         Number(a.grade) - Number(b.grade) ||
         a.facultyId.localeCompare(b.facultyId)
       );
+  }
+
+  private publicWorldTeacherAgendaExecutionSnapshot(now = Date.now()): RubyHighWorldHealthSnapshot["teacherAgendaExecution"] {
+    const out = { ready: 0, queued: 0, watching: 0 };
+    for (const agenda of this.publicWorldTeacherAgendaRecordList(now)) {
+      if (agenda.executionStatus === "ready") out.ready += 1;
+      else if (agenda.executionStatus === "queued") out.queued += 1;
+      else out.watching += 1;
+    }
+    return out;
   }
 
   private hydratePublicWorldEventLog(record: StoredServiceStateRecord | null): void {
@@ -9700,6 +9728,34 @@ function publicWorldTeacherAgendaId(schoolYear: string, grade: Grade, facultyId:
   return `teacher:agenda:${digest}`;
 }
 
+function publicWorldTeacherAgendaExecution(
+  mode: "manual-curation" | "generate",
+  exhaustedSessions: unknown,
+  lowPoolSessions: unknown,
+  repetitionPressure: unknown,
+): Pick<PublicWorldTeacherAgendaRecord, "executionStatus" | "executionReason" | "nextAction" | "priorityScore"> {
+  const exhausted = publicWorldStoredInteger(exhaustedSessions, 0);
+  const low = publicWorldStoredInteger(lowPoolSessions, 0);
+  const pressure = publicWorldStoredRatio(repetitionPressure);
+  const executionReason = exhausted > 0
+    ? "exhausted-pool"
+    : pressure >= 0.5
+      ? "repetition-pressure"
+      : "low-pool";
+  const executionStatus = exhausted > 0 || pressure >= 0.5
+    ? "ready"
+    : low > 0
+      ? "queued"
+      : "watching";
+  const nextAction = executionStatus !== "ready"
+    ? "monitor-coverage"
+    : mode === "generate"
+      ? "generate-draft"
+      : "manual-curation";
+  const priorityScore = Math.min(9999, exhausted * 100 + low * 25 + Math.round(pressure * 100));
+  return { executionStatus, executionReason, nextAction, priorityScore };
+}
+
 function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | null {
   if (!raw || typeof raw !== "object") return null;
   const source = raw as Record<string, unknown>;
@@ -9808,6 +9864,19 @@ function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeach
   const generatedAt = publicWorldStoredInteger(source.generatedAt, 0);
   const updatedAt = publicWorldStoredInteger(source.updatedAt, generatedAt);
   if (generatedAt <= 0 || updatedAt <= 0) return null;
+  const lowPoolSessions = Math.min(999, publicWorldStoredInteger(source.lowPoolSessions, 0));
+  const exhaustedSessions = Math.min(999, publicWorldStoredInteger(source.exhaustedSessions, 0));
+  const repetitionPressure = publicWorldStoredRatio(source.repetitionPressure);
+  const execution = publicWorldTeacherAgendaExecution(mode, exhaustedSessions, lowPoolSessions, repetitionPressure);
+  const executionStatus = source.executionStatus === "ready" || source.executionStatus === "queued" || source.executionStatus === "watching"
+    ? source.executionStatus
+    : execution.executionStatus;
+  const executionReason = source.executionReason === "exhausted-pool" || source.executionReason === "repetition-pressure" || source.executionReason === "low-pool"
+    ? source.executionReason
+    : execution.executionReason;
+  const nextAction = source.nextAction === "generate-draft" || source.nextAction === "manual-curation" || source.nextAction === "monitor-coverage"
+    ? source.nextAction
+    : execution.nextAction;
   return {
     id,
     schoolYear,
@@ -9817,11 +9886,15 @@ function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeach
     displayName: publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId),
     agendaKind: "curriculum-replenishment",
     mode,
+    executionStatus,
+    executionReason,
+    nextAction,
+    priorityScore: Math.min(9999, publicWorldStoredInteger(source.priorityScore, execution.priorityScore)),
     targetDifficulty,
     targetNewQuestions: Math.min(200, publicWorldStoredInteger(source.targetNewQuestions, 0)),
-    lowPoolSessions: Math.min(999, publicWorldStoredInteger(source.lowPoolSessions, 0)),
-    exhaustedSessions: Math.min(999, publicWorldStoredInteger(source.exhaustedSessions, 0)),
-    repetitionPressure: publicWorldStoredRatio(source.repetitionPressure),
+    lowPoolSessions,
+    exhaustedSessions,
+    repetitionPressure,
     focusSubjects: publicWorldStoredTextList(source.focusSubjects, 8, 80),
     weakSubjects: publicWorldStoredTextList(source.weakSubjects, 8, 80),
     recentConcepts: publicWorldStoredTextList(source.recentConcepts, 8, 120),
@@ -9841,6 +9914,10 @@ function publicWorldTeacherAgendaContentKey(agenda: PublicWorldTeacherAgendaReco
     displayName: agenda.displayName,
     agendaKind: agenda.agendaKind,
     mode: agenda.mode,
+    executionStatus: agenda.executionStatus,
+    executionReason: agenda.executionReason,
+    nextAction: agenda.nextAction,
+    priorityScore: agenda.priorityScore,
     targetDifficulty: agenda.targetDifficulty,
     targetNewQuestions: agenda.targetNewQuestions,
     lowPoolSessions: agenda.lowPoolSessions,

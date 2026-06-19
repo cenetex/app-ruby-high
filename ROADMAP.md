@@ -227,9 +227,10 @@ outcomes without requiring crypto participation.
    answer flow.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
-   Study Spark reward labels, and a recent-outcomes admin health surface. Next,
-   add teacher agenda execution rules, then test replay after restart with
-   JSON/dev and SQLite-compatible state.
+   Study Spark reward labels, and a recent-outcomes admin health surface.
+   Durable teacher agendas now carry aggregate execution status, reason, next
+   action, and priority score with admin health counts. Next, test replay after
+   restart with JSON/dev and SQLite-compatible state.
 4. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add public-name
    review policy and clearer player-facing public-profile language before the
    richer room loop makes public presence more visible.
