@@ -97,6 +97,12 @@ interface AdminCurriculumReplenishmentStep {
   targetMinGrade: string;
   focusSubjects: string[];
   sourceCardIds: string[];
+  corpusId: string | null;
+  corpusTitle: string | null;
+  corpusPath: string | null;
+  researchInterests: string[];
+  researchLanes: string[];
+  researchDirective: string;
   promptSeed: string;
   command: string[] | null;
   displayCommand: string | null;
@@ -280,6 +286,12 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
         targetMinGrade: plan.targetMinGrade,
         focusSubjects: plan.focusSubjects,
         sourceCardIds: plan.sourceCardIds,
+        corpusId: plan.corpusId,
+        corpusTitle: plan.corpusTitle,
+        corpusPath: plan.corpusPath,
+        researchInterests: plan.researchInterests,
+        researchLanes: plan.researchLanes,
+        researchDirective: plan.researchDirective,
         promptSeed: plan.promptSeed,
         command,
         displayCommand: command ? command.map(shellWord).join(" ") : null,
@@ -416,7 +428,19 @@ function curriculumDraftMaterials(step: AdminCurriculumReplenishmentStep, source
     `Mode: ${step.mode}`,
     `Target: ${step.targetNewQuestions} ${step.targetDifficulty} questions with minGrade ${step.targetMinGrade}`,
     `Focus subjects: ${step.focusSubjects.join(", ") || "teacher corpus"}`,
+    `Corpus: ${step.corpusTitle ? `${step.corpusTitle} (${step.corpusPath ?? "unknown path"})` : "source-card corpus only"}`,
+    `Research interests: ${step.researchInterests.join(", ") || "derived from source cards"}`,
     ``,
+    `## Research Directive`,
+    step.researchDirective,
+    ``,
+    ...(step.researchLanes.length
+      ? [
+          `## Research Lanes`,
+          ...step.researchLanes.map((lane, index) => `${index + 1}. ${lane}`),
+          ``,
+        ]
+      : []),
     `## Prompt Seed`,
     step.promptSeed,
     ``,

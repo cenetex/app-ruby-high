@@ -21,6 +21,7 @@ function row(input: Partial<MutableCurriculumCoverageRow> & {
     exhaustedSessions: 0,
     sourceCardIds: new Set(),
     sourceSubjects: new Map(),
+    researchCorpus: null,
     ...input,
   };
 }
@@ -43,11 +44,22 @@ describe("curriculum coverage planning", () => {
       sourceCardCount: 0,
       focusSubjects: [],
       sourceCardIds: [],
+      researchCorpus: {
+        id: "ruby-research-corpus",
+        facultyId: "ruby",
+        title: "Ruby Research Corpus",
+        corpusPath: "assets/corpora/ruby.md",
+        researchInterests: ["AI application design", "agent reliability"],
+        lanes: ["Freshman bridge questions: practical AI/web vocabulary, but asked through small classroom scenarios."],
+      },
     })).toMatchObject({
       mode: "manual-curation",
       targetMinGrade: "9",
       targetDifficulty: "easy",
       targetNewQuestions: 8,
+      corpusTitle: "Ruby Research Corpus",
+      researchInterests: ["AI application design", "agent reliability"],
+      researchDirective: expect.stringContaining("Keep grade 9 tight"),
       promptSeed: expect.stringContaining("Freshman starter questions"),
     });
 
@@ -68,6 +80,8 @@ describe("curriculum coverage planning", () => {
       sourceCardCount: 2,
       focusSubjects: ["postwar literature", "AI criticism"],
       sourceCardIds: ["edward-card-1", "edward-card-2"],
+      corpusId: null,
+      researchDirective: expect.stringContaining("source cards as a temporary corpus"),
       promptSeed: expect.stringContaining("actively researching"),
     });
   });
@@ -85,6 +99,14 @@ describe("curriculum coverage planning", () => {
         remainingSum: 10,
         lowPoolSessions: 1,
         sourceCardIds: new Set(["ed-2", "ed-1"]),
+        researchCorpus: {
+          id: "edward-research-corpus",
+          facultyId: "edward",
+          title: "Edward Research Corpus",
+          corpusPath: "assets/corpora/edward.md",
+          researchInterests: ["close reading", "rhetoric"],
+          lanes: ["Close-reading questions: narrator versus author, point of view, imagery, irony, setting, and textual evidence."],
+        },
         sourceSubjects: new Map([
           ["literature", 1],
           ["rhetoric", 3],
@@ -151,6 +173,10 @@ describe("curriculum coverage planning", () => {
       mode: "generate",
       focusSubjects: ["AI criticism", "rhetoric", "literature"],
       sourceCardIds: ["ed-2", "ed-1"],
+      corpusTitle: "Edward Research Corpus",
+      researchLanes: [
+        "Close-reading questions: narrator versus author, point of view, imagery, irony, setting, and textual evidence.",
+      ],
     });
     expect(snapshot.lowPools).toHaveLength(8);
     expect(snapshot.lowPools[0]?.facultyId).toBe("ruby");

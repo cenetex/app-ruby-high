@@ -1677,6 +1677,10 @@ describe("admin metrics route", () => {
       mode: "generate",
       targetDifficulty: "easy",
       targetMinGrade: "10",
+      corpusId: "ruby-research-corpus",
+      corpusTitle: "Ruby Research Corpus",
+      corpusPath: "assets/corpora/ruby.md",
+      researchInterests: expect.arrayContaining(["AI application design", "agent reliability"]),
       command: expect.arrayContaining([
         "node",
         "scripts/generate-built-in-question-bank.mjs",
@@ -1684,6 +1688,8 @@ describe("admin metrics route", () => {
       ]),
     });
     expect(rubyStep.displayCommand).toContain("scripts/generate-built-in-question-bank.mjs");
+    expect(rubyStep.researchDirective).toContain("Ruby Research Corpus");
+    expect(rubyStep.researchLanes.length).toBeGreaterThan(0);
     expect(rubyStep.promptSeed).toContain("actively researching");
     expect(rubyStep.reason).toContain("Built-in teacher pool");
 
@@ -1713,6 +1719,8 @@ describe("admin metrics route", () => {
     const persistedDrafts = await store.loadDraftPacks();
     expect(persistedDrafts).toHaveLength(1);
     expect(persistedDrafts[0]!.name).toContain("Curriculum Replenishment");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Ruby Research Corpus");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Research Directive");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Prompt Seed");
     expect(persistedDrafts[0]!.teachers[0]!.sourceCards.length).toBeGreaterThan(0);
 

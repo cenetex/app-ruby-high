@@ -1,4 +1,5 @@
 import type { Difficulty, Grade } from "../../types.js";
+import type { RubyHighTeacherResearchCorpus } from "./teacher-research-corpus.js";
 
 export interface RubyHighCurriculumCoverageSnapshot {
   activeCharacterSessions: number;
@@ -29,6 +30,12 @@ export interface RubyHighCurriculumReplenishmentPlan {
   sourceCardCount: number;
   focusSubjects: string[];
   sourceCardIds: string[];
+  corpusId: string | null;
+  corpusTitle: string | null;
+  corpusPath: string | null;
+  researchInterests: string[];
+  researchLanes: string[];
+  researchDirective: string;
   promptSeed: string;
 }
 
@@ -45,6 +52,7 @@ export interface MutableCurriculumCoverageRow {
   exhaustedSessions: number;
   sourceCardIds: Set<string>;
   sourceSubjects: Map<string, number>;
+  researchCorpus: RubyHighTeacherResearchCorpus | null;
 }
 
 export function generationDifficultyForCurriculumGrade(grade: Grade): Difficulty {
@@ -62,6 +70,7 @@ export function buildCurriculumReplenishmentPlan(args: {
   sourceCardCount: number;
   focusSubjects: string[];
   sourceCardIds: string[];
+  researchCorpus?: RubyHighTeacherResearchCorpus | null;
 }): RubyHighCurriculumReplenishmentPlan {
   const targetDifficulty = generationDifficultyForCurriculumGrade(args.grade);
   const mode: RubyHighCurriculumReplenishmentPlan["mode"] = args.grade === "9" ? "manual-curation" : "generate";
@@ -69,12 +78,28 @@ export function buildCurriculumReplenishmentPlan(args: {
   const targetNewQuestions = mode === "manual-curation"
     ? Math.max(6, Math.min(16, pressure * 4))
     : Math.max(12, Math.min(36, pressure * 6));
-  const subjectHint = args.focusSubjects.length ? args.focusSubjects.join(", ") : "the teacher's current research corpus";
+  const researchCorpus = args.researchCorpus ?? null;
+  const researchInterests = researchCorpus?.researchInterests.slice(0, 8) ?? [];
+  const researchLanes = researchCorpus?.lanes.slice(0, 5) ?? [];
+  const subjectHint = args.focusSubjects.length
+    ? args.focusSubjects.join(", ")
+    : researchInterests.length
+      ? researchInterests.join(", ")
+      : "the teacher's current research corpus";
+  const researchDirective = buildResearchDirective({
+    displayName: args.displayName,
+    focusSubjects: args.focusSubjects,
+    researchCorpus,
+    targetDifficulty,
+    targetMinGrade: args.grade,
+    mode,
+  });
   const promptSeed = [
     mode === "manual-curation"
       ? `Curate Freshman starter questions for ${args.displayName}; keep grade 9 hand-authored and unusually polished.`
       : `Generate ${targetNewQuestions} ${targetDifficulty} questions for ${args.displayName} with minGrade ${args.grade}.`,
     `Focus subjects: ${subjectHint}.`,
+    researchDirective,
     args.sourceCardIds.length ? `Prioritize source cards: ${args.sourceCardIds.join(", ")}.` : "",
     "Avoid repeating existing prompts; write like the teacher is actively researching this class, not filling a spreadsheet.",
   ].filter(Boolean).join(" ");
@@ -86,8 +111,38 @@ export function buildCurriculumReplenishmentPlan(args: {
     sourceCardCount: args.sourceCardCount,
     focusSubjects: args.focusSubjects,
     sourceCardIds: args.sourceCardIds,
+    corpusId: researchCorpus?.id ?? null,
+    corpusTitle: researchCorpus?.title ?? null,
+    corpusPath: researchCorpus?.corpusPath ?? null,
+    researchInterests,
+    researchLanes,
+    researchDirective,
     promptSeed,
   };
+}
+
+function buildResearchDirective(args: {
+  displayName: string;
+  focusSubjects: string[];
+  researchCorpus: RubyHighTeacherResearchCorpus | null;
+  targetDifficulty: Difficulty;
+  targetMinGrade: Grade;
+  mode: RubyHighCurriculumReplenishmentPlan["mode"];
+}): string {
+  if (!args.researchCorpus) {
+    return `Use ${args.displayName}'s source cards as a temporary corpus and expand from the strongest subject gaps.`;
+  }
+  const lane = args.researchCorpus.lanes.find((entry) =>
+    args.focusSubjects.some((subject) => entry.toLowerCase().includes(subject.toLowerCase()))
+  ) ?? args.researchCorpus.lanes[0];
+  return [
+    `Research corpus: ${args.researchCorpus.title} (${args.researchCorpus.corpusPath}).`,
+    `Research interests: ${args.researchCorpus.researchInterests.join(", ")}.`,
+    lane ? `Current lane: ${lane}` : "",
+    args.mode === "manual-curation"
+      ? `Keep grade ${args.targetMinGrade} tight, concrete, and hand-curated before broad generation.`
+      : `Expand grade ${args.targetMinGrade} with ${args.targetDifficulty} questions that feel like fresh research from this corpus.`,
+  ].filter(Boolean).join(" ");
 }
 
 export function buildCurriculumCoverageSnapshot(
@@ -141,6 +196,7 @@ function normalizeCurriculumCoverageRow(row: MutableCurriculumCoverageRow): Ruby
       sourceCardCount: row.sourceCardIds.size,
       focusSubjects,
       sourceCardIds,
+      researchCorpus: row.researchCorpus,
     }) : null,
   };
 }

@@ -28,6 +28,7 @@ import {
   type RubyHighCurriculumCoverageSnapshot,
   type RubyHighCurriculumReplenishmentPlan,
 } from "./ruby-high/curriculum-coverage.js";
+import { builtInTeacherResearchCorpusForFaculty } from "./ruby-high/teacher-research-corpus.js";
 import { teacherById } from "../characters/teachers.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
@@ -1788,6 +1789,7 @@ export class RubyHighService extends Service {
             exhaustedSessions: 0,
             sourceCardIds: new Set<string>(),
             sourceSubjects: new Map<string, number>(),
+            researchCorpus: builtInTeacherResearchCorpusForFaculty(status.facultyId),
           };
           rows.set(key, row);
         }

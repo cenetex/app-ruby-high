@@ -1011,9 +1011,11 @@ describe("RubyHighService Phase 1", () => {
         sourceCardCount: 1,
         focusSubjects: ["research"],
         sourceCardIds: ["level-corpus-easy"],
+        corpusId: null,
       },
     });
     expect(sophomore?.replenishment?.promptSeed).toContain("actively researching");
+    expect(sophomore?.replenishment?.researchDirective).toContain("source cards as a temporary corpus");
     expect(coverage.lowPools.map((row) => `${row.grade}:${row.facultyId}`)).toContain("9:level-test-course");
     expect(coverage.activeCharacterSessions).toBeGreaterThanOrEqual(2);
   });
