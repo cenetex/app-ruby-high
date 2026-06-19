@@ -414,6 +414,7 @@ export function worldFeedEventDisplayLabel(event: unknown): string {
   if (!event || typeof event !== "object") return "World event";
   const record = event as WorldFeedEvent;
   if (record.label) return String(record.label);
+  if (record.kind === "room.goal-progress") return "Live class progress";
   if (record.kind === "comic.page-unlocked") return "Comic page unlocked";
   if (record.kind === "relationship.ticked") return "Classmate bond shifted";
   if (record.kind === "mash.axis-resolved") return "Classmate profile sharpened";
@@ -464,9 +465,11 @@ export function worldFeedRoomViews(rooms: unknown, roster: unknown, limit = 5): 
     .map((room) => {
       const record = room && typeof room === "object" ? room as LooseRecord : {};
       const activeStudents = Math.max(0, Math.floor(Number(record.activeStudents || 0)));
+      const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
+      const goalLabel = goal && goal.label ? String(goal.label) : "";
       return {
         title: worldFeedRoomTitle(record, roster),
-        meta: activeStudents === 1 ? "1 student active" : activeStudents + " students active",
+        meta: goalLabel || (activeStudents === 1 ? "1 student active" : activeStudents + " students active"),
       };
     });
 }

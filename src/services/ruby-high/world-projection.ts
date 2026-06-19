@@ -41,11 +41,21 @@ export interface PublicWorldStudent {
   portraitUrl?: string;
 }
 
+export interface PublicWorldRoomGoal {
+  kind: "live-class";
+  label: string;
+  progress: number;
+  target: number;
+  complete: boolean;
+  updatedAt: number;
+}
+
 export interface PublicWorldRoom {
   grade: Grade;
   facultyId: string;
   displayName: string;
   activeStudents: number;
+  goal: PublicWorldRoomGoal;
   students: PublicWorldStudent[];
 }
 
@@ -70,6 +80,19 @@ export interface PublicWorldRoomBuildResult {
 }
 
 export type PublicWorldEvent =
+  | {
+      id: string;
+      kind: "room.goal-progress";
+      at: number;
+      faculty?: string;
+      grade: Grade | null;
+      roomTitle: string;
+      goalKind: PublicWorldRoomGoal["kind"];
+      progress: number;
+      target: number;
+      complete: boolean;
+      label: string;
+    }
   | {
       id: string;
       kind: "relationship.ticked";
@@ -175,6 +198,21 @@ function publicWorldRelationshipDelta(raw: unknown): -1 | 0 | 1 {
   return raw === -1 || raw === 0 || raw === 1 ? raw : 0;
 }
 
+function publicWorldRoomGoalFor(room: Pick<PublicWorldRoom, "grade" | "displayName" | "activeStudents" | "students">): PublicWorldRoomGoal {
+  const target = 3;
+  const progress = Math.min(target, publicWorldNonNegativeInteger(room.activeStudents));
+  const updatedAt = room.students.reduce((max, student) => Math.max(max, publicWorldNonNegativeInteger(student.lastActive)), 0);
+  const roomName = publicWorldRoomDisplayName(room.displayName, "Class");
+  return {
+    kind: "live-class",
+    label: `${roomName} live class ${progress}/${target}`,
+    progress,
+    target,
+    complete: progress >= target,
+    updatedAt,
+  };
+}
+
 function publicWorldComicUnlockReason(raw: unknown): ComicPageUnlockReason {
   return COMIC_PAGE_UNLOCK_REASONS.includes(raw as ComicPageUnlockReason) ? raw as ComicPageUnlockReason : "legacy";
 }
@@ -246,6 +284,14 @@ export function buildPublicWorldRooms(
         facultyId,
         displayName,
         activeStudents: 0,
+        goal: {
+          kind: "live-class",
+          label: `${displayName} live class 0/3`,
+          progress: 0,
+          target: 3,
+          complete: false,
+          updatedAt: 0,
+        },
         students: [],
       };
       roomRows.set(key, room);
@@ -258,6 +304,7 @@ export function buildPublicWorldRooms(
       a.name.localeCompare(b.name) ||
       a.playbookId.localeCompare(b.playbookId)
     );
+    room.goal = publicWorldRoomGoalFor(room);
     if (room.students.length > studentLimit) room.students.length = studentLimit;
   }
   const sortedRooms = Array.from(roomRows.values()).sort((a, b) =>
@@ -329,6 +376,42 @@ export function publicSchoolWorldEvent(event: SchoolEvent): PublicWorldEvent {
     reason: publicWorldComicUnlockReason(event.reason),
     label: publicWorldEventLabel(event.label, "Comic page unlocked"),
   };
+}
+
+export function publicWorldRoomGoalEvents(rooms: readonly PublicWorldRoom[]): PublicWorldEvent[] {
+  return rooms
+    .filter((room) => room.goal.progress > 0 && room.goal.updatedAt > 0)
+    .map((room) => {
+      const faculty = publicWorldEventFaculty(room.facultyId);
+      const roomTitle = publicWorldEventLabel(`${room.displayName} room`, "Class room");
+      const label = publicWorldEventLabel(room.goal.complete
+        ? `${room.displayName} filled a live class goal`
+        : `${room.displayName} live class is ${room.goal.progress}/${room.goal.target}`);
+      const event = {
+        kind: "room.goal-progress" as const,
+        at: publicWorldNonNegativeInteger(room.goal.updatedAt),
+        grade: publicWorldGrade(room.grade, null),
+        ...(faculty ? { faculty } : {}),
+        roomTitle,
+        goalKind: room.goal.kind,
+        progress: publicWorldNonNegativeInteger(room.goal.progress),
+        target: Math.max(1, publicWorldNonNegativeInteger(room.goal.target)),
+        complete: room.goal.complete === true,
+        label,
+      };
+      return {
+        id: publicWorldRoomGoalEventId(event),
+        ...event,
+      };
+    });
+}
+
+function publicWorldRoomGoalEventId(event: Omit<Extract<PublicWorldEvent, { kind: "room.goal-progress" }>, "id">): string {
+  const hash = createHash("sha256")
+    .update(`${event.kind}:${event.at}:${event.grade ?? ""}:${event.faculty ?? ""}:${event.progress}:${event.target}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `world:event:${hash}`;
 }
 
 export function publicSchoolWorldEventId(event: SchoolEvent): string {

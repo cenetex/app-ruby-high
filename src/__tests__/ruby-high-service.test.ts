@@ -1812,6 +1812,69 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(world)).not.toContain("No Class Noor");
   });
 
+  it("exposes shared live-room goal progress through the public world feed", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+
+    const first = attachTestCharacter(ruby, "test:world-room-goal-a");
+    first.sessionId = "test:world-room-goal-a";
+    first.currentGrade = "10";
+    first.faculty = "ruby";
+    first.updatedAt = now - 100;
+    first.character!.name = "Goal Noor";
+    first.character!.createdAt = now - 100;
+    const firstClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    firstClass.completedAt = now - 100;
+    firstClass.updatedAt = now - 100;
+    first.character!.dailyClasses = { ruby: firstClass };
+
+    const second = attachTestCharacter(ruby, "test:world-room-goal-b");
+    second.sessionId = "test:world-room-goal-b";
+    second.currentGrade = "10";
+    second.faculty = "ruby";
+    second.updatedAt = now;
+    second.character!.name = "Goal Mina";
+    second.character!.createdAt = now;
+    const secondClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    secondClass.completedAt = now;
+    secondClass.updatedAt = now;
+    second.character!.dailyClasses = { ruby: secondClass };
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+    const roomGoalEvents = world.recentEvents.filter((event) => event.kind === "room.goal-progress");
+
+    expect(world.activeRooms[0]).toMatchObject({
+      grade: "10",
+      facultyId: "ruby",
+      activeStudents: 2,
+      goal: {
+        kind: "live-class",
+        label: "Ruby live class 2/3",
+        progress: 2,
+        target: 3,
+        complete: false,
+        updatedAt: now,
+      },
+    });
+    expect(roomGoalEvents).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^world:event:[a-f0-9]{16}$/),
+        kind: "room.goal-progress",
+        at: now,
+        faculty: "ruby",
+        grade: "10",
+        roomTitle: "Ruby room",
+        progress: 2,
+        target: 3,
+        complete: false,
+        label: "Ruby live class is 2/3",
+      }),
+    ]);
+    expect(JSON.stringify(roomGoalEvents)).not.toContain("test:world-room-goal");
+    expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Noor");
+    expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Mina");
+  });
+
   it("uses the supplied world clock for both room and cohort presence", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -2031,12 +2094,12 @@ describe("RubyHighService Phase 1", () => {
     const world = await ruby.getFreshSchoolWorldSnapshot(10, now + 2);
 
     expect(world.activeStudents).toBe(1);
-    expect(world.recentEvents).toEqual([
+    expect(world.recentEvents).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "comic.page-unlocked",
         label: "Outbox public page",
       }),
-    ]);
+    ]));
     expect(JSON.stringify(world)).not.toContain("school:event:outbox-world");
     expect(JSON.stringify(world)).not.toContain("teacher:ruby:grade:10");
   });
@@ -2172,8 +2235,9 @@ describe("RubyHighService Phase 1", () => {
 
     expect(cached.size).toBe(400);
     expect(world.recentEvents).toHaveLength(100);
-    expect(world.recentEvents[0]).toMatchObject({ kind: "comic.page-unlocked", label: "Cache event 000" });
-    expect(world.recentEvents.at(-1)).toMatchObject({ kind: "comic.page-unlocked", label: "Cache event 099" });
+    const comicEvents = world.recentEvents.filter((event) => event.kind === "comic.page-unlocked");
+    expect(comicEvents[0]).toMatchObject({ kind: "comic.page-unlocked", label: "Cache event 000" });
+    expect(comicEvents.at(-1)).toMatchObject({ kind: "comic.page-unlocked", label: "Cache event 099" });
     expect(JSON.stringify(world)).not.toContain("Cache event 420");
   });
 

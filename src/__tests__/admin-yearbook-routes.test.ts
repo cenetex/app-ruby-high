@@ -829,10 +829,15 @@ describe("school world route", () => {
     const eventBlocks = String(first.body)
       .split("\n\n")
       .filter((block) => block.includes("event: world-event"));
-    expect(eventBlocks).toHaveLength(3);
-    const cursorLine = eventBlocks[0]!.split("\n").find((line) => line.startsWith("id: world:cursor:"));
+    const comicEventBlocks = eventBlocks.filter((block) => (
+      block.includes("Cursor page A") ||
+      block.includes("Cursor page B") ||
+      block.includes("Cursor page C")
+    ));
+    expect(comicEventBlocks).toHaveLength(3);
+    const cursorLine = comicEventBlocks[0]!.split("\n").find((line) => line.startsWith("id: world:cursor:"));
     expect(cursorLine).toBeTruthy();
-    const firstLabel = ["Cursor page A", "Cursor page B", "Cursor page C"].find((label) => eventBlocks[0]!.includes(label));
+    const firstLabel = ["Cursor page A", "Cursor page B", "Cursor page C"].find((label) => comicEventBlocks[0]!.includes(label));
     const remainingLabels = ["Cursor page A", "Cursor page B", "Cursor page C"].filter((label) => label !== firstLabel);
 
     const response = await appRoute({
@@ -1539,7 +1544,7 @@ describe("admin metrics route", () => {
           refreshIntervalMs: 2_000,
           activeStudents: 1,
           activeRooms: 1,
-          recentEvents: 1,
+          recentEvents: 2,
           newestEventAt: eventAt,
           durableEventCacheSize: 0,
           durableEventCacheLimit: 400,

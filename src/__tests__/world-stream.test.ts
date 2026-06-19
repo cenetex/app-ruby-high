@@ -106,7 +106,21 @@ describe("world stream cursor helpers", () => {
     const world = {
       generatedAt: 100,
       activeStudents: 1,
-      activeRooms: [{ grade: "10" as const, facultyId: "ruby", displayName: "Ruby", activeStudents: 1, students: [] }],
+      activeRooms: [{
+        grade: "10" as const,
+        facultyId: "ruby",
+        displayName: "Ruby",
+        activeStudents: 1,
+        goal: {
+          kind: "live-class" as const,
+          label: "Ruby live class 1/3",
+          progress: 1,
+          target: 3,
+          complete: false,
+          updatedAt: 100,
+        },
+        students: [],
+      }],
       cohorts: {},
       recentEvents: [],
       curriculum: { activeCharacterSessions: 1, lowPools: [] },

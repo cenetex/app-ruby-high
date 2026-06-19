@@ -4,6 +4,7 @@ import {
   buildPublicWorldCohorts,
   buildPublicWorldRooms,
   publicSchoolWorldEvent,
+  publicWorldRoomGoalEvents,
   publicWorldPortraitUrl,
   publicWorldSessionId,
   type PublicWorldEvent,
@@ -7060,6 +7061,7 @@ export class RubyHighService extends Service {
     const publicEntries = this.publicSchoolWorldEntries(now, weekMs);
     const presence = publicEntries.map((entry) => this.publicWorldPresenceFromEntry(entry));
     const rooms = buildPublicWorldRooms(presence, 5);
+    this.clampPublicWorldRoomGoalTimes(rooms.activeRooms, now);
     const cohorts = buildPublicWorldCohorts(this.getRecentlyActiveStudents(now).map((student) => this.publicWorldPresenceFromRecent(student)));
     const curriculum = this.curriculumCoverageSnapshotForStates(publicEntries.map((entry) => entry.state));
     return {
@@ -7067,7 +7069,7 @@ export class RubyHighService extends Service {
       activeStudents: rooms.activeStudents,
       activeRooms: rooms.activeRooms,
       cohorts,
-      recentEvents: this.getSchoolWorldEvents(eventLimit, now, rooms.publicSessionIds),
+      recentEvents: this.getSchoolWorldEvents(eventLimit, now, rooms.publicSessionIds, rooms.activeRooms),
       curriculum: {
         activeCharacterSessions: curriculum.activeCharacterSessions,
         lowPools: curriculum.lowPools,
@@ -7085,11 +7087,16 @@ export class RubyHighService extends Service {
     return this.getSchoolWorldEvents(limit, now);
   }
 
-  getSchoolWorldEvents(limit = 30, now = Date.now(), publicSessionIds?: ReadonlySet<string>): SchoolWorldEvent[] {
+  getSchoolWorldEvents(limit = 30, now = Date.now(), publicSessionIds?: ReadonlySet<string>, activeRooms?: readonly SchoolWorldRoom[]): SchoolWorldEvent[] {
     const eventLimit = Number.isFinite(limit) ? Math.max(0, Math.min(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.floor(limit))) : 30;
     if (eventLimit <= 0) return [];
     const weekMs = 7 * 24 * 60 * 60 * 1000;
     const visibleSessionIds = publicSessionIds ?? this.publicSchoolWorldSessionIds(now, weekMs);
+    const rooms = activeRooms ?? buildPublicWorldRooms(
+      this.publicSchoolWorldEntries(now, weekMs).map((entry) => this.publicWorldPresenceFromEntry(entry)),
+      5,
+    ).activeRooms;
+    this.clampPublicWorldRoomGoalTimes(rooms, now);
     const rows = new Map<string, SchoolWorldEvent>();
     const addEvent = (event: SchoolEvent) => {
       const eventAt = Math.floor(Number(event.at ?? 0));
@@ -7114,9 +7121,25 @@ export class RubyHighService extends Service {
       for (const event of Array.isArray(state.schoolEvents) ? state.schoolEvents : []) addEvent(event);
     }
 
+    for (const event of publicWorldRoomGoalEvents(rooms)) {
+      if (event.at > now || now - event.at > weekMs) continue;
+      rows.set(event.id, event);
+    }
+
     return Array.from(rows.values())
-      .sort((a, b) => b.at - a.at || b.id.localeCompare(a.id))
+      .sort((a, b) => this.schoolWorldEventKindRank(a.kind) - this.schoolWorldEventKindRank(b.kind) || b.at - a.at || b.id.localeCompare(a.id))
       .slice(0, eventLimit);
+  }
+
+  private clampPublicWorldRoomGoalTimes(rooms: readonly SchoolWorldRoom[], now: number): void {
+    for (const room of rooms) {
+      const updatedAt = Math.max(0, Math.floor(Number(room.goal.updatedAt) || 0));
+      room.goal.updatedAt = updatedAt > now ? 0 : updatedAt;
+    }
+  }
+
+  private schoolWorldEventKindRank(kind: SchoolWorldEvent["kind"]): number {
+    return kind === "room.goal-progress" ? 1 : 0;
   }
 
   private pruneSchoolEventRecords(now = Date.now()): void {

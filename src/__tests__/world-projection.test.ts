@@ -10,6 +10,7 @@ import {
   publicWorldGrade,
   publicWorldPlaybookId,
   publicWorldPortraitUrl,
+  publicWorldRoomGoalEvents,
   publicWorldRoomDisplayName,
   publicWorldRoomId,
   publicWorldSessionId,
@@ -265,6 +266,52 @@ describe("public world projection", () => {
     });
     expect(result.activeRooms[1]?.students[1]).not.toHaveProperty("portraitUrl");
     expect(JSON.stringify(result)).not.toContain("PRIVATE");
+  });
+
+  it("adds shared live-class goals to public room aggregates", () => {
+    const result = buildPublicWorldRooms([
+      entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),
+      entry({ sessionId: "private-session-2", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Mina", lastActive: 500 }),
+    ]);
+
+    expect(result.activeRooms[0]?.goal).toEqual({
+      kind: "live-class",
+      label: "Ruby live class 2/3",
+      progress: 2,
+      target: 3,
+      complete: false,
+      updatedAt: 500,
+    });
+  });
+
+  it("builds sanitized room-goal progress events without private student ids", () => {
+    const result = buildPublicWorldRooms([
+      entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),
+      entry({ sessionId: "private-session-2", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Mina", lastActive: 500 }),
+      entry({ sessionId: "private-session-3", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Sol", lastActive: 400 }),
+    ]);
+
+    const events = publicWorldRoomGoalEvents(result.activeRooms);
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^world:event:[a-f0-9]{16}$/),
+        kind: "room.goal-progress",
+        at: 500,
+        faculty: "ruby",
+        grade: "10",
+        roomTitle: "Ruby room",
+        goalKind: "live-class",
+        progress: 3,
+        target: 3,
+        complete: true,
+        label: "Ruby filled a live class goal",
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain("private-session");
+    expect(JSON.stringify(events)).not.toContain("Noor");
+    expect(JSON.stringify(events)).not.toContain("Mina");
+    expect(JSON.stringify(events)).not.toContain("Sol");
   });
 
   it("samples each room by recent activity instead of insertion order", () => {

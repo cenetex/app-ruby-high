@@ -65,6 +65,7 @@ describe("viewer world feed pure helpers", () => {
   it("formats public world event labels from authored labels before kind fallbacks", () => {
     expect(worldFeedEventDisplayLabel(null)).toBe("World event");
     expect(worldFeedEventDisplayLabel({ label: "Ruby started a class" })).toBe("Ruby started a class");
+    expect(worldFeedEventDisplayLabel({ kind: "room.goal-progress" })).toBe("Live class progress");
     expect(worldFeedEventDisplayLabel({ kind: "comic.page-unlocked" })).toBe("Comic page unlocked");
     expect(worldFeedEventDisplayLabel({ kind: "relationship.ticked" })).toBe("Classmate bond shifted");
     expect(worldFeedEventDisplayLabel({ kind: "mash.axis-resolved" })).toBe("Classmate profile sharpened");
@@ -110,7 +111,7 @@ describe("viewer world feed pure helpers", () => {
       activeStudents: 3,
       activeRooms: [
         { grade: "9", facultyId: "ruby", activeStudents: 1 },
-        { grade: "10", facultyId: "sally-science", activeStudents: 2 },
+        { grade: "10", facultyId: "sally-science", activeStudents: 2, goal: { label: "Sally Science live class 2/3" } },
       ],
       events: [
         { id: "world:event:a", at: now - 60_000, label: "Ruby started class" },
@@ -120,7 +121,7 @@ describe("viewer world feed pure helpers", () => {
 
     expect(worldFeedRoomViews(state.activeRooms, roster)).toEqual([
       { title: "Freshman · Ruby", meta: "1 student active" },
-      { title: "Sophomore · Sally Science", meta: "2 students active" },
+      { title: "Sophomore · Sally Science", meta: "Sally Science live class 2/3" },
     ]);
     expect(worldFeedEventViews(state.events, now)).toEqual([
       { label: "Ruby started class", age: "1m" },
@@ -130,7 +131,7 @@ describe("viewer world feed pure helpers", () => {
       summary: "3 students live · 2 rooms",
       rooms: [
         { title: "Freshman · Ruby", meta: "1 student active" },
-        { title: "Sophomore · Sally Science", meta: "2 students active" },
+        { title: "Sophomore · Sally Science", meta: "Sally Science live class 2/3" },
       ],
       events: [
         { label: "Ruby started class", age: "1m" },
