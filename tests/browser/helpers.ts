@@ -148,6 +148,20 @@ export async function answerAnyQuestion(page: Page) {
 }
 
 /**
+ * Close reward comic modals that can appear after a forced grade tick.
+ */
+export async function closeRewardComicIfVisible(page: Page) {
+  const modal = page.locator(".comic-reader.is-reward").first();
+  try {
+    await expect(modal).toBeVisible({ timeout: 2000 });
+    await modal.getByRole("button", { name: "Close comic page" }).click();
+    await expect(modal).not.toBeVisible({ timeout: 5000 });
+  } catch {
+    // No reward modal appeared for this action.
+  }
+}
+
+/**
  * Click the Continue/Chat button. Returns true if the click was handled
  * (some clicks are debounced or suppressed when no action is available).
  */

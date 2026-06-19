@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { answerAnyQuestion, closeRewardComicIfVisible, createCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("boots as a guest, creates a character, answers a card, and opens account tabs", async ({ page }) => {
   const { errors } = await openViewer(page);
@@ -67,6 +67,58 @@ test("shows comic unlocks as a modal instead of an inline reward card", async ({
   await expect(modal).not.toBeVisible();
 
   expect(errors).toEqual([]);
+});
+
+test("shows shared live-room progress across two browser clients", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+
+  try {
+    const clientA = await openViewer(pageA);
+    const clientB = await openViewer(pageB);
+    await dismissAnnouncements(pageA);
+    await dismissAnnouncements(pageB);
+    await createCharacter(pageA);
+    await createCharacter(pageB);
+
+    await tickGrade(pageA);
+    await tickGrade(pageB);
+    await closeRewardComicIfVisible(pageA);
+    await closeRewardComicIfVisible(pageB);
+
+    await answerAnyQuestion(pageA);
+    await answerAnyQuestion(pageB);
+
+    const refreshA = pageA.locator("#world-panel-refresh");
+    const refreshB = pageB.locator("#world-panel-refresh");
+    await expect(refreshA).toBeVisible();
+    await expect(refreshB).toBeVisible();
+
+    await expect.poll(async () => {
+      await refreshA.click();
+      return (await pageA.locator("#world-panel-rooms").textContent()) ?? "";
+    }, { timeout: 20_000 }).toContain("Ruby live class 2/3");
+
+    await expect.poll(async () => {
+      await refreshB.click();
+      return (await pageB.locator("#world-panel-rooms").textContent()) ?? "";
+    }, { timeout: 20_000 }).toContain("Ruby live class 2/3");
+
+    await expect(pageA.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
+    await expect(pageB.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
+    await expect(pageA.locator(".world-event-row").first()).toContainText(/Ruby live class is 2\/3|Ruby live class 2\/3/i);
+    await expect(pageB.locator(".world-event-row").first()).toContainText(/Ruby live class is 2\/3|Ruby live class 2\/3/i);
+    await expect(pageA.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
+    await expect(pageB.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
+    expect(clientA.errors).toEqual([]);
+    expect(clientB.errors).toEqual([]);
+  } finally {
+    await contextA.close();
+    await contextB.close();
+  }
 });
 
 for (const viewport of [
