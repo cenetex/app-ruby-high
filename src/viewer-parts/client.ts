@@ -3190,40 +3190,41 @@ export function runViewerClient(bootstrap) {
 
   function buildAccountCharacterCard(entry, slotNumber) {
     const c = entry.character || {};
-    const pb = (lastTelemetry && Array.isArray(lastTelemetry.playbooks) ? lastTelemetry.playbooks : [])
-      .find((p) => p.id === c.playbookId) || { name: c.playbookId || "Student", accent: "var(--accent)" };
+    const view = accountCharacterCardView(
+      entry,
+      slotNumber,
+      lastTelemetry && Array.isArray(lastTelemetry.playbooks) ? lastTelemetry.playbooks : [],
+      lastTelemetry && lastTelemetry.current_grade,
+      defaultPortraitFor(c.playbookId),
+    );
     const card = document.createElement("button");
     card.type = "button";
-    card.className = "account-character-card is-" + entry.kind;
-    card.style.setProperty("--account-character-accent", pb.accent || "var(--accent)");
+    card.className = view.className;
+    card.style.setProperty("--account-character-accent", view.accent);
     const portrait = document.createElement("span");
     portrait.className = "account-character-portrait";
-    const imgUrl = c.diplomaImageDataUrl || c.portraitDataUrl || defaultPortraitFor(c.playbookId);
-    if (imgUrl) {
+    if (view.portraitUrl) {
       const img = document.createElement("img");
       img.alt = "";
-      img.src = imgUrl;
+      img.src = view.portraitUrl;
       portrait.appendChild(img);
     } else {
-      portrait.textContent = String(c.name || "?").slice(0, 1).toUpperCase();
+      portrait.textContent = view.portraitInitial;
     }
     card.appendChild(portrait);
     const copy = document.createElement("span");
     copy.className = "account-character-copy";
     const name = document.createElement("span");
     name.className = "account-character-name";
-    name.textContent = c.name || "Student";
+    name.textContent = view.name;
     copy.appendChild(name);
-    const yearbookCount = Array.isArray(c.yearbook) ? c.yearbook.length : 0;
     const meta = document.createElement("span");
     meta.className = "account-character-meta";
-    meta.textContent = entry.kind === "active"
-      ? "Slot " + slotNumber + " · active · " + (GRADE_LABELS[lastTelemetry && lastTelemetry.current_grade] || "Freshman")
-      : "Slot " + slotNumber + " · graduated · " + yearbookCount + "/4 years";
+    meta.textContent = view.meta;
     copy.appendChild(meta);
     card.appendChild(copy);
     card.addEventListener("click", () => {
-      if (entry.kind === "active") {
+      if (view.isActive) {
         openCharacterSheetFromAccount();
       }
     });
@@ -3231,10 +3232,10 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildEmptyCharacterSlot(slotNumber, canCreateCharacter) {
-    const card = document.createElement(canCreateCharacter ? "button" : "div");
-    if (canCreateCharacter) card.type = "button";
-    card.className = "account-character-card is-empty";
-    if (canCreateCharacter) card.classList.add("is-create");
+    const view = accountEmptyCharacterSlotView(slotNumber, canCreateCharacter);
+    const card = document.createElement(view.tagName);
+    if (view.type) card.type = view.type;
+    card.className = view.className;
     const portrait = document.createElement("span");
     portrait.className = "account-character-portrait";
     portrait.textContent = "+";
@@ -3243,16 +3244,14 @@ export function runViewerClient(bootstrap) {
     copy.className = "account-character-copy";
     const name = document.createElement("span");
     name.className = "account-character-name";
-    name.textContent = canCreateCharacter ? "Create Character" : "Empty Slot";
+    name.textContent = view.name;
     const meta = document.createElement("span");
     meta.className = "account-character-meta";
-    meta.textContent = canCreateCharacter
-      ? "Slot " + slotNumber + " · start today's class"
-      : "Slot " + slotNumber + " · ready for a future student";
+    meta.textContent = view.meta;
     copy.appendChild(name);
     copy.appendChild(meta);
     card.appendChild(copy);
-    if (canCreateCharacter) card.addEventListener("click", openCharacterCreationFromAccount);
+    if (view.canCreate) card.addEventListener("click", openCharacterCreationFromAccount);
     return card;
   }
 

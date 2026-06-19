@@ -78,6 +78,8 @@ const PURE_HELPER_NAMES = [
   "walletTransactionPackDeltaText",
   "walletTransactionSource",
   "accountHistoryRowView",
+  "accountCharacterCardView",
+  "accountEmptyCharacterSlotView",
   "formatSealedDate",
   "nextGradeAfterClient",
   "fmtStat",

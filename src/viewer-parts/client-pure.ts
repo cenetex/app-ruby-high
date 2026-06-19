@@ -68,6 +68,23 @@ export type AccountHistoryRowView = {
   meta: string;
   delta: string;
 };
+export type AccountCharacterCardView = {
+  className: string;
+  accent: string;
+  name: string;
+  meta: string;
+  portraitUrl: string;
+  portraitInitial: string;
+  isActive: boolean;
+};
+export type AccountEmptyCharacterSlotView = {
+  tagName: "button" | "div";
+  type: "button" | "";
+  className: string;
+  name: string;
+  meta: string;
+  canCreate: boolean;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -476,6 +493,50 @@ export function accountHistoryRowView(tx: NullableRecord): AccountHistoryRowView
     title: walletTransactionDescription(tx),
     meta: walletTransactionSource(tx) + " · " + formatAccountDate(tx && tx.at),
     delta,
+  };
+}
+
+export function accountCharacterCardView(
+  entry: NullableRecord,
+  slotNumber: unknown,
+  playbooks: unknown,
+  currentGrade: unknown,
+  fallbackPortraitUrl?: unknown,
+): AccountCharacterCardView {
+  const cleanEntry = entry && typeof entry === "object" ? entry : {};
+  const character = cleanEntry.character && typeof cleanEntry.character === "object" ? cleanEntry.character : {};
+  const playbookId = String(character.playbookId || "");
+  const roster = Array.isArray(playbooks) ? playbooks : [];
+  const playbook = roster.find((p) => p && typeof p === "object" && (p as LooseRecord).id === playbookId) as NullableRecord;
+  const kind = cleanEntry.kind === "graduated" ? "graduated" : "active";
+  const name = typeof character.name === "string" && character.name.trim() ? character.name.trim() : "Student";
+  const yearbookCount = Array.isArray(character.yearbook) ? character.yearbook.length : 0;
+  const gradeLabel = (VIEWER_CONSTANTS.GRADE_LABELS as Record<string, string>)[String(currentGrade || "")] || "Freshman";
+  const portraitUrl = String(character.diplomaImageDataUrl || character.portraitDataUrl || fallbackPortraitUrl || "");
+  return {
+    className: "account-character-card is-" + kind,
+    accent: String((playbook && playbook.accent) || "var(--accent)"),
+    name,
+    meta: kind === "active"
+      ? "Slot " + slotNumber + " · active · " + gradeLabel
+      : "Slot " + slotNumber + " · graduated · " + yearbookCount + "/4 years",
+    portraitUrl,
+    portraitInitial: name.slice(0, 1).toUpperCase() || "?",
+    isActive: kind === "active",
+  };
+}
+
+export function accountEmptyCharacterSlotView(slotNumber: unknown, canCreateCharacter: unknown): AccountEmptyCharacterSlotView {
+  const canCreate = !!canCreateCharacter;
+  return {
+    tagName: canCreate ? "button" : "div",
+    type: canCreate ? "button" : "",
+    className: "account-character-card is-empty" + (canCreate ? " is-create" : ""),
+    name: canCreate ? "Create Character" : "Empty Slot",
+    meta: canCreate
+      ? "Slot " + slotNumber + " · start today's class"
+      : "Slot " + slotNumber + " · ready for a future student",
+    canCreate,
   };
 }
 

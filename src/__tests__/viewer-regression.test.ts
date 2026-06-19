@@ -263,6 +263,9 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
+    expectScriptToContain(script, "function accountCharacterCardView(entry, slotNumber, playbooks, currentGrade, fallbackPortraitUrl)");
+    expectScriptToContain(script, "function accountEmptyCharacterSlotView(slotNumber, canCreateCharacter)");
+    expectScriptToContain(clientSource, "const view = accountCharacterCardView(");
     expectScriptToContain(script, "function accountHistoryRowView(tx)");
     expectScriptToContain(clientSource, "const view = accountHistoryRowView(tx);");
     expectScriptToContain(script, '"build":"dev"');
