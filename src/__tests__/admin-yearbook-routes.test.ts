@@ -1828,6 +1828,19 @@ describe("admin metrics route", () => {
     expect(rubyStep.researchLanes.length).toBeGreaterThan(0);
     expect(rubyStep.promptSeed).toContain("actively researching");
     expect(rubyStep.reason).toContain("Built-in teacher pool");
+    expect(response.body.generationQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requestId: expect.stringMatching(/^curriculum-replenishment:\d{4}-\d{2}-\d{2}:10:ruby$/),
+        facultyId: "ruby",
+        grade: "10",
+        status: "ready",
+        action: "create-draft",
+        draftId: null,
+        priority: expect.any(Number),
+        corpusId: "ruby-research-corpus",
+        researchLanes: expect.any(Array),
+      }),
+    ]));
 
     response = await appRoute({
       method: "POST",
@@ -1876,6 +1889,20 @@ describe("admin metrics route", () => {
         },
       }),
     ]);
+
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.body.generationQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        facultyId: "ruby",
+        grade: "10",
+        status: "queued",
+        action: "review-draft",
+        draftId: persistedDrafts[0]!.id,
+      }),
+    ]));
 
     response = await appRoute({
       method: "POST",

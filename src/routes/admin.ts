@@ -118,7 +118,16 @@ interface AdminCurriculumReplenishmentSnapshot {
   dryRun: true;
   planCount: number;
   steps: AdminCurriculumReplenishmentStep[];
+  generationQueue: AdminCurriculumGenerationProposal[];
   reviewQueue: AdminCurriculumReviewDraftSummary[];
+}
+
+interface AdminCurriculumGenerationProposal extends AdminCurriculumReplenishmentStep {
+  requestId: string;
+  priority: number;
+  status: "ready" | "queued" | "manual-curation" | "unsupported";
+  draftId: string | null;
+  action: "create-draft" | "review-draft" | "curate-manually" | "unsupported";
 }
 
 interface AdminCurriculumReviewDraftSummary {
@@ -324,10 +333,12 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
 async function buildAdminCurriculumReplenishmentSnapshot(deps: AdminDeps): Promise<AdminCurriculumReplenishmentSnapshot> {
   const steps = buildAdminCurriculumReplenishmentSteps(deps);
   const pack = await getActivePack();
-  const reviewQueue = (await deps.ruby.listDraftPackRecords())
+  const draftRecords = await deps.ruby.listDraftPackRecords();
+  const reviewQueue = draftRecords
     .map((draft) => adminCurriculumReviewDraftSummary(draft, pack))
     .filter((draft): draft is AdminCurriculumReviewDraftSummary => !!draft)
     .sort((a, b) => b.updatedAt - a.updatedAt || a.name.localeCompare(b.name));
+  const generationQueue = buildAdminCurriculumGenerationQueue(steps, draftRecords);
   return {
     ok: true,
     generatedAt: new Date().toISOString(),
@@ -335,8 +346,68 @@ async function buildAdminCurriculumReplenishmentSnapshot(deps: AdminDeps): Promi
     dryRun: true,
     planCount: steps.length,
     steps,
+    generationQueue,
     reviewQueue,
   };
+}
+
+function buildAdminCurriculumGenerationQueue(
+  steps: readonly AdminCurriculumReplenishmentStep[],
+  drafts: readonly StoredDraftContentPackRecord[],
+  now = Date.now(),
+): AdminCurriculumGenerationProposal[] {
+  const day = new Date(now).toISOString().slice(0, 10);
+  return steps
+    .map((step) => {
+      const requestId = adminCurriculumRequestId(step, day);
+      const existing = drafts.find((draft) =>
+        draft.teachers.some((teacher) => teacher.clientRequestId === requestId)
+      );
+      const status: AdminCurriculumGenerationProposal["status"] = existing
+        ? "queued"
+        : step.mode === "manual-curation"
+          ? "manual-curation"
+          : step.command
+            ? "ready"
+            : "unsupported";
+      const action: AdminCurriculumGenerationProposal["action"] = status === "ready"
+        ? "create-draft"
+        : status === "queued"
+          ? "review-draft"
+          : status === "manual-curation"
+            ? "curate-manually"
+            : "unsupported";
+      return {
+        ...step,
+        requestId,
+        priority: adminCurriculumGenerationPriority(step),
+        status,
+        draftId: existing?.id ?? null,
+        action,
+      };
+    })
+    .sort((a, b) =>
+      b.priority - a.priority ||
+      statusRank(a.status) - statusRank(b.status) ||
+      Number(a.grade) - Number(b.grade) ||
+      a.displayName.localeCompare(b.displayName) ||
+      a.facultyId.localeCompare(b.facultyId)
+    );
+}
+
+function adminCurriculumRequestId(step: Pick<AdminCurriculumReplenishmentStep, "grade" | "facultyId">, day: string): string {
+  return `curriculum-replenishment:${day}:${step.grade}:${step.facultyId}`;
+}
+
+function adminCurriculumGenerationPriority(step: AdminCurriculumReplenishmentStep): number {
+  return step.exhaustedSessions * 100 + step.lowPoolSessions * 10 + step.targetNewQuestions;
+}
+
+function statusRank(status: AdminCurriculumGenerationProposal["status"]): number {
+  if (status === "ready") return 0;
+  if (status === "queued") return 1;
+  if (status === "manual-curation") return 2;
+  return 3;
 }
 
 async function createAdminCurriculumReplenishmentDrafts(
@@ -344,13 +415,14 @@ async function createAdminCurriculumReplenishmentDrafts(
   opts: { limit?: number } = {},
 ): Promise<AdminCurriculumDraftResult> {
   const steps = buildAdminCurriculumReplenishmentSteps(deps);
-  const runnableSteps = steps.filter((step) => step.mode === "generate" && step.command);
+  const existingDrafts = await deps.ruby.listDraftPackRecords();
+  const queue = buildAdminCurriculumGenerationQueue(steps, existingDrafts);
+  const runnableSteps = queue.filter((step) => (step.status === "ready" || step.status === "queued") && step.command);
   const defaultLimit = runnableSteps.length || 1;
   const requestedLimit = Math.floor(Number(opts.limit));
   const limitSource = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
   const limit = Math.max(1, Math.min(12, limitSource));
   const selected = runnableSteps.slice(0, limit);
-  const existingDrafts = await deps.ruby.listDraftPackRecords();
   const pack = await getActivePack();
   const now = Date.now();
   const day = new Date(now).toISOString().slice(0, 10);
@@ -359,7 +431,7 @@ async function createAdminCurriculumReplenishmentDrafts(
   let reused = 0;
 
   for (const step of selected) {
-    const requestId = `curriculum-replenishment:${day}:${step.grade}:${step.facultyId}`;
+    const requestId = adminCurriculumRequestId(step, day);
     const existing = existingDrafts.find((draft) =>
       draft.teachers.some((teacher) => teacher.clientRequestId === requestId)
     );
@@ -2012,11 +2084,12 @@ async function postTelegramSnapshot() {
       const revenueTable = Object.keys(revenueBySource).length > 0
         ? table("Revenue by Source", revenueBySource)
         : "";
-      const replenishmentSteps = (latestReplenishment && latestReplenishment.steps) || [];
-      curriculumDraftsCreateEl.disabled = replenishmentSteps.filter((step) => step.mode === "generate" && step.command).length === 0;
+      const generationQueue = (latestReplenishment && latestReplenishment.generationQueue) || [];
+      curriculumDraftsCreateEl.disabled = generationQueue.filter((step) => step.status === "ready").length === 0;
       tablesEl.innerHTML = [
         revenueTable,
         curriculumTable(ruby.curriculum),
+        curriculumGenerationQueueTable(generationQueue),
         curriculumReviewQueueTable(latestReplenishment && latestReplenishment.reviewQueue),
         table("Provider Records", auth.providers || {}),
         table("Durable Events", events.byName || {}),
@@ -2244,6 +2317,17 @@ async function postTelegramSnapshot() {
           ? esc(plan.mode + " · " + n(plan.targetNewQuestions) + " " + plan.targetDifficulty) + "<div class=\\"sub\\">" + esc((plan.focusSubjects || []).slice(0, 3).join(", ") || "teacher corpus") + "</div>"
           : "";
         return "<tr><td>" + label + "<div class=\\"sub\\">" + esc(sub) + "</div></td><td>" + esc(remaining) + "</td><td>" + next + "</td></tr>";
+      }).join("") + "</tbody></table>";
+    }
+    function curriculumGenerationQueueTable(rows) {
+      rows = rows || [];
+      if (!rows.length) return "";
+      return "<table><thead><tr><th>Curriculum Generation Queue</th><th>Pressure</th><th>Status</th></tr></thead><tbody>" + rows.map((row) => {
+        const label = "Grade " + esc(row.grade) + " · " + esc(row.displayName || row.facultyId);
+        const sub = esc((row.focusSubjects || []).slice(0, 3).join(", ") || row.corpusTitle || "teacher corpus");
+        const pressure = n(row.priority) + "<div class=\\"sub\\">" + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted</div>";
+        const status = esc(row.status || "unknown") + "<div class=\\"sub\\">" + esc(row.action || "review") + (row.draftId ? " · " + esc(row.draftId) : "") + "</div>";
+        return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + pressure + "</td><td>" + status + "</td></tr>";
       }).join("") + "</tbody></table>";
     }
     function curriculumReviewQueueTable(rows) {
