@@ -1766,6 +1766,8 @@ describe("admin metrics route", () => {
           durableEventCacheLimit: 400,
           publicEventLogSize: 2,
           publicEventLogLimit: 400,
+          durableRoomRecords: 1,
+          durableRoomRecordLimit: 80,
           liveRoomGoals: 0,
           suppressedEvents: 0,
           summary: {

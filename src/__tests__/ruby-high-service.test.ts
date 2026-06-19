@@ -1989,6 +1989,34 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Noor");
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Mina");
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Sol");
+    await ruby.flush();
+    const roomState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-rooms:v1");
+    expect(roomState?.data).toMatchObject({
+      version: 1,
+      rooms: [
+        {
+          key: "2025-2026:10:ruby",
+          schoolYear: "2025-2026",
+          termId: "2025-2026",
+          grade: "10",
+          facultyId: "ruby",
+          displayName: "Ruby",
+          activeStudents: 3,
+          goal: {
+            kind: "live-class",
+            progress: 2,
+            target: 3,
+            complete: false,
+            updatedAt: now,
+          },
+          updatedAt: now,
+        },
+      ],
+    });
+    expect(JSON.stringify(roomState)).not.toContain("test:world-room-goal");
+    expect(JSON.stringify(roomState)).not.toContain("Goal Noor");
+    expect(JSON.stringify(roomState)).not.toContain("Goal Mina");
+    expect(JSON.stringify(roomState)).not.toContain("Goal Sol");
 
     await ruby.stop();
     activeRuby = null;
@@ -2021,6 +2049,11 @@ describe("RubyHighService Phase 1", () => {
         complete: false,
       }),
     ]);
+    expect(rehydrated.worldHealthSnapshot(now)).toMatchObject({
+      durableRoomRecords: 1,
+      durableRoomRecordLimit: 80,
+      liveRoomGoals: 1,
+    });
   });
 
   it("replays sanitized public world events from durable service state without private sessions", async () => {
@@ -2155,6 +2188,19 @@ describe("RubyHighService Phase 1", () => {
         },
       },
       {
+        id: "ruby-high:public-world-rooms:v1",
+        updatedAt: now,
+        data: {
+          version: 1,
+          rooms: [
+            null,
+            { key: "2025-2026:10:ruby", schoolYear: "2025-2026", grade: "10", facultyId: "sally-science", activeStudents: 2, updatedAt: now },
+            { key: "2025-2026:13:ruby", schoolYear: "2025-2026", grade: "13", facultyId: "ruby", activeStudents: 2, updatedAt: now },
+            { schoolYear: "bad-year", grade: "10", facultyId: "ruby", activeStudents: 2, updatedAt: now },
+          ],
+        },
+      },
+      {
         id: "ruby-high:live-room-goals:v1",
         updatedAt: now,
         data: {
@@ -2176,6 +2222,7 @@ describe("RubyHighService Phase 1", () => {
       activeStudents: 0,
       activeRooms: 0,
       recentEvents: 0,
+      durableRoomRecords: 0,
       publicEventLogSize: 0,
       liveRoomGoals: 0,
       suppressedEvents: 0,

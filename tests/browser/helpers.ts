@@ -66,6 +66,18 @@ export async function openViewer(page: Page) {
   await expect.poll(async () => (await page.locator("#you-state").textContent()) ?? "")
     .not.toMatch(/checking/i);
   await expect.poll(privyRequests).toBeGreaterThan(0);
+  await page.evaluate(async () => {
+    const resp = await fetch("/api/apps/ruby-high/session/browser-smoke/command", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "mark-intro-seen" }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      throw new Error(`guest session bootstrap failed: ${JSON.stringify(body)}`);
+    }
+  });
   return { errors };
 }
 
@@ -227,7 +239,12 @@ export async function answerLiveRoomQuestion(page: Page, faculty = "ruby") {
     };
 
     const existing = await readSession();
-    const picked = existing?.session?.telemetry?.current
+    const telemetry = existing?.session?.telemetry;
+    const liveRound = telemetry?.current && telemetry?.phase === "asking" && telemetry?.active_round && !telemetry.active_round.resolved && !telemetry.active_round.player?.isLocked;
+    if (telemetry?.current && !liveRound) {
+      await postCommand({ type: "clear" });
+    }
+    const picked = liveRound
       ? existing
       : await postCommand({ type: "pick", mode: "practice", faculty: requestedFaculty });
     const current = picked?.session?.telemetry?.current;
