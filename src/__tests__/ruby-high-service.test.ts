@@ -1842,13 +1842,44 @@ describe("RubyHighService Phase 1", () => {
     secondClass.updatedAt = now;
     second.character!.dailyClasses = { ruby: secondClass };
 
+    const third = attachTestCharacter(ruby, "test:world-room-goal-c");
+    third.sessionId = "test:world-room-goal-c";
+    third.currentGrade = "10";
+    third.faculty = "ruby";
+    third.updatedAt = now;
+    third.character!.name = "Goal Sol";
+    third.character!.createdAt = now;
+    const thirdClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    thirdClass.completedAt = now;
+    thirdClass.updatedAt = now;
+    third.character!.dailyClasses = { ruby: thirdClass };
+
+    expect(ruby.contributeLiveRoomGoal(first.sessionId, now - 50)).toMatchObject({
+      grade: "10",
+      facultyId: "ruby",
+      progress: 1,
+      target: 3,
+      complete: false,
+      duplicate: false,
+    });
+    expect(ruby.contributeLiveRoomGoal(first.sessionId, now - 25)).toMatchObject({
+      progress: 1,
+      duplicate: true,
+    });
+    expect(ruby.contributeLiveRoomGoal(second.sessionId, now)).toMatchObject({
+      progress: 2,
+      target: 3,
+      complete: false,
+      duplicate: false,
+    });
+
     const world = ruby.getSchoolWorldSnapshot(10, now);
     const roomGoalEvents = world.recentEvents.filter((event) => event.kind === "room.goal-progress");
 
     expect(world.activeRooms[0]).toMatchObject({
       grade: "10",
       facultyId: "ruby",
-      activeStudents: 2,
+      activeStudents: 3,
       goal: {
         kind: "live-class",
         label: "Ruby live class 2/3",
@@ -1875,6 +1906,7 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(roomGoalEvents)).not.toContain("test:world-room-goal");
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Noor");
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Mina");
+    expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Sol");
   });
 
   it("uses the supplied world clock for both room and cohort presence", async () => {

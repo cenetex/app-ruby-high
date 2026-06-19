@@ -10,6 +10,7 @@ import {
   type PublicWorldEvent,
   type PublicWorldPresenceEntry,
   type PublicWorldRoom,
+  type PublicWorldRoomGoalContribution,
   type PublicWorldStudent,
 } from "./ruby-high/world-projection.js";
 import {
@@ -834,6 +835,26 @@ export interface SchoolWorldSnapshot {
   };
 }
 
+export interface LiveRoomGoalContributionResult {
+  grade: Grade;
+  facultyId: string;
+  displayName: string;
+  progress: number;
+  target: number;
+  complete: boolean;
+  updatedAt: number;
+  duplicate: boolean;
+}
+
+interface LiveRoomGoalState {
+  grade: Grade;
+  facultyId: string;
+  displayName: string;
+  day: string;
+  contributors: Set<string>;
+  updatedAt: number;
+}
+
 export interface RecentlyActiveStudent {
   sessionId: string;
   name: string;
@@ -1029,6 +1050,7 @@ export class RubyHighService extends Service {
   private readonly backgroundWrites = new Set<Promise<void>>();
   private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
   private readonly schoolEventRecords = new Map<string, StoredSchoolEventRecord>();
+  private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
   private readonly pendingPhotoPosts = new Set<string>();
   private readonly deferredPhotoPosts = new Map<string, number>();
   private photoPostSchedulerTimer: ReturnType<typeof setInterval> | null = null;
@@ -1066,6 +1088,7 @@ export class RubyHighService extends Service {
     this.sessions.clear();
     this.metricEvents.clear();
     this.schoolEventRecords.clear();
+    this.liveRoomGoalStates.clear();
     this.persistedPackRecords = null;
     this.teacherRecords = null;
     this.draftPackRecords = null;
@@ -6074,6 +6097,7 @@ export class RubyHighService extends Service {
       questionId: q.id,
       type: "multiple-choice",
     });
+    this.contributeLiveRoomGoal(sessionId);
     // Tick first so any NPCs whose delay HAS already elapsed lock in honestly.
     this.tickRound(state);
     // Once the player has committed, the race is decided — any NPC still
@@ -6124,6 +6148,7 @@ export class RubyHighService extends Service {
       questionId: q.id,
       type: q.type,
     });
+    this.contributeLiveRoomGoal(sessionId);
     this.tickRound(state);
     if (!round.resolved) this.resolveRound(state, false);
     state.updatedAt = Date.now();
@@ -7057,12 +7082,54 @@ export class RubyHighService extends Service {
     return this.getSchoolSnapshot(now);
   }
 
+  contributeLiveRoomGoal(sessionId: string, now = Date.now()): LiveRoomGoalContributionResult | null {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    const grade = state.currentGrade;
+    if (!ch || !grade || !characterAllowsPublicSharing(ch)) return null;
+    const facultyId = state.faculty;
+    const faculty = facultyForSession(state).find((item) => item.id === facultyId);
+    const displayName = faculty?.displayName ?? facultyId;
+    const publicSessionId = publicWorldSessionId(state.sessionId);
+    if (!publicSessionId) return null;
+    const day = new Date(now).toISOString().slice(0, 10);
+    const key = this.liveRoomGoalStateKey(grade, facultyId, day);
+    let goal = this.liveRoomGoalStates.get(key);
+    if (!goal) {
+      goal = {
+        grade,
+        facultyId,
+        displayName,
+        day,
+        contributors: new Set<string>(),
+        updatedAt: 0,
+      };
+      this.liveRoomGoalStates.set(key, goal);
+    }
+    const duplicate = goal.contributors.has(publicSessionId);
+    if (!duplicate) {
+      goal.contributors.add(publicSessionId);
+      goal.updatedAt = now;
+    }
+    const progress = Math.min(3, goal.contributors.size);
+    return {
+      grade,
+      facultyId,
+      displayName,
+      progress,
+      target: 3,
+      complete: progress >= 3,
+      updatedAt: goal.updatedAt,
+      duplicate,
+    };
+  }
+
   getSchoolWorldSnapshot(limit = 30, now = Date.now()): SchoolWorldSnapshot {
     const weekMs = 7 * 24 * 60 * 60 * 1000;
     const eventLimit = Number.isFinite(limit) ? Math.max(0, Math.min(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.floor(limit))) : 30;
     const publicEntries = this.publicSchoolWorldEntries(now, weekMs);
     const presence = publicEntries.map((entry) => this.publicWorldPresenceFromEntry(entry));
-    const rooms = buildPublicWorldRooms(presence, 5);
+    const rooms = buildPublicWorldRooms(presence, 5, 24, this.liveRoomGoalContributionsForWorld(now));
     this.clampPublicWorldRoomGoalTimes(rooms.activeRooms, now);
     const cohorts = buildPublicWorldCohorts(this.getRecentlyActiveStudents(now).map((student) => this.publicWorldPresenceFromRecent(student)));
     const curriculum = this.curriculumCoverageSnapshotForStates(publicEntries.map((entry) => entry.state));
@@ -7097,6 +7164,8 @@ export class RubyHighService extends Service {
     const rooms = activeRooms ?? buildPublicWorldRooms(
       this.publicSchoolWorldEntries(now, weekMs).map((entry) => this.publicWorldPresenceFromEntry(entry)),
       5,
+      24,
+      this.liveRoomGoalContributionsForWorld(now),
     ).activeRooms;
     this.clampPublicWorldRoomGoalTimes(rooms, now);
     const rows = new Map<string, SchoolWorldEvent>();
@@ -7138,6 +7207,28 @@ export class RubyHighService extends Service {
       const updatedAt = Math.max(0, Math.floor(Number(room.goal.updatedAt) || 0));
       room.goal.updatedAt = updatedAt > now ? 0 : updatedAt;
     }
+  }
+
+  private liveRoomGoalContributionsForWorld(now = Date.now()): PublicWorldRoomGoalContribution[] {
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const out: PublicWorldRoomGoalContribution[] = [];
+    for (const [key, goal] of this.liveRoomGoalStates) {
+      if (!Number.isFinite(goal.updatedAt) || goal.updatedAt <= 0 || goal.updatedAt > now || now - goal.updatedAt > weekMs) {
+        this.liveRoomGoalStates.delete(key);
+        continue;
+      }
+      out.push({
+        grade: goal.grade,
+        facultyId: goal.facultyId,
+        amount: goal.contributors.size,
+        updatedAt: goal.updatedAt,
+      });
+    }
+    return out;
+  }
+
+  private liveRoomGoalStateKey(grade: Grade, facultyId: string, day: string): string {
+    return `${day}:${grade}:${facultyId}`;
   }
 
   private schoolWorldEventKindRank(kind: SchoolWorldEvent["kind"]): number {

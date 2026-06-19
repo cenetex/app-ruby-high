@@ -73,6 +73,13 @@ export interface PublicWorldPresenceEntry {
   portraitUrl?: string;
 }
 
+export interface PublicWorldRoomGoalContribution {
+  grade: Grade;
+  facultyId: string;
+  amount: number;
+  updatedAt: number;
+}
+
 export interface PublicWorldRoomBuildResult {
   activeStudents: number;
   activeRooms: PublicWorldRoom[];
@@ -264,6 +271,7 @@ export function buildPublicWorldRooms(
   entries: Iterable<PublicWorldPresenceEntry>,
   maxStudentsPerRoom = 5,
   maxRooms = 24,
+  goalContributions: Iterable<PublicWorldRoomGoalContribution> = [],
 ): PublicWorldRoomBuildResult {
   const roomRows = new Map<string, PublicWorldRoom>();
   const publicSessionIds = new Set<string>();
@@ -306,6 +314,24 @@ export function buildPublicWorldRooms(
     );
     room.goal = publicWorldRoomGoalFor(room);
     if (room.students.length > studentLimit) room.students.length = studentLimit;
+  }
+  for (const contribution of goalContributions) {
+    const grade = publicWorldGrade(contribution.grade, "9") ?? "9";
+    const facultyId = publicWorldRoomId(contribution.facultyId);
+    const room = roomRows.get(`${grade}:${facultyId}`);
+    if (!room) continue;
+    const target = Math.max(1, publicWorldNonNegativeInteger(room.goal.target));
+    const progress = Math.min(target, publicWorldNonNegativeInteger(contribution.amount));
+    const updatedAt = publicWorldNonNegativeInteger(contribution.updatedAt);
+    const roomName = publicWorldRoomDisplayName(room.displayName, "Class");
+    room.goal = {
+      kind: "live-class",
+      label: `${roomName} live class ${progress}/${target}`,
+      progress,
+      target,
+      complete: progress >= target,
+      updatedAt,
+    };
   }
   const sortedRooms = Array.from(roomRows.values()).sort((a, b) =>
     Number(a.grade) - Number(b.grade) ||

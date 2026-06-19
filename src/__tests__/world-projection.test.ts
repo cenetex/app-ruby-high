@@ -284,6 +284,31 @@ describe("public world projection", () => {
     });
   });
 
+  it("uses explicit room-goal contributions when present", () => {
+    const result = buildPublicWorldRooms([
+      entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),
+      entry({ sessionId: "private-session-2", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Mina", lastActive: 500 }),
+      entry({ sessionId: "private-session-3", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Sol", lastActive: 600 }),
+    ], 5, 24, [{
+      grade: "10",
+      facultyId: "ruby",
+      amount: 2,
+      updatedAt: 700,
+    }]);
+
+    expect(result.activeRooms[0]).toMatchObject({
+      activeStudents: 3,
+      goal: {
+        kind: "live-class",
+        label: "Ruby live class 2/3",
+        progress: 2,
+        target: 3,
+        complete: false,
+        updatedAt: 700,
+      },
+    });
+  });
+
   it("builds sanitized room-goal progress events without private student ids", () => {
     const result = buildPublicWorldRooms([
       entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),
