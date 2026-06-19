@@ -255,8 +255,7 @@ export function runViewerClient(bootstrap) {
   function boardSubjectGradesTitle(summary) {
     const t = lastTelemetry;
     const grade = t && t.current_grade ? t.current_grade : "";
-    return (GRADE_LABELS[grade] || (grade ? "Grade " + grade : "Current year"))
-      + " · " + summary.met + "/" + summary.total + " subjects cleared";
+    return boardSubjectGradesTitleView(grade, summary);
   }
 
   function buildBoardSubjectGradesRow(summary) {
@@ -6312,23 +6311,17 @@ export function runViewerClient(bootstrap) {
     return teachingFacultyIdsForSummary().map((fid) => subjectGateMetaFor(fid, subjectProgressForFaculty(fid)));
   }
   function makeSubjectGradeChip(spec) {
-    const grade = spec.grade || "—";
-    const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
-    const pending = !!spec.pending && !met;
+    const view = subjectGradeChipView(spec);
     const chip = document.createElement("span");
-    chip.className = "subject-grade-chip" + (met ? " is-met" : "") + (pending ? " is-pending" : "");
-    chip.title = pending
-      ? spec.label + ": " + grade + " daily classes toward course grade"
-      : grade === "—"
-      ? spec.label + ": no subject grade yet"
-      : spec.label + ": " + grade + (met ? " subject cleared" : " needs C and daily classes");
-    chip.setAttribute("aria-label", chip.title);
+    chip.className = view.className;
+    chip.title = view.title;
+    chip.setAttribute("aria-label", view.ariaLabel);
     const icon = document.createElement("span");
     icon.className = "subject-grade-icon";
-    icon.textContent = spec.icon;
+    icon.textContent = view.iconText;
     const letter = document.createElement("span");
     letter.className = "subject-grade-letter";
-    letter.textContent = grade;
+    letter.textContent = view.gradeText;
     chip.appendChild(icon);
     chip.appendChild(letter);
     return chip;

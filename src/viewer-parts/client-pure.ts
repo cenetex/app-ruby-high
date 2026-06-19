@@ -55,6 +55,13 @@ export type GuestSpotlightView = {
   actionText: string;
   actionDisabled: boolean;
 };
+export type SubjectGradeChipView = {
+  className: string;
+  title: string;
+  ariaLabel: string;
+  iconText: string;
+  gradeText: string;
+};
 export type AccountPublicWorldView = {
   hasCharacter: boolean;
   hasPublicName: boolean;
@@ -441,6 +448,34 @@ export function questionsLeftSentence(today: NullableRecord): string {
   const left = questionsLeftInClass(today);
   if (left <= 0) return "Daily class complete";
   return (left === 1 ? "There is " : "There are ") + questionsLeftText(today);
+}
+export function boardSubjectGradesTitleView(currentGradeInput: unknown, summaryInput: NullableRecord): string {
+  const grade = String(currentGradeInput || "");
+  const summary = summaryInput && typeof summaryInput === "object" ? summaryInput : {};
+  const met = Math.max(0, Math.floor(Number(summary.met || 0)));
+  const total = Math.max(0, Math.floor(Number(summary.total || 0)));
+  const labels = VIEWER_CONSTANTS.GRADE_LABELS as Record<string, string>;
+  return (labels[grade] || (grade ? "Grade " + grade : "Current year")) + " · " + met + "/" + total + " subjects cleared";
+}
+export function subjectGradeChipView(specInput: NullableRecord): SubjectGradeChipView {
+  const spec = specInput && typeof specInput === "object" ? specInput : {};
+  const label = String(spec.label || "Subject");
+  const icon = String(spec.icon || "□");
+  const grade = String(spec.grade || "—");
+  const met = spec.met !== undefined ? !!spec.met : (grade === "✓" || letterGradePasses(grade));
+  const pending = !!spec.pending && !met;
+  const title = pending
+    ? label + ": " + grade + " daily classes toward course grade"
+    : grade === "—"
+      ? label + ": no subject grade yet"
+      : label + ": " + grade + (met ? " subject cleared" : " needs C and daily classes");
+  return {
+    className: "subject-grade-chip" + (met ? " is-met" : "") + (pending ? " is-pending" : ""),
+    title,
+    ariaLabel: title,
+    iconText: icon,
+    gradeText: grade,
+  };
 }
 export function guestSpotlightView(guestInput: NullableRecord): GuestSpotlightView {
   const guest = guestInput && typeof guestInput === "object" ? guestInput : {};

@@ -751,6 +751,10 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
 
     expectScriptToContain(script, "function buildBoardClassStartHeader(statusText, infoText)");
+    expectScriptToContain(script, "function boardSubjectGradesTitleView(currentGradeInput, summaryInput)");
+    expectScriptToContain(script, "return boardSubjectGradesTitleView(grade, summary);");
+    expectScriptToContain(script, "function subjectGradeChipView(specInput)");
+    expectScriptToContain(script, "const view = subjectGradeChipView(spec);");
     expectScriptToContain(script, 'button.className = "board-info-button";');
     expectScriptToContain(script, 'bubble.className = "board-info-popover";');
     expectScriptToContain(script, "const spotlight = buildGuestSpotlight(lastTelemetry);");

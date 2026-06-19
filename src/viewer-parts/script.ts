@@ -43,6 +43,8 @@ const PURE_HELPER_NAMES = [
   "questionsLeftInClass",
   "questionsLeftText",
   "questionsLeftSentence",
+  "boardSubjectGradesTitleView",
+  "subjectGradeChipView",
   "guestSpotlightView",
   "formatWholeNumber",
   "formatMoney",

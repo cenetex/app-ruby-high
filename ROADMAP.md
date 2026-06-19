@@ -247,7 +247,9 @@ outcomes without requiring crypto participation.
    from a typed pure helper for both Hall Pass and card-pack modes, and billing
    panel title/subtitle/card-pack cost/status copy now comes from a typed pure
    view model. Weekly guest spotlight title/meta/action state now comes from a
-   typed pure view model instead of unchecked lounge DOM branching.
+   typed pure view model instead of unchecked lounge DOM branching. Empty-board
+   subject summary titles and subject-grade chip classes/tooltips/labels now
+   come from typed pure helpers shared by the chalkboard and progression UI.
    Active term-rule summary labels now have a dedicated typed helper for
    ordering, filtering, and capping grade-scoped room modifiers.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
