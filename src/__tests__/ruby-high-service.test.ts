@@ -1942,6 +1942,38 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Noor");
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Mina");
     expect(JSON.stringify(roomGoalEvents)).not.toContain("Goal Sol");
+
+    await ruby.stop();
+    activeRuby = null;
+    const rehydrated = new RubyHighService({} as never, new StateStore(storePath));
+    await rehydrated["hydrate"]();
+    activeRuby = rehydrated;
+
+    const rehydratedWorld = rehydrated.getSchoolWorldSnapshot(10, now);
+    expect(rehydratedWorld.activeRooms[0]).toMatchObject({
+      grade: "10",
+      facultyId: "ruby",
+      activeStudents: 3,
+      goal: {
+        kind: "live-class",
+        label: "Ruby live class 2/3",
+        progress: 2,
+        target: 3,
+        complete: false,
+        updatedAt: now,
+      },
+    });
+    expect(rehydratedWorld.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual([
+      expect.objectContaining({
+        kind: "room.goal-progress",
+        at: now,
+        faculty: "ruby",
+        grade: "10",
+        progress: 2,
+        target: 3,
+        complete: false,
+      }),
+    ]);
   });
 
   it("uses the supplied world clock for both room and cohort presence", async () => {

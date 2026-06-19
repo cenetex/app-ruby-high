@@ -6,6 +6,8 @@ import {
   publicSchoolWorldEvent,
   publicWorldRoomGoalEvents,
   publicWorldPortraitUrl,
+  publicWorldRoomDisplayName,
+  publicWorldRoomId,
   publicWorldSessionId,
   type PublicWorldEvent,
   type PublicWorldPresenceEntry,
@@ -879,6 +881,7 @@ export interface PublicWorldEventSuppressionResult {
 const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
 const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
+const LIVE_ROOM_GOALS_STATE_ID = "ruby-high:live-room-goals:v1";
 
 export interface LiveRoomGoalContributionResult {
   grade: Grade;
@@ -1148,6 +1151,7 @@ export class RubyHighService extends Service {
       this.persistAll(),
       this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
       this.persistPublicWorldModerationState({ surfaceErrors: true }),
+      this.persistLiveRoomGoalState({ surfaceErrors: true }),
     ]);
     if (typeof this.store.flush === "function") await this.store.flush();
     await Promise.allSettled(Array.from(this.backgroundWrites));
@@ -1855,6 +1859,71 @@ export class RubyHighService extends Service {
     const record = this.publicWorldModerationStateRecord(now);
     const save = this.store.saveServiceState(record).catch((err) => {
       log.error("public-world-moderation.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  private hydrateLiveRoomGoalState(record: StoredServiceStateRecord | null): void {
+    this.liveRoomGoalStates.clear();
+    const data = record?.data;
+    const goals = data && data.version === 1 && Array.isArray(data.goals) ? data.goals : [];
+    for (const raw of goals) {
+      if (!raw || typeof raw !== "object") continue;
+      const source = raw as Record<string, unknown>;
+      const grade = typeof source.grade === "string" && (GRADES as readonly string[]).includes(source.grade)
+        ? source.grade as Grade
+        : null;
+      const facultyId = publicWorldRoomId(typeof source.facultyId === "string" ? source.facultyId : "");
+      const day = typeof source.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(source.day) ? source.day : "";
+      if (!grade || !facultyId || !day) continue;
+      const contributors = new Set<string>();
+      const rawContributors = Array.isArray(source.contributors) ? source.contributors : [];
+      for (const contributor of rawContributors) {
+        const publicSessionId = publicWorldSessionId(typeof contributor === "string" ? contributor : "");
+        if (publicSessionId) contributors.add(publicSessionId);
+      }
+      const updatedAt = Math.max(0, Math.floor(Number(source.updatedAt) || 0));
+      if (contributors.size === 0 || updatedAt <= 0) continue;
+      const displayName = publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId);
+      this.liveRoomGoalStates.set(this.liveRoomGoalStateKey(grade, facultyId, day), {
+        grade,
+        facultyId,
+        displayName,
+        day,
+        contributors,
+        updatedAt,
+      });
+    }
+  }
+
+  private liveRoomGoalStateRecord(now = Date.now()): StoredServiceStateRecord {
+    return {
+      id: LIVE_ROOM_GOALS_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        goals: Array.from(this.liveRoomGoalStates.values())
+          .filter((goal) => goal.contributors.size > 0 && goal.updatedAt > 0)
+          .sort((a, b) => b.updatedAt - a.updatedAt || this.liveRoomGoalStateKey(a.grade, a.facultyId, a.day).localeCompare(this.liveRoomGoalStateKey(b.grade, b.facultyId, b.day)))
+          .map((goal) => ({
+            grade: goal.grade,
+            facultyId: goal.facultyId,
+            displayName: goal.displayName,
+            day: goal.day,
+            contributors: Array.from(goal.contributors).sort(),
+            updatedAt: goal.updatedAt,
+          })),
+      },
+    };
+  }
+
+  private persistLiveRoomGoalState(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.liveRoomGoalStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("live-room-goals.persist-failed", err);
       if (options.surfaceErrors) throw err;
     });
     if (!options.surfaceErrors) this.trackBackgroundWrite(save);
@@ -3002,6 +3071,7 @@ export class RubyHighService extends Service {
       storedSchoolEvents,
       storedPhotoPostSchedulerState,
       storedPublicWorldModerationState,
+      storedLiveRoomGoalState,
     ] = await Promise.all([
       this.store.loadPacks(),
       this.store.loadTeachers(),
@@ -3012,6 +3082,7 @@ export class RubyHighService extends Service {
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_MODERATION_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(LIVE_ROOM_GOALS_STATE_ID) ?? Promise.resolve(null),
     ]);
     const staleBuiltInPackRecords = storedPacks.filter(isPersistedBuiltInPackOverride);
     this.persistedPackRecords = storedPacks.filter((record) => !isPersistedBuiltInPackOverride(record));
@@ -3062,6 +3133,7 @@ export class RubyHighService extends Service {
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
     this.hydratePublicWorldModerationState(storedPublicWorldModerationState);
+    this.hydrateLiveRoomGoalState(storedLiveRoomGoalState);
     this.loaded = true;
     if (repaired) await this.persistAll();
   }
@@ -7205,6 +7277,7 @@ export class RubyHighService extends Service {
     if (!duplicate) {
       goal.contributors.add(publicSessionId);
       goal.updatedAt = now;
+      void this.persistLiveRoomGoalState({}, now);
     }
     const progress = Math.min(3, goal.contributors.size);
     return {
@@ -7459,9 +7532,11 @@ export class RubyHighService extends Service {
   private liveRoomGoalContributionsForWorld(now = Date.now()): PublicWorldRoomGoalContribution[] {
     const weekMs = 7 * 24 * 60 * 60 * 1000;
     const out: PublicWorldRoomGoalContribution[] = [];
+    let pruned = false;
     for (const [key, goal] of this.liveRoomGoalStates) {
       if (!Number.isFinite(goal.updatedAt) || goal.updatedAt <= 0 || goal.updatedAt > now || now - goal.updatedAt > weekMs) {
         this.liveRoomGoalStates.delete(key);
+        pruned = true;
         continue;
       }
       out.push({
@@ -7471,6 +7546,7 @@ export class RubyHighService extends Service {
         updatedAt: goal.updatedAt,
       });
     }
+    if (pruned) void this.persistLiveRoomGoalState({}, now);
     return out;
   }
 
