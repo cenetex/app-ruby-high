@@ -361,9 +361,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'title.textContent = "Buy " + hallPassCostLabel(productHallPassCount(product));');
     expectScriptToContain(script, "meta.textContent = formatMoney(product.unitAmount, product.currency);");
     expectScriptToContain(script, 'stripe.textContent = "Checkout"');
-    expectScriptToContain(script, 'crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Buy Pack"');
+    expectScriptToContain(script, "function billingCardPackPaymentChoiceView(");
+    expectScriptToContain(script, "const view = billingCardPackPaymentChoiceView(solana, product, {");
     expectScriptToContain(script, "const canPackCheckout = !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));");
-    expectScriptToContain(script, "crypto.disabled = billingBusy || cryptoUnavailable || !canPackCheckout;");
+    expectScriptToContain(script, "crypto.disabled = view.buttonDisabled;");
     expectScriptToContain(script, 'buildGetRubyLink("cost-chip get-ruby-link billing-get-ruby-link")');
     expectScriptToContain(script, "Card pack checkout is not configured in this preview.");
     expect(VIEWER_CSS).toContain(".billing-payment-note");

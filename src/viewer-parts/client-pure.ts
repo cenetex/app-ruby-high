@@ -203,6 +203,15 @@ export type BillingCardBurnChoiceView = {
   buttonDisabled: boolean;
   buttonTitle: string;
 };
+export type BillingCardPackPaymentChoiceView = {
+  titleText: string;
+  metaText: string;
+  buttonText: string;
+  buttonDisabled: boolean;
+  buttonTitle: string;
+  noteText: string;
+  showGetRubyLink: boolean;
+};
 export type AccountComicPageTileView = {
   pageNumber: number;
   title: string;
@@ -1847,6 +1856,34 @@ export function cardPackPaymentDeltaLabel(product: NullableRecord, solana: Nulla
 export function cardPackProductMeta(product: NullableRecord, solana: NullableRecord): string {
   const cardCount = Math.max(1, Math.floor(Number(product && product.cardCount || VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK)));
   return cardPackPaymentDeltaLabel(product, solana) + " · " + formatWholeNumber(cardCount) + " cards";
+}
+export function billingCardPackPaymentChoiceView(
+  solanaInput: NullableRecord,
+  productInput: NullableRecord,
+  opts?: NullableRecord,
+): BillingCardPackPaymentChoiceView {
+  const solana = solanaInput && typeof solanaInput === "object" ? solanaInput : {};
+  const product = productInput && typeof productInput === "object" ? productInput : {};
+  const cryptoUnavailable = !!(opts && opts.cryptoUnavailable);
+  const canPackCheckout = !!(opts && opts.canPackCheckout);
+  const billingBusy = !!(opts && opts.billingBusy);
+  return {
+    titleText: "Buy " + (product.name || packCountLabel(product.packCount)),
+    metaText: cardPackProductMeta(product, solana),
+    buttonText: cryptoUnavailable ? "Crypto unavailable" : "Buy Pack",
+    buttonDisabled: billingBusy || cryptoUnavailable || !canPackCheckout,
+    buttonTitle: cryptoUnavailable
+      ? "Card pack checkout needs Privy wallet configuration."
+      : !canPackCheckout
+        ? "RUBY token setup is incomplete. Get $RUBY, then try again."
+        : "Pay with " + cardPackTokenSymbol(product, solana) + " and mint a pack NFT.",
+    noteText: cryptoUnavailable
+      ? "Card pack checkout is not configured in this preview."
+      : !canPackCheckout
+        ? "RUBY token setup is incomplete. Get $RUBY, then choose a pack."
+        : "",
+    showGetRubyLink: !cryptoUnavailable && !canPackCheckout,
+  };
 }
 
 // ── HTML / markdown helpers (DOM-only, no app state) ───────────────

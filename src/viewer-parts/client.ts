@@ -3619,40 +3619,38 @@ export function runViewerClient(bootstrap) {
     const panel = document.createElement("div");
     panel.className = "billing-payment-choice";
     const canPackCheckout = !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));
+    const cryptoUnavailable = !privyState.configured;
+    const view = billingCardPackPaymentChoiceView(solana, product, {
+      cryptoUnavailable,
+      canPackCheckout,
+      billingBusy,
+    });
     const title = document.createElement("div");
     title.className = "billing-payment-title";
-    title.textContent = "Buy " + (product.name || packCountLabel(product.packCount));
+    title.textContent = view.titleText;
     const meta = document.createElement("div");
     meta.className = "billing-product-meta";
-    meta.textContent = cardPackProductMeta(product, solana);
+    meta.textContent = view.metaText;
     const actions = document.createElement("div");
     actions.className = "billing-payment-actions";
-    const cryptoUnavailable = !privyState.configured;
     const crypto = document.createElement("button");
     crypto.type = "button";
     crypto.className = "billing-buy";
-    crypto.textContent = cryptoUnavailable ? "Crypto unavailable" : "Buy Pack";
-    crypto.disabled = billingBusy || cryptoUnavailable || !canPackCheckout;
-    crypto.title = cryptoUnavailable
-      ? "Card pack checkout needs Privy wallet configuration."
-      : !canPackCheckout
-      ? "RUBY token setup is incomplete. Get $RUBY, then try again."
-      : "Pay with " + (product.tokenSymbol || (solana && solana.symbol) || "RUBY") + " and mint a pack NFT.";
+    crypto.textContent = view.buttonText;
+    crypto.disabled = view.buttonDisabled;
+    crypto.title = view.buttonTitle;
     crypto.addEventListener("click", () => startSolanaPayment(product.id));
     actions.appendChild(crypto);
     panel.appendChild(title);
     panel.appendChild(meta);
     panel.appendChild(actions);
-    if (cryptoUnavailable) {
+    if (view.noteText) {
       const note = document.createElement("div");
       note.className = "billing-payment-note";
-      note.textContent = "Card pack checkout is not configured in this preview.";
+      note.textContent = view.noteText;
       panel.appendChild(note);
-    } else if (!canPackCheckout) {
-      const note = document.createElement("div");
-      note.className = "billing-payment-note";
-      note.textContent = "RUBY token setup is incomplete. Get $RUBY, then choose a pack.";
-      panel.appendChild(note);
+    }
+    if (view.showGetRubyLink) {
       panel.appendChild(buildGetRubyLink("billing-get-ruby-link billing-payment-note-link"));
     }
     return panel;
