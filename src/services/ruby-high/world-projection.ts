@@ -48,6 +48,7 @@ export interface PublicWorldRoomGoal {
   target: number;
   complete: boolean;
   updatedAt: number;
+  ruleLabel?: string;
 }
 
 export interface PublicWorldRoom {
@@ -77,7 +78,9 @@ export interface PublicWorldRoomGoalContribution {
   grade: Grade;
   facultyId: string;
   amount: number;
+  target?: number;
   updatedAt: number;
+  ruleLabel?: string;
 }
 
 export interface PublicWorldRoomBuildResult {
@@ -105,6 +108,7 @@ export type PublicWorldEvent =
       target: number;
       complete: boolean;
       label: string;
+      ruleLabel?: string;
       rewardLabel?: string;
     }
   | {
@@ -343,17 +347,19 @@ export function buildPublicWorldRooms(
     const facultyId = publicWorldRoomId(contribution.facultyId);
     const room = roomRows.get(`${grade}:${facultyId}`);
     if (!room) continue;
-    const target = Math.max(1, publicWorldNonNegativeInteger(room.goal.target));
+    const target = Math.max(1, publicWorldNonNegativeInteger(contribution.target) || publicWorldNonNegativeInteger(room.goal.target));
     const progress = Math.min(target, publicWorldNonNegativeInteger(contribution.amount));
     const updatedAt = publicWorldNonNegativeInteger(contribution.updatedAt);
     const roomName = publicWorldRoomDisplayName(room.displayName, "Class");
+    const ruleLabel = publicWorldText(contribution.ruleLabel, "", 80);
     room.goal = {
       kind: "live-class",
-      label: `${roomName} live class ${progress}/${target}`,
+      label: `${roomName} live class ${progress}/${target}${ruleLabel ? ` · ${ruleLabel}` : ""}`,
       progress,
       target,
       complete: progress >= target,
       updatedAt,
+      ...(ruleLabel ? { ruleLabel } : {}),
     };
   }
   const sortedRooms = Array.from(roomRows.values()).sort((a, b) =>
@@ -450,6 +456,7 @@ export function publicWorldRoomGoalEvents(rooms: readonly PublicWorldRoom[]): Pu
         target: Math.max(1, publicWorldNonNegativeInteger(room.goal.target)),
         complete: room.goal.complete === true,
         label,
+        ...(room.goal.ruleLabel ? { ruleLabel: publicWorldEventLabel(room.goal.ruleLabel, "Room rule") } : {}),
         ...(rewardLabel ? { rewardLabel } : {}),
       };
       return {

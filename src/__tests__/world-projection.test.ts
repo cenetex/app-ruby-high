@@ -319,6 +319,43 @@ describe("public world projection", () => {
     });
   });
 
+  it("renders term momentum room-goal rules from explicit contributions", () => {
+    const result = buildPublicWorldRooms([
+      entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),
+      entry({ sessionId: "private-session-2", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Mina", lastActive: 500 }),
+    ], 5, 24, [{
+      grade: "10",
+      facultyId: "ruby",
+      amount: 2,
+      target: 2,
+      updatedAt: 700,
+      ruleLabel: "Term Momentum",
+    }]);
+
+    expect(result.activeRooms[0]).toMatchObject({
+      activeStudents: 2,
+      goal: {
+        kind: "live-class",
+        label: "Ruby live class 2/2 · Term Momentum",
+        progress: 2,
+        target: 2,
+        complete: true,
+        updatedAt: 700,
+        ruleLabel: "Term Momentum",
+      },
+    });
+    expect(publicWorldRoomGoalEvents(result.activeRooms)).toEqual([
+      expect.objectContaining({
+        kind: "room.goal-progress",
+        progress: 2,
+        target: 2,
+        complete: true,
+        ruleLabel: "Term Momentum",
+        rewardLabel: "Ruby earned a class-wide Study Spark",
+      }),
+    ]);
+  });
+
   it("builds sanitized room-goal progress events without private student ids", () => {
     const result = buildPublicWorldRooms([
       entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),

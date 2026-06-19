@@ -963,6 +963,7 @@ export interface LiveRoomGoalContributionResult {
   complete: boolean;
   updatedAt: number;
   duplicate: boolean;
+  ruleLabel?: string;
 }
 
 interface LiveRoomGoalState {
@@ -970,6 +971,8 @@ interface LiveRoomGoalState {
   facultyId: string;
   displayName: string;
   day: string;
+  target: number;
+  ruleLabel?: string;
   contributors: Set<string>;
   updatedAt: number;
 }
@@ -999,6 +1002,7 @@ export interface PublicWorldRoomOutcomeRecord {
   summaryLabel: string;
   rewardKind: "study-spark";
   rewardLabel: string;
+  ruleLabel?: string;
   progress: number;
   target: number;
   contributorCount: number;
@@ -2107,6 +2111,7 @@ export class RubyHighService extends Service {
           target: Math.max(1, publicWorldStoredInteger(room.goal.target, 3)),
           complete: !!room.goal.complete,
           updatedAt: publicWorldStoredInteger(room.goal.updatedAt, 0),
+          ...(room.goal.ruleLabel ? { ruleLabel: publicWorldStoredText(room.goal.ruleLabel, 80) } : {}),
         },
         updatedAt,
       };
@@ -2195,6 +2200,7 @@ export class RubyHighService extends Service {
       summaryLabel: publicWorldRoomOutcomeSummaryLabel(displayName, progress, target, goal.contributors.size),
       rewardKind: "study-spark",
       rewardLabel: publicWorldRoomOutcomeRewardLabel(displayName),
+      ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
       progress,
       target,
       contributorCount: goal.contributors.size,
@@ -2507,11 +2513,15 @@ export class RubyHighService extends Service {
       const updatedAt = Math.max(0, Math.floor(Number(source.updatedAt) || 0));
       if (contributors.size === 0 || updatedAt <= 0) continue;
       const displayName = publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId);
+      const target = Math.max(1, Math.min(99, publicWorldStoredInteger(source.target, 3)));
+      const ruleLabel = publicWorldStoredText(source.ruleLabel, 80);
       this.liveRoomGoalStates.set(this.liveRoomGoalStateKey(grade, facultyId, day), {
         grade,
         facultyId,
         displayName,
         day,
+        target,
+        ...(ruleLabel ? { ruleLabel } : {}),
         contributors,
         updatedAt,
       });
@@ -2532,6 +2542,8 @@ export class RubyHighService extends Service {
             facultyId: goal.facultyId,
             displayName: goal.displayName,
             day: goal.day,
+            target: goal.target,
+            ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
             contributors: Array.from(goal.contributors).sort(),
             updatedAt: goal.updatedAt,
           })),
@@ -8008,11 +8020,14 @@ export class RubyHighService extends Service {
     const key = this.liveRoomGoalStateKey(grade, facultyId, day);
     let goal = this.liveRoomGoalStates.get(key);
     if (!goal) {
+      const rule = this.liveRoomGoalRule(now);
       goal = {
         grade,
         facultyId,
         displayName,
         day,
+        target: rule.target,
+        ...(rule.ruleLabel ? { ruleLabel: rule.ruleLabel } : {}),
         contributors: new Set<string>(),
         updatedAt: 0,
       };
@@ -8024,19 +8039,21 @@ export class RubyHighService extends Service {
       goal.updatedAt = now;
       void this.persistLiveRoomGoalState({}, now);
     }
-    const progress = Math.min(3, goal.contributors.size);
-    if (!duplicate && progress >= 3) {
-      this.recordPublicWorldRoomOutcome(goal, progress, 3, now);
+    const target = Math.max(1, Math.floor(Number(goal.target) || 3));
+    const progress = Math.min(target, goal.contributors.size);
+    if (!duplicate && progress >= target) {
+      this.recordPublicWorldRoomOutcome(goal, progress, target, now);
     }
     return {
       grade,
       facultyId,
       displayName,
       progress,
-      target: 3,
-      complete: progress >= 3,
+      target,
+      complete: progress >= target,
       updatedAt: goal.updatedAt,
       duplicate,
+      ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
     };
   }
 
@@ -8344,7 +8361,9 @@ export class RubyHighService extends Service {
         grade: goal.grade,
         facultyId: goal.facultyId,
         amount: goal.contributors.size,
+        target: goal.target,
         updatedAt: goal.updatedAt,
+        ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
       });
     }
     if (pruned) void this.persistLiveRoomGoalState({}, now);
@@ -8353,6 +8372,12 @@ export class RubyHighService extends Service {
 
   private liveRoomGoalStateKey(grade: Grade, facultyId: string, day: string): string {
     return `${day}:${grade}:${facultyId}`;
+  }
+
+  private liveRoomGoalRule(now = Date.now()): { target: number; ruleLabel?: string } {
+    const level = this.publicWorldSummarySnapshot(now).termProgress.level;
+    if (level <= 0) return { target: 3 };
+    return { target: 2, ruleLabel: "Term Momentum" };
   }
 
   private schoolWorldEventKindRank(kind: SchoolWorldEvent["kind"]): number {
@@ -9616,6 +9641,7 @@ function normalizePublicWorldEventPayload(value: unknown): SchoolWorldEvent | nu
     const goalKind = source.goalKind === "live-class" ? source.goalKind : null;
     const roomTitle = publicWorldStoredText(source.roomTitle, 120);
     const label = publicWorldStoredText(source.label, 180);
+    const ruleLabel = publicWorldStoredText(source.ruleLabel, 80);
     const rewardLabel = publicWorldStoredText(source.rewardLabel, 180);
     if (!goalKind || !roomTitle || !label) return null;
     return {
@@ -9627,6 +9653,7 @@ function normalizePublicWorldEventPayload(value: unknown): SchoolWorldEvent | nu
       target,
       complete: source.complete === true,
       label,
+      ...(ruleLabel ? { ruleLabel } : {}),
       ...(rewardLabel && source.complete === true ? { rewardLabel } : {}),
     };
   }
@@ -9803,6 +9830,7 @@ function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | n
   const progress = Math.min(target, publicWorldStoredInteger(rawGoal.progress, 0));
   const updatedAt = publicWorldStoredInteger(source.updatedAt, 0);
   if (updatedAt <= 0) return null;
+  const ruleLabel = publicWorldStoredText(rawGoal.ruleLabel, 80);
   return {
     key,
     schoolYear,
@@ -9818,6 +9846,7 @@ function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | n
       target,
       complete: !!rawGoal.complete || progress >= target,
       updatedAt: publicWorldStoredInteger(rawGoal.updatedAt, 0),
+      ...(ruleLabel ? { ruleLabel } : {}),
     },
     updatedAt,
   };
@@ -9849,6 +9878,7 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
   const summaryLabel = publicWorldStoredText(source.summaryLabel, 180) || publicWorldRoomOutcomeSummaryLabel(displayName, progress, target, contributorCount);
   const rewardKind = source.rewardKind === "study-spark" ? source.rewardKind : "study-spark";
   const rewardLabel = publicWorldStoredText(source.rewardLabel, 180) || publicWorldRoomOutcomeRewardLabel(displayName);
+  const ruleLabel = publicWorldStoredText(source.ruleLabel, 80);
   return {
     id,
     schoolYear,
@@ -9862,6 +9892,7 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
     summaryLabel,
     rewardKind,
     rewardLabel,
+    ...(ruleLabel ? { ruleLabel } : {}),
     progress,
     target,
     contributorCount,

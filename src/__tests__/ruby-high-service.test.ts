@@ -2295,6 +2295,98 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("uses term progress to reduce the next live-room goal target", async () => {
+    const { ruby } = await makeServices();
+    const start = Date.UTC(2026, 5, 15, 12);
+    const sessions = ["test:term-room-a", "test:term-room-b", "test:term-room-c"].map((sid, index) => {
+      const state = attachTestCharacter(ruby, sid);
+      state.sessionId = sid;
+      state.currentGrade = "10";
+      state.faculty = "ruby";
+      state.updatedAt = start + index;
+      state.character!.name = `Term Student ${index + 1}`;
+      state.character!.createdAt = start + index;
+      state.character!.publicWorldVisible = true;
+      state.character!.dailyClasses = {
+        ruby: {
+          ...completedClassRecord("10", "ruby", "2026-06-15", "A", 300),
+          completedAt: start + index,
+          updatedAt: start + index,
+        },
+      };
+      return state;
+    });
+
+    for (let day = 0; day < 3; day += 1) {
+      const now = start + day * 24 * 60 * 60 * 1000;
+      for (const state of sessions) {
+        expect(ruby.contributeLiveRoomGoal(state.sessionId, now)).toMatchObject({
+          target: 3,
+        });
+      }
+      expect(ruby.getSchoolWorldSnapshot(10, now).summary.termProgress).toMatchObject({
+        totalSparks: day + 1,
+      });
+    }
+
+    const momentumAt = start + 3 * 24 * 60 * 60 * 1000;
+    expect(ruby.publicWorldSummarySnapshot(momentumAt).termProgress).toMatchObject({
+      totalSparks: 3,
+      level: 1,
+      label: "Term Level 1",
+    });
+    expect(ruby.contributeLiveRoomGoal(sessions[0]!.sessionId, momentumAt)).toMatchObject({
+      progress: 1,
+      target: 2,
+      complete: false,
+      ruleLabel: "Term Momentum",
+    });
+    expect(ruby.contributeLiveRoomGoal(sessions[1]!.sessionId, momentumAt + 1)).toMatchObject({
+      progress: 2,
+      target: 2,
+      complete: true,
+      ruleLabel: "Term Momentum",
+    });
+
+    const world = ruby.getSchoolWorldSnapshot(10, momentumAt + 1);
+    expect(world.activeRooms[0]?.goal).toMatchObject({
+      label: "Ruby live class 2/2 · Term Momentum",
+      progress: 2,
+      target: 2,
+      complete: true,
+      ruleLabel: "Term Momentum",
+    });
+    expect(world.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "room.goal-progress",
+        progress: 2,
+        target: 2,
+        complete: true,
+        ruleLabel: "Term Momentum",
+        rewardLabel: "Ruby earned a class-wide Study Spark",
+      }),
+    ]));
+    expect(world.summary.termProgress).toMatchObject({
+      totalSparks: 4,
+      level: 1,
+      label: "Term Spark 1/3",
+    });
+    await ruby.flush();
+    const roomOutcomeState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-room-outcomes:v1");
+    expect(roomOutcomeState?.data).toMatchObject({
+      outcomes: expect.arrayContaining([
+        expect.objectContaining({
+          summaryLabel: "Ruby live class completed 2/2 with 2 contributors",
+          ruleLabel: "Term Momentum",
+          progress: 2,
+          target: 2,
+          contributorCount: 2,
+        }),
+      ]),
+    });
+    expect(JSON.stringify(world)).not.toContain("test:term-room");
+  });
+
   it("replays sanitized public world events from durable service state without private sessions", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);
