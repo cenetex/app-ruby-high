@@ -113,6 +113,15 @@ interface AdminCurriculumReplenishmentStep {
   researchLanes: string[];
   readingList: string[];
   canonicalMisconceptions: string[];
+  sourcePackets: Array<{
+    id: string;
+    title: string;
+    anchor: string;
+    summary: string;
+    grades: string[];
+    subjects: string[];
+    questionSeeds: string[];
+  }>;
   gradeBrief: string | null;
   researchDirective: string;
   promptSeed: string;
@@ -358,6 +367,7 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
         researchLanes: plan.researchLanes,
         readingList: plan.readingList,
         canonicalMisconceptions: plan.canonicalMisconceptions,
+        sourcePackets: plan.sourcePackets,
         gradeBrief: plan.gradeBrief,
         researchDirective: plan.researchDirective,
         promptSeed: plan.promptSeed,
@@ -651,6 +661,7 @@ async function generateAdminCurriculumDraftQuestionsWithLlm(
             `Reading list: ${step.readingList.join(" | ") || "none"}`,
             `Canonical misconceptions: ${step.canonicalMisconceptions.join(" | ") || "none"}`,
             `Grade brief: ${step.gradeBrief ?? "none"}`,
+            `Primary source packets: ${adminCurriculumSourcePacketPrompt(step)}`,
             `Source cards: ${sourceCards.slice(0, 8).map((card) => `[${card.id} ${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join(" | ") || "none"}`,
             "Each question must include: id, type='multiple-choice', prompt, options A-D, correct='A'|'B'|'C'|'D', explanation, subject, difficulty, minGrade, faculty, stat.",
             "Use faculty as the draft faculty id. Use stat one of head, heart, hustle, honor.",
@@ -761,6 +772,18 @@ function curriculumDraftMaterials(
           ``,
         ]
       : []),
+    ...(step.sourcePackets.length
+      ? [
+          `## Primary Source Packets`,
+          ...step.sourcePackets.map((packet, index) => [
+            `${index + 1}. ${packet.title} (${packet.id})`,
+            `   Anchor: ${packet.anchor}`,
+            `   Summary: ${packet.summary}`,
+            `   Question seeds: ${packet.questionSeeds.join(" | ")}`,
+          ].join("\n")),
+          ``,
+        ]
+      : []),
     `## Prompt Seed`,
     step.promptSeed,
     ``,
@@ -770,6 +793,19 @@ function curriculumDraftMaterials(
     `## Source Cards`,
     cardRows,
   ].join("\n");
+}
+
+function adminCurriculumSourcePacketPrompt(step: AdminCurriculumReplenishmentStep): string {
+  if (!step.sourcePackets.length) return "none";
+  return step.sourcePackets
+    .slice(0, 4)
+    .map((packet) => [
+      `[${packet.id}] ${packet.title}`,
+      `anchor=${packet.anchor}`,
+      `summary=${packet.summary}`,
+      `seeds=${packet.questionSeeds.slice(0, 2).join(" / ")}`,
+    ].join(" :: "))
+    .join(" | ");
 }
 
 function buildAdminCurriculumCandidateQuestions(

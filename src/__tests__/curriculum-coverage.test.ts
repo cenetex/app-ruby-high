@@ -60,6 +60,15 @@ describe("curriculum coverage planning", () => {
         lanes: ["Freshman bridge questions: practical AI/web vocabulary, but asked through small classroom scenarios."],
         readingList: ["Agent operations notes: least privilege and idempotency."],
         canonicalMisconceptions: ["Chat history is the same thing as durable memory."],
+        sourcePackets: [{
+          id: "ruby-source-agent-ops",
+          title: "Agent operations notes",
+          anchor: "least privilege and idempotency",
+          summary: "Agent operations need bounded side effects and durable review evidence.",
+          grades: ["9", "10"],
+          subjects: ["agent reliability"],
+          questionSeeds: ["Ask why idempotency matters before retrying a side effect."],
+        }],
         gradeBriefs: {
           "9": "Keep Ruby's freshman set concrete.",
           "10": "Move sophomores into operations.",
@@ -76,6 +85,10 @@ describe("curriculum coverage planning", () => {
       researchInterests: ["AI application design", "agent reliability"],
       readingList: ["Agent operations notes: least privilege and idempotency."],
       canonicalMisconceptions: ["Chat history is the same thing as durable memory."],
+      sourcePackets: [expect.objectContaining({
+        id: "ruby-source-agent-ops",
+        title: "Agent operations notes",
+      })],
       gradeBrief: "Keep Ruby's freshman set concrete.",
       researchDirective: expect.stringContaining("Keep grade 9 tight"),
       weakSubjects: ["agent reliability"],
@@ -133,6 +146,15 @@ describe("curriculum coverage planning", () => {
           lanes: ["Close-reading questions: narrator versus author, point of view, imagery, irony, setting, and textual evidence."],
           readingList: ["Close-reading notebook: narrator/author distinctions."],
           canonicalMisconceptions: ["Theme is a one-word label instead of an argument."],
+          sourcePackets: [{
+            id: "edward-source-theory-method",
+            title: "Theory-method notebook",
+            anchor: "archive and close-reading method",
+            summary: "Theory becomes useful when it is a method for asking better questions.",
+            grades: ["12"],
+            subjects: ["rhetoric", "close reading"],
+            questionSeeds: ["Ask how archive theory changes the evidence a reader trusts."],
+          }],
           gradeBriefs: {
             "9": "Keep Edward's freshman set recognizable.",
             "10": "Ask sophomores to apply terms.",
@@ -223,6 +245,9 @@ describe("curriculum coverage planning", () => {
       ],
       readingList: ["Close-reading notebook: narrator/author distinctions."],
       canonicalMisconceptions: ["Theme is a one-word label instead of an argument."],
+      sourcePackets: [expect.objectContaining({
+        id: "edward-source-theory-method",
+      })],
       gradeBrief: "Use senior questions for history and argument.",
     });
     expect(snapshot.lowPools).toHaveLength(8);

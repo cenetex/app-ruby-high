@@ -1,3 +1,13 @@
+export interface RubyHighTeacherSourcePacket {
+  id: string;
+  title: string;
+  anchor: string;
+  summary: string;
+  grades: Array<"9" | "10" | "11" | "12">;
+  subjects: string[];
+  questionSeeds: string[];
+}
+
 export interface RubyHighTeacherResearchCorpus {
   id: string;
   facultyId: string;
@@ -8,6 +18,7 @@ export interface RubyHighTeacherResearchCorpus {
   readingList: string[];
   canonicalMisconceptions: string[];
   gradeBriefs: Record<"9" | "10" | "11" | "12", string>;
+  sourcePackets: RubyHighTeacherSourcePacket[];
 }
 
 const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
@@ -49,6 +60,47 @@ const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
       "11": "Ask juniors to reason architecturally: evals, grounding, structured tool calls, idempotency, model routing, indexes, and consistency tradeoffs.",
       "12": "Make senior questions adversarial and ethical: prompt injection, secret handling, least privilege, replay resistance, commit-reveal fairness, and public/private boundaries.",
     },
+    sourcePackets: [
+      {
+        id: "ruby-source-agent-ops",
+        title: "Agent operations notes",
+        anchor: "least privilege, idempotency, retries, and dirty worktrees",
+        summary: "Operational agent behavior is safe when every side effect has scoped authority, explicit confirmation where needed, bounded retries, and durable evidence of what changed.",
+        grades: ["10", "11", "12"],
+        subjects: ["agent reliability", "classroom ethics", "networked systems"],
+        questionSeeds: [
+          "Compare a harmless retry with an irreversible retry that needs an idempotency key.",
+          "Ask how an agent should handle a dirty worktree before editing shared files.",
+          "Test why least-privilege tool access is different from a model's refusal policy.",
+        ],
+      },
+      {
+        id: "ruby-source-ai-systems",
+        title: "AI application design notes",
+        anchor: "context windows, retrieval, structured outputs, evals, and routing",
+        summary: "AI applications improve when model context is deliberately selected, external facts are retrieved at answer time, outputs are validated, and model choice is tied to cost and capability.",
+        grades: ["9", "10", "11"],
+        subjects: ["AI application design", "agent reliability"],
+        questionSeeds: [
+          "Ask when retrieval is better than hoping a model remembers.",
+          "Distinguish a context window from durable memory.",
+          "Test why generated JSON still needs validation before use.",
+        ],
+      },
+      {
+        id: "ruby-source-public-world",
+        title: "Public world safety notes",
+        anchor: "public/private boundaries, consent, and moderation",
+        summary: "Shared school-world features need clear boundaries: public profiles expose only intentional fields, private answers stay private, and moderation actions must be reversible and auditable.",
+        grades: ["11", "12"],
+        subjects: ["classroom ethics", "on-chain literacy", "networked systems"],
+        questionSeeds: [
+          "Ask what should stay private when a student appears in a shared room.",
+          "Test why public visibility needs a separate toggle from social posting.",
+          "Connect auditability to moderation notes and suppressions.",
+        ],
+      },
+    ],
   },
   {
     id: "sally-science-research-corpus",
@@ -89,6 +141,47 @@ const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
       "11": "Make junior questions model-driven: wave tradeoffs, equilibrium shifts, codons, Hardy-Weinberg assumptions, seafloor spreading, and current drivers.",
       "12": "Use senior questions for evidence and constraints: entropy, Lorentz factor, photoelectric effect, chromatography, crossing over, antibodies, ice cores, albedo, S waves, and Coriolis.",
     },
+    sourcePackets: [
+      {
+        id: "sally-source-lab-method",
+        title: "Lab-method notes",
+        anchor: "units, variables, controls, error, uncertainty, and graph reading",
+        summary: "A trustworthy lab question asks students to separate variables, choose useful measurements, preserve controls, and treat uncertainty as part of evidence rather than noise.",
+        grades: ["9", "10"],
+        subjects: ["measurement and lab safety", "physics models", "chemistry reasoning"],
+        questionSeeds: [
+          "Ask why a control group matters before comparing outcomes.",
+          "Distinguish precision from accuracy in a classroom measurement.",
+          "Test how units reveal whether an answer is physically sensible.",
+        ],
+      },
+      {
+        id: "sally-source-chem-bio-systems",
+        title: "Chemistry and biology systems notes",
+        anchor: "bonding, catalysts, pH, enzymes, DNA, selection, and homeostasis",
+        summary: "Chemical and biological systems questions should make students reason about mechanisms, scales, and constraints instead of memorizing isolated vocabulary.",
+        grades: ["10", "11", "12"],
+        subjects: ["chemistry reasoning", "biology systems"],
+        questionSeeds: [
+          "Ask why catalysts speed reactions without being consumed.",
+          "Test the logarithmic meaning of a pH change.",
+          "Connect enzyme shape to reaction specificity.",
+        ],
+      },
+      {
+        id: "sally-source-earth-evidence",
+        title: "Earth science evidence notes",
+        anchor: "tectonics, climate records, ocean currents, albedo, and seismic waves",
+        summary: "Earth science questions should ask what evidence survives at planetary scale and which mechanism best explains the pattern.",
+        grades: ["11", "12"],
+        subjects: ["earth science evidence"],
+        questionSeeds: [
+          "Ask what ice cores preserve and why that counts as climate evidence.",
+          "Test why S waves reveal something about Earth's interior.",
+          "Connect albedo to feedback in climate systems.",
+        ],
+      },
+    ],
   },
   {
     id: "professor-edward-research-corpus",
@@ -128,6 +221,47 @@ const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
       "11": "Make junior questions methodological: New Criticism, structuralism, deconstruction, ideology, archive, affect, genre, hermeneutics, narratology, and intentional fallacy.",
       "12": "Use senior questions for history and argument: Barthes, Foucault, Bakhtin, Said, Cold War literature, obscenity trials, suburban fiction, Pynchon, Nabokov, confessional poetry, and mass media.",
     },
+    sourcePackets: [
+      {
+        id: "edward-source-close-reading",
+        title: "Close-reading notebook",
+        anchor: "narrator versus author, imagery, irony, point of view, and evidence",
+        summary: "Responsible literary questions ask students to cite form and language, not collapse the author, narrator, and protagonist into one voice.",
+        grades: ["9", "10"],
+        subjects: ["close reading", "narrative form", "seminar ethics"],
+        questionSeeds: [
+          "Ask how a narrator can differ from an author.",
+          "Test why theme must become an argument rather than a label.",
+          "Connect point of view to what evidence a reader can access.",
+        ],
+      },
+      {
+        id: "edward-source-theory-method",
+        title: "Theory-method notebook",
+        anchor: "formalism, New Criticism, ideology, archive, affect, and hermeneutics",
+        summary: "Theory questions should frame each name as a method of asking better questions about evidence, power, feeling, form, or interpretation.",
+        grades: ["11", "12"],
+        subjects: ["literary theory and method", "close reading", "seminar ethics"],
+        questionSeeds: [
+          "Ask what New Criticism privileges in a text.",
+          "Test why archive theory asks what gets preserved or excluded.",
+          "Distinguish deconstruction from the lazy claim that nothing means anything.",
+        ],
+      },
+      {
+        id: "edward-source-midcentury",
+        title: "Mid-century notebook",
+        anchor: "Cold War paranoia, suburban conformity, obscenity trials, paperbacks, and mass media",
+        summary: "Mid-century questions work best when they connect literary form to institutions, distribution, censorship, technology, and postwar social pressure.",
+        grades: ["12"],
+        subjects: ["mid-century history", "literary theory and method", "narrative form"],
+        questionSeeds: [
+          "Ask what anxiety Cold War literature often stages.",
+          "Connect paperback distribution to cultural access.",
+          "Test why obscenity trials matter to literature as an institution.",
+        ],
+      },
+    ],
   },
 ];
 
@@ -147,5 +281,11 @@ export function builtInTeacherResearchCorpora(): RubyHighTeacherResearchCorpus[]
     readingList: [...corpus.readingList],
     canonicalMisconceptions: [...corpus.canonicalMisconceptions],
     gradeBriefs: { ...corpus.gradeBriefs },
+    sourcePackets: corpus.sourcePackets.map((packet) => ({
+      ...packet,
+      grades: [...packet.grades],
+      subjects: [...packet.subjects],
+      questionSeeds: [...packet.questionSeeds],
+    })),
   }));
 }

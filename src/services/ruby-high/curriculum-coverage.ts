@@ -1,5 +1,5 @@
 import type { Difficulty, Grade } from "../../types.js";
-import type { RubyHighTeacherResearchCorpus } from "./teacher-research-corpus.js";
+import type { RubyHighTeacherResearchCorpus, RubyHighTeacherSourcePacket } from "./teacher-research-corpus.js";
 
 export interface RubyHighCurriculumCoverageSnapshot {
   activeCharacterSessions: number;
@@ -46,6 +46,7 @@ export interface RubyHighCurriculumReplenishmentPlan {
   researchLanes: string[];
   readingList: string[];
   canonicalMisconceptions: string[];
+  sourcePackets: RubyHighTeacherSourcePacket[];
   gradeBrief: string | null;
   researchDirective: string;
   promptSeed: string;
@@ -105,6 +106,11 @@ export function buildCurriculumReplenishmentPlan(args: {
   const gradeBrief = researchCorpus?.gradeBriefs[args.grade] ?? null;
   const weakSubjects = (args.weakSubjects ?? []).slice(0, 6);
   const recentConcepts = (args.recentConcepts ?? []).slice(0, 8);
+  const sourcePackets = selectResearchSourcePackets(researchCorpus, args.grade, [
+    ...args.focusSubjects,
+    ...weakSubjects,
+    ...researchInterests,
+  ]);
   const repetitionPressure = Math.max(0, Math.min(1, Number(args.repetitionPressure ?? 0)));
   const subjectHint = args.focusSubjects.length
     ? args.focusSubjects.join(", ")
@@ -132,6 +138,7 @@ export function buildCurriculumReplenishmentPlan(args: {
     weakSubjects.length ? `Repair weak subjects first: ${weakSubjects.join(", ")}.` : "",
     recentConcepts.length ? `Do not repeat recent concepts: ${recentConcepts.join(", ")}.` : "",
     gradeBrief ? `Grade brief: ${gradeBrief}` : "",
+    sourcePackets.length ? `Primary source packets: ${sourcePackets.map((packet) => `${packet.id} (${packet.anchor})`).join(" | ")}.` : "",
     canonicalMisconceptions.length ? `Test one misconception without copying it verbatim: ${canonicalMisconceptions.slice(0, 3).join(" | ")}.` : "",
     repetitionPressure > 0 ? `Repetition pressure: ${Math.round(repetitionPressure * 100)}%; prefer new angles over near-duplicates.` : "",
     "Avoid repeating existing prompts; write like the teacher is actively researching this class, not filling a spreadsheet.",
@@ -154,10 +161,40 @@ export function buildCurriculumReplenishmentPlan(args: {
     researchLanes,
     readingList,
     canonicalMisconceptions,
+    sourcePackets,
     gradeBrief,
     researchDirective,
     promptSeed,
   };
+}
+
+function selectResearchSourcePackets(
+  researchCorpus: RubyHighTeacherResearchCorpus | null,
+  grade: Grade,
+  subjects: readonly string[],
+): RubyHighTeacherSourcePacket[] {
+  if (!researchCorpus?.sourcePackets?.length) return [];
+  const subjectNeedles = subjects
+    .map((subject) => subject.toLowerCase().trim())
+    .filter(Boolean);
+  const scored = researchCorpus.sourcePackets.map((packet, index) => {
+    const gradeScore = packet.grades.includes(grade) ? 4 : 0;
+    const haystack = `${packet.subjects.join(" ")} ${packet.title} ${packet.anchor}`.toLowerCase();
+    const subjectScore = subjectNeedles.reduce((sum, subject) => (
+      sum + (haystack.includes(subject) || subject.includes(packet.subjects[0]?.toLowerCase() ?? "\u0000") ? 1 : 0)
+    ), 0);
+    return { packet, score: gradeScore + subjectScore, index };
+  });
+  return scored
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, 4)
+    .map((entry) => ({
+      ...entry.packet,
+      grades: [...entry.packet.grades],
+      subjects: [...entry.packet.subjects],
+      questionSeeds: [...entry.packet.questionSeeds],
+    }));
 }
 
 function buildResearchDirective(args: {

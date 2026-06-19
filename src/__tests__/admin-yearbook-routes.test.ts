@@ -1918,6 +1918,13 @@ describe("admin metrics route", () => {
       researchInterests: expect.arrayContaining(["AI application design", "agent reliability"]),
       readingList: expect.arrayContaining([expect.stringContaining("Agent operations notes")]),
       canonicalMisconceptions: expect.arrayContaining([expect.stringContaining("context window")]),
+      sourcePackets: expect.arrayContaining([
+        expect.objectContaining({
+          id: "ruby-source-agent-ops",
+          title: "Agent operations notes",
+          anchor: expect.stringContaining("idempotency"),
+        }),
+      ]),
       gradeBrief: expect.stringContaining("sophomores"),
       command: expect.arrayContaining([
         "node",
@@ -1977,6 +1984,9 @@ describe("admin metrics route", () => {
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Research Directive");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Reading List");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Canonical Misconceptions");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Primary Source Packets");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("ruby-source-agent-ops");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Question seeds:");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Grade brief:");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Prompt Seed");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Automatic Candidate Drafts");
@@ -2343,9 +2353,12 @@ describe("admin metrics route", () => {
     expect(body.messages[1].content).toContain("Reading list:");
     expect(body.messages[1].content).toContain("Canonical misconceptions:");
     expect(body.messages[1].content).toContain("Grade brief:");
+    expect(body.messages[1].content).toContain("Primary source packets:");
+    expect(body.messages[1].content).toContain("ruby-source-agent-ops");
     const persistedDrafts = await store.loadDraftPacks();
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Generation source: llm");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Generation model: test/course-model");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Primary Source Packets");
     expect(persistedDrafts[0]!.teachers[0]!.questions[0]).toMatchObject({
       id: "draft-llm-ruby-weak-pool-1",
       faculty: expect.stringMatching(/^draft-/),
