@@ -233,6 +233,8 @@ outcomes without requiring crypto participation.
    Account pack/card tile labels, details, classes, proof labels, and pack-open
    action state now come from typed pure tile view models. Account card-reader
    title/detail/profile/reveal state now comes from a typed pure view model.
+   Active term-rule summary labels now have a dedicated typed helper for
+   ordering, filtering, and capping grade-scoped room modifiers.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:
    completed live-room goals now carry a class-wide Study Spark reward label in

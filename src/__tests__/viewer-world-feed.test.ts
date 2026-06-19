@@ -13,6 +13,7 @@ import {
   worldFeedRoomTitle,
   worldFeedRoomViews,
   worldFeedSummaryLabel,
+  worldFeedTermRuleLabels,
 } from "../viewer-parts/client-pure.js";
 
 describe("viewer world feed pure helpers", () => {
@@ -124,6 +125,26 @@ describe("viewer world feed pure helpers", () => {
     })).toBe("3 students live · 2 rooms · 3 Study Sparks · Term Level 1 · Term Momentum in Sophomore");
     expect(worldFeedSummaryLabel(3, 2)).toBe("3 students live · 2 rooms");
     expect(worldFeedSummaryLabel(3, 2, "offline")).toBe("World feed paused");
+  });
+
+  it("formats active term rule labels by grade", () => {
+    expect(worldFeedTermRuleLabels(null)).toEqual([]);
+    expect(worldFeedTermRuleLabels({
+      byGrade: {
+        "11": { label: "Lab Partners", target: 2 },
+        "10": { label: "Term Momentum", target: 2 },
+        "9": { label: "" },
+      },
+    })).toEqual([
+      "Term Momentum in Sophomore",
+      "Lab Partners in Junior",
+    ]);
+    expect(worldFeedTermRuleLabels({
+      byGrade: {
+        "9": { label: "Fresh Start" },
+        "10": { label: "Term Momentum" },
+      },
+    }, 1)).toEqual(["Fresh Start in Freshman"]);
   });
 
   it("builds compact world panel view models for the DOM renderer", () => {
