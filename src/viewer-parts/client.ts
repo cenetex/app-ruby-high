@@ -1430,6 +1430,19 @@ export function runViewerClient(bootstrap) {
     container: els.accountHistoryList,
     rowView: accountHistoryRowView,
   });
+  const accountCharacterRenderer = createAccountCharacterPanelRenderer({
+    document,
+    grid: els.accountCharacterGrid,
+    summary: els.accountCharacterSummary,
+    createButton: els.accountCreateCharacter,
+    unlockButton: els.accountUnlockSlot,
+    panelView: accountCharacterPanelView,
+    cardView: accountCharacterCardView,
+    emptySlotView: accountEmptyCharacterSlotView,
+    fallbackPortraitFor: defaultPortraitFor,
+    openActiveCharacter: openCharacterSheetFromAccount,
+    openCharacterCreation: openCharacterCreationFromAccount,
+  });
   const roomChannelRowsController = createRoomChannelRowsController({
     document,
     teacherSmallAvatarUrl,
@@ -2867,113 +2880,23 @@ export function runViewerClient(bootstrap) {
   }
 
   function renderAccountCharacters() {
-    if (!els.accountCharacterGrid) return;
     const slots = characterSlotTelemetry();
     const wallet = walletNumbers(lastTelemetry);
     const entries = ownedCharacterEntries();
-    const hasActiveCharacter = !!(lastTelemetry && lastTelemetry.character);
-    const view = accountCharacterPanelView(slots, wallet, {
+    accountCharacterRenderer.render({
       authed,
       billingBusy,
-      entryCount: entries.length,
-      hasActiveCharacter,
+      slots,
+      wallet,
+      entries,
+      hasActiveCharacter: !!(lastTelemetry && lastTelemetry.character),
+      playbooks: lastTelemetry && Array.isArray(lastTelemetry.playbooks) ? lastTelemetry.playbooks : [],
+      currentGrade: lastTelemetry && lastTelemetry.current_grade,
     });
-    if (els.accountCharacterSummary) {
-      els.accountCharacterSummary.textContent = view.summaryText;
-    }
-    if (els.accountCreateCharacter) {
-      els.accountCreateCharacter.hidden = view.createHidden;
-      els.accountCreateCharacter.disabled = view.createDisabled;
-    }
-    if (els.accountUnlockSlot) {
-      els.accountUnlockSlot.textContent = view.unlockText;
-      els.accountUnlockSlot.disabled = view.unlockDisabled;
-      els.accountUnlockSlot.title = view.unlockTitle;
-    }
-    els.accountCharacterGrid.replaceChildren();
-    entries.forEach((entry, idx) => {
-      els.accountCharacterGrid.appendChild(buildAccountCharacterCard(entry, idx + 1));
-    });
-    for (let i = 0; i < view.emptySlots; i++) {
-      els.accountCharacterGrid.appendChild(buildEmptyCharacterSlot(entries.length + i + 1, view.canCreateCharacter));
-    }
-    if (entries.length === 0 && view.emptySlots === 0) {
-      const empty = document.createElement("div");
-      empty.className = "account-empty";
-      empty.textContent = "Roll your first student to start filling your account.";
-      els.accountCharacterGrid.appendChild(empty);
-    }
   }
 
   function renderAccountPublicWorld() {
     accountPublicWorldController.render();
-  }
-
-  function buildAccountCharacterCard(entry, slotNumber) {
-    const c = entry.character || {};
-    const view = accountCharacterCardView(
-      entry,
-      slotNumber,
-      lastTelemetry && Array.isArray(lastTelemetry.playbooks) ? lastTelemetry.playbooks : [],
-      lastTelemetry && lastTelemetry.current_grade,
-      defaultPortraitFor(c.playbookId),
-    );
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = view.className;
-    card.style.setProperty("--account-character-accent", view.accent);
-    const portrait = document.createElement("span");
-    portrait.className = "account-character-portrait";
-    if (view.portraitUrl) {
-      const img = document.createElement("img");
-      img.alt = "";
-      img.src = view.portraitUrl;
-      portrait.appendChild(img);
-    } else {
-      portrait.textContent = view.portraitInitial;
-    }
-    card.appendChild(portrait);
-    const copy = document.createElement("span");
-    copy.className = "account-character-copy";
-    const name = document.createElement("span");
-    name.className = "account-character-name";
-    name.textContent = view.name;
-    copy.appendChild(name);
-    const meta = document.createElement("span");
-    meta.className = "account-character-meta";
-    meta.textContent = view.meta;
-    copy.appendChild(meta);
-    card.appendChild(copy);
-    card.addEventListener("click", () => {
-      if (view.isActive) {
-        openCharacterSheetFromAccount();
-      }
-    });
-    return card;
-  }
-
-  function buildEmptyCharacterSlot(slotNumber, canCreateCharacter) {
-    const view = accountEmptyCharacterSlotView(slotNumber, canCreateCharacter);
-    const card = document.createElement(view.tagName);
-    if (view.type) card.type = view.type;
-    card.className = view.className;
-    const portrait = document.createElement("span");
-    portrait.className = "account-character-portrait";
-    portrait.textContent = "+";
-    card.appendChild(portrait);
-    const copy = document.createElement("span");
-    copy.className = "account-character-copy";
-    const name = document.createElement("span");
-    name.className = "account-character-name";
-    name.textContent = view.name;
-    const meta = document.createElement("span");
-    meta.className = "account-character-meta";
-    meta.textContent = view.meta;
-    copy.appendChild(name);
-    copy.appendChild(meta);
-    card.appendChild(copy);
-    if (view.canCreate) card.addEventListener("click", openCharacterCreationFromAccount);
-    return card;
   }
 
   function openCharacterSheetFromAccount() {
