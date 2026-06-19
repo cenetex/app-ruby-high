@@ -2509,6 +2509,26 @@ describe("RubyHighService Phase 1", () => {
       label: "Term Spark 1/3",
       activeRuleLabels: ["Term Momentum"],
     });
+    expect(persistedTerm?.cohortTerms).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: expect.stringMatching(/^term:cohort:[a-f0-9]{16}$/),
+        schoolYear: "2025-2026",
+        termId: "2025-2026",
+        grade: "10",
+        totalSparks: 4,
+        level: 1,
+        activeRuleLabels: ["Term Momentum"],
+        curriculumLoops: {
+          inReview: 0,
+          promoted: 0,
+        },
+        roomRule: {
+          kind: "term-momentum",
+          label: "Term Momentum",
+          target: 2,
+        },
+      }),
+    ]));
     const persistedGradeProgress = persistedTerm?.gradeProgress as Record<string, unknown> | undefined;
     expect(persistedGradeProgress?.["9"]).toMatchObject({
       totalSparks: 0,
@@ -2550,6 +2570,17 @@ describe("RubyHighService Phase 1", () => {
               },
             }),
           }),
+          cohortTerms: expect.arrayContaining([
+            expect.objectContaining({
+              grade: "10",
+              level: 1,
+              roomRule: {
+                kind: "term-momentum",
+                label: "Term Momentum",
+                target: 2,
+              },
+            }),
+          ]),
         }),
       ],
     });

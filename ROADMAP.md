@@ -287,8 +287,11 @@ outcomes without requiring crypto participation.
    the public world summary, durable term record, player world-feed label, and
    admin world health line as aggregate curriculum-loop counts; term summaries
    also carry a sanitized recent curriculum-loop history by grade/teacher,
-   lifecycle status, question count, and timestamp. Next, turn those aggregate
-   histories into explicit cohort/term entities.
+   lifecycle status, question count, and timestamp. Durable term records now
+   include explicit grade-scoped cohort-term entities with their own sparks,
+   active room rule, curriculum-loop counts, and recent loop history. Next,
+   decide whether cohort-term entities need their own persistence namespace or
+   can remain embedded in the term record until the next MMO loop proves it.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.

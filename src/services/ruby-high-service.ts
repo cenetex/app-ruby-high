@@ -1050,7 +1050,26 @@ export interface PublicWorldTermRecord {
   activeRuleLabels: string[];
   curriculumLoops?: PublicWorldCurriculumLoopSummary;
   curriculumLoopHistory?: PublicWorldCurriculumLoopEvent[];
+  cohortTerms?: PublicWorldCohortTermRecord[];
   gradeProgress: Partial<Record<Grade, PublicWorldTermGradeProgress>>;
+  updatedAt: number;
+}
+
+export interface PublicWorldCohortTermRecord {
+  id: string;
+  schoolYear: string;
+  termId: string;
+  grade: Grade;
+  totalSparks: number;
+  level: number;
+  label: string;
+  activeRuleLabels: string[];
+  curriculumLoops: {
+    inReview: number;
+    promoted: number;
+  };
+  curriculumLoopHistory: PublicWorldCurriculumLoopEvent[];
+  roomRule?: PublicWorldTermRoomRule;
   updatedAt: number;
 }
 
@@ -9990,6 +10009,11 @@ function publicWorldTermRecordId(schoolYear: string): string {
   return `term:${digest}`;
 }
 
+function publicWorldCohortTermRecordId(schoolYear: string, grade: Grade): string {
+  const digest = createHash("sha256").update(`public-world-cohort-term:${schoolYear}:${grade}`).digest("hex").slice(0, 16);
+  return `term:cohort:${digest}`;
+}
+
 function publicWorldTermRuleLabels(level: number): string[] {
   if (level >= 2) return ["Term Momentum", "Term Rally"];
   return level > 0 ? ["Term Momentum"] : [];
@@ -10069,6 +10093,38 @@ function publicWorldTermGradeProgress(studySparkTotal: number): PublicWorldTermG
   };
 }
 
+function publicWorldCohortTermRecordsFromSummary(
+  schoolYear: string,
+  gradeProgress: Partial<Record<Grade, PublicWorldTermGradeProgress>>,
+  summary: Pick<PublicWorldSummarySnapshot, "curriculumLoops" | "curriculumLoopHistory">,
+  now: number,
+): PublicWorldCohortTermRecord[] {
+  const loops = normalizePublicWorldCurriculumLoopSummary(summary.curriculumLoops);
+  const history = normalizePublicWorldCurriculumLoopHistory(summary.curriculumLoopHistory);
+  return GRADES.map((grade) => {
+    const progress = gradeProgress[grade] ?? publicWorldTermGradeProgress(0);
+    const loopRow = loops.byGrade[grade] ?? { inReview: 0, promoted: 0 };
+    const loopHistory = history.filter((entry) => entry.grade === grade).slice(0, 6);
+    return {
+      id: publicWorldCohortTermRecordId(schoolYear, grade),
+      schoolYear,
+      termId: schoolYear,
+      grade,
+      totalSparks: publicWorldStoredInteger(progress.totalSparks, 0),
+      level: publicWorldStoredInteger(progress.level, 0),
+      label: publicWorldStoredText(progress.label, 80) || publicWorldTermProgress(progress.totalSparks).label,
+      activeRuleLabels: publicWorldStoredTextList(progress.activeRuleLabels, 8, 80),
+      curriculumLoops: {
+        inReview: Math.min(999, publicWorldStoredInteger(loopRow.inReview, 0)),
+        promoted: Math.min(999, publicWorldStoredInteger(loopRow.promoted, 0)),
+      },
+      curriculumLoopHistory: loopHistory,
+      ...(progress.roomRule ? { roomRule: progress.roomRule } : {}),
+      updatedAt: now,
+    };
+  });
+}
+
 function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, now: number): PublicWorldTermRecord {
   const schoolYear = /^\d{4}-\d{4}$/.test(summary.schoolYear) ? summary.schoolYear : schoolYearForTimestamp(now);
   const termProgress = summary.termProgress;
@@ -10081,6 +10137,7 @@ function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, n
   for (const grade of GRADES) {
     gradeProgress[grade] = publicWorldTermGradeProgress(summary.studySparks.byGrade[grade] ?? 0);
   }
+  const cohortTerms = publicWorldCohortTermRecordsFromSummary(schoolYear, gradeProgress, summary, now);
   return {
     id: publicWorldTermRecordId(schoolYear),
     schoolYear,
@@ -10093,6 +10150,7 @@ function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, n
     activeRuleLabels: publicWorldTermRuleLabels(level),
     curriculumLoops: normalizePublicWorldCurriculumLoopSummary(summary.curriculumLoops),
     curriculumLoopHistory: normalizePublicWorldCurriculumLoopHistory(summary.curriculumLoopHistory),
+    cohortTerms,
     gradeProgress,
     updatedAt: now,
   };
@@ -10110,6 +10168,7 @@ function publicWorldTermRecordContentKey(term: PublicWorldTermRecord): string {
     activeRuleLabels: term.activeRuleLabels,
     curriculumLoops: normalizePublicWorldCurriculumLoopSummary(term.curriculumLoops),
     curriculumLoopHistory: normalizePublicWorldCurriculumLoopHistory(term.curriculumLoopHistory),
+    cohortTerms: normalizePublicWorldCohortTermRecords(term.cohortTerms),
     gradeProgress: term.gradeProgress,
   });
 }
@@ -10295,6 +10354,7 @@ function normalizePublicWorldTermRecord(raw: unknown): PublicWorldTermRecord | n
   const curriculumLoops = normalizePublicWorldCurriculumLoopSummary(source.curriculumLoops);
   const curriculumLoopHistory = normalizePublicWorldCurriculumLoopHistory(source.curriculumLoopHistory);
   const gradeProgress = normalizePublicWorldTermGradeProgressMap(source.gradeProgress);
+  const cohortTerms = normalizePublicWorldCohortTermRecords(source.cohortTerms);
   const updatedAt = publicWorldStoredInteger(source.updatedAt, 0);
   if (updatedAt <= 0) return null;
   return {
@@ -10309,9 +10369,58 @@ function normalizePublicWorldTermRecord(raw: unknown): PublicWorldTermRecord | n
     activeRuleLabels,
     curriculumLoops,
     curriculumLoopHistory,
+    cohortTerms,
     gradeProgress,
     updatedAt,
   };
+}
+
+function normalizePublicWorldCohortTermRecords(raw: unknown): PublicWorldCohortTermRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry): PublicWorldCohortTermRecord | null => {
+      if (!entry || typeof entry !== "object") return null;
+      const source = entry as Record<string, unknown>;
+      const schoolYear = typeof source.schoolYear === "string" && /^\d{4}-\d{4}$/.test(source.schoolYear)
+        ? source.schoolYear
+        : "";
+      const grade = typeof source.grade === "string" && (GRADES as readonly string[]).includes(source.grade)
+        ? source.grade as Grade
+        : null;
+      if (!schoolYear || !grade) return null;
+      const id = publicWorldCohortTermRecordId(schoolYear, grade);
+      if (typeof source.id === "string" && source.id !== id) return null;
+      const totalSparks = publicWorldStoredInteger(source.totalSparks, 0);
+      const progress = publicWorldTermGradeProgress(totalSparks);
+      const level = publicWorldStoredInteger(source.level, progress.level);
+      const roomRule = normalizePublicWorldTermRoomRule(source.roomRule, level);
+      const curriculumLoops = normalizePublicWorldCurriculumLoopSummary({
+        inReview: publicWorldStoredInteger((source.curriculumLoops as { inReview?: unknown } | undefined)?.inReview, 0),
+        promoted: publicWorldStoredInteger((source.curriculumLoops as { promoted?: unknown } | undefined)?.promoted, 0),
+        byGrade: {},
+      });
+      const updatedAt = publicWorldStoredInteger(source.updatedAt, 0);
+      if (updatedAt <= 0) return null;
+      return {
+        id,
+        schoolYear,
+        termId: typeof source.termId === "string" && source.termId.trim() ? source.termId.trim().slice(0, 48) : schoolYear,
+        grade,
+        totalSparks,
+        level,
+        label: publicWorldStoredText(source.label, 80) || progress.label,
+        activeRuleLabels: publicWorldStoredTextList(source.activeRuleLabels, 8, 80),
+        curriculumLoops: {
+          inReview: curriculumLoops.inReview,
+          promoted: curriculumLoops.promoted,
+        },
+        curriculumLoopHistory: normalizePublicWorldCurriculumLoopHistory(source.curriculumLoopHistory).filter((item) => item.grade === grade).slice(0, 6),
+        ...(roomRule ? { roomRule } : {}),
+        updatedAt,
+      };
+    })
+    .filter((entry): entry is PublicWorldCohortTermRecord => !!entry)
+    .sort((a, b) => Number(a.grade) - Number(b.grade));
 }
 
 function normalizePublicWorldTermGradeProgressMap(raw: unknown): Partial<Record<Grade, PublicWorldTermGradeProgress>> {

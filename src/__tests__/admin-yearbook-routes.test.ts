@@ -2334,6 +2334,23 @@ describe("admin metrics route", () => {
           questionCount: 6,
         }),
       ],
+      cohortTerms: expect.arrayContaining([
+        expect.objectContaining({
+          grade: "10",
+          curriculumLoops: {
+            inReview: 0,
+            promoted: 1,
+          },
+          curriculumLoopHistory: [
+            expect.objectContaining({
+              grade: "10",
+              facultyId: "ruby",
+              status: "questions-promoted",
+              questionCount: 6,
+            }),
+          ],
+        }),
+      ]),
     });
 
     response = await appRoute({
