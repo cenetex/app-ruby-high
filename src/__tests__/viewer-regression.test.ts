@@ -263,6 +263,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
+    expectScriptToContain(script, "function accountAiPanelView(aiInput, opts)");
+    expectScriptToContain(clientSource, "const view = accountAiPanelView(ai, {");
     expectScriptToContain(script, "function accountCharacterCardView(entry, slotNumber, playbooks, currentGrade, fallbackPortraitUrl)");
     expectScriptToContain(script, "function accountEmptyCharacterSlotView(slotNumber, canCreateCharacter)");
     expectScriptToContain(clientSource, "const view = accountCharacterCardView(");
@@ -607,11 +609,11 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
     expect(script).not.toContain("els.accountBuyPasses.disabled = !authed;");
     expect(script).not.toContain("els.accountUsePass.disabled = !authed || billingBusy");
-    expectScriptToContain(script, "els.accountAiUsePass.disabled = primaryDisabled;");
+    expectScriptToContain(script, "els.accountAiUsePass.disabled = view.primaryDisabled;");
     expect(script).not.toContain("els.accountBuyPasses.disabled = !unlocked || !authed");
     expect(script).not.toContain("els.accountUsePass.disabled = !unlocked || !authed");
-    expect(script).not.toContain("els.accountAiUsePass.disabled = !unlocked || primaryDisabled");
-    expectScriptToContain(script, "formatDuration(ai.durationMs || 6048e5)");
+    expect(script).not.toContain("els.accountAiUsePass.disabled = !unlocked || view.primaryDisabled");
+    expectScriptToContain(script, "const durationLabel = formatDuration(durationMs);");
     expectScriptToContain(script, "AI Access active");
     expect(script).not.toContain("Roll your character to start today's class.");
   });

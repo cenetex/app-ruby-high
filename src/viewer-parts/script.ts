@@ -80,6 +80,7 @@ const PURE_HELPER_NAMES = [
   "accountHistoryRowView",
   "accountCharacterCardView",
   "accountEmptyCharacterSlotView",
+  "accountAiPanelView",
   "formatSealedDate",
   "nextGradeAfterClient",
   "fmtStat",

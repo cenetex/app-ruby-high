@@ -85,6 +85,15 @@ export type AccountEmptyCharacterSlotView = {
   meta: string;
   canCreate: boolean;
 };
+export type AccountAiPanelView = {
+  status: string;
+  meta: string;
+  primaryLabel: string;
+  primaryTitle: string;
+  primaryDisabled: boolean;
+  secondaryLabel: string;
+  secondaryDisabled: boolean;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -537,6 +546,62 @@ export function accountEmptyCharacterSlotView(slotNumber: unknown, canCreateChar
       ? "Slot " + slotNumber + " · start today's class"
       : "Slot " + slotNumber + " · ready for a future student",
     canCreate,
+  };
+}
+
+export function accountAiPanelView(aiInput: NullableRecord, opts?: NullableRecord): AccountAiPanelView {
+  const ai = aiInput || {};
+  const cost = positiveWholeNumber(ai.cost || 1, 1);
+  const durationMs = ai.durationMs || 604_800_000;
+  const durationLabel = formatDuration(durationMs);
+  const costLabel = hallPassCostLabel(cost);
+  const authed = !!(opts && opts.authed);
+  const billingBusy = !!(opts && opts.billingBusy);
+  const localAiEnabled = !!(opts && opts.localAiEnabled);
+  const hostedAiActive = !!(opts && opts.hostedAiActive);
+  const hasBrowserKey = !!(opts && opts.hasBrowserKey);
+  const aiEnabled = !!(opts && opts.aiEnabled);
+  const canUseHallPass = !!(opts && opts.canUseHallPass);
+  const teacherServerAi = !!(opts && opts.teacherServerAi);
+  let status = "Offline mode";
+  let meta = "Spend " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
+  let primaryLabel = "Use Hall Pass";
+  let primaryTitle = canUseHallPass
+    ? "Spend " + costLabel + " for " + durationLabel + " of AI access."
+    : "Need " + costLabel + ". Buy Hall Passes or burn a Card first.";
+  const aiActive = !!ai.active;
+  let primaryDisabled = !authed || billingBusy || localAiEnabled || aiActive || !ai.configured || !canUseHallPass;
+  let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect AI key";
+  const secondaryDisabled = !authed || localAiEnabled;
+  if (localAiEnabled) {
+    status = "Local AI active";
+    meta = "This device is already providing text AI.";
+    primaryLabel = "Local AI";
+    primaryTitle = "";
+    secondaryLabel = "Connect AI key";
+  } else if (hasBrowserKey && aiEnabled) {
+    status = "AI key connected";
+    meta = "Teacher chat and character text rerolls use your browser key. Hall Passes are still available for hosted play.";
+  } else if (aiActive || hostedAiActive) {
+    status = "AI Access active";
+    meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
+    primaryLabel = "Active";
+    primaryTitle = "";
+  } else if (teacherServerAi) {
+    status = "Teacher AI connected";
+    meta = "This server can speak for teachers. Use a Hall Pass or connect your own AI key for browser-owned AI features.";
+  } else if (!ai.configured) {
+    meta = "Hosted AI is not configured on this server. Connect your own AI key.";
+    primaryTitle = "Hosted AI is not configured on this server.";
+  }
+  return {
+    status,
+    meta,
+    primaryLabel,
+    primaryTitle,
+    primaryDisabled,
+    secondaryLabel,
+    secondaryDisabled,
   };
 }
 

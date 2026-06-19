@@ -2347,48 +2347,24 @@ export function runViewerClient(bootstrap) {
   function renderAccountAi() {
     if (!els.accountAiStatus || !els.accountAiUsePass || !els.accountAiAction) return;
     const ai = hostedAiTelemetry(lastTelemetry);
-    const hasBrowserKey = !!getStoredApiKey();
-    const durationLabel = formatDuration(ai.durationMs || 604_800_000);
     const cost = positiveWholeNumber(ai.cost || 1, 1);
-    const costLabel = hallPassCostLabel(cost);
-    const canUseHallPass = canSpendHallPasses(cost);
-    let status = "Offline mode";
-    let meta = "Spend " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
-    let primaryLabel = "Use Hall Pass";
-    let primaryTitle = canUseHallPass
-      ? "Spend " + costLabel + " for " + durationLabel + " of AI access."
-      : "Need " + costLabel + ". Buy Hall Passes or burn a Card first.";
-    let primaryDisabled = !authed || billingBusy || localAiEnabled || ai.active || !ai.configured || !canUseHallPass;
-    let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect AI key";
-    let secondaryDisabled = !authed || localAiEnabled;
-    if (localAiEnabled) {
-      status = "Local AI active";
-      meta = "This device is already providing text AI.";
-      primaryLabel = "Local AI";
-      primaryTitle = "";
-      secondaryLabel = "Connect AI key";
-    } else if (hasBrowserKey && aiEnabled) {
-      status = "AI key connected";
-      meta = "Teacher chat and character text rerolls use your browser key. Hall Passes are still available for hosted play.";
-    } else if (ai.active || hostedAiActive) {
-      status = "AI Access active";
-      meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
-      primaryLabel = "Active";
-      primaryTitle = "";
-    } else if (activeTeacherUsesServerAi()) {
-      status = "Teacher AI connected";
-      meta = "This server can speak for teachers. Use a Hall Pass or connect your own AI key for browser-owned AI features.";
-    } else if (!ai.configured) {
-      meta = "Hosted AI is not configured on this server. Connect your own AI key.";
-      primaryTitle = "Hosted AI is not configured on this server.";
-    }
-    els.accountAiStatus.textContent = status;
-    if (els.accountAiMeta) els.accountAiMeta.textContent = meta;
-    els.accountAiUsePass.textContent = primaryLabel;
-    els.accountAiUsePass.title = primaryTitle;
-    els.accountAiUsePass.disabled = primaryDisabled;
-    els.accountAiAction.textContent = secondaryLabel;
-    els.accountAiAction.disabled = secondaryDisabled;
+    const view = accountAiPanelView(ai, {
+      authed,
+      billingBusy,
+      localAiEnabled,
+      hostedAiActive,
+      hasBrowserKey: !!getStoredApiKey(),
+      aiEnabled,
+      canUseHallPass: canSpendHallPasses(cost),
+      teacherServerAi: activeTeacherUsesServerAi(),
+    });
+    els.accountAiStatus.textContent = view.status;
+    if (els.accountAiMeta) els.accountAiMeta.textContent = view.meta;
+    els.accountAiUsePass.textContent = view.primaryLabel;
+    els.accountAiUsePass.title = view.primaryTitle;
+    els.accountAiUsePass.disabled = view.primaryDisabled;
+    els.accountAiAction.textContent = view.secondaryLabel;
+    els.accountAiAction.disabled = view.secondaryDisabled;
   }
 
   function renderAccountWallet() {
