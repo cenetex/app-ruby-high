@@ -5456,12 +5456,10 @@ export function runViewerClient(bootstrap) {
   function roomCompletionLabel(fac, progress) {
     return roomCompletionProgressLabel(fac, progress);
   }
-  function buildRoomCompletionMeter(fac) {
-    const progress = roomCompletionProgress(fac);
+  function buildRoomCompletionMeterForView(progress, label) {
     if (!progress) return null;
     const meter = document.createElement("span");
     meter.className = "student-year-meter room-completion-meter";
-    const label = roomCompletionLabel(fac, progress);
     meter.title = label;
     meter.setAttribute("aria-label", label);
     for (let i = 0; i < progress.total; i += 1) {
@@ -5470,6 +5468,11 @@ export function runViewerClient(bootstrap) {
       meter.appendChild(segment);
     }
     return meter;
+  }
+  function buildRoomCompletionMeter(fac) {
+    const progress = roomCompletionProgress(fac);
+    const label = roomCompletionLabel(fac, progress);
+    return buildRoomCompletionMeterForView(progress, label);
   }
   function buildStudentFaceChip(studentId, className) {
     const s = STUDENTS.find((x) => x.id === studentId);
@@ -5545,15 +5548,14 @@ export function runViewerClient(bootstrap) {
       els.channelsList.appendChild(empty);
       return;
     }
-    // Fixed rooms — homeroom / science / literature — driven by t.rooms.
-    const rooms = (t.rooms || []).filter((r) => r.teaches);
     const cohort = t.room_cohort || {};
-    rooms.forEach((room) => {
-      const fac = roster.find((f) => f.id === room.teacherId);
-      const isActive = !!(fac && t.faculty === fac.id);
+    const visibleStudentIds = STUDENTS.filter((s) => shouldShowStudentId(s.id)).map((s) => s.id);
+    const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);
+    roomViews.forEach((roomView) => {
+      const fac = roster.find((f) => f.id === roomView.facultyId);
       const row = document.createElement("button");
-      row.className = "channel-row room-row" + (isActive ? " is-active" : "");
-      row.dataset.faculty = fac ? fac.id : "";
+      row.className = "channel-row room-row" + (roomView.isActive ? " is-active" : "");
+      row.dataset.faculty = roomView.facultyId;
       if (fac) {
         const thumb = document.createElement("span");
         thumb.className = "teacher-thumb";
@@ -5585,31 +5587,25 @@ export function runViewerClient(bootstrap) {
       meta.className = "room-row-meta";
       const name = document.createElement("span");
       name.className = "room-row-name";
-      name.textContent = room.channelName;
+      name.textContent = roomView.channelName;
       meta.appendChild(name);
-      if (fac) {
-        const meter = buildRoomCompletionMeter(fac);
+      if (roomView.completionProgress) {
+        const meter = buildRoomCompletionMeterForView(roomView.completionProgress, roomView.completionLabel);
         if (meter) meta.appendChild(meter);
       }
       row.appendChild(meta);
-      const cohortIds = (cohort[room.id] || []).filter((sid) => shouldShowStudentId(sid));
-      if (cohortIds.length > 0) {
+      if (roomView.students.length > 0) {
         const students = document.createElement("span");
         students.className = "room-student-stack";
-        const studentNames = cohortIds
-          .map((sid) => {
-            const s = STUDENTS.find((x) => x.id === sid);
-            return s ? s.name : sid;
-          })
-          .join(", ");
+        const studentNames = roomView.students.map((student) => student.name).join(", ");
         students.title = "Students here: " + studentNames;
         students.setAttribute("aria-label", students.title);
-        cohortIds.forEach((sid) => {
-          students.appendChild(buildStudentFaceChip(sid, "room-student-chip"));
+        roomView.students.forEach((student) => {
+          students.appendChild(buildStudentFaceChip(student.id, "room-student-chip"));
         });
         row.appendChild(students);
       }
-      row.addEventListener("click", () => fac && setFaculty(fac.id));
+      row.addEventListener("click", () => fac && setFaculty(roomView.facultyId));
       els.channelsList.appendChild(row);
     });
 

@@ -212,7 +212,8 @@ outcomes without requiring crypto participation.
 1. [#140](https://github.com/cenetex/app-ruby-high/issues/140) / [#117](https://github.com/cenetex/app-ruby-high/issues/117):
    continue extracting public-world UI from `viewer-parts/client.ts` into typed
    modules with unit tests. The account public-world control is now behind a
-   typed controller; the next target is live-room presentation glue.
+   typed controller, and live-room channel row view models now come from typed
+   helpers; the next target is the remaining live-room DOM/controller glue.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:
    a class goal result that appears in the room/world feed and can be verified

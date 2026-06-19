@@ -219,12 +219,14 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function classmateArcProgressLabel");
     expectScriptToContain(script, "function roomCompletionProgressView");
     expectScriptToContain(script, "function roomCompletionProgressLabel");
+    expectScriptToContain(script, "function roomChannelRowViews");
     expectScriptToContain(clientSource, "return classmateArcStanding(entry, currentGrade");
     expectScriptToContain(clientSource, "return classmateArcSubtitle(entry, currentGrade");
     expectScriptToContain(clientSource, "return classmateArcProgress(entry);");
     expectScriptToContain(clientSource, "return classmateArcProgressLabel(progress);");
     expectScriptToContain(clientSource, "return roomCompletionProgressView(fac);");
     expectScriptToContain(clientSource, "return roomCompletionProgressLabel(fac, progress);");
+    expectScriptToContain(clientSource, "const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);");
   });
 
   it("keeps lounge mode out of the empty-board class-start CTA", () => {

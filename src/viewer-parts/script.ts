@@ -106,6 +106,7 @@ const PURE_HELPER_NAMES = [
   "classmateArcProgressLabel",
   "roomCompletionProgressView",
   "roomCompletionProgressLabel",
+  "roomChannelRowViews",
 ] as const;
 
 function serializePureHelpers(): string {

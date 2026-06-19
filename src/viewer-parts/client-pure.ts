@@ -62,6 +62,16 @@ export type AccountPublicWorldView = {
 };
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
+export type RoomChannelStudentView = { id: string; name: string };
+export type RoomChannelRowView = {
+  roomId: string;
+  facultyId: string;
+  channelName: string;
+  isActive: boolean;
+  completionProgress: RoomCompletionProgress | null;
+  completionLabel: string;
+  students: RoomChannelStudentView[];
+};
 
 export const VIEWER_CONSTANTS = {
   VISITOR_ID_KEY: "ruby-high:visitor-id",
@@ -833,6 +843,54 @@ export function roomCompletionProgressLabel(faculty: unknown, progress: unknown)
   const value = Math.max(0, Math.floor(Number(record.value || 0)));
   const total = Math.max(0, Math.floor(Number(record.total || 0)));
   return roomName + " daily classes " + value + " of " + total;
+}
+
+export function roomChannelRowViews(
+  rooms: unknown,
+  roster: unknown,
+  cohort: unknown,
+  activeFacultyId: unknown,
+  students: unknown,
+  visibleStudentIds: unknown,
+): RoomChannelRowView[] {
+  const roomList = Array.isArray(rooms) ? rooms : [];
+  const facultyList = Array.isArray(roster) ? roster : [];
+  const cohortRecord = cohort && typeof cohort === "object" ? cohort as LooseRecord : {};
+  const studentList = Array.isArray(students) ? students : [];
+  const visibleIds = new Set(Array.isArray(visibleStudentIds)
+    ? visibleStudentIds.map((id) => String(id || "")).filter(Boolean)
+    : studentList.map((student) => String((student && typeof student === "object" ? (student as LooseRecord).id : "") || "")).filter(Boolean));
+  const studentNames = new Map<string, string>();
+  studentList.forEach((student) => {
+    const record = student && typeof student === "object" ? student as LooseRecord : null;
+    if (!record) return;
+    const id = record.id != null ? String(record.id) : "";
+    if (!id) return;
+    studentNames.set(id, String(record.name || id));
+  });
+
+  return roomList
+    .filter((room) => !!(room && typeof room === "object" && (room as LooseRecord).teaches))
+    .map((room) => {
+      const roomRecord = room as LooseRecord;
+      const roomId = String(roomRecord.id || "");
+      const facultyId = String(roomRecord.teacherId || "");
+      const faculty = facultyList.find((entry) => !!(entry && typeof entry === "object" && String((entry as LooseRecord).id || "") === facultyId)) || null;
+      const completionProgress = faculty ? roomCompletionProgressView(faculty) : null;
+      const cohortIds = Array.isArray(cohortRecord[roomId]) ? cohortRecord[roomId] : [];
+      return {
+        roomId,
+        facultyId,
+        channelName: String(roomRecord.channelName || roomId || "Room"),
+        isActive: !!(faculty && String(activeFacultyId || "") === facultyId),
+        completionProgress,
+        completionLabel: completionProgress ? roomCompletionProgressLabel(faculty, completionProgress) : "",
+        students: cohortIds
+          .map((id) => String(id || ""))
+          .filter((id) => id && visibleIds.has(id))
+          .map((id) => ({ id, name: studentNames.get(id) || id })),
+      };
+    });
 }
 
 // ── pack pricing labels (take product + solana config as inputs) ───
