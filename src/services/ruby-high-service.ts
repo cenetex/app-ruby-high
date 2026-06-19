@@ -680,6 +680,8 @@ export interface RubyHighWorldHealthSnapshot {
   newestEventAt: number | null;
   durableEventCacheSize: number;
   durableEventCacheLimit: number;
+  publicEventLogSize: number;
+  publicEventLogLimit: number;
   liveRoomGoals: number;
   suppressedEvents: number;
 }
@@ -882,6 +884,7 @@ export interface PublicWorldEventSuppressionResult {
 
 const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
 const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
+const PUBLIC_WORLD_EVENTS_STATE_ID = "ruby-high:public-world-events:v1";
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
 const LIVE_ROOM_GOALS_STATE_ID = "ruby-high:live-room-goals:v1";
 
@@ -1101,6 +1104,7 @@ export class RubyHighService extends Service {
   private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
   private readonly schoolEventRecords = new Map<string, StoredSchoolEventRecord>();
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
+  private readonly publicWorldEventLog = new Map<string, SchoolWorldEvent>();
   private readonly publicWorldSuppressedEvents = new Map<string, PublicWorldSuppressedEvent>();
   private readonly pendingPhotoPosts = new Set<string>();
   private readonly deferredPhotoPosts = new Map<string, number>();
@@ -1140,6 +1144,7 @@ export class RubyHighService extends Service {
     this.metricEvents.clear();
     this.schoolEventRecords.clear();
     this.liveRoomGoalStates.clear();
+    this.publicWorldEventLog.clear();
     this.publicWorldSuppressedEvents.clear();
     this.persistedPackRecords = null;
     this.teacherRecords = null;
@@ -1152,6 +1157,7 @@ export class RubyHighService extends Service {
     await Promise.all([
       this.persistAll(),
       this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
+      this.persistPublicWorldEventLog({ surfaceErrors: true }),
       this.persistPublicWorldModerationState({ surfaceErrors: true }),
       this.persistLiveRoomGoalState({ surfaceErrors: true }),
     ]);
@@ -1756,6 +1762,8 @@ export class RubyHighService extends Service {
       newestEventAt: events[0]?.at ?? null,
       durableEventCacheSize: this.schoolEventRecords.size,
       durableEventCacheLimit: SCHOOL_WORLD_EVENT_CACHE_LIMIT,
+      publicEventLogSize: this.publicWorldEventLog.size,
+      publicEventLogLimit: SCHOOL_WORLD_EVENT_CACHE_LIMIT,
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
     };
@@ -1867,6 +1875,75 @@ export class RubyHighService extends Service {
     });
     if (!options.surfaceErrors) this.trackBackgroundWrite(save);
     return save;
+  }
+
+  private hydratePublicWorldEventLog(record: StoredServiceStateRecord | null): void {
+    this.publicWorldEventLog.clear();
+    const data = record?.data;
+    const events = data && data.version === 1 && Array.isArray(data.events) ? data.events : [];
+    for (const raw of events) {
+      const event = normalizePublicWorldEventPayload(raw);
+      if (!event) continue;
+      this.publicWorldEventLog.set(event.id, event);
+    }
+    this.prunePublicWorldEventLog(record?.updatedAt ?? Date.now());
+  }
+
+  private publicWorldEventLogStateRecord(now = Date.now()): StoredServiceStateRecord {
+    this.prunePublicWorldEventLog(now);
+    return {
+      id: PUBLIC_WORLD_EVENTS_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        events: this.publicWorldEventLogList(now),
+      },
+    };
+  }
+
+  private persistPublicWorldEventLog(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.publicWorldEventLogStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("public-world-events.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  private syncPublicWorldEventLog(events: Iterable<SchoolWorldEvent>, now = Date.now()): void {
+    let changed = this.prunePublicWorldEventLog(now);
+    for (const rawEvent of events) {
+      const event = normalizePublicWorldEventPayload(rawEvent);
+      if (!event) continue;
+      const prior = this.publicWorldEventLog.get(event.id);
+      if (!prior || JSON.stringify(prior) !== JSON.stringify(event)) {
+        this.publicWorldEventLog.set(event.id, event);
+        changed = true;
+      }
+    }
+    if (this.prunePublicWorldEventLog(now)) changed = true;
+    if (changed) void this.persistPublicWorldEventLog({}, now);
+  }
+
+  private prunePublicWorldEventLog(now = Date.now()): boolean {
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const retained = this.publicWorldEventLogList(now)
+      .filter((event) => event.at <= now && now - event.at <= weekMs)
+      .slice(0, SCHOOL_WORLD_EVENT_CACHE_LIMIT);
+    if (retained.length === this.publicWorldEventLog.size && retained.every((event) => this.publicWorldEventLog.get(event.id) === event)) {
+      return false;
+    }
+    this.publicWorldEventLog.clear();
+    for (const event of retained) this.publicWorldEventLog.set(event.id, event);
+    return true;
+  }
+
+  private publicWorldEventLogList(now = Date.now()): SchoolWorldEvent[] {
+    return Array.from(this.publicWorldEventLog.values())
+      .filter((event) => Number.isFinite(event.at) && event.at >= 0 && event.at <= now)
+      .sort((a, b) => this.schoolWorldEventKindRank(a.kind) - this.schoolWorldEventKindRank(b.kind) || b.at - a.at || b.id.localeCompare(a.id));
   }
 
   private hydrateLiveRoomGoalState(record: StoredServiceStateRecord | null): void {
@@ -3074,6 +3151,7 @@ export class RubyHighService extends Service {
       storedMetricEvents,
       storedSchoolEvents,
       storedPhotoPostSchedulerState,
+      storedPublicWorldEventLogState,
       storedPublicWorldModerationState,
       storedLiveRoomGoalState,
     ] = await Promise.all([
@@ -3085,6 +3163,7 @@ export class RubyHighService extends Service {
       this.store.loadMetricEvents?.() ?? Promise.resolve([]),
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(PUBLIC_WORLD_EVENTS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_MODERATION_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(LIVE_ROOM_GOALS_STATE_ID) ?? Promise.resolve(null),
     ]);
@@ -3136,6 +3215,7 @@ export class RubyHighService extends Service {
     }
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
+    this.hydratePublicWorldEventLog(storedPublicWorldEventLogState);
     this.hydratePublicWorldModerationState(storedPublicWorldModerationState);
     this.hydrateLiveRoomGoalState(storedLiveRoomGoalState);
     this.loaded = true;
@@ -7487,6 +7567,9 @@ export class RubyHighService extends Service {
     ).activeRooms;
     this.clampPublicWorldRoomGoalTimes(rooms, now);
     const rows = new Map<string, SchoolWorldEvent>();
+    for (const event of this.publicWorldEventLogList(now)) {
+      rows.set(event.id, event);
+    }
     const addEvent = (event: SchoolEvent) => {
       const eventAt = Math.floor(Number(event.at ?? 0));
       if (!Number.isFinite(eventAt) || eventAt < 0 || eventAt > now || now - eventAt > weekMs) return;
@@ -7514,6 +7597,8 @@ export class RubyHighService extends Service {
       if (event.at > now || now - event.at > weekMs) continue;
       rows.set(event.id, event);
     }
+
+    this.syncPublicWorldEventLog(rows.values(), now);
 
     return Array.from(rows.values())
       .filter((event) => !this.publicWorldSuppressedEvents.has(event.id))
@@ -8795,6 +8880,100 @@ function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
 function normalizePublicWorldEventId(value: unknown): string | null {
   const id = String(value ?? "").trim();
   return PUBLIC_WORLD_EVENT_ID_RE.test(id) ? id.toLowerCase() : null;
+}
+
+function normalizePublicWorldEventPayload(value: unknown): SchoolWorldEvent | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const id = normalizePublicWorldEventId(source.id);
+  const at = Math.max(0, Math.floor(Number(source.at) || 0));
+  const faculty = publicWorldStoredText(source.faculty, 80);
+  const grade = typeof source.grade === "string" && (GRADES as readonly string[]).includes(source.grade)
+    ? source.grade as Grade
+    : null;
+  if (!id || at <= 0) return null;
+  const base = {
+    id,
+    at,
+    ...(faculty ? { faculty } : {}),
+    grade,
+  };
+  if (source.kind === "room.goal-progress") {
+    const progress = publicWorldStoredInteger(source.progress, 0);
+    const target = Math.max(1, publicWorldStoredInteger(source.target, 1));
+    const goalKind = source.goalKind === "live-class" ? source.goalKind : null;
+    const roomTitle = publicWorldStoredText(source.roomTitle, 120);
+    const label = publicWorldStoredText(source.label, 180);
+    if (!goalKind || !roomTitle || !label) return null;
+    return {
+      ...base,
+      kind: "room.goal-progress",
+      roomTitle,
+      goalKind,
+      progress,
+      target,
+      complete: source.complete === true,
+      label,
+    };
+  }
+  if (source.kind === "relationship.ticked") {
+    const reason = source.reason;
+    if (reason !== "best-responder" && reason !== "applauder" && reason !== "rub" && reason !== "pep-talk") return null;
+    return {
+      ...base,
+      kind: "relationship.ticked",
+      studentId: publicWorldStoredText(source.studentId, 120) || "student",
+      delta: source.delta === 1 || source.delta === -1 ? source.delta : 0,
+      reason,
+      affinity: publicWorldStoredInteger(source.affinity, 0),
+      circled: source.circled === true,
+      scratched: source.scratched === true,
+    };
+  }
+  if (source.kind === "mash.axis-resolved") {
+    const axis = source.axis;
+    if (axis !== "crush" && axis !== "job" && axis !== "lives" && axis !== "pet" && axis !== "money" && axis !== "lucky") return null;
+    const valueText = publicWorldStoredText(source.value, 160);
+    if (!valueText) return null;
+    return {
+      ...base,
+      kind: "mash.axis-resolved",
+      studentId: publicWorldStoredText(source.studentId, 120) || "student",
+      axis,
+      value: valueText,
+    };
+  }
+  if (source.kind === "comic.page-unlocked") {
+    const reason = source.reason;
+    if (reason !== "teacher-class-aced" && reason !== "teacher-year-completed" && reason !== "student-befriended" && reason !== "legacy") return null;
+    const issueId = publicWorldStoredText(source.issueId, 80);
+    const pageId = publicWorldStoredText(source.pageId, 80);
+    const label = publicWorldStoredText(source.label, 180);
+    if (!issueId || !pageId || !label) return null;
+    return {
+      ...base,
+      kind: "comic.page-unlocked",
+      issueId,
+      pageId,
+      pageNumber: publicWorldStoredInteger(source.pageNumber, 0),
+      reason,
+      label,
+    };
+  }
+  return null;
+}
+
+function publicWorldStoredText(value: unknown, maxLength: number): string {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, Math.max(0, maxLength));
+}
+
+function publicWorldStoredInteger(value: unknown, fallback: number): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function normalizePublicWorldReportId(value: unknown): string | null {

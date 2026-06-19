@@ -9,7 +9,7 @@ import {
   WELCOME_HALL_PASS_GRANT,
   WELCOME_HALL_PASS_GRANT_ID,
 } from "../services/ruby-high-service.js";
-import { StateStore } from "../services/state-store.js";
+import { StateStore, type StateStoreLike, type StoredServiceStateRecord } from "../services/state-store.js";
 import { getLoadedPack, MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
@@ -77,6 +77,38 @@ function completedClassRecord(
     letterGrade,
     completedAt: Date.now(),
     updatedAt: Date.now(),
+  };
+}
+
+function serviceStateOnlyStore(record: StoredServiceStateRecord): StateStoreLike {
+  return {
+    describe: () => "service-state-only",
+    load: async () => new Map(),
+    loadAuth: async () => ({ users: [], sessions: [] }),
+    loadPacks: async () => [],
+    loadTeachers: async () => [],
+    loadDraftPacks: async () => [],
+    loadPackInstallations: async () => [],
+    loadMetricEvents: async () => [],
+    loadSchoolEvents: async () => [],
+    loadServiceState: async (id) => id === record.id ? record : null,
+    save: async () => undefined,
+    saveSession: async () => undefined,
+    saveAuthUser: async () => undefined,
+    saveAuthSession: async () => undefined,
+    savePack: async () => undefined,
+    saveDraftPack: async () => undefined,
+    savePackInstallation: async () => undefined,
+    saveTeacher: async () => undefined,
+    saveMetricEvent: async () => undefined,
+    saveSchoolEvent: async () => undefined,
+    saveServiceState: async () => undefined,
+    deletePack: async () => undefined,
+    deleteTeacher: async () => undefined,
+    deleteDraftPack: async () => undefined,
+    deletePackInstallation: async () => undefined,
+    deleteAuthSession: async () => undefined,
+    flush: async () => undefined,
   };
 }
 
@@ -1974,6 +2006,79 @@ describe("RubyHighService Phase 1", () => {
         complete: false,
       }),
     ]);
+  });
+
+  it("replays sanitized public world events from durable service state without private sessions", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const state = attachTestCharacter(ruby, "test:world-public-event-log");
+    state.sessionId = "test:world-public-event-log";
+    state.currentGrade = "10";
+    state.faculty = "ruby";
+    state.updatedAt = now;
+    state.character!.name = "Replay Noor";
+    state.character!.createdAt = now;
+    state.character!.dailyClasses = {
+      ruby: {
+        ...completedClassRecord("10", "ruby", "2026-06-15", "A", 300),
+        completedAt: now,
+        updatedAt: now,
+      },
+    };
+    state.schoolEvents.push({
+      id: "school:event:public-log",
+      kind: "comic.page-unlocked",
+      at: now + 1,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-public-log",
+      pageNumber: 4,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Replayable public page",
+    });
+
+    const firstEvents = ruby.getSchoolWorldEvents(10, now + 2);
+    expect(firstEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "comic.page-unlocked",
+        label: "Replayable public page",
+      }),
+    ]));
+    await ruby.flush();
+    const publicEventState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-events:v1");
+    expect(publicEventState?.data.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: expect.stringMatching(/^world:event:[a-f0-9]{16}$/),
+        kind: "comic.page-unlocked",
+        label: "Replayable public page",
+      }),
+    ]));
+    expect(JSON.stringify(publicEventState)).not.toContain("school:event:public-log");
+    expect(JSON.stringify(publicEventState)).not.toContain("teacher:ruby:grade:10");
+    expect(JSON.stringify(publicEventState)).not.toContain("Replay Noor");
+
+    await ruby.stop();
+    activeRuby = null;
+    const replayOnlyStore = serviceStateOnlyStore(publicEventState!);
+    const rehydrated = new RubyHighService({} as never, replayOnlyStore);
+    await rehydrated["hydrate"]();
+    activeRuby = rehydrated;
+
+    expect(rehydrated.getSchoolWorldEvents(10, now + 2)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "comic.page-unlocked",
+        label: "Replayable public page",
+        faculty: "ruby",
+        grade: "10",
+      }),
+    ]));
+    expect(rehydrated.worldHealthSnapshot(now + 2)).toMatchObject({
+      activeStudents: 0,
+      publicEventLogSize: 2,
+      recentEvents: 2,
+    });
   });
 
   it("uses the supplied world clock for both room and cohort presence", async () => {
