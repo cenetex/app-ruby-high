@@ -148,6 +148,35 @@ export async function createCharacter(page: Page) {
   }
 }
 
+export async function createPublicCharacter(page: Page, name: string) {
+  const result = await page.evaluate(async (characterName) => {
+    const postCommand = async (payload: Record<string, unknown>) => {
+      const resp = await fetch("/api/apps/ruby-high/session/browser-smoke/command", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await resp.json();
+      if (!resp.ok) {
+        throw new Error(`command ${String(payload.type)} failed: ${JSON.stringify(body)}`);
+      }
+      return body;
+    };
+    await postCommand({ type: "clear-character" }).catch(() => null);
+    await postCommand({
+      type: "create-character",
+      name: characterName,
+      playbookId: "overachiever",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      arcAnswer: "I want the whole room to learn together.",
+      personality: "Curious, steady, and public-world ready.",
+    });
+    return await postCommand({ type: "set-public-presence", publicWorldVisible: true });
+  }, name);
+  return result;
+}
+
 /**
  * Click an enabled answer button (any choice) to submit an answer,
  * then wait for the board reveal to appear.
@@ -207,6 +236,23 @@ export async function tickGrade(page: Page) {
     }
     return body;
   });
+  return result;
+}
+
+export async function contributeLiveRoomGoalForDev(page: Page, faculty = "ruby") {
+  const result = await page.evaluate(async (requestedFaculty) => {
+    const resp = await fetch("/dev/contribute-live-room-goal", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ faculty: requestedFaculty }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      throw new Error(`dev live-room contribution failed: ${JSON.stringify(body)}`);
+    }
+    return body;
+  }, faculty);
   return result;
 }
 

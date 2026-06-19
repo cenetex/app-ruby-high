@@ -200,7 +200,7 @@ function graduationFacultyIdsForState(state, grade) {
   return selected.slice(0, Math.min(GRADUATION_ROOM_TARGETS[grade] ?? 1, selected.length || 1));
 }
 
-function completeCurrentGradeForDev(sessionId) {
+async function completeCurrentGradeForDev(sessionId) {
   const state = rubySvc.getOrCreate(sessionId);
   const ch = state.character;
   const grade = state.currentGrade;
@@ -243,6 +243,7 @@ function completeCurrentGradeForDev(sessionId) {
   };
 
   const completed = rubySvc.completeGraduation(sessionId, { kind: "advantage" });
+  await rubySvc.flushSession(sessionId);
   return {
     ok: true,
     completedGrade: grade,
@@ -324,7 +325,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/dev/tick-grade") {
     try {
       const sessionId = authSvc.stateKeyForCookie(req.headers.cookie ?? null);
-      const payload = completeCurrentGradeForDev(sessionId);
+      const payload = await completeCurrentGradeForDev(sessionId);
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(payload));
@@ -352,6 +353,7 @@ const server = createServer(async (req, res) => {
         res.end(JSON.stringify({ ok: false, error: "No public live-room contribution available for this session." }));
         return;
       }
+      await rubySvc.flush();
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ ok: true, result }));
