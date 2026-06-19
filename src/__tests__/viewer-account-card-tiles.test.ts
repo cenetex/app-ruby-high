@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountHallPassCardReaderView,
   accountHallPassCardTileView,
   accountHallPassPackTileView,
   hallPassCardDetail,
+  hallPassCardDetailLabel,
   hallPassCardIsFaceDown,
   hallPassCardStatus,
   hallPassCardTitle,
@@ -108,6 +110,73 @@ describe("account card and pack tile views", () => {
       ariaLabel: "Open Ruby",
       imageAlt: "Ruby Ruby High card",
       fallbackInitial: "R",
+    });
+  });
+
+  it("renders face-down card reader copy and reveal action state", () => {
+    const view = accountHallPassCardReaderView({
+      id: "card-abcdef",
+      status: "active",
+      characterId: "card-back",
+    }, {
+      authed: true,
+      billingBusy: false,
+    });
+
+    expect(view).toMatchObject({
+      panelClassName: "account-card-reader-panel",
+      artClassName: "account-card-reader-art",
+      faceDown: true,
+      title: "Mystery Card",
+      detail: "Face-down Card · mint to reveal · #abcdef",
+      artAlt: "Mystery Card",
+      proofAddress: "",
+      teachesVisible: false,
+      noteText: "Mint this Card to reveal the character.",
+      revealVisible: true,
+      revealText: "Mint to Reveal",
+      revealDisabled: false,
+      revealTitle: "Mint this Card with your Solana wallet to reveal it.",
+    });
+  });
+
+  it("renders revealed card reader profile copy", () => {
+    const card = {
+      id: "card-123456",
+      status: "active",
+      role: "item",
+      characterId: "item-library-card",
+      characterName: "Library Card",
+      mintAddress: "mint-abc",
+      mintSignature: "sig",
+    };
+    const view = accountHallPassCardReaderView(card, {
+      authed: true,
+      billingBusy: true,
+      flip: true,
+      revealed: true,
+      profile: {
+        subtitle: "Quiet Wing",
+        teaches: "Access · research",
+        quote: "If the answer exists, this helps you find it.",
+      },
+    });
+
+    expect(hallPassCardDetailLabel(card)).toBe("ITEM");
+    expect(view).toMatchObject({
+      panelClassName: "account-card-reader-panel is-revealed",
+      artClassName: "account-card-reader-art is-flipped",
+      faceDown: false,
+      title: "Library Card",
+      proofAddress: "mint-abc",
+      teachesVisible: true,
+      teachesLabel: "ITEM",
+      teachesText: "Access · research",
+      quoteText: "\"If the answer exists, this helps you find it.\"",
+      noteText: "",
+      revealVisible: false,
+      revealText: "Minting...",
+      revealDisabled: true,
     });
   });
 });

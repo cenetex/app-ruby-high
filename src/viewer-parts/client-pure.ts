@@ -166,6 +166,25 @@ export type AccountHallPassCardTileView = {
   imageAlt: string;
   fallbackInitial: string;
 };
+export type AccountHallPassCardReaderView = {
+  panelClassName: string;
+  artClassName: string;
+  faceDown: boolean;
+  title: string;
+  detail: string;
+  artAlt: string;
+  fallbackInitial: string;
+  proofAddress: string;
+  teachesVisible: boolean;
+  teachesLabel: string;
+  teachesText: string;
+  quoteText: string;
+  noteText: string;
+  revealVisible: boolean;
+  revealText: string;
+  revealDisabled: boolean;
+  revealTitle: string;
+};
 export type AccountComicPageTileView = {
   pageNumber: number;
   title: string;
@@ -958,6 +977,46 @@ export function accountHallPassCardTileView(cardInput: NullableRecord): AccountH
       ? "Face-down Ruby High card"
       : card.characterName ? String(card.characterName) + " Ruby High card" : "Ruby High card",
     fallbackInitial: String(card.characterName || "R").slice(0, 1).toUpperCase(),
+  };
+}
+
+export function hallPassCardDetailLabel(card: NullableRecord): string {
+  if (!card) return "DETAIL";
+  if (card.role === "student") return "HANGS OUT";
+  if (card.role === "item") return "ITEM";
+  if (card.role === "location") return "LOCATION";
+  if (card.role === "special") return "SPECIAL";
+  return "TEACHES";
+}
+
+export function accountHallPassCardReaderView(cardInput: NullableRecord, opts?: NullableRecord): AccountHallPassCardReaderView {
+  const card = cardInput || {};
+  const profile = opts && opts.profile && typeof opts.profile === "object" ? opts.profile as LooseRecord : null;
+  const faceDown = hallPassCardIsFaceDown(card);
+  const title = hallPassCardTitle(card, faceDown);
+  const billingBusy = !!(opts && opts.billingBusy);
+  const authed = !!(opts && opts.authed);
+  const revealed = !!(opts && opts.revealed);
+  const flip = !!(opts && opts.flip);
+  const revealVisible = faceDown && card.status === "active";
+  return {
+    panelClassName: "account-card-reader-panel" + (revealed ? " is-revealed" : ""),
+    artClassName: "account-card-reader-art" + (flip ? " is-flipped" : ""),
+    faceDown,
+    title,
+    detail: hallPassCardDetail(card, faceDown),
+    artAlt: title,
+    fallbackInitial: title.slice(0, 1).toUpperCase(),
+    proofAddress: !faceDown && card.mintAddress ? String(card.mintAddress) : "",
+    teachesVisible: !faceDown && !!profile,
+    teachesLabel: hallPassCardDetailLabel(card),
+    teachesText: profile ? String(profile.teaches || profile.subtitle || "Ruby High") : "",
+    quoteText: !faceDown && profile && profile.quote ? "\"" + String(profile.quote) + "\"" : "",
+    noteText: faceDown ? "Mint this Card to reveal the character." : "",
+    revealVisible,
+    revealText: billingBusy ? "Minting..." : "Mint to Reveal",
+    revealDisabled: !authed || billingBusy,
+    revealTitle: "Mint this Card with your Solana wallet to reveal it.",
   };
 }
 
