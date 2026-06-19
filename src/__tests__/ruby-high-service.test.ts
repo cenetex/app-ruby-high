@@ -2831,6 +2831,87 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("promotes low-pool teacher agendas when an active term room rule needs that grade", async () => {
+    const now = Date.UTC(2026, 5, 18, 12);
+    const store = new StateStore(storePath);
+    await store.saveServiceState({
+      id: "ruby-high:public-world-events:v1",
+      updatedAt: now,
+      data: {
+        version: 1,
+        events: Array.from({ length: 6 }, (_value, index) => ({
+          id: `world:event:${String(index + 1).padStart(16, "0")}`,
+          kind: "room.goal-progress",
+          at: now - index,
+          faculty: "ruby",
+          grade: "10",
+          roomTitle: "Ruby room",
+          goalKind: "live-class",
+          progress: 3,
+          target: 3,
+          complete: true,
+          label: "Ruby filled a live class goal",
+          rewardLabel: "Ruby earned a class-wide Study Spark",
+        })),
+      },
+    });
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    activeRuby = ruby;
+
+    ruby["syncPublicWorldTeacherAgendaRecords"]([{
+      grade: "10",
+      facultyId: "ruby",
+      displayName: "Ruby",
+      lowPoolSessions: 1,
+      exhaustedSessions: 0,
+      repetitionPressure: 0,
+      replenishment: {
+        mode: "generate",
+        targetDifficulty: "easy",
+        targetNewQuestions: 12,
+        focusSubjects: ["systems"],
+        weakSubjects: ["systems"],
+        recentConcepts: ["queues"],
+        sourcePackets: [],
+        corpusId: "ruby",
+      },
+    } as never], now);
+
+    expect(ruby.worldHealthSnapshot(now)).toMatchObject({
+      teacherAgendaExecution: {
+        ready: 1,
+        queued: 0,
+        watching: 0,
+      },
+      recentTeacherAgendas: [
+        expect.objectContaining({
+          grade: "10",
+          facultyId: "ruby",
+          executionStatus: "ready",
+          executionReason: "term-rule-pressure",
+          nextAction: "generate-draft",
+          priorityScore: 225,
+          termRuleLabel: "Term Rally",
+          termRuleTarget: 4,
+        }),
+      ],
+    });
+
+    await ruby["persistPublicWorldTeacherAgendaState"]({ surfaceErrors: true }, now);
+    const agendaState = await store.loadServiceState?.("ruby-high:public-world-teacher-agendas:v1");
+    expect(agendaState?.data).toMatchObject({
+      agendas: [
+        expect.objectContaining({
+          executionStatus: "ready",
+          executionReason: "term-rule-pressure",
+          termRuleLabel: "Term Rally",
+          termRuleTarget: 4,
+        }),
+      ],
+    });
+  });
+
   for (const backend of ["json", "sqlite"] as const) {
     it(`replays durable public-world state after restart from ${backend} store`, async () => {
       const now = Date.UTC(2026, 5, 16, 12);

@@ -1058,9 +1058,11 @@ export interface PublicWorldTeacherAgendaRecord {
   agendaKind: "curriculum-replenishment";
   mode: "manual-curation" | "generate";
   executionStatus: "ready" | "queued" | "watching";
-  executionReason: "exhausted-pool" | "repetition-pressure" | "low-pool";
+  executionReason: "exhausted-pool" | "repetition-pressure" | "term-rule-pressure" | "low-pool";
   nextAction: "generate-draft" | "manual-curation" | "monitor-coverage";
   priorityScore: number;
+  termRuleLabel?: string;
+  termRuleTarget?: number;
   targetDifficulty: Difficulty;
   targetNewQuestions: number;
   lowPoolSessions: number;
@@ -2386,6 +2388,7 @@ export class RubyHighService extends Service {
   private syncPublicWorldTeacherAgendaRecords(rows: readonly RubyHighCurriculumCoverageRow[], now = Date.now()): void {
     let changed = this.prunePublicWorldTeacherAgendaRecords(now);
     const schoolYear = schoolYearForTimestamp(now);
+    const term = this.currentPublicWorldTermRecord(now);
     const retainedIds = new Set<string>();
     for (const row of rows) {
       const plan = row.replenishment;
@@ -2395,7 +2398,8 @@ export class RubyHighService extends Service {
       const id = publicWorldTeacherAgendaId(schoolYear, row.grade, facultyId);
       retainedIds.add(id);
       const prior = this.publicWorldTeacherAgendaRecords.get(id);
-      const execution = publicWorldTeacherAgendaExecution(plan.mode, row.exhaustedSessions, row.lowPoolSessions, row.repetitionPressure);
+      const termRule = term.gradeProgress[row.grade]?.roomRule;
+      const execution = publicWorldTeacherAgendaExecution(plan.mode, row.exhaustedSessions, row.lowPoolSessions, row.repetitionPressure, termRule);
       const candidate: PublicWorldTeacherAgendaRecord = {
         id,
         schoolYear,
@@ -2409,6 +2413,8 @@ export class RubyHighService extends Service {
         executionReason: execution.executionReason,
         nextAction: execution.nextAction,
         priorityScore: execution.priorityScore,
+        ...(execution.termRuleLabel ? { termRuleLabel: execution.termRuleLabel } : {}),
+        ...(execution.termRuleTarget ? { termRuleTarget: execution.termRuleTarget } : {}),
         targetDifficulty: plan.targetDifficulty,
         targetNewQuestions: publicWorldStoredInteger(plan.targetNewQuestions, 0),
         lowPoolSessions: publicWorldStoredInteger(row.lowPoolSessions, 0),
@@ -9992,16 +9998,22 @@ function publicWorldTeacherAgendaExecution(
   exhaustedSessions: unknown,
   lowPoolSessions: unknown,
   repetitionPressure: unknown,
-): Pick<PublicWorldTeacherAgendaRecord, "executionStatus" | "executionReason" | "nextAction" | "priorityScore"> {
+  termRule?: PublicWorldTermRoomRule,
+): Pick<PublicWorldTeacherAgendaRecord, "executionStatus" | "executionReason" | "nextAction" | "priorityScore" | "termRuleLabel" | "termRuleTarget"> {
   const exhausted = publicWorldStoredInteger(exhaustedSessions, 0);
   const low = publicWorldStoredInteger(lowPoolSessions, 0);
   const pressure = publicWorldStoredRatio(repetitionPressure);
+  const ruleLabel = publicWorldStoredText(termRule?.label, 80);
+  const ruleTarget = termRule ? Math.max(1, Math.min(99, publicWorldStoredInteger(termRule.target, 0))) : 0;
+  const hasRulePressure = !!ruleLabel && low > 0;
   const executionReason = exhausted > 0
     ? "exhausted-pool"
     : pressure >= 0.5
       ? "repetition-pressure"
+      : hasRulePressure
+        ? "term-rule-pressure"
       : "low-pool";
-  const executionStatus = exhausted > 0 || pressure >= 0.5
+  const executionStatus = exhausted > 0 || pressure >= 0.5 || hasRulePressure
     ? "ready"
     : low > 0
       ? "queued"
@@ -10011,8 +10023,14 @@ function publicWorldTeacherAgendaExecution(
     : mode === "generate"
       ? "generate-draft"
       : "manual-curation";
-  const priorityScore = Math.min(9999, exhausted * 100 + low * 25 + Math.round(pressure * 100));
-  return { executionStatus, executionReason, nextAction, priorityScore };
+  const priorityScore = Math.min(9999, exhausted * 100 + low * 25 + Math.round(pressure * 100) + (hasRulePressure ? ruleTarget * 50 : 0));
+  return {
+    executionStatus,
+    executionReason,
+    nextAction,
+    priorityScore,
+    ...(hasRulePressure ? { termRuleLabel: ruleLabel, termRuleTarget: ruleTarget } : {}),
+  };
 }
 
 function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | null {
@@ -10204,11 +10222,16 @@ function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeach
   const lowPoolSessions = Math.min(999, publicWorldStoredInteger(source.lowPoolSessions, 0));
   const exhaustedSessions = Math.min(999, publicWorldStoredInteger(source.exhaustedSessions, 0));
   const repetitionPressure = publicWorldStoredRatio(source.repetitionPressure);
-  const execution = publicWorldTeacherAgendaExecution(mode, exhaustedSessions, lowPoolSessions, repetitionPressure);
+  const rawTermRuleLabel = publicWorldStoredText(source.termRuleLabel, 80);
+  const rawTermRuleTarget = rawTermRuleLabel ? Math.max(1, Math.min(99, publicWorldStoredInteger(source.termRuleTarget, 0))) : 0;
+  const rawTermRuleKind: PublicWorldTermRoomRule["kind"] = rawTermRuleLabel === "Term Momentum" ? "term-momentum" : "term-rally";
+  const execution = publicWorldTeacherAgendaExecution(mode, exhaustedSessions, lowPoolSessions, repetitionPressure, rawTermRuleLabel && rawTermRuleTarget
+    ? { kind: rawTermRuleKind, label: rawTermRuleLabel, target: rawTermRuleTarget }
+    : undefined);
   const executionStatus = source.executionStatus === "ready" || source.executionStatus === "queued" || source.executionStatus === "watching"
     ? source.executionStatus
     : execution.executionStatus;
-  const executionReason = source.executionReason === "exhausted-pool" || source.executionReason === "repetition-pressure" || source.executionReason === "low-pool"
+  const executionReason = source.executionReason === "exhausted-pool" || source.executionReason === "repetition-pressure" || source.executionReason === "term-rule-pressure" || source.executionReason === "low-pool"
     ? source.executionReason
     : execution.executionReason;
   const nextAction = source.nextAction === "generate-draft" || source.nextAction === "manual-curation" || source.nextAction === "monitor-coverage"
@@ -10227,6 +10250,8 @@ function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeach
     executionReason,
     nextAction,
     priorityScore: Math.min(9999, publicWorldStoredInteger(source.priorityScore, execution.priorityScore)),
+    ...(rawTermRuleLabel ? { termRuleLabel: rawTermRuleLabel } : execution.termRuleLabel ? { termRuleLabel: execution.termRuleLabel } : {}),
+    ...(rawTermRuleTarget ? { termRuleTarget: rawTermRuleTarget } : execution.termRuleTarget ? { termRuleTarget: execution.termRuleTarget } : {}),
     targetDifficulty,
     targetNewQuestions: Math.min(200, publicWorldStoredInteger(source.targetNewQuestions, 0)),
     lowPoolSessions,
@@ -10255,6 +10280,8 @@ function publicWorldTeacherAgendaContentKey(agenda: PublicWorldTeacherAgendaReco
     executionReason: agenda.executionReason,
     nextAction: agenda.nextAction,
     priorityScore: agenda.priorityScore,
+    termRuleLabel: agenda.termRuleLabel ?? null,
+    termRuleTarget: agenda.termRuleTarget ?? null,
     targetDifficulty: agenda.targetDifficulty,
     targetNewQuestions: agenda.targetNewQuestions,
     lowPoolSessions: agenda.lowPoolSessions,

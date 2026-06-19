@@ -276,7 +276,10 @@ outcomes without requiring crypto participation.
    sanitized event replay coverage. Active grade-scoped term rules now appear
    in the public world summary, compact player world-feed label, and room chips:
    active rooms now show rule pressure such as Term Rally's four-student goal at
-   room-selection time. Next, connect term rules to teacher agenda execution.
+   room-selection time. Active term room rules now also promote matching
+   low-pool teacher agendas to ready execution with durable term-rule metadata.
+   Next, connect those agenda records to actual generated/reviewed curriculum
+   drafts.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.
