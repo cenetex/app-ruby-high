@@ -818,7 +818,6 @@ export function runViewerClient(bootstrap) {
   let billingBusy = false;
   let selectedBillingProductId = null;
   let activeAccountPane = "account";
-  let worldFeedPollHandle = null;
   let accountHallPassCardsRenderSig = "";
   let comicUnlockEventsPrimed = false;
   let comicUnlockModalOpen = false;
@@ -1335,97 +1334,45 @@ export function runViewerClient(bootstrap) {
     },
   });
 
-  function worldFeedFacultyRoster() {
-    return lastTelemetry && Array.isArray(lastTelemetry.faculty_roster) ? lastTelemetry.faculty_roster : [];
-  }
-  function pruneWorldFeedEvents(now) {
-    worldFeedClient.prune(now, WORLD_FEED_EVENT_MAX_AGE_MS);
-  }
+  const worldPanelController = createViewerWorldPanelController({
+    document,
+    elements: {
+      panel: els.worldPanel,
+      sub: els.worldPanelSub,
+      rooms: els.worldPanelRooms,
+      events: els.worldPanelEvents,
+    },
+    feedClient: worldFeedClient,
+    maxEventAgeMs: WORLD_FEED_EVENT_MAX_AGE_MS,
+    now() {
+      return Date.now();
+    },
+    getRoster() {
+      return lastTelemetry && Array.isArray(lastTelemetry.faculty_roster) ? lastTelemetry.faculty_roster : [];
+    },
+    isSuppressed() {
+      return leaderboardViewOpen;
+    },
+    panelView: worldFeedPanelView,
+    setTimeout(fn, delayMs) {
+      return setTimeout(fn, delayMs);
+    },
+    clearTimeout(handle) {
+      clearTimeout(handle);
+    },
+  });
+
   function renderWorldPanel() {
-    if (!els.worldPanel) return;
-    const worldFeed = worldFeedClient.state;
-    pruneWorldFeedEvents(Date.now());
-    if (leaderboardViewOpen || !worldFeed.loaded) {
-      els.worldPanel.hidden = true;
-      return;
-    }
-    els.worldPanel.hidden = false;
-    const panelView = worldFeedPanelView(worldFeed, worldFeedFacultyRoster(), Date.now());
-    if (els.worldPanelSub) {
-      els.worldPanelSub.textContent = panelView.summary;
-    }
-    if (els.worldPanelRooms) {
-      els.worldPanelRooms.replaceChildren();
-      if (panelView.rooms.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "world-room-chip";
-        empty.innerHTML = "<strong>Halls quiet</strong><span>Waiting for class</span>";
-        els.worldPanelRooms.appendChild(empty);
-      } else {
-        panelView.rooms.forEach((room) => {
-          const chip = document.createElement("div");
-          chip.className = "world-room-chip";
-          const title = document.createElement("strong");
-          title.textContent = room.title;
-          const meta = document.createElement("span");
-          meta.textContent = room.meta;
-          chip.appendChild(title);
-          chip.appendChild(meta);
-          els.worldPanelRooms.appendChild(chip);
-        });
-      }
-    }
-    if (els.worldPanelEvents) {
-      els.worldPanelEvents.replaceChildren();
-      if (panelView.events.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "world-panel-empty";
-        empty.textContent = "No public beats yet.";
-        els.worldPanelEvents.appendChild(empty);
-      } else {
-        panelView.events.forEach((event) => {
-          const row = document.createElement("div");
-          row.className = "world-event-row";
-          const dot = document.createElement("span");
-          dot.className = "world-event-dot";
-          const label = document.createElement("span");
-          label.className = "world-event-label";
-          label.textContent = event.label;
-          const time = document.createElement("span");
-          time.className = "world-event-time";
-          time.textContent = event.age;
-          row.appendChild(dot);
-          row.appendChild(label);
-          row.appendChild(time);
-          els.worldPanelEvents.appendChild(row);
-        });
-      }
-    }
+    worldPanelController.render();
   }
   async function loadWorldFeed(opts) {
-    const options = opts || {};
-    if (!els.worldPanel) return;
-    await worldFeedClient.load(options);
-  }
-  function scheduleWorldFeedPoll(delayMs) {
-    clearTimeout(worldFeedPollHandle);
-    if (document.visibilityState === "hidden") {
-      worldFeedPollHandle = null;
-      return;
-    }
-    worldFeedPollHandle = setTimeout(async () => {
-      await loadWorldFeed({ silent: true });
-      const backoffMs = worldFeedClient.backoffMs();
-      scheduleWorldFeedPoll(Math.max(20000, backoffMs));
-    }, delayMs || 20000);
+    await worldPanelController.load(opts || {});
   }
   function pauseWorldFeedPoll() {
-    clearTimeout(worldFeedPollHandle);
-    worldFeedPollHandle = null;
+    worldPanelController.pausePoll();
   }
   function resumeWorldFeedPoll(delayMs) {
-    if (document.visibilityState === "hidden") return;
-    scheduleWorldFeedPoll(delayMs || 0);
+    worldPanelController.resumePoll(delayMs || 0);
   }
 
   function postViewerMetricEvent(type, payload) {

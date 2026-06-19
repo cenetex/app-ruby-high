@@ -3,6 +3,7 @@ import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
 import { createViewerWorldFeedClient } from "./world-feed.js";
+import { createViewerWorldPanelController } from "./world-panel.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -162,6 +163,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createViewerApiClient = ${createViewerApiClient.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
   const createViewerWorldFeedClient = ${createViewerWorldFeedClient.toString()};
+  const createViewerWorldPanelController = ${createViewerWorldPanelController.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};
