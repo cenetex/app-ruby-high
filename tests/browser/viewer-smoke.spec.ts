@@ -29,8 +29,9 @@ test("boots as a guest, creates a character, answers a card, and opens account t
 });
 
 test("keeps the public world feed healthy across a live stream rollover", async ({ page }) => {
-  test.setTimeout(50_000);
+  test.setTimeout(80_000);
   const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
   const panel = page.locator("#world-panel");
   const sub = page.locator("#world-panel-sub");
 

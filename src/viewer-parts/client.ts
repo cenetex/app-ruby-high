@@ -1374,6 +1374,19 @@ export function runViewerClient(bootstrap) {
   function resumeWorldFeedPoll(delayMs) {
     worldPanelController.resumePoll(delayMs || 0);
   }
+  const worldLifecycleController = createViewerWorldLifecycleController({
+    document,
+    window,
+    refreshButton: els.worldPanelRefresh,
+    authKeys: [AUTH_KEY, AUTH_LABEL, AUTH_PERSIST],
+    now: () => Date.now(),
+    loadWorldFeed,
+    pauseWorldFeedPoll,
+    resumeWorldFeedPoll,
+    deriveAuth,
+    initializePrivyFromStoredSession,
+    postViewerMetricEvent,
+  });
 
   function postViewerMetricEvent(type, payload) {
     const body = Object.assign({ type: type }, payload || {});
@@ -12572,7 +12585,6 @@ export function runViewerClient(bootstrap) {
   if (youCardBlock) youCardBlock.addEventListener("click", () => { if (authed) openSheet(); });
   const youAvatarEl = document.querySelector(".channels-footer .you-avatar");
   if (youAvatarEl) youAvatarEl.addEventListener("click", () => { if (authed) openSheet(); });
-  if (els.worldPanelRefresh) els.worldPanelRefresh.addEventListener("click", () => { void loadWorldFeed({ force: true }); });
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
   els.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }
@@ -12614,47 +12626,8 @@ export function runViewerClient(bootstrap) {
     await applySharedPackFromUrl(sharedPackId);
   }
   void bootInitialSession();
-  resumeWorldFeedPoll(20000);
+  worldLifecycleController.attach();
   initializePrivyFromStoredSession();
-  window.addEventListener("storage", (e) => {
-    if (e.key === AUTH_KEY || e.key === AUTH_LABEL || e.key === AUTH_PERSIST || e.key === null) deriveAuth();
-  });
-  // Belt-and-braces wake-up triggers. The OAuth flow is now same-tab so
-  // none of these are load-bearing on the happy path, but they cover any
-  // edge where the user returns from a separate-tab flow (a stray
-  // target=_blank link, a back-forward cache hit, a tab-switch on iOS
-  // Safari which does not fire focus reliably between same-window tabs).
-  let hiddenAt = document.visibilityState === "hidden" ? Date.now() : 0;
-  let lastResumeMetricAt = 0;
-  function maybePostSessionResume(reason) {
-    if (hiddenAt <= 0) return;
-    const now = Date.now();
-    const inactiveMs = now - hiddenAt;
-    if (inactiveMs < 5 * 60 * 1000) return;
-    if (lastResumeMetricAt > 0 && now - lastResumeMetricAt < 5 * 60 * 1000) return;
-    lastResumeMetricAt = now;
-    hiddenAt = 0;
-    postViewerMetricEvent("session_resume", {
-      inactiveMs: Math.max(0, Math.floor(inactiveMs || 0)),
-      reason: reason || "visible",
-    });
-  }
-  window.addEventListener("focus", () => { deriveAuth(); initializePrivyFromStoredSession(); maybePostSessionResume("focus"); });
-  window.addEventListener("pageshow", () => { deriveAuth(); initializePrivyFromStoredSession(); maybePostSessionResume("pageshow"); });
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      hiddenAt = Date.now();
-      pauseWorldFeedPoll();
-      return;
-    }
-    if (document.visibilityState === "visible") {
-      deriveAuth();
-      initializePrivyFromStoredSession();
-      maybePostSessionResume("visibilitychange");
-      void loadWorldFeed({ silent: true });
-      resumeWorldFeedPoll(20000);
-    }
-  });
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.
   let sessionPollHandle = null;

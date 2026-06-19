@@ -100,8 +100,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function renderWorldPanel()");
     expectScriptToContain(script, "async function loadWorldFeed(opts)");
     expectScriptToContain(script, "function createViewerWorldFeedClient");
+    expectScriptToContain(script, "function createViewerWorldLifecycleController");
     expectScriptToContain(script, "function createViewerWorldPanelController");
     expectScriptToContain(clientSource, "const worldFeedClient = createViewerWorldFeedClient({");
+    expectScriptToContain(clientSource, "const worldLifecycleController = createViewerWorldLifecycleController({");
     expectScriptToContain(clientSource, "const worldPanelController = createViewerWorldPanelController({");
     expectScriptToContain(script, '"/world/events?limit=8"');
     expectScriptToContain(script, '"&live=1&streamMs=25000&heartbeatMs=5000"');
@@ -145,8 +147,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "function pauseWorldFeedPoll()");
     expectScriptToContain(clientSource, "function resumeWorldFeedPoll(delayMs)");
     expectScriptToContain(script, "if (deps.document.visibilityState === \"hidden\")");
-    expectScriptToContain(clientSource, "pauseWorldFeedPoll();\n      return;");
-    expectScriptToContain(clientSource, "resumeWorldFeedPoll(20000);");
+    expectScriptToContain(script, "deps.pauseWorldFeedPoll();");
+    expectScriptToContain(script, "deps.resumeWorldFeedPoll(2e4);");
+    expectScriptToContain(clientSource, "worldLifecycleController.attach();");
     expectScriptToContain(script, "leaderboardViewOpen = true");
   });
 
