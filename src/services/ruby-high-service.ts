@@ -699,6 +699,8 @@ export interface RubyHighWorldHealthSnapshot {
   };
   recentTeacherAgendas: PublicWorldTeacherAgendaRecord[];
   recentTerms: PublicWorldTermRecord[];
+  durableCohortTerms: number;
+  recentCohortTerms: PublicWorldCohortTermRecord[];
   liveRoomGoals: number;
   suppressedEvents: number;
   recentRoomOutcomes: PublicWorldRoomOutcomeRecord[];
@@ -1989,6 +1991,9 @@ export class RubyHighService extends Service {
     const teacherAgendaExecution = this.publicWorldTeacherAgendaExecutionSnapshot(now);
     const summary = this.publicWorldSummarySnapshot(now);
     this.syncPublicWorldTermRecord(summary, now);
+    const recentTerms = this.publicWorldTermRecordList(now).slice(0, 5);
+    const cohortTerms = this.publicWorldCohortTermRecordList(now);
+    const recentCohortTerms = cohortTerms.slice(0, 8);
     return {
       lastRefreshAt: this.worldStoreRefreshedAt > 0 ? this.worldStoreRefreshedAt : null,
       refreshAgeMs: this.worldStoreRefreshedAt > 0 ? Math.max(0, now - this.worldStoreRefreshedAt) : null,
@@ -2007,11 +2012,13 @@ export class RubyHighService extends Service {
       durableRoomOutcomeLimit: PUBLIC_WORLD_ROOM_OUTCOME_LIMIT,
       durableTermRecords: this.publicWorldTermRecords.size,
       durableTermRecordLimit: PUBLIC_WORLD_TERM_RECORD_LIMIT,
+      durableCohortTerms: cohortTerms.length,
       durableTeacherAgendas: this.publicWorldTeacherAgendaRecords.size,
       durableTeacherAgendaLimit: PUBLIC_WORLD_TEACHER_AGENDA_LIMIT,
       teacherAgendaExecution,
       recentTeacherAgendas: this.publicWorldTeacherAgendaRecordList(now).slice(0, 5),
-      recentTerms: this.publicWorldTermRecordList(now).slice(0, 5),
+      recentTerms,
+      recentCohortTerms,
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
       recentRoomOutcomes: this.publicWorldRoomOutcomeRecordList(now).slice(0, 5),
@@ -2435,6 +2442,13 @@ export class RubyHighService extends Service {
     return Array.from(this.publicWorldTermRecords.values())
       .filter((term) => Number.isFinite(term.updatedAt) && term.updatedAt >= 0 && term.updatedAt <= now)
       .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  }
+
+  private publicWorldCohortTermRecordList(now = Date.now()): PublicWorldCohortTermRecord[] {
+    return this.publicWorldTermRecordList(now)
+      .flatMap((term) => term.cohortTerms ?? [])
+      .filter((cohort) => Number.isFinite(cohort.updatedAt) && cohort.updatedAt >= 0 && cohort.updatedAt <= now)
+      .sort((a, b) => b.updatedAt - a.updatedAt || Number(a.grade) - Number(b.grade) || a.id.localeCompare(b.id));
   }
 
   private hydratePublicWorldTeacherAgendaState(record: StoredServiceStateRecord | null): void {

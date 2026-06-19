@@ -2315,7 +2315,28 @@ describe("admin metrics route", () => {
         at: expect.any(Number),
       }),
     ]);
-    expect(ruby.worldHealthSnapshot().recentTerms[0]).toMatchObject({
+    const health = ruby.worldHealthSnapshot();
+    expect(health).toMatchObject({
+      durableCohortTerms: 4,
+      recentCohortTerms: expect.arrayContaining([
+        expect.objectContaining({
+          grade: "10",
+          curriculumLoops: {
+            inReview: 0,
+            promoted: 1,
+          },
+          curriculumLoopHistory: [
+            expect.objectContaining({
+              grade: "10",
+              facultyId: "ruby",
+              status: "questions-promoted",
+              questionCount: 6,
+            }),
+          ],
+        }),
+      ]),
+    });
+    expect(health.recentTerms[0]!).toMatchObject({
       curriculumLoops: {
         inReview: 0,
         promoted: 1,

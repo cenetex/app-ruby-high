@@ -2554,6 +2554,18 @@ describe("RubyHighService Phase 1", () => {
     expect(rehydrated.worldHealthSnapshot(momentumAt + 1)).toMatchObject({
       durableTermRecords: 1,
       durableTermRecordLimit: 12,
+      durableCohortTerms: 4,
+      recentCohortTerms: expect.arrayContaining([
+        expect.objectContaining({
+          grade: "10",
+          level: 1,
+          roomRule: {
+            kind: "term-momentum",
+            label: "Term Momentum",
+            target: 2,
+          },
+        }),
+      ]),
       recentTerms: [
         expect.objectContaining({
           totalSparks: 4,
