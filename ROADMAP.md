@@ -249,10 +249,11 @@ outcomes without requiring crypto participation.
    carrying the rule label and durable outcome replay preserving the reduced
    target. The current term is now also materialized as a durable term record
    with Spark totals, level, active rule labels, per-grade Spark lanes, admin
-   health visibility, and restart replay coverage. Term Momentum now applies
-   only to grade lanes that earned the level, so one grade's progress does not
-   silently buff every room. Next, extend term rules beyond the first momentum
-   bonus into richer per-grade room modifiers.
+   health visibility, and restart replay coverage. Each eligible grade lane now
+   persists an actionable room-rule target, and Term Momentum applies only to
+   grade lanes that earned the level, so one grade's progress does not silently
+   buff every room. Next, extend term rules beyond the first momentum bonus into
+   richer per-grade room modifiers.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.
@@ -263,8 +264,9 @@ outcomes without requiring crypto participation.
    private sessions. Term Momentum outcome records now preserve the term-rule
    label and reduced target for replay. Explicit term records now persist the
    current term's Spark totals, level, next threshold, active rules, per-grade
-   progress lanes, and health surface. Next, promote term records into richer
-   term/cohort entities instead of one school-year aggregate.
+   progress lanes, actionable room-rule targets, and health surface. Next,
+   promote term records into richer term/cohort entities instead of one
+   school-year aggregate.
 4. [#142](https://github.com/cenetex/app-ruby-high/issues/142): public-name
    review now blocks reserved, contact-info, empty, and unsafe student names
    from entering public rooms, filters already-visible unsafe names out of

@@ -2426,10 +2426,16 @@ describe("RubyHighService Phase 1", () => {
       level: 0,
       activeRuleLabels: [],
     });
+    expect(persistedGradeProgress?.["9"]).not.toHaveProperty("roomRule");
     expect(persistedGradeProgress?.["10"]).toMatchObject({
       totalSparks: 4,
       level: 1,
       activeRuleLabels: ["Term Momentum"],
+      roomRule: {
+        kind: "term-momentum",
+        label: "Term Momentum",
+        target: 2,
+      },
     });
     await ruby.stop();
     activeRuby = null;
@@ -2448,6 +2454,11 @@ describe("RubyHighService Phase 1", () => {
             "10": expect.objectContaining({
               level: 1,
               activeRuleLabels: ["Term Momentum"],
+              roomRule: {
+                kind: "term-momentum",
+                label: "Term Momentum",
+                target: 2,
+              },
             }),
           }),
         }),

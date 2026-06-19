@@ -1036,6 +1036,13 @@ export interface PublicWorldTermGradeProgress {
   sparksToNextLevel: number;
   label: string;
   activeRuleLabels: string[];
+  roomRule?: PublicWorldTermRoomRule;
+}
+
+export interface PublicWorldTermRoomRule {
+  kind: "term-momentum";
+  label: string;
+  target: number;
 }
 
 export interface PublicWorldTeacherAgendaRecord {
@@ -8487,9 +8494,9 @@ export class RubyHighService extends Service {
 
   private liveRoomGoalRule(grade: Grade, now = Date.now()): { target: number; ruleLabel?: string } {
     const term = this.currentPublicWorldTermRecord(now);
-    const gradeLevel = term.gradeProgress[grade]?.level ?? 0;
-    if (gradeLevel <= 0) return { target: 3 };
-    return { target: 2, ruleLabel: "Term Momentum" };
+    const rule = term.gradeProgress[grade]?.roomRule;
+    if (!rule) return { target: 3 };
+    return { target: rule.target, ruleLabel: rule.label };
   }
 
   private schoolWorldEventKindRank(kind: SchoolWorldEvent["kind"]): number {
@@ -9900,11 +9907,17 @@ function publicWorldTermRuleLabels(level: number): string[] {
   return level > 0 ? ["Term Momentum"] : [];
 }
 
+function publicWorldTermRoomRule(level: number): PublicWorldTermRoomRule | undefined {
+  return level > 0 ? { kind: "term-momentum", label: "Term Momentum", target: 2 } : undefined;
+}
+
 function publicWorldTermGradeProgress(studySparkTotal: number): PublicWorldTermGradeProgress {
   const progress = publicWorldTermProgress(studySparkTotal);
+  const roomRule = publicWorldTermRoomRule(progress.level);
   return {
     ...progress,
     activeRuleLabels: publicWorldTermRuleLabels(progress.level),
+    ...(roomRule ? { roomRule } : {}),
   };
 }
 
@@ -10118,6 +10131,7 @@ function normalizePublicWorldTermGradeProgressMap(raw: unknown): Partial<Record<
     const sparksToNextLevel = publicWorldStoredInteger(row.sparksToNextLevel, fallback.sparksToNextLevel);
     const label = publicWorldStoredText(row.label, 80) || fallback.label;
     const activeRuleLabels = publicWorldStoredTextList(row.activeRuleLabels, 8, 80);
+    const roomRule = normalizePublicWorldTermRoomRule(row.roomRule, level);
     out[grade] = {
       totalSparks,
       level,
@@ -10125,9 +10139,20 @@ function normalizePublicWorldTermGradeProgressMap(raw: unknown): Partial<Record<
       sparksToNextLevel,
       label,
       activeRuleLabels: activeRuleLabels.length > 0 ? activeRuleLabels : publicWorldTermRuleLabels(level),
+      ...(roomRule ? { roomRule } : {}),
     };
   }
   return out;
+}
+
+function normalizePublicWorldTermRoomRule(raw: unknown, level: number): PublicWorldTermRoomRule | undefined {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+  if (!source) return publicWorldTermRoomRule(level);
+  const kind = source.kind === "term-momentum" ? source.kind : null;
+  if (!kind) return publicWorldTermRoomRule(level);
+  const label = publicWorldStoredText(source.label, 80) || "Term Momentum";
+  const target = Math.max(1, Math.min(99, publicWorldStoredInteger(source.target, 2)));
+  return { kind, label, target };
 }
 
 function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeacherAgendaRecord | null {
