@@ -345,6 +345,7 @@ describe("viewer regression guardrails", () => {
 
   it("keeps Stripe Hall Pass checkout separate from Solana pack checkout", () => {
     const script = inlineScript(renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } }));
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expectScriptToContain(script, "function connectedSolanaWalletAddress()");
     expectScriptToContain(script, "function selectBillingProduct(productId)");
@@ -387,6 +388,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function connectedSolanaWalletAddress() {\n    return privyState.solanaWalletAddress || null;\n  }");
     expectScriptToContain(script, "function knownSolanaOwnerWalletAddress()");
     expectScriptToContain(script, "function appendSolanaProofLink(parent, address, label)");
+    expectScriptToContain(script, "function createAccountTrustPanelRenderer(deps)");
+    expectScriptToContain(clientSource, "const accountTrustRenderer = createAccountTrustPanelRenderer({");
+    expectScriptToContain(clientSource, "accountTrustRenderer.render(view);");
     expectScriptToContain(script, '"Connect a Solana wallet to open packs and reveal Cards."');
     expectScriptToContain(script, '"Privy account · no Solana wallet"');
     expectScriptToContain(script, "function hallPassPacksForTelemetry(t)");

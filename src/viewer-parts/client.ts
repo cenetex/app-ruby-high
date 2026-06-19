@@ -1421,6 +1421,10 @@ export function runViewerClient(bootstrap) {
       renderAccountPage();
     },
   });
+  const accountTrustRenderer = createAccountTrustPanelRenderer({
+    document,
+    container: els.accountTrustList,
+  });
   const roomChannelRowsController = createRoomChannelRowsController({
     document,
     teacherSmallAvatarUrl,
@@ -2407,42 +2411,12 @@ export function runViewerClient(bootstrap) {
     return link;
   }
 
-  function appendAccountTrustRow(label, value, href) {
-    if (!els.accountTrustList) return;
-    const row = document.createElement("div");
-    row.className = "account-trust-row";
-    const key = document.createElement("div");
-    key.className = "account-trust-key";
-    key.textContent = label;
-    const val = href ? document.createElement("a") : document.createElement("div");
-    val.className = "account-trust-value";
-    val.textContent = value || "Unavailable";
-    if (href) {
-      val.href = href;
-      val.target = "_blank";
-      val.rel = "noopener noreferrer";
-    }
-    row.appendChild(key);
-    row.appendChild(val);
-    els.accountTrustList.appendChild(row);
-  }
-
-  function appendAccountTrustNote(text) {
-    if (!els.accountTrustList) return;
-    const note = document.createElement("div");
-    note.className = "account-trust-note";
-    note.textContent = text;
-    els.accountTrustList.appendChild(note);
-  }
-
   function renderAccountTrust() {
     if (!els.accountTrustList) return;
     const payload = billingProductsCache && typeof billingProductsCache === "object" ? billingProductsCache : null;
     const connectedWallet = knownSolanaOwnerWalletAddress();
     const view = accountTrustPanelView(payload, connectedWallet, buildId || "dev");
-    els.accountTrustList.replaceChildren();
-    view.rows.forEach((row) => appendAccountTrustRow(row.label, row.value, row.href));
-    appendAccountTrustNote(view.note);
+    accountTrustRenderer.render(view);
   }
 
   function hallPassCardsForTelemetry(t) {
