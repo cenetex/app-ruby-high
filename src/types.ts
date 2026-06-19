@@ -707,6 +707,11 @@ export interface QuizState {
    *  counterpart to volatile chat room events; AI can react to these but must
    *  not invent or mutate them. */
   schoolEvents: SchoolEvent[];
+  /** Per-player public world safety controls. Hidden event ids are filtered
+   *  from this player's feed immediately; reports are kept on the session for
+   *  moderation/admin review surfaces. */
+  publicWorldHiddenEventIds?: string[];
+  publicWorldEventReports?: PublicWorldEventReport[];
   /** Durable graded-essay artifacts. Each report snapshots the player's essay,
    *  the teacher score/comment, and the classroom winner for later display. */
   essayReports: EssayReport[];
@@ -736,6 +741,13 @@ export interface GraduationReady {
   grade: Grade;
   readyAt: number;
   summary: { correct: number; total: number };
+}
+
+export interface PublicWorldEventReport {
+  id: string;
+  eventId: string;
+  reason: string;
+  createdAt: number;
 }
 
 export type GraduationReward =

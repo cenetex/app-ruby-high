@@ -94,6 +94,7 @@ import {
   type Phase,
   type PendingPhotoReveal,
   type PlayerCharacter,
+  type PublicWorldEventReport,
   type Question,
   type QuestionMediaAsset,
   type QuestionType,
@@ -834,6 +835,9 @@ export interface SchoolWorldSnapshot {
     lowPools: RubyHighCurriculumCoverageRow[];
   };
 }
+
+const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
+const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
 
 export interface LiveRoomGoalContributionResult {
   grade: Grade;
@@ -3324,6 +3328,8 @@ export class RubyHighService extends Service {
         },
         comicCollection: normalizeComicCollection(null),
         schoolEvents: [],
+        publicWorldHiddenEventIds: [],
+        publicWorldEventReports: [],
         essayReports: [],
         npcRosters: {},
         npcCohort: initialNpcCohort(),
@@ -7156,6 +7162,68 @@ export class RubyHighService extends Service {
     return this.getSchoolWorldEvents(limit, now);
   }
 
+  filterSchoolWorldSnapshotForSession(snapshot: SchoolWorldSnapshot, sessionId: string | null | undefined): SchoolWorldSnapshot {
+    const hiddenIds = this.publicWorldHiddenEventIdsForSession(sessionId);
+    if (hiddenIds.size === 0) return snapshot;
+    return {
+      ...snapshot,
+      recentEvents: snapshot.recentEvents.filter((event) => !hiddenIds.has(event.id)),
+    };
+  }
+
+  filterSchoolWorldEventsForSession(events: readonly SchoolWorldEvent[], sessionId: string | null | undefined): SchoolWorldEvent[] {
+    const hiddenIds = this.publicWorldHiddenEventIdsForSession(sessionId);
+    if (hiddenIds.size === 0) return events.slice();
+    return events.filter((event) => !hiddenIds.has(event.id));
+  }
+
+  private publicWorldHiddenEventIdsForSession(sessionId: string | null | undefined): Set<string> {
+    if (!sessionId) return new Set();
+    const state = this.sessions.get(sessionId);
+    if (!state) return new Set();
+    return new Set(normalizePublicWorldHiddenEventIds(state.publicWorldHiddenEventIds));
+  }
+
+  hidePublicWorldEvent(sessionId: string, eventId: string, now = Date.now()): { state: QuizState; hidden: boolean } {
+    const id = normalizePublicWorldEventId(eventId);
+    if (!id) throw new Error("Public world event id is invalid.");
+    const state = this.getOrCreate(sessionId);
+    const ids = normalizePublicWorldHiddenEventIds(state.publicWorldHiddenEventIds);
+    const hidden = !ids.includes(id);
+    if (hidden) ids.push(id);
+    state.publicWorldHiddenEventIds = ids.slice(-100);
+    state.updatedAt = now;
+    return { state, hidden };
+  }
+
+  reportPublicWorldEvent(sessionId: string, input: { eventId: string; reason?: string; now?: number }): { state: QuizState; report: PublicWorldEventReport; created: boolean } {
+    const id = normalizePublicWorldEventId(input.eventId);
+    if (!id) throw new Error("Public world event id is invalid.");
+    const now = Number.isFinite(input.now) ? Math.max(0, Math.floor(Number(input.now))) : Date.now();
+    const reason = normalizePublicWorldReportReason(input.reason);
+    const state = this.getOrCreate(sessionId);
+    const reports = normalizePublicWorldEventReports(state.publicWorldEventReports);
+    const existing = reports.find((report) => report.eventId === id);
+    const report = existing ?? {
+      id: `public-world-report:${randomUUID()}`,
+      eventId: id,
+      reason,
+      createdAt: now,
+    };
+    if (existing) {
+      existing.reason = reason;
+      existing.createdAt = now;
+    } else {
+      reports.push(report);
+    }
+    const hiddenIds = normalizePublicWorldHiddenEventIds(state.publicWorldHiddenEventIds);
+    if (!hiddenIds.includes(id)) hiddenIds.push(id);
+    state.publicWorldHiddenEventIds = hiddenIds.slice(-100);
+    state.publicWorldEventReports = reports.slice(-50);
+    state.updatedAt = now;
+    return { state, report, created: !existing };
+  }
+
   getSchoolWorldEvents(limit = 30, now = Date.now(), publicSessionIds?: ReadonlySet<string>, activeRooms?: readonly SchoolWorldRoom[]): SchoolWorldEvent[] {
     const eventLimit = Number.isFinite(limit) ? Math.max(0, Math.min(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.floor(limit))) : 30;
     if (eventLimit <= 0) return [];
@@ -8465,6 +8533,55 @@ function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
   return out.slice(-STUDENT_POOL_LIMIT);
 }
 
+function normalizePublicWorldEventId(value: unknown): string | null {
+  const id = String(value ?? "").trim();
+  return PUBLIC_WORLD_EVENT_ID_RE.test(id) ? id.toLowerCase() : null;
+}
+
+function normalizePublicWorldHiddenEventIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of value) {
+    const id = normalizePublicWorldEventId(raw);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out.slice(-100);
+}
+
+function normalizePublicWorldReportReason(value: unknown): string {
+  const reason = String(value ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, PUBLIC_WORLD_REPORT_REASON_LIMIT);
+  return reason || "reported";
+}
+
+function normalizePublicWorldEventReports(value: unknown): PublicWorldEventReport[] {
+  if (!Array.isArray(value)) return [];
+  const out: PublicWorldEventReport[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const source = raw as Record<string, unknown>;
+    const eventId = normalizePublicWorldEventId(source.eventId);
+    if (!eventId || seen.has(eventId)) continue;
+    const createdAt = Math.max(0, Math.floor(Number(source.createdAt) || 0));
+    const rawId = typeof source.id === "string" && source.id.trim() ? source.id.trim() : "";
+    out.push({
+      id: rawId.startsWith("public-world-report:") ? rawId.slice(0, 120) : `public-world-report:${eventId}:${createdAt}`,
+      eventId,
+      reason: normalizePublicWorldReportReason(source.reason),
+      createdAt,
+    });
+    seen.add(eventId);
+  }
+  return out.slice(-50);
+}
+
 function persistedPackRecordKey(ownerSessionId: string | null, packId: string): string {
   return `${ownerSessionId ?? "public"}:${packId}`;
 }
@@ -8514,6 +8631,8 @@ function normalizeLoaded(s: QuizState): QuizState {
     characterSlots: normalizeCharacterSlots((s as { characterSlots?: unknown }).characterSlots),
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
+    publicWorldHiddenEventIds: normalizePublicWorldHiddenEventIds((s as { publicWorldHiddenEventIds?: unknown }).publicWorldHiddenEventIds),
+    publicWorldEventReports: normalizePublicWorldEventReports((s as { publicWorldEventReports?: unknown }).publicWorldEventReports),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),
     npcRosters: s.npcRosters && typeof s.npcRosters === "object" ? s.npcRosters : {},
     npcCohort: Array.isArray(s.npcCohort) ? s.npcCohort : initialNpcCohort(),

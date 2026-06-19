@@ -67,6 +67,8 @@ type CommandBody = {
   requestId?: string;
   socialConsent?: boolean;
   publicWorldVisible?: boolean;
+  eventId?: string;
+  reason?: string;
 } | null;
 
 async function sendPersistedCommandState(
@@ -329,6 +331,17 @@ export async function handleCommandRoute(args: {
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);
       return await persist(state, visible ? "Public world presence enabled" : "Public world presence hidden");
+    },
+    "hide-public-world-event": async () => {
+      const result = ruby.hidePublicWorldEvent(stateKey, body?.eventId ?? "");
+      return await persist(result.state, result.hidden ? "Public world event hidden" : "Public world event already hidden");
+    },
+    "report-public-world-event": async () => {
+      const result = ruby.reportPublicWorldEvent(stateKey, {
+        eventId: body?.eventId ?? "",
+        reason: body?.reason,
+      });
+      return await persist(result.state, result.created ? "Public world event reported" : "Public world event report updated");
     },
   };
 

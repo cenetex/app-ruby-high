@@ -129,6 +129,30 @@ function makeCommandCtx(
   return { ctx, get response() { return response; }, getHeader: (name) => headers.get(name.toLowerCase()) };
 }
 
+function makeGetCtx(
+  ruby: RubyHighService,
+  path: string,
+  auth?: AuthService | null,
+  cookieHeader?: string | null,
+): {
+  ctx: RouteContext;
+  response: { status: number; body: any } | null;
+} {
+  let response: { status: number; body: any } | null = null;
+  const ctx: RouteContext = {
+    method: "GET",
+    pathname: path.split("?")[0] ?? path,
+    url: new URL(`https://ruby-high.test${path}`),
+    runtime: runtimeFor(ruby, undefined, auth),
+    res: {},
+    cookieHeader: cookieHeader ?? null,
+    error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
+    json: (_res, data, status = 200) => { response = { status, body: data }; },
+    readJsonBody: async () => ({}),
+  };
+  return { ctx, get response() { return response; } };
+}
+
 function singleQuestionPack(): ContentPack {
   return {
     id: "route-test-pack",
@@ -457,6 +481,96 @@ describe("command route persistence and scheduler misses", () => {
       expect(state.character!.socialConsent).toBe(true);
       expect(state.character!.publicWorldVisible).toBe(true);
       expect(ruby.getSchoolWorldSnapshot(10, now).activeStudents).toBe(1);
+    } finally {
+      await auth.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a player hide and report public world events from their own feed", async () => {
+    vi.useFakeTimers();
+    const now = Date.UTC(2026, 5, 15, 12);
+    vi.setSystemTime(now);
+    setActivePack(rubyHomeroomSocialPack());
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const session = await auth.createGuestSession();
+      const cookie = `rh_session=${session.token}`;
+      const stateKey = auth.stateKeyForRecord(session.record);
+      const state = ruby.getOrCreate(stateKey);
+      ruby.createCharacter(state.sessionId, {
+        name: "Moderator Noor",
+        playbookId: "overachiever",
+        stats: { head: 2, heart: 1, hustle: 0, honor: 1 },
+        arcAnswer: "I curate what I see.",
+        personality: "Protective and precise.",
+      });
+      state.currentGrade = "10";
+      state.faculty = "ruby";
+      state.character!.dailyClasses = {
+        "10:ruby:2026-06-15": {
+          grade: "10",
+          facultyId: "ruby",
+          date: "2026-06-15",
+          status: "complete",
+          questionCount: 3,
+          correctCount: 3,
+          scoreTotal: 300,
+          scoreMax: 300,
+          letterGrade: "A",
+          completedAt: now,
+          updatedAt: now,
+        },
+      };
+      state.schoolEvents.push({
+        id: "school:event:hide-route",
+        kind: "comic.page-unlocked",
+        at: now,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "first-bell-hide-route",
+        pageNumber: 2,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Hidden route page",
+      });
+
+      const visible = makeGetCtx(ruby, "/api/apps/ruby-high/world?limit=10", auth, cookie);
+      expect(await handleAppRoutes(visible.ctx)).toBe(true);
+      expect(visible.response?.status).toBe(200);
+      expect(JSON.stringify(visible.response?.body.world.recentEvents)).toContain("Hidden route page");
+      const eventId = visible.response!.body.world.recentEvents.find((event: { label?: string }) => event.label === "Hidden route page").id;
+
+      const hide = makeCommandCtx(ruby, { type: "hide-public-world-event", eventId }, undefined, null, auth, cookie);
+      expect(await handleAppRoutes(hide.ctx)).toBe(true);
+      expect(hide.response?.status).toBe(200);
+      expect(hide.response?.body.message).toBe("Public world event hidden");
+      expect(state.publicWorldHiddenEventIds).toEqual([eventId]);
+
+      const hidden = makeGetCtx(ruby, "/api/apps/ruby-high/world?limit=10", auth, cookie);
+      expect(await handleAppRoutes(hidden.ctx)).toBe(true);
+      expect(hidden.response?.status).toBe(200);
+      expect(JSON.stringify(hidden.response?.body.world.recentEvents)).not.toContain("Hidden route page");
+
+      const report = makeCommandCtx(ruby, {
+        type: "report-public-world-event",
+        eventId,
+        reason: "spoiler and ugly",
+      }, undefined, null, auth, cookie);
+      expect(await handleAppRoutes(report.ctx)).toBe(true);
+      expect(report.response?.status).toBe(200);
+      expect(report.response?.body.message).toBe("Public world event reported");
+      expect(state.publicWorldEventReports).toEqual([
+        expect.objectContaining({
+          eventId,
+          reason: "spoiler and ugly",
+          createdAt: now,
+        }),
+      ]);
+      expect(state.publicWorldHiddenEventIds).toEqual([eventId]);
     } finally {
       await auth.stop();
       vi.useRealTimers();

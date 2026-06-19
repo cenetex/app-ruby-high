@@ -3,6 +3,7 @@ import type {
   AppBridgeRunContext,
   AppLaunchDiagnostic,
   AppSessionState,
+  IAgentRuntime,
 } from "./runtime.js";
 import { createHash } from "node:crypto";
 import { RubyHighService } from "./services/ruby-high-service.js";
@@ -131,6 +132,14 @@ function publicReadRateKey(ctx: RouteContext, scope: string): string {
   return `${publicClientKey(ctx)}:${scope}`;
 }
 
+function publicWorldViewerStateKey(runtime: IAgentRuntime | null, ctx: RouteContext): string | null {
+  const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+  if (!auth) return null;
+  const token = auth.parseSessionToken(ctx.cookieHeader);
+  const record = auth.resolve(token);
+  return record ? auth.stateKeyForRecord(record) : null;
+}
+
 function worldLiveStreamKey(ctx: RouteContext): string {
   return publicClientKey(ctx);
 }
@@ -230,7 +239,7 @@ interface SseResponse {
   on?(event: "close" | "finish", listener: () => void): void;
 }
 
-async function sendWorldEventStream(ctx: RouteContext, ruby: RubyHighService, opts: { onClose?: () => void } = {}): Promise<void> {
+async function sendWorldEventStream(ctx: RouteContext, ruby: RubyHighService, opts: { onClose?: () => void; viewerSessionId?: string | null } = {}): Promise<void> {
   const res = ctx.res as SseResponse;
   const headers = {
     "Content-Type": "text/event-stream; charset=utf-8",
@@ -290,18 +299,24 @@ async function sendWorldEventStream(ctx: RouteContext, ruby: RubyHighService, op
     live,
   });
   const presenter = new WorldSnapshotPresenter();
-  const sendSnapshotAndEvents = async (opts: { forceSnapshot?: boolean } = {}) => {
+  const sendSnapshotAndEvents = async (snapshotOpts: { forceSnapshot?: boolean } = {}) => {
     const limit = parseWorldLimit(ctx.url);
     const now = Date.now();
-    const world = await ruby.getFreshSchoolWorldSnapshot(0, now);
+    const world = ruby.filterSchoolWorldSnapshotForSession(
+      await ruby.getFreshSchoolWorldSnapshot(0, now),
+      opts.viewerSessionId,
+    );
     if (closed) {
       return { generatedAt: world.generatedAt, eventCount: 0, snapshotChanged: false };
     }
-    const worldEvents = await ruby.getFreshSchoolWorldEvents(limit, now);
+    const worldEvents = ruby.filterSchoolWorldEventsForSession(
+      await ruby.getFreshSchoolWorldEvents(limit, now),
+      opts.viewerSessionId,
+    );
     if (closed) {
       return { generatedAt: world.generatedAt, eventCount: 0, snapshotChanged: false };
     }
-    const snapshot = presenter.snapshotFrame(world, { force: opts.forceSnapshot });
+    const snapshot = presenter.snapshotFrame(world, { force: snapshotOpts.forceSnapshot });
     if (snapshot.frame && !write(snapshot.frame, { phase: "snapshot" })) {
       return { generatedAt: world.generatedAt, eventCount: 0, snapshotChanged: snapshot.changed };
     }
@@ -477,8 +492,13 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       ctx.error(ctx.res, "RubyHighService unavailable", 503);
       return true;
     }
+    const viewerSessionId = publicWorldViewerStateKey(runtime, ctx);
+    const world = ruby.filterSchoolWorldSnapshotForSession(
+      await ruby.getFreshSchoolWorldSnapshot(parseWorldLimit(ctx.url)),
+      viewerSessionId,
+    );
     setNoStoreJsonHeaders(ctx.res);
-    ctx.json(ctx.res, { ok: true, world: await ruby.getFreshSchoolWorldSnapshot(parseWorldLimit(ctx.url)) });
+    ctx.json(ctx.res, { ok: true, world });
     return true;
   }
 
@@ -496,7 +516,10 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     try {
-      await sendWorldEventStream(ctx, ruby, { onClose: releaseLiveStream ?? undefined });
+      await sendWorldEventStream(ctx, ruby, {
+        onClose: releaseLiveStream ?? undefined,
+        viewerSessionId: publicWorldViewerStateKey(runtime, ctx),
+      });
     } catch (err) {
       if (live) recordWorldLiveStreamClose("handler-error");
       releaseLiveStream?.();
