@@ -754,6 +754,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'button.className = "board-info-button";');
     expectScriptToContain(script, 'bubble.className = "board-info-popover";');
     expectScriptToContain(script, "const spotlight = buildGuestSpotlight(lastTelemetry);");
+    expectScriptToContain(script, "function guestSpotlightView(guestInput)");
+    expectScriptToContain(script, "const view = guestSpotlightView(guest);");
     expect(script.match(/buildGuestSpotlight\(/g) ?? []).toHaveLength(2);
     expect(VIEWER_CSS).toContain(".board-info-popover");
     expect(VIEWER_CSS).toContain('.blackboard-panel[data-mode="in-lounge"] .blackboard-empty');

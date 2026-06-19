@@ -47,6 +47,14 @@ type ArcIndicatorView = {
   subjectMet: boolean;
   scoreText: string;
 };
+export type GuestSpotlightView = {
+  visible: boolean;
+  packId: string;
+  titleText: string;
+  metaText: string;
+  actionText: string;
+  actionDisabled: boolean;
+};
 export type AccountPublicWorldView = {
   hasCharacter: boolean;
   hasPublicName: boolean;
@@ -433,6 +441,33 @@ export function questionsLeftSentence(today: NullableRecord): string {
   const left = questionsLeftInClass(today);
   if (left <= 0) return "Daily class complete";
   return (left === 1 ? "There is " : "There are ") + questionsLeftText(today);
+}
+export function guestSpotlightView(guestInput: NullableRecord): GuestSpotlightView {
+  const guest = guestInput && typeof guestInput === "object" ? guestInput : {};
+  const pack = guest.auto && typeof guest.auto === "object" ? guest.auto : null;
+  if (!pack || !pack.id) {
+    return {
+      visible: false,
+      packId: "",
+      titleText: "",
+      metaText: "",
+      actionText: "",
+      actionDisabled: true,
+    };
+  }
+  const packId = String(pack.id);
+  const teacher = String(pack.teacher_name || "Guest Faculty");
+  const subject = String(pack.subject || "guest class");
+  const count = Math.max(0, Math.floor(Number(pack.question_count || 0)));
+  const active = guest.active && typeof guest.active === "object" && guest.active.id === pack.id && guest.mode === "auto";
+  return {
+    visible: true,
+    packId,
+    titleText: "This week's guest teacher",
+    metaText: String(pack.name || "Guest Faculty") + " · " + teacher + " · " + subject + " · " + formatWholeNumber(count) + " questions",
+    actionText: active ? "Guest Faculty active" : "Try Guest Faculty",
+    actionDisabled: !!active,
+  };
 }
 
 // ── number / money / token / duration formatting ───────────────────

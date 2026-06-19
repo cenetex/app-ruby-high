@@ -321,11 +321,12 @@ export function runViewerClient(bootstrap) {
     if (!secondarySurfacesUnlocked(t)) return null;
     const guest = t.guest_pack || {};
     const pack = guest.auto || null;
-    if (!pack || !pack.id) return null;
-    const key = String(guest.weekKey || "") + ":" + String(pack.id);
+    const view = guestSpotlightView(guest);
+    if (!view.visible) return null;
+    const key = String(guest.weekKey || "") + ":" + view.packId;
     if (!guestSpotlightSeenKeys.has(key)) {
       guestSpotlightSeenKeys.add(key);
-      postViewerMetricEvent("guest_spotlight_seen", { packId: pack.id });
+      postViewerMetricEvent("guest_spotlight_seen", { packId: view.packId });
     }
     const wrap = document.createElement("div");
     wrap.className = "guest-spotlight";
@@ -333,21 +334,17 @@ export function runViewerClient(bootstrap) {
     copy.className = "guest-spotlight-copy";
     const title = document.createElement("div");
     title.className = "guest-spotlight-title";
-    title.textContent = "This week's guest teacher";
+    title.textContent = view.titleText;
     const meta = document.createElement("div");
     meta.className = "guest-spotlight-meta";
-    const teacher = pack.teacher_name || "Guest Faculty";
-    const subject = pack.subject || "guest class";
-    const count = Math.max(0, Math.floor(Number(pack.question_count || 0)));
-    meta.textContent = pack.name + " · " + teacher + " · " + subject + " · " + count + " questions";
+    meta.textContent = view.metaText;
     copy.appendChild(title);
     copy.appendChild(meta);
     const action = document.createElement("button");
     action.type = "button";
     action.className = "guest-spotlight-action";
-    const isActive = guest.active && guest.active.id === pack.id && guest.mode === "auto";
-    action.textContent = isActive ? "Guest Faculty active" : "Try Guest Faculty";
-    action.disabled = !!isActive;
+    action.textContent = view.actionText;
+    action.disabled = view.actionDisabled;
     action.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
