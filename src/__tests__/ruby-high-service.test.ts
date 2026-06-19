@@ -2384,6 +2384,37 @@ describe("RubyHighService Phase 1", () => {
         }),
       ]),
     });
+    const termState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-terms:v1");
+    expect(termState?.data).toMatchObject({
+      version: 1,
+      terms: [
+        expect.objectContaining({
+          id: expect.stringMatching(/^term:[a-f0-9]{16}$/),
+          schoolYear: "2025-2026",
+          termId: "2025-2026",
+          totalSparks: 4,
+          level: 1,
+          label: "Term Spark 1/3",
+          activeRuleLabels: ["Term Momentum"],
+        }),
+      ],
+    });
+    await ruby.stop();
+    activeRuby = null;
+    const rehydrated = new RubyHighService({} as never, new StateStore(storePath));
+    await rehydrated["hydrate"]();
+    activeRuby = rehydrated;
+    expect(rehydrated.worldHealthSnapshot(momentumAt + 1)).toMatchObject({
+      durableTermRecords: 1,
+      durableTermRecordLimit: 12,
+      recentTerms: [
+        expect.objectContaining({
+          totalSparks: 4,
+          level: 1,
+          activeRuleLabels: ["Term Momentum"],
+        }),
+      ],
+    });
     expect(JSON.stringify(world)).not.toContain("test:term-room");
   });
 

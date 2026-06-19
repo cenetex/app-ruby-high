@@ -1778,6 +1778,15 @@ describe("admin metrics route", () => {
           durableRoomOutcomes: 0,
           durableRoomOutcomeLimit: 120,
           recentRoomOutcomes: [],
+          durableTermRecords: 1,
+          durableTermRecordLimit: 12,
+          recentTerms: [
+            expect.objectContaining({
+              totalSparks: 0,
+              level: 0,
+              activeRuleLabels: [],
+            }),
+          ],
           durableTeacherAgendas: 0,
           durableTeacherAgendaLimit: 80,
           teacherAgendaExecution: {

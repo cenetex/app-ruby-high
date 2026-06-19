@@ -688,6 +688,8 @@ export interface RubyHighWorldHealthSnapshot {
   durableRoomRecordLimit: number;
   durableRoomOutcomes: number;
   durableRoomOutcomeLimit: number;
+  durableTermRecords: number;
+  durableTermRecordLimit: number;
   durableTeacherAgendas: number;
   durableTeacherAgendaLimit: number;
   teacherAgendaExecution: {
@@ -696,6 +698,7 @@ export interface RubyHighWorldHealthSnapshot {
     watching: number;
   };
   recentTeacherAgendas: PublicWorldTeacherAgendaRecord[];
+  recentTerms: PublicWorldTermRecord[];
   liveRoomGoals: number;
   suppressedEvents: number;
   recentRoomOutcomes: PublicWorldRoomOutcomeRecord[];
@@ -946,12 +949,14 @@ const PUBLIC_WORLD_MODERATOR_NOTE_LIMIT = 500;
 const PUBLIC_WORLD_EVENTS_STATE_ID = "ruby-high:public-world-events:v1";
 const PUBLIC_WORLD_ROOMS_STATE_ID = "ruby-high:public-world-rooms:v1";
 const PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID = "ruby-high:public-world-room-outcomes:v1";
+const PUBLIC_WORLD_TERMS_STATE_ID = "ruby-high:public-world-terms:v1";
 const PUBLIC_WORLD_TEACHER_AGENDAS_STATE_ID = "ruby-high:public-world-teacher-agendas:v1";
 const PUBLIC_WORLD_SUMMARY_STATE_ID = "ruby-high:public-world-summary:v1";
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
 const LIVE_ROOM_GOALS_STATE_ID = "ruby-high:live-room-goals:v1";
 const PUBLIC_WORLD_ROOM_RECORD_LIMIT = 80;
 const PUBLIC_WORLD_ROOM_OUTCOME_LIMIT = 120;
+const PUBLIC_WORLD_TERM_RECORD_LIMIT = 12;
 const PUBLIC_WORLD_TEACHER_AGENDA_LIMIT = 80;
 
 export interface LiveRoomGoalContributionResult {
@@ -1008,6 +1013,19 @@ export interface PublicWorldRoomOutcomeRecord {
   contributorCount: number;
   completedAt: number;
   createdAt: number;
+}
+
+export interface PublicWorldTermRecord {
+  id: string;
+  schoolYear: string;
+  termId: string;
+  totalSparks: number;
+  level: number;
+  nextLevelAt: number;
+  sparksToNextLevel: number;
+  label: string;
+  activeRuleLabels: string[];
+  updatedAt: number;
 }
 
 export interface PublicWorldTeacherAgendaRecord {
@@ -1235,6 +1253,7 @@ export class RubyHighService extends Service {
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
   private readonly publicWorldRoomRecords = new Map<string, PublicWorldRoomRecord>();
   private readonly publicWorldRoomOutcomeRecords = new Map<string, PublicWorldRoomOutcomeRecord>();
+  private readonly publicWorldTermRecords = new Map<string, PublicWorldTermRecord>();
   private readonly publicWorldTeacherAgendaRecords = new Map<string, PublicWorldTeacherAgendaRecord>();
   private readonly publicWorldEventLog = new Map<string, SchoolWorldEvent>();
   private readonly publicWorldSuppressedEvents = new Map<string, PublicWorldSuppressedEvent>();
@@ -1279,6 +1298,7 @@ export class RubyHighService extends Service {
     this.liveRoomGoalStates.clear();
     this.publicWorldRoomRecords.clear();
     this.publicWorldRoomOutcomeRecords.clear();
+    this.publicWorldTermRecords.clear();
     this.publicWorldTeacherAgendaRecords.clear();
     this.publicWorldEventLog.clear();
     this.publicWorldSuppressedEvents.clear();
@@ -1296,6 +1316,7 @@ export class RubyHighService extends Service {
       this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
       this.persistPublicWorldRoomState({ surfaceErrors: true }),
       this.persistPublicWorldRoomOutcomeState({ surfaceErrors: true }),
+      this.persistPublicWorldTermState({ surfaceErrors: true }),
       this.persistPublicWorldTeacherAgendaState({ surfaceErrors: true }),
       this.persistPublicWorldEventLog({ surfaceErrors: true }),
       this.persistPublicWorldSummaryState({ surfaceErrors: true }),
@@ -1896,6 +1917,8 @@ export class RubyHighService extends Service {
     this.syncPublicWorldRoomRecords(rooms.activeRooms, now);
     const events = this.getSchoolWorldEvents(SCHOOL_WORLD_RECENT_EVENT_LIMIT, now, rooms.publicSessionIds);
     const teacherAgendaExecution = this.publicWorldTeacherAgendaExecutionSnapshot(now);
+    const summary = this.publicWorldSummarySnapshot(now);
+    this.syncPublicWorldTermRecord(summary, now);
     return {
       lastRefreshAt: this.worldStoreRefreshedAt > 0 ? this.worldStoreRefreshedAt : null,
       refreshAgeMs: this.worldStoreRefreshedAt > 0 ? Math.max(0, now - this.worldStoreRefreshedAt) : null,
@@ -1912,14 +1935,17 @@ export class RubyHighService extends Service {
       durableRoomRecordLimit: PUBLIC_WORLD_ROOM_RECORD_LIMIT,
       durableRoomOutcomes: this.publicWorldRoomOutcomeRecords.size,
       durableRoomOutcomeLimit: PUBLIC_WORLD_ROOM_OUTCOME_LIMIT,
+      durableTermRecords: this.publicWorldTermRecords.size,
+      durableTermRecordLimit: PUBLIC_WORLD_TERM_RECORD_LIMIT,
       durableTeacherAgendas: this.publicWorldTeacherAgendaRecords.size,
       durableTeacherAgendaLimit: PUBLIC_WORLD_TEACHER_AGENDA_LIMIT,
       teacherAgendaExecution,
       recentTeacherAgendas: this.publicWorldTeacherAgendaRecordList(now).slice(0, 5),
+      recentTerms: this.publicWorldTermRecordList(now).slice(0, 5),
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
       recentRoomOutcomes: this.publicWorldRoomOutcomeRecordList(now).slice(0, 5),
-      summary: this.publicWorldSummarySnapshot(now),
+      summary,
     };
   }
 
@@ -2233,6 +2259,75 @@ export class RubyHighService extends Service {
       .sort((a, b) => b.completedAt - a.completedAt || a.id.localeCompare(b.id));
   }
 
+  private hydratePublicWorldTermState(record: StoredServiceStateRecord | null): void {
+    this.publicWorldTermRecords.clear();
+    const data = record?.data;
+    const terms = data && data.version === 1 && Array.isArray(data.terms) ? data.terms : [];
+    for (const raw of terms) {
+      const term = normalizePublicWorldTermRecord(raw);
+      if (!term) continue;
+      this.publicWorldTermRecords.set(term.id, term);
+    }
+    this.prunePublicWorldTermRecords(record?.updatedAt ?? Date.now());
+  }
+
+  private publicWorldTermStateRecord(now = Date.now()): StoredServiceStateRecord {
+    this.prunePublicWorldTermRecords(now);
+    return {
+      id: PUBLIC_WORLD_TERMS_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        terms: this.publicWorldTermRecordList(now),
+      },
+    };
+  }
+
+  private persistPublicWorldTermState(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.publicWorldTermStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("public-world-terms.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  private syncPublicWorldTermRecord(summary: PublicWorldSummarySnapshot, now = Date.now()): PublicWorldTermRecord {
+    const term = publicWorldTermRecordFromSummary(summary, now);
+    const prior = this.publicWorldTermRecords.get(term.id);
+    const changed = !prior || publicWorldTermRecordContentKey(prior) !== publicWorldTermRecordContentKey(term);
+    if (changed) {
+      this.publicWorldTermRecords.set(term.id, term);
+      if (this.prunePublicWorldTermRecords(now)) this.publicWorldTermRecords.set(term.id, term);
+      void this.persistPublicWorldTermState({}, now);
+    }
+    return term;
+  }
+
+  private currentPublicWorldTermRecord(now = Date.now()): PublicWorldTermRecord {
+    const summary = this.publicWorldSummarySnapshot(now);
+    return this.syncPublicWorldTermRecord(summary, now);
+  }
+
+  private prunePublicWorldTermRecords(now = Date.now()): boolean {
+    const retained = this.publicWorldTermRecordList(now)
+      .slice(0, PUBLIC_WORLD_TERM_RECORD_LIMIT);
+    if (retained.length === this.publicWorldTermRecords.size && retained.every((term) => this.publicWorldTermRecords.get(term.id) === term)) {
+      return false;
+    }
+    this.publicWorldTermRecords.clear();
+    for (const term of retained) this.publicWorldTermRecords.set(term.id, term);
+    return true;
+  }
+
+  private publicWorldTermRecordList(now = Date.now()): PublicWorldTermRecord[] {
+    return Array.from(this.publicWorldTermRecords.values())
+      .filter((term) => Number.isFinite(term.updatedAt) && term.updatedAt >= 0 && term.updatedAt <= now)
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  }
+
   private hydratePublicWorldTeacherAgendaState(record: StoredServiceStateRecord | null): void {
     this.publicWorldTeacherAgendaRecords.clear();
     const data = record?.data;
@@ -2433,12 +2528,14 @@ export class RubyHighService extends Service {
   }
 
   private publicWorldSummaryStateRecord(now = Date.now()): StoredServiceStateRecord {
+    const summary = this.publicWorldSummarySnapshot(now);
+    this.syncPublicWorldTermRecord(summary, now);
     return {
       id: PUBLIC_WORLD_SUMMARY_STATE_ID,
       updatedAt: now,
       data: {
         version: 1,
-        summary: this.publicWorldSummarySnapshot(now),
+        summary,
       },
     };
   }
@@ -3775,6 +3872,7 @@ export class RubyHighService extends Service {
       storedPhotoPostSchedulerState,
       storedPublicWorldRoomState,
       storedPublicWorldRoomOutcomeState,
+      storedPublicWorldTermState,
       storedPublicWorldTeacherAgendaState,
       storedPublicWorldEventLogState,
       storedPublicWorldModerationState,
@@ -3790,6 +3888,7 @@ export class RubyHighService extends Service {
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOMS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(PUBLIC_WORLD_TERMS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_TEACHER_AGENDAS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_EVENTS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_MODERATION_STATE_ID) ?? Promise.resolve(null),
@@ -3845,6 +3944,7 @@ export class RubyHighService extends Service {
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
     this.hydratePublicWorldRoomState(storedPublicWorldRoomState);
     this.hydratePublicWorldRoomOutcomeState(storedPublicWorldRoomOutcomeState);
+    this.hydratePublicWorldTermState(storedPublicWorldTermState);
     this.hydratePublicWorldTeacherAgendaState(storedPublicWorldTeacherAgendaState);
     this.hydratePublicWorldEventLog(storedPublicWorldEventLogState);
     this.hydratePublicWorldModerationState(storedPublicWorldModerationState);
@@ -8069,6 +8169,7 @@ export class RubyHighService extends Service {
     const curriculum = this.curriculumCoverageSnapshotForStates(publicEntries.map((entry) => entry.state));
     const recentEvents = this.getSchoolWorldEvents(eventLimit, now, rooms.publicSessionIds, rooms.activeRooms);
     const summary = this.publicWorldSummarySnapshot(now);
+    this.syncPublicWorldTermRecord(summary, now);
     return {
       generatedAt: now,
       activeStudents: rooms.activeStudents,
@@ -8375,8 +8476,8 @@ export class RubyHighService extends Service {
   }
 
   private liveRoomGoalRule(now = Date.now()): { target: number; ruleLabel?: string } {
-    const level = this.publicWorldSummarySnapshot(now).termProgress.level;
-    if (level <= 0) return { target: 3 };
+    const term = this.currentPublicWorldTermRecord(now);
+    if (term.level <= 0) return { target: 3 };
     return { target: 2, ruleLabel: "Term Momentum" };
   }
 
@@ -9779,6 +9880,50 @@ function publicWorldTermProgress(studySparkTotal: number): PublicWorldSummarySna
   };
 }
 
+function publicWorldTermRecordId(schoolYear: string): string {
+  const digest = createHash("sha256").update(`public-world-term:${schoolYear}`).digest("hex").slice(0, 16);
+  return `term:${digest}`;
+}
+
+function publicWorldTermRuleLabels(level: number): string[] {
+  return level > 0 ? ["Term Momentum"] : [];
+}
+
+function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, now: number): PublicWorldTermRecord {
+  const schoolYear = /^\d{4}-\d{4}$/.test(summary.schoolYear) ? summary.schoolYear : schoolYearForTimestamp(now);
+  const termProgress = summary.termProgress;
+  const totalSparks = publicWorldStoredInteger(termProgress.totalSparks, 0);
+  const level = publicWorldStoredInteger(termProgress.level, 0);
+  const nextLevelAt = Math.max(1, publicWorldStoredInteger(termProgress.nextLevelAt, 3));
+  const sparksToNextLevel = publicWorldStoredInteger(termProgress.sparksToNextLevel, nextLevelAt);
+  const label = publicWorldStoredText(termProgress.label, 80) || publicWorldTermProgress(totalSparks).label;
+  return {
+    id: publicWorldTermRecordId(schoolYear),
+    schoolYear,
+    termId: schoolYear,
+    totalSparks,
+    level,
+    nextLevelAt,
+    sparksToNextLevel,
+    label,
+    activeRuleLabels: publicWorldTermRuleLabels(level),
+    updatedAt: now,
+  };
+}
+
+function publicWorldTermRecordContentKey(term: PublicWorldTermRecord): string {
+  return JSON.stringify({
+    schoolYear: term.schoolYear,
+    termId: term.termId,
+    totalSparks: term.totalSparks,
+    level: term.level,
+    nextLevelAt: term.nextLevelAt,
+    sparksToNextLevel: term.sparksToNextLevel,
+    label: term.label,
+    activeRuleLabels: term.activeRuleLabels,
+  });
+}
+
 function publicWorldTeacherAgendaId(schoolYear: string, grade: Grade, facultyId: string): string {
   const digest = createHash("sha256").update(`${schoolYear}:${grade}:${facultyId}`).digest("hex").slice(0, 16);
   return `teacher:agenda:${digest}`;
@@ -9898,6 +10043,39 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
     contributorCount,
     completedAt,
     createdAt,
+  };
+}
+
+function normalizePublicWorldTermRecord(raw: unknown): PublicWorldTermRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as Record<string, unknown>;
+  const schoolYear = typeof source.schoolYear === "string" && /^\d{4}-\d{4}$/.test(source.schoolYear)
+    ? source.schoolYear
+    : "";
+  if (!schoolYear) return null;
+  const id = publicWorldTermRecordId(schoolYear);
+  if (typeof source.id === "string" && source.id !== id) return null;
+  const termId = typeof source.termId === "string" && source.termId.trim() ? source.termId.trim().slice(0, 48) : schoolYear;
+  const totalSparks = publicWorldStoredInteger(source.totalSparks, 0);
+  const progress = publicWorldTermProgress(totalSparks);
+  const level = publicWorldStoredInteger(source.level, progress.level);
+  const nextLevelAt = Math.max(1, publicWorldStoredInteger(source.nextLevelAt, progress.nextLevelAt));
+  const sparksToNextLevel = publicWorldStoredInteger(source.sparksToNextLevel, progress.sparksToNextLevel);
+  const label = publicWorldStoredText(source.label, 80) || progress.label;
+  const activeRuleLabels = publicWorldStoredTextList(source.activeRuleLabels, 8, 80);
+  const updatedAt = publicWorldStoredInteger(source.updatedAt, 0);
+  if (updatedAt <= 0) return null;
+  return {
+    id,
+    schoolYear,
+    termId,
+    totalSparks,
+    level,
+    nextLevelAt,
+    sparksToNextLevel,
+    label,
+    activeRuleLabels,
+    updatedAt,
   };
 }
 
