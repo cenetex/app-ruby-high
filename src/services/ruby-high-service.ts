@@ -1043,7 +1043,7 @@ export interface PublicWorldTermGradeProgress {
 }
 
 export interface PublicWorldTermRoomRule {
-  kind: "term-momentum";
+  kind: "term-momentum" | "term-rally";
   label: string;
   target: number;
 }
@@ -2245,7 +2245,7 @@ export class RubyHighService extends Service {
       roomTitle: publicWorldRoomOutcomeRoomTitle(displayName),
       summaryLabel: publicWorldRoomOutcomeSummaryLabel(displayName, progress, target, goal.contributors.size),
       rewardKind: "study-spark",
-      rewardLabel: publicWorldRoomOutcomeRewardLabel(displayName),
+      rewardLabel: publicWorldRoomOutcomeRewardLabel(displayName, goal.ruleLabel),
       ...(goal.ruleLabel ? { ruleLabel: goal.ruleLabel } : {}),
       progress,
       target,
@@ -9875,8 +9875,9 @@ function publicWorldRoomOutcomeRoomTitle(displayName: string): string {
   return publicWorldStoredText(`${displayName} room`, 120) || "Class room";
 }
 
-function publicWorldRoomOutcomeRewardLabel(displayName: string): string {
-  return publicWorldStoredText(`${displayName} earned a class-wide Study Spark`, 180) || "Class earned a Study Spark";
+function publicWorldRoomOutcomeRewardLabel(displayName: string, ruleLabel?: string): string {
+  const rewardName = ruleLabel === "Term Rally" ? "Rally Spark" : "Study Spark";
+  return publicWorldStoredText(`${displayName} earned a class-wide ${rewardName}`, 180) || `Class earned a ${rewardName}`;
 }
 
 function publicWorldRoomOutcomeSummaryLabel(displayName: string, progress: number, target: number, contributorCount: number): string {
@@ -9911,10 +9912,12 @@ function publicWorldTermRecordId(schoolYear: string): string {
 }
 
 function publicWorldTermRuleLabels(level: number): string[] {
+  if (level >= 2) return ["Term Momentum", "Term Rally"];
   return level > 0 ? ["Term Momentum"] : [];
 }
 
 function publicWorldTermRoomRule(level: number): PublicWorldTermRoomRule | undefined {
+  if (level >= 2) return { kind: "term-rally", label: "Term Rally", target: 4 };
   return level > 0 ? { kind: "term-momentum", label: "Term Momentum", target: 2 } : undefined;
 }
 
@@ -10165,10 +10168,13 @@ function normalizePublicWorldTermGradeProgressMap(raw: unknown): Partial<Record<
 function normalizePublicWorldTermRoomRule(raw: unknown, level: number): PublicWorldTermRoomRule | undefined {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
   if (!source) return publicWorldTermRoomRule(level);
-  const kind = source.kind === "term-momentum" ? source.kind : null;
+  const kind = source.kind === "term-momentum" || source.kind === "term-rally" ? source.kind : null;
   if (!kind) return publicWorldTermRoomRule(level);
-  const label = publicWorldStoredText(source.label, 80) || "Term Momentum";
-  const target = Math.max(1, Math.min(99, publicWorldStoredInteger(source.target, 2)));
+  const fallback = publicWorldTermRoomRule(level);
+  const fallbackLabel = fallback?.label || (kind === "term-rally" ? "Term Rally" : "Term Momentum");
+  const fallbackTarget = fallback?.target || (kind === "term-rally" ? 4 : 2);
+  const label = publicWorldStoredText(source.label, 80) || fallbackLabel;
+  const target = Math.max(1, Math.min(99, publicWorldStoredInteger(source.target, fallbackTarget)));
   return { kind, label, target };
 }
 

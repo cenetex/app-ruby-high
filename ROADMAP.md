@@ -271,9 +271,12 @@ outcomes without requiring crypto participation.
    health visibility, and restart replay coverage. Each eligible grade lane now
    persists an actionable room-rule target, and Term Momentum applies only to
    grade lanes that earned the level, so one grade's progress does not silently
-   buff every room. Active grade-scoped term rules now appear in the public
-   world summary and compact player world-feed label. Next, extend term rules
-   beyond the first momentum bonus into richer per-grade room modifiers.
+   buff every room. Term Level 2 now unlocks a four-student Term Rally rule with
+   a distinct public Rally Spark reward label, durable outcome persistence, and
+   sanitized event replay coverage. Active grade-scoped term rules now appear
+   in the public world summary and compact player world-feed label. Next,
+   connect term rules to teacher agenda execution and player-facing room
+   selection pressure.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.

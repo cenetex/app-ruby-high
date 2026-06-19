@@ -447,8 +447,9 @@ export function publicWorldRoomGoalEvents(rooms: readonly PublicWorldRoom[]): Pu
       const label = publicWorldEventLabel(room.goal.complete
         ? `${room.displayName} filled a live class goal`
         : `${room.displayName} live class is ${room.goal.progress}/${room.goal.target}`);
+      const rewardName = room.goal.ruleLabel === "Term Rally" ? "Rally Spark" : "Study Spark";
       const rewardLabel = room.goal.complete
-        ? publicWorldEventLabel(`${room.displayName} earned a class-wide Study Spark`, "Class reward unlocked")
+        ? publicWorldEventLabel(`${room.displayName} earned a class-wide ${rewardName}`, "Class reward unlocked")
         : "";
       const event = {
         kind: "room.goal-progress" as const,

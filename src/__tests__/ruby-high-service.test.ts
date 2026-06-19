@@ -2556,6 +2556,121 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(world)).not.toContain("test:term-room");
   });
 
+  it("uses term level two to start a four-student Term Rally with a visible Rally Spark reward", async () => {
+    const { ruby } = await makeServices();
+    const start = Date.UTC(2026, 5, 12, 12);
+    const sessions = ["test:term-rally-a", "test:term-rally-b", "test:term-rally-c", "test:term-rally-d"].map((sid, index) => {
+      const state = attachTestCharacter(ruby, sid);
+      state.sessionId = sid;
+      state.currentGrade = "10";
+      state.faculty = "ruby";
+      state.updatedAt = start + index;
+      state.character!.name = `Rally Student ${index + 1}`;
+      state.character!.createdAt = start + index;
+      state.character!.publicWorldVisible = true;
+      state.character!.dailyClasses = {
+        ruby: {
+          ...completedClassRecord("10", "ruby", "2026-06-12", "A", 300),
+          completedAt: start + index,
+          updatedAt: start + index,
+        },
+      };
+      return state;
+    });
+
+    for (let day = 0; day < 3; day += 1) {
+      const now = start + day * 24 * 60 * 60 * 1000;
+      for (const [index, state] of sessions.slice(0, 3).entries()) {
+        state.updatedAt = now + index;
+        expect(ruby.contributeLiveRoomGoal(state.sessionId, now + index)).toMatchObject({
+          target: 3,
+          complete: index === 2,
+        });
+      }
+      ruby.getSchoolWorldSnapshot(10, now + 2);
+      expect(ruby.publicWorldSummarySnapshot(now + 2).studySparks.byGrade["10"]).toBe(day + 1);
+    }
+    for (let day = 3; day < 6; day += 1) {
+      const now = start + day * 24 * 60 * 60 * 1000;
+      for (const [index, state] of sessions.slice(0, 2).entries()) {
+        state.updatedAt = now + index;
+        expect(ruby.contributeLiveRoomGoal(state.sessionId, now + index)).toMatchObject({
+          target: 2,
+          complete: index === 1,
+          ruleLabel: "Term Momentum",
+        });
+      }
+      ruby.getSchoolWorldSnapshot(10, now + 1);
+      expect(ruby.publicWorldSummarySnapshot(now + 1).studySparks.byGrade["10"]).toBe(day + 1);
+    }
+    const rallyAt = start + 6 * 24 * 60 * 60 * 1000;
+    expect(ruby.publicWorldSummarySnapshot(rallyAt).termProgress).toMatchObject({
+      totalSparks: 6,
+      level: 2,
+      label: "Term Level 2",
+    });
+    expect(ruby.publicWorldSummarySnapshot(rallyAt).termRules).toEqual({
+      byGrade: {
+        "10": {
+          kind: "term-rally",
+          label: "Term Rally",
+          target: 4,
+        },
+      },
+    });
+
+    for (const [index, state] of sessions.entries()) {
+      state.updatedAt = rallyAt + index;
+      expect(ruby.contributeLiveRoomGoal(state.sessionId, rallyAt + index)).toMatchObject({
+        grade: "10",
+        progress: index + 1,
+        target: 4,
+        complete: index === 3,
+        ruleLabel: "Term Rally",
+      });
+    }
+
+    const world = ruby.getSchoolWorldSnapshot(10, rallyAt + 3);
+    const rubyRoom = world.activeRooms.find((room) => room.grade === "10" && room.facultyId === "ruby");
+    expect(rubyRoom?.goal).toMatchObject({
+      label: "Ruby live class 4/4 · Term Rally",
+      progress: 4,
+      target: 4,
+      complete: true,
+      ruleLabel: "Term Rally",
+    });
+    expect(world.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        progress: 4,
+        target: 4,
+        complete: true,
+        ruleLabel: "Term Rally",
+        rewardLabel: "Ruby earned a class-wide Rally Spark",
+      }),
+    ]));
+    expect(world.summary.termProgress).toMatchObject({
+      totalSparks: 7,
+      level: 2,
+      label: "Term Spark 1/3",
+    });
+
+    await ruby.flush();
+    const roomOutcomeState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-room-outcomes:v1");
+    expect(roomOutcomeState?.data).toMatchObject({
+      outcomes: expect.arrayContaining([
+        expect.objectContaining({
+          summaryLabel: "Ruby live class completed 4/4 with 4 contributors",
+          rewardLabel: "Ruby earned a class-wide Rally Spark",
+          ruleLabel: "Term Rally",
+          progress: 4,
+          target: 4,
+          contributorCount: 4,
+        }),
+      ]),
+    });
+    expect(JSON.stringify(world)).not.toContain("test:term-rally");
+  });
+
   it("replays sanitized public world events from durable service state without private sessions", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);

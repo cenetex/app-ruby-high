@@ -366,6 +366,43 @@ describe("public world projection", () => {
     ]);
   });
 
+  it("renders term rally room-goal rules with Rally Spark rewards", () => {
+    const result = buildPublicWorldRooms([
+      entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),
+      entry({ sessionId: "private-session-2", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Mina", lastActive: 500 }),
+      entry({ sessionId: "private-session-3", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Sol", lastActive: 600 }),
+      entry({ sessionId: "private-session-4", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Ira", lastActive: 700 }),
+    ], 5, 24, [{
+      grade: "10",
+      facultyId: "ruby",
+      amount: 4,
+      target: 4,
+      updatedAt: 800,
+      ruleLabel: "Term Rally",
+    }]);
+
+    expect(result.activeRooms[0]).toMatchObject({
+      activeStudents: 4,
+      goal: {
+        label: "Ruby live class 4/4 · Term Rally",
+        progress: 4,
+        target: 4,
+        complete: true,
+        ruleLabel: "Term Rally",
+      },
+    });
+    expect(publicWorldRoomGoalEvents(result.activeRooms)).toEqual([
+      expect.objectContaining({
+        kind: "room.goal-progress",
+        progress: 4,
+        target: 4,
+        complete: true,
+        ruleLabel: "Term Rally",
+        rewardLabel: "Ruby earned a class-wide Rally Spark",
+      }),
+    ]);
+  });
+
   it("builds sanitized room-goal progress events without private student ids", () => {
     const result = buildPublicWorldRooms([
       entry({ sessionId: "private-session-1", grade: "10", facultyId: "ruby", displayName: "Ruby", name: "Noor", lastActive: 300 }),
