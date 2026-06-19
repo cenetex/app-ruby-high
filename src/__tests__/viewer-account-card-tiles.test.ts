@@ -6,6 +6,7 @@ import {
   hallPassCardDetail,
   hallPassCardDetailLabel,
   hallPassCardIsFaceDown,
+  hallPassCardProfile,
   hallPassCardStatus,
   hallPassCardTitle,
 } from "../viewer-parts/client-pure.js";
@@ -177,6 +178,39 @@ describe("account card and pack tile views", () => {
       revealVisible: false,
       revealText: "Minting...",
       revealDisabled: true,
+    });
+  });
+
+  it("looks up Hall Pass card reader profiles from typed pure data", () => {
+    expect(hallPassCardProfile({
+      characterId: "ruby",
+    })).toEqual({
+      subtitle: "Homeroom Teacher",
+      teaches: "Homeroom · General Knowledge · AI Literacy · School Meta",
+      stats: { head: 1, heart: 3, hustle: 2, honor: 2 },
+      quote: "Let's learn together. Ask hard questions. Be kind. Have fun.",
+    });
+    expect(hallPassCardProfile({
+      characterId: "item-library-card",
+    })).toMatchObject({
+      subtitle: "Quiet Wing",
+      teaches: "Access · research · borrowed wisdom",
+      quote: "If the answer exists, this helps you find it.",
+    });
+    expect(hallPassCardProfile({
+      characterId: "unknown-card",
+    })).toBeNull();
+  });
+
+  it("returns defensive Hall Pass card profile copies", () => {
+    const first = hallPassCardProfile({ characterId: "ruby" });
+    if (first?.stats) first.stats.head = 99;
+
+    expect(hallPassCardProfile({ characterId: "ruby" })?.stats).toEqual({
+      head: 1,
+      heart: 3,
+      hustle: 2,
+      honor: 2,
     });
   });
 });

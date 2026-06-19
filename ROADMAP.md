@@ -233,7 +233,9 @@ outcomes without requiring crypto participation.
    pure panel view model, while the client keeps reader modal DOM and image URLs.
    Account pack/card tile labels, details, classes, proof labels, and pack-open
    action state now come from typed pure tile view models. Account card-reader
-   title/detail/profile/reveal state now comes from a typed pure view model.
+   title/detail/profile/reveal state now comes from a typed pure view model,
+   and its Hall Pass profile lookup catalog now serializes as a typed pure
+   helper instead of living inside the unchecked client.
    Active term-rule summary labels now have a dedicated typed helper for
    ordering, filtering, and capping grade-scoped room modifiers.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
