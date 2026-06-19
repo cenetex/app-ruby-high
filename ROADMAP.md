@@ -217,8 +217,9 @@ outcomes without requiring crypto participation.
    large public-world or account surface still owned by the unchecked client.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:
-   a class goal result that appears in the room/world feed and can be verified
-   by two clients through normal answer flow.
+   completed live-room goals now carry a class-wide Study Spark reward label in
+   the sanitized world feed; next, make that reward affect an explicit room or
+   term progression surface verified by two clients through normal answer flow.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): add richer
    durable room outcome summaries and teacher agenda execution rules, then test
    replay after restart with JSON/dev and SQLite-compatible state.

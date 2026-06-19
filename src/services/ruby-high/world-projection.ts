@@ -99,6 +99,7 @@ export type PublicWorldEvent =
       target: number;
       complete: boolean;
       label: string;
+      rewardLabel?: string;
     }
   | {
       id: string;
@@ -413,6 +414,9 @@ export function publicWorldRoomGoalEvents(rooms: readonly PublicWorldRoom[]): Pu
       const label = publicWorldEventLabel(room.goal.complete
         ? `${room.displayName} filled a live class goal`
         : `${room.displayName} live class is ${room.goal.progress}/${room.goal.target}`);
+      const rewardLabel = room.goal.complete
+        ? publicWorldEventLabel(`${room.displayName} earned a class-wide Study Spark`, "Class reward unlocked")
+        : "";
       const event = {
         kind: "room.goal-progress" as const,
         at: publicWorldNonNegativeInteger(room.goal.updatedAt),
@@ -424,6 +428,7 @@ export function publicWorldRoomGoalEvents(rooms: readonly PublicWorldRoom[]): Pu
         target: Math.max(1, publicWorldNonNegativeInteger(room.goal.target)),
         complete: room.goal.complete === true,
         label,
+        ...(rewardLabel ? { rewardLabel } : {}),
       };
       return {
         id: publicWorldRoomGoalEventId(event),

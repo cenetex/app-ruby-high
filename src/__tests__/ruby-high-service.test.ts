@@ -2124,6 +2124,8 @@ describe("RubyHighService Phase 1", () => {
         progress: 3,
         target: 3,
         complete: true,
+        label: "Ruby filled a live class goal",
+        rewardLabel: "Ruby earned a class-wide Study Spark",
       }),
     ]));
     expect(rehydrated.worldHealthSnapshot(now + 10)).toMatchObject({

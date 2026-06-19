@@ -9543,6 +9543,7 @@ function normalizePublicWorldEventPayload(value: unknown): SchoolWorldEvent | nu
     const goalKind = source.goalKind === "live-class" ? source.goalKind : null;
     const roomTitle = publicWorldStoredText(source.roomTitle, 120);
     const label = publicWorldStoredText(source.label, 180);
+    const rewardLabel = publicWorldStoredText(source.rewardLabel, 180);
     if (!goalKind || !roomTitle || !label) return null;
     return {
       ...base,
@@ -9553,6 +9554,7 @@ function normalizePublicWorldEventPayload(value: unknown): SchoolWorldEvent | nu
       target,
       complete: source.complete === true,
       label,
+      ...(rewardLabel && source.complete === true ? { rewardLabel } : {}),
     };
   }
   if (source.kind === "relationship.ticked") {

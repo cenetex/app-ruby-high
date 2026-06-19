@@ -479,6 +479,7 @@ export function mergeWorldFeedEventList(events: unknown, event: unknown, now: un
 export function worldFeedEventDisplayLabel(event: unknown): string {
   if (!event || typeof event !== "object") return "World event";
   const record = event as WorldFeedEvent;
+  if (record.kind === "room.goal-progress" && record.complete && record.rewardLabel) return String(record.rewardLabel);
   if (record.label) return String(record.label);
   if (record.kind === "room.goal-progress") return "Live class progress";
   if (record.kind === "comic.page-unlocked") return "Comic page unlocked";

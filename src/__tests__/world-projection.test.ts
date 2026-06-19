@@ -331,6 +331,7 @@ describe("public world projection", () => {
         target: 3,
         complete: true,
         label: "Ruby filled a live class goal",
+        rewardLabel: "Ruby earned a class-wide Study Spark",
       }),
     ]);
     expect(JSON.stringify(events)).not.toContain("private-session");
