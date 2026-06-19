@@ -290,7 +290,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function billingCardBurnChoiceView(opts)");
     expectScriptToContain(clientSource, "const view = billingCardBurnChoiceView({");
     expectScriptToContain(script, "function accountComicPanelView(collectionInput)");
-    expectScriptToContain(clientSource, "const view = accountComicPanelView(comicCollectionForTelemetry());");
+    expectScriptToContain(script, "function createAccountComicPanelRenderer(");
+    expectScriptToContain(clientSource, "const accountComicRenderer = createAccountComicPanelRenderer({");
+    expectScriptToContain(clientSource, "accountComicRenderer.render(comicCollectionForTelemetry());");
     expectScriptToContain(script, "function accountCharacterCardView(entry, slotNumber, playbooks, currentGrade, fallbackPortraitUrl)");
     expectScriptToContain(script, "function accountEmptyCharacterSlotView(slotNumber, canCreateCharacter)");
     expectScriptToContain(script, "function accountCharacterPanelView(slotsInput, walletInput, opts)");

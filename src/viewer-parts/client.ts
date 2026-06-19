@@ -1443,6 +1443,14 @@ export function runViewerClient(bootstrap) {
     openActiveCharacter: openCharacterSheetFromAccount,
     openCharacterCreation: openCharacterCreationFromAccount,
   });
+  const accountComicRenderer = createAccountComicPanelRenderer({
+    document,
+    container: els.accountComics,
+    summary: els.accountComicSummary,
+    viewFor: accountComicPanelView,
+    comicPageUrl,
+    openReader: showComicReader,
+  });
   const roomChannelRowsController = createRoomChannelRowsController({
     document,
     teacherSmallAvatarUrl,
@@ -2915,13 +2923,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function renderAccountComics() {
-    if (!els.accountComics) return;
-    const view = accountComicPanelView(comicCollectionForTelemetry());
-    if (els.accountComicSummary) {
-      els.accountComicSummary.textContent = view.summaryText;
-    }
-    els.accountComics.replaceChildren();
-    els.accountComics.appendChild(buildComicLocker());
+    accountComicRenderer.render(comicCollectionForTelemetry());
   }
 
   function renderAccountHistory() {
@@ -7625,52 +7627,6 @@ export function runViewerClient(bootstrap) {
       if (unlock) pendingComicUnlocks.push(unlock);
     }
     maybeShowNextComicUnlockModal();
-  }
-
-  function buildComicLocker() {
-    const collection = comicCollectionForTelemetry();
-    const view = accountComicPanelView(collection);
-    const wrap = document.createElement("div");
-    wrap.className = "comic-locker";
-
-    const head = document.createElement("div");
-    head.className = "comic-locker-head";
-    const title = document.createElement("div");
-    title.className = "comic-locker-title";
-    title.textContent = "First Bell Comic";
-    const progress = document.createElement("div");
-    progress.className = "comic-locker-progress";
-    progress.textContent = view.progressText;
-    head.appendChild(title);
-    head.appendChild(progress);
-    wrap.appendChild(head);
-
-    const grid = document.createElement("div");
-    grid.className = "comic-page-grid";
-    view.tiles.forEach((tileView) => {
-      const tile = document.createElement("button");
-      tile.type = "button";
-      tile.className = "comic-page-tile" + (tileView.unlocked ? " is-unlocked" : " is-locked");
-      tile.setAttribute("aria-label", tileView.ariaLabel);
-      if (!tileView.unlocked) tile.disabled = true;
-
-      if (tileView.unlocked) {
-        const img = document.createElement("img");
-        img.loading = "lazy";
-        img.alt = tileView.title;
-        img.src = comicPageUrl(tileView.pageNumber);
-        tile.appendChild(img);
-        tile.addEventListener("click", () => showComicReader(collection, tileView.unlock));
-      } else {
-        const mark = document.createElement("span");
-        mark.className = "comic-page-locked-mark";
-        mark.textContent = "?";
-        tile.appendChild(mark);
-      }
-      grid.appendChild(tile);
-    });
-    wrap.appendChild(grid);
-    return wrap;
   }
 
   function showComicReader(collection, unlock, options) {
