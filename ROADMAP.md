@@ -235,7 +235,9 @@ outcomes without requiring crypto participation.
    action state now come from typed pure tile view models. Account card-reader
    title/detail/profile/reveal state now comes from a typed pure view model,
    and its Hall Pass profile lookup catalog now serializes as a typed pure
-   helper instead of living inside the unchecked client.
+   helper instead of living inside the unchecked client. Welcome Hall Pass
+   popup title/body/action copy now comes from a typed pure view model instead
+   of modal-local branching in the unchecked client.
    Active term-rule summary labels now have a dedicated typed helper for
    ordering, filtering, and capping grade-scoped room modifiers.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the

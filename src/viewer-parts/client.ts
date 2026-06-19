@@ -3100,6 +3100,13 @@ export function runViewerClient(bootstrap) {
   function showWelcomeHallPassPopup(grant, opts) {
     welcomeHallPassPopupOpen = true;
     const fromBilling = opts && opts.source === "billing";
+    const portraitEntitlement = hostedImageEntitlement("portrait");
+    const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
+    const view = welcomeHallPassPopupView(grant, {
+      fromBilling,
+      portraitConfigured,
+      hasCharacter: lastTelemetry && lastTelemetry.character,
+    });
     const overlay = document.createElement("div");
     overlay.className = "welcome-hall-pass-popup";
     overlay.setAttribute("role", "dialog");
@@ -3122,15 +3129,9 @@ export function runViewerClient(bootstrap) {
     const copy = document.createElement("div");
     copy.className = "welcome-hall-pass-copy";
     const title = document.createElement("h2");
-    title.textContent = formatWholeNumber(grant.amount || 5) + " Hall Passes added";
+    title.textContent = view.titleText;
     const body = document.createElement("p");
-    const portraitEntitlement = hostedImageEntitlement("portrait");
-    const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
-    body.textContent = fromBilling
-      ? "The front office stamped your starter passes. Spend them on hosted AI or images, or keep playing classes free."
-      : portraitConfigured
-        ? "Roll your first student and try a custom portrait, or save your Hall Passes for AI Access and extra character slots."
-        : "Roll your first student now, or save your Hall Passes for AI Access, images, and extra character slots.";
+    body.textContent = view.bodyText;
     const actions = document.createElement("div");
     actions.className = "welcome-hall-pass-actions";
     const later = document.createElement("button");
@@ -3139,8 +3140,8 @@ export function runViewerClient(bootstrap) {
     later.textContent = "Later";
     const create = document.createElement("button");
     create.type = "button";
-    create.textContent = fromBilling ? "Continue" : lastTelemetry && lastTelemetry.character ? "Open Account" : "Create Character";
-    if (!fromBilling) actions.appendChild(later);
+    create.textContent = view.primaryText;
+    if (view.showLater) actions.appendChild(later);
     actions.appendChild(create);
     copy.appendChild(title);
     copy.appendChild(body);

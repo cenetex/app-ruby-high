@@ -263,6 +263,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
+    expectScriptToContain(script, "function welcomeHallPassPopupView(");
+    expectScriptToContain(clientSource, "const view = welcomeHallPassPopupView(grant, {");
     expectScriptToContain(script, "function accountAiPanelView(aiInput, opts)");
     expectScriptToContain(clientSource, "const view = accountAiPanelView(ai, {");
     expectScriptToContain(script, "function accountWalletPanelView(walletInput, slotsInput, opts)");

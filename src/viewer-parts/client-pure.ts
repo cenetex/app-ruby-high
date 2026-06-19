@@ -212,6 +212,12 @@ export type AccountComicPanelView = {
   progressText: string;
   tiles: AccountComicPageTileView[];
 };
+export type WelcomeHallPassPopupView = {
+  titleText: string;
+  bodyText: string;
+  showLater: boolean;
+  primaryText: string;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -448,6 +454,25 @@ export function positiveWholeNumber(value: unknown, fallback: number): number {
 export function hallPassCostLabel(cost: unknown): string {
   const normalized = positiveWholeNumber(cost, 1);
   return formatWholeNumber(normalized) + " Hall Pass" + (normalized === 1 ? "" : "es");
+}
+export function welcomeHallPassPopupView(
+  grantInput: NullableRecord,
+  opts?: { fromBilling?: unknown; portraitConfigured?: unknown; hasCharacter?: unknown },
+): WelcomeHallPassPopupView {
+  const amount = Math.max(1, Math.floor(Number(grantInput && grantInput.amount || 5)));
+  const fromBilling = !!(opts && opts.fromBilling);
+  const portraitConfigured = !!(opts && opts.portraitConfigured);
+  const hasCharacter = !!(opts && opts.hasCharacter);
+  return {
+    titleText: formatWholeNumber(amount) + " Hall Passes added",
+    bodyText: fromBilling
+      ? "The front office stamped your starter passes. Spend them on hosted AI or images, or keep playing classes free."
+      : portraitConfigured
+        ? "Roll your first student and try a custom portrait, or save your Hall Passes for AI Access and extra character slots."
+        : "Roll your first student now, or save your Hall Passes for AI Access, images, and extra character slots.",
+    showLater: !fromBilling,
+    primaryText: fromBilling ? "Continue" : hasCharacter ? "Open Account" : "Create Character",
+  };
 }
 export function clipPlayerContext(text: unknown, max?: number): string {
   const raw = String(text || "").replace(/\s+/g, " ").trim();
