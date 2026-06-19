@@ -122,6 +122,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function worldFeedEventAgeLabel");
     expectScriptToContain(script, "function worldFeedRoomTitle");
     expectScriptToContain(script, "function worldFeedSummaryLabel");
+    expectScriptToContain(script, "function worldFeedRoomPressureLabel");
     expectScriptToContain(script, "function worldFeedRoomViews");
     expectScriptToContain(script, "function worldFeedEventViews");
     expectScriptToContain(script, "function worldFeedPanelView");
@@ -140,6 +141,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "mergeEvent(data);");
     expectScriptToContain(script, "state.error = String(data.error || \"world unavailable\");");
     expectScriptToContain(script, "function appendRoomChip(parent, room)");
+    expectScriptToContain(script, 'pressure.className = "world-room-pressure";');
+    expect(VIEWER_CSS).toContain(".world-room-pressure");
     expectScriptToContain(script, "function appendEventRow(parent, event)");
     expectScriptToContain(script, "label.textContent = event.label;");
     expectScriptToContain(script, "time.textContent = event.age;");

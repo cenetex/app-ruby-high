@@ -5,6 +5,7 @@ type TimeoutHandle = ReturnType<typeof setTimeout>;
 export interface ViewerWorldPanelRoomView {
   title: string;
   meta: string;
+  pressureText?: string;
 }
 
 export interface ViewerWorldPanelEventView {
@@ -61,6 +62,12 @@ export function createViewerWorldPanelController(deps: ViewerWorldPanelControlle
     meta.textContent = room.meta;
     chip.appendChild(title);
     chip.appendChild(meta);
+    if (room.pressureText) {
+      const pressure = deps.document.createElement("em");
+      pressure.className = "world-room-pressure";
+      pressure.textContent = room.pressureText;
+      chip.appendChild(pressure);
+    }
     parent.appendChild(chip);
   }
 

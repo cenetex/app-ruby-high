@@ -98,7 +98,7 @@ function makeHarness(overrides: {
     panelView() {
       return {
         summary: "2 students live · 1 room",
-        rooms: [{ title: "Freshman · Ruby", meta: "2 students active" }],
+        rooms: [{ title: "Freshman · Ruby", meta: "2 students active", pressureText: "Term Rally: 4-student room goal" }],
         events: [{ id: "world:event:a", label: "Ruby started class", age: "1m" }],
       };
     },
@@ -142,7 +142,8 @@ describe("viewer world panel controller", () => {
     expect(harness.sub.textContent).toBe("2 students live · 1 room");
     expect(harness.rooms.children).toHaveLength(1);
     expect(harness.rooms.children[0]?.className).toBe("world-room-chip");
-    expect(textTree(harness.rooms)).toEqual(["Freshman · Ruby", "2 students active"]);
+    expect(textTree(harness.rooms)).toEqual(["Freshman · Ruby", "2 students active", "Term Rally: 4-student room goal"]);
+    expect(harness.rooms.children[0]?.children[2]?.className).toBe("world-room-pressure");
     expect(harness.events.children).toHaveLength(1);
     expect(harness.events.children[0]?.className).toBe("world-event-row");
     expect(harness.events.children[0]?.dataset.worldEventId).toBe("world:event:a");

@@ -2438,6 +2438,17 @@ export const VIEWER_CSS = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .world-room-pressure {
+    display: block;
+    margin-top: 3px;
+    color: var(--accent);
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .world-panel-events {
     min-width: 0;
     display: flex;

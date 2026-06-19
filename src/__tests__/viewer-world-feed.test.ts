@@ -10,6 +10,7 @@ import {
   worldFeedFacultyLabel,
   worldFeedGradeLabel,
   worldFeedPanelView,
+  worldFeedRoomPressureLabel,
   worldFeedRoomTitle,
   worldFeedRoomViews,
   worldFeedSummaryLabel,
@@ -147,6 +148,23 @@ describe("viewer world feed pure helpers", () => {
     }, 1)).toEqual(["Fresh Start in Freshman"]);
   });
 
+  it("formats room-selection pressure from active term rules", () => {
+    expect(worldFeedRoomPressureLabel({
+      grade: "10",
+      goal: { ruleLabel: "Term Rally", target: 4 },
+    }, null)).toBe("Term Rally: 4-student room goal");
+    expect(worldFeedRoomPressureLabel({ grade: "10" }, {
+      byGrade: {
+        "10": { label: "Term Momentum", target: 2 },
+      },
+    })).toBe("Term Momentum: 2-student room goal");
+    expect(worldFeedRoomPressureLabel({ grade: "9" }, {
+      byGrade: {
+        "10": { label: "Term Rally", target: 4 },
+      },
+    })).toBe("");
+  });
+
   it("builds compact world panel view models for the DOM renderer", () => {
     const now = Date.UTC(2026, 5, 18, 12);
     const roster = [
@@ -163,22 +181,41 @@ describe("viewer world feed pure helpers", () => {
         { id: "world:event:a", at: now - 60_000, label: "Ruby started class" },
         { id: "world:event:b", at: now - 2 * 60_000, kind: "comic.page-unlocked" },
       ],
-      summary: { studySparks: { total: 1 } },
+      summary: {
+        studySparks: { total: 1 },
+        termRules: {
+          byGrade: {
+            "10": { label: "Term Momentum", target: 2 },
+          },
+        },
+      },
     };
 
     expect(worldFeedRoomViews(state.activeRooms, roster)).toEqual([
       { title: "Freshman · Ruby", meta: "1 student active" },
       { title: "Sophomore · Sally Science", meta: "Sally Science live class 2/3" },
     ]);
+    expect(worldFeedRoomViews(state.activeRooms, roster, state.summary.termRules)).toEqual([
+      { title: "Freshman · Ruby", meta: "1 student active" },
+      {
+        title: "Sophomore · Sally Science",
+        meta: "Sally Science live class 2/3",
+        pressureText: "Term Momentum: 2-student room goal",
+      },
+    ]);
     expect(worldFeedEventViews(state.events, now)).toEqual([
       { id: "world:event:a", label: "Ruby started class", age: "1m" },
       { id: "world:event:b", label: "Comic page unlocked", age: "2m" },
     ]);
     expect(worldFeedPanelView(state, roster, now)).toEqual({
-      summary: "3 students live · 2 rooms · 1 Study Spark",
+      summary: "3 students live · 2 rooms · 1 Study Spark · Term Momentum in Sophomore",
       rooms: [
         { title: "Freshman · Ruby", meta: "1 student active" },
-        { title: "Sophomore · Sally Science", meta: "Sally Science live class 2/3" },
+        {
+          title: "Sophomore · Sally Science",
+          meta: "Sally Science live class 2/3",
+          pressureText: "Term Momentum: 2-student room goal",
+        },
       ],
       events: [
         { id: "world:event:a", label: "Ruby started class", age: "1m" },

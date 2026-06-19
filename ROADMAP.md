@@ -274,9 +274,9 @@ outcomes without requiring crypto participation.
    buff every room. Term Level 2 now unlocks a four-student Term Rally rule with
    a distinct public Rally Spark reward label, durable outcome persistence, and
    sanitized event replay coverage. Active grade-scoped term rules now appear
-   in the public world summary and compact player world-feed label. Next,
-   connect term rules to teacher agenda execution and player-facing room
-   selection pressure.
+   in the public world summary, compact player world-feed label, and room chips:
+   active rooms now show rule pressure such as Term Rally's four-student goal at
+   room-selection time. Next, connect term rules to teacher agenda execution.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.

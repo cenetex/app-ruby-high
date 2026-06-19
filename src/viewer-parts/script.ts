@@ -128,6 +128,7 @@ const PURE_HELPER_NAMES = [
   "worldFeedRoomTitle",
   "worldFeedSummaryLabel",
   "worldFeedTermRuleLabels",
+  "worldFeedRoomPressureLabel",
   "worldFeedRoomViews",
   "worldFeedEventViews",
   "worldFeedPanelView",

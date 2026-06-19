@@ -11,7 +11,7 @@ type NullableRecord = LooseRecord | null | undefined;
 type MarkdownRenderOptions = { inline?: boolean };
 type LegacyCryptoWindow = Window & { msCrypto?: Crypto };
 type WorldFeedEvent = LooseRecord & { id?: unknown; at?: unknown };
-type WorldFeedRoomView = { title: string; meta: string };
+type WorldFeedRoomView = { title: string; meta: string; pressureText?: string };
 type WorldFeedEventView = { id?: string; label: string; age: string };
 type QuestionPromptImageView = { src: string; alt: string };
 type LeaderboardGradeChipView = { className: string; text: string };
@@ -1578,7 +1578,24 @@ export function worldFeedTermRuleLabels(termRules: unknown, limit = 2): string[]
     .slice(0, Math.max(0, Math.floor(Number(limit) || 0)));
 }
 
-export function worldFeedRoomViews(rooms: unknown, roster: unknown, limit = 5): WorldFeedRoomView[] {
+export function worldFeedRoomPressureLabel(room: unknown, termRules: unknown): string {
+  const record = room && typeof room === "object" ? room as LooseRecord : {};
+  const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
+  const termRulesRecord = termRules && typeof termRules === "object" ? termRules as LooseRecord : null;
+  const byGrade = termRulesRecord && termRulesRecord.byGrade && typeof termRulesRecord.byGrade === "object" ? termRulesRecord.byGrade as LooseRecord : null;
+  const rule = byGrade && record.grade != null && byGrade[String(record.grade)] && typeof byGrade[String(record.grade)] === "object"
+    ? byGrade[String(record.grade)] as LooseRecord
+    : null;
+  const label = String((goal && goal.ruleLabel) || (rule && rule.label) || "").trim();
+  if (!label) return "";
+  const target = Math.max(1, Math.floor(Number((goal && goal.target) || (rule && rule.target) || 0)));
+  const targetText = target > 0 ? target + "-student " : "";
+  return label + ": " + targetText + "room goal";
+}
+
+export function worldFeedRoomViews(rooms: unknown, roster: unknown, termRulesOrLimit: unknown = null, limitInput?: unknown): WorldFeedRoomView[] {
+  const termRules = typeof termRulesOrLimit === "number" ? null : termRulesOrLimit;
+  const limit = typeof termRulesOrLimit === "number" ? termRulesOrLimit : limitInput ?? 5;
   return (Array.isArray(rooms) ? rooms : [])
     .slice(0, Math.max(0, Math.floor(Number(limit) || 5)))
     .map((room) => {
@@ -1586,10 +1603,13 @@ export function worldFeedRoomViews(rooms: unknown, roster: unknown, limit = 5): 
       const activeStudents = Math.max(0, Math.floor(Number(record.activeStudents || 0)));
       const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
       const goalLabel = goal && goal.label ? String(goal.label) : "";
-      return {
+      const view: WorldFeedRoomView = {
         title: worldFeedRoomTitle(record, roster),
         meta: goalLabel || (activeStudents === 1 ? "1 student active" : activeStudents + " students active"),
       };
+      const pressureText = worldFeedRoomPressureLabel(record, termRules);
+      if (pressureText) view.pressureText = pressureText;
+      return view;
     });
 }
 
@@ -1617,7 +1637,7 @@ export function worldFeedPanelView(state: unknown, roster: unknown, now: unknown
   const rooms = Array.isArray(record.activeRooms) ? record.activeRooms : [];
   return {
     summary: worldFeedSummaryLabel(record.activeStudents, rooms, record.error, record.summary),
-    rooms: worldFeedRoomViews(rooms, roster, 5),
+    rooms: worldFeedRoomViews(rooms, roster, record.summary && typeof record.summary === "object" ? (record.summary as LooseRecord).termRules : null, 5),
     events: worldFeedEventViews(record.events, now, 3),
   };
 }
