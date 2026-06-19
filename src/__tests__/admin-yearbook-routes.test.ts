@@ -1490,7 +1490,9 @@ describe("admin metrics route", () => {
   it("serves authenticated public world moderation reports without raw session ids", async () => {
     const now = Date.UTC(2026, 5, 15, 14);
     const sessionId = "rh:user:moderation-reporter";
+    const secondSessionId = "rh:user:moderation-second-reporter";
     attachCohortStudent(sessionId, "Report Noor", "10", "A");
+    attachCohortStudent(secondSessionId, "Report Mina", "10", "A");
     const state = ruby.getOrCreate(sessionId);
     state.faculty = "ruby";
     state.updatedAt = now;
@@ -1513,6 +1515,11 @@ describe("admin metrics route", () => {
       reason: "spoiler in the world feed\nwith extra whitespace",
       now,
     });
+    ruby.reportPublicWorldEvent(secondSessionId, {
+      eventId,
+      reason: "same event is still noisy",
+      now: now + 1,
+    });
 
     let response = await appRoute({
       path: "/api/apps/ruby-high/admin/world/moderation",
@@ -1530,12 +1537,16 @@ describe("admin metrics route", () => {
     expect(response.body).toMatchObject({
       ok: true,
       generatedAt: expect.any(Number),
-      reportCount: 1,
-      reports: [{
+      reportCount: 2,
+      moderatorNotes: [],
+    });
+    expect(response.body.reports).toEqual(expect.arrayContaining([expect.objectContaining({
         eventId,
         reason: "spoiler in the world feed with extra whitespace",
         createdAt: now,
         reporterCharacterName: "Report Noor",
+        reportCountForEvent: 2,
+        moderatorNote: null,
         event: {
           id: eventId,
           kind: "comic.page-unlocked",
@@ -1544,13 +1555,51 @@ describe("admin metrics route", () => {
           grade: "10",
           label: "Moderation page",
         },
-      }],
-    });
-    expect(response.body.reports[0].reporterId).toMatch(/^world:reporter:[a-f0-9]{16}$/);
-    const reportId = response.body.reports[0].id;
+      })]));
+    const firstReport = response.body.reports.find((report: { reporterCharacterName: string }) =>
+      report.reporterCharacterName === "Report Noor"
+    );
+    expect(firstReport.reporterId).toMatch(/^world:reporter:[a-f0-9]{16}$/);
+    const reportId = firstReport.id;
     expect(JSON.stringify(response.body)).not.toContain(sessionId);
+    expect(JSON.stringify(response.body)).not.toContain(secondSessionId);
     expect(JSON.stringify(response.body)).not.toContain("school:event:moderation-page");
     expect(JSON.stringify(response.body)).not.toContain("teacher:ruby:grade:10");
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/world/moderation",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "note-event", eventId, note: "Review name policy\nif this repeats." },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      eventId,
+      note: "Review name policy if this repeats.",
+      updated: true,
+    });
+
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/world/moderation?limit=10",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.body.moderatorNotes).toEqual([{
+      eventId,
+      note: "Review name policy if this repeats.",
+      updatedAt: expect.any(Number),
+    }]);
+    expect(response.body.reports).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventId,
+        reportCountForEvent: 2,
+        moderatorNote: {
+          eventId,
+          note: "Review name policy if this repeats.",
+          updatedAt: expect.any(Number),
+        },
+      }),
+    ]));
 
     response = await appRoute({
       method: "POST",
@@ -1579,6 +1628,11 @@ describe("admin metrics route", () => {
         reason: "globally noisy",
         suppressedAt: expect.any(Number),
       }],
+      moderatorNotes: [{
+        eventId,
+        note: "Review name policy if this repeats.",
+        updatedAt: expect.any(Number),
+      }],
     });
 
     response = await appRoute({
@@ -1591,6 +1645,25 @@ describe("admin metrics route", () => {
       reason: "globally noisy",
       suppressedAt: expect.any(Number),
     }]);
+    expect(response.body.moderatorNotes).toEqual([{
+      eventId,
+      note: "Review name policy if this repeats.",
+      updatedAt: expect.any(Number),
+    }]);
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/world/moderation",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "note-event", eventId, note: "" },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      eventId,
+      note: "",
+      updated: true,
+    });
 
     response = await appRoute({
       method: "POST",
@@ -1606,6 +1679,7 @@ describe("admin metrics route", () => {
       dismissed: true,
       dismissedCount: 1,
     });
+    expect(ruby.getOrCreate(secondSessionId).publicWorldEventReports).toHaveLength(1);
     expect(ruby.getOrCreate(sessionId).publicWorldEventReports).toEqual([]);
 
     response = await appRoute({
@@ -1613,8 +1687,16 @@ describe("admin metrics route", () => {
       authorizationHeader: "Bearer admin-test-token",
     });
     expect(response.status).toBe(200);
-    expect(response.body.reportCount).toBe(0);
-    expect(response.body.reports).toEqual([]);
+    expect(response.body.reportCount).toBe(1);
+    expect(response.body.moderatorNotes).toEqual([]);
+    expect(response.body.reports).toEqual([
+      expect.objectContaining({
+        eventId,
+        reporterCharacterName: "Report Mina",
+        reportCountForEvent: 1,
+        moderatorNote: null,
+      }),
+    ]);
   });
 
   it("requires an admin token and returns auth, Ruby High, and log snapshots", async () => {

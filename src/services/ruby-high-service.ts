@@ -864,6 +864,8 @@ export interface PublicWorldModerationReport {
   createdAt: number;
   reporterId: string;
   reporterCharacterName: string | null;
+  reportCountForEvent: number;
+  moderatorNote: PublicWorldModeratorNote | null;
   event: Pick<SchoolWorldEvent, "id" | "kind" | "at" | "faculty" | "grade"> & { label: string | null } | null;
 }
 
@@ -873,12 +875,19 @@ export interface PublicWorldSuppressedEvent {
   suppressedAt: number;
 }
 
+export interface PublicWorldModeratorNote {
+  eventId: string;
+  note: string;
+  updatedAt: number;
+}
+
 export interface PublicWorldModerationSnapshot {
   ok: true;
   generatedAt: number;
   reportCount: number;
   reports: PublicWorldModerationReport[];
   suppressedEvents: PublicWorldSuppressedEvent[];
+  moderatorNotes: PublicWorldModeratorNote[];
 }
 
 export interface PublicWorldModerationDismissResult {
@@ -897,8 +906,17 @@ export interface PublicWorldEventSuppressionResult {
   suppressed: boolean;
 }
 
+export interface PublicWorldModeratorNoteResult {
+  ok: true;
+  generatedAt: number;
+  eventId: string;
+  note: string;
+  updated: boolean;
+}
+
 const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
 const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
+const PUBLIC_WORLD_MODERATOR_NOTE_LIMIT = 500;
 const PUBLIC_WORLD_EVENTS_STATE_ID = "ruby-high:public-world-events:v1";
 const PUBLIC_WORLD_SUMMARY_STATE_ID = "ruby-high:public-world-summary:v1";
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
@@ -1122,6 +1140,7 @@ export class RubyHighService extends Service {
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
   private readonly publicWorldEventLog = new Map<string, SchoolWorldEvent>();
   private readonly publicWorldSuppressedEvents = new Map<string, PublicWorldSuppressedEvent>();
+  private readonly publicWorldModeratorNotes = new Map<string, PublicWorldModeratorNote>();
   private readonly pendingPhotoPosts = new Set<string>();
   private readonly deferredPhotoPosts = new Map<string, number>();
   private photoPostSchedulerTimer: ReturnType<typeof setInterval> | null = null;
@@ -1162,6 +1181,7 @@ export class RubyHighService extends Service {
     this.liveRoomGoalStates.clear();
     this.publicWorldEventLog.clear();
     this.publicWorldSuppressedEvents.clear();
+    this.publicWorldModeratorNotes.clear();
     this.persistedPackRecords = null;
     this.teacherRecords = null;
     this.draftPackRecords = null;
@@ -1855,6 +1875,7 @@ export class RubyHighService extends Service {
 
   private hydratePublicWorldModerationState(record: StoredServiceStateRecord | null): void {
     this.publicWorldSuppressedEvents.clear();
+    this.publicWorldModeratorNotes.clear();
     const data = record?.data;
     const entries = data && data.version === 1 && Array.isArray(data.suppressedEvents)
       ? data.suppressedEvents
@@ -1870,6 +1891,22 @@ export class RubyHighService extends Service {
         suppressedAt: Math.max(0, Math.floor(Number(source.suppressedAt) || 0)),
       });
     }
+    const notes = data && data.version === 1 && Array.isArray(data.moderatorNotes)
+      ? data.moderatorNotes
+      : [];
+    for (const entry of notes) {
+      if (!entry || typeof entry !== "object") continue;
+      const source = entry as Record<string, unknown>;
+      const eventId = normalizePublicWorldEventId(source.eventId);
+      if (!eventId) continue;
+      const note = normalizePublicWorldModeratorNote(source.note);
+      if (!note) continue;
+      this.publicWorldModeratorNotes.set(eventId, {
+        eventId,
+        note,
+        updatedAt: Math.max(0, Math.floor(Number(source.updatedAt) || 0)),
+      });
+    }
   }
 
   private publicWorldModerationStateRecord(now = Date.now()): StoredServiceStateRecord {
@@ -1880,6 +1917,7 @@ export class RubyHighService extends Service {
         version: 1,
         suppressedEvents: Array.from(this.publicWorldSuppressedEvents.values())
           .sort((a, b) => b.suppressedAt - a.suppressedAt || a.eventId.localeCompare(b.eventId)),
+        moderatorNotes: this.publicWorldModeratorNoteList(),
       },
     };
   }
@@ -7596,6 +7634,7 @@ export class RubyHighService extends Service {
     const eventLimit = Math.max(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.min(200, Math.floor(Number(limit) || 100)));
     const eventsById = new Map(this.getSchoolWorldEvents(eventLimit, now).map((event) => [event.id, event]));
     const reports: PublicWorldModerationReport[] = [];
+    const reportCountsByEventId = new Map<string, number>();
     for (const [sessionId, state] of this.sessions) {
       const stateReports = normalizePublicWorldEventReports(state.publicWorldEventReports);
       if (stateReports.length === 0) continue;
@@ -7604,6 +7643,7 @@ export class RubyHighService extends Service {
         ? state.character.name.trim().slice(0, 80) || null
         : null;
       for (const report of stateReports) {
+        reportCountsByEventId.set(report.eventId, (reportCountsByEventId.get(report.eventId) ?? 0) + 1);
         const event = eventsById.get(report.eventId) ?? null;
         reports.push({
           id: report.id,
@@ -7612,9 +7652,15 @@ export class RubyHighService extends Service {
           createdAt: report.createdAt,
           reporterId,
           reporterCharacterName,
+          reportCountForEvent: 0,
+          moderatorNote: null,
           event: event ? publicWorldModerationEventContext(event) : null,
         });
       }
+    }
+    for (const report of reports) {
+      report.reportCountForEvent = reportCountsByEventId.get(report.eventId) ?? 1;
+      report.moderatorNote = this.publicWorldModeratorNotes.get(report.eventId) ?? null;
     }
     reports.sort((a, b) => b.createdAt - a.createdAt || a.eventId.localeCompare(b.eventId) || a.reporterId.localeCompare(b.reporterId));
     const boundedReports = reports.slice(0, Math.max(0, Math.min(200, Math.floor(Number(limit) || 100))));
@@ -7624,6 +7670,7 @@ export class RubyHighService extends Service {
       reportCount: reports.length,
       reports: boundedReports,
       suppressedEvents: this.publicWorldSuppressedEventList(),
+      moderatorNotes: this.publicWorldModeratorNoteList(),
     };
   }
 
@@ -7672,6 +7719,31 @@ export class RubyHighService extends Service {
       eventId: id,
       reason: normalizedReason,
       suppressed: !existing,
+    };
+  }
+
+  async notePublicWorldModerationEvent(eventId: string, note: string | undefined, now = Date.now()): Promise<PublicWorldModeratorNoteResult> {
+    const id = normalizePublicWorldEventId(eventId);
+    if (!id) throw new Error("Public world event id is invalid.");
+    const normalizedNote = normalizePublicWorldModeratorNote(note);
+    const existing = this.publicWorldModeratorNotes.get(id);
+    const updated = existing?.note !== normalizedNote;
+    if (normalizedNote) {
+      this.publicWorldModeratorNotes.set(id, {
+        eventId: id,
+        note: normalizedNote,
+        updatedAt: now,
+      });
+    } else {
+      this.publicWorldModeratorNotes.delete(id);
+    }
+    await this.persistPublicWorldModerationState({ surfaceErrors: true }, now);
+    return {
+      ok: true,
+      generatedAt: now,
+      eventId: id,
+      note: normalizedNote,
+      updated,
     };
   }
 
@@ -7792,6 +7864,11 @@ export class RubyHighService extends Service {
   private publicWorldSuppressedEventList(): PublicWorldSuppressedEvent[] {
     return Array.from(this.publicWorldSuppressedEvents.values())
       .sort((a, b) => b.suppressedAt - a.suppressedAt || a.eventId.localeCompare(b.eventId));
+  }
+
+  private publicWorldModeratorNoteList(): PublicWorldModeratorNote[] {
+    return Array.from(this.publicWorldModeratorNotes.values())
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.eventId.localeCompare(b.eventId));
   }
 
   private clampPublicWorldRoomGoalTimes(rooms: readonly SchoolWorldRoom[], now: number): void {
@@ -9194,6 +9271,14 @@ function normalizePublicWorldReportReason(value: unknown): string {
     .trim()
     .slice(0, PUBLIC_WORLD_REPORT_REASON_LIMIT);
   return reason || "reported";
+}
+
+function normalizePublicWorldModeratorNote(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, PUBLIC_WORLD_MODERATOR_NOTE_LIMIT);
 }
 
 function normalizePublicWorldEventReports(value: unknown): PublicWorldEventReport[] {

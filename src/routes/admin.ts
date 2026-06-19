@@ -1571,6 +1571,16 @@ export async function handleAdminWorldModerationRoute(ctx: RouteContext, deps: A
       }
       return true;
     }
+    if (action === "note-event") {
+      const eventId = typeof body === "object" && body ? String((body as { eventId?: unknown }).eventId ?? "").trim() : "";
+      const note = typeof body === "object" && body ? String((body as { note?: unknown }).note ?? "") : "";
+      try {
+        ctx.json(ctx.res, await deps.ruby.notePublicWorldModerationEvent(eventId, note));
+      } catch (err) {
+        ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      }
+      return true;
+    }
     ctx.error(ctx.res, "Unknown moderation action.", 400);
     return true;
   }

@@ -18,7 +18,7 @@ research plumbing, presence/moderation controls, and durable public-world state.
 | Issue | Status | Roadmap meaning |
 |---|---:|---|
 | [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is turning those records into a fuller room/term model. |
-| [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, MVP in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, report dismissal, global suppression, and action throttles exist; next is stronger public-name/profile policy and operator workflow. |
+| [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, and action throttles exist; next is stronger public-name/profile policy. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, runtime promotion, weak-subject and repetition signals exist; next is richer reviewer approval and primary-source packets. |
 | [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
 | [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, two-client goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal and observe sanitized public progress; next is richer room rules, visible cooperative rewards, and less dev-helper coverage. |
@@ -152,7 +152,8 @@ Goal: make public presence safe and legible.
   separates public-world presence from teacher social/X posting consent while
   preserving the legacy `socialConsent=false` hide behavior.
 - Report/hide/admin moderation flows for public names and events. #138 covers
-  event hide/report, admin review, dismissal, and durable global suppression.
+  event hide/report, admin review, repeated-report counts, durable moderator
+  notes, dismissal, and durable global suppression.
 - Rate limits for public actions, not just HTTP endpoints. #138 adds a tighter
   public-world safety action limiter.
 - Product language that explains what becomes public before it happens.
@@ -187,8 +188,8 @@ outcomes without requiring crypto participation.
 4. [#143](https://github.com/cenetex/app-ruby-high/issues/143): introduce
    explicit room/term records and migrate current derived room summaries into
    durable state with rollback coverage.
-5. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add operator
-   affordances around repeated reports, public-name review, and moderator notes.
+5. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add public-name
+   review and clearer player-facing public-profile language.
 
 ---
 
